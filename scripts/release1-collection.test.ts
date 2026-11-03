@@ -14,7 +14,6 @@
  */
 import { basename, dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
-import { fixtureContentDir } from "../test-fixtures/content-root.ts"
 import { execFileSync, spawnSync } from "node:child_process"
 import * as childProcesses from "node:child_process"
 import { createHash } from "node:crypto"
@@ -45,13 +44,13 @@ import { retainCaptureBinding } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import {
   ENVIRONMENT_GROUP_IDS,
+  initializeRunDraft,
+  sealRunDraft,
   SOURCE_NEGATIVE_REVIEW,
   textQualificationFixtures,
   readCollectorSelection,
   readCollectorAttempt,
   type RunDraft,
-  type ProbeSubject,
-  type HeadlessRuntimeIdentity,
   type CapturedRunDraft,
   type CurrentProbeRun,
   type CaptureEvidence,
@@ -115,8 +114,39 @@ const census = (engineBackends: readonly string[] = ENGINE_BACKENDS) => release1
 
 /** The committed corpus this repository ships, as the CLI reads it. */
 const CONTENT = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
-/** The checked-in round (#30764 M4): the runs, receipts and artifacts that content/ loses on Friday. */
-const ROUND = fixtureContentDir()
+// Recorded xterm.js identity only; current test runs start with explicit TODO results.
+// No historical outcomes or inferred provenance are promoted into current measurements.
+const specimen = {
+  subject: {
+    kind: "lib",
+    id: "xtermjs",
+    version: "6.0.0",
+    os: "linux",
+    osVersion: "7.0.0-34-generic",
+    outerTerminal: null,
+    mux: null,
+    config: "80x24 default Termless backend",
+    permissions: null,
+  },
+  measuredAt: "2026-10-11T00:54:25.889Z",
+  runtimeIdentity: {
+    kind: "js",
+    adapterVersion: "0.10.2",
+    termlessRevision: "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
+    resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+    integrity: {
+      kind: "registry",
+      lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+    },
+    runtimeFormat: "js",
+    engineVersion: "6.0.0",
+  },
+} as const
+const currentManifestPath = join(CONTENT, "suites", "4b01b0117e18.json")
+const currentManifest = parseSuiteManifest(currentManifestPath, readFileSync(currentManifestPath, "utf8"))
+if (currentManifest.schemaVersion !== 4 || !currentManifest.catalogIds) {
+  throw new Error("Collection fixture requires the committed schema-4 catalogue")
+}
 
 // #32014: all three entry points must resolve the SAME six real embedded targets.
 // Override only curated fixture input; run bytes, canonical parsing and source files remain real.
@@ -365,35 +395,33 @@ it.each([
   ["matching", "macos-untrusted"],
   ["matching", "empty-probes"],
 ] as const)(
-  "retains a private %s-suite historical artifact after %s without current admission",
+  "retains a private %s-suite foreign-attempt artifact after %s without current admission",
   async (suite, inputChange) => {
     const directory = mkdtempSync(join(tmpdir(), "terminfo-development-pass-"))
     const input = join(directory, "suite-input.ts")
     writeFileSync(input, "original private suite input")
-    const original = join(ROUND, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json")
-    const originalBytes = readFileSync(original, "utf8")
-    const raw = JSON.parse(originalBytes) as { probeHash: string; sourceRevision: string }
-    raw.sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dirname(CONTENT), encoding: "utf8" }).trim()
+    const original = join(directory, "original-current-run.json")
+    const draft = initializeRunDraft({
+      runId: "foreign-retained-attempt",
+      sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: dirname(CONTENT), encoding: "utf8" }).trim(),
+      manifest: { ...currentManifest, schemaVersion: 4 },
+      source: { kind: "live" },
+      intendedSubject: { kind: "lib", id: "xtermjs" },
+    })
+    Object.assign(draft, specimen, { identity: "verified", origin: { kind: "collector" } })
+    const raw = sealRunDraft(draft, specimen.measuredAt)
     const bytes = JSON.stringify(raw)
+    writeFileSync(original, bytes)
+    const originalBytes = readFileSync(original, "utf8")
     const frozenSuite = suite === "frozen" ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
     const textCase = inputChange.startsWith("text-")
-    const manifestPath = join(CONTENT, "suites", `${frozenSuite ?? raw.probeHash}.json`)
+    // A current writer snapshot supplies this synthetic tree; no historical declaration is enriched.
+    const currentSnapshot = versions.probeSuiteSnapshot()
     const snapshot =
       suite !== "different"
         ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
-            ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
-            catalogIds: Object.keys(catalog.loadFeatures(CONTENT)).sort(),
-            catalogEntrySha256: { ...catalog.loadFeatureEntryHashes(CONTENT) },
-            ...(textCase && {
-              schemaVersion: 4 as const,
-              probes: {
-                term: ["text.overwrite"],
-                lib: parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")).probes.lib,
-                mux: [],
-              },
-              textClaims: ["text.overwrite"],
-              textQualification: { version: 1, recipe: "macos-text-cells-v1" },
-            }),
+            ...currentSnapshot,
+            probeHash: frozenSuite ?? raw.probeHash,
             sourcePaths: [relative(dirname(CONTENT), input)],
           })
         : undefined
@@ -575,8 +603,9 @@ it.each([
               const appRun = {
                 ...raw,
                 runId: "qualified-development-text",
-                target: {
-                  kind: "app",
+                intendedSubject: { kind: "term", id },
+                subject: {
+                  kind: "term",
                   id,
                   version: "1.0.0",
                   os: "macos",
@@ -591,17 +620,42 @@ it.each([
                 identity: "unverified",
                 origin: { kind: "collector" },
                 rawReplies: { [featureId]: "retained comparison" },
-                notTested: [],
                 assertions: [
                   {
                     featureId,
                     kind: "positive",
+                    assertionType: "buffer_state",
                     rawReplyRef: featureId,
                     expected: "characters",
                     observed: frames[1]!.ref,
                   },
                 ],
-                observations: [{ featureId, outcome: "supported", evidence: "text", rawReplyRef: featureId, frames }],
+                results: raw.results.map((result) =>
+                  result.featureId === featureId
+                    ? {
+                        featureId,
+                        status: "supported",
+                        assertionType: "buffer_state",
+                        attempt: { scope: "probe", startedAt: raw.measuredAt },
+                        rawReplyRef: featureId,
+                        frames,
+                        tests: [
+                          {
+                            id: "text-qualification",
+                            status: "supported",
+                            attempt: { scope: "probe", startedAt: raw.measuredAt },
+                          },
+                          {
+                            id: "criterion",
+                            status: "supported",
+                            attempt: { scope: "probe", startedAt: raw.measuredAt },
+                            assertionRefs: [0],
+                            rawReplyRef: featureId,
+                          },
+                        ],
+                      }
+                    : result,
+                ),
                 screenshotRefs: [],
                 textSnapshotRefs: [...refs],
                 textQualification: { version: 1, recipe: "macos-text-cells-v1", grid: { rows: 4, cols: 12 }, shapes },
@@ -835,7 +889,7 @@ it.each([
             expect(readFileSync(join(pass.directory, "first-pass", "xtermjs.draft.json"), "utf8")).toBe(
               completedDraftBytes,
             )
-            expect(pass.contexts[0]?.error).toMatch(/current schema-4/)
+            expect(pass.contexts[0]?.error).toMatch(/Collector changed logical runId/)
             expect(pass.contexts[0]?.status).toBe("failed")
           }
         }
@@ -856,15 +910,15 @@ it.each([
           (row) => row.context.kind === "term" && row.context.id === "terminal-app" && row.context.os === "macos",
         )
         expect(terminal?.status).toBe("not-started")
-        expect(terminal?.error).toMatch(/expected current schema-4/)
+        expect(terminal?.error).toMatch(/Collector changed logical runId/)
       }
       const engine = pass.contexts.find((row) => row.context.kind === "lib" && row.context.id === "xtermjs")
       expect(engine?.status).toBe("not-started")
       expect(engine?.classification).toBeUndefined()
       expect(engine?.error).toMatch(
-        suite === "different" || suite === "frozen"
-          ? /unknown suite.*missing trusted manifest/
-          : /expected current schema-4/,
+        suite === "different" || (frozenSuite && frozenSuite !== raw.probeHash)
+          ? /current run requires frozen catalogue membership/
+          : /Collector changed logical runId/,
       )
 
       expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
@@ -1018,7 +1072,7 @@ it.each([
         if (!textCase) expect(mac?.error).toMatch(/dependency lock/)
         const windows = pass.contexts.find((row) => row.context.id === "windows-terminal")
         expect(windows?.rawRun && readFileSync(windows.rawRun, "utf8")).toBe("{}")
-        expect(windows?.error).toContain("run.json: missing backend/terminal")
+        expect(windows?.error).toMatch(/schemaVersion/)
       }
     } finally {
       collector.mockRestore()
@@ -1460,7 +1514,7 @@ it("refuses an ssh transport with no known-hosts file rather than inventing trus
 
 // The collector's own argv builder, through the real driver, to the files the collector reads next:
 // one run JSON in <output>/transport and a receipt bound to the collected revision. The run JSON is
-// an existing producer fixture with its own trusted suite manifest, and it is parsed and classified
+// a current producer fixture with explicit TODOs and its trusted frozen catalogue, parsed and classified
 // here exactly as the collector classifies a run after transport.
 it("runs the collector's ssh route through the driver and reads the run JSON it wrote", () => {
   const directory = mkdtempSync(join(tmpdir(), "transport-route-"))
@@ -1535,12 +1589,34 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       "  --version) echo '1.2.3' ;;",
       "  *) out=''",
       '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
-      '     cp "$PRODUCER_RUN" "$out/kitty-0.48.2-macos.json" ;;',
+      '     cp "$PRODUCER_RUN" "$out/kitty-current-todo.json" ;;',
       "esac",
     ].join("\n"),
   )
   shim("kitty", "#!/bin/sh\necho 'kitty 0.49.1'\n")
-  const producerRun = join(ROUND, "probes-apps", "kitty-0.48.2-macos.json")
+  const producerRun = join(directory, "producer-current.json")
+  const producerDraft = initializeRunDraft({
+    runId: "transport-kitty-current-todo",
+    sourceRevision: revision,
+    manifest: { ...currentManifest, schemaVersion: 4 },
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
+  })
+  producerDraft.subject = {
+    kind: "term",
+    id: "kitty",
+    version: "0.48.2",
+    os: "macos",
+    osVersion: "26.6.2",
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  producerDraft.identity = "unverified"
+  producerDraft.origin = { kind: "collector" }
+  producerDraft.measuredAt = "2026-10-06T23:41:34.869Z"
+  writeFileSync(producerRun, JSON.stringify(sealRunDraft(producerDraft, producerDraft.measuredAt)))
   const producerBytes = readFileSync(producerRun)
   try {
     const command = ownedAppCommand(
@@ -1572,11 +1648,11 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const proof = readOwnedAppTransportProof(join(transport, "transport-receipt.json"), revision)
     expect(proof.receiptSha256).toMatch(/^[a-f0-9]{64}$/)
     const runs = readdirSync(transport).filter((name) => name.endsWith(".json") && name !== "transport-receipt.json")
-    expect(runs).toEqual(["kitty-0.48.2-macos.json"])
+    expect(runs).toEqual(["kitty-current-todo.json"])
 
     // The transported bytes are the producer's bytes, and they parse and classify the way the
     // collector classifies a run after transport.
-    const runPath = join(transport, "kitty-0.48.2-macos.json")
+    const runPath = join(transport, "kitty-current-todo.json")
     const runBytes = readFileSync(runPath)
     expect(createHash("sha256").update(runBytes).digest("hex")).toBe(
       createHash("sha256").update(producerBytes).digest("hex"),
@@ -1589,6 +1665,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
     expect(run.subject).toMatchObject({ kind: "term", id: "kitty", os: "macos" })
     expect(run.suiteComplete).toBe(true)
+    expect(run.results?.every((result) => result.status === "test-todo")).toBe(true)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -1634,8 +1711,7 @@ it("records the host-written transport receipt as evidence and refuses anything 
   }
 })
 
-// A valid pending capture used to return before delegated identity tests. Historical artifact
-// fixtures could not cover this schema-3 handoff even when they exercised the classified branch.
+// A valid pending capture must still exercise delegated identity checks and admission outcome.
 it.each([
   "matching",
   "producer-zero-review",
@@ -1653,22 +1729,7 @@ it.each([
   "admission-refused",
 ] as const)("retains delegated identity and admission outcome: %s", async (fault) => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
-  const specimen = JSON.parse(
-    readFileSync(join(ROUND, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"), "utf8"),
-  ) as { target: ProbeSubject; measuredAt: string; runtimeIdentity: HeadlessRuntimeIdentity }
-  if (
-    typeof specimen !== "object" ||
-    specimen === null ||
-    !("target" in specimen) ||
-    typeof specimen.target !== "object" ||
-    specimen.target === null ||
-    !("measuredAt" in specimen) ||
-    typeof specimen.measuredAt !== "string" ||
-    !("runtimeIdentity" in specimen)
-  ) {
-    throw new Error("Missing historical runtime fixture")
-  }
-  const measuredTarget = specimen.target
+  const measuredTarget = specimen.subject
   const measuredAt = specimen.measuredAt
   const finalCollection =
     fault === "admitted" || fault === "admission-refused" || fault.endsWith("-freeze") || fault === "linux-receipt"

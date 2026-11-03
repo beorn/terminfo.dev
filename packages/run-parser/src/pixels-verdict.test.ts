@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import {
   recordExecutedProbe,
+  initializeRunDraft,
+  sealRunDraft,
   frameDigests,
   cursorProbes,
   editingProbes,
@@ -31,7 +33,7 @@ const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).dig
 const FEATURE = "editing.delete-chars"
 const SUITE = "452ac343b55d"
 const TARGET = {
-  kind: "app",
+  kind: "term",
   id: "kitty",
   version: "0.49.2",
   os: "linux",
@@ -41,7 +43,9 @@ const TARGET = {
   config: null,
   permissions: null,
 } as const
-const manifest: ProbeSuiteManifest = {
+const manifest: ProbeSuiteManifest & { schemaVersion: 4 } = {
+  schemaVersion: 4,
+  catalogIds: [FEATURE],
   probeHash: SUITE,
   adapterVersion: "3.3.1",
   generatedAt: "2026-10-10T22:00:00.000Z",
@@ -111,33 +115,39 @@ const scrollbackFrames = (): ObservationFrame[] => [
 
 const kittyRun = (overrides: Record<string, unknown> = {}) => {
   const frames = kittyFrames()
-  return {
-    schemaVersion: 2,
+  const draft = initializeRunDraft({
     runId: "shape-a-kitty",
-    target: TARGET,
-    identity: "unverified",
-    suiteId: SUITE,
-    probeHash: SUITE,
-    suiteComplete: true,
     sourceRevision: "4".repeat(40),
-    measuredAt: "2026-10-10T22:10:00.000Z",
-    origin: { kind: "collector" },
+    manifest,
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
+  })
+  draft.subject = TARGET
+  draft.identity = "unverified"
+  draft.measuredAt = "2026-10-10T22:10:00.000Z"
+  draft.origin = { kind: "collector" }
+  const attempt = { scope: "probe" as const, startedAt: draft.measuredAt }
+  return {
+    ...sealRunDraft(draft, "2026-10-10T22:11:00.000Z"),
     rawReplies: { [FEATURE]: JSON.stringify({ writes: ["\u001b[1;3H"], queries: [], events: [] }) },
     assertions: [
       {
         featureId: FEATURE,
         kind: "positive",
+        assertionType: "screenshot",
         rawReplyRef: FEATURE,
         expected: `${FEATURE}: the cell-aligned region equals the same-run expected frame`,
         observed: digest("after-region"),
       },
     ],
     screenshotRefs: [digest("c0"), digest("t"), digest("e1"), digest("e2")],
-    observations: [
+    results: [
       {
         featureId: FEATURE,
-        outcome: "supported",
-        evidence: "pixels",
+        status: "supported",
+        assertionType: "screenshot",
+        attempt,
+        tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0] }],
         screenshotRef: digest("t"),
         rawReplyRef: FEATURE,
         frames,
@@ -155,6 +165,7 @@ const scrollbackRun = () => ({
     {
       featureId: FEATURE,
       kind: "positive",
+      assertionType: "screenshot",
       rawReplyRef: FEATURE,
       expected: "the erased buffer is no longer reachable by wheel-up",
       observed: JSON.stringify({
@@ -166,11 +177,12 @@ const scrollbackRun = () => ({
     },
   ],
   screenshotRefs: [digest("bottom"), digest("history"), digest("erased")],
-  observations: [
+  results: [
     {
+      ...kittyRun().results[0],
       featureId: FEATURE,
-      outcome: "supported",
-      evidence: "pixels",
+      status: "supported",
+      assertionType: "screenshot",
       screenshotRef: digest("erased"),
       rawReplyRef: FEATURE,
       frames: scrollbackFrames(),
@@ -264,7 +276,7 @@ function callbackFixture(id: string) {
 function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnType<typeof callbackFixture>) {
   const frames = result.observation?.frames ?? []
   const assertions = (result.assertions ?? []).map((entry) => ({ ...entry, featureId: id, rawReplyRef: id }))
-  const { target, observations: _old, suiteComplete: _oldComplete, ...metadata } = kittyRun()
+  const { subject, results: _old, sealedAt: _seal, ...metadata } = kittyRun()
   const recorded = recordExecutedProbe({
     featureId: id,
     attempt: { scope: "probe", startedAt: "2026-10-10T22:10:00.000Z" },
@@ -279,8 +291,8 @@ function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnT
     ...metadata,
     schemaVersion: 4,
     source: { kind: "live" },
-    subject: { ...target, kind: "term" },
-    intendedSubject: { kind: "term", id: target.id },
+    subject,
+    intendedSubject: { kind: "term", id: subject.id },
     ...(!pendingReview && { sealedAt: "2026-10-10T22:11:00.000Z" }),
     rawReplies: { [id]: JSON.stringify({ writes: fixture.writes, queries: fixture.queries, events: [] }) },
     assertions,
@@ -481,8 +493,8 @@ describe("in-run pixels verdicts", () => {
 
   it("admits a digest-equality verdict whose assertion cites a frame's regionDigest", () => {
     const loaded = parse(kittyRun())
-    const observation = loaded.observations[0]!
-    expect(observation.outcome).toBe("supported")
+    const observation = loaded.results![0]!
+    expect(observation.status).toBe("supported")
     expect(observation.frames).toHaveLength(6)
     // The digests survive the parse, which is what keeps the verdict recomputable.
     expect(observation.frames?.[3]?.regionDigest).toBe(digest("after-region"))
@@ -491,23 +503,23 @@ describe("in-run pixels verdicts", () => {
 
   it("admits a frame-ref verdict accompanied by its retained whole-frame digest", () => {
     const run = kittyRun()
-    const target = run.observations[0]!.frames[3]!
+    const target = run.results[0]!.frames[3]!
     run.assertions[0]!.observed = JSON.stringify({ ref: target.ref, whole: frameDigests(target).whole })
-    expect(parse(run).observations[0]?.outcome).toBe("supported")
+    expect(parse(run).results![0]?.status).toBe("supported")
   })
 
   it("carries a frame's crop rectangle through the parse, and refuses one that is not a rectangle", () => {
     const run = kittyRun()
-    const observations = run.observations as Array<Record<string, unknown>>
+    const observations = run.results as Array<Record<string, unknown>>
     const frames = observations[0]!.frames as Array<Record<string, unknown>>
     frames[3]!.regionRectangle = { x: 10, y: 36, width: 104, height: 24 }
     const loaded = parse(run)
     // The rectangle `regionDigest` was taken over survives with it, so a verdict recomputed from
     // this parsed frame can still tell two screen positions apart (29580).
-    expect(loaded.observations[0]?.frames?.[3]?.regionRectangle).toEqual({ x: 10, y: 36, width: 104, height: 24 })
+    expect(loaded.results![0]?.frames?.[3]?.regionRectangle).toEqual({ x: 10, y: 36, width: 104, height: 24 })
 
     const broken = kittyRun()
-    const brokenObservations = broken.observations as Array<Record<string, unknown>>
+    const brokenObservations = broken.results as Array<Record<string, unknown>>
     const brokenFrames = brokenObservations[0]!.frames as Array<Record<string, unknown>>
     brokenFrames[3]!.regionRectangle = { x: 10, y: 36, width: 0, height: 24 }
     expect(() => parse(broken)).toThrow(/invalid frame regionRectangle/)
@@ -515,14 +527,16 @@ describe("in-run pixels verdicts", () => {
 
   it("admits a verdict whose assertion cites the frame refs it compared", () => {
     const loaded = parse(scrollbackRun())
-    expect(loaded.observations[0]?.outcome).toBe("supported")
-    expect(loaded.observations[0]?.frames).toHaveLength(5)
+    expect(loaded.results![0]?.status).toBe("supported")
+    expect(loaded.results![0]?.frames).toHaveLength(5)
   })
 
   it("refuses a flipped outcome with no matching assertion", () => {
     const run = kittyRun()
-    const observations = run.observations as Array<Record<string, unknown>>
-    observations[0]!.outcome = "unsupported"
+    const observations = run.results as Array<Record<string, unknown>>
+    observations[0]!.status = "unsupported"
+    const tests = observations[0]!.tests as Array<Record<string, unknown>>
+    tests[0]!.status = "unsupported"
     expect(() => parse(run)).toThrow(/lacks bound negative assertion/)
   })
 
@@ -543,7 +557,7 @@ describe("in-run pixels verdicts", () => {
 
   it("refuses a lone screenshotRef with no frame pair", () => {
     const run = kittyRun()
-    const observations = run.observations as Array<Record<string, unknown>>
+    const observations = run.results as Array<Record<string, unknown>>
     delete observations[0]!.frames
     expect(() => parse(run)).toThrow(/requires control and target frames; a lone screenshotRef stays inconclusive/)
   })
@@ -552,7 +566,7 @@ describe("in-run pixels verdicts", () => {
     const frames = kittyFrames()
     ;(frames[3] as { regionDigest?: string }).regionDigest = "88a04fcc"
     const run = kittyRun()
-    const observations = run.observations as Array<Record<string, unknown>>
+    const observations = run.results as Array<Record<string, unknown>>
     observations[0]!.frames = frames
     expect(() => parse(run)).toThrow(/invalid frame regionDigest 3/)
   })

@@ -1,5 +1,5 @@
 /**
- * @failure Offline submission rewrites a partial v2 run or revives legacy boolean scores/posting.
+ * @failure Offline submission rewrites current capture bytes or revives retired capture formats/posting.
  * @level l2
  * @consumer Public installed CLI draft command
  * @testonly none
@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it } from "vitest"
-import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { initializeRunDraft, type CapturedRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { createDraft } from "./submit.ts"
 
 const dirs: string[] = []
@@ -23,12 +23,36 @@ const receipt = {
     sourceRevision: "c".repeat(40),
     generatedAt: "2026-09-28T00:00:00.000Z",
     adapterVersion: "3.3.1",
+    catalogIds: ["device.primary-da"],
     probes: { term: ["device.primary-da"], mux: ["device.primary-da"], lib: ["device.primary-da"] },
   } satisfies ProbeSuiteManifest,
   collectorRevision: "a".repeat(40),
   cliVersion: "3.3.1",
 }
 const partialRun = {
+  ...initializeRunDraft({
+    source: { kind: "live" },
+    runId: "1234567890abcdef1234567890abcdef",
+    sourceRevision: receipt.collectorRevision,
+    manifest: receipt.manifest,
+    intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
+  }),
+  subject: {
+    kind: "term",
+    id: "kitty",
+    version: "0.49.1",
+    os: "linux",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  },
+  identity: "unverified",
+  measuredAt: "2026-09-28T12:00:00.000Z",
+  origin: { kind: "collector" },
+} satisfies CapturedRunDraft
+const retiredV2Run = {
   schemaVersion: 2,
   runId: "1234567890abcdef1234567890abcdef",
   target: {
@@ -68,8 +92,10 @@ it("creates an exclusive offline draft containing the exact partial run and its 
   expect(result.sha256).toBe(createHash("sha256").update(raw).digest("hex"))
   expect(draft).toContain(result.attachmentPath.split("/").at(-1) ?? "")
   expect(readFileSync(result.attachmentPath).equals(Buffer.from(raw))).toBe(true)
-  expect(draft).toContain("history only")
-  expect(draft).toContain("0/1")
+  expect(draft).toContain('"supported": 0')
+  expect(draft).toContain('"all": 1')
+  expect(draft).toContain('"complete": false')
+  expect(draft).not.toContain("history only")
   expect(draft).toContain(result.sha256)
   expect(draft).toContain(
     "I dedicate these results to the public domain (CC0 1.0) so terminfo.dev can publish them under any license.",
@@ -99,6 +125,9 @@ it("refuses legacy booleans, malformed bytes, and unbound screenshot artifacts",
   dirs.push(dir)
   const rawPath = join(dir, "run.json")
   const draftPath = join(dir, "draft.md")
+  // The former v2 consumer accepted this partial run as history. Keep the removal observable.
+  writeFileSync(rawPath, JSON.stringify(retiredV2Run))
+  expect(() => createDraft(rawPath, draftPath, receipt)).toThrow(/schemaVersion 4/i)
   writeFileSync(
     rawPath,
     JSON.stringify({

@@ -7,11 +7,11 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { decodeHistoricalCollectorRun, parseRun, parseRunProvenance } from "./index.ts"
-import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { decodeCollectorDraft, parseRun, parseRunProvenance } from "./index.ts"
+import { initializeRunDraft, sealRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const target = {
-  kind: "app" as const,
+  kind: "term" as const,
   id: "xterm",
   version: "411",
   os: "linux",
@@ -61,35 +61,41 @@ describe("parseRunProvenance version token", () => {
   // The inner mux version differs from the independently measured outer app version. Existing
   // provenance-only coverage cannot catch dropping this namespace or validating it as the mux.
   it("retains one app preflight on a mux and rejects conflicting subjects", () => {
-    const outerApp = { target, rawReplies: { "device.da1": "\u001b[?64;1;2c" }, provenance: provenance("XTerm(411)") }
-    const muxTarget = { ...target, kind: "mux", id: "tmux", version: "3.7c", outerTerminal: "xterm", mux: "tmux" }
-    const raw = {
-      schemaVersion: 2,
-      runId: "attached-mux",
-      target: muxTarget,
-      identity: "unverified",
-      suiteId: "test",
-      ...expected,
-      suiteComplete: true,
-      measuredAt: "2026-10-19T00:00:00Z",
-      origin: { kind: "collector" },
-      rawReplies: {},
-      assertions: [],
-      observations: [],
-      screenshotRefs: [],
-      outerApp,
+    const outerApp = {
+      subject: target,
+      rawReplies: { "device.da1": "\u001b[?64;1;2c" },
+      provenance: provenance("XTerm(411)"),
     }
-    const suites = new Map<string, ProbeSuiteManifest>([
-      [
-        expected.probeHash,
-        {
-          probeHash: expected.probeHash,
-          adapterVersion: "test",
-          probes: { term: [], lib: [], mux: [] },
-        },
-      ],
-    ])
-    const parse = (value: unknown) => parseRun("mux.json", JSON.stringify(value), [], suites)
+    const muxTarget = {
+      ...target,
+      kind: "mux" as const,
+      id: "tmux",
+      version: "3.7c",
+      outerTerminal: "xterm",
+      mux: "tmux",
+    }
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: expected.probeHash,
+      adapterVersion: "test",
+      catalogIds: ["fixture.catalog"],
+      probes: { term: [], lib: [], mux: [] },
+    }
+    const draft = initializeRunDraft({
+      runId: "attached-mux",
+      sourceRevision: expected.sourceRevision,
+      manifest,
+      source: { kind: "live" },
+      intendedSubject: { kind: "mux", id: "tmux" },
+    })
+    draft.subject = muxTarget
+    draft.identity = "unverified"
+    draft.measuredAt = "2026-10-19T00:00:00Z"
+    draft.origin = { kind: "collector" }
+    draft.outerApp = outerApp
+    const raw = sealRunDraft(draft, "2026-10-19T00:01:00.000Z")
+    const suites = new Map<string, ProbeSuiteManifest>([[expected.probeHash, manifest]])
+    const parse = (value: unknown) => parseRun("mux.json", JSON.stringify(value), manifest.catalogIds, suites)
     expect(parse(raw)).toMatchObject({
       outerApp: {
         subject: { ...target, kind: "term" },
@@ -98,9 +104,9 @@ describe("parseRunProvenance version token", () => {
       },
     })
     // The daemon save path rebuilds the public run; parsing alone cannot catch a dropped proof.
-    const decoded = decodeHistoricalCollectorRun(
+    const decoded = decodeCollectorDraft(
       "mux.json",
-      JSON.stringify({ ...raw, suiteId: expected.probeHash }),
+      JSON.stringify(draft),
       suites.get(expected.probeHash)!,
       expected.sourceRevision,
     )
@@ -111,19 +117,19 @@ describe("parseRunProvenance version token", () => {
     })
     expect(parse({ ...raw, outerApp: undefined })).not.toHaveProperty("outerApp")
     expect(() => parse({ ...raw, outerApp: { ...outerApp, provenance: provenance("XTerm(412)") } })).toThrow(
-      /differs from target\.version 411/,
+      /differs from subject\.version 411/,
     )
     for (const conflicting of [
-      { ...raw, target },
-      { ...raw, target: { ...muxTarget, outerTerminal: "kitty" } },
-      { ...raw, target: { ...muxTarget, mux: "screen" } },
-      { ...raw, outerApp: { ...outerApp, target: { ...target, os: "darwin" } } },
-      { ...raw, outerApp: { ...outerApp, target: { ...target, kind: "mux" } } },
-      { ...raw, outerApp: { ...outerApp, target: { ...target, version: "412" } } },
+      { ...raw, subject: target },
+      { ...raw, subject: { ...muxTarget, outerTerminal: "kitty" } },
+      { ...raw, subject: { ...muxTarget, mux: "screen" } },
+      { ...raw, outerApp: { ...outerApp, subject: { ...target, os: "darwin" } } },
+      { ...raw, outerApp: { ...outerApp, subject: { ...target, kind: "mux" } } },
+      { ...raw, outerApp: { ...outerApp, subject: { ...target, version: "412" } } },
       { ...raw, outerApp: { ...outerApp, rawReplies: { reply: 1 } } },
       { ...raw, provenance: outerApp.provenance },
     ]) {
-      expect(() => parse(conflicting)).toThrow(/outerApp|app target/)
+      expect(() => parse(conflicting)).toThrow(/outerApp|term subject/)
     }
   })
 })

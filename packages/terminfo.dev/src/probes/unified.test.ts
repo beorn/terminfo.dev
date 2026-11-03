@@ -19,12 +19,7 @@ import {
   type TextQualification,
 } from "@terminfo/probe-defs"
 import { replyFailure } from "../../../probe-defs/src/helpers.ts"
-import {
-  applyCaptureDecision,
-  retainCaptureBinding,
-  parseRun,
-  decodeHistoricalCollectorRun as decodeCollectorRun,
-} from "@terminfo/run-parser"
+import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
@@ -126,7 +121,8 @@ it("checkpoints the native attempt before invoking its callback", async () => {
   })
 })
 const sourceRevision = "e".repeat(40)
-const manifest: ProbeSuiteManifest = {
+const manifest: ProbeSuiteManifest & { schemaVersion: 4 } = {
+  catalogIds: ALL_PROBES.map((probe) => probe.id),
   schemaVersion: 4 as const,
   probeHash,
   sourceRevision,
@@ -134,50 +130,40 @@ const manifest: ProbeSuiteManifest = {
   adapterVersion: "test",
   probes: { term: ALL_PROBES.filter((probe) => probe.term).map((probe) => probe.id), lib: [], mux: [] },
 }
-// Versioned fixture only: exercise the strict schema-2 decoder; never a production writer.
-function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>) {
-  const observations = batch.observations.map(({ assertionType, ...observation }) => ({
-    ...observation,
-    evidence:
-      assertionType === "buffer_state"
-        ? observation.frames?.some((frame) => frame.kind === "text-cells")
-          ? "text"
-          : "parser-state"
-        : ({ query_reply: "query", screenshot: "pixels", input_bytes: "interaction", clipboard: "behavior" } as const)[
-            assertionType
-          ],
-  }))
-  return {
-    schemaVersion: 2,
+// Transport fixtures retain the current collector's actual result and evidence records.
+function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>, ownManifest = manifest) {
+  const draft = initializeRunDraft({
     runId: "a".repeat(32),
-    target: {
-      kind: "app",
-      id: "kitty",
-      version: "0.49.1",
-      os: "linux",
-      osVersion: null,
-      outerTerminal: null,
-      mux: null,
-      config: null,
-      permissions: null,
-    },
-    identity: "unverified",
-    suiteId: probeHash,
-    probeHash,
-    suiteComplete: false,
     sourceRevision,
-    measuredAt: "2026-09-28T00:00:00.000Z",
-    origin: { kind: "collector" },
-    rawReplies: batch.rawReplies,
-    assertions: batch.assertions.map(({ assertionType: _type, ...assertion }) => assertion),
-    screenshotRefs: [],
-    observations,
-    ungradedDiagnostics: batch.ungradedDiagnostics,
-    ...(batch.notTested.length ? { notTested: batch.notTested } : {}),
+    manifest: ownManifest,
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
+  })
+  draft.subject = {
+    kind: "term",
+    id: "kitty",
+    version: "0.49.1",
+    os: "linux",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
   }
+  draft.identity = "unverified"
+  draft.measuredAt = "2026-09-28T00:00:00.000Z"
+  draft.origin = { kind: "collector" }
+  draft.rawReplies = batch.rawReplies
+  draft.assertions = batch.assertions
+  draft.screenshotRefs = batch.screenshotRefs
+  draft.textSnapshotRefs = batch.textSnapshotRefs
+  draft.results = draft.results.map(
+    (result) => batch.results.find((entry) => entry.featureId === result.featureId) ?? result,
+  )
+  return draft
 }
 
-// Callback-returned responses must survive without becoming measured evidence or changing legacy decoding.
+// Callback-returned responses survive current transport without becoming measured evidence.
 it.each([
   { label: "sentinel", response: "nonsecret-callback-response" },
   { label: "empty", response: "" },
@@ -204,28 +190,28 @@ it.each([
       const explicit = await runProbeBatch({ ids: [id] })
       definition.term = (async () => ({ pass: false, ...responseFields, note })) as unknown as typeof definition.term
       const legacy = await runProbeBatch({ ids: [id] })
-      const decodedExplicit = decodeCollectorRun(
+      const decodedExplicit = decodeCollectorDraft(
         "explicit-callback-response.json",
         JSON.stringify(asRun(explicit)),
         manifest,
         sourceRevision,
       ).run
-      const decodedLegacy = decodeCollectorRun(
+      const decodedLegacy = decodeCollectorDraft(
         "legacy-callback-response.json",
         JSON.stringify(asRun(legacy)),
         manifest,
         sourceRevision,
       ).run
       expect(explicit.observations).toEqual([])
-      expect(decodedExplicit.observations).toEqual([])
+      expect(decodedExplicit.results).toEqual(explicit.results)
       expect(explicit.ungradedDiagnostics).toEqual({})
-      expect(decodedExplicit.ungradedDiagnostics).toEqual({})
+      expect(decodedExplicit.results.find((result) => result.featureId === id)?.status).toBe("test-todo")
       expect(explicit.assertions).toEqual([])
       expect(decodedExplicit.assertions).toEqual([])
       expect(explicit.screenshotRefs).toEqual([])
       expect(decodedExplicit.screenshotRefs).toEqual([])
       expect(explicit.suiteComplete).toBe(false)
-      expect(decodedExplicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.results.some((result) => result.status === "test-todo")).toBe(true)
       expect(decodedExplicit.identity).toBe("unverified")
       expect(explicit.rawReplies[id]).toBe(trace)
       expect(decodedExplicit.rawReplies[id]).toBe(trace)
@@ -238,9 +224,12 @@ it.each([
         message: `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
       }
       expect(legacy.observations).toEqual([])
-      expect(decodedLegacy.observations).toEqual([])
+      expect(decodedLegacy.results).toEqual(legacy.results)
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
-      expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
+      expect(decodedLegacy.results.find((result) => result.featureId === id)).toMatchObject({
+        status: "test-failure",
+        reason: refusal.message,
+      })
       expect(legacyReplies(legacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacyReplies(decodedLegacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacy.assertions).toEqual([])
@@ -248,7 +237,7 @@ it.each([
       expect(legacy.screenshotRefs).toEqual([])
       expect(decodedLegacy.screenshotRefs).toEqual([])
       expect(legacy.suiteComplete).toBe(false)
-      expect(decodedLegacy.suiteComplete).toBe(false)
+      expect(decodedLegacy.results.some((result) => result.status === "test-failure")).toBe(true)
       expect(decodedLegacy.identity).toBe("unverified")
 
       const expectedReplies = {
@@ -304,28 +293,28 @@ it.each([
       const explicit = await runProbeBatch({ ids: [id] })
       definition.term = (async () => ({ pass: false, ...resultNoteFields })) as unknown as typeof definition.term
       const legacy = await runProbeBatch({ ids: [id] })
-      const decodedExplicit = decodeCollectorRun(
+      const decodedExplicit = decodeCollectorDraft(
         "explicit-callback-note.json",
         JSON.stringify(asRun(explicit)),
         manifest,
         sourceRevision,
       ).run
-      const decodedLegacy = decodeCollectorRun(
+      const decodedLegacy = decodeCollectorDraft(
         "legacy-callback-note.json",
         JSON.stringify(asRun(legacy)),
         manifest,
         sourceRevision,
       ).run
       expect(explicit.observations).toEqual([])
-      expect(decodedExplicit.observations).toEqual([])
+      expect(decodedExplicit.results).toEqual(explicit.results)
       expect(explicit.ungradedDiagnostics).toEqual({})
-      expect(decodedExplicit.ungradedDiagnostics).toEqual({})
+      expect(decodedExplicit.results.find((result) => result.featureId === id)?.status).toBe("test-todo")
       expect(explicit.assertions).toEqual([])
       expect(decodedExplicit.assertions).toEqual([])
       expect(legacyReplies(explicit.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacyReplies(decodedExplicit.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(explicit.suiteComplete).toBe(false)
-      expect(decodedExplicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.results.some((result) => result.status === "test-todo")).toBe(true)
       expect(decodedExplicit.identity).toBe("unverified")
 
       // The one-path refactor deleted the legacy-callback record; the untyped refusal replaces it.
@@ -335,14 +324,17 @@ it.each([
         message: `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
       }
       expect(legacy.observations).toEqual([])
-      expect(decodedLegacy.observations).toEqual([])
+      expect(decodedLegacy.results).toEqual(legacy.results)
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
-      expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
+      expect(decodedLegacy.results.find((result) => result.featureId === id)).toMatchObject({
+        status: "test-failure",
+        reason: refusal.message,
+      })
       expect(legacyReplies(legacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacyReplies(decodedLegacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacy.assertions).toEqual([])
       expect(decodedLegacy.assertions).toEqual([])
-      expect(decodedLegacy.suiteComplete).toBe(false)
+      expect(decodedLegacy.results.some((result) => result.status === "test-failure")).toBe(true)
       expect(decodedLegacy.identity).toBe("unverified")
     } finally {
       definition.term = original
@@ -815,9 +807,13 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   })
   expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "test-todo" })
   expect(
-    decodeCollectorRun("missing-geometry.json", JSON.stringify(asRun(missing)), manifest, sourceRevision).run
-      .observations,
-  ).toEqual([])
+    decodeCollectorDraft(
+      "missing-geometry.json",
+      JSON.stringify(asRun(missing)),
+      manifest,
+      sourceRevision,
+    ).run.results.find((result) => result.featureId === "reset.ris"),
+  ).toMatchObject({ status: "test-todo" })
   expect(JSON.parse(missing.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
   expect(writes).toEqual([])
   const conflict = await runProbeBatch({
@@ -1037,9 +1033,9 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
     expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
       checks: [{ pre: { rows: 24, cols: 61 }, post: { rows: 31, cols: 73 } }],
     })
-    const decoded = decodeCollectorRun("resized.json", JSON.stringify(asRun(batch)), manifest, sourceRevision).run
+    const decoded = decodeCollectorDraft("resized.json", JSON.stringify(asRun(batch)), manifest, sourceRevision).run
     expect(decoded.assertions).toEqual(batch.assertions)
-    expect(decoded.observations).toEqual(batch.observations)
+    expect(decoded.results).toEqual(batch.results)
     expect(decoded.rawReplies["device.primary-da.callbackObservation"]).toBe(
       batch.rawReplies["device.primary-da.callbackObservation"],
     )
@@ -1071,15 +1067,17 @@ it("binds an app named coverage record to its own retained raw trace", async () 
     ])
     expect(batch.rawReplies[`${definition.id}.callbackResponse`]).toBe("\x1b[?62;4c")
     expect(JSON.parse(batch.rawReplies[definition.id]!)).toEqual({ writes: [], queries: [], events: [] })
-    const decoded = decodeCollectorRun(
+    const decoded = decodeCollectorDraft(
       "app-named-coverage.json",
       JSON.stringify(asRun(batch)),
       manifest,
       sourceRevision,
     ).run
-    expect(decoded.notTested).toMatchObject([
-      { featureId: definition.id, reason: "no-semantic-observable", rawReplyRef: definition.id },
-    ])
+    expect(decoded.results.find((result) => result.featureId === definition.id)).toMatchObject({
+      status: "test-todo",
+      reason: "device attributes",
+      rawReplyRef: definition.id,
+    })
   } finally {
     definition.term = originalTerm
   }
@@ -1116,13 +1114,16 @@ it("refuses app named coverage that arrives beside its returned error observatio
     expect(batch.rawReplies[`${definition.id}.callbackResponse`]).toBe("\x1b[?62;4c")
     const diagnostic = JSON.stringify(batch.ungradedDiagnostics[definition.id] ?? null)
     expect(diagnostic).toContain("TTY write failed")
-    const decoded = decodeCollectorRun(
+    const decoded = decodeCollectorDraft(
       "app-mixed-coverage.json",
       JSON.stringify(asRun(batch)),
       manifest,
       sourceRevision,
     ).run
-    expect(JSON.stringify(decoded.ungradedDiagnostics?.[definition.id] ?? null)).toContain("TTY write failed")
+    expect(decoded.results.find((result) => result.featureId === definition.id)).toMatchObject({
+      status: "test-failure",
+      reason: expect.stringContaining("TTY write failed"),
+    })
     expect(batch.suiteComplete).toBe(false)
   } finally {
     definition.term = originalTerm
@@ -1154,13 +1155,16 @@ it("refuses app named coverage that arrives beside supported observation and ass
     const diagnostic = JSON.stringify(batch.ungradedDiagnostics[definition.id] ?? null)
     expect(diagnostic).toContain("expected=")
     expect(diagnostic).toContain("observed=")
-    const decoded = decodeCollectorRun(
+    const decoded = decodeCollectorDraft(
       "app-mixed-assertions.json",
       JSON.stringify(asRun(batch)),
       manifest,
       sourceRevision,
     ).run
-    expect(JSON.stringify(decoded.ungradedDiagnostics?.[definition.id] ?? null)).toContain("assertion(kind=positive")
+    expect(decoded.results.find((result) => result.featureId === definition.id)).toMatchObject({
+      status: "test-failure",
+      reason: expect.stringContaining("assertion(kind=positive"),
+    })
     expect(batch.suiteComplete).toBe(false)
   } finally {
     definition.term = originalTerm
@@ -1297,13 +1301,13 @@ it("grades editing.decsace on measured pixel cells and keeps suiteComplete", asy
       { featureId: "editing.decsace", outcome: "supported", assertionType: "screenshot" },
     ])
     expect(
-      decodeCollectorRun(
+      decodeCollectorDraft(
         "decsace.json",
         JSON.stringify({ ...asRun(batch), screenshotRefs: batch.screenshotRefs }),
         manifest,
         sourceRevision,
-      ).run.observations,
-    ).toMatchObject([{ featureId: "editing.decsace", outcome: "supported", assertionType: "screenshot" }])
+      ).run.results.filter((result) => result.featureId === "editing.decsace"),
+    ).toMatchObject([{ featureId: "editing.decsace", status: "supported", assertionType: "screenshot" }])
     expect(labels).toEqual([
       // The seed paint happens first, then the shared stability pair reads the seeded screen: its
       // second read IS the seed frame, so the extent frames follow.
@@ -2892,15 +2896,13 @@ it.each([
               (check) => check.status === "test-todo" && check.reason?.includes("a third distinct frame"),
             ),
           ).toBe(true)
-          const decoded = decodeCollectorRun(
+          const decoded = decodeCollectorDraft(
             "native-visual-collector-fixture.json",
             JSON.stringify({ ...asRun(batch), screenshotRefs: batch.screenshotRefs }),
             manifest,
             sourceRevision,
           ).run
-          expect(decoded.observations.find((observation) => observation.featureId === id)?.frames).toEqual(
-            result.frames,
-          )
+          expect(decoded.results.find((result) => result.featureId === id)?.frames).toEqual(result.frames)
           return
         }
         const binding = retainCaptureBinding(draft, id)
@@ -2956,14 +2958,16 @@ it.each([
           })
           const [unchanged] = await Promise.all([unchangedPending, vi.runAllTimersAsync()])
           expect(unchanged.ungradedDiagnostics).toEqual({})
-          const noFreshDecoded = decodeCollectorRun(
+          const noFreshDecoded = decodeCollectorDraft(
             "native-visual-no-freshness.json",
-            JSON.stringify({ ...asRun(unchanged), screenshotRefs: unchanged.screenshotRefs }),
+            JSON.stringify(asRun(unchanged, ownManifest)),
             ownManifest,
             sourceRevision,
           ).run
           expect(unchanged.observations).toEqual([])
-          expect(noFreshDecoded.observations).toEqual([])
+          expect(noFreshDecoded.results.find((entry) => entry.featureId === id)).toEqual(
+            unchanged.results.find((entry) => entry.featureId === id),
+          )
           expect(unchanged.results.find((entry) => entry.featureId === id)).toMatchObject({
             status: "test-todo",
             tests: [

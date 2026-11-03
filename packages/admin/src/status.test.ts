@@ -1,5 +1,5 @@
 /**
- * @failure Status counts unverified legacy booleans as current and silently skips corrupt saved runs.
+ * @failure Status loses reviewed outcomes or silently skips corrupt saved runs.
  * @level l2
  * @consumer Admin CLI status readers comparing reviewed runs with saved archives.
  * @testonly none
@@ -13,7 +13,7 @@ import { expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 
-test("status separates reviewed current runs from newer legacy files and refuses malformed archives", () => {
+test("status reports reviewed current runs and refuses malformed archives", () => {
   const source = join(import.meta.dirname, "..", "..", "..")
   const root = mkdtempSync(join(tmpdir(), "terminfo-status-"))
   try {
@@ -140,16 +140,6 @@ test("status separates reviewed current runs from newer legacy files and refuses
         },
       ]),
     )
-    writeFileSync(
-      join(root, "content", "probes-libs", "newer-unverified.json"),
-      JSON.stringify({
-        backend: "kitty",
-        version: "9.9.9",
-        generated: "2027-01-01T00:00:00.000Z",
-        results: { "extensions.query": true, "cursor.position": false },
-      }),
-    )
-
     const projection = loadCurrentResults(join(root, "content")).projection
     expect(projection.contexts["term:kitty"], JSON.stringify(projection.exclusions)).toBeDefined()
     expect(projection.contexts["term:kitty"]?.counts).toEqual({
@@ -169,8 +159,7 @@ test("status separates reviewed current runs from newer legacy files and refuses
     expect(selected.stdout).toContain("1 TEST TODO")
     expect(selected.stdout).toContain("1 TEST FAILURE")
     expect(selected.stdout).toContain("0/2 Supported / all")
-    expect(selected.stdout).not.toContain("9.9.9")
-    expect(selected.stdout).toContain("Archive libs: 1")
+    expect(selected.stdout).toContain("Archive apps: 1")
 
     const corruptPath = join(root, "content", "probes-libs", "corrupt.json")
     writeFileSync(corruptPath, "{")

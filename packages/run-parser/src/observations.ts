@@ -109,35 +109,6 @@ function projectHistorical(input: ObservationInput, rawReplies: Record<string, s
   return projected
 }
 
-/** Old booleans remain unverified and ungraded, with no invented observable. */
-export function decodeLegacyBooleanObservation(featureId: string, supported: boolean): ReadObservation {
-  return projectHistorical({ featureId, outcome: supported ? "supported" : "unsupported", evidence: "legacy" }, {})
-}
-
-/** Associate a strictly decoded historical result with its own original primary observation. */
-export function projectHistoricalResult(
-  value: Record<string, unknown>,
-  tests: ProbeResult["tests"],
-  rawReplies: Record<string, string>,
-): ProbeResult {
-  const { evidence, checks: _checks, ...fields } = value
-  const result = { ...fields, tests } as unknown as ProbeResult
-  if (evidence !== undefined) {
-    if (!HISTORICAL_EVIDENCE.includes(evidence as HistoricalEvidence)) {
-      fail("historical result", `invalid evidence for ${String(value.featureId)}`)
-    }
-    const input = { ...value, outcome: value.status } as unknown as ObservationInput
-    const assertionType = classifyHistorical(input, rawReplies)
-    if (assertionType !== undefined) result.assertionType = assertionType
-    historical.set(result, {
-      input,
-      nonMeasuring: nonMeasuring(evidence as HistoricalEvidence),
-      requiresTextQualification: evidence === "text",
-    })
-  }
-  return result
-}
-
 /** Return the recorded witness for this result's reader-owned text requirement. */
 export function resultTextQualification(
   result: ProbeResult,

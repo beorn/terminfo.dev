@@ -1,0 +1,2529 @@
+{
+  "schemaVersion": 4,
+  "source": {
+    "kind": "live"
+  },
+  "runId": "fixture-reverse-wrap-alacritty-windows",
+  "suiteId": "4b01b0117e18",
+  "probeHash": "4b01b0117e18",
+  "sourceRevision": "750022af33fd31d0c4ac9731c474872740466592",
+  "intendedSubject": {
+    "kind": "term",
+    "id": "alacritty",
+    "version": "0.17.0",
+    "os": "windows",
+    "osVersion": "10.0.26100",
+    "outerTerminal": null,
+    "mux": null,
+    "config": null,
+    "permissions": null
+  },
+  "results": [
+    {
+      "featureId": "charsets.dec-line-drawing",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "charsets.dec-special",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "charsets.g0-g1-switching",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "charsets.utf8",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.ansi-restore",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.ansi-save",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cpl",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cud-past-bottom",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cup-boundaries",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cup-scroll-region",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cuu-past-top",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.hide",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.horizontal-absolute",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.hpa",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.absolute",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.back",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.down",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.forward",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.home",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.up",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.next-line",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.position-report",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.reverse-wrap",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-22T00:45:28.810Z"
+      },
+      "rawReplyRef": "cursor.reverse-wrap",
+      "reason": "Measured wrap was not reversed to row 1 column 100",
+      "status": "unsupported",
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "unsupported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-22T00:45:28.810Z"
+          },
+          "assertionRefs": [
+            0
+          ],
+          "rawReplyRef": "cursor.reverse-wrap",
+          "reason": "Measured wrap was not reversed to row 1 column 100"
+        }
+      ],
+      "assertionType": "query_reply"
+    },
+    {
+      "featureId": "cursor.save-restore",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.shape",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.vpa",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.decrpm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.decrqss",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.dsr-996-color-scheme",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-colorterm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-kitty",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-lc-terminal",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-no-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-term",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-term-program",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-vte-version",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-wezterm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-wt-session",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.primary-da",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.secondary-da",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.status-report",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.term-features",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.tertiary-da",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtgettcap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtgetxres",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtreportcolors",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtversion",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-14",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-16",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-18",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-20",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-21",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-22",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-23",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.deccara",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.deccra",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decdc",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decera",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decfra",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decrara",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decrqcra",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decsace",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decsera",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.delete-chars",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.delete-lines",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.insert-chars",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.insert-lines",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.repeat-char",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.sl",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.sr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.character",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.ed-scroll-region",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.el-with-attrs",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.line.all",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.line.left",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.line.right",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.above",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.all",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.below",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.scrollback",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.selective",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.clipboard-paste",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.font-ligatures",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.iterm2-images",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.animation",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.display",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.transmit",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.unicode-placeholders",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.disambiguate",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-all-keys",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-alternate",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-events",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-text",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.notifications",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc-633-vscode",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc0-icon-title",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc1-icon",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc10-fg-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc104-reset-palette",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc11-bg-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc110-reset-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc111-reset-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc112-reset-cursor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc113-reset-pointer-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc114-reset-pointer-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc117-reset-highlight-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc119-reset-highlight-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc12-cursor-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-a",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-b",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-c",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-d",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-p",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc1337-capabilities",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc1337-cellsize",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc17-highlight-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc176-app-id",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc19-highlight-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc2-title",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc21-kitty-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc22-pointer",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc30001-color-stack-push",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc3008-context",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc30101-color-stack-pop",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc4-palette",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc440-audio",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc5-special-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc52-clipboard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc52-write",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc5522-clipboard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc555-flash",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-a",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-b",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-c",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-d",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-e",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-p",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc66-text-sizing",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc666-termprop",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc7-cwd",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc701-locale",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc702-version",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc710-font-normal",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc720-scroll-up",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc776-cell-size",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc777-notify",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc7770-font-size",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc7777-font-window-size",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc8",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc9-progress",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc99-kitty-notify",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.reflow",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.semantic-prompts",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.sixel",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.sixel-da1",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.sixel-geometry-report",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.truecolor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.button-event-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.csi-u",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.kitty-click-events",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.modify-other-keys",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.modify-other-keys-3",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.pixel-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.urxvt-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.x10-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.xtest-click",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.xtest-key",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.xtest-wheel",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.alt-screen.enter",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.alt-screen.exit",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.alt-scroll-1007",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.altscreen-1047",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.altscreen-1048",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.altscreen-47",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.application-cursor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.application-keypad",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.auto-wrap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.bracketed-paste",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.color-scheme-reporting",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.deccolm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.decsclm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.decsscls",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.focus-tracking",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.insert-replace",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.left-right-margin",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.mouse-all",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.mouse-sgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.mouse-tracking",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.origin",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.reverse-video",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.synchronized-output",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.utf8-mouse-1005",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpopcolors",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpopsgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpushcolors",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpushsgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtrestore",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtsave",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.decaln",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.method",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.ris",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.sgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.soft",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.accumulate",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.alt-screen",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.decstbm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.decstbm-reset",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.reverse-index",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.scroll-down",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.scroll-up",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.set-region",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.total-lines",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.viewport-hold-output",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.256",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.bright",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.default",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.standard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.truecolor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.blink",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bold",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.faint",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.256",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.bright",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.default",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.standard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.truecolor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.hidden",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.inverse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.italic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.overline",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.reset",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.bold",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.inverse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.italic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.underline",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.strikethrough",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline-color-indexed",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline-color-reset",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline-color-rgb",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.curly",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.dashed",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.dotted",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.double",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.single",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.backspace",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.basic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.cbt",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.cht",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.combining",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.cr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.hts",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.index",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.newline",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.next-line",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.overwrite",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.reverse-index-scroll",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.tab",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.tbc",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.cjk",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji-flags",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji-vs16",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji-zwj",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wrap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.east-asian-ambiguous",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.grapheme-cursor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.tab-stops",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.wrap-boundary",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    }
+  ],
+  "rawReplies": {
+    "cursor.reverse-wrap": "{\"writes\":[\"\\u001b[?45h\",\"\\u001b[?7h\",\"\\u001b[H\",\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\",\"\\b\\b\",\"\\u001b[?45l\"],\"queries\":[{\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[1;1R\",\"1\",\"1\"],\"reason\":\"reply\",\"raw\":\"\\u001b[1;1R\",\"rawBase64\":\"G1sxOzFS\"},{\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[2;2R\",\"2\",\"2\"],\"reason\":\"reply\",\"raw\":\"\\u001b[2;2R\",\"rawBase64\":\"G1syOzJS\"},{\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[2;1R\",\"2\",\"1\"],\"reason\":\"reply\",\"raw\":\"\\u001b[2;1R\",\"rawBase64\":\"G1syOzFS\"}],\"events\":[{\"kind\":\"write\",\"sequence\":\"\\u001b[?45h\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[?7h\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[H\"},{\"kind\":\"query\",\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[1;1R\",\"1\",\"1\"],\"reason\":\"reply\",\"raw\":\"\\u001b[1;1R\",\"rawBase64\":\"G1sxOzFS\"},{\"kind\":\"write\",\"sequence\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\"},{\"kind\":\"query\",\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[2;2R\",\"2\",\"2\"],\"reason\":\"reply\",\"raw\":\"\\u001b[2;2R\",\"rawBase64\":\"G1syOzJS\"},{\"kind\":\"write\",\"sequence\":\"\\b\\b\"},{\"kind\":\"query\",\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[2;1R\",\"2\",\"1\"],\"reason\":\"reply\",\"raw\":\"\\u001b[2;1R\",\"rawBase64\":\"G1syOzFS\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[?45l\"}]}",
+    "collector.geometry": "{\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"bindingReceiptRef\":\"collector.terminalOwnership\",\"grant\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:18.385Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"corroboration\":{\"status\":\"agree\",\"query\":{\"sequence\":\"\\u001b[18t\",\"outbound\":\"\\u001b[18t\\u001b[c\",\"reason\":\"reply\",\"raw\":\"\\u001b[8;35;100t\\u001b[?61;6;7;21;22;23;24;28;32;42c\",\"rawBase64\":\"G1s4OzM1OzEwMHQbWz82MTs2Ozc7MjE7MjI7MjM7MjQ7Mjg7MzI7NDJj\"},\"rows\":35,\"cols\":100},\"checks\":[{\"featureId\":\"extensions.truecolor\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:18.659Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:18.665Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"extensions.font-ligatures\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:18.666Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:18.666Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"extensions.sixel\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:20.954Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:20.955Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"extensions.osc8\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:20.956Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:20.958Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"extensions.iterm2-images\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:22.006Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:22.007Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"extensions.osc66-text-sizing\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:22.515Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:22.518Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bold\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.379Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.382Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.faint\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.382Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.386Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.italic\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.387Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.390Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.single\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.391Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.394Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.double\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.395Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.398Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.curly\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.399Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.402Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.dotted\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.403Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.406Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.dashed\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.407Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.410Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.blink\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.410Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.413Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.inverse\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.413Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.416Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.hidden\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.416Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.419Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.strikethrough\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.420Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.422Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.overline\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.423Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.427Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.color\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.428Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.430Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline-color-indexed\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.431Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.434Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline-color-rgb\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.434Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.436Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline-color-reset\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.437Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.441Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.standard\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.442Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.444Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.standard\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.445Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.447Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.bright\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.448Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.450Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.bright\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.451Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.453Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.default\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.454Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.459Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.default\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.460Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.466Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.256\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.466Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.469Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.256\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.471Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.474Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.truecolor\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.475Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.478Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.truecolor\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.478Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.481Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.selective-reset.bold\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.482Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.487Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.selective-reset.underline\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.488Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.494Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.selective-reset.italic\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.494Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.500Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.selective-reset.inverse\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.501Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.506Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"sgr.reset\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.507Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.512Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.absolute\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.513Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.515Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.home\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.516Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.518Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.forward\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.520Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.522Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.back\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.523Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.525Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.down\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.525Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.527Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.up\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.528Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.530Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.hide\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.531Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.533Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.shape\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.533Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.787Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.horizontal-absolute\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.789Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.791Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.next-line\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.792Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.794Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.position-report\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.794Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.797Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.ansi-save\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.798Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.803Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.ansi-restore\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.804Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.806Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.save-restore\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.807Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.809Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.reverse-wrap\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.810Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.814Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cup-boundaries\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.815Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.818Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cuu-past-top\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.818Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.820Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cud-past-bottom\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.821Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.824Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.vpa\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.824Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.826Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cpl\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.827Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.831Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.hpa\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.832Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.836Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cup-scroll-region\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.836Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.868Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.overwrite\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.870Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.889Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.reverse-index-scroll\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.891Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.914Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.basic\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.916Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.918Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.newline\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.920Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.923Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.wrap\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.926Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.931Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.tab\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.933Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.935Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.emoji\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.937Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.943Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.cjk\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.945Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.951Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.cr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.953Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.956Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.backspace\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.958Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.960Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.index\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.962Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.965Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.next-line\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.967Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.969Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.combining\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.970Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.975Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.hts\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.976Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.983Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.tbc\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.984Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.988Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.cht\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.989Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.991Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.cbt\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.993Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.995Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.emoji-flags\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:28.997Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.002Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.emoji-vs16\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.005Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.010Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.emoji-zwj\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.012Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.016Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.character\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.018Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.038Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.line.right\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.040Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.058Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.line.left\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.062Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.082Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.line.all\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.084Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.103Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.screen.below\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.105Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.122Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.screen.above\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.125Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.145Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.screen.all\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.147Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.166Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.selective\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.168Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.192Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.ed-scroll-region\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.195Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.212Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.el-with-attrs\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.215Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.240Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"erase.screen.scrollback\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.242Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.247Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.insert-chars\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.249Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.267Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.delete-chars\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.270Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.293Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.insert-lines\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.295Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.316Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.delete-lines\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.318Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.337Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.repeat-char\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.342Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.361Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.decfra\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.364Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.383Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.decera\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.386Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.407Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.decsera\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.411Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.440Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.deccra\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.443Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.462Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.sl\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.466Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.485Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.sr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.488Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.511Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.decic\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.513Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.533Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.decdc\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.538Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.558Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.deccara\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.560Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.580Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.decrara\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.582Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.602Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"editing.decsace\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.605Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.608Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.alt-screen.exit\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.629Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.634Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.origin\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.685Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.709Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.insert-replace\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.712Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.721Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.left-right-margin\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.744Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.747Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.altscreen-47\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.750Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.752Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.altscreen-1047\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.755Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.759Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.altscreen-1048\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.763Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.767Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtpushsgr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.803Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.805Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtpopsgr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.807Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.811Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtsave\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.814Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.817Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtrestore\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.819Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.824Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtpushcolors\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.826Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.829Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtpopcolors\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.831Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.834Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"modes.decsscls\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.839Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:29.845Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"reset.sgr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.545Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.554Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"reset.ris\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.556Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.560Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"reset.soft\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.563Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.572Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"reset.decaln\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.574Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.595Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.accumulate\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.614Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.619Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.total-lines\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.622Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.626Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.scroll-up\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.630Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.650Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.reverse-index\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.653Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.675Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.scroll-down\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.679Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.698Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.set-region\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.703Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.723Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.alt-screen\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.727Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.758Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.decstbm\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.762Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.781Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.decstbm-reset\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.784Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.804Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"charsets.dec-special\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.809Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.828Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"charsets.utf8\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.831Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.855Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"charsets.g0-g1-switching\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.858Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.885Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"charsets.dec-line-drawing\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.888Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.909Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"unicode.east-asian-ambiguous\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.912Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.918Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"unicode.grapheme-cursor\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.923Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.928Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"unicode.wrap-boundary\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.932Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.938Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}},{\"featureId\":\"unicode.tab-stops\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.941Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:32.945Z\",\"source\":\"GetConsoleScreenBufferInfo on the collector's own CONOUT$\",\"rows\":35,\"cols\":100,\"stdout\":\"\",\"stderr\":\"\"}}]}"
+  },
+  "assertions": [
+    {
+      "featureId": "cursor.reverse-wrap",
+      "kind": "negative",
+      "expected": "Backspace from column 1 of row 2 reverses the wrap to the last column of row 1",
+      "observed": "{\"measured\":[{\"step\":\"home\",\"report\":{\"row\":1,\"col\":1}},{\"step\":\"wrapped\",\"report\":{\"row\":2,\"col\":2}},{\"step\":\"reverted\",\"report\":{\"row\":2,\"col\":1}}]}",
+      "rawReplyRef": "cursor.reverse-wrap",
+      "assertionType": "query_reply"
+    }
+  ],
+  "screenshotRefs": [],
+  "subject": {
+    "kind": "term",
+    "id": "alacritty",
+    "version": "0.17.0",
+    "os": "windows",
+    "osVersion": "10.0.26100",
+    "outerTerminal": null,
+    "mux": null,
+    "config": null,
+    "permissions": null
+  },
+  "identity": "unverified",
+  "measuredAt": "2026-10-22T00:45:33.976Z",
+  "origin": {
+    "kind": "collector"
+  },
+  "sealedAt": "2026-10-22T00:45:33.987Z"
+}
