@@ -48,7 +48,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
       detail: string
       counts: string
       pass: string
-      frozenAt: string
       state: string
       selected: boolean
       admitted: boolean
@@ -56,7 +55,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
   >()
   type PassContext = {
     pass: string
-    frozenAt: string
     suite: string
     sourceRevision: string
     context?: DeclaredContext
@@ -70,37 +68,11 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
     if (typeof header.probeHash !== "string" || typeof header.sourceRevision !== "string") {
       throw new Error(`${path}: pass requires probeHash and sourceRevision`)
     }
-    const freeze = header.freeze
-    const declaration = readExplicitSuiteTarget(ROOT, header.probeHash).manifest
-    if (
-      freeze !== undefined &&
-      (!record(freeze) || freeze.id !== header.probeHash || freeze.release !== declaration.freeze?.release)
-    ) {
-      throw new Error(`${path}: freeze disagrees with suite ${header.probeHash}`)
-    }
+    readExplicitSuiteTarget(ROOT, header.probeHash)
     const identity: PassContext = {
-      pass: record(freeze) && typeof freeze.id === "string" ? freeze.id : basename(dirname(path)),
-      frozenAt: declaration.freeze?.at ?? "",
+      pass: basename(dirname(path)),
       suite: header.probeHash,
       sourceRevision: header.sourceRevision,
-    }
-    const deferrals = record(freeze) ? (freeze.deferrals ?? []) : []
-    if (!Array.isArray(deferrals)) throw new Error(`${path}: freeze.deferrals must be an array`)
-    const deferred = new Map<string, string>()
-    for (const value of deferrals) {
-      if (
-        !record(value) ||
-        typeof value.context !== "string" ||
-        typeof value.routeIssue !== "string" ||
-        !value.routeIssue ||
-        typeof value.reason !== "string" ||
-        !value.reason ||
-        !census.contexts.some((row) => row.context === value.context)
-      ) {
-        throw new Error(`${path}: deferral requires a canonical context, routeIssue and reason`)
-      }
-      if (deferred.has(value.context)) throw new Error(`${path}: duplicate deferral ${value.context}`)
-      deferred.set(value.context, `${value.reason}; route ${value.routeIssue}`)
     }
     for (const value of contexts) {
       if (!record(value) || !record(value.context)) throw new Error(`${path}: pass has no context identity`)
@@ -110,8 +82,7 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
           row.kind === subject.kind && row.terminalId === subject.id && (row.kind === "lib" || row.os === subject.os),
       )
       if (!context) throw new Error(`${path}: pass names a context outside the canonical census`)
-      const reason = deferred.get(context.context)
-      if (reason === undefined && typeof value.rawRun === "string") {
+      if (typeof value.rawRun === "string") {
         const declared = { ...identity, context }
         const capture = read(value.rawRun, declared)
         if (value.status === "admitted" && typeof value.admittedPath === "string") {
@@ -128,20 +99,14 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
           selected: false,
           admitted: false,
           pass: identity.pass,
-          frozenAt: identity.frozenAt,
-          state: reason ? "deferred" : "to-measure",
+          state: "to-measure",
           suite: `${header.probeHash}@${header.sourceRevision}`,
           runId: "no captured run supplied",
           source: path,
           sha256: createHash("sha256").update(bytes).digest("hex"),
           counts: "not measured",
-          detail: reason ?? String(value.error ?? value.reason ?? "not recorded"),
+          detail: String(value.error ?? value.reason ?? "not recorded"),
         })
-      }
-    }
-    for (const context of deferred.keys()) {
-      if (!rows.get(context)?.some((row) => row.source === path)) {
-        throw new Error(`${path}: deferred context ${context} is absent from the pass`)
       }
     }
   }
@@ -189,7 +154,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
           selected: false,
           admitted: false,
           pass: pass.pass,
-          frozenAt: pass.frozenAt,
           state: "to-measure",
           suite: `${header.probeHash}@${header.sourceRevision}`,
           runId: header.runId,
@@ -235,7 +199,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
       selected: false,
       admitted: false,
       pass: pass?.pass ?? "no pass",
-      frozenAt: pass?.frozenAt ?? "",
       state: "measured-unpublished",
       runId: header.runId,
       suite: `${header.probeHash}@${header.sourceRevision}`,
@@ -313,7 +276,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
           selected: true,
           admitted: false,
           pass: "no pass",
-          frozenAt: "",
           state,
           runId: selected.runId,
           suite: `${selected.probeHash}@${selected.sourceRevision}`,
@@ -342,11 +304,11 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
       .get(context.context)
       ?.sort(
         (left, right) =>
-          right.frozenAt.localeCompare(left.frozenAt) ||
           Number(right.admitted) - Number(left.admitted) ||
           Number(left.selected) - Number(right.selected) ||
           left.source.localeCompare(right.source) ||
-          left.runId.localeCompare(right.runId),
+          left.runId.localeCompare(right.runId) ||
+          left.pass.localeCompare(right.pass),
       )
     const latest = sources?.[0]
     if (!latest) {

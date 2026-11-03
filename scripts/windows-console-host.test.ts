@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 /**
  * @failure A Windows console host's own answer, or its silence, is published as the terminal's verdict.
  * @level l2
@@ -7,7 +8,6 @@
 import { describe, expect, it } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
 import { initializeRunDraft, type ProbeResult, type ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { classifyDevelopmentRun, projectResults } from "../docs/data/selected-results.ts"
 
 // #30720 (@cto rulings fc63f412, 1ee8cf0b, f126327b): no other test reads a Windows run, so none sees the

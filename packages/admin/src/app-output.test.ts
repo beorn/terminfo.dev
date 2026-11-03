@@ -1,5 +1,5 @@
 /**
- * @failure probe app --output admits a run it was told to retain, or reports the wrong mode in its
+ * @failure probe app --output writes a run it was told to retain privately, or reports the wrong mode in its
  * success line, so a private development run is silently promoted or mislabeled.
  * @level l1
  * @consumer The private development route the collection pass runs for an owned macOS app.
@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { ENVIRONMENT_GROUP_IDS, type AppLaunchReceipt, type ProbeResult } from "@terminfo/probe-defs"
 import { handleApp } from "./app.ts"
-import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
+import { writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import {
   createProbeRun,
@@ -64,8 +64,8 @@ vi.mock("../../terminfo.dev/src/terminal-app-window.ts", async (importOriginal) 
   closeOwnedTerminalWindow: vi.fn(),
   parseKittyIdentity: vi.fn(),
 }))
-vi.mock("./admit-collected-run.ts", () => ({
-  admitCollectedRun: vi.fn(() => "/private/content/terminal-app.json"),
+vi.mock("./collected-run.ts", () => ({
+  writeCollectedRun: vi.fn(() => "/private/content/terminal-app.json"),
   retainCollectedRun: vi.fn(() => "/private/out/terminal-app.json"),
 }))
 
@@ -152,43 +152,46 @@ beforeEach(() => {
 })
 
 describe("probe app --output", () => {
-  test.each([false, true])("retains the run without admitting it, environment catalogue: %s", async (environment) => {
-    if (environment) {
-      results.push(
-        ...ENVIRONMENT_GROUP_IDS.map((featureId) => ({
-          ...results[0]!,
-          featureId,
-        })),
+  test.each([false, true])(
+    "retains the run without writing it to the corpus, environment catalogue: %s",
+    async (environment) => {
+      if (environment) {
+        results.push(
+          ...ENVIRONMENT_GROUP_IDS.map((featureId) => ({
+            ...results[0]!,
+            featureId,
+          })),
+        )
+      }
+      const log = vi.spyOn(console, "log").mockImplementation(() => {})
+      await handleApp("terminal-app", { output: "/private/out" })
+      expect(retainCollectedRun).toHaveBeenCalledOnce()
+      expect(retainCollectedRun).toHaveBeenCalledWith(
+        expect.anything(),
+        "/private/http-responses/digest",
+        expect.anything(),
+        "/private/out",
       )
-    }
-    const log = vi.spyOn(console, "log").mockImplementation(() => {})
-    await handleApp("terminal-app", { output: "/private/out" })
-    expect(retainCollectedRun).toHaveBeenCalledOnce()
-    expect(retainCollectedRun).toHaveBeenCalledWith(
-      expect.anything(),
-      "/private/http-responses/digest",
-      expect.anything(),
-      "/private/out",
-    )
-    expect(admitCollectedRun).not.toHaveBeenCalled()
-    const lines = log.mock.calls.map((call) => String(call[0]))
-    log.mockRestore()
-    const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
-    expect(lines).toContain(
-      `  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause} (retained)`,
-    )
-    expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
-  })
+      expect(writeCollectedRun).not.toHaveBeenCalled()
+      const lines = log.mock.calls.map((call) => String(call[0]))
+      log.mockRestore()
+      const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
+      expect(lines).toContain(
+        `  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause} (retained)`,
+      )
+      expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
+    },
+  )
 
-  test("without --output the same run still admits and says so", async () => {
+  test("without --output the same run is written and reported", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {})
     await handleApp("terminal-app", {})
-    expect(admitCollectedRun).toHaveBeenCalledOnce()
+    expect(writeCollectedRun).toHaveBeenCalledOnce()
     expect(retainCollectedRun).not.toHaveBeenCalled()
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
     expect(lines).toContain(
-      "  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (admitted)",
+      "  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (written)",
     )
   })
 })

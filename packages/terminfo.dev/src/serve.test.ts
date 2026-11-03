@@ -355,8 +355,7 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
     const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
     assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref])
     assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
-    // Raw retention and CURRENT evidence projection are distinct contracts: the legacy
-    // binding sweeps collector keys, while evidence-output-v1 requires an explicit cell reference.
+    // The stored criterion reference must resolve to the exact retained font receipt.
     assert.equal(run.rawReplies[fontKey], fontReceipt, "validated font-source receipt retained in final raw evidence")
     assert.equal(persisted.rawReplies[fontKey], fontReceipt, "final checkpoint retains identical receipt bytes")
     for (const captured of [run, persisted]) {
@@ -369,11 +368,8 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       assert.equal(row.rawReplyRef, visualId, "retain the probe's own capture trace")
       assert.equal(row.tests.find(test => test.id === "review").rawReplyRef, fontKey,
         "existing review-test reference explicitly binds font-source receipt")
-      const { retainCaptureBinding } = await import("@terminfo/run-parser")
-      const binding = retainCaptureBinding(captured, visualId, digest("fixture catalogue entry"))
-      assert.equal(binding.evidence.algorithm, "evidence-output-v1")
-      assert.ok(binding.evidence.projection.cell.rawReplies.some(entry => entry.key === fontKey && entry.sha256 === digest(fontReceipt)),
-        "current evidence cell includes exact receipt bytes; legacy rawReplyRefs alone are insufficient")
+      assert.equal(captured.rawReplies[row.tests.find(test => test.id === "review").rawReplyRef], fontReceipt,
+        "the criterion's retained source reference resolves to the exact measured receipt")
     }
   `,
       ],

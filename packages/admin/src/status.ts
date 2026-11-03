@@ -64,7 +64,7 @@ export async function handleStatus(): Promise<void> {
     console.log(`    ${ready ? "+" : "-"} ${`${name} (${e?.type ?? "?"})`.padEnd(26)} ${upstream}`)
   }
 
-  console.log("\n  Current reviewed results:")
+  console.log("\n  Current stored results:")
   console.log(`    Contexts: ${current.length} (${headless.length} headless, ${apps.length} app, ${muxes.length} mux)`)
   console.log(`    Headless observed feature IDs: ${headlessFeatures.size}`)
   for (const [key, run] of current) {
@@ -72,7 +72,7 @@ export async function handleStatus(): Promise<void> {
       `    ${key} (sources ${run.contributingRunIds.join(", ")}): ${run.score.supported}/${run.score.all} Supported / all · ${currentCoverageSentence(run, run.catalogIds)} · ${run.complete ? "complete" : "incomplete"}`,
     )
   }
-  if (current.length === 0) console.log("    No current sealed runs; historical results remain available.")
+  if (current.length === 0) console.log("    No current stored runs; historical results remain available.")
   console.log(`    Excluded archived runs: ${projection.exclusions.length}`)
 
   console.log("\n  Saved archive files:")

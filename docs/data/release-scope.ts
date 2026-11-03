@@ -66,14 +66,11 @@ export function staleCaption(measuredAt: string): string {
   return `not re-measured since ${utcDate(measuredAt)}`
 }
 
-/**
- * Which suite a run was measured on, relative to the two facts the site must never conflate:
- * the RELEASE suite (the scope's `frozenSuiteId`) and the live TREE suite (`probeHash()` at build time).
- */
-export type SuiteRelation = "release" | "tree" | "older" | "partial"
+/** Which suite a run measured, compared with the live tree (`probeHash()` at build time). */
+export type SuiteRelation = "tree" | "older" | "partial"
 
 /**
- * A run measured on the release suite or on the live tree suite is current; "older" and "partial" are
+ * A run measured on the live tree suite is current; "older" and "partial" are
  * stale. This is the ONE staleness fact — never re-derive it by re-parsing the display label.
  */
 export function isStaleRelation(relation: SuiteRelation): boolean {
@@ -83,11 +80,6 @@ export function isStaleRelation(relation: SuiteRelation): boolean {
 /** A context remains current when any original evidence source is current; safe for site clients. */
 export function hasCurrentSource(sources: readonly { suiteRelation: SuiteRelation }[]): boolean {
   return sources.some((source) => !isStaleRelation(source.suiteRelation))
-}
-
-/** True when the live tree has moved past the release suite, so a banner must say so (one, not two). */
-export function treeMovedPastRelease(treeSuiteId: string | null, releaseSuiteId: string | null): boolean {
-  return Boolean(treeSuiteId) && Boolean(releaseSuiteId) && treeSuiteId !== releaseSuiteId
 }
 
 /** Current score and completion fold recorded statuses over exactly the frozen catalogue. */

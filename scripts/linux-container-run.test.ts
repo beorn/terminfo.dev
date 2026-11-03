@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { initializeRunDraft } from "@terminfo/probe-defs"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import type { LinuxMuxAttachmentProof, CapturedRunDraft, CaptureEvidence } from "@terminfo/probe-defs"
+import type { LinuxMuxAttachmentProof, CapturedRunDraft } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
@@ -462,8 +462,9 @@ describe("container run receipt composition", () => {
     expect(receipt.clipboardFixture).toEqual({ runId: "a".repeat(32), profile: "default", sha256: "fixture-hash" })
   })
 
-  // The existing three-argument tests never composed a final enriched schema-3 run after review.
-  it("binds the final sealed bytes while retaining original container input and logical runId", () => {
+  // Accepted: a completed capture binds the final bytes and original container receipt.
+  // The old test required sealing and missed completed captures without that marker.
+  it("binds final collected bytes while retaining original container input and logical runId", () => {
     const { result } = compose()
     const output = join(dir, "final-receipt.json")
     expect(result.status).toBe(0)
@@ -473,8 +474,7 @@ describe("container run receipt composition", () => {
       source: { kind: "live" },
       schemaVersion: 4,
       runId: "b".repeat(32),
-      sealedAt: "2026-10-21T05:00:00.000Z",
-      rawReplies: { "collector.review.example": "exact reviewed decision bytes" },
+      rawReplies: { "device.primary-da": "exact captured reply" },
     }
     const invoke = (receiptPath = output) =>
       spawnSync(
@@ -1009,12 +1009,13 @@ describe("declared probe-batch timeout is one value for curl and host attach", (
 })
 
 // Raw finalization owns this decision; receipt-only tests never execute it with a valid capture.
-it.each([false, true])("retains a Linux raw draft without completion receipt, review=%s", (pending) => {
+it.each([false, true])("writes a Linux completion receipt for captured bytes, pending=%s", (pending) => {
   const source = readFileSync(launcher, "utf8")
   const command = source.match(/^(?:TERMINFO_[A-Z_]+="[^\n]*\n?)+bun [^\n]*-e '[\s\S]*?^'/m)
   if (!command) throw new Error("Host Bun readback command not found")
-  const receiptTail = source.slice(source.indexOf('if [[ -f "$raw/v3-run.json" ]]'))
-  if (!receiptTail.startsWith("if [[")) throw new Error("Host receipt completion block not found")
+  const receiptStart = source.indexOf('compose_receipt "$raw/host-measured.json"')
+  if (receiptStart < 0) throw new Error("Host receipt completion block not found")
+  const receiptTail = source.slice(receiptStart)
   const suite = probeSuiteSnapshot()
   const manifest = derivedSuiteManifest(suite)
   const revision = spawnSync("git", ["rev-parse", "HEAD"], {
@@ -1052,6 +1053,28 @@ it.each([false, true])("retains a Linux raw draft without completion receipt, re
     ]
   }
   writeFileSync(join(dir, "v3-capture.json"), JSON.stringify(capture))
+  const prepared = compose()
+  expect(prepared.result.status).toBe(0)
+  rmSync(prepared.output)
+  copyFileSync(join(dir, "host.json"), join(dir, "host-measured.json"))
+  const container = {
+    runId: capture.runId,
+    invocation: { path: "/nix/store/kitty/bin/kitty", sha256: "wrapper-hash" },
+    executable: { path: "/nix/store/kitty/bin/.kitty-wrapped", version: "kitty 0.49.1", sha256: "elf-hash" },
+    sourceArtifact: { path: "/kitty-source/kitty.txz", sha256: "archive-hash" },
+    collector: { frozenRunnerSha256: "runner-hash", buildReceiptSha256: "receipt-hash" },
+    probeRun: {
+      path: "v3-capture.json",
+      runId: capture.runId,
+      sha256: createHash("sha256")
+        .update(readFileSync(join(dir, "v3-capture.json")))
+        .digest("hex"),
+    },
+    display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
+    clipboardFixture: { runId: capture.runId, profile: "default", sha256: "fixture-hash" },
+    capture: null,
+  }
+  writeFileSync(join(dir, "container-receipt.json"), JSON.stringify(container))
   // Only bypass dirty-checkout discovery: capture decoding and finalization remain real.
   const fixtureCommand = command[0].replace(
     "-e '",
@@ -1077,14 +1100,35 @@ it.each([false, true])("retains a Linux raw draft without completion receipt, re
   expect(result.status, result.stderr).toBe(0)
   expect(readdirSync(dir), `${result.stdout}\n${result.stderr}`).toContain("v3-run.draft.json")
   expect(existsSync(join(dir, "v3-run.json"))).toBe(false)
-  expect(existsSync(join(dir, "run-receipt.json"))).toBe(false)
-  const saved = JSON.parse(readFileSync(join(dir, "v3-run.draft.json"), "utf8")) as CapturedRunDraft
-  expect(saved).not.toHaveProperty("sealedAt")
-  expect(result.stderr).toContain("unsealed")
+  const savedPath = join(dir, "v3-run.draft.json")
+  const saved = JSON.parse(readFileSync(savedPath, "utf8")) as CapturedRunDraft
+  expect(JSON.parse(readFileSync(join(dir, "run-receipt.json"), "utf8"))).toMatchObject({
+    probeRun: {
+      path: "v3-run.draft.json",
+      runId: capture.runId,
+      sha256: createHash("sha256").update(readFileSync(savedPath)).digest("hex"),
+    },
+    receiptInputs: {
+      hostSha256: createHash("sha256")
+        .update(readFileSync(join(dir, "host-measured.json")))
+        .digest("hex"),
+      containerSha256: createHash("sha256")
+        .update(readFileSync(join(dir, "container-receipt.json")))
+        .digest("hex"),
+    },
+  })
+  expect(container.probeRun.sha256).toBe(
+    createHash("sha256")
+      .update(readFileSync(join(dir, "v3-capture.json")))
+      .digest("hex"),
+  )
+  expect(result.stderr).toContain("Collected current schema-4 run")
   if (pending) {
-    expect(
-      (JSON.parse(saved.rawReplies["collector.evidence.device.primary-da"]!) as CaptureEvidence).projection.feature
-        .catalogEntrySha256,
-    ).toBe(manifest.catalogEntrySha256!["device.primary-da"])
+    expect(saved.results.find((row) => row.featureId === "device.primary-da")?.tests).toContainEqual({
+      id: "review",
+      status: "test-todo",
+      attempt: { scope: "none" },
+      reason: "Required context review pending",
+    })
   }
 })

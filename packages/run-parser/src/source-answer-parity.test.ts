@@ -11,13 +11,11 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import { describe, expect, it } from "vitest"
-import { spawnSync } from "node:child_process"
 import {
   SOURCE_ANSWERS,
   finalizeProbeResult,
   repositoryIdentity,
   type HeadlessRuntimeIdentity,
-  type SourceAnswer,
   type SourceAnswerSubject,
 } from "@terminfo/probe-defs"
 import { resolveMeasuredSourceAnswer } from "./source-answers.ts"

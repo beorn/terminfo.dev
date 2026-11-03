@@ -112,7 +112,6 @@ async function collectOne(name: string, directory: string): Promise<string> {
     "packages/probes/headless-identity.ts",
     "packages/admin/src/termless.ts",
     "packages/admin/versions.ts",
-    "scripts/suite-manifest.ts",
     "packages/admin/suite-manifest.ts",
   ])
   const sourceDirty =
@@ -274,7 +273,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     }
     const path = join(directory, `${name}-${run.runId}.capture.json`)
     const bytes = `${JSON.stringify(run, null, 2)}\n`
-    parseRun(path, bytes, suite.catalogIds, new Map([[suite.probeHash, suite]]), { mode: "capture" })
+    parseRun(path, bytes, suite.catalogIds, new Map([[suite.probeHash, suite]]))
     writeFileSync(path, bytes, { flag: "wx" })
     return path
   } catch (error) {
@@ -510,7 +509,6 @@ export async function collectHeadlessRuns(
         readFileSync(path, "utf8"),
         ALL_PROBES.map((probe) => probe.id),
         new Map([[suite.probeHash, suite]]),
-        { mode: "capture" },
       )
       if (parsed.subject.kind !== "lib" || parsed.subject.id !== name) {
         throw new Error(`Worker wrote a run for ${parsed.subject.id} instead of ${name}: ${path}`)
@@ -531,19 +529,8 @@ export async function collectHeadlessRuns(
           resolved.probes,
         )
       }
-      const finalPath = saveDaemonProbeRun(captured, directory, undefined, {
-        manifest: derivedSuiteManifest(suite),
-        decisions: [],
-        origin: () => undefined,
-        keepDraft: true,
-      })
-      parseRun(
-        finalPath,
-        readFileSync(finalPath, "utf8"),
-        suite.catalogIds ?? [],
-        new Map([[suite.probeHash, suite]]),
-        finalPath.endsWith(".draft.json") ? { mode: "capture" } : undefined,
-      )
+      const finalPath = saveDaemonProbeRun(captured, directory)
+      parseRun(finalPath, readFileSync(finalPath, "utf8"), suite.catalogIds ?? [], new Map([[suite.probeHash, suite]]))
       runs.push(finalPath)
     } catch (error) {
       retainFailure(errorMessage(error))

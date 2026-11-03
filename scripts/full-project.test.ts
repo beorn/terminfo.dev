@@ -38,7 +38,7 @@ function candidate(
         runId: `run-${overrides.terminalId}-${overrides.os}`,
         measuredAt: "2026-10-17T00:00:00Z",
         suiteId: suite,
-        suiteRelation: "release",
+        suiteRelation: "tree",
       },
     ],
     ...overrides,

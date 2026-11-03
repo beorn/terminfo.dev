@@ -1,10 +1,10 @@
-/** Private collection staging; the one admission owner decides and places canonical runs. */
+/** Retain collection evidence privately and place normalized runs in the corpus. */
 import { constants, copyFileSync, lstatSync, mkdirSync, realpathSync } from "node:fs"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
 import { getTrustedSuiteReceipt } from "../../terminfo.dev/src/serve.ts"
-import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
+import { placeCollectedRun } from "../corpus-placement.ts"
 
 /** Check before creation, resolving existing symlinks without hiding missing or unreadable resources. */
 export function assertPrivateCollectionOutput(outputDirectory: string): void {
@@ -50,30 +50,18 @@ export function retainCollectedRun(
     mkdirSync(directory, { recursive: true })
     copyFileSync(retainedResponsePath, original, constants.COPYFILE_EXCL)
   }
-  const source = saveDaemonProbeRun(
-    run,
-    directory,
-    intended,
-    outputDirectory === undefined
-      ? undefined
-      : { manifest: getTrustedSuiteReceipt().manifest, decisions: [], origin: () => undefined, keepDraft: true },
-  )
+  const source = saveDaemonProbeRun(run, directory, intended)
   console.log(`  Retained private collected run ${source}`)
   return source
 }
 
-export function admitCollectedRun(
+export function writeCollectedRun(
   run: Parameters<typeof saveDaemonProbeRun>[0],
   retainedResponsePath: string,
   intended?: Parameters<typeof saveDaemonProbeRun>[2],
 ): string {
   const source = retainCollectedRun(run, retainedResponsePath, intended)
-  if (source.endsWith(".draft.json")) {
-    console.log(`  Unsealed private draft; not admitted: ${source}`)
-    return source
-  }
-  const plan = planAdmission(source)
-  admitRun(plan)
-  console.log(`  Admitted run ${plan.destination}`)
-  return plan.destination
+  const destination = placeCollectedRun(source, getTrustedSuiteReceipt().manifest)
+  console.log(`  Written collected run ${destination}`)
+  return destination
 }

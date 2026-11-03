@@ -33,7 +33,7 @@ import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { parseLstart } from "../../terminfo.dev/src/disposable-receipt.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
+import { writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
 import { serveCommand } from "./serve-command.ts"
 import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
@@ -619,7 +619,7 @@ interface ProbeOptions {
 async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
-): Promise<{ summary: string; mode: "retained" | "admitted" | "pending-review" }> {
+): Promise<{ summary: string; mode: "retained" | "written" }> {
   const { appId, version, ownedWindow, outputDirectory, launcherStderr, outerLaunch } = options
   const appLaunch =
     ownedWindow.provider === "terminal-app" ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version) : null
@@ -670,13 +670,12 @@ async function probeDaemon(
       }),
     },
   }
-  let mode: "retained" | "admitted" | "pending-review" = outputDirectory === undefined ? "admitted" : "retained"
+  const mode = outputDirectory === undefined ? "written" : "retained"
   if (outputDirectory !== undefined) {
     const source = retainCollectedRun(run, retained.path, { kind: "term", id: appId, version }, outputDirectory)
     console.log(`  Retained private development run ${source}`)
   } else {
-    const source = admitCollectedRun(run, retained.path, { kind: "term", id: appId, version })
-    if (source.endsWith(".draft.json")) mode = "pending-review"
+    writeCollectedRun(run, retained.path, { kind: "term", id: appId, version })
   }
   const catalogIds = run.results.map((result) => result.featureId)
   const aggregate = aggregateCurrentResults(run.results, catalogIds)

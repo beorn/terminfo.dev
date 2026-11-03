@@ -206,9 +206,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.sourceLine).toBe(
       "Historical run 29e1f818 · 2026-10-16 · buffer_state · presentation not reviewed",
     )
-    expect(panes.tested.identityLine).toBe(
-      "Identity verified in run file; admitted by runtime-identity rule (XTVERSION kitty(0.49.2)).",
-    )
+    expect(panes.tested.identityLine).toBe("Identity verified in run file.")
     expect(panes.tested.notKeptLine).toContain("Not kept: screenshot (headless parser has none), input bytes")
 
     expect(panes.expected.sequence).toBe("ESC [ 49 m")
@@ -218,7 +216,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.expected.referenceStatus).toBe("No reference image recorded")
   })
 
-  it("renders a live query-reply cell with all published writes, query + sentinel, reply, run metadata, and unverified-but-admitted identity", () => {
+  it("renders a live query-reply cell with all published writes, query + sentinel, reply, run metadata, and unverified identity", () => {
     const document = {
       version: 1 as const,
       runId: "c70e8c3c37c8a735cb5f395052698c35",
@@ -278,9 +276,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.sourceLine).toBe(
       "Historical run c70e8c3c · 2026-10-19 · query_reply · presentation not reviewed",
     )
-    expect(panes.tested.identityLine).toBe(
-      "Identity unverified in run file; admitted by ghostty rule (DA1 ESC [ ?62;22;52 c, XTVERSION ghostty 1.3.1).",
-    )
+    expect(panes.tested.identityLine).toBe("Identity unverified in run file.")
     expect(panes.tested.notKeptLine).toBe(
       "Not kept: screenshot, raw read window (including sentinel reply), reviewed evidence file",
     )
@@ -333,9 +329,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
       { label: "Observed", text: "Observed bytes not reviewed for publication." },
     ])
-    expect(panes.tested.identityLine).toBe(
-      "Identity verified in run file; admitted by kitty rule (DA1 ESC [ ?62;52; c, XTVERSION kitty(0.49.2)).",
-    )
+    expect(panes.tested.identityLine).toBe("Identity verified in run file.")
     expect(panes.expected.sequence).toBe("ESC [ 21 t")
     expect(panes.expected.behavior).toBe("no window title report")
   })
@@ -448,9 +442,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.sourceLine).toBe(
       "Historical run 3105bbe9 · 2026-10-18 · no typed observation retained · presentation not reviewed",
     )
-    expect(panes.tested.identityLine).toBe(
-      "Identity unverified in run file; admitted by kitty rule (DA1 ESC [ ?62;52; c, XTVERSION kitty(0.48.2)).",
-    )
+    expect(panes.tested.identityLine).toBe("Identity unverified in run file.")
     expect(panes.tested.text).not.toContain("terminal-ownership receipt")
     expect(panes.tested.text).not.toContain("Attempt refused before sending probe bytes")
     expect(panes.expected.sequence).toBe("ESC [ 48;5;N m")

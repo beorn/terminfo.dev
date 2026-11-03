@@ -5,7 +5,6 @@ import type {
   ObservationReason,
   ProbeAssertion,
 } from "../../packages/probe-defs/src/types.ts"
-import type { IdentityAdmission } from "../../packages/admin/run-admission.ts"
 import type { CellEvidence, HistoricalCellEvidence } from "./public-results.ts"
 
 export type LoadedCellEvidence =
@@ -62,7 +61,6 @@ export interface LoadedCellTrace {
   sourceRevision: string | null
   identity: {
     recorded: string
-    admission?: IdentityAdmission
   }
   featureId: string
   cell: TraceCellRecord
@@ -324,19 +322,7 @@ function formatParserState(parserState: unknown): string {
 }
 
 function formatTraceIdentity(identity: LoadedCellTrace["identity"]): string {
-  const recorded = `Identity ${identity.recorded} in run file`
-  const admission = identity.admission
-  if (!admission) return `${recorded}; not admitted.`
-  const details: string[] = []
-  if (admission.da1) details.push(`DA1 ${formatControlBytes(admission.da1)}`)
-  if (admission.xtversion) details.push(`XTVERSION ${formatControlBytes(admission.xtversion)}`)
-  if (admission.receipt?.cfBundleShortVersionString) {
-    details.push(`bundle ${admission.receipt.cfBundleShortVersionString}`)
-  }
-  if (admission.executable) {
-    details.push(`executable ${admission.executable.version}`)
-  }
-  return `${recorded}; admitted by ${admission.rule} rule${details.length > 0 ? ` (${details.join(", ")})` : ""}.`
+  return `Identity ${identity.recorded} in run file.`
 }
 
 /**
@@ -434,9 +420,6 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
     sourceRevision: parsed.sourceRevision,
     identity: {
       recorded: parsed.identity.recorded,
-      ...(isRecord(parsed.identity.admission) && {
-        admission: parsed.identity.admission as unknown as IdentityAdmission,
-      }),
     },
     featureId: expectation.featureId,
     cell: cellEntry as unknown as TraceCellRecord,

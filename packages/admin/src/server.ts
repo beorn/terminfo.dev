@@ -13,7 +13,7 @@ import {
  */
 
 import { readRetainedDaemonProbeResponse, requestDaemonProbe } from "../../terminfo.dev/src/daemon-client.ts"
-import { admitCollectedRun } from "./admit-collected-run.ts"
+import { writeCollectedRun } from "./collected-run.ts"
 
 export async function handleServer(
   daemon: string | undefined,
@@ -94,8 +94,8 @@ export async function handleServer(
         ...data,
         rawReplies: { ...data.rawReplies, "collector.identityCheck": JSON.stringify(identityCheck) },
       }
-      const source = admitCollectedRun(run, retained.path)
-      if (!source.endsWith(".draft.json")) saved++
+      writeCollectedRun(run, retained.path)
+      saved++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       failures.push(`${label}: ${msg}`)
@@ -107,6 +107,6 @@ export async function handleServer(
     }
   }
 
-  if (saved > 0) console.log(`\n${saved} result(s) admitted to content/probes-apps/`)
+  if (saved > 0) console.log(`\n${saved} result(s) written to content/probes-apps/`)
   if (failures.length > 0) throw new Error(`Daemon collection failed: ${failures.join("; ")}`)
 }
