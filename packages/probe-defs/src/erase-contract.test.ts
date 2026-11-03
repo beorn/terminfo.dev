@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { eraseProbes } from "./erase.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -18,7 +19,6 @@ import {
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
-  type HeadlessModel,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
@@ -126,3 +126,65 @@ test("an EL that does not erase reads unsupported", async () => {
     expect(graded.after, `${id} detects an inert EL`).toBe("unsupported")
   }
 })
+
+/**
+ * Per-probe two-sided controls across all 11 Erase rows (#32176):
+ * each row has a distinct named mutation on `createSemanticSurface()` that suppresses its target
+ * erase behavior while preserving its setup/cursor witness, proving the probe grades `supported` on
+ * `createSemanticSurface()`, `unsupported` when its mutation is active, and never `supported` on
+ * `inertLibProbeSource()`.
+ */
+const ERASE_SEMANTIC_SURFACE_CONTROLS: ReadonlyArray<readonly [id: string, mutation: string]> = [
+  ["erase.line.right", "el0-noop"],
+  ["erase.line.left", "el1-noop"],
+  ["erase.line.all", "el2-noop"],
+  ["erase.screen.below", "ed0-noop"],
+  ["erase.screen.above", "ed1-noop"],
+  ["erase.screen.all", "ed2-noop"],
+  ["erase.screen.scrollback", "ed3-noop"],
+  ["erase.character", "ech-noop"],
+  ["erase.selective", "decsca-noop"],
+  ["erase.el-with-attrs", "el-default-bg"],
+  ["erase.ed-scroll-region", "ed-scroll-region-noop"],
+]
+
+test("ERASE_SEMANTIC_SURFACE_CONTROLS covers all 11 Erase contract rows with distinct mutations", () => {
+  expect(ERASE_SEMANTIC_SURFACE_CONTROLS).toHaveLength(11)
+  expect(ERASE_SEMANTIC_SURFACE_CONTROLS.map(([id]) => id).sort()).toEqual(ERASE_CONTRACT.map((row) => row.id).sort())
+  expect(new Set(ERASE_SEMANTIC_SURFACE_CONTROLS.map(([, mutation]) => mutation)).size).toBe(11)
+})
+
+test.each(ERASE_SEMANTIC_SURFACE_CONTROLS)(
+  "%s never reads supported on inertLibProbeSource, reads supported on createSemanticSurface, and reads unsupported when %s is active",
+  async (id, mutation) => {
+    const row = ERASE_CONTRACT.find((entry) => entry.id === id)
+    const probe = eraseProbes.find((entry) => entry.id === id)
+    expect(row, `the Erase contract names ${id}`).toBeDefined()
+    expect(probe, `the Erase contract names a real ${id} probe`).toBeDefined()
+    if (!row || !probe || !probe.lib) return
+
+    const inertResult = probe.lib(inertLibProbeSource())
+    expect(inertResult.pass).toBe(false)
+    expect(inertResult.observation?.outcome).not.toBe("supported")
+    const inertGraded = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+    expect(inertGraded.after).not.toBe("supported")
+
+    const positiveResult = probe.lib(libProbeSource(createSemanticSurface()))
+    expect(positiveResult.pass).toBe(true)
+    expect(positiveResult.observation?.outcome).toBe("supported")
+    expect(positiveResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "positive" }))
+    const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positiveGraded.after).toBe("supported")
+    expect(positiveGraded.satisfies).toBe(true)
+
+    const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
+    expect(negativeResult.pass).toBe(false)
+    expect(negativeResult.observation?.outcome).toBe("unsupported")
+    expect(negativeResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "negative" }))
+    const negativeGraded = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(negativeGraded.after).toBe("unsupported")
+    expect(negativeGraded.satisfies).toBe(true)
+  },
+)

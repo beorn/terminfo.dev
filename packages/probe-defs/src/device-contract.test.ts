@@ -3,7 +3,7 @@
  *   observation moves it - so a group step reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28450 slice B Device group (19 definitions); 28453 harness. Outside Candidate-2 denominator 125.
- * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/device-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/device-observations.test.ts
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/device-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/device-observations.test.ts vendor/terminfo.dev/packages/probe-defs/src/testing/semantic-surface.ts
  * @testonly none
  */
 import { expect, test } from "vitest"
@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { deviceProbes } from "./device.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -21,6 +22,7 @@ import {
   type GroupContractSpec,
   type HeadlessModel,
 } from "./testing/group-harness.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 /** The 19 Device features of 28450 slice B; ids drawn from device.ts, claims are the contract. */
 const DEVICE_CONTRACT: GroupContract = [
@@ -103,90 +105,34 @@ const DEVICE_CONTRACT_SPEC: GroupContractSpec = {
   tests: ["packages/probe-defs/src/device-contract.test.ts", "packages/probe-defs/src/device-observations.test.ts"],
 }
 
-type InertCell = ReturnType<HeadlessModel["getCell"]>
-
-const INERT_CELL: InertCell = {
-  char: " ",
-  bold: false,
-  dim: false,
-  italic: false,
-  underline: null,
-  underlineColor: null,
-  strikethrough: false,
-  inverse: false,
-  hidden: false,
-  blink: false,
-  overline: false,
-  fg: null,
-  bg: null,
-  wide: false,
-}
-
-/** Query → a complete valid frame. Satisfaction binding, not a claim a real terminal emits it. */
-const DEVICE_REPLIES: Readonly<Record<string, string>> = {
-  "\x1b[c": "\x1b[?62;52;c",
-  "\x1b[5n": "\x1b[0n",
-  "\x1b[>c": "\x1b[>0;49;1c",
-  "\x1b[=c": "\x1bP!|1234ABCD\x1b\\",
-  "\x1bP$qm\x1b\\": "\x1bP1$r0m\x1b\\",
-  "\x1bP+q544e\x1b\\": "\x1bP1+r544e=787465726d\x1b\\",
-  "\x1b[?7$p": "\x1b[?7;1$y",
-  "\x1b[>0q": "\x1bP>|kitty(0.49.1)\x1b\\",
-  "\x1b[?996n": "\x1b[?997;1n",
-  "\x1b[14t": "\x1b[4;720;1280t",
-  "\x1b[16t": "\x1b[6;16;8t",
-  "\x1b[18t": "\x1b[8;24;80t",
-  "\x1b[20t": "\x1b]Ltest-icon\x07",
-  "\x1b[21t": "\x1b]ltest-title\x07",
-  "\x1b[#R": "\x1b[0;1#Q",
-  "\x1bP+Q7465726d4e616d65\x1b\\": "\x1bP1+R7465726d4e616d65=787465726d\x1b\\",
-}
-
-function inertModel(cols = 80): HeadlessModel {
-  return {
-    cols,
-    feed: () => {},
-    getCell: () => ({ ...INERT_CELL }),
-    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
-  }
-}
-
-/**
- * One headless device that answers each query with its contract frame and tracks the title stack
- * XTWINOPS 22/23 measure. This is the satisfaction binding, not a claim a real terminal emits it.
- */
-function echoingDevice(cols = 80): HeadlessModel {
-  let title = ""
-  const stack: string[] = []
-  return {
-    cols,
-    feed: (text) => {
-      if (text.startsWith("\x1b]2;")) {
-        title = text
-          .slice("\x1b]2;".length)
-          .replace(/\x07$/u, "")
-          .replace(/\x1b\\$/u, "")
-        return
-      }
-      if (text === "\x1b[22;0t") {
-        stack.push(title)
-        return
-      }
-      if (text === "\x1b[23;0t") {
-        const restored = stack.pop()
-        if (restored !== undefined) title = restored
-      }
-    },
-    getCell: () => ({ ...INERT_CELL }),
-    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
-    getTitle: () => title,
-    feedCapture: (text) => DEVICE_REPLIES[text] ?? "",
-  }
-}
-
-function deviceSources(model: HeadlessModel) {
+function deviceSources(model: HeadlessModel = createSemanticSurface()) {
   return { headless: libProbeSource(model), term: replayTermProbeSource(new Map()) }
 }
+
+const DEVICE_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
+  id: string,
+  mutation: string,
+  negativeOutcome: "unsupported" | "inconclusive",
+])[] = [
+  ["device.primary-da", "primary-da-noop", "inconclusive"],
+  ["device.status-report", "status-report-noop", "unsupported"],
+  ["device.secondary-da", "secondary-da-noop", "unsupported"],
+  ["device.tertiary-da", "tertiary-da-noop", "unsupported"],
+  ["device.decrqss", "decrqss-noop", "unsupported"],
+  ["device.xtgettcap", "xtgettcap-noop", "unsupported"],
+  ["device.decrpm", "decrpm-noop", "unsupported"],
+  ["device.xtversion", "xtversion-noop", "unsupported"],
+  ["device.dsr-996-color-scheme", "dsr-996-noop", "unsupported"],
+  ["device.xtwinops-14", "xtwinops-14-noop", "unsupported"],
+  ["device.xtwinops-16", "xtwinops-16-noop", "unsupported"],
+  ["device.xtwinops-18", "xtwinops-18-noop", "unsupported"],
+  ["device.xtwinops-20", "xtwinops-20-noop", "unsupported"],
+  ["device.xtwinops-21", "xtwinops-21-noop", "unsupported"],
+  ["device.xtwinops-22", "xtwinops-22-noop", "inconclusive"],
+  ["device.xtwinops-23", "xtwinops-23-noop", "inconclusive"],
+  ["device.xtreportcolors", "xtreportcolors-noop", "unsupported"],
+  ["device.xtgetxres", "xtgetxres-noop", "unsupported"],
+]
 
 test("the Device contract covers every Device feature and names none unknown", () => {
   const gaps = contractGaps(deviceProbes, DEVICE_CONTRACT)
@@ -207,35 +153,90 @@ test("the Device contract names its focused tests, and every named file exists",
   for (const path of DEVICE_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
-test("the harness replays every Device feature deterministically through the echoing fixture", async () => {
+test("the harness replays every Device feature deterministically through the semantic surface", async () => {
   for (const row of DEVICE_CONTRACT) {
     const probe = deviceProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Device probe ${row.id}`).toBeDefined()
     if (!probe) continue
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, deviceSources(echoingDevice()))
-    const second = await regradeRow(probe, row, deviceSources(echoingDevice()))
+    const first = await regradeRow(probe, row, deviceSources())
+    const second = await regradeRow(probe, row, deviceSources())
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
   }
 })
 
-test("every measurable Device contract row is satisfied by the echoing fixture its claim requires", async () => {
+test("every measurable Device contract row is satisfied by the semantic surface its claim requires", async () => {
   for (const row of DEVICE_CONTRACT) {
     const probe = deviceProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Device probe ${row.id}`).toBeDefined()
     if (!probe) continue
     if (row.id === "device.term-features") continue
-    const graded = await regradeRow(probe, row, deviceSources(echoingDevice()))
+    const graded = await regradeRow(probe, row, deviceSources())
+    expect(graded.after, `${row.id} reads supported from the semantic surface`).toBe("supported")
     expect(graded.satisfies, `${row.id} satisfies its contract row (after=${graded.after})`).toBe(true)
   }
 })
 
+test("DEVICE_SEMANTIC_SURFACE_CONTROLS covers all 18 measurable Device contract rows with distinct mutations", () => {
+  expect(DEVICE_SEMANTIC_SURFACE_CONTROLS).toHaveLength(18)
+  expect(DEVICE_SEMANTIC_SURFACE_CONTROLS.map(([id]) => id).sort()).toEqual(
+    DEVICE_CONTRACT.filter((row) => row.id !== "device.term-features")
+      .map((row) => row.id)
+      .sort(),
+  )
+  expect(new Set(DEVICE_SEMANTIC_SURFACE_CONTROLS.map(([, mutation]) => mutation)).size).toBe(18)
+})
+
+test.each(DEVICE_SEMANTIC_SURFACE_CONTROLS)(
+  "%s never reads supported on inertLibProbeSource, reads supported on createSemanticSurface, and when %s is active reads %s",
+  async (id, mutation, negativeOutcome) => {
+    const row = DEVICE_CONTRACT.find((entry) => entry.id === id)
+    const probe = deviceProbes.find((entry) => entry.id === id)
+    expect(row, `the Device contract names ${id}`).toBeDefined()
+    expect(probe, `the Device contract names a real ${id} probe`).toBeDefined()
+    if (!row || !probe || !probe.lib) return
+
+    const inertResult = probe.lib(inertLibProbeSource())
+    expect(inertResult.pass).toBe(false)
+    expect(inertResult.observation?.outcome).not.toBe("supported")
+    const inertGraded = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+    expect(inertGraded.satisfies).toBe(false)
+
+    const positiveResult = probe.lib(libProbeSource(createSemanticSurface()))
+    expect(positiveResult.pass).toBe(true)
+    expect(positiveResult.observation?.outcome).toBe("supported")
+    expect(positiveResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "positive" }))
+    const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positiveGraded.after).toBe("supported")
+    expect(positiveGraded.satisfies).toBe(true)
+
+    const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
+    expect(negativeResult.pass).toBe(false)
+    expect(negativeResult.observation?.outcome).toBe(negativeOutcome)
+    if (negativeOutcome === "unsupported") {
+      expect(negativeResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "negative" }))
+    }
+    const negativeGraded = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(negativeGraded.after).toBe(negativeOutcome)
+    expect(negativeGraded.satisfies).toBe(negativeOutcome === "unsupported")
+  },
+)
+
 test("TERM_FEATURES stays not-tested for both parent environment values", async () => {
   const probe = deviceProbes.find((entry) => entry.id === "device.term-features")
+  expect(probe?.lib, "the TERM_FEATURES library callback exists").toBeDefined()
   expect(probe?.term, "the TERM_FEATURES application callback exists").toBeDefined()
-  if (!probe?.term) return
+  if (!probe?.lib || !probe?.term) return
+  for (const source of [libProbeSource(createSemanticSurface()), inertLibProbeSource()]) {
+    const libResult = probe.lib(source)
+    expect(libResult.pass).toBe(false)
+    expect(libResult.observation).toBeUndefined()
+    expect(libResult.notTested?.reason).toBe("no-semantic-observable")
+  }
   const prior = process.env.TERM_FEATURES
   const secret = "sensitive-arbitrary-environment-value"
   try {
@@ -243,7 +244,7 @@ test("TERM_FEATURES stays not-tested for both parent environment values", async 
     for (const value of [undefined, secret] as const) {
       if (value === undefined) delete process.env.TERM_FEATURES
       else process.env.TERM_FEATURES = value
-      const result = await probe.term(deviceSources(echoingDevice()).term)
+      const result = await probe.term(deviceSources().term)
       results.push(result)
       expect(result.notTested).toEqual({
         reason: "no-semantic-observable",
@@ -260,13 +261,18 @@ test("TERM_FEATURES stays not-tested for both parent environment values", async 
   }
 })
 
-test("a decided Device row is unsatisfied when the query reply is silent", async () => {
+test("a decided Device row is unsatisfied when the query reply is silent or malformed", async () => {
   const row = DEVICE_CONTRACT.find((entry) => entry.id === "device.primary-da")
   const probe = deviceProbes.find((entry) => entry.id === "device.primary-da")
   expect(row, "the Device contract names device.primary-da").toBeDefined()
   expect(probe, "the Device contract names a real device.primary-da probe").toBeDefined()
   if (!row || !probe) return
-  const silent = await regradeRow(probe, row, deviceSources(inertModel()))
-  expect(silent.after).toBe("inconclusive")
+  const silent = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+  expect(silent.after).toBeUndefined()
   expect(silent.satisfies).toBe(false)
+  const malformed = await regradeRow(probe, row, {
+    headless: libProbeSource(createSemanticSurface({ mutations: ["primary-da-noop"] })),
+  })
+  expect(malformed.after).toBe("inconclusive")
+  expect(malformed.satisfies).toBe(false)
 })

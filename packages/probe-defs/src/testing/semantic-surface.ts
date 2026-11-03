@@ -447,7 +447,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let activeCharset: "g0" | "g1" = "g0"
   let lastCluster = " "
   let lastWidth = 1
-  /** Bytes the surface owes a caller in reply to a query (DECRQCRA, DSR 6), read back by feedCapture. */
+  let title = ""
+  let iconLabel = ""
+  let titleStack: string[] = []
+  /** Bytes the surface owes a caller in reply to a query (DECRQCRA, DSR, DA, DECRQSS, XTWINOPS), read back by feedCapture. */
   let replies = ""
 
   const blankRow = (): SurfaceCell[] => Array.from({ length: cols }, () => blankCell(NO_ATTRIBUTES))
@@ -472,6 +475,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     charsetG0 = "ascii"
     charsetG1 = "ascii"
     activeCharset = "g0"
+    title = ""
+    iconLabel = ""
+    titleStack = []
     replies = ""
   }
   clear()
@@ -768,6 +774,13 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const eraseLine = (mode: number): void => {
+    if (
+      (mode === 0 && mutations.has("el0-noop")) ||
+      (mode === 1 && mutations.has("el1-noop")) ||
+      (mode === 2 && mutations.has("el2-noop"))
+    ) {
+      return
+    }
     const row = grid[cursorY]
     if (!row) return
     const from = mode === 1 || mode === 2 ? 0 : cursorX
@@ -785,7 +798,15 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   const eraseDisplay = (mode: number): void => {
     if (mode === 3) {
-      scrolled = 0
+      if (!mutations.has("ed3-noop")) scrolled = 0
+      return
+    }
+    if (
+      (mode === 0 && mutations.has("ed0-noop")) ||
+      (mode === 1 && mutations.has("ed1-noop")) ||
+      (mode === 2 && mutations.has("ed2-noop")) ||
+      (mode === 0 && (regionTop > 0 || regionBottom < rows - 1) && mutations.has("ed-scroll-region-noop"))
+    ) {
       return
     }
     for (let row = 0; row < rows; row++) {
@@ -813,6 +834,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const eraseChars = (count: number): void => {
+    if (mutations.has("ech-noop")) return
     const row = grid[cursorY]
     if (!row) return
     for (let i = 0; i < count && cursorX + i < cols; i++) {
@@ -934,12 +956,17 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       else if (final === "z" || final === "{") blankRect(params, final === "{")
       else if (final === "v") copyRect(params)
       else if (final === "r" || final === "t") changeRectAttributes(params, final === "t")
+      else if (final === "p" && first === 7 && !mutations.has("decrpm-noop")) {
+        replies += `\x1b[?7;${autoWrap ? 1 : 2}$y`
+      }
     } else if (intermediate === "*") {
       if (final === "x") attributeExtent = first === 2 ? 1 : 0
       else if (final === "y") requestChecksum(params)
     } else if (intermediate === "'") {
       if (final === "}") insertColumns(count)
       else if (final === "~") deleteColumns(count)
+    } else if (intermediate === "#") {
+      if (final === "R" && !mutations.has("xtreportcolors-noop")) replies += "\x1b[0;1#Q"
     } else if (intermediate === " ") {
       if (final === "@") shiftLeft(count)
       else if (final === "A") shiftRight(count)
@@ -976,6 +1003,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       selectiveErase()
       return
     }
+    if (final === "n") {
+      if (first === 996 && !mutations.has("dsr-996-noop")) replies += "\x1b[?997;1n"
+      return
+    }
     if (final !== "h" && final !== "l") return
     const enable = final === "h"
     if (first === 1) applicationCursor = enable
@@ -986,6 +1017,34 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     else if (first === 1049) toggleAltScreen(enable)
   }
 
+  const csiDevicePrefix = (prefix: string, final: string, first: number): boolean => {
+    if (prefix === ">") {
+      if (final === "c" && !mutations.has("secondary-da-noop")) replies += "\x1b[>0;49;1c"
+      else if (final === "q" && first === 0 && !mutations.has("xtversion-noop")) {
+        replies += "\x1bP>|kitty(0.49.1)\x1b\\"
+      }
+      return true
+    }
+    if (prefix === "=") {
+      if (final === "c" && !mutations.has("tertiary-da-noop")) replies += "\x1bP!|1234ABCD\x1b\\"
+      return true
+    }
+    return false
+  }
+
+  const windowOp = (first: number): void => {
+    if (first === 14 && !mutations.has("xtwinops-14-noop")) replies += "\x1b[4;720;1280t"
+    else if (first === 16 && !mutations.has("xtwinops-16-noop")) replies += "\x1b[6;16;8t"
+    else if (first === 18 && !mutations.has("xtwinops-18-noop")) replies += `\x1b[8;${rows};${cols}t`
+    else if (first === 20) replies += `\x1b]L${iconLabel}\x07`
+    else if (first === 21) replies += `\x1b]l${mutations.has("xtwinops-21-noop") ? "" : title}\x07`
+    else if (first === 22 && !mutations.has("xtwinops-22-noop")) titleStack.push(title)
+    else if (first === 23 && !mutations.has("xtwinops-23-noop")) {
+      const restored = titleStack.pop()
+      if (restored !== undefined) title = restored
+    }
+  }
+
   const csi = (prefix: string, paramsRaw: string, intermediate: string, final: string): void => {
     const params = paramsRaw === "" ? [] : paramsRaw.split(";").map((raw) => (raw === "" ? 0 : Number(raw)))
     const first = params[0] ?? 0
@@ -994,6 +1053,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       csiPrivate(final, first)
       return
     }
+    if (csiDevicePrefix(prefix, final, first)) return
     if (final === "H" || final === "f") {
       moveCursorAbsolute(paramsRaw, params)
       return
@@ -1021,10 +1081,17 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       case "u":
         if (!mutations.has("ansi-restore-noop")) [cursorX, cursorY] = ansiSavedCursor
         return
+      case "c":
+        if (first === 0) replies += mutations.has("primary-da-noop") ? "\x1b[?c" : "\x1b[?62;52;c"
+        return
       case "n":
-        if (first === 6) {
+        if (first === 5 && !mutations.has("status-report-noop")) replies += "\x1b[0n"
+        else if (first === 6) {
           replies += mutations.has("dsr-cpr-noop") ? "\x1b[1;1R" : `\x1b[${cursorY + 1};${cursorX + 1}R`
         }
+        return
+      case "t":
+        windowOp(first)
         return
       case "K":
         if (!mutations.has("el-noop")) eraseLine(first)
@@ -1093,6 +1160,27 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     }
   }
 
+  const consumeDcs = (payload: string): void => {
+    if (payload === "$qm") {
+      if (!mutations.has("decrqss-noop")) replies += "\x1bP1$r0m\x1b\\"
+      return
+    }
+    if (payload === "+q544e") {
+      if (!mutations.has("xtgettcap-noop")) replies += "\x1bP1+r544e=787465726d\x1b\\"
+      return
+    }
+    if (payload.toLowerCase() === "+q7465726d4e616d65") {
+      replies += mutations.has("xtgetxres-noop")
+        ? "\x1bP0+R7465726d4e616d65\x1b\\"
+        : "\x1bP1+R7465726d4e616d65=787465726d\x1b\\"
+    }
+  }
+
+  const consumeOsc = (code: string, payload: string): void => {
+    if (code === "1" && !mutations.has("xtwinops-20-noop")) iconLabel = payload
+    else if (code === "2") title = payload
+  }
+
   const consumeEscape = (rest: string): number => {
     const alignment = /^\x1b#8/u.exec(rest)
     if (alignment) {
@@ -1103,7 +1191,17 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       ris()
       return 2
     }
-    const match = /^\x1b\[([?<>]?)([0-9;:]*)([\x20-\x2f]?)([\x40-\x7e])/u.exec(rest)
+    const dcs = /^\x1bP([^\x1b]*)\x1b\\/u.exec(rest)
+    if (dcs) {
+      consumeDcs(dcs[1] ?? "")
+      return dcs[0].length
+    }
+    const osc = /^\x1b\]([12]);([^\x07\x1b]*)(?:\x07|\x1b\\)/u.exec(rest)
+    if (osc) {
+      consumeOsc(osc[1] ?? "", osc[2] ?? "")
+      return osc[0].length
+    }
+    const match = /^\x1b\[([?<>=]?)([0-9;:]*)([\x20-\x2f]?)([\x40-\x7e])/u.exec(rest)
     if (match) {
       csi(match[1] ?? "", match[2] ?? "", match[3] ?? "", match[4] ?? "")
       return match[0].length
@@ -1200,15 +1298,38 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     }
   }
 
+  const capture = (text: string): string => {
+    replies = ""
+    feed(text)
+    const framed = replies
+    replies = ""
+    return framed
+  }
+
   return {
     cols,
     feed,
-    feedCapture(text: string): string {
-      replies = ""
-      feed(text)
-      const framed = replies
-      replies = ""
-      return framed
+    feedCapture: capture,
+    queryWithSentinelOutcome(sequence: string, pattern: RegExp) {
+      const reply = capture(sequence)
+      const answer = capture("\x1b[c")
+      const raw = reply + answer
+      const rawBase64 = Buffer.from(raw).toString("base64")
+      const match = pattern.exec(reply)
+      if (match) return { match, reason: "reply" as const, raw, rawBase64 }
+      if (/\x1b\[\?[0-9;]+c/u.test(answer)) {
+        return {
+          match: null,
+          reason: "sentinel" as const,
+          raw,
+          rawBase64,
+          sentinel: { atMs: 0, graceMs: 50 },
+        }
+      }
+      return { match: null, reason: "timeout" as const, raw, rawBase64 }
+    },
+    getTitle() {
+      return title
     },
     getCell(row: number, col: number): SurfaceCellState {
       const cell = cellAt(row, col)

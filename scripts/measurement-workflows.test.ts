@@ -228,7 +228,7 @@ test.each([
           ITERM_LAUNCH_END: "2026-10-20T02:00:01Z",
         },
       })
-      expect(result.status, result.stderr).toBe(missingLaunch ? 1 : 0)
+      expect(result.status, result.stderr).toBe(missingLaunch || appId === "iterm2" ? 1 : 0)
       const prefix = appId === "iterm2" ? "iterm" : appId === "com.microsoft.VSCode" ? "vscode" : appId
       const summary = JSON.parse(readFileSync(join(out, `${prefix}-failure-evidence.json`), "utf8"))
       expect(summary).toMatchObject({
@@ -252,6 +252,9 @@ test.each([
       if (appId === "cmux") expect(summary).toHaveProperty("receiptRunId", "b".repeat(32))
       if (missingLaunch) {
         expect(summary).toHaveProperty("failures", [expect.objectContaining({ label: "launch-record" })])
+      } else if (appId === "iterm2") {
+        // This fixture deliberately has no collector ancestry; keep older diagnostics despite it.
+        expect(summary).toHaveProperty("failures", [expect.objectContaining({ label: "native-state" })])
       } else expect(summary).toHaveProperty("failures", [])
     } finally {
       rmSync(directory, { recursive: true, force: true })

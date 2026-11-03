@@ -1,7 +1,7 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
 import { resultTextQualification } from "../../packages/run-parser/src/observations.ts"
-import { isEnvironmentGroup, readCollectorSelection } from "@terminfo/probe-defs"
+import { isEnvironmentGroup, readCollectorSelection, sourceAnswerForRef } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
   ProbeStatus,
@@ -331,6 +331,10 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
   ): PublicProbeResult => {
     const decision = version.presentations[result.featureId]
     const approved = decision?.presentsEvidence === true
+    const sourceRow = result.reviewRef === undefined ? undefined : sourceAnswerForRef(result.reviewRef)
+    // Forward only the shared resolver's version caption, without capture rationale or a presentation grant.
+    const label = sourceRow && `reviewed at ${version.subject.version}, not re-verified`
+    const sourceLabel = label !== undefined && result.reason?.endsWith(label) ? label : undefined
     const hold = result.tests.find((check) => check.id === "console-host")?.reason
     const selection =
       result.status === "test-todo" && result.attempt.scope === "none" && !isEnvironmentGroup(result.featureId)
@@ -342,7 +346,7 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
         ? "Not selected for this collection; no test was attempted."
         : approved
           ? result.reason
-          : undefined
+          : sourceLabel
     const mapped: PublicProbeResult = {
       featureId: result.featureId,
       status: result.status,

@@ -114,6 +114,14 @@ export interface TerminalStatusRollup {
   readonly families: Record<string, FamilyRollup>
 }
 
+export interface ProbeOpenRankRow {
+  readonly featureId: string
+  readonly family: string
+  readonly libOpen: number
+  readonly libFailure: number
+  readonly libTodo: number
+}
+
 /**
  * The single status-and-rollup computation over one terminal's recorded statuses (Phase 2.4):
  * folds the graded positions (`gradedFeatureIds`) into the five status counts, family rollups,
@@ -156,7 +164,7 @@ export function rollupTerminalStatuses(
   }
   const gradedIds = gradedFeatureIds(catalogIds)
   for (const id of gradedIds) {
-    const status = statuses[id]
+    const status = Object.hasOwn(statuses, id) ? statuses[id] : undefined
     if (!status || !PROBE_STATUSES.includes(status as ProbeStatus)) {
       throw new Error(`Invalid stored current status for ${id}`)
     }
@@ -206,6 +214,50 @@ export function rollupTerminalStatuses(
   }
 }
 
+/**
+ * Work-list ranking over the graded positions (`gradedFeatureIds`) across library status maps
+ * (Phase 2.4 A5): deterministic tie-breaking by `(-libOpen, -libFailure, featureId)`.
+ */
+export function rankOpenProbes(
+  libCells: Readonly<Record<string, Readonly<Record<string, string>>>>,
+  catalogIds: readonly string[] = [
+    ...new Set(Object.values(libCells).flatMap((statuses) => Object.keys(statuses))),
+  ].sort(),
+): ProbeOpenRankRow[] {
+  const gradedIds = gradedFeatureIds(catalogIds)
+  const libMaps = Object.values(libCells)
+  const rows: ProbeOpenRankRow[] = []
+
+  for (const featureId of gradedIds) {
+    let libFailure = 0
+    let libTodo = 0
+    for (const statuses of libMaps) {
+      const status = Object.hasOwn(statuses, featureId) ? statuses[featureId] : undefined
+      if (!status || !PROBE_STATUSES.includes(status as ProbeStatus)) {
+        throw new Error(`Invalid stored current status for ${featureId}`)
+      }
+      if (status === "test-failure") libFailure++
+      else if (status === "test-todo") libTodo++
+    }
+    const libOpen = libFailure + libTodo
+    rows.push({
+      featureId,
+      family: featureId.split(".")[0] ?? featureId,
+      libOpen,
+      libFailure,
+      libTodo,
+    })
+  }
+
+  rows.sort(
+    (a, b) =>
+      b.libOpen - a.libOpen ||
+      b.libFailure - a.libFailure ||
+      (a.featureId < b.featureId ? -1 : a.featureId > b.featureId ? 1 : 0),
+  )
+  return rows
+}
+
 export function aggregateCurrentResults(
   results: readonly Pick<ProbeResult, "featureId" | "status">[],
   catalogIds: readonly string[],
@@ -227,7 +279,7 @@ export function aggregateCurrentResults(
   if (
     Object.keys(statuses).length !== results.length ||
     results.length !== catalogIds.length ||
-    catalogIds.some((id) => !(id in statuses))
+    catalogIds.some((id) => !Object.hasOwn(statuses, id))
   ) {
     throw new Error("Current results differ from frozen catalogue membership")
   }

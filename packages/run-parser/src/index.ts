@@ -11,6 +11,8 @@ import {
   type HostRecipeName,
   PROBE_STATUSES,
   finalizeProbeResult,
+  sourceAnswerForRef,
+  type SourceAnswerInput,
   initializeRunDraft,
   recordCollectorSelection,
   readCollectorSelection,
@@ -53,6 +55,8 @@ import {
 } from "./observations.ts"
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
 import { parseJsonStrict, canonicalJson } from "./json.ts"
+import { resolveMeasuredSourceAnswer } from "./source-answers.ts"
+export { resolveMeasuredSourceAnswer } from "./source-answers.ts"
 export { parseJsonStrict, canonicalJson, FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "./json.ts"
 import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
 
@@ -1576,6 +1580,7 @@ export function parseProbeResults(
   assertions: readonly ReadAssertion[],
   screenshotRefs: readonly string[] = [],
   textSnapshotRefs: readonly string[] = [],
+  sourceContext?: Omit<SourceAnswerInput, "featureId" | "blobs">,
 ): ProbeResult[] {
   if (!Array.isArray(value)) fail(path, "missing explicit probe results")
   const seen = new Set<string>()
@@ -1704,13 +1709,65 @@ export function parseProbeResults(
         fail(path, `${featureId} unreproduced-callback record requires its failed harness row, and the row its record`)
       }
     }
+    const sourceRefs = [
+      ...new Set(
+        [result.reviewRef, ...tests.map((test) => test.reviewRef)].filter((ref): ref is string => ref !== undefined),
+      ),
+    ].filter((ref) => sourceAnswerForRef(ref) !== undefined)
+    if (sourceRefs.length) {
+      if (!sourceContext) fail(path, `${featureId} source answer requires measured subject context`)
+      const resolution = resolveMeasuredSourceAnswer({ ...sourceContext, featureId })
+      if (resolution.kind === "none" || sourceRefs.some((ref) => !resolution.rowKeys.includes(ref))) {
+        fail(path, `${featureId} source answer does not apply to measured identity`)
+      }
+      for (const ref of sourceRefs) {
+        const row = sourceAnswerForRef(ref)
+        if (row?.featureId !== featureId) fail(path, `${featureId} source answer feature mismatch`)
+      }
+      const reviewed = tests.filter(
+        (test) => test.id === "review" && test.reviewRef && sourceRefs.includes(test.reviewRef),
+      )
+      if (!reviewed.length) fail(path, `${featureId} source answer requires its recorded review test`)
+      if (resolution.kind === "answer" && reviewed.some((test) => test.status !== resolution.status)) {
+        fail(path, `${featureId} source answer differs from recorded review test`)
+      }
+      if (
+        resolution.kind === "answer" &&
+        reviewed.some(
+          (test) =>
+            !resolution.answers.some((answer) =>
+              answer.originals.some(
+                (answer) =>
+                  test.reason === answer.reason ||
+                  (resolution.label !== undefined && test.reason === `${answer.reason}; ${resolution.label}`),
+              ),
+            ),
+        )
+      ) {
+        fail(path, `${featureId} source answer lacks its original rationale`)
+      }
+      if (
+        resolution.kind === "pending" &&
+        reviewed.some(
+          (test) =>
+            (resolution.reason !== "cited source not resolvable" && test.status !== "test-todo") ||
+            !test.reason?.includes(resolution.reason) ||
+            !test.reason.includes(test.reviewRef ?? ""),
+        )
+      ) {
+        fail(path, `${featureId} pending source answer lacks its candidate diagnostic`)
+      }
+      if (finalizeProbeResult(result, resolution).status !== status) {
+        fail(path, `${featureId} source answer hides required test work`)
+      }
+    }
     if (finalizeProbeResult(result).status !== status) {
       fail(path, `${featureId} recorded status hides required test work`)
     }
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
     const sourceOnlyNegative = status === "unsupported" && isSourceOnlyNegativeReview(result, assertions)
-    if (semanticSource || sourceOnlyNegative) {
+    if ((semanticSource || sourceOnlyNegative) && !sourceRefs.length) {
       const key = result.reviewRef
       const reviewTest = tests.find((test) => test.id === "review" && test.reviewRef === key)
       if (!key || !rawReplies[key]) fail(path, `${featureId} requires its immutable source review decision`)
@@ -1780,7 +1837,7 @@ export function parseProbeResults(
         fail(path, `${featureId} requires its deciding expected/observed assertion`)
       }
     }
-    if (status === "untestable") {
+    if (status === "untestable" && !sourceRefs.length) {
       const key = result.reviewRef ?? tests.find((test) => test.status === "untestable")?.reviewRef
       if (!key || !rawReplies[key]) fail(path, `${featureId} requires its immutable reviewed impossibility reason`)
       const review = parseCaptureDecision(parseJsonStrict(`${path}: ${key}`, rawReplies[key]), path, expected, 4)
@@ -2225,6 +2282,7 @@ export function parseRun(
         assertions,
         raw.screenshotRefs as string[],
         textSnapshotRefs,
+        { subject, ...(runtimeIdentity && { runtimeIdentity }), sourceRevision },
       )
     : undefined
   if (schemaVersion === 4) {
@@ -2257,6 +2315,7 @@ export function parseRun(
         ),
       )
       for (const ref of refs) {
+        if (sourceAnswerForRef(ref)) continue
         const bytes = captureRun.rawReplies[ref]
         if (!bytes) fail(path, `missing immutable capture decision ${ref}`)
         const decision = parseCaptureDecision(parseJsonStrict(path, bytes), path, expected, schemaVersion)
