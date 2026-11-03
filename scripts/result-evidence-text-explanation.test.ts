@@ -73,21 +73,21 @@ it("labels a retained source answer by engine version without regrading or datin
 // includes private source/reviewer details that caption-only coverage never exercised.
 it("publishes only the safe pending phrase from a real disputed Ghostty cell", () => {
   const path = new URL(
-    "../content/probes-libs/ghostty-0.4.0-linux-3f3e920e-ebf8-4d81-ace1-52445a05a992.json",
+    "../content/probes-libs/ghostty-0.4.0-linux-3bacc3ae-a7c9-4fed-9f3f-a2c0ce01e6f5.json",
     import.meta.url,
   )
   const bytes = readFileSync(path, "utf8")
-  const manifestPath = new URL("../content/suites/4b01b0117e18.json", import.meta.url)
+  const manifestPath = new URL("../content/suites/5ccb68c2db36.json", import.meta.url)
   const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
   const catalog = manifest.catalogIds!
   const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
   const original = structuredClone(run)
-  const featureId = "extensions.osc104-reset-palette"
+  const featureId = "extensions.kitty-graphics"
   const retained = run.results?.find((result) => result.featureId === featureId)
   expect(retained?.status).toBe("test-todo")
   expect(retained?.reason).toMatch(/^kept answers disagree:/)
   expect(retained?.reason).toContain("kept originals:")
-  expect(retained?.reason).toContain("@dev/")
+  expect(retained?.reason).toContain("reply-path-audit")
   const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
   const published = publicResults(projection, new Map()).projection.contexts["lib:ghostty"]?.cells[featureId]
   expect(published?.reason).toBe("kept answers disagree")

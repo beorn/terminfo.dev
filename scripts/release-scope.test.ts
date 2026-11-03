@@ -475,7 +475,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
   const gradedIds = gradedFeatureIds(allCatalogIds)
   const storedRuns = loadStoredRuns(contentDir, allCatalogIds)
 
-  it("maps every graded cell across all 12 corpus runs (loadStoredRuns) with 0 unmapped, 0 mixed, 30 source-reading, 93 kept-answer-not-reverified (31 rowAlsoHoldsCitedAnswerCount), and 8 wouldBeConflicts", () => {
+  it("maps every graded cell across all 12 corpus runs (loadStoredRuns) with 0 unmapped, 0 mixed, 30 source-reading, 118 kept-answer-not-reverified (30 rowAlsoHoldsCitedAnswerCount), and 3 wouldBeConflicts", () => {
     expect(PROBE_METHODS).toEqual(["source-reading", "library", "app-text", "app-screenshot", "real-os-device"])
     expect(PROBE_METHOD_RANK).toEqual({
       "source-reading": 1,
@@ -536,13 +536,14 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
     expect(totalUnmapped).toBe(0)
     expect(totalMixed).toBe(0)
     expect(totalSourceReading).toBe(30)
-    expect(totalKeptNotReverified).toBe(93)
-    expect(totalRowAlsoHoldsCited).toBe(31)
-    expect(totalLibrary).toBe(786)
+    // #32181 replaced Ghostty 3f3e920e with 3bacc3ae; the other eleven runs are unchanged.
+    expect(totalKeptNotReverified).toBe(118)
+    expect(totalRowAlsoHoldsCited).toBe(30)
+    expect(totalLibrary).toBe(824)
     expect(totalAppText).toBe(1194)
     expect(totalAppScreenshot).toBe(282)
     expect(totalRealOsDevice).toBe(57)
-    expect(totalWouldBeConflicts).toBe(8)
+    expect(totalWouldBeConflicts).toBe(3)
   })
 
   it("enforces the suffix rule for source-reading vs kept-answer-not-reverified, routes empty matching to unmapped, routes multiple assertion types to mixed, and relies on sourceAnswerForRef throw", () => {
@@ -864,7 +865,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       ),
     }))
     const rollupsSha256 = createHash("sha256").update(JSON.stringify(rollups)).digest("hex")
-    expect(rollupsSha256).toBe("450ef6fe7e3dadc4ab439e15b7acd1692321dad423964b52aa2241c1c1209a32")
+    expect(rollupsSha256).toBe("76777dda7e9fc0070652bd1de95e1571bdf02368afddcbda7dc5ed8abdda6169")
 
     const outDir = mkdtempSync(join(tmpdir(), "terminfo-api-verify-"))
     try {
@@ -873,8 +874,8 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       const apiEvidenceInventorySha256 = createHash("sha256")
         .update(readFileSync(join(outDir, "api", "v3", "evidence-files.json")))
         .digest("hex")
-      expect(apiDataSha256).toBe("0a83e0855ed57d0c1f2f6fb1372bd39cfa3228206312b5391c5f962bf2491c83")
-      expect(apiEvidenceInventorySha256).toBe("ded2089fa343155ab12234d7e31c2549e2fe88167e8b27ced1e42d7f924e54b6")
+      expect(apiDataSha256).toBe("20e654d599388c546dfdcff55199892f2c73e8ab4b160134c9174037e019fb4f")
+      expect(apiEvidenceInventorySha256).toBe("8142edbd5803aead9ae3f2bc1d520e2f6a5c3746dd5410274ef2f9ef48c0a5ad")
     } finally {
       // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
       // unavailable; `outDir` is this test's own mkdtempSync scratch root.
