@@ -23,7 +23,7 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { join, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
-import { SOURCE_NEGATIVE_REVIEW, type ProbeStatus } from "@terminfo/probe-defs"
+import { PROBE_STATUSES, SOURCE_NEGATIVE_REVIEW, type ProbeStatus } from "@terminfo/probe-defs"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { loadRawCapture, UntrustedSuiteError } from "../../packages/admin/raw-capture.ts"
 import { compatibilitySubjects, loadCurrentResults, type CurrentResult } from "./current-results.ts"
@@ -46,7 +46,7 @@ export interface WorkingRunSelection {
 
 export interface LoadedWorkingRun extends WorkingRunSelection {
   runs: LoadedRun[]
-  /** Contexts the run's pass names without a captured run, with the pass's own status and reason. */
+  /** Retained view shape; a complete collection must contain every requested engine. */
   unmeasured: Array<{ engine: string; status: string; reason: string }>
   /**
    * Set when the run's suite has no trusted manifest in this tree (the re-measure ran on the previous suite, e.g. right
@@ -96,8 +96,7 @@ export function newestCompleteRun(runsDir: string): WorkingRunSelection {
       continue
     }
     if (!existsSync(join(dir, "cells.json"))) {
-      skipped.push(`${name} (complete summary without cells.json)`)
-      continue
+      throw new Error(`${join(dir, "cells.json")}: complete summary names a run whose cells are absent`)
     }
     const [, day, hh, mm, ss, ms] = RUN_DIR.exec(name) ?? []
     return { id: name, dir, startedAt: `${day}T${hh}:${mm}:${ss}.${ms}Z` }
@@ -107,39 +106,77 @@ export function newestCompleteRun(runsDir: string): WorkingRunSelection {
   )
 }
 
-/** Load every raw capture the selected run's pass cites, through the one raw-capture reader. */
+/** Load the current hourly collection and verify its recorded rollups through the one raw-capture reader. */
 export function loadWorkingRun(
   selection: WorkingRunSelection,
   options: { root: string; catalogIds: readonly string[] },
 ): LoadedWorkingRun {
-  const passes = readdirSync(selection.dir).filter((name) => name.startsWith("pass-"))
-  const [passName] = passes
-  if (passes.length !== 1 || !passName) {
-    throw new Error(`${selection.dir}: expected exactly one pass-* directory, found ${passes.length}`)
+  const summaryPath = join(selection.dir, "summary.json")
+  const summary = parseJsonStrict(summaryPath, readFileSync(summaryPath, "utf8"))
+  const collectionPath = join(selection.dir, "headless", "collection.json")
+  const collection = parseJsonStrict(collectionPath, readFileSync(collectionPath, "utf8"))
+  const strings = (value: unknown): value is string[] =>
+    Array.isArray(value) && value.every((entry) => typeof entry === "string" && entry.length > 0)
+  if (
+    !record(collection) ||
+    !strings(collection.requested) ||
+    !strings(collection.runs) ||
+    !Array.isArray(collection.failures)
+  ) {
+    throw new Error(`${collectionPath}: collection requires requested, runs and failures arrays`)
   }
-  const passPath = join(selection.dir, passName, "pass.json")
-  const pass = parseJsonStrict(passPath, readFileSync(passPath, "utf8"))
-  if (!record(pass) || !Array.isArray(pass.contexts)) throw new Error(`${passPath}: pass requires a contexts array`)
+  const expected = collection.requested
+  if (
+    !record(summary) ||
+    summary.complete !== true ||
+    !strings(summary.expectedEngines) ||
+    !strings(summary.presentEngines) ||
+    !Array.isArray(summary.missingEngines) ||
+    !Array.isArray(summary.refused) ||
+    expected.length === 0 ||
+    new Set(expected).size !== expected.length ||
+    collection.runs.length !== expected.length ||
+    collection.failures.length !== 0 ||
+    summary.missingEngines.length !== 0 ||
+    summary.refused.length !== 0 ||
+    [summary.expectedEngines, summary.presentEngines].some(
+      (engines) =>
+        engines.length !== expected.length ||
+        new Set(engines).size !== expected.length ||
+        engines.some((engine) => !expected.includes(engine)),
+    )
+  ) {
+    throw new Error(
+      `${summaryPath}: complete run must record every requested engine without missing or refused captures (${collectionPath})`,
+    )
+  }
+  const rollups = summary.rollups
+  if (!record(rollups)) throw new Error(`${summaryPath}: complete run requires per-engine rollups`)
+  for (const engine of expected) {
+    const rollup = rollups[engine]
+    const counts = record(rollup) ? rollup.counts : undefined
+    if (
+      !record(counts) ||
+      !PROBE_STATUSES.every(
+        (status) =>
+          typeof counts[status] === "number" && Number.isInteger(counts[status]) && Number(counts[status]) >= 0,
+      )
+    ) {
+      throw new Error(`${summaryPath}: missing or invalid rollup for ${engine}`)
+    }
+  }
   const runRoot = realpathSync(selection.dir) + sep
-  const runs: LoadedRun[] = []
-  const unmeasured: LoadedWorkingRun["unmeasured"] = []
-  for (const value of pass.contexts) {
-    if (!record(value) || !record(value.context) || typeof value.context.id !== "string") {
-      throw new Error(`${passPath}: a pass context requires its context identity`)
-    }
-    const engine = value.context.id
-    if (typeof value.rawRun !== "string") {
-      unmeasured.push({
-        engine,
-        status: String(value.status ?? "not recorded"),
-        reason: String(value.error ?? value.reason ?? "no captured run recorded"),
-      })
-      continue
-    }
-    const rawPath = resolve(selection.dir, value.rawRun)
+  // Check every expected resource before an older-suite warning can return early.
+  const rawPaths = collection.runs.map((path) => {
+    const rawPath = resolve(selection.dir, path)
     if (!existsSync(rawPath) || !realpathSync(rawPath).startsWith(runRoot)) {
-      throw new Error(`${passPath}: ${engine} cites raw capture ${value.rawRun} outside the run directory or absent`)
+      throw new Error(`${collectionPath}: raw capture ${path} outside the run directory or absent`)
     }
+    return rawPath
+  })
+  const runs: LoadedRun[] = []
+  const seen = new Set<string>()
+  for (const rawPath of rawPaths) {
     let run: LoadedRun
     try {
       run = loadRawCapture(rawPath, { root: options.root, catalogIds: options.catalogIds })
@@ -159,13 +196,28 @@ export function loadWorkingRun(
         },
       }
     }
-    if (run.subject.id !== engine) {
-      throw new Error(`${rawPath}: pass names ${engine}, capture records ${run.subject.id}`)
+    const engine = run.subject.id
+    if (!expected.includes(engine) || seen.has(engine)) {
+      throw new Error(`${collectionPath}: unexpected or duplicate captured engine ${engine} in ${rawPath}`)
+    }
+    seen.add(engine)
+    const rollup = rollups[engine]
+    const actual = rollupTerminalStatuses(
+      Object.fromEntries((run.results ?? []).map((result) => [result.featureId, result.status])),
+      options.catalogIds,
+    )
+    if (
+      !record(rollup) ||
+      !record(rollup.counts) ||
+      rollup.positions !== actual.positions ||
+      rollup.environmentPositions !== actual.environmentPositions ||
+      PROBE_STATUSES.some((status) => record(rollup.counts) && rollup.counts[status] !== actual.counts[status])
+    ) {
+      throw new Error(`${summaryPath}: rollup for ${engine} disagrees with recorded capture ${rawPath}`)
     }
     runs.push(run)
   }
-  if (runs.length === 0) throw new Error(`${passPath}: the run cites no raw capture`)
-  return { ...selection, runs, unmeasured }
+  return { ...selection, runs, unmeasured: [] }
 }
 
 /** The runs directory the site build reads, or undefined when the variable is unset or blank. */

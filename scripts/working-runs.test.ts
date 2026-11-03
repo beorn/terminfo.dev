@@ -8,12 +8,14 @@
  * @testonly none
  */
 import { createHash } from "node:crypto"
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import type { LoadedRun } from "@terminfo/run-parser"
 import type { ProbeStatus } from "@terminfo/probe-defs"
+import { loadFeatures } from "@terminfo/catalog"
+import { rollupTerminalStatuses } from "../docs/data/release-scope.ts"
 import {
   RAW_LABEL,
   composeWorkingView,
@@ -64,6 +66,13 @@ describe("newestCompleteRun: the site reads the newest COMPLETE hourly run (requ
     expect(() => newestCompleteRun(parent)).toThrow(`no complete hourly run in ${parent}`)
   })
 
+  it("names a missing cells.json in a run that declares itself complete instead of silently selecting an older run", () => {
+    const parent = runsDir()
+    run(parent, OLD, { complete: true })
+    run(parent, PARTIAL, { complete: true }, false)
+    expect(() => newestCompleteRun(parent)).toThrow(join(parent, PARTIAL, "cells.json"))
+  })
+
   it("refuses loudly when a newer run's summary is unreadable instead of skipping it", () => {
     const parent = runsDir()
     run(parent, OLD, { complete: true })
@@ -82,26 +91,88 @@ describe("newestCompleteRun: the site reads the newest COMPLETE hourly run (requ
 })
 
 describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
-  it("refuses a run with no pass directory", () => {
-    const parent = runsDir()
-    run(parent, OLD, { complete: true })
-    expect(() =>
-      loadWorkingRun(newestCompleteRun(parent), { root: join(import.meta.dirname, ".."), catalogIds: [] }),
-    ).toThrow("expected exactly one pass-* directory")
-  })
-
-  it("refuses a pass that cites a raw capture outside its own run", () => {
+  const root = join(import.meta.dirname, "..")
+  const catalogIds = Object.keys(loadFeatures(join(root, "content")))
+  // Reuse a real committed payload and its committed manifest. Only the hourly envelope is synthetic.
+  function collection() {
     const parent = runsDir()
     const dir = run(parent, OLD, { complete: true })
-    mkdirSync(join(dir, "pass-x"))
-    writeFileSync(
-      join(dir, "pass-x", "pass.json"),
-      JSON.stringify({ contexts: [{ context: { id: "kitty", kind: "lib" }, rawRun: "/etc/passwd" }] }),
+    const headless = join(dir, "headless")
+    mkdirSync(headless)
+    const rawPath = join(headless, "vterm.draft.json")
+    copyFileSync(
+      join(root, "content/probes-libs/vterm-0.10.1-linux-a22f06ca-2505-4c0d-a518-b0b01f8bbe76.json"),
+      rawPath,
     )
-    expect(() =>
-      loadWorkingRun(newestCompleteRun(parent), { root: join(import.meta.dirname, ".."), catalogIds: [] }),
-    ).toThrow("outside the run directory")
+    const payload = JSON.parse(readFileSync(rawPath, "utf8")) as {
+      results: Array<{ featureId: string; status: string }>
+    }
+    const summary = {
+      complete: true,
+      expectedEngines: ["vterm"],
+      presentEngines: ["vterm"],
+      missingEngines: [],
+      refused: [],
+      rollups: {
+        vterm: rollupTerminalStatuses(
+          Object.fromEntries(payload.results.map((r) => [r.featureId, r.status])),
+          catalogIds,
+        ),
+      },
+    }
+    const collected = { directory: headless, requested: ["vterm"], runs: [rawPath], failures: [] }
+    const save = () => {
+      writeFileSync(join(dir, "summary.json"), JSON.stringify(summary))
+      writeFileSync(join(headless, "collection.json"), JSON.stringify(collected))
+    }
+    save()
+    return { parent, dir, summary, collected, save }
+  }
+
+  it("loads the current collection and summary rollups without the retired pass layout", () => {
+    const fixture = collection()
+    const loaded = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })
+    expect(loaded.unreadable).toBeUndefined()
+    expect(loaded.unmeasured).toEqual([])
+    expect(loaded.runs).toHaveLength(1)
+    expect(loaded.runs[0]?.subject.id).toBe("vterm")
+    expect(loaded.runs[0]?.results).toHaveLength(273)
+    expect(loaded.runs[0]?.runId).toBe("a22f06ca-2505-4c0d-a518-b0b01f8bbe76")
   })
+
+  it("names a missing current collection", () => {
+    const parent = runsDir()
+    const dir = run(parent, OLD, { complete: true })
+    expect(() => loadWorkingRun(newestCompleteRun(parent), { root, catalogIds })).toThrow(
+      join(dir, "headless/collection.json"),
+    )
+  })
+
+  it.each(["absent", "outside"])("refuses a capture that is %s from its run directory", (kind) => {
+    const fixture = collection()
+    fixture.collected.runs = [kind === "outside" ? "/etc/passwd" : join(fixture.dir, "missing.draft.json")]
+    fixture.save()
+    expect(() => loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })).toThrow(
+      "outside the run directory or absent",
+    )
+  })
+
+  it.each(["missing rollup", "wrong counts", "missing engine", "collection failure"])(
+    "refuses a complete envelope with %s",
+    (kind) => {
+      const fixture = collection()
+      if (kind === "missing rollup") Reflect.deleteProperty(fixture.summary.rollups, "vterm")
+      if (kind === "wrong counts") fixture.summary.rollups.vterm.counts.supported++
+      if (kind === "missing engine") fixture.collected.runs = []
+      if (kind === "collection failure") {
+        Reflect.set(fixture.collected, "failures", [{ engine: "vterm", error: "refused" }])
+      }
+      fixture.save()
+      expect(() => loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })).toThrow(
+        kind === "wrong counts" ? "rollup" : kind === "missing rollup" ? "rollup" : "complete",
+      )
+    },
+  )
 })
 
 const raw = (status: ProbeStatus, criterionBranch?: string, version = "1.0") => ({
@@ -341,13 +412,20 @@ describe("raw cells never enter an accepted rollup (requirement 3)", () => {
 describe("an hourly run on a suite this build cannot trust", () => {
   function untrustedRun(draft: string): ReturnType<typeof newestCompleteRun> {
     const parent = runsDir()
-    const dir = run(parent, OLD, { complete: true })
-    mkdirSync(join(dir, "pass-x", "lib"), { recursive: true })
-    const rawRun = join(dir, "pass-x", "lib", "kitty.draft.json")
+    const dir = run(parent, OLD, {
+      complete: true,
+      expectedEngines: ["kitty"],
+      presentEngines: ["kitty"],
+      missingEngines: [],
+      refused: [],
+      rollups: { kitty: rollupTerminalStatuses({}, []) },
+    })
+    mkdirSync(join(dir, "headless"))
+    const rawRun = join(dir, "headless", "kitty.draft.json")
     writeFileSync(rawRun, draft)
     writeFileSync(
-      join(dir, "pass-x", "pass.json"),
-      JSON.stringify({ contexts: [{ context: { id: "kitty", kind: "lib" }, rawRun }] }),
+      join(dir, "headless", "collection.json"),
+      JSON.stringify({ directory: join(dir, "headless"), requested: ["kitty"], runs: [rawRun], failures: [] }),
     )
     return newestCompleteRun(parent)
   }
