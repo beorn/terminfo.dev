@@ -139,6 +139,15 @@ const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "
     },
     false,
   ],
+  [
+    "changed adapter blobs and WASM",
+    {
+      ...historyRuntime,
+      adapterSources: historyRuntime.adapterSources!.map((source) => ({ ...source, blobOid: "f".repeat(40) })),
+      loadedBinary: { ...historyRuntime.loadedBinary, sha256: "f".repeat(64) },
+    },
+    false,
+  ],
   ["wrong engine version", { ...historyRuntime, engineVersion: "0.3.4" }, false],
   ["wrong adapter version", { ...historyRuntime, adapterVersion: "0.10.3" }, false],
   ["JavaScript format", { ...historyRuntime, runtimeFormat: "js" }, false],

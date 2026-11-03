@@ -1840,6 +1840,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
   ) {
     return undefined
   }
+  if (!auditedAdapterSources(ctx.runtimeIdentity, "libvterm")) return undefined
   const expectedBinarySha256 = "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a"
   if (identity.loadedBinary.sha256 !== expectedBinarySha256) {
     return {
@@ -1854,7 +1855,6 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
       ],
     }
   }
-  if (!auditedAdapterSources(ctx.runtimeIdentity, "libvterm")) return undefined
   return reviewResult(
     HEADLESS_OBSERVABLE_REVIEW,
     "libvterm v0.3.3 exposes no retained scrollback history count; history belongs to an embedding application",
