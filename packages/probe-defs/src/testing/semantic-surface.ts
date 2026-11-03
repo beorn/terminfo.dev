@@ -774,6 +774,13 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const eraseLine = (mode: number): void => {
+    if (
+      (mode === 0 && mutations.has("el0-noop")) ||
+      (mode === 1 && mutations.has("el1-noop")) ||
+      (mode === 2 && mutations.has("el2-noop"))
+    ) {
+      return
+    }
     const row = grid[cursorY]
     if (!row) return
     const from = mode === 1 || mode === 2 ? 0 : cursorX
@@ -791,7 +798,15 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   const eraseDisplay = (mode: number): void => {
     if (mode === 3) {
-      scrolled = 0
+      if (!mutations.has("ed3-noop")) scrolled = 0
+      return
+    }
+    if (
+      (mode === 0 && mutations.has("ed0-noop")) ||
+      (mode === 1 && mutations.has("ed1-noop")) ||
+      (mode === 2 && mutations.has("ed2-noop")) ||
+      (mode === 0 && (regionTop > 0 || regionBottom < rows - 1) && mutations.has("ed-scroll-region-noop"))
+    ) {
       return
     }
     for (let row = 0; row < rows; row++) {
@@ -819,6 +834,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const eraseChars = (count: number): void => {
+    if (mutations.has("ech-noop")) return
     const row = grid[cursorY]
     if (!row) return
     for (let i = 0; i < count && cursorX + i < cols; i++) {
