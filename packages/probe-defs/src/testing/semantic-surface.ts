@@ -1216,10 +1216,13 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         if (mutations.has("xtpopsgr-reset-default")) attributes = NO_ATTRIBUTES
         else if (popped) attributes = { ...popped }
       } else if (final === "P" && !mutations.has("xtpushcolors-noop")) {
-        paletteStack.push(new Map(palette))
+        // xtpushcolors-stale (#31904): a push onto a non-empty stack keeps the stale snapshot.
+        if (!mutations.has("xtpushcolors-stale") || paletteStack.length === 0) paletteStack.push(new Map(palette))
       } else if (final === "Q" && !mutations.has("xtpopcolors-noop")) {
-        const popped = paletteStack.pop()
-        if (popped) palette = new Map(popped)
+        // xtpopcolors-reset-default (#31904): pop discards the entry and resets the palette.
+        const popped = mutations.has("xtpushcolors-stale") ? paletteStack.at(-1) : paletteStack.pop()
+        if (mutations.has("xtpopcolors-reset-default")) palette = new Map()
+        else if (popped) palette = new Map(popped)
       }
     } else if (intermediate === " ") {
       if (final === "@") shiftLeft(count)
