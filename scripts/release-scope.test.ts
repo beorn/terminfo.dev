@@ -14,15 +14,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { loadFeatures, type FeatureCatalog, type Slice } from "@terminfo/catalog"
-import {
-  ENVIRONMENT_GROUP_IDS,
-  SOURCE_ANSWERS,
-  gradedFeatureIds,
-  sourceAnswerKey,
-  sourceAnswerVersionLabel,
-  type ProbeResult,
-  type ProbeStatus,
-} from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, type ProbeResult, type ProbeStatus } from "@terminfo/probe-defs"
 import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import { loadCategories, orderedCategoryIds } from "../docs/data/categories.ts"
 import {
@@ -476,7 +468,9 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
     "984b034da17ca52406e50e60a3b88bc4",
   ]
 
-  it("maps every graded cell across all 16 corpus runs without unmapped or mixed methods", () => {
+  // No result is graded from source (operator 2026-11-03, #32246): the reader reads every stored source-answer cell
+  // as TEST TODO, so no corpus cell classifies as source-reading and no kept-answer bucket exists.
+  it("maps every graded cell across all 16 corpus runs (loadStoredRuns) with 0 unmapped, 0 mixed and 0 source-reading", () => {
     expect(PROBE_METHODS).toEqual(["source-reading", "library", "app-text", "app-screenshot", "real-os-device"])
     expect(PROBE_METHOD_RANK).toEqual({
       "source-reading": 1,
@@ -496,11 +490,8 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
     let totalAppText = 0
     let totalAppScreenshot = 0
     let totalRealOsDevice = 0
-    let totalKeptNotReverified = 0
-    let totalRowAlsoHoldsCited = 0
     let totalUnmapped = 0
     let totalMixed = 0
-    let totalWouldBeConflicts = 0
 
     for (const run of storedRuns) {
       const report = rollupSubjectMethodFindings([run], minSourceReading, run.catalogIds ?? allCatalogIds)
@@ -509,17 +500,11 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       expect(report.buckets.unmapped).toEqual([])
       expect(report.buckets.mixed).toEqual([])
       expect(report.buckets.noMinimum).toEqual([])
-      expect(report.buckets.keptAnswerNotReverified.label).toBe("kept answer, not re-verified")
-      expect(report.buckets.keptAnswerNotReverified.rowAlsoHoldsCitedAnswerLabel).toBe(
-        "row also holds a cited answer; not proof it applied",
-      )
+      expect(Object.keys(report.buckets).sort()).toEqual(["mixed", "noMinimum", "unmapped"])
 
       totalPositions += report.positions
-      totalKeptNotReverified += report.buckets.keptAnswerNotReverified.count
-      totalRowAlsoHoldsCited += report.buckets.keptAnswerNotReverified.rowAlsoHoldsCitedAnswerCount
       totalUnmapped += report.buckets.unmapped.length
       totalMixed += report.buckets.mixed.length
-      totalWouldBeConflicts += report.buckets.wouldBeConflicts.length
 
       for (const finding of Object.values(report.findings)) {
         for (const obs of finding.observedMethods) {
@@ -532,80 +517,20 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       }
     }
 
+    // 19adf2707 retained four accepted Linux app captures, so the census reads 16 runs.
     expect(storedRuns).toHaveLength(16)
-    expect(storedRuns.filter((run) => addedRunIds.some((id) => run.path.includes(id)))).toHaveLength(4)
     expect(totalPositions).toBe(4224)
     expect(totalUnmapped).toBe(0)
     expect(totalMixed).toBe(0)
-    expect(totalSourceReading).toBe(30)
-    // The four added runs contribute 1,056 positions, 11 kept answers, 518 text,
-    // 140 screenshot and 43 OS-device methods; source and library totals stay unchanged.
-    expect(totalKeptNotReverified).toBe(129)
-    expect(totalRowAlsoHoldsCited).toBe(30)
-    expect(totalLibrary).toBe(824)
+    expect(totalSourceReading).toBe(0)
+    // A retired source-answer cell keeps its stored assertion type, so it now classifies by that method.
+    expect(totalLibrary).toBe(834)
     expect(totalAppText).toBe(1712)
-    expect(totalAppScreenshot).toBe(422)
+    expect(totalAppScreenshot).toBe(477)
     expect(totalRealOsDevice).toBe(100)
-    expect(totalWouldBeConflicts).toBe(3)
   })
 
-  it("enforces the suffix rule for source-reading vs kept-answer-not-reverified, routes empty matching to unmapped, routes multiple assertion types to mixed, and relies on sourceAnswerForRef throw", () => {
-    const sampleRow = SOURCE_ANSWERS.find((r) => r.answers.some((a) => a.citedBlobs.length > 0))
-    if (!sampleRow || !sampleRow.answers[0]) {
-      throw new Error("Expected a sample cited source-answer row")
-    }
-    const ref = sourceAnswerKey(sampleRow.subject, sampleRow.featureId)
-    const answerStatus = sampleRow.answers[0].status
-    const missingStatus = (["supported", "unsupported", "untestable"] as const).find(
-      (s) => !sampleRow.answers.some((a) => a.status === s),
-    )
-    if (!missingStatus) {
-      throw new Error("Expected a status absent from sampleRow.answers")
-    }
-
-    const baseResult: ProbeResult = {
-      featureId: sampleRow.featureId,
-      status: answerStatus,
-      attempt: { scope: "none" },
-      tests: [],
-      reviewRef: ref,
-      reason: "Verified against source blob",
-    }
-
-    // 1. No unverified version suffix -> rank 1 source-reading
-    expect(classifyResultMethod(baseResult, sampleRow.subject, [])).toEqual({
-      kind: "method",
-      method: "source-reading",
-      confidenceRank: 1,
-      source: "review-ref",
-    })
-
-    // 2. Unverified version suffix present (including when the run's own version differs from a cross-version reviewRef row's version) -> kept-answer-not-reverified (not source-reading)
-    const crossVersionSubject = { ...sampleRow.subject, version: `${sampleRow.subject.version}-own-run` }
-    expect(
-      classifyResultMethod(
-        {
-          ...baseResult,
-          reason: `Verified against source blob; ${sourceAnswerVersionLabel(crossVersionSubject.version)}`,
-        },
-        crossVersionSubject,
-        [],
-      ),
-    ).toEqual({
-      kind: "kept-answer-not-reverified",
-      label: "kept answer, not re-verified",
-      reviewRef: ref,
-      rowAlsoHoldsCitedAnswer: true,
-    })
-
-    // 3. Stored status not among row.answers (matching.length === 0) -> unmapped (never uncited)
-    const unmappedClass = classifyResultMethod({ ...baseResult, status: missingStatus }, sampleRow.subject, [])
-    expect(unmappedClass.kind).toBe("unmapped")
-    if (unmappedClass.kind === "unmapped") {
-      expect(unmappedClass.reason).toContain(missingStatus)
-    }
-
-    // 4. Multiple distinct assertion types on one result -> mixed
+  it("routes multiple assertion types on one result to mixed", () => {
     expect(
       classifyResultMethod(
         {
@@ -622,15 +547,9 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       kind: "mixed",
       assertionTypes: ["buffer_state", "screenshot"],
     })
-
-    // 5. Unknown reviewRef throws via sourceAnswerForRef
-    const missingRef = sourceAnswerKey({ kind: "lib", id: "nonexistent", version: "0.0.0", os: "linux" }, "sgr.bold")
-    expect(() =>
-      classifyResultMethod({ ...baseResult, reviewRef: missingRef }, { kind: "lib", version: "0.0.0" }, []),
-    ).toThrow(/Missing source-answer row/)
   })
 
-  it("emits test-conflict when two qualifying results disagree (including untestable vs supported or across different ranks), settles winningMethod by highest rank only when all qualifying results agree, detects C1 disagreements via publicSourceAnswerPendingLabel, and rejects subject version/os mismatches or missing results", () => {
+  it("emits test-conflict when two qualifying results disagree (including untestable vs supported or across different ranks), settles winningMethod by highest rank only when all qualifying results agree, never makes a conflict from a stored kept-answer dispute, and rejects subject version/os mismatches or missing results", () => {
     const fAgree = "sgr.bold"
     const fConflictDiffRank = "sgr.faint"
     const fConflictUntestable = "sgr.italic"
@@ -746,14 +665,13 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       neededMethod: null,
     })
 
-    // C1 disagreement at minimumMethod "source-reading" -> findingStatus "test-conflict", runStatuses remains ["test-todo", "test-todo"], listed in wouldBeConflicts
+    // A stored "kept answers disagree" reason is a source answer, which no longer counts (operator 2026-11-03,
+    // #32246): two TEST TODO cells stay TEST TODO, never a conflict.
     expect(report.findings[fC1Disagree]).toMatchObject({
       runStatuses: ["test-todo", "test-todo"],
-      findingStatus: "test-conflict",
+      findingStatus: "test-todo",
       winningMethod: null,
-      neededMethod: null,
     })
-    expect(report.buckets.wouldBeConflicts).toEqual([fC1Disagree])
 
     // Subject version or OS mismatch throws
     expect(() =>
@@ -858,7 +776,9 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
     expect(report.needsByMethod["app-screenshot"]).toEqual([fFailure, fBelowMin])
   })
 
-  it("keeps rollupTerminalStatuses and generateApi outputs byte-identical on the stored corpus (Adjustment 5)", () => {
+  // Pinned after #32246 (the 164 stored source-answer cells read TEST TODO; every other cell's read status is
+  // unchanged) and 19adf2707 (four retained Linux app captures, 16 runs).
+  it("keeps rollupTerminalStatuses and generateApi outputs byte-identical on the 16 corpus runs (Adjustment 5)", () => {
     const rollups = storedRuns.map((loaded) => ({
       path: loaded.path.slice(contentDir.length + 1),
       sha256: loaded.sha256,
@@ -868,12 +788,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       ),
     }))
     const rollupsSha256 = createHash("sha256").update(JSON.stringify(rollups)).digest("hex")
-    const originalRollups = rollups.filter((run) => !addedRunIds.some((id) => run.path.includes(id)))
-    expect(originalRollups).toHaveLength(12)
-    expect(createHash("sha256").update(JSON.stringify(originalRollups)).digest("hex")).toBe(
-      "76777dda7e9fc0070652bd1de95e1571bdf02368afddcbda7dc5ed8abdda6169",
-    )
-    expect(rollupsSha256).toBe("c72521a9a6c39456a0d5778bd82ab8d66edcb39e27d52aaebc177782e0640b70")
+    expect(rollupsSha256).toBe("e16b3d5555d82a9ea1dc45b310999fb25a8f2191794077d2b57bd7a0e2c67120")
 
     const outDir = mkdtempSync(join(tmpdir(), "terminfo-api-verify-"))
     try {
@@ -882,8 +797,8 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       const apiEvidenceInventorySha256 = createHash("sha256")
         .update(readFileSync(join(outDir, "api", "v3", "evidence-files.json")))
         .digest("hex")
-      expect(apiDataSha256).toBe("b54547bfcf40692c0f9a38091b4b23a74a2b7e56e400325199795a7cebec9be7")
-      expect(apiEvidenceInventorySha256).toBe("eaa607062cd2a0837a60fddd000c2e67389c3db553aa83706587614a5b66a4d3")
+      expect(apiDataSha256).toBe("07d0e087c7a9772f05de1ef421ab6d5c81491ac824baf70b3321271e42ece2ee")
+      expect(apiEvidenceInventorySha256).toBe("b8915243ee16b710e874e9be2e73da10538128bac24e5483d1280f445b7e0739")
     } finally {
       // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
       // unavailable; `outDir` is this test's own mkdtempSync scratch root.

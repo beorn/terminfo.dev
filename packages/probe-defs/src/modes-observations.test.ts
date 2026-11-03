@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
+import { NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import type {
@@ -1502,13 +1503,14 @@ test("xt stack capture refuses undersized geometry before any bytes or frames", 
 })
 
 // Q2: the old presentation-only tests never exercised the library's consumed/leaked controls.
+// #32246: a consumed control with no visible effect has no same-path control in this run, so it is TEST TODO.
 test.each([
-  ["Q", 1, 0, "source-negative-review", "inconclusive"],
-  ["9 pQ", 4, 0, undefined, "unsupported"],
-  ["[9 pQ", 5, 0, undefined, "unsupported"],
-  ["Q", 1, 1, undefined, "inconclusive"],
-  ["Qchanged", 1, 0, undefined, "inconclusive"],
-] as const)("DECSSCLS library retains text %j at %i,%i", (text, x, y, branch, outcome) => {
+  ["Q", 1, 0, "todo"],
+  ["9 pQ", 4, 0, "unsupported"],
+  ["[9 pQ", 5, 0, "unsupported"],
+  ["Q", 1, 1, "inconclusive"],
+  ["Qchanged", 1, 0, "inconclusive"],
+] as const)("DECSSCLS library retains text %j at %i,%i", (text, x, y, outcome) => {
   const writes: string[] = []
   let measured = false
   const source = libProbeSource({
@@ -1525,23 +1527,15 @@ test.each([
   })
   const result = modesProbes.find((entry) => entry.id === "modes.decsscls")!.lib!(source)
   expect(writes.join("")).toContain("\x1b[9 pQ")
-  expect(result.criterionBranch).toBe(branch)
-  expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
+  expect(result.criterionBranch).toBeUndefined()
+  expect(result.tests).toBeUndefined()
   expect(JSON.parse(result.response!)).toMatchObject({ text: `${text}\n\n`, cursor: { x, y } })
-  if (branch) {
-    expect(result.tests).toEqual([
-      {
-        id: "review",
-        status: "test-todo",
-        reason:
-          "CSI 9 SP p consumed with no visible effect; this library exposes no scroll-speed readback; decided only by an independent source review of the engine's CSI dispatcher",
-      },
-    ])
-    expect(result.assertions).toMatchObject([
-      { kind: "negative", expected: "CSI 9 SP p yields observable scroll-speed state or effect" },
-    ])
+  if (outcome === "todo") {
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions ?? []).toEqual([])
   } else {
-    expect(result.tests).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
     expect(result.assertions?.length ?? 0).toBe(outcome === "unsupported" ? 1 : 0)
   }
 })
@@ -2057,6 +2051,6 @@ test("alt-screen, left-right-margin, and decsscls headless probes offset primary
     },
   })
   const decssclsResult = modesProbes.find((entry) => entry.id === "modes.decsscls")!.lib!(decssclsLibSource)
-  expect(decssclsResult.criterionBranch).toBe("source-negative-review")
-  expect(decssclsResult.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+  expect(decssclsResult.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(JSON.parse(decssclsResult.response!)).toMatchObject({ cursor: { x: 1, y: 0 } })
 })

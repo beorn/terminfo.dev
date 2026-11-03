@@ -1406,16 +1406,10 @@ test.each([
     "not-tested",
     "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554 into prompt_start.click_events (:74), while the WASM binding does not forward click_events (termless 2719cfd ghostty-wasm-api.patch:624-627) and a headless library run has no pointer surface; #30936",
   ],
-  [
-    "alacritty",
-    "not-tested",
-    "shared core encoder carries no prompt state; alacritty_terminal 0.26.0 keeps no OSC 133 prompt or click_events state (vte 0.15.0 src/ansi.rs:1348-1525 has no OSC 133 arm and routes unmatched codes to unhandled at :1332-1341,:1523); #30936",
-  ],
-  [
-    "vt100-rust",
-    "not-tested",
-    "shared core encoder carries no prompt state; vt100 0.16.2 keeps no OSC 133 prompt or click_events state (osc_dispatch src/perform.rs:198-237 handles OSC 0/1/2/52 only; the rest reaches Callbacks::unhandled_osc, which termless TerminalCallbacks lib.rs:21 leaves default); #30936",
-  ],
+  // A former source-negative site: TEST TODO with no same-path control, never a source citation (#32246).
+  ["alacritty", "not-tested", "observation not decided: no same-path control in this run"],
+  // A former source-negative site: TEST TODO with no same-path control, never a source citation (#32246).
+  ["vt100-rust", "not-tested", "observation not decided: no same-path control in this run"],
   ["xtermjs", "unsupported", null],
 ] as const)(
   "input.kitty-click-events library arm on %s: shared-encoder limit reads %s",
@@ -1448,16 +1442,12 @@ test.each([
   },
 )
 
-// @cto bbf6f77f: once auditedOscEngine qualifies the engine, ghostty pends headless-observable-review
-// (core parses click_events while WASM drops it and a lib run has no pointer surface), alacritty and
-// vt100-rust pend source-negative-review, and an unqualified identity stays plain not-tested.
+// #32246 (operator 2026-11-03): the auditedOscEngine qualification is gone. An identity that once qualified a review
+// branch (@cto bbf6f77f) now reads the same TEST TODO record as a stale one; no source review is pended.
 const qualifiedSharedEncoderIdentities = [
   [
     "ghostty",
     "ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554",
-    "headless-observable-review",
-    "WASM binding does not forward OSC 133 click_events and headless library context has no pointer surface",
-    "returned before encodeMouse; independent Untestable review required",
     {
       kind: "js",
       runtimeFormat: "wasm",
@@ -1488,9 +1478,6 @@ const qualifiedSharedEncoderIdentities = [
   [
     "alacritty",
     "alacritty_terminal 0.26.0",
-    "source-negative-review",
-    "Native engine stores no OSC 133 prompt or click_events state",
-    "returned before encodeMouse; independent source review required",
     {
       kind: "native",
       engineVersion: "0.26.0",
@@ -1522,9 +1509,6 @@ const qualifiedSharedEncoderIdentities = [
   [
     "vt100-rust",
     "vt100 0.16.2",
-    "source-negative-review",
-    "Native engine stores no OSC 133 prompt or click_events state",
-    "returned before encodeMouse; independent source review required",
     {
       kind: "native",
       engineVersion: "0.16.2",
@@ -1554,8 +1538,8 @@ const qualifiedSharedEncoderIdentities = [
 ] as const
 
 test.each(qualifiedSharedEncoderIdentities)(
-  "input.kitty-click-events library arm on %s: a qualified identity pends %s and a stale one stays not-tested",
-  (backendName, citationMarker, expectedBranch, expectedNote, expectedReviewEnding, identity, stale) => {
+  "input.kitty-click-events library arm on %s: a formerly qualified identity (%s) and a stale one read the same TEST TODO",
+  (backendName, citationMarker, identity, stale) => {
     let modesOn = false
     const source = (runtimeIdentity: unknown): LibProbeSource => {
       const base = libMouseSource({
@@ -1573,19 +1557,19 @@ test.each(qualifiedSharedEncoderIdentities)(
       } as LibProbeSource
     }
 
-    const qualified = probe("input.kitty-click-events").lib!(source({ ...identity }))
-    expect(qualified.criterionBranch, `${backendName} qualified`).toBe(expectedBranch)
-    expect(qualified.note).toBe(expectedNote)
-    expect(qualified.tests).toEqual([expect.objectContaining({ id: "review", status: "test-todo" }) as unknown])
-    expect(qualified.tests?.[0]?.reason).toContain(citationMarker)
-    expect(qualified.tests?.[0]?.reason).toContain(expectedReviewEnding)
-    expect(qualified.tests?.[0]?.reason).not.toContain("shared encoder's null")
-    expect(qualified.response).toBe(JSON.stringify({ storedClickEvents: false }))
-
-    const unqualified = probe("input.kitty-click-events").lib!(source({ ...identity, ...stale }))
-    expect(unqualified.criterionBranch, `${backendName} stale`).toBeUndefined()
-    expect(unqualified.note).toContain(citationMarker)
-    expect(unqualified.tests).toBeUndefined()
+    const formerlyQualified = probe("input.kitty-click-events").lib!(source({ ...identity }))
+    const staleResult = probe("input.kitty-click-events").lib!(source({ ...identity, ...stale }))
+    for (const result of [formerlyQualified, staleResult]) {
+      expect(result.criterionBranch, backendName).toBeUndefined()
+      expect(result.tests, backendName).toBeUndefined()
+      expect(result.observation, backendName).toBeUndefined()
+      expect(result.notTested?.reason).toBe("no-semantic-observable")
+      expect(result.response).toBe(JSON.stringify({ storedClickEvents: false }))
+    }
+    expect(staleResult).toEqual(formerlyQualified)
+    // Ghostty keeps its shared-encoder coverage limit; the former source-negative engines name no citation.
+    if (backendName === "ghostty") expect(formerlyQualified.note).toContain(citationMarker)
+    else expect(formerlyQualified.note).toBe("observation not decided: no same-path control in this run")
   },
 )
 
@@ -1669,9 +1653,9 @@ test("input.kitty-click-events library arm records supported when control passes
   ])
 })
 
-// @failure An unaudited input source negative is graded, or an audited negative stays OS-input TODO.
+// @failure A vterm input cell is graded from a source audit, or its outcome depends on source provenance (#32246).
 // @consumer The four registered library callbacks; existing app and foreign mouse paths stay covered above.
-// Exact source, drift, dirt and foreign provenance are distinct outcomes, not backend-name aliases.
+// Every vterm identity, exact or drifted, reads the same TEST TODO record: no same-path control in this run.
 test.each(
   ["input.modify-other-keys", "input.modify-other-keys-3", "input.xtest-key", "input.kitty-click-events"].flatMap(
     (id) =>
@@ -1679,7 +1663,7 @@ test.each(
         (identityCase) => [id, identityCase] as const,
       ),
   ),
-)("%s retains the %s source qualification outcome", (id, identityCase) => {
+)("%s keeps the %s vterm identity TEST TODO, never source-graded", (id, identityCase) => {
   const runtimeIdentity = {
     kind: "js",
     ...(identityCase === "other-format"
@@ -1699,47 +1683,13 @@ test.each(
   } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
   const source = { ...libMouseSource({ extensions: [] }), backendName: "vterm", runtimeIdentity }
   const result = probe(id).lib!(source)
-  if (identityCase === "exact") {
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.observation).toBeUndefined()
-    expect(result.assertions).toBeUndefined()
-    expect(result.tests).toMatchObject([
-      { id: "review", status: "test-todo", reason: expect.stringContaining("67dd3960") },
-    ])
-  } else if (identityCase === "drift") {
-    expect(result.criterionBranch).toBeUndefined()
-    expect(result.tests).toMatchObject([
-      { id: "criterion", status: "test-failure", reason: expect.stringContaining("source identity drift") },
-    ])
-    expect(result.assertions).toBeUndefined()
-  } else {
-    expect(result.criterionBranch).not.toBe("source-negative-review")
-    expect(result.observation).toBeUndefined()
-    expect(result.assertions).toBeUndefined()
-    const noObservable =
-      id === "input.kitty-click-events"
-        ? "shared core encoder carries no prompt state; vterm stores no click_events; #30936"
-        : "OS-level XTEST key injection"
-    expect(result).toEqual({
-      pass: false,
-      response: JSON.stringify(id === "input.kitty-click-events" ? { storedClickEvents: false } : { input: false }),
-      note: noObservable,
-      notTested: { reason: "no-semantic-observable", noObservable },
-      ...(id === "input.kitty-click-events"
-        ? {}
-        : {
-            criterionBranch: "os-input-review",
-            tests: [
-              {
-                id: "review",
-                status: "test-todo",
-                reason:
-                  id === "input.xtest-key"
-                    ? "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
-                    : "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
-              },
-            ],
-          }),
-    })
-  }
+  expect(result).toEqual({
+    pass: false,
+    response: JSON.stringify(id === "input.kitty-click-events" ? { storedClickEvents: false } : { input: false }),
+    note: "observation not decided: no same-path control in this run",
+    notTested: {
+      reason: "no-semantic-observable",
+      noObservable: "observation not decided: no same-path control in this run",
+    },
+  })
 })

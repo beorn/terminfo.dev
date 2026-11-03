@@ -28,6 +28,7 @@ import {
 } from "../docs/data/working-runs.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { generateApi } from "./generate-api.ts"
+import { loadRawCapture } from "../packages/admin/raw-capture.ts"
 
 function runsDir(): string {
   return mkdtempSync(join(tmpdir(), "terminfo-working-runs-"))
@@ -104,7 +105,9 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       join(root, "content/probes-libs/vterm-0.10.1-linux-a22f06ca-2505-4c0d-a518-b0b01f8bbe76.json"),
       rawPath,
     )
-    const payload = JSON.parse(readFileSync(rawPath, "utf8")) as {
+    // The committed payload predates #32246: its stored source-answer cells read TEST TODO (operator 2026-11-03),
+    // so the hourly rollup this envelope carries is over the statuses the reader reads, not the stored ones.
+    const payload = loadRawCapture(rawPath, { root, catalogIds }) as {
       results: Array<{ featureId: string; status: string }>
     }
     const summary = {

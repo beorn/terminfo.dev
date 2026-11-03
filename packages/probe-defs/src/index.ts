@@ -1,23 +1,6 @@
 export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
-export {
-  SOURCE_ANSWERS,
-  SOURCE_ANSWER_PENDING_LABELS,
-  publicSourceAnswerPendingLabel,
-  resolveSourceAnswer,
-  sourceAnswerForRef,
-  hasUnverifiedSourceAnswerSuffix,
-  sourceAnswerVersionLabel,
-  sourceAnswerKey,
-  parseSourceAnswerKey,
-  repositoryIdentity,
-} from "./source-answers.ts"
-export type {
-  SourceAnswer,
-  SourceAnswerPendingReason,
-  SourceAnswerSubject,
-  SourceAnswerInput,
-  SourceAnswerResolution,
-} from "./source-answers.ts"
+export { sourceAnswerKey, parseSourceAnswerKey } from "./source-answers.ts"
+export type { SourceAnswerSubject } from "./source-answers.ts"
 export type {
   HostInputName,
   HostRecipeName,
@@ -216,7 +199,6 @@ export {
 }
 
 export { splitDecidableBasis } from "./decidable-basis.ts"
-export { nativeHostRecipeResult } from "./native-host-audit.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
 export { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
 export type { EnvironmentGroupId } from "./environment-groups.ts"

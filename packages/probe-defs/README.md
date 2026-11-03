@@ -31,13 +31,11 @@ The [legacy presentation keys](../../docs/data/release-scope.ts) are a different
 The `CellState` value `inconclusive` denotes reviewed Untestable, `error` denotes Test failure and `untested` denotes
 Test to-do; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
 
-New pending source reviews use the existing Test to-do status. Legacy captures retain their recorded source-negative review Test failure; readers accept both pending forms. Kept source answers live in [source-answers.json](src/source-answers.json), keyed by the exact subject kind, engine, version, OS and feature. Insert new entries in stable order by subject kind, engine ID, OS and feature ID, placing each new version after that feature group's last entry. Each original retains its own status, cited blobs and provenance. Originals with equal status and normalized citation sets share one entry without losing any original reference. The row's canonical tuple travels in the existing result/test `reviewRef`; the canonical reader requires that row, rather than embedded capture-decision bytes.
+No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A grade comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is Test to-do with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. Test failure means the probe or harness broke or got data it cannot trust. Untestable is declared once per probe in code when the setup has no observable for every subject of that kind, never per engine from source. A probe never implements the feature itself.
 
-For new SGR 59 headless results, a sent SGR 58 seed with no stored underline colour offers `source-negative-review`. Unsupported requires a qualifying answer that cites the exact engine's own SGR 59 dispatch absence and its build provenance; a missing seed alone remains Test to-do. Seeded controls and stored `headless-observable-review` results keep their existing criteria.
+Every former source-review or source-negative site now returns Test to-do with the no-control reason. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as Test to-do with reason `source answer no longer counts (operator 2026-11-03)`; stored files stay unchanged.
 
-The [shared source-answer resolver](src/source-answers.ts) evaluates each original independently. Own-version fallback applies only when the run has no revision fact for a cited repository. A named equal commit is unchanged; a named different commit requires equal path blobs at both revisions. Cross-version carry requires every cited blob of that original to match the measured runtime. Agreeing qualifiers apply; disagreeing qualifiers stay Test to-do. With no qualifier, a positively different blob gives Test to-do, including at the original version; otherwise pending work names its candidate and missing repository revision. The writer’s [Node I/O owner](../run-parser/src/source-answers.ts) throws for missing checkouts, wrong remotes or incomplete history. Genuine object absence in a complete repository stays pending. Registry integrity and a native wrapper commit do not establish engine blob identity. Static answers remain at their recorded version, labelled `reviewed at <engine version>, not re-verified`; no review date is inferred. The writer discharges only the review test; actual failed criterion tests retain precedence. The canonical parser validates referenced answer identity without re-resolving or regrading the recorded result.
-
-Pending answers, external release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
+External release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 Terminal tiers describe progress: 0 missing, 1 incomplete, 2 broken and 3 done. These are distinct from the former Release 1 query/reply group and from color depth. This terminology defines no thresholds and changes no status computation.
 
@@ -56,7 +54,7 @@ undeclared or unprobed. A catalog manual/partial override takes precedence; othe
 definition, callback-arm and assertion-declaration checks determine coverage. These labels neither grade
 a result nor establish that both positive and negative controls exist. Overrides and result statuses stay unchanged.
 
-Collection retains measured records and applies eligible kept source answers during finalization. Pending answers, external release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
+Collection retains measured records. External release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 `release1-collection --collect --development --output <private-directory>` retains private collection and its actual attempts.
 The pass records private attempts, custody and coverage.
@@ -105,15 +103,9 @@ not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named Test to-do
 when no clipboard-state witness is wired; a read negative cannot measure the write.
-The audited xterm composition instead uses the fixed OSC52/rendered-X control after a clean
-qualified read negative without a witness, retaining buffer-state `source-negative-review`
-as Test to-do pending source review, never automatic Unsupported.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
 silence. Qualified silence from every control names an unmet detection prerequisite as Test to-do,
-retaining each raw window. The exact reviewed VT100/VT220 source trees at vterm9e99e4d2 with
-Termless25089207 can instead retain source-negative review when all fifteen windows contain only
-their DA1 sentinel; the kept engine/adapter-source answer establishes Unsupported. No other
-identity or observed reply enters that branch. Any control reply leaves target silence as Test failure; complete,
+retaining each raw window. Any control reply leaves target silence as Test failure; complete,
 on-time target Ps0 remains Unsupported. Unqualified, malformed and late target replies keep
 their existing criteria. Historical captures and selected results are unchanged.
 
@@ -153,11 +145,9 @@ flip is engine conflation, independently of its reply (the existing private4 iss
 Presentation remains unmeasured for reverse-video/synchronized-output, the actual
 scheme-change report remains unmeasured for2031, and smooth-scroll presentation
 remains unmeasured in the library arm. DECSSCLS feeds `CSI 9 SP p` plus a marker and
-retains screen text and cursor state. Consumption without visible effect requires an
-source review (pending Test to-do); leaked sequence text is a measured
+retains screen text and cursor state. Consumption without visible effect is Test to-do; leaked sequence text is a measured
 negative, and a changed grid or misplaced marker stays inconclusive. Consumption does
-not prove handling or scroll-speed presentation. A source that stores speed without
-readback remains a Test to-do tool gap when reviewed. Application criteria are unchanged.
+not prove handling or scroll-speed presentation. Application criteria are unchanged.
 
 Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization and the canonical reader validate this union; the collection writer currently implements live sources. Call-log format/version remain inside the referenced artifact. The current run reader accepts schema 4. This source declaration grants no capture or publication.
 
@@ -171,50 +161,37 @@ The [shared execution helpers](src/helpers.ts) initialize every catalog member a
 
 Library SGR 39/49/59 resets without a distinct colored setup retain their actual cell state on a
 named `headless-observable-review` Test to-do row. That missing prerequisite cannot establish a
-reset negative. Compound attribute resets with unshown setup attributes retain a named
-`source-negative-review` Test to-do until the complete criterion is reviewed; a partial reset
-does not decide the whole claim. Other source-negative style reviews keep their existing failures.
+reset negative. Compound attribute resets with unshown setup attributes are Test to-do; a partial reset
+does not decide the whole claim.
 
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
-no I/O and retains a `headless-observable-review` row with the API boundary and audited adapter blob for
-per-engine source review. It creates no observation or assertion. The application arm remains Test to-do until terminal-owned child readback exists.
+no I/O and retains a `headless-observable-review` row naming the API boundary.
+It creates no observation or assertion. The application arm remains Test to-do until terminal-owned child readback exists.
 
-Source audits match the shared evidence identity and declared adapter source blobs, not global
-Termless revisions or host filesystem locators. Raw replies and observed payloads do not embed
+Raw replies and observed payloads do not embed
 runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
 uses the loaded binary digest, while wrapper repository/tree metadata remains provenance.
 
-Headless collection checks declared-versus-loaded native SHA before probes, independently of source-audit
-membership. An unaudited binary still collects observed buffers and replies. A silence-dependent cell without
-its binary's source audit retains TEST TODO with `no source audit for binary <sha12>` and its raw response;
-it never borrows another binary's citation. Hourly measurement calls the existing `collectHeadlessRuns`
+Headless collection checks declared-versus-loaded native SHA before probes and collects observed
+buffers and replies. A silence-dependent cell with no same-path control is Test to-do with the
+no-control reason and its raw response. Hourly measurement calls the existing `collectHeadlessRuns`
 entry point and reads its `collection.json` through the canonical run parser, without importing review selection.
 App/hosted collection keeps its existing driver.
 
-The source-qualified OSC callbacks in [extensions.ts](src/extensions.ts) feed their exact commands
-and a rendered-X consumption control, retaining fed/cell state and applicable buffer-state assertions.
-The control proves parser consumption, not a target effect; target state remains explicitly unexposed.
-A missing X supplies no source-derived negative, and unqualified identities keep their named coverage.
-The callback-specific source reasons distinguish absent handlers, notification sinks and parsed-but-dropped
-or ignored commands. Their source qualification is not a capability declaration or a measured target effect.
-Retained source answers follow the shared resolver described above, not a new per-capture pin checklist.
+Several OSC callbacks in [extensions.ts](src/extensions.ts) feed their exact commands
+and a rendered-X consumption control, retaining fed/cell state. The control proves parser
+consumption, not a target effect; target state remains unexposed, so the cell is Test to-do
+with the no-control reason.
 
 The two highlight resets (OSC 17/117 and 19/119) query the initial colour first.
-A real colour reply follows the measured reset criterion. Only an empty initial
-reply at an audited xterm.js or Alacritty identity can enter source review, and both set and
-reset codes must belong to the same audited entry. The callback feeds the exact
-set/reset commands and an X control, retaining the query, reply, runtime and
-control state as buffer-state source evidence. The measured reply route remains
+A real colour reply follows the measured reset criterion. An empty initial reply is
+Test to-do with the no-control reason. The measured reply route remains
 query-reply evidence; these two lib arms stay temporarily undeclared under #28801
 because a single assertion-type declaration cannot state both routes.
-A rendered X retains the source-derived negative assertion, not a measured reset negative.
-A missing X retains no negative assertion or review; other identities keep the named prerequisite failure.
-Retained source answers use the shared resolver described above.
 
 OSC99 capability detection has both library and term query arms. They share the nonce/title
 criterion and never display a notification. Unqualified library capture silence stays inconclusive;
-only the existing qualified sentinel path can establish a negative reply result. Current artifact
-source audits retain their own parser/reply-path citations. Viewport hold on output measures the
+only the existing qualified sentinel path can establish a negative reply result. Viewport hold on output measures the
 library viewport through the existing scroll control and absolute position/extents. Each independent
 ordinary/synchronized phase resets the main buffer, observes its numbered seed, requires history,
 exact retention and a bottom baseline, then calibrates the first inward sign (-1 before +1) without
@@ -235,27 +212,15 @@ that the library subject has no product viewport; an absent declaration means un
 collector omits the probe source's scroll control for that declaration. Before any phase action or
 OSC720 history I/O, the viewport-hold and OSC720 callbacks retain the declaration and exact reason plus
 `runtimeIdentity` (null when missing). The missing-observable branch selects `headless-observable-review`
-with named scroll-control coverage, not a measured scroll result. OSC720 first checks its callback-specific
-source-absence qualification when the viewport is declared absent and no scroll control exists;
-that route retains its own source evidence. Retained source answers use the shared resolver described above.
+with named scroll-control coverage, not a measured scroll result.
 A declaration of absence paired with a present scroll control is an inconclusive apparatus
 contradiction, with no review row. An undeclared missing scroll control keeps ordinary named coverage.
 Scripted callback tests cover these branches and the exact two-phase arithmetic independently of
 engine versions; historical captures and grades are unchanged.
 
-ED3 and the two history-count library callbacks share an internal libvterm0.3.3 source/API review.
-It requires both the exact clean libvterm package tree and the loaded WASM hash, with the declared
-source repository, runtime format and versions. That branch performs no history reads or writes:
-the adapter reports screen extent, while retained history belongs to an embedding application.
-It retains the runtime and source citations for required independent review, without deciding
-Untestable or a negative. Matching-tree and unknown-engine identities keep their existing criteria.
-
-The libvterm history and four audited vterm geometry callbacks report a changed source tree as
-`criterion` Test failure: `source identity drift: expected <oid>, read <oid>`.
-A known engine matches identity kind, runtime format, source repository, engine version and exact
-repository-relative entry path. The entry path distinguishes vterm, vt100 and vt220 within their shared repository/version.
-Tree drift is checked before clean-tree, adapter, binary and revision qualifiers; those keep their existing roles when the tree matches.
-History fails before stub I/O; geometry retains its actual query and reply before reporting drift, whatever the reply shape.
+For libvterm 0.3.3, ED3 and the two history-count library callbacks perform no history reads or
+writes: the adapter reports screen extent, while retained history belongs to an embedding application.
+Other identities keep their existing criteria.
 
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 
@@ -280,8 +245,7 @@ and artifact-review branches keep their separate criteria and remain unmarked.
 
 A region seed whose characters arrive without their painted background or inverse attribute fails the
 claim's precondition. Live and replay retain the same `criterion` Test failure and `PreconditionFailed`
-cause with expected cells and observed values; this is no negative assertion about the feature itself
-and creates no source-review row. Replay preserves that callback-provided cause alongside its native checks.
+cause with expected cells and observed values; this is no negative assertion about the feature itself. Replay preserves that callback-provided cause alongside its native checks.
 
 The OSC 1 library criterion requires separate icon readback and a verified OSC 2 window-title control; an icon update must preserve that title. Missing icon readback remains coverage, while a failed title control is an execution failure. Both labels are restored after the attempt. Library OSC 117/119 resets reuse the color-reset helper's initial-query, distinct verified seed and reset-query sequence. Missing initial highlight readback or an unverified seed cannot establish reset support or absence; the original highlight color is restored after the attempt.
 
@@ -294,11 +258,7 @@ that prefix. The collector gives each probe its own disposable backend, so
 notification messages cannot leak into another probe. These are `buffer_state`
 observations of parser metadata, not a filesystem operation, OS notification
 or OSC 9;4 progress measurement. Missing readers keep the existing
-`headless-observable-review` tool gap; getter errors propagate. For OSC 9
-notifications without a reader, an existing exact-runtime absence audit and a
-rendered sentinel instead retain `source-negative-review` as Test to-do,
-pending source review. Vterm's progress-only OSC 9 audit cannot qualify a
-notification negative; its missing notification reader remains a tool gap.
+`headless-observable-review` tool gap; getter errors propagate.
 
 ## Evidence, capture and assertion
 
@@ -452,41 +412,32 @@ color retain `color-readback-review` with the cause. Without the getter these
 three callbacks keep their existing query path. When the `default-colors` getter
 is exposed and the initial OSC 13 or 14 pointer-color query answers nothing, OSC
 113 and 114 retain the query, empty reply and measured `fg`/`bg`/`cursor`
-default-color state on `source-negative-review` without inventing pointer slots
+default-color state as Test to-do with the no-control reason, without inventing pointer slots
 or executing reset writes. Other color features are unchanged.
 
-Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. An engine implementation gap and a binding gap are distinct; retained source answers use the shared resolver described above, without turning an unreported value into a measured negative. Positive booleans retain their supported observation path. A missing X retains an inconclusive result without a deciding assertion. A rowless, unnamed inconclusive result keeps the writer default Test failure (callback defect); only an explicit named test or review row classifies its cause. It is not reclassified as missing-observable coverage. Stored captures remain unchanged.
+Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state as Test to-do with the no-control reason; an unreported value never becomes a measured negative. Positive booleans retain their supported observation path. A missing X retains an inconclusive result without a deciding assertion. A rowless, unnamed inconclusive result keeps the writer default Test failure (callback defect); only an explicit named test or review row classifies its cause. It is not reclassified as missing-observable coverage. Stored captures remain unchanged.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
 An absent `hyperlinks` observer with valid fixture text retains named coverage (Test to-do) and raw cell/link state,
 identifying the loaded adapter path and Termless revision when measured runtime identity is available.
-The callback-specific audited identities in [extensions.ts](src/extensions.ts) instead retain
-`source-negative-review` and a negative buffer-state assertion for the same valid ALINKZ fixture.
-Qualification binds source identity and applicable loaded-artifact evidence, not a capability version.
-An unqualified runtime or broken text fixture cannot acquire that source assertion. Retained source answers
-use the shared resolver described above; they do not create new measurements in stored captures.
 Declared getters returning null report unlinked cells, so URI mismatches remain measured negatives; invalid declared getters still throw.
 
 The declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
-semantic prompts, OSC 633 and iTerm2 images), OSC 7 and notifications without their metadata readers, an unaudited absent OSC 8 URI observer,
+semantic prompts, OSC 633 and iTerm2 images), OSC 7 and notifications without their metadata readers, an absent OSC 8 URI observer,
 and checks lacking timing, host-event or rendering facilities retain their existing coverage and raw
 state on `headless-observable-review`. Each carries a required review naming its missing observable.
 Measured mode state is separate from unmeasured presentation, including scroll cadence, inverted frames
-and tearing. Retained source answers use the shared resolver described above;
-source review establishes no rendered effect or measured negative. App callbacks and real-observable
+and tearing. App callbacks and real-observable
 paths keep their criteria. Existing captures acquire no new branch or review.
 
 The collector forwards the run's measured `HeadlessRuntimeIdentity` through `LibProbeSource.runtimeIdentity`.
 It identifies the loaded adapter source, engine integrity and any loaded binary; feature-capability versions
-cannot substitute for it. Missing identity supplies no source-derived qualification.
+cannot substitute for it.
 
-The four vterm headless geometry queries (XTWINOPS 14/16, OSC 1337 ReportCellSize and OSC 776)
-select required independent review only for complete zero-dimension replies from the audited clean
-source revision and tree. That subject has no physical font/window geometry; zero is an unknown,
-not a measured size. The callback retains query, raw reply, measured runtime identity and source citation
-through the existing coverage/review shape. It remains Test to-do until own-suite review determines
-applicability. Other runtimes, malformed replies and positive dimensions retain their query criteria;
-no historical result acquires a review or changes grade.
+For the four headless geometry queries (XTWINOPS 14/16, OSC 1337 ReportCellSize and OSC 776),
+a complete zero-dimension reply has no same-path control in the run, so it is Test to-do with the
+no-control reason: zero is an unknown, not a measured size. The callback retains query, raw reply and
+measured runtime identity. Malformed replies and positive dimensions retain their query criteria.
 
 The optional sentinel member requires the executing adapter's `reply-delivery` extension. The single
 comparer in [headless-identity.ts](../probes/headless-identity.ts) checks its audited source blobs and
@@ -510,8 +461,7 @@ Conclusive library observations need nonempty raw evidence and matching positive
 
 The `semantic-prompt-source-review` library branch for OSC 133/633 marks does not invent mark observations
 or assertions. [Its callback](src/extensions.ts) distinguishes declared metadata with no reader from the
-source-review fallback. Retained source answers follow the shared resolver described above; this library
-source-only route does not establish terminal-app support or replace ordinary expected-versus-observed checks.
+former source-review fallback, which is Test to-do with the no-control reason.
 
 **Native evidence** comes through [probes/unified.ts](../terminfo.dev/src/probes/unified.ts). It retains writes, queries, ordered events and available capture/clipboard records separately from callback responses.
 
@@ -573,7 +523,7 @@ Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`.
 - Coverage becomes `test-todo`. Refusal and consumption without a deciding observation explicitly supply Test to-do tests; unanswered queries and errors explicitly supply Test failure tests. No reply, clipboard value or frame is invented to satisfy a type.
 - A measured inconclusive observation stays typed and defaults to `test-failure` unless an existing explicit criterion test selects a different status.
 
-`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference. Collection finalization records source-answer resolutions and Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without re-resolving source answers or folding its tests again; content validation uses that same reader.
+`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as Test to-do (see above); content validation uses that same reader.
 
 That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only Test to-do can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 
@@ -637,7 +587,7 @@ The [daemon client](../terminfo.dev/src/daemon-client.ts) retains HTTP responses
 
 The writer checks intended id/version against known measured values without replacing them, but sets `subject.kind` from the intended term/mux subject and retains `intendedSubject` separately. Both current source and suite version are explicit inputs; a historical declaration cannot silently become a live writer's manifest.
 
-The capture writer retains measured identity and recorded result statuses. Private diagnostic collection preserves its response and normalized snapshot outside the source repository. Pending answers remain held until the actual full Phase 1.4 merge and their existing authorization.
+The capture writer retains measured identity and recorded result statuses. Private diagnostic collection preserves its response and normalized snapshot outside the source repository.
 
 A missing instrument remains Test to-do with its reason; it does not establish a support grade. The cited suite manifest retains catalogue entry hashes in `catalogEntrySha256`.
 
@@ -647,9 +597,7 @@ The collector verifies declared blobs against tracked imported source bytes once
 Missing identity or stale declarations are named collector errors. Historical captures may omit this field.
 Source engines bind repository and tree OID with `cleanTree: true`; dirty source leaves a review pending with a named reason.
 
-The collection writer resolves eligible kept source answers against the measured subject and source identity. It retains the recorded evidence and leaves unmatched work pending. Parsing validates source-answer references without resolving them again; presentation forwards the recorded-version label from the stored result.
-
-[collected-run.ts](../admin/src/collected-run.ts) retains the private response and normalized run first. Explicit app and mux `--output` stops there. Default app, mux and server collection also calls [corpus-placement.ts](../admin/corpus-placement.ts), which checks the run, trusted suite and cited artifacts before placing them under `content/`. Release collection remains private. Collection does not authorize external release or publication; those and pending answers remain held until the actual full Phase 1.4 merge and their existing authorization.
+[collected-run.ts](../admin/src/collected-run.ts) retains the private response and normalized run first. Explicit app and mux `--output` stops there. Default app, mux and server collection also calls [corpus-placement.ts](../admin/corpus-placement.ts), which checks the run, trusted suite and cited artifacts before placing them under `content/`. Release collection remains private. Collection does not authorize external release or publication; those remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 ## How a collected run becomes a measured cell
 
@@ -674,7 +622,6 @@ rendered X is not a measured reset negative. A qualified source route for a miss
 retains the actual stimulus and before/after title state; title behavior alone is not icon support.
 Other missing observers keep their existing coverage result.
 
-The Vterm input source wrapper retains raw state and its required source-review row, without a deciding
+The Vterm input source wrapper retains raw state as Test to-do, without a deciding
 input observation or assertion: the callback performs no input event and supplies no measured input negative.
-Source-identity drift failures, unqualified-identity results and the Kitty candidate boundary remain in the
-existing callback. Retained answers use the shared resolver described above; terminal criteria are unchanged.
+Terminal criteria are unchanged.

@@ -232,28 +232,24 @@ test.each(historyCases)(
       return
     }
     if (!eligible) {
-      expect(result.criterionBranch, id).not.toBe("headless-observable-review")
+      expect(result.notTested?.noObservable ?? "", id).not.toContain(
+        "adapter exposes no retained scrollback history count",
+      )
       expect(calls, id).toBeGreaterThan(0)
       return
     }
+    // No source review grades this cell (#32246): the qualified adapter has no history reader, so it stays TEST TODO.
     expect(result, id).toMatchObject({
-      criterionBranch: "headless-observable-review",
-      notTested: { noObservable: "retained scrollback history count" },
-      tests: [{ id: "review", status: "test-todo", reason: expect.stringContaining("libvterm") }],
+      notTested: {
+        reason: "no-semantic-observable",
+        noObservable: "libvterm v0.3.3 adapter exposes no retained scrollback history count",
+      },
     })
+    expect(result.criterionBranch, id).toBeUndefined()
+    expect(result.tests, id).toBeUndefined()
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
-    expect(JSON.parse(result.response!), id).toMatchObject({
-      sourceCitation: expect.stringContaining("getScrollback"),
-    })
-    const citation = result.response!
-    if (runtimeIdentity === currentHistoryRuntime) {
-      expect(citation, id).toContain("Termless 2f73fc28")
-      expect(citation, id).toContain("flat-api.c")
-    } else {
-      expect(citation, id).toContain("Termless 6939d82b")
-      expect(citation, id).not.toContain("2f73fc28")
-    }
+    expect(result.response, id).not.toContain("sourceCitation")
     expect(result.response, id).not.toContain("runtimeIdentity")
     expect(calls, id).toBe(0)
   },

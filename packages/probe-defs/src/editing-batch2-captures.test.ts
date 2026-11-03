@@ -4,7 +4,7 @@
  *   post-edit target a reviewer could judge. A missing capture branch must not silently change
  *   the cursor-only fallback, and an undersized terminal must refuse before writing. The DECSACE
  *   parser arm must classify its recorded frame pair: a measured ignore of either extent is a
- *   negative, and a DECCARA that inverts nothing leaves the extent unobservable (#30702).
+ *   negative, and a DECCARA that inverts nothing leaves the extent TEST TODO (#30702, #32246).
  * @level l1
  * @consumer App probe pixel frames for editing operations.
  * @testonly none
@@ -14,6 +14,7 @@ import { expect, test } from "vitest"
 import { parseObservationFrames } from "@terminfo/run-parser"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
 import { captureStabilityPair } from "./region-readback.ts"
+import { NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ObservationFrame, ProbeDefinition, TermProbeSource, LibProbeSource } from "./types.ts"
@@ -479,33 +480,21 @@ test.each([
   expect(JSON.parse(result.response ?? "{}")).toEqual({ rect, stream })
 })
 
-test("editing.decsace with no inverse cell in either frame routes to source-negative-review", () => {
+// #32246: a DECCARA that inverts nothing in either frame has no same-path control, so the extent is TEST TODO with
+// the recorded frames, never a source-negative review or a negative assertion.
+test("editing.decsace with no inverse cell in either frame stays TEST TODO", () => {
   const none = "........|........"
   const result = find("editing.decsace").lib!(decsacePairSource(none, none))
   expect(result.pass).toBe(false)
-  expect(result.notTested).toBeUndefined()
-  expect(result.criterionBranch).toBe("source-negative-review")
-  expect(result.tests).toEqual([
-    {
-      id: "review",
-      status: "test-todo",
-      reason: "DECCARA not honoured, extent unobservable",
-    },
-  ])
-  expect(result.observation).toEqual({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "buffer_state",
-  })
-  expect(result.assertions).toEqual([
-    {
-      assertionType: "buffer_state",
-      kind: "negative",
-      expected:
-        "DECSACE rectangle extent confines DECCARA to the 2x2 block; stream extent reaches the rest of the reading-order span",
-      observed: result.response!,
-    },
-  ])
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(result.criterionBranch).toBeUndefined()
+  expect(result.tests).toBeUndefined()
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
+  const frames = JSON.parse(result.response ?? "{}") as { rect: { inverse: boolean }[][]; stream: unknown }
+  expect(Object.keys(frames)).toEqual(["rect", "stream"])
+  expect(frames.rect.flat().some((cell: { inverse: boolean }) => cell.inverse)).toBe(false)
+  expect(frames.stream).toEqual(frames.rect)
 })
 
 test("editing.decsace keeps any other agreeing pair inconclusive by name, never a pass", () => {

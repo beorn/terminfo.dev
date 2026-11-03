@@ -5,17 +5,16 @@ import {
   probe,
   replyFailure,
   notTestedResult,
+  NO_SAME_PATH_CONTROL,
   replyFrame,
   reviewResult,
   HEADLESS_OBSERVABLE_REVIEW,
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
-  vtermGeometryReview,
   ADAPTER_SOURCE_AUDITS,
   auditedAdapterSources,
 } from "./helpers.ts"
-import { nativeHostRecipeResult } from "./native-host-audit.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 export const TERM_FEATURES_API_CITATIONS = {
@@ -251,35 +250,21 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
         (spec.id === "device.xtwinops-14" && /^\x1b\[4;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw)) ||
         (spec.id === "device.xtwinops-16" && /^\x1b\[6;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
       if (spec.id === "device.xtwinops-14" || spec.id === "device.xtwinops-16") {
-        const review = vtermGeometryReview(
-          ctx,
-          zeroGeometry && result.observation?.outcome === "inconclusive",
-          {
-            query: spec.query,
-            raw,
-            noObservable: "Audited vterm headless subject has no font or window pixel geometry",
-            sourceCitation:
-              ctx.runtimeIdentity?.kind === "js" &&
-              ctx.runtimeIdentity.runtimeFormat === "js" &&
-              ctx.runtimeIdentity.integrity.kind === "source" &&
-              ctx.runtimeIdentity.integrity.revision === "9e99e4d23cdc606fca258b1863aa2be7ae79eed3"
-                ? "vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font/window metrics; XTWINOPS14/16 at :2610-2615 deliberately report unknown zero dimensions (#30575)"
-                : "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font/window metrics; XTWINOPS14/16 at :2610-2615 deliberately report unknown zero dimensions (#30575)",
-          },
-          result,
-        )
-        if (review) return review
+        // #32246: a zero geometry reply has no same-path control in this run, so it stays TEST TODO.
+        if (zeroGeometry && result.observation?.outcome === "inconclusive") {
+          return notTestedResult(NO_SAME_PATH_CONTROL, { query: spec.query, raw })
+        }
       }
-      return hostPixels
-        ? nativeHostRecipeResult(
-            ctx,
-            result,
-            "text-area-size",
-            "pixel-geometry",
-            spec.query,
-            outcome ? sentinelSilenceResult(outcome, spec.expected) !== null : raw === "",
-          )
-        : result
+      // #32246: an empty host-owned pixel reply on a native artifact has no same-path control in this run.
+      const empty = outcome ? sentinelSilenceResult(outcome, spec.expected) !== null : raw === ""
+      if (!hostPixels || !empty || ctx.runtimeIdentity?.kind !== "native") return result
+      // The measured cause: this run captured the empty reply while no pixel geometry was supplied.
+      return {
+        ...notTestedResult(NO_SAME_PATH_CONTROL, { query: spec.query, raw }),
+        hostRecipeCauses: [
+          { recipe: "text-area-size", cause: { kind: "observed", missing: "pixel-geometry", query: spec.query } },
+        ],
+      }
     },
     async (ctx) => {
       // Primary DA1 answers its own direct query; all other device queries use DA1 as a sentinel.
@@ -327,99 +312,6 @@ const DECRQSS_DECSCL: DeviceReply = {
   expected: 'complete DECRQSS status 1 DECSCL conformance parameters ending "p and ST',
 }
 
-/**
- * Exact loaded binary artifacts and clean JS source trees whose source implements neither CSI 22 ; 0 t (push)
- * nor CSI 23 ; 0 t (pop) (#31735, #31387, @cto 863bef67). A black-box push/pop round trip that observes
- * { original: "pushed-title", changed: "new-title", restored: "new-title" } cannot separate a broken push from a
- * broken pop on an unaudited engine, but when the loaded artifact's or pinned source tree's implementation has
- * neither operation and holds no title stack, both device.xtwinops-22 and device.xtwinops-23 are decided
- * Unsupported by source citation.
- */
-const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
-  [
-    "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
-    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1826-1839 dispatches .title_push/.title_pop; Termless 2f73fc28027b7d483e504e08edc64d1837935816 vendor/ghostty-web/ghostty-wasm-api.patch:717-719 explicitly ignores both (inner patch SHA256 2a42e7e91ef05b9a24f1809ab243964b9dd9f0f9a01d7a1bd6654b3fc1a0396e); RECEIPT.json binds core archive and actual WASM42e84af1; packages/ghostty/src/backend.ts:376-395 forwards bytes and creates no title stack",
-  ],
-  [
-    "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
-    "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:978-1544 on_csi has no final t, src/vterm_internal.h:55-174 has no title stack; Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/build/flat-api.c:139-152 holds only current title/staging and installs no unrecognised fallback; src/backend.ts:263-295 forwards native input; libvterm.wasm.receipt.json binds WASM712298af and flat API SHA2561e65f7e53d482b47fc08c5e324e26529079b5f9aa2ba0894d77608e12290c48e",
-  ],
-  [
-    "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
-    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch:713-714 (inner patch sha256 a4b6fc33, WASM 1f23e13d, #32057) keeps .title_push and .title_pop as no-ops",
-  ],
-  [
-    "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
-    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch:713-714 (inner patch sha256 a4b6fc33, WASM 1f23e13d, #32057) keeps .title_push and .title_pop as no-ops",
-  ],
-  [
-    "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
-    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch:692-693 (inner patch sha256 902c2c84, WASM ce01cd0d, #32024) keeps .title_push and .title_pop as no-ops",
-  ],
-  [
-    "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
-    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch:675-676 (inner patch sha256 70a624b6, WASM 5c38594a, 31392) keeps .title_push and .title_pop as no-ops",
-  ],
-  [
-    "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
-    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch keeps .title_push and .title_pop as no-ops",
-  ],
-  [
-    "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
-    "libvterm 0.3.3 src/state.c:978 on_csi has no case 0x74 ('t') and VTermState holds no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented",
-  ],
-  [
-    "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
-    "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:978-1543 on_csi has no final t and src/vterm_internal.h:55-174 VTermState holds no title stack; Termless37c3e9af packages/libvterm/build/flat-api.c:125-198 holds only the current title and staging fragments, and src/backend.ts:263-278 forwards native input, so neither CSI 22;0t nor CSI 23;0t is implemented",
-  ],
-  [
-    "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
-    "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:978-1543 on_csi has no final t and src/vterm_internal.h:55-174 VTermState holds no title stack; Termlessf8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be packages/libvterm/build/flat-api.c:125-203 holds only the current title and staging fragments, and src/backend.ts:263-278 forwards native input, so neither CSI 22;0t nor CSI 23;0t is implemented",
-  ],
-  [
-    "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
-    "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 6ffc0df79756fcc259d87131681641606540e512 packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores only title: String with no title stack and does not override unhandled_csi, so neither CSI 22;0t nor CSI 23;0t is implemented",
-  ],
-  [
-    "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
-    "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores title, icon_label, clipboard and paste_selector with no title stack and no unhandled_csi override, so neither CSI 22;0t nor CSI 23;0t is implemented",
-  ],
-  [
-    "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
-    "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 286fddf6632e43ccd62f9050be41ec7b2908e43e packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores title, icon_label, clipboard and paste_selector with no title stack and no unhandled_csi override, so neither CSI 22;0t nor CSI 23;0t is implemented",
-  ],
-  [
-    "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
-    "tattoy-wezterm-escape-parser 0.1.0-1 src/csi.rs:2633-2644 parses CSI 22;0t as Window::PushIconAndWindowTitle and CSI 23;0t as Window::PopIconAndWindowTitle; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:509 dispatches CSI::Window to perform_csi_window, where src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle..PushWindowTitle => {} and TerminalState at src/terminalstate/mod.rs:334-337 holds only title: String and icon_title: Option<String> with no title stack",
-  ],
-
-  [
-    "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
-    "tattoy-wezterm-escape-parser 0.1.0-1 src/csi.rs:2633-2644 parses CSI 22;0t as Window::PushIconAndWindowTitle and CSI 23;0t as Window::PopIconAndWindowTitle; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:509 dispatches CSI::Window to perform_csi_window, where src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle..PushWindowTitle => {} and TerminalState at src/terminalstate/mod.rs:334-337 holds only title: String and icon_title: Option<String> with no title stack",
-  ],
-  [
-    "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
-    "tattoy-wezterm-escape-parser 0.1.0-1 src/csi.rs:2633-2644 parses CSI 22;0t as Window::PushIconAndWindowTitle and CSI 23;0t as Window::PopIconAndWindowTitle; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:509 dispatches CSI::Window to perform_csi_window, where src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle..PushWindowTitle => {} and TerminalState at src/terminalstate/mod.rs:334-337 holds only title: String and icon_title: Option<String> with no title stack. Rebuilt artifact: termless 80dd254111ab (overline cell projection) with the same crate pins and lock sha256 8eaeab73 unchanged from the 6722b331 artifact",
-  ],
-])
-
-const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<string, { readonly sourceCitation: string }> = new Map([
-  [
-    "b941dae48b25ae8825c394750bda5245c9d93dfa",
-    {
-      sourceCitation:
-        'vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
-    },
-  ],
-  [
-    "4205f8936ad1848d1029729f3ada888cd61759a8",
-    {
-      sourceCitation:
-        'vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
-    },
-  ],
-])
-
 function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbackResult {
   ctx.feed("\x1b]2;pushed-title\x07")
   const original = ctx.getTitle()
@@ -431,46 +323,9 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
   if (original === "pushed-title" && changed === "new-title" && restored === "pushed-title") {
     return parserStateResult(true, expected, { original, changed, restored })
   }
-  const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
-  const artifactSha256 = identity !== null && "loadedBinary" in identity ? identity.loadedBinary.sha256 : undefined
-  const sourceCitation =
-    original === "pushed-title" && changed === "new-title" && restored === "new-title" && artifactSha256 !== undefined
-      ? TITLE_STACK_UNIMPLEMENTED_AUDITS.get(artifactSha256)
-      : undefined
-  if (sourceCitation !== undefined && artifactSha256 !== undefined) {
-    return parserStateResult(
-      false,
-      expected,
-      { original, changed, restored, artifactSha256, sourceCitation },
-      "negative by source citation",
-    )
-  }
-  if (
-    original === "pushed-title" &&
-    changed === "new-title" &&
-    restored === "new-title" &&
-    identity?.kind === "js" &&
-    identity.runtimeFormat === "js" &&
-    identity.engineVersion === "0.10.1" &&
-    identity.integrity.kind === "source" &&
-    identity.integrity.cleanTree &&
-    identity.integrity.repository === "git@github.com:beorn/vterm.git"
-  ) {
-    const sourceAudit = TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES.get(identity.integrity.treeOid)
-    if (sourceAudit !== undefined) {
-      return parserStateResult(
-        false,
-        expected,
-        {
-          original,
-          changed,
-          restored,
-          treeOid: identity.integrity.treeOid,
-          sourceCitation: sourceAudit.sourceCitation,
-        },
-        "negative by source citation",
-      )
-    }
+  if (original === "pushed-title" && changed === "new-title" && restored === "new-title") {
+    // Push and pop share one observation, so this run cannot tell which failed; source never decides it (#32246).
+    return notTestedResult(NO_SAME_PATH_CONTROL, { original, changed, restored })
   }
   if (original !== "pushed-title" || changed !== "new-title") {
     // No title readback means this adapter exposes no title observable, which decides neither operation

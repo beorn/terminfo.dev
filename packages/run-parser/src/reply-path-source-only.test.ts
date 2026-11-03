@@ -1,8 +1,8 @@
 /**
- * @failure A reply-path cell measured zero reply bytes and carries no assertion, so the writer refused it as
- *   "support result requires measured evidence" instead of letting its kept answer decide (@chief ef840edc).
+ * @failure A stored reply-path or source-negative cell carrying a kept source answer is read as Unsupported (or
+ *   refused) instead of TEST TODO, so a Terminfo result is again graded from source (operator 2026-11-03, #32246).
  * @level l1
- * @consumer parseProbeResults for every reply-path-audit cell in a current lib run
+ * @consumer parseProbeResults for every stored reply-path-audit / source-negative cell in a retained lib run
  * @testonly none
  */
 import { expect, it } from "vitest"
@@ -13,7 +13,7 @@ import {
   UNTESTABLE_ONLY_REVIEW_BRANCHES,
   type ProbeSuiteManifest,
 } from "@terminfo/probe-defs"
-import { parseRun } from "./index.ts"
+import { parseRun, SOURCE_ANSWER_RETIRED_REASON } from "./index.ts"
 
 const FEATURE = "extensions.kitty-graphics"
 const REF = JSON.stringify(["lib", "vt100-rust", "0.16.2", "linux", FEATURE])
@@ -100,44 +100,42 @@ const read = (status: "unsupported" | "supported", assertionType?: string, branc
     new Map([[SUITE, manifest]]),
   )
 
-it("seals a reply-path cell its kept answer decides, with no fabricated assertion", () => {
+it("reads a stored reply-path cell its kept answer used to decide as TEST TODO, refs stripped", () => {
   const parsed = read("unsupported")
-  expect(parsed.results?.[0]?.status).toBe("unsupported")
-  expect(parsed.results?.[0]?.assertionType).toBeUndefined()
+  expect(parsed.results?.[0]).toMatchObject({ status: "test-todo", reason: SOURCE_ANSWER_RETIRED_REASON })
+  expect(parsed.results?.[0]?.reviewRef).toBeUndefined()
+  expect(parsed.results?.[0]?.tests[0]).toMatchObject({ status: "test-todo", reason: SOURCE_ANSWER_RETIRED_REASON })
+  expect(parsed.results?.[0]?.tests[0]?.reviewRef).toBeUndefined()
   expect(parsed.assertions).toEqual([])
 })
 
-it("still refuses a reply-path cell that claims evidence it does not have", () => {
-  expect(() => read("supported")).toThrow("support result requires measured evidence")
-  // A declared assertion type with nothing bound is refused by the assertion reader, never accepted as proof.
-  expect(() => read("unsupported", "buffer_state")).toThrow("lacks bound negative assertion")
+it("never grades a stored source-answer cell, whatever status or assertion type it claims", () => {
+  expect(read("supported").results?.[0]?.status).toBe("test-todo")
+  expect(read("unsupported", "buffer_state").results?.[0]?.status).toBe("test-todo")
 })
 
-// @cto 93c86660 condition 2: one table for the whole rule, pinned RED first. Every row is the SAME status with
-// the SAME absent assertion, so the verdict is decided purely by which branch recorded the measurement. Adding
-// "color-readback-review" to SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES must turn the third row red — that is what
-// proves the table measures the reader and not itself (@cto 32f3d0c1 refused option (a)).
-const BRANCH_ROWS: ReadonlyArray<{ branch: string; admits: boolean; refusal?: string }> = [
+// Every row is the SAME status with the SAME kept-answer marker: the stored source answer no longer decides any
+// branch, so each reads TEST TODO with the retired reason (operator 2026-11-03, @cto 153143ff). The
+// headless-observable branch keeps its own shape rule (untestable only), which fires before any answer is read.
+const BRANCH_ROWS: ReadonlyArray<{ branch: string; refusal?: string }> = [
   {
     branch: "headless-observable-review",
-    admits: false,
     refusal: "headless-observable-review review admits only an untestable decision",
   },
-  { branch: REPLY_PATH_AUDIT_REVIEW, admits: true },
-  { branch: SOURCE_NEGATIVE_REVIEW, admits: true },
-  {
-    branch: "color-readback-review",
-    admits: false,
-    refusal: "support result requires measured evidence",
-  },
+  { branch: REPLY_PATH_AUDIT_REVIEW },
+  { branch: SOURCE_NEGATIVE_REVIEW },
+  { branch: "color-readback-review" },
 ]
 
-it("admits a source-only negative on exactly the branches that record one", () => {
+it("reads a stored kept-answer negative as TEST TODO on every branch that admits the shape", () => {
   for (const row of BRANCH_ROWS) {
-    if (row.admits) {
-      expect(read("unsupported", undefined, row.branch).results?.[0]?.status, row.branch).toBe("unsupported")
+    if (row.refusal !== undefined) {
+      expect(() => read("unsupported", undefined, row.branch), row.branch).toThrow(row.refusal)
     } else {
-      expect(() => read("unsupported", undefined, row.branch), row.branch).toThrow(row.refusal as string)
+      expect(read("unsupported", undefined, row.branch).results?.[0], row.branch).toMatchObject({
+        status: "test-todo",
+        reason: SOURCE_ANSWER_RETIRED_REASON,
+      })
     }
   }
 })

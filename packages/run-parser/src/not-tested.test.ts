@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
 import { initializeRunDraft, type CapturedRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { parseProbeResults, parseRun, parseSuiteManifest } from "./index.ts"
+import { parseProbeResults, parseRun, parseSuiteManifest, SOURCE_ANSWER_RETIRED_REASON } from "./index.ts"
 
 const catalog = ["alpha", "beta", "gamma"]
 const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -359,19 +359,34 @@ describe("collected current runs", () => {
   })
 })
 
-// Requirement: a source-only conclusion or Untestable result must cite an existing source answer;
-// normal catalogue and raw-evidence tests do not cover conclusions with no deciding observation.
+// Requirement: no result is graded from source (operator 2026-11-03, #32246). A source-only conclusion or
+// Untestable result with no stored source-answer marker is refused as lacking an observation; normal catalogue and
+// raw-evidence tests do not cover conclusions with no deciding observation.
 it.each([
   ["semantic-prompt-source-review", "supported"],
   ["semantic-prompt-source-review", "unsupported"],
-  ["source-negative-review", "unsupported"],
-  ["reply-path-audit-review", "unsupported"],
   ["os-input-review", "untestable"],
-] as const)("requires a kept source answer for %s %s", (criterionBranch, status) => {
+] as const)("refuses %s %s without a probe observation", (criterionBranch, status) => {
   const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
   const row = { featureId: "alpha", status, criterionBranch, reason: "fixture", attempt, tests: [] }
-  expect(() => parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])).toThrow(/source answer/i)
+  expect(() => parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])).toThrow(
+    `alpha ${status} requires a probe observation; a source answer no longer counts`,
+  )
 })
+
+// Requirement: a stored source-negative or reply-path cell is recognised by its branch marker and reads TEST TODO,
+// never Unsupported (operator 2026-11-03, #32246).
+it.each(["source-negative-review", "reply-path-audit-review"] as const)(
+  "reads a stored %s unsupported cell as TEST TODO",
+  (criterionBranch) => {
+    const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
+    const row = { featureId: "alpha", status: "unsupported", criterionBranch, reason: "fixture", attempt, tests: [] }
+    expect(parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])[0]).toMatchObject({
+      status: "test-todo",
+      reason: SOURCE_ANSWER_RETIRED_REASON,
+    })
+  },
+)
 
 // Requirement: a reference must resolve to its own retained answer; current fixtures only use valid tuples.
 it.each([

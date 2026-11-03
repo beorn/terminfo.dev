@@ -6,12 +6,6 @@ import {
   type ProbeSubject,
 } from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
-import {
-  SOURCE_ANSWER_PENDING_LABELS,
-  hasUnverifiedSourceAnswerSuffix,
-  publicSourceAnswerPendingLabel,
-  sourceAnswerForRef,
-} from "../../packages/probe-defs/src/source-answers.ts"
 import type { PublicVersion, PublicProbeResult, PublicContextSummary } from "./public-results.ts"
 
 /** Read a current (schema 3 or 4) published result without manufacturing any legacy observation. */
@@ -391,18 +385,11 @@ export type ResultMethodClassification =
       readonly kind: "method"
       readonly method: ProbeMethod
       readonly confidenceRank: 1 | 2 | 3 | 4 | 5
-      readonly source: "assertion" | "review-ref"
+      readonly source: "assertion"
       readonly assertionType?: AssertionType
     }
   | {
-      readonly kind: "kept-answer-not-reverified"
-      readonly label: "kept answer, not re-verified"
-      readonly reviewRef: string
-      readonly rowAlsoHoldsCitedAnswer: boolean
-    }
-  | {
       readonly kind: "unobserved-open"
-      readonly isDisagreedSourceAnswer: boolean
     }
   | {
       readonly kind: "mixed"
@@ -434,18 +421,6 @@ export interface FeatureFinding {
   readonly neededMethod: ProbeMethod | null
 }
 
-export interface KeptAnswerNotReverifiedBucket {
-  readonly label: "kept answer, not re-verified"
-  readonly count: number
-  readonly rowAlsoHoldsCitedAnswerCount: number
-  readonly rowAlsoHoldsCitedAnswerLabel: "row also holds a cited answer; not proof it applied"
-  readonly items: readonly {
-    readonly featureId: string
-    readonly reviewRef: string
-    readonly rowAlsoHoldsCitedAnswer: boolean
-  }[]
-}
-
 /**
  * Report-only method-and-findings rollup for one subject (@cto 3bfdb550).
  * Nothing in `generate-api`, the site, or `rollupTerminalStatuses` reads `findingStatus` in this batch.
@@ -458,11 +433,9 @@ export interface SubjectMethodFindingsReport {
   readonly findings: Readonly<Record<string, FeatureFinding>>
   readonly needsByMethod: Readonly<Record<ProbeMethod, readonly string[]>>
   readonly buckets: {
-    readonly keptAnswerNotReverified: KeptAnswerNotReverifiedBucket
     readonly noMinimum: readonly string[]
     readonly mixed: readonly { readonly featureId: string; readonly assertionTypes: readonly AssertionType[] }[]
     readonly unmapped: readonly { readonly featureId: string; readonly status: ProbeStatus; readonly reason: string }[]
-    readonly wouldBeConflicts: readonly string[]
   }
 }
 
@@ -502,34 +475,6 @@ export function classifyResultMethod(
   }
 
   const isDecided = result.status === "supported" || result.status === "unsupported" || result.status === "untestable"
-
-  if (isDecided && result.reviewRef) {
-    const row = sourceAnswerForRef(result.reviewRef)
-    if (!row) {
-      throw new Error(`Missing source-answer row ${result.reviewRef}`)
-    }
-    const matching = row.answers.filter((answer) => answer.status === result.status)
-    if (matching.length === 0) {
-      return {
-        kind: "unmapped",
-        reason: `reviewRef ${result.reviewRef} has no answer matching status ${result.status}`,
-      }
-    }
-    if (!hasUnverifiedSourceAnswerSuffix(result.reason, subject.version)) {
-      return {
-        kind: "method",
-        method: "source-reading",
-        confidenceRank: 1,
-        source: "review-ref",
-      }
-    }
-    return {
-      kind: "kept-answer-not-reverified",
-      label: "kept answer, not re-verified",
-      reviewRef: result.reviewRef,
-      rowAlsoHoldsCitedAnswer: matching.some((answer) => answer.citedBlobs.length > 0),
-    }
-  }
 
   const onlyType = distinctTypes.size === 1 ? [...distinctTypes][0] : undefined
   if (onlyType !== undefined) {
@@ -591,9 +536,6 @@ export function classifyResultMethod(
 
   return {
     kind: "unobserved-open",
-    isDisagreedSourceAnswer:
-      result.status === "test-todo" &&
-      publicSourceAnswerPendingLabel(result.reason) === SOURCE_ANSWER_PENDING_LABELS.disagree,
   }
 }
 
@@ -656,16 +598,9 @@ export function rollupSubjectMethodFindings(
     "app-screenshot": [],
     "real-os-device": [],
   }
-  const keptNotReverifiedItems: Array<{
-    readonly featureId: string
-    readonly reviewRef: string
-    readonly rowAlsoHoldsCitedAnswer: boolean
-  }> = []
-  let rowAlsoHoldsCitedAnswerCount = 0
   const noMinimum: string[] = []
   const mixed: Array<{ readonly featureId: string; readonly assertionTypes: readonly AssertionType[] }> = []
   const unmapped: Array<{ readonly featureId: string; readonly status: ProbeStatus; readonly reason: string }> = []
-  const wouldBeConflicts: string[] = []
 
   for (const featureId of gradedIds) {
     const cells: Array<{
@@ -673,7 +608,6 @@ export function rollupSubjectMethodFindings(
       readonly classification: ResultMethodClassification
     }> = []
 
-    let hasC1Disagreement = false
     for (const { run, map } of runResultMaps) {
       const result = map.get(featureId)
       if (!result) {
@@ -685,31 +619,11 @@ export function rollupSubjectMethodFindings(
       const classification = classifyResultMethod(result, subject, run.assertions)
       cells.push({ result, classification })
 
-      if (classification.kind === "kept-answer-not-reverified") {
-        keptNotReverifiedItems.push({
-          featureId,
-          reviewRef: classification.reviewRef,
-          rowAlsoHoldsCitedAnswer: classification.rowAlsoHoldsCitedAnswer,
-        })
-        if (classification.rowAlsoHoldsCitedAnswer) {
-          rowAlsoHoldsCitedAnswerCount++
-        }
-      } else if (classification.kind === "mixed") {
+      if (classification.kind === "mixed") {
         mixed.push({ featureId, assertionTypes: classification.assertionTypes })
       } else if (classification.kind === "unmapped") {
         unmapped.push({ featureId, status: result.status, reason: classification.reason })
       }
-
-      if (
-        result.status === "test-todo" &&
-        publicSourceAnswerPendingLabel(result.reason) === SOURCE_ANSWER_PENDING_LABELS.disagree
-      ) {
-        hasC1Disagreement = true
-      }
-    }
-
-    if (hasC1Disagreement) {
-      wouldBeConflicts.push(featureId)
     }
 
     const runStatuses = cells.map((cell) => cell.result.status)
@@ -750,7 +664,7 @@ export function rollupSubjectMethodFindings(
       const distinctDecidedStatuses = new Set(qualifyingDecided.map((cell) => cell.result.status))
       const firstQualifying = qualifyingDecided[0]
 
-      if (distinctDecidedStatuses.size > 1 || (qualifyingDecided.length === 0 && minRank === 1 && hasC1Disagreement)) {
+      if (distinctDecidedStatuses.size > 1) {
         findingStatus = "test-conflict"
       } else if (distinctDecidedStatuses.size === 1 && firstQualifying) {
         findingStatus = firstQualifying.result.status
@@ -792,17 +706,9 @@ export function rollupSubjectMethodFindings(
     findings,
     needsByMethod,
     buckets: {
-      keptAnswerNotReverified: {
-        label: "kept answer, not re-verified",
-        count: keptNotReverifiedItems.length,
-        rowAlsoHoldsCitedAnswerCount,
-        rowAlsoHoldsCitedAnswerLabel: "row also holds a cited answer; not proof it applied",
-        items: keptNotReverifiedItems,
-      },
       noMinimum,
       mixed,
       unmapped,
-      wouldBeConflicts,
     },
   }
 }

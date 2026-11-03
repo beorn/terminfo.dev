@@ -24,6 +24,7 @@ import {
   recordCollectorSelection,
   recordCollectorAttempt,
   parserStateResult,
+  NO_SAME_PATH_CONTROL,
 } from "./helpers.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
@@ -166,7 +167,16 @@ it.each([
           queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),
         } as unknown as TermProbeSource)
   expect(captures.length).toBeGreaterThan(0)
-  const expectedReplyFailure = !rawOverride || id === "extensions.osc0-icon-title"
+  // #32246: a library highlight reset whose initial query answered zero bytes has no same-path control in this run,
+  // so it is a TEST TODO coverage record, not a reply failure.
+  const highlightZeroReply =
+    kind === "lib" &&
+    !rawOverride &&
+    (id === "extensions.osc117-reset-highlight-bg" || id === "extensions.osc119-reset-highlight-fg")
+  if (highlightZeroReply) {
+    expect(callback.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  }
+  const expectedReplyFailure = (!rawOverride || id === "extensions.osc0-icon-title") && !highlightZeroReply
   if (expectedReplyFailure) expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
   else expect(callback).not.toHaveProperty("replyFailureTestIds")
   const result =
@@ -1012,22 +1022,15 @@ it("keeps the writer's note, and names the writer default only without one, when
   })
 })
 
-// #32058: 200 source-negative review rows read the generic observation word while their one review test named the
-// cause; no existing test pins the row reason of a source-review result (every assertion of the word is on the
-// observation, which keeps it).
-it("takes a source-negative review row's reason from its review sentence, not the generic observation word", () => {
+// #32246: a former source-negative review site no longer grades or reviews from source; the record is the TEST TODO
+// coverage record with no observation and no review branch, whatever its stated reason.
+it("keeps a former source-review parser-state result as a TEST TODO coverage record with no observation", () => {
   const sentence = "DECCARA not honoured, extent unobservable"
   const callback = parserStateResult(false, "DECCARA applies bold", { cells: [] }, undefined, sentence)
-  expect(callback.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-  expect(callback.observation).not.toHaveProperty("note")
-  expect(record(callback)).toMatchObject({
-    status: "test-todo",
-    reason: sentence,
-    criterionBranch: "source-negative-review",
-    tests: [{ id: "review", status: "test-todo", reason: sentence }],
-  })
-  const noted = parserStateResult(false, "DECCARA applies bold", { cells: [] }, "Extent outside the grid", sentence)
-  expect(record(noted).reason).toBe("Extent outside the grid")
+  expect(callback.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(callback.observation).toBeUndefined()
+  expect(callback.criterionBranch).toBeUndefined()
+  expect(callback.tests).toBeUndefined()
 })
 
 // The existing visual-review fixture does not exercise the measured, repairable locale prerequisite.

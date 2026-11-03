@@ -6,6 +6,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { ALL_PROBES, SEMANTIC_PROMPT_SOURCE_REVIEW } from "./index.ts"
 import type { LibProbeSource } from "./types.ts"
 
@@ -43,18 +44,8 @@ const headlessObservableFeatures = [
   ],
   ["extensions.sixel", "Declared Sixel capability does not establish rendered pixels", { declared: true }],
   [
-    "extensions.semantic-prompts",
-    "Declared semantic-prompt capability does not establish shell prompt integration",
-    { declared: true },
-  ],
-  [
     "extensions.osc7-cwd",
     "Declared OSC 7 capability does not establish working-directory metadata delivery",
-    { declared: true },
-  ],
-  [
-    "extensions.osc-633-vscode",
-    "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration",
     { declared: true },
   ],
   [
@@ -259,8 +250,8 @@ test.each(headlessStateFeatures)(
       }),
     } as unknown as LibProbeSource)
     expect(result.pass).toBe(false)
-    expect(result.notTested).toBeUndefined()
     if (expected === null) {
+      expect(result.notTested).toBeUndefined()
       expect(result.criterionBranch).toBeUndefined()
       expect(result.tests).toEqual([
         { id: "criterion", status: "test-failure", reason: expect.stringContaining(reason) },
@@ -269,21 +260,14 @@ test.each(headlessStateFeatures)(
       expect(result.assertions).toBeUndefined()
       return
     }
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toEqual([{ id: "review", status: "test-todo", reason }])
-    expect(result.observation).toEqual({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      assertionType: "buffer_state",
-    })
-    expect(result.assertions).toEqual([
-      {
-        assertionType: "buffer_state",
-        kind: "negative",
-        expected,
-        observed: result.response!,
-      },
-    ])
+    // #32246: a painted setup whose target state is unexposed has no same-path control in this run, so the cell
+    // is the TEST TODO coverage record; no source review decides it and no negative assertion is emitted.
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.criterionBranch).toBeUndefined()
+    expect(result.tests).toBeUndefined()
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect((result.response ?? "").length).toBeGreaterThan(0)
   },
 )
 
@@ -310,13 +294,12 @@ const c154SemanticMarkFeatures = [
   ["extensions.osc633-a", "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"],
   ["extensions.osc633-b", "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"],
   ["extensions.osc633-c", "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"],
-  ["extensions.osc633-d", "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"],
   ["extensions.osc633-e", "\x1b]633;E;ls -la;nonce123\x07", "OSC 633;E commandline-with-nonce mark registration"],
-  ["extensions.osc633-p", "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"],
 ] as const
 
-test("the 11 headless C154 semantic-mark features emit named coverage only after recorded home/marker/control writes and qualified cursor reads", () => {
-  expect(c154SemanticMarkFeatures).toHaveLength(11)
+test("the 9 headless C154 semantic-mark features emit named coverage only after recorded home/marker/control writes and qualified cursor reads", () => {
+  // osc633-d and osc633-p read their own reader routes (#32247), covered in extensions-contract.test.ts.
+  expect(c154SemanticMarkFeatures).toHaveLength(9)
   for (const [id, sequence, noObservable] of c154SemanticMarkFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)

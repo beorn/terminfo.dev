@@ -12,7 +12,8 @@ import {
   replyFailure,
   reviewResult,
   HEADLESS_OBSERVABLE_REVIEW,
-  SOURCE_NEGATIVE_REVIEW,
+  NO_SAME_PATH_CONTROL,
+  notTestedResult,
   sameRgb,
   sgrProbe,
   sgrCaptureFrames,
@@ -1061,8 +1062,8 @@ export const sgrProbes: ProbeDefinition[] = [
           "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color"
         const framed = baseline.char === "C" && before.char === "X" && after.char === "Y"
         if (framed && before.underlineColor == null) {
-          const reason = "No distinct colored seed for SGR 59: the setup cell exposes no explicit underline color"
-          return reviewResult(SOURCE_NEGATIVE_REVIEW, reason, reason, state)
+          // No distinct colored seed for SGR 59: the setup cell exposes no explicit underline color (#32246).
+          return notTestedResult(NO_SAME_PATH_CONTROL, state)
         }
         if (
           baseline.char !== "C" ||
