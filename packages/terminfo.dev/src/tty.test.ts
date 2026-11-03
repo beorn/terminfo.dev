@@ -23,7 +23,7 @@ import {
   type TTYTraceEvent,
   type TTYQueryTrace,
 } from "./tty.ts"
-import { sentinelGraceMs } from "@terminfo/probe-defs"
+import { extensionsProbes, sentinelGraceMs, type TermProbeSource } from "@terminfo/probe-defs"
 import { IncompleteReplay, readCallLog, type CallLog } from "viprobe"
 import { sentinelNegativeResult } from "../../probe-defs/src/helpers.ts"
 
@@ -40,6 +40,44 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
+  // Direct callback fixtures do not wrap the matched RGB reply in the real recorder.
+  it.each([
+    { id: "extensions.osc117-reset-highlight-bg", setCode: 17 },
+    { id: "extensions.osc119-reset-highlight-fg", setCode: 19 },
+  ])("retains the controlled $id callback through TTY recording", async ({ id, setCode }) => {
+    const callback = extensionsProbes.find((probe) => probe.id === id)?.term
+    if (!callback) throw new Error(`Missing terminal callback for ${id}`)
+    const queries: TTYQueryTrace[] = []
+    const events: TTYTraceEvent[] = []
+    const writes: string[] = []
+    const colours = ["1111/2222/3333", "3030/6060/9090", "1111/2222/3333"]
+    const querySequence = `\x1b]${setCode};?\x07`
+    let queryIndex = 0
+    const result = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(queries, events, () =>
+          callback({ queryWithSentinelOutcome, write: writeTTY } as TermProbeSource),
+        ),
+      {
+        write(sequence: string) {
+          writes.push(sequence)
+          if (sequence.startsWith(querySequence)) {
+            const colour = colours[queryIndex++]
+            if (!colour) throw new Error(`Unexpected highlight query ${queryIndex}`)
+            reply(`\x1b]${setCode};rgb:${colour}\x07\x1b[?1;2c`)
+          }
+          return true
+        },
+      } as unknown as NodeJS.WriteStream,
+      // Retain a decisive error without asking Vitest to print recursive recorder causes.
+    ).catch((error: Error) => ({ error: error.message }))
+    expect(result).toMatchObject({ pass: true, observation: { outcome: "supported", assertionType: "query_reply" } })
+    expect(queries).toHaveLength(3)
+    expect(queries.every((entry) => entry.reason === "reply")).toBe(true)
+    expect(events.filter((entry) => entry.kind === "query")).toHaveLength(3)
+    expect(writes.at(-1)).toBe(`\x1b]${setCode};rgb:1111/2222/3333\x07`)
+  })
+
   // A silent configured writer must retain the actual query timeout, not a guessed default.
   // Existing byte/order replay assertions did not notice when projection discarded this argument.
   it("retains the actual silent-query timeout and sent bytes through recording and replay", async () => {

@@ -494,7 +494,9 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     const reply = await ctx.queryWithSentinelOutcome(querySeq, pattern)
     const match = reply.match
     if (reply.reason !== "reply" || !match) return { reply, colour: null }
-    const [, r, g, b] = match
+    const r = match[1]
+    const g = match[2]
+    const b = match[3]
     if (r === undefined || g === undefined || b === undefined) return { reply, colour: null }
     return { reply, colour: { raw: match[0] ?? "", rgb: `${r}/${g}/${b}` } }
   }
