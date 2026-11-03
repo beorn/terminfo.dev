@@ -1791,13 +1791,14 @@ function promptMarkResult(
         endControl,
         "Command-end reader did not report the two OSC133 controls",
       )
-      if (!inert)
+      if (!inert) {
         result.observation = {
           outcome: "error",
           reason: "invalid-reply",
           assertionType: "buffer_state",
           note: "Command-end reader changed to an unexpected control status or altered earlier history",
         }
+      }
       return result
     }
   }
@@ -1837,24 +1838,25 @@ function promptMarkResult(
       secondCell.char === "X" &&
       secondCursor.x === 3 &&
       secondCursor.y === 1
+    const state = {
+      sequence,
+      secondSequence,
+      home,
+      target,
+      control,
+      cell: cell.char,
+      before,
+      first,
+      secondBefore,
+      second,
+      secondCell: secondCell.char,
+      secondCursor,
+      ...(endControl && { endControl }),
+    }
     const result = parserStateResult(
       supported,
       "Each target feed appends exactly one command-end with its exact raw status and preserves earlier history",
-      {
-        sequence,
-        secondSequence,
-        home,
-        target,
-        control,
-        cell: cell.char,
-        before,
-        first,
-        secondBefore,
-        second,
-        secondCell: secondCell.char,
-        secondCursor,
-        ...(endControl && { endControl }),
-      },
+      state,
     )
     if (osc633End) {
       const unchanged =
@@ -1862,20 +1864,22 @@ function promptMarkResult(
         JSON.stringify(first) === JSON.stringify(secondBefore) &&
         JSON.stringify(secondBefore) === JSON.stringify(second)
       const consumed = secondCell.char === "X" && secondCursor.x === 3 && secondCursor.y === 1
-      if (!consumed)
+      if (!consumed) {
         return parserStateResult(
           null,
           "Both OSC633 D target feeds have qualified screen consumption",
-          JSON.parse(result.response!),
+          state,
           "Second command-end target consumption was not qualified",
         )
-      if (!supported && !unchanged)
+      }
+      if (!supported && !unchanged) {
         result.observation = {
           outcome: "error",
           reason: "invalid-reply",
           assertionType: "buffer_state",
           note: "OSC633 D reader changed to the wrong status or altered earlier history",
         }
+      }
     }
     return result
   }
