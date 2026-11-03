@@ -5,6 +5,7 @@ import type {
   ProbeCallbackResult,
   TermProbeSource,
   LibProbeSource,
+  ProbeResult,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import {
@@ -23,6 +24,7 @@ import {
   type SgrCaptureFixture,
   type SgrReadback,
   probe,
+  finalizeProbeResult,
 } from "./helpers.ts"
 import { kittyWait } from "./kitty-capture.ts"
 import { captureRegionVerdict, cropPositionRefusal } from "./region-readback.ts"
@@ -1141,3 +1143,33 @@ export const sgrProbes: ProbeDefinition[] = [
 
   resetProbe("sgr.reset", "\x1b[1;3;4m", "\x1b[0m", ["bold", "italic", "underline"]),
 ]
+
+const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
+
+/** Apply the rendered-effect requirement after execution, without changing the measured evidence. */
+export function finalizeSgrResult(
+  recorded: ProbeResult,
+  target: { kind: "term" | "mux" | "lib"; id: string; rendering?: "render-capable" | "parser-only" },
+  captures: readonly ObservationFrame[],
+): ProbeResult {
+  if (!visualSgrIds.has(recorded.featureId) || (recorded.status !== "supported" && recorded.status !== "unsupported")) {
+    return recorded
+  }
+  if (target.kind === "lib" && target.rendering === "parser-only") return recorded
+  const undeclared = target.kind === "lib" && target.rendering !== "render-capable"
+  const hasScreenshot =
+    recorded.screenshotRef !== undefined &&
+    captures.some((frame) => frame.kind !== "text-cells" && frame.ref === recorded.screenshotRef)
+  if (!undeclared && hasScreenshot) return recorded
+  const reason = undeclared
+    ? `rendering declaration missing for library ${target.id} in @termless/core/backends.json`
+    : "visual effect not observed in this run"
+  return finalizeProbeResult({
+    ...recorded,
+    reason,
+    tests: [
+      ...recorded.tests,
+      { id: "visual", status: "test-todo", attempt: { scope: "none" }, assertionRefs: [], reason },
+    ],
+  })
+}

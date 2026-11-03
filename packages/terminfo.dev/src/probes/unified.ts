@@ -10,8 +10,7 @@ import {
   ALL_PROBES as PROBE_DEFS,
   resolveProbeIds,
   recordExecutedProbe,
-  finalizeProbeResult,
-  sgrProbes,
+  finalizeSgrResult,
   withReplyFailureEvidence,
   type ProbeResult,
   type RunDraft,
@@ -53,8 +52,6 @@ import {
   type OwnedTerminal,
 } from "../owned-terminal.ts"
 import { bindReceiptToRun, readDisposableReceipt, type DisposableReceipt } from "../disposable-receipt.ts"
-
-const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
 
 /**
  * Resolve the disposable-ownership receipt once per batch (27832 amendment 1). No receipt is
@@ -870,31 +867,15 @@ export async function runProbeBatch(
         rawReplyRef: probe.id,
         criterionBranch,
       })
-      // A query/parser verdict cannot observe the visual effect. Only this feature's
-      // screenshot evidence in this batch can satisfy the missing-visual requirement.
-      const hasScreenshot =
-        (recorded.screenshotRef !== undefined && batch.screenshotRefs.includes(recorded.screenshotRef)) ||
-        batch.assertions.some(
-          (assertion) => assertion.featureId === probe.id && assertion.assertionType === "screenshot",
-        )
-      if (
-        options.subject?.kind !== "lib" &&
-        visualSgrIds.has(probe.id) &&
-        (recorded.status === "supported" || recorded.status === "unsupported") &&
-        !hasScreenshot
-      ) {
-        const reason = "visual effect not observed in this run"
-        batch.results[index] = finalizeProbeResult({
-          ...recorded,
-          reason,
-          tests: [
-            ...recorded.tests,
-            { id: "visual", status: "test-todo", attempt: { scope: "none" }, assertionRefs: [], reason },
-          ],
-        })
-      } else {
-        batch.results[index] = recorded
-      }
+      // This owner runs app/mux callbacks. Only frames captured by this probe can witness its effect.
+      batch.results[index] =
+        options.subject?.kind === "term" || options.subject?.kind === "mux"
+          ? finalizeSgrResult(
+              recorded,
+              options.subject,
+              captures.map(({ frame }) => frame),
+            )
+          : recorded
       options.onCheckpoint?.(batch)
     }
   }
