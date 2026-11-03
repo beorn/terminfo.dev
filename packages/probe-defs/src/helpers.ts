@@ -717,7 +717,11 @@ export async function cursorStyleReadbackDecision(
  */
 const SGR_CODE_ALIASES: Readonly<Record<string, number>> = { "4:1": 4, "4:2": 21 }
 
-/** Decide an SGR claim from the terminal own DECRQSS report. */
+/**
+ * Decide an SGR claim from the terminal own DECRQSS report. A style-qualified underline claim
+ * needs its own style token in the reply: every other reply is a coverage record (PROBE TODO),
+ * never a negative, because a collapsed or omitted style cannot establish the requested style.
+ */
 export function sgrReadbackResult(
   id: string,
   sequence: string,
@@ -769,6 +773,19 @@ export function sgrReadbackResult(
     }
   }
   const observed = state.length === 0 ? "0" : state.join(";")
+  // SGR 21 is double underline's legacy code; 4:2 is the same style in the colon form. A reply
+  // that names none of the requested styles leaves the claim unobserved (@cto 37277973, option i).
+  const underlineStyles = (readback.requireTokens ?? []).filter((token) => /^4:[1-5]$/.test(token))
+  const doubleStyle = readback.require.includes(21)
+  const styleReported =
+    underlineStyles.some((token) => parameters.includes(token)) ||
+    (doubleStyle && (parameters.includes("21") || parameters.includes("4:2")))
+  if ((underlineStyles.length > 0 || doubleStyle) && !styleReported) {
+    const wanted = [...underlineStyles, ...(doubleStyle ? ["21"] : [])].join(" or ")
+    return notTestedResult(`DECRQSS reported ${observed} without the requested underline style ${wanted}`, {
+      sgr: observed,
+    })
+  }
   if (unmeasured) {
     return {
       pass: false,
