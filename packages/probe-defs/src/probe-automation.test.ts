@@ -278,6 +278,54 @@ describe("native host recipe callers", () => {
     expect(silent.observation).toBeUndefined()
     expect(run("reply").hostRecipeCauses).toBeUndefined()
   })
+
+  // #32246 P0 specimen: hourly run 2026-11-03T19-34-04-077Z draft 4aca132b refused WezTerm finalization because the
+  // native fbb1ac47 addon (no audit-table row) left every OSC 52 recipe with causes []. Replaying its actual captures
+  // (empty target reply, then the DA1 control reply) through the production callbacks must name the observed cause,
+  // whatever the binary hash (@dev/4 RED 1178).
+  const actualWezterm: NonNullable<LibProbeSource["runtimeIdentity"]> = {
+    kind: "native",
+    engineVersion: "0.1.0-fork.5",
+    adapterVersion: "0.10.2",
+    termlessRevision: "e896bb13424c1ee938ebcb62f7368fbdfed655d5",
+    loadedBinary: {
+      path: "vendor/termless/packages/wezterm/termless-wezterm.node",
+      sha256: "fbb1ac47ff22bb7a526a8c8c861d5ad5c137bda770f25f31ad7c451f176c3c5f",
+    },
+    provenance: {
+      sha256: "fbb1ac47ff22bb7a526a8c8c861d5ad5c137bda770f25f31ad7c451f176c3c5f",
+      sourceCommit: "02e71e5a4643b63f3bd1f2f3c2cd928f3ae4b9bd",
+      buildHash: "eafb9b670d1bf500f5234f3f7985c684c02d5f541a2ffc1e90dea92c85504895",
+      toolchain: "rustc 1.94.0",
+      lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
+    },
+  }
+  test.each(["extensions.osc52-clipboard", "extensions.osc52-write", "extensions.osc52-read"])(
+    "%s names the observed cause for the actual fbb1ac47 WezTerm silence",
+    (id) => {
+      const query = "\x1b]52;c;?\x07"
+      const da1 = "\x1b[?65;4;6;18;22;52c"
+      const result = probe(id).lib!(
+        context({
+          runtimeIdentity: actualWezterm,
+          feedCapture: (sequence) => (sequence === "\x1b[c" ? da1 : ""),
+          queryWithSentinelOutcome: (sequence) => ({
+            match: null,
+            reason: "sentinel" as const,
+            raw: sequence === query ? da1 : "",
+            rawBase64: "",
+            sentinel: { atMs: 0, graceMs: 250 },
+          }),
+        }),
+      )
+      expect(result.hostRecipeCauses).toContainEqual({
+        recipe: "clipboard-load",
+        cause: { kind: "observed", missing: "clipboard-read-permission", query },
+      })
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.criterionBranch).toBeUndefined()
+    },
+  )
 })
 
 /**
