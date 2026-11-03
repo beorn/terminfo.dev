@@ -194,7 +194,7 @@ const absentOscBatch = [
         { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
         { path: "packages/vt100-rust/src/backend.ts", blobOid: "9b3477c0fedf8586430781e8f4d17019569af98b" },
       ],
-      codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777],
+      codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777, 1337],
     },
     {
       engine: "kitty",
@@ -245,6 +245,7 @@ test.each(absentOscBatch)(
       666: "osc666-termprop",
       710: "osc710-font-normal",
       777: "osc777-notify",
+      1337: "iterm2-images",
     }
     for (const code of codes) {
       const definition = callback(`extensions.${features[code]}`)
@@ -338,6 +339,7 @@ test("vt100Rust OSC source review lapses on the pre-mouse-binding artifact and b
     666: "osc666-termprop",
     710: "osc710-font-normal",
     777: "osc777-notify",
+    1337: "iterm2-images",
   }
   for (const code of vt100.codes) {
     const run = (runtimeIdentity: HeadlessRuntimeIdentity) =>
@@ -351,6 +353,23 @@ test("vt100Rust OSC source review lapses on the pre-mouse-binding artifact and b
     expect(run(oldBlob).criterionBranch, String(code)).not.toBe("source-negative-review")
     expect(run(oldBinary).criterionBranch, String(code)).not.toBe("source-negative-review")
   }
+})
+
+// #32225: OSC 1337 inline images reach the source-negative review only on an engine whose audited source drops
+// OSC 1337. A declared-supporting engine without that audit keeps the observable review and never carries a
+// negative assertion, so a supporting engine can never be read as Unsupported from this route.
+test("iterm2-images keeps the observable review for a declared-supporting engine without an OSC 1337 audit", () => {
+  const vt100 = absentOscBatch.find((entry) => entry.engine === "vt100Rust")!
+  const fed: string[] = []
+  const supporting = callback("extensions.iterm2-images").lib!({
+    runtimeIdentity: { ...vt100.identity, engineVersion: "supporting-fake" },
+    capabilities: { extensions: new Set(["iterm2Images"]) },
+    feed: (data: string) => void fed.push(data),
+    getCell: () => ({ char: "X" }),
+  } as unknown as LibProbeSource)
+  expect(supporting.criterionBranch).toBe("headless-observable-review")
+  expect(supporting.assertions).toBeUndefined()
+  expect(fed).toEqual([])
 })
 
 // #32087: kitty's provenance.sourceCommit is kitty's own upstream commit, so a Termless pin move
