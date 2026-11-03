@@ -703,8 +703,8 @@ const SGR_CODE_ALIASES: Readonly<Record<string, number>> = { "4:1": 4, "4:2": 21
 
 /**
  * Decide an SGR claim from the terminal own DECRQSS report. A style-qualified underline claim
- * needs its own style token in the reply: every other reply is a coverage record (PROBE TODO),
- * never a negative, because a collapsed or omitted style cannot establish the requested style.
+ * needs its own style token in a valid reply. A collapsed or omitted style is coverage (PROBE
+ * TODO), never a negative; malformed replies remain failed observations.
  */
 export function sgrReadbackResult(
   id: string,
