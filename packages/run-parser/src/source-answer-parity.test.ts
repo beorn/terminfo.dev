@@ -132,12 +132,13 @@ describe("kept answers against every current committed run", () => {
     // No committed run reads the engine core today, and no ghostty checkout exists here, so every cell above
     // resolved without one. The gate that keeps that true is the wasm output: a js-source run names no binary.
     for (const { name, run } of runs.filter((entry) => entry.name !== GHOSTTY_RUN)) {
-      if (!run.runtimeIdentity || !("loadedBinary" in run.runtimeIdentity))
+      if (!run.runtimeIdentity || !("loadedBinary" in run.runtimeIdentity)) {
         expect(readEngineReceipt(run.runtimeIdentity), name).toBeUndefined()
-      else
+      } else {
         expect(readEngineReceipt(run.runtimeIdentity)?.outputs["ghostty-vt.wasm"], name).not.toBe(
           run.runtimeIdentity.loadedBinary.sha256,
         )
+      }
     }
     const cited = new Set(
       SOURCE_ANSWERS.flatMap((row) =>
