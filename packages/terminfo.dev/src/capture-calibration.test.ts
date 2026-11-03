@@ -91,6 +91,89 @@ function frame(size = 12): CapturedFrame {
 }
 const blank = frame()
 
+// Requirement: use only a visibly effective basic or reverse paint with measured colors;
+// existing fixtures use fixed RGB and cannot expose a mux that ignores truecolor.
+test.each(["basic", "reverse", "neither"] as const)(
+  "calibration chooses witnessed %s paint with a nonstandard palette",
+  async (available) => {
+    const writes: string[] = []
+    const labels: string[] = []
+    const captures: Array<{ label: string; started: number; deadline: number }> = []
+    let now = 0
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now)
+    const paletteFrame = (stage: "solid" | "columns" | "rows") => {
+      const result = rasterFrame(stage)
+      for (let i = 0; i < result.rgba.length; i += 4) {
+        if (result.rgba[i] === 255 && result.rgba[i + 2] === 255) result.rgba.set([173, 47, 199], i)
+        else if (result.rgba[i] === 255) result.rgba.set([121, 38, 17], i)
+        else if ((i / 4) % 12 >= 2 && (i / 4) % 12 < 10 && Math.floor(i / 48) >= 2 && Math.floor(i / 48) < 10)
+          result.rgba.set([13, 24, 31], i)
+      }
+      return result
+    }
+    try {
+      const result = calibrateCaptureOrigin({
+        ctx: {
+          rows: 4,
+          cols: 4,
+          write: (text: string) => writes.push(text),
+          queryWithSentinelOutcome: async () => modeOutcome("1"),
+          queryMode: async () => "set",
+        } as unknown as TermProbeSource,
+        timeoutMs: 100,
+        captureRaw: async (label, deadline) => {
+          labels.push(label)
+          captures.push({ label, started: now, deadline })
+          const isReverse = writes.some((write) => write.includes("\x1b[7m"))
+          if (
+            label.includes("solid grid paint") &&
+            (available === "neither" || (available === "reverse" && !isReverse))
+          ) {
+            now += 40
+            return blank
+          }
+          now++
+          if (label.includes("solid grid paint")) return paletteFrame("solid")
+          if (label.includes("column edge paint")) return paletteFrame("columns")
+          if (label.includes("row edge paint")) return paletteFrame("rows")
+          return blank
+        },
+      })
+      if (available === "neither") {
+        await expect(result).rejects.toMatchObject({
+          name: "CaptureCalibrationRefused",
+          message: expect.stringContaining("basic: not observed; reverse: not observed"),
+        })
+      } else {
+        await expect(result).resolves.toMatchObject({
+          pixelGeometry: geometry,
+          basis: expect.stringContaining(
+            available === "basic" ? "basic: observed" : "basic: not observed, reverse: observed",
+          ),
+        })
+      }
+      expect(writes.some((write) => /\x1b\[4[0-7]m/.test(write))).toBe(true)
+      expect(writes.some((write) => write.includes("\x1b[7m"))).toBe(available !== "basic")
+      expect(writes.join("")).not.toContain("\x1b[48;2;")
+      expect(labels.filter((label) => label.includes("restore grid paint"))).toHaveLength(2)
+      const basic = captures.filter(({ label }) => label.includes("solid grid paint basic"))
+      const reverse = captures.filter(({ label }) => label.includes("solid grid paint reverse"))
+      expect(basic.every(({ started, deadline }) => started < deadline)).toBe(true)
+      if (available !== "basic") {
+        expect(reverse.length).toBeGreaterThan(0)
+        expect(writes.findIndex((write) => write.includes("\x1b[7m"))).toBeGreaterThan(
+          writes.findIndex((write) => /\x1b\[4[0-7]m/.test(write)),
+        )
+        expect(reverse[0]!.started).toBeGreaterThanOrEqual(basic[0]!.deadline)
+        expect(reverse[0]!.deadline).toBeGreaterThan(basic[0]!.deadline)
+        expect(reverse.every(({ started, deadline }) => started < deadline)).toBe(true)
+      }
+    } finally {
+      clock.mockRestore()
+    }
+  },
+)
+
 // The late 3px/1px pair has the same outer width and evades a two-cell sample.
 function rasterFrame(stage: "solid" | "columns" | "rows", uneven = false): CapturedFrame {
   const result = frame()
@@ -356,7 +439,7 @@ test("a pre-existing witness cannot be used as the requested paint", async () =>
   await expect(
     calibration({ frames: { "before grid paint": [witness, witness], "restore grid paint": [witness, witness] } })
       .promise,
-  ).rejects.toThrow(/already visible/)
+  ).rejects.toThrow(/paint not observed/)
 })
 
 test("the normalized blank is confirmed twice before the first calibration paint", async () => {
@@ -457,20 +540,23 @@ test.each(["set", "reset"] as const)(
   },
 )
 
-test.each(["adapter I/O", "dimensions changed", "invalid decoded frame"])(
-  "solid-paint %s stays a fatal apparatus error",
-  async (message) => {
-    const failure = new Error(message)
-    const run = calibration({
-      beforeCapture: (label) => {
-        if (label.includes("solid grid paint")) throw failure
-      },
-    })
-    await expect(run.promise).rejects.toBe(failure)
-    expect(failure.name).not.toBe("CaptureCalibrationRefused")
-    expect(run.reads.get("restore grid paint")).toBe(2)
-  },
-)
+test.each([
+  "adapter I/O",
+  "dimensions changed",
+  "invalid decoded frame",
+  "Capture command xdotool deadline expired before invocation",
+])("solid-paint %s stays a fatal apparatus error", async (message) => {
+  const failure = new Error(message)
+  const run = calibration({
+    beforeCapture: (label) => {
+      if (label.includes("solid grid paint")) throw failure
+    },
+  })
+  await expect(run.promise).rejects.toBe(failure)
+  expect(failure.name).not.toBe("CaptureCalibrationRefused")
+  expect(run.writes.join("")).not.toContain("\x1b[7m")
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
 
 test("a failed restore retains the original grid error and the restoration error", async () => {
   const run = calibration({
