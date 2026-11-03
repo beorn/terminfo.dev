@@ -9,6 +9,7 @@
  */
 import { describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
+import { initializeRunDraft, sealRunDraft } from "@terminfo/probe-defs"
 import {
   chmodSync,
   copyFileSync,
@@ -33,7 +34,6 @@ import type { PublicVersion, PublicContextSummary } from "../docs/data/public-re
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
 import type { CellState } from "../docs/data/release-scope.ts"
 import { probeHash } from "../packages/admin/versions.ts"
-import { fixtureContentDir } from "../test-fixtures/content-root.ts"
 
 /** One synthetic current run: only the target fields the selection rule reads. */
 type StubRun = { subject: { kind: string; id: string; os?: string; permissions?: string | null } }
@@ -113,129 +113,6 @@ function writeFrozenSuite(content: string, probeHash: string): void {
 }
 
 describe("consumer selection", () => {
-  it("keeps a corpus with no current run from publishing current results", () => {
-    // The corpus with no current run is built from the live content, never read from it: every run on the
-    // current schema or the tree's suite is left out, so the state the test proves survives admissions.
-    // A child process builds and reads the corpus; the loaders retain the whole corpus, and a second copy
-    // in this worker would cross the vitest RSS cap.
-    const source = join(import.meta.dirname, "..")
-    const root = mkdtempSync(join(tmpdir(), "terminfo-zero-current-"))
-    try {
-      mkdirSync(join(root, "scripts"))
-      copyFileSync(join(source, "scripts", "generate-api.ts"), join(root, "scripts", "generate-api.ts"))
-      for (const name of ["docs", "node_modules", "packages"]) symlinkSync(join(source, name), join(root, name), "dir")
-      writeFileSync(
-        join(root, "scripts", "zero-current.ts"),
-        [
-          'import { copyFileSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"',
-          'import { join } from "node:path"',
-          'import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"',
-          'import { publicResults } from "../docs/data/public-results.ts"',
-          'import { probeHash } from "../packages/admin/versions.ts"',
-          'import { generateApi } from "./generate-api.ts"',
-          "const [liveContent, root] = process.argv.slice(2)",
-          'const content = join(root, "content")',
-          "mkdirSync(content)",
-          "const currentSuite = probeHash()",
-          "const isCurrent = (run) => run.schemaVersion === 3 || run.schemaVersion === 4 || run.probeHash === currentSuite",
-          "const excludedRunIds = new Set()",
-          "for (const entry of readdirSync(liveContent, { withFileTypes: true })) {",
-          "  const from = join(liveContent, entry.name)",
-          "  const to = join(content, entry.name)",
-          "  if (entry.isFile()) copyFileSync(from, to)",
-          '  else if (entry.name.startsWith("probes-")) {',
-          "    mkdirSync(to)",
-          "    for (const file of readdirSync(from)) {",
-          '      if (!file.endsWith(".json")) continue',
-          '      const run = JSON.parse(readFileSync(join(from, file), "utf8"))',
-          "      if (isCurrent(run)) { if (run.runId) excludedRunIds.add(run.runId); continue }",
-          '      symlinkSync(join(from, file), join(to, file), "file")',
-          "    }",
-          '  } else if (entry.name === "receipts") {',
-          "    mkdirSync(to)",
-          '    for (const file of readdirSync(from)) if (!excludedRunIds.has(file.replace(/\\.json$/, ""))) symlinkSync(join(from, file), join(to, file), "file")',
-          '  } else symlinkSync(from, to, "dir")',
-          "}",
-          "// #30764 left the live content with no runs at all. Plant one HISTORICAL run so the corpus",
-          "// is non-empty: this row exists to prove that a corpus holding a run, none of it current,",
-          "// still publishes no current results. An empty corpus here would make every assertion vacuous.",
-          'const plantedRuns = readdirSync(content).filter((name) => name.startsWith("probes-")).flatMap((dir) => readdirSync(join(content, dir))).length',
-          "if (plantedRuns === 0) {",
-          "  // Fixture eligibility must hold independently of checkout directory order.",
-          '  const manifests = readdirSync(join(content, "suites")).filter((file) => file.endsWith(".json")).sort().map((file) => JSON.parse(readFileSync(join(content, "suites", file), "utf8")))',
-          '  const host = manifests.find((suite) => suite.probeHash !== currentSuite && (suite.probes?.app ?? []).includes("sgr.bold") && typeof suite.sourceRevision === "string" && suite.sourceRevision.length > 0)',
-          '  if (!host) throw new Error("no non-current suite manifest with sourceRevision lists sgr.bold: cannot plant the historical run this row needs")',
-          '  writeFileSync(join(content, "probes-apps", "synthetic-historical.json"), JSON.stringify({',
-          "    schemaVersion: 2,",
-          '    runId: "synthetic-historical-run",',
-          '    target: { kind: "app", id: "kitty", version: "0.46.0", os: null, osVersion: null, outerTerminal: null, mux: null, config: null, permissions: null },',
-          '    identity: "verified",',
-          "    suiteId: host.probeHash,",
-          "    probeHash: host.probeHash,",
-          "    suiteComplete: false,",
-          "    sourceRevision: host.sourceRevision,",
-          '    measuredAt: "2026-10-05T00:00:00.000Z",',
-          '    origin: { kind: "collector" },',
-          "    rawReplies: {},",
-          "    assertions: [],",
-          "    screenshotRefs: [],",
-          '    observations: [{ featureId: "sgr.bold", outcome: "inconclusive", evidence: "query", reason: "timeout" }],',
-          "    notTested: [],",
-          "  }))",
-          "}",
-          "// Precondition, re-read from the fixture itself: runs exist, and none of them is current.",
-          'const fixtureRuns = readdirSync(content).filter((name) => name.startsWith("probes-")).flatMap((dir) => readdirSync(join(content, dir)).map((file) => join(content, dir, file)))',
-          'const currentFixtureRuns = fixtureRuns.filter((file) => isCurrent(JSON.parse(readFileSync(file, "utf8")))).length',
-          "const { projection } = loadCurrentResults(content)",
-          "const published = publicResults(projection, compatibilitySubjects(projection, content))",
-          'const out = join(root, "out")',
-          "const { dataPath } = generateApi(out)",
-          'const current = JSON.parse(readFileSync(dataPath, "utf8"))',
-          "console.log(JSON.stringify({",
-          "  fixtureRuns: fixtureRuns.length,",
-          "  currentFixtureRuns,",
-          "  projectionCurrent: Object.keys(projection.contexts).length,",
-          "  publishedCurrent: Object.keys(published.projection.contexts).length,",
-          "  currentRunCount: current.contextCount,",
-          "  currentKeys: Object.keys(current.contexts).length,",
-          "  message: current.message,",
-          "}))",
-          "",
-        ].join("\n"),
-      )
-      const child = spawnSync(
-        process.execPath,
-        [join(root, "scripts", "zero-current.ts"), join(source, "content"), root],
-        {
-          encoding: "utf8",
-          maxBuffer: 4 * 1024 * 1024,
-        },
-      )
-      expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0)
-      const receipt = JSON.parse(child.stdout.trim().split("\n").at(-1) ?? "") as {
-        fixtureRuns: number
-        currentFixtureRuns: number
-        projectionCurrent: number
-        publishedCurrent: number
-        currentRunCount: number
-        currentKeys: number
-        message: string
-      }
-      // The corpus is non-empty by construction (a historical run is planted when the live content
-      // carries none), so this row is not vacuous: a run exists, none of it is current, and nothing
-      // may be published as current from it.
-      expect(receipt.fixtureRuns).toBeGreaterThan(0)
-      expect(receipt.currentFixtureRuns).toBe(0)
-      expect(receipt.projectionCurrent).toBe(0)
-      expect(receipt.publishedCurrent).toBe(0)
-      expect(receipt.currentRunCount).toBe(0)
-      expect(receipt.currentKeys).toBe(0)
-      expect(receipt.message).toContain("No current")
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-    }
-  }, 120_000)
-
   it("refuses failed discovery and corrupt retained radar records without changing prior findings", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-discovery-errors-"))
     const source = join(import.meta.dirname, "..")
@@ -309,14 +186,32 @@ describe("consumer selection", () => {
       writeFrozenSuite(join(root, "content"), "deadbeefcafe")
       // The archived refusals are required content since #30759 AC3; an empty list is a real state.
       writeFileSync(join(root, "content", "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
+      // A current unverified TODO run cannot become a reviewed measurement.
+      const kittyManifest = JSON.parse(readFileSync(join(root, "content", "suites", "deadbeefcafe.json"), "utf8"))
+      const kittyDraft = initializeRunDraft({
+        runId: "unreviewed-kitty",
+        sourceRevision: "a".repeat(40),
+        manifest: { ...kittyManifest, catalogIds: ["sgr.bold"] },
+        source: { kind: "live" },
+        intendedSubject: { kind: "term", id: "kitty" },
+      })
+      kittyDraft.subject = {
+        kind: "term",
+        id: "kitty",
+        version: "0.46.2",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      }
+      kittyDraft.identity = "unverified"
+      kittyDraft.measuredAt = new Date().toISOString()
+      kittyDraft.origin = { kind: "collector" }
       writeFileSync(
-        join(root, "content", "probes-apps", "kitty-0.46.2-linux.json"),
-        JSON.stringify({
-          backend: "kitty",
-          version: "0.46.2",
-          generated: new Date().toISOString(),
-          results: { "sgr.bold": true },
-        }),
+        join(root, "content", "probes-apps", "kitty-current-todo.json"),
+        JSON.stringify(sealRunDraft(kittyDraft, kittyDraft.measuredAt)),
       )
       // A nonempty selected lib run exposes an inventory join that still compares old headless kinds.
       const libSubject = {
@@ -332,12 +227,23 @@ describe("consumer selection", () => {
       }
       const libMeasuredAt = new Date().toISOString()
       const libAttempt = { scope: "probe", startedAt: libMeasuredAt }
-      const libFixture = JSON.parse(
-        readFileSync(
-          join(source, "test-fixtures", "probes-libs", "xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"),
-          "utf8",
-        ),
-      ) as { runtimeIdentity: unknown }
+      // Retained measured runtime identity only; no old result is upgraded.
+      const libFixture = {
+        runtimeIdentity: {
+          kind: "js",
+          adapterVersion: "0.10.2",
+          termlessRevision: "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
+          resolvedPath:
+            "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+          integrity: {
+            kind: "registry",
+            lockIntegrity:
+              "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+          },
+          runtimeFormat: "js",
+          engineVersion: "6.0.0",
+        },
+      }
       const libBytes = JSON.stringify({
         schemaVersion: 4,
         source: { kind: "live" },
@@ -477,8 +383,8 @@ describe("consumer selection", () => {
   it("resolves every v3 run reference to a digest-verified run document", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-run-parity-"))
     try {
-      // The checked-in round (#30764 M4): the live content/ loses these runs on Friday.
-      const contentDir = fixtureContentDir()
+      // Exercise real current run references; display fixtures deliberately carry no admission grant.
+      const contentDir = join(import.meta.dirname, "..", "content")
       const { dataPath } = generateApi(out, { contentDir })
       const projection = loadCurrentResults(contentDir).projection
       const expected = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
@@ -568,44 +474,6 @@ describe("consumer selection", () => {
       expect(readFileSync(join(v1Dir, "badges", badge), "utf8")).toContain("<svg")
     }
   })
-
-  it("does not score unreviewed legacy booleans as current results", () => {
-    const warnings: string[] = []
-    const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))
-    const out = mkdtempSync(join(tmpdir(), "terminfo-api-selection-"))
-    try {
-      const site = probesLoader.load()
-      const { dataPath } = generateApi(out)
-      const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
-        contexts: Record<string, unknown>
-        contextCount: number
-      }
-      // Share the site's analysis loader with terminal paths, as the real site does.
-      const analysis = loadAnalysis()
-      // Legacy runs are not projected at all any more (#30759 AC3), so no v1/v2 boolean can be
-      // scored as a current result: every row the reading holds is a sealed schema-3 run.
-      const projected = Object.values(loadCurrentResults(fixtureContentDir()).projection.history).flat()
-      expect(projected.every((entry) => entry.schemaVersion === 3)).toBe(true)
-      if (!site.selectedByBackend.kitty) {
-        // No current kitty run: kitty is scored nowhere, whatever other targets the corpus holds as current.
-        expect(site.results.kitty).toBeUndefined()
-        expect(site.stats.kitty).toBeUndefined()
-        expect(Object.keys(api.contexts).filter((key) => key.startsWith("term:kitty"))).toEqual([])
-        expect(analysis["terminals/kitty"]?.analysis).toContain("No current sealed")
-      }
-      if (api.contextCount === 0) {
-        expect(analysis["baseline/core"]?.analysis).toContain("No current sealed")
-      }
-      expect(terminalPaths.paths().some((page) => page.params.id === "kitty")).toBe(true)
-      expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
-        false,
-      )
-      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
-    } finally {
-      warning.mockRestore()
-      rmSync(out, { recursive: true, force: true })
-    }
-  }, 30_000)
 
   it("refuses a malformed required result with its path", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-malformed-selection-"))

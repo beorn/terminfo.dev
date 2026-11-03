@@ -26,7 +26,6 @@ import {
 } from "../docs/data/working-runs.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { generateApi } from "./generate-api.ts"
-import { fixtureContentDir } from "../test-fixtures/content-root.ts"
 
 function runsDir(): string {
   return mkdtempSync(join(tmpdir(), "terminfo-working-runs-"))
@@ -201,7 +200,7 @@ describe("workingCell: reviewed stays the headline, raw sits beside it (requirem
 
 describe("raw cells never enter an accepted rollup (requirement 3)", () => {
   it("leaves the accepted projection and every accepted api/v3 field unchanged when a working run is added", () => {
-    const contentDir = fixtureContentDir()
+    const contentDir = join(import.meta.dirname, "..", "content")
     const { projection } = loadCurrentResults(contentDir)
     const compat = compatibilitySubjects(projection, contentDir)
     const entry = [...compat.values()].find((candidate) => Object.keys(candidate.selected.cells).length >= 2)
@@ -339,7 +338,7 @@ describe("an hourly run on a suite this build cannot trust", () => {
       unreadable: loaded.unreadable?.reason,
     })
 
-    const contentDir = fixtureContentDir()
+    const contentDir = join(root, "content")
     const plain = readFileSync(
       generateApi(mkdtempSync(join(tmpdir(), "terminfo-api-plain-")), { contentDir, working: null }).dataPath,
       "utf8",
@@ -351,6 +350,7 @@ describe("an hourly run on a suite this build cannot trust", () => {
       ),
     ) as Record<string, unknown>
     expect(banner.working).toMatchObject({ contexts: [], unreadable: { banner: loaded.unreadable?.banner } })
+    expect(Object.keys(banner.contexts as Record<string, unknown>).length).toBeGreaterThan(0)
     delete banner.working
     expect(
       createHash("sha256")

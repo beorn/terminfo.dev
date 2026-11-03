@@ -19,12 +19,7 @@ import {
   type TextQualification,
 } from "@terminfo/probe-defs"
 import { replyFailure } from "../../../probe-defs/src/helpers.ts"
-import {
-  applyCaptureDecision,
-  retainCaptureBinding,
-  parseRun,
-  decodeCollectorDraft,
-} from "@terminfo/run-parser"
+import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
@@ -138,12 +133,22 @@ const manifest: ProbeSuiteManifest & { schemaVersion: 4 } = {
 // Transport fixtures retain the current collector's actual result and evidence records.
 function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>, ownManifest = manifest) {
   const draft = initializeRunDraft({
-    runId: "a".repeat(32), sourceRevision, manifest: ownManifest,
-    source: { kind: "live" }, intendedSubject: { kind: "term", id: "kitty" },
+    runId: "a".repeat(32),
+    sourceRevision,
+    manifest: ownManifest,
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
   })
   draft.subject = {
-    kind: "term", id: "kitty", version: "0.49.1", os: "linux", osVersion: null,
-    outerTerminal: null, mux: null, config: null, permissions: null,
+    kind: "term",
+    id: "kitty",
+    version: "0.49.1",
+    os: "linux",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
   }
   draft.identity = "unverified"
   draft.measuredAt = "2026-09-28T00:00:00.000Z"
@@ -152,7 +157,9 @@ function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>, ownManifest = m
   draft.assertions = batch.assertions
   draft.screenshotRefs = batch.screenshotRefs
   draft.textSnapshotRefs = batch.textSnapshotRefs
-  draft.results = draft.results.map((result) => batch.results.find((entry) => entry.featureId === result.featureId) ?? result)
+  draft.results = draft.results.map(
+    (result) => batch.results.find((entry) => entry.featureId === result.featureId) ?? result,
+  )
   return draft
 }
 
@@ -220,7 +227,8 @@ it.each([
       expect(decodedLegacy.results).toEqual(legacy.results)
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
       expect(decodedLegacy.results.find((result) => result.featureId === id)).toMatchObject({
-        status: "test-failure", reason: refusal.message,
+        status: "test-failure",
+        reason: refusal.message,
       })
       expect(legacyReplies(legacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacyReplies(decodedLegacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
@@ -319,7 +327,8 @@ it.each([
       expect(decodedLegacy.results).toEqual(legacy.results)
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
       expect(decodedLegacy.results.find((result) => result.featureId === id)).toMatchObject({
-        status: "test-failure", reason: refusal.message,
+        status: "test-failure",
+        reason: refusal.message,
       })
       expect(legacyReplies(legacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacyReplies(decodedLegacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
@@ -798,8 +807,12 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   })
   expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "test-todo" })
   expect(
-    decodeCollectorDraft("missing-geometry.json", JSON.stringify(asRun(missing)), manifest, sourceRevision).run
-      .results.find((result) => result.featureId === "reset.ris"),
+    decodeCollectorDraft(
+      "missing-geometry.json",
+      JSON.stringify(asRun(missing)),
+      manifest,
+      sourceRevision,
+    ).run.results.find((result) => result.featureId === "reset.ris"),
   ).toMatchObject({ status: "test-todo" })
   expect(JSON.parse(missing.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
   expect(writes).toEqual([])
@@ -1061,7 +1074,9 @@ it("binds an app named coverage record to its own retained raw trace", async () 
       sourceRevision,
     ).run
     expect(decoded.results.find((result) => result.featureId === definition.id)).toMatchObject({
-      status: "test-todo", reason: "device attributes", rawReplyRef: definition.id,
+      status: "test-todo",
+      reason: "device attributes",
+      rawReplyRef: definition.id,
     })
   } finally {
     definition.term = originalTerm
@@ -1106,7 +1121,8 @@ it("refuses app named coverage that arrives beside its returned error observatio
       sourceRevision,
     ).run
     expect(decoded.results.find((result) => result.featureId === definition.id)).toMatchObject({
-      status: "test-failure", reason: expect.stringContaining("TTY write failed"),
+      status: "test-failure",
+      reason: expect.stringContaining("TTY write failed"),
     })
     expect(batch.suiteComplete).toBe(false)
   } finally {
@@ -1146,7 +1162,8 @@ it("refuses app named coverage that arrives beside supported observation and ass
       sourceRevision,
     ).run
     expect(decoded.results.find((result) => result.featureId === definition.id)).toMatchObject({
-      status: "test-failure", reason: expect.stringContaining("assertion(kind=positive"),
+      status: "test-failure",
+      reason: expect.stringContaining("assertion(kind=positive"),
     })
     expect(batch.suiteComplete).toBe(false)
   } finally {
@@ -2885,9 +2902,7 @@ it.each([
             manifest,
             sourceRevision,
           ).run
-          expect(decoded.results.find((result) => result.featureId === id)?.frames).toEqual(
-            result.frames,
-          )
+          expect(decoded.results.find((result) => result.featureId === id)?.frames).toEqual(result.frames)
           return
         }
         const binding = retainCaptureBinding(draft, id)
