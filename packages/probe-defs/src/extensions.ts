@@ -4556,9 +4556,19 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc2-title",
       (ctx) => {
-        ctx.feed("\x1b]2;Test Title\x07")
-        const title = ctx.getTitle()
-        return parserStateResult(title === "Test Title", "OSC 2 sets the exact requested window title", { title })
+        const before = ctx.getTitle()
+        const requested = before === "Test Title" ? "Test Title 2" : "Test Title"
+        try {
+          ctx.feed(`\x1b]2;${requested}\x07`)
+          const title = ctx.getTitle()
+          return parserStateResult(title === requested, "OSC 2 sets the exact requested window title", {
+            before,
+            requested,
+            title,
+          })
+        } finally {
+          ctx.feed(`\x1b]2;${before}\x07`)
+        }
       },
       () => Promise.resolve(unmeasuredStateEffect("OSC 2 window title")),
     ),
