@@ -333,6 +333,144 @@
       "version": "0.26.0",
       "os": "linux"
     },
+    "featureId": "extensions.osc117-reset-highlight-bg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "2f73fc28027b7d483e504e08edc64d1837935816",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "2f73fc28027b7d483e504e08edc64d1837935816",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "2f73fc28027b7d483e504e08edc64d1837935816",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/src/index.ts",
+            "oid": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/src/backend.ts",
+            "oid": "27b78b1264cd5d2ed72705ba36c9735b29e874c5"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "src/load-native.ts",
+            "oid": "34e142550085450ab02138184626716ad0d6b546"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-alacritty-0.26.0-extensions.osc117-reset-highlight-bg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent current source review (@dev/2, 2026-11-03, verdict4654d22b-2e1e-49f1-9b17-21f6862d6409): Native SHA256 9839e138d9e6f13e84adc3022f67964f0451e2e6416294952e22286412994f61 binds source 2f73fc28027b7d483e504e08edc64d1837935816/build343c00e0/lock1f89f257. Its Cargo.lock binds vte0.15.0 archive SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd and alacritty_terminal0.26.0 archive bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59. The reviewed vte src/ansi.rs:1329-1523 OSC dispatcher has no highlight set/reset arms; unmatched commands only log and never reach the alacritty_terminal Handler. The native wrapper advances that Processor against Term<EventProxy>, with no alternate OSC hook. Thus configured OSC17 has no highlight writer and OSC117 has no implemented highlight reset target: Unsupported. This follows inspected engine/build/adapter facts, not missing setup or silence; the measured run still requires its own negative assertion.",
+            "sources": [
+              "Source verdict4654d22b-2e1e-49f1-9b17-21f6862d6409, @dev/2, 2026-11-03",
+              "Native SHA256 9839e138d9e6f13e84adc3022f67964f0451e2e6416294952e22286412994f61 binds source 2f73fc28027b7d483e504e08edc64d1837935816/build343c00e0/lock1f89f257. Its Cargo.lock binds vte0.15.0 archive SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd and alacritty_terminal0.26.0 archive bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59. The reviewed vte src/ansi.rs:1329-1523 OSC dispatcher has no highlight set/reset arms; unmatched commands only log and never reach the alacritty_terminal Handler. The native wrapper advances that Processor against Term<EventProxy>, with no alternate OSC hook.",
+              "git@github.com:beorn/termless.git@2f73fc28027b7d483e504e08edc64d1837935816:packages/alacritty/native/Cargo.lock blob 61a0da4773734220406e2077f33f154f31895a29",
+              "git@github.com:beorn/termless.git@2f73fc28027b7d483e504e08edc64d1837935816:packages/alacritty/native/Cargo.toml blob 12521c8ea6dcedf6b94f757a8d6672c737c72db7",
+              "git@github.com:beorn/termless.git@2f73fc28027b7d483e504e08edc64d1837935816:packages/alacritty/native/src/lib.rs blob 1779ff4f042f7f285ab3d396da039408b492be10",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/src/index.ts blob b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/src/backend.ts blob 27b78b1264cd5d2ed72705ba36c9735b29e874c5",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:src/load-native.ts blob 34e142550085450ab02138184626716ad0d6b546"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc119-reset-highlight-fg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "2f73fc28027b7d483e504e08edc64d1837935816",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "2f73fc28027b7d483e504e08edc64d1837935816",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "2f73fc28027b7d483e504e08edc64d1837935816",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/src/index.ts",
+            "oid": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/src/backend.ts",
+            "oid": "27b78b1264cd5d2ed72705ba36c9735b29e874c5"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "src/load-native.ts",
+            "oid": "34e142550085450ab02138184626716ad0d6b546"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-alacritty-0.26.0-extensions.osc119-reset-highlight-fg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent current source review (@dev/2, 2026-11-03, verdict4654d22b-2e1e-49f1-9b17-21f6862d6409): Native SHA256 9839e138d9e6f13e84adc3022f67964f0451e2e6416294952e22286412994f61 binds source 2f73fc28027b7d483e504e08edc64d1837935816/build343c00e0/lock1f89f257. Its Cargo.lock binds vte0.15.0 archive SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd and alacritty_terminal0.26.0 archive bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59. The reviewed vte src/ansi.rs:1329-1523 OSC dispatcher has no highlight set/reset arms; unmatched commands only log and never reach the alacritty_terminal Handler. The native wrapper advances that Processor against Term<EventProxy>, with no alternate OSC hook. Thus configured OSC19 has no highlight writer and OSC119 has no implemented highlight reset target: Unsupported. This follows inspected engine/build/adapter facts, not missing setup or silence; the measured run still requires its own negative assertion.",
+            "sources": [
+              "Source verdict4654d22b-2e1e-49f1-9b17-21f6862d6409, @dev/2, 2026-11-03",
+              "Native SHA256 9839e138d9e6f13e84adc3022f67964f0451e2e6416294952e22286412994f61 binds source 2f73fc28027b7d483e504e08edc64d1837935816/build343c00e0/lock1f89f257. Its Cargo.lock binds vte0.15.0 archive SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd and alacritty_terminal0.26.0 archive bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59. The reviewed vte src/ansi.rs:1329-1523 OSC dispatcher has no highlight set/reset arms; unmatched commands only log and never reach the alacritty_terminal Handler. The native wrapper advances that Processor against Term<EventProxy>, with no alternate OSC hook.",
+              "git@github.com:beorn/termless.git@2f73fc28027b7d483e504e08edc64d1837935816:packages/alacritty/native/Cargo.lock blob 61a0da4773734220406e2077f33f154f31895a29",
+              "git@github.com:beorn/termless.git@2f73fc28027b7d483e504e08edc64d1837935816:packages/alacritty/native/Cargo.toml blob 12521c8ea6dcedf6b94f757a8d6672c737c72db7",
+              "git@github.com:beorn/termless.git@2f73fc28027b7d483e504e08edc64d1837935816:packages/alacritty/native/src/lib.rs blob 1779ff4f042f7f285ab3d396da039408b492be10",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/src/index.ts blob b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/src/backend.ts blob 27b78b1264cd5d2ed72705ba36c9735b29e874c5",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:src/load-native.ts blob 34e142550085450ab02138184626716ad0d6b546"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
     "featureId": "extensions.osc12-cursor-color",
     "answers": [
       {
@@ -9801,6 +9939,158 @@
       "version": "0.3.3",
       "os": "linux"
     },
+    "featureId": "extensions.osc117-reset-highlight-bg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/wasm/libvterm.wasm",
+            "oid": "d1733b3c5d26122c795f18c40f074c6f4e85f875"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/build/build.sh",
+            "oid": "9046ec508b9ed77a642eec9ffaa816cc909a8228"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/src/index.ts",
+            "oid": "2b4708b1081e701b99893ca055ded781dc46cf25"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/src/backend.ts",
+            "oid": "f0431b2b3b1824d3028e7a039d55278d2cddc0e8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/src/wasm-bindings.ts",
+            "oid": "55ddc684464e525e63cd523d2d6a638c4c6dbcd9"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-libvterm-0.3.3-extensions.osc117-reset-highlight-bg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent current source review (@dev/2, 2026-11-03, verdict4654d22b-2e1e-49f1-9b17-21f6862d6409): The tracked loaded WASM SHA256 712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 and its receipt bind libvterm0.3.3 core9d6d2112335080312ef8c36667fa717ded4f7daf/build348b74c8, flat API SHA2561e65f7e53d482b47fc08c5e324e26529079b5f9aa2ba0894d77608e12290c48e. Reviewed core src/state.c:1777-1812 on_osc implements0/1/2/52; other codes call a fallback only if installed and otherwise return0. The configured packages/libvterm/build/flat-api.c installs no OSC fallback, so highlight set/reset are parsed and dropped. A fallback API exists; this conclusion concerns the actual configured library, not every embedder. Thus configured OSC17 has no highlight writer and OSC117 has no implemented highlight reset target: Unsupported. This follows inspected engine/build/adapter facts, not missing setup or silence; the measured run still requires its own negative assertion.",
+            "sources": [
+              "Source verdict4654d22b-2e1e-49f1-9b17-21f6862d6409, @dev/2, 2026-11-03",
+              "The tracked loaded WASM SHA256 712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 and its receipt bind libvterm0.3.3 core9d6d2112335080312ef8c36667fa717ded4f7daf/build348b74c8, flat API SHA2561e65f7e53d482b47fc08c5e324e26529079b5f9aa2ba0894d77608e12290c48e. Reviewed core src/state.c:1777-1812 on_osc implements0/1/2/52; other codes call a fallback only if installed and otherwise return0. The configured packages/libvterm/build/flat-api.c installs no OSC fallback, so highlight set/reset are parsed and dropped. A fallback API exists; this conclusion concerns the actual configured library, not every embedder.",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/wasm/libvterm.wasm.receipt.json blob 178e8db507779f4903f6b99436006cf8d418a952",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/wasm/libvterm.wasm blob d1733b3c5d26122c795f18c40f074c6f4e85f875",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/build/build.sh blob 9046ec508b9ed77a642eec9ffaa816cc909a8228",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/build/flat-api.c blob 17896892f427a04d7a9a963e7a3614c517a73ecc",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/src/index.ts blob 2b4708b1081e701b99893ca055ded781dc46cf25",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/src/backend.ts blob f0431b2b3b1824d3028e7a039d55278d2cddc0e8",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/src/wasm-bindings.ts blob 55ddc684464e525e63cd523d2d6a638c4c6dbcd9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc119-reset-highlight-fg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/wasm/libvterm.wasm",
+            "oid": "d1733b3c5d26122c795f18c40f074c6f4e85f875"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/build/build.sh",
+            "oid": "9046ec508b9ed77a642eec9ffaa816cc909a8228"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/src/index.ts",
+            "oid": "2b4708b1081e701b99893ca055ded781dc46cf25"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/src/backend.ts",
+            "oid": "f0431b2b3b1824d3028e7a039d55278d2cddc0e8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/src/wasm-bindings.ts",
+            "oid": "55ddc684464e525e63cd523d2d6a638c4c6dbcd9"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-libvterm-0.3.3-extensions.osc119-reset-highlight-fg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent current source review (@dev/2, 2026-11-03, verdict4654d22b-2e1e-49f1-9b17-21f6862d6409): The tracked loaded WASM SHA256 712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 and its receipt bind libvterm0.3.3 core9d6d2112335080312ef8c36667fa717ded4f7daf/build348b74c8, flat API SHA2561e65f7e53d482b47fc08c5e324e26529079b5f9aa2ba0894d77608e12290c48e. Reviewed core src/state.c:1777-1812 on_osc implements0/1/2/52; other codes call a fallback only if installed and otherwise return0. The configured packages/libvterm/build/flat-api.c installs no OSC fallback, so highlight set/reset are parsed and dropped. A fallback API exists; this conclusion concerns the actual configured library, not every embedder. Thus configured OSC19 has no highlight writer and OSC119 has no implemented highlight reset target: Unsupported. This follows inspected engine/build/adapter facts, not missing setup or silence; the measured run still requires its own negative assertion.",
+            "sources": [
+              "Source verdict4654d22b-2e1e-49f1-9b17-21f6862d6409, @dev/2, 2026-11-03",
+              "The tracked loaded WASM SHA256 712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 and its receipt bind libvterm0.3.3 core9d6d2112335080312ef8c36667fa717ded4f7daf/build348b74c8, flat API SHA2561e65f7e53d482b47fc08c5e324e26529079b5f9aa2ba0894d77608e12290c48e. Reviewed core src/state.c:1777-1812 on_osc implements0/1/2/52; other codes call a fallback only if installed and otherwise return0. The configured packages/libvterm/build/flat-api.c installs no OSC fallback, so highlight set/reset are parsed and dropped. A fallback API exists; this conclusion concerns the actual configured library, not every embedder.",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/wasm/libvterm.wasm.receipt.json blob 178e8db507779f4903f6b99436006cf8d418a952",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/wasm/libvterm.wasm blob d1733b3c5d26122c795f18c40f074c6f4e85f875",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/build/build.sh blob 9046ec508b9ed77a642eec9ffaa816cc909a8228",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/build/flat-api.c blob 17896892f427a04d7a9a963e7a3614c517a73ecc",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/src/index.ts blob 2b4708b1081e701b99893ca055ded781dc46cf25",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/src/backend.ts blob f0431b2b3b1824d3028e7a039d55278d2cddc0e8",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/src/wasm-bindings.ts blob 55ddc684464e525e63cd523d2d6a638c4c6dbcd9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
     "featureId": "extensions.osc176-app-id",
     "answers": [
       {
@@ -17707,6 +17997,130 @@
             "reason": "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512.",
             "sources": [
               "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc117-reset-highlight-bg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100-rust/src/index.ts",
+            "oid": "3ddb74f3ae1f79bb356952103853232f69211268"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100-rust/src/backend.ts",
+            "oid": "9b3477c0fedf8586430781e8f4d17019569af98b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-vt100-rust-0.16.2-extensions.osc117-reset-highlight-bg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent current source review (@dev/2, 2026-11-03, verdict4654d22b-2e1e-49f1-9b17-21f6862d6409): Native SHA256 84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 binds source286fddf6632e43ccd62f9050be41ec7b2908e43e/build30b232d2/lock4cf037e4. Cargo.lock binds vt100 0.16.2 archive SHA256 054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9. Its reviewed src/perform.rs:198-238 handles OSC0/1/2/52 only and forwards other codes to Callbacks::unhandled_osc, whose src/callbacks.rs:66 default is empty. The exact native wrapper implements title, icon and clipboard callbacks without overriding unhandled_osc. This configured path drops highlight set/reset; the extension point exists but no highlight implementation is installed. Thus configured OSC17 has no highlight writer and OSC117 has no implemented highlight reset target: Unsupported. This follows inspected engine/build/adapter facts, not missing setup or silence; the measured run still requires its own negative assertion.",
+            "sources": [
+              "Source verdict4654d22b-2e1e-49f1-9b17-21f6862d6409, @dev/2, 2026-11-03",
+              "Native SHA256 84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 binds source286fddf6632e43ccd62f9050be41ec7b2908e43e/build30b232d2/lock4cf037e4. Cargo.lock binds vt100 0.16.2 archive SHA256 054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9. Its reviewed src/perform.rs:198-238 handles OSC0/1/2/52 only and forwards other codes to Callbacks::unhandled_osc, whose src/callbacks.rs:66 default is empty. The exact native wrapper implements title, icon and clipboard callbacks without overriding unhandled_osc. This configured path drops highlight set/reset; the extension point exists but no highlight implementation is installed.",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.lock blob 3755893017da8338bfd02474d98ecfb7ccadaacb",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.toml blob cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/src/lib.rs blob ecdc2cf069088b4ba7180dbf28d8603d13d58fb8",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100-rust/src/index.ts blob 3ddb74f3ae1f79bb356952103853232f69211268",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100-rust/src/backend.ts blob 9b3477c0fedf8586430781e8f4d17019569af98b"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc119-reset-highlight-fg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100-rust/src/index.ts",
+            "oid": "3ddb74f3ae1f79bb356952103853232f69211268"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100-rust/src/backend.ts",
+            "oid": "9b3477c0fedf8586430781e8f4d17019569af98b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-vt100-rust-0.16.2-extensions.osc119-reset-highlight-fg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent current source review (@dev/2, 2026-11-03, verdict4654d22b-2e1e-49f1-9b17-21f6862d6409): Native SHA256 84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 binds source286fddf6632e43ccd62f9050be41ec7b2908e43e/build30b232d2/lock4cf037e4. Cargo.lock binds vt100 0.16.2 archive SHA256 054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9. Its reviewed src/perform.rs:198-238 handles OSC0/1/2/52 only and forwards other codes to Callbacks::unhandled_osc, whose src/callbacks.rs:66 default is empty. The exact native wrapper implements title, icon and clipboard callbacks without overriding unhandled_osc. This configured path drops highlight set/reset; the extension point exists but no highlight implementation is installed. Thus configured OSC19 has no highlight writer and OSC119 has no implemented highlight reset target: Unsupported. This follows inspected engine/build/adapter facts, not missing setup or silence; the measured run still requires its own negative assertion.",
+            "sources": [
+              "Source verdict4654d22b-2e1e-49f1-9b17-21f6862d6409, @dev/2, 2026-11-03",
+              "Native SHA256 84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 binds source286fddf6632e43ccd62f9050be41ec7b2908e43e/build30b232d2/lock4cf037e4. Cargo.lock binds vt100 0.16.2 archive SHA256 054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9. Its reviewed src/perform.rs:198-238 handles OSC0/1/2/52 only and forwards other codes to Callbacks::unhandled_osc, whose src/callbacks.rs:66 default is empty. The exact native wrapper implements title, icon and clipboard callbacks without overriding unhandled_osc. This configured path drops highlight set/reset; the extension point exists but no highlight implementation is installed.",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.lock blob 3755893017da8338bfd02474d98ecfb7ccadaacb",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.toml blob cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/src/lib.rs blob ecdc2cf069088b4ba7180dbf28d8603d13d58fb8",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100-rust/src/index.ts blob 3ddb74f3ae1f79bb356952103853232f69211268",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100-rust/src/backend.ts blob 9b3477c0fedf8586430781e8f4d17019569af98b"
             ]
           }
         ]
@@ -30768,6 +31182,116 @@
               "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock",
               "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; re-hashed locally 2026-11-03 and equal to the audited identity; no 1337/sixel/iterm token in the bundle",
               "Termless adapter loads only Unicode11Addon and registers no OSC handler"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc117-reset-highlight-bg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-xtermjs-6.0.0-extensions.osc117-reset-highlight-bg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent current source review (@dev/2, 2026-11-03, verdict4654d22b-2e1e-49f1-9b17-21f6862d6409): The actual @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 bind the reviewed InputHandler/OscParser sources. InputHandler.ts:292-338 registers no highlight set/reset handlers; the OSC fallback at201-203 only logs. CoreTerminal.ts:236-237 exposes a custom-handler API, but the exact configured Termless adapter installs none and loads only Unicode11Addon, a width provider. This is a configured package+adapter source negative, not a claim about all embedders. Thus configured OSC17 has no highlight writer and OSC117 has no implemented highlight reset target: Unsupported. This follows inspected engine/build/adapter facts, not missing setup or silence; the measured run still requires its own negative assertion.",
+            "sources": [
+              "Source verdict4654d22b-2e1e-49f1-9b17-21f6862d6409, @dev/2, 2026-11-03",
+              "The actual @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 bind the reviewed InputHandler/OscParser sources. InputHandler.ts:292-338 registers no highlight set/reset handlers; the OSC fallback at201-203 only logs. CoreTerminal.ts:236-237 exposes a custom-handler API, but the exact configured Termless adapter installs none and loads only Unicode11Addon, a width provider. This is a configured package+adapter source negative, not a claim about all embedders.",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc119-reset-highlight-fg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-xtermjs-6.0.0-extensions.osc119-reset-highlight-fg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent current source review (@dev/2, 2026-11-03, verdict4654d22b-2e1e-49f1-9b17-21f6862d6409): The actual @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 bind the reviewed InputHandler/OscParser sources. InputHandler.ts:292-338 registers no highlight set/reset handlers; the OSC fallback at201-203 only logs. CoreTerminal.ts:236-237 exposes a custom-handler API, but the exact configured Termless adapter installs none and loads only Unicode11Addon, a width provider. This is a configured package+adapter source negative, not a claim about all embedders. Thus configured OSC19 has no highlight writer and OSC119 has no implemented highlight reset target: Unsupported. This follows inspected engine/build/adapter facts, not missing setup or silence; the measured run still requires its own negative assertion.",
+            "sources": [
+              "Source verdict4654d22b-2e1e-49f1-9b17-21f6862d6409, @dev/2, 2026-11-03",
+              "The actual @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 bind the reviewed InputHandler/OscParser sources. InputHandler.ts:292-338 registers no highlight set/reset handlers; the OSC fallback at201-203 only logs. CoreTerminal.ts:236-237 exposes a custom-handler API, but the exact configured Termless adapter installs none and loads only Unicode11Addon, a width provider. This is a configured package+adapter source negative, not a claim about all embedders.",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883"
             ]
           }
         ]
