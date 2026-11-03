@@ -1264,6 +1264,76 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
   }
 }
 
+/** CTO54bf1c9c — Cwd-only metadata, qualified by two same-run OSC7 readbacks. */
+function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
+  if (!ctx.getCwd) {
+    const reason = "no property reader in this adapter"
+    return {
+      ...parserStateResult(null, "OSC633 P Cwd property readback", {}, reason),
+      tests: [{ id: "criterion", status: "test-todo", reason }],
+    }
+  }
+  const read = ctx.getCwd.bind(ctx)
+  const path = (value: string | null) =>
+    value?.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
+  const before = read()
+  let current = path(before)
+  const state = {
+    before,
+    controls: [] as { sent: string; raw: string | null; value: string | null }[],
+    targets: [] as { sent: string; before: string | null; raw: string | null; value: string | null }[],
+    restored: before,
+  }
+  let qualified = false
+  try {
+    for (const sent of ["/terminfo-osc7-control-A", "/terminfo-osc7-control-B"]) {
+      ctx.feed(`\x1b]7;file://localhost${sent}\x07`)
+      const raw = read()
+      current = path(raw)
+      state.controls.push({ sent, raw, value: current })
+    }
+    qualified = state.controls.every(({ sent, value }) => sent === value)
+    if (qualified) {
+      for (const sent of ["/terminfo-633-cwd-A", "/terminfo-633-cwd-B"]) {
+        const prior = current
+        ctx.feed(`\x1b]633;P;Cwd=${sent}\x07`)
+        const raw = read()
+        current = path(raw)
+        state.targets.push({ sent, before: prior, raw, value: current })
+      }
+    }
+  } finally {
+    ctx.feed(`\x1b]7;${before ?? ""}\x07`)
+  }
+  state.restored = read()
+  const restored = path(state.restored) === path(before)
+  const supported = qualified && state.targets.every(({ sent, value }) => sent === value)
+  const unsupported = qualified && state.targets.every(({ before: prior, value }) => prior === value)
+  const inert = !qualified && state.controls.every(({ value }) => value === path(before))
+  const failed = !restored || (!inert && !supported && !unsupported)
+  const expected = "Two distinct OSC633 P Cwd paths match the qualified reader, or both leave it unchanged"
+  const result = parserStateResult(
+    failed || inert ? null : supported,
+    expected,
+    state,
+    inert ? "Cwd reader is inert to two distinct OSC7 controls" : undefined,
+  )
+  if (inert) {
+    result.tests = [
+      { id: "criterion", status: "test-todo", reason: "Cwd reader is inert to two distinct OSC7 controls" },
+    ]
+  }
+  if (failed) {
+    result.observation = {
+      outcome: "error",
+      reason: "invalid-reply",
+      assertionType: "buffer_state",
+      note: "Cwd control, target or restored readback did not match its expected path",
+    }
+  }
+  return result
+}
+
 /**
  * C154 — a consumed semantic prompt mark proves consumption, not that the mark registered.
  * Read the measured home / target / control sequence from the real cursor and cell state so a
@@ -1279,12 +1349,68 @@ function promptMarkResult(
   sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
 ): ProbeCallbackResult {
   ctx.feed("\x1b[1;1H")
+  const osc633End = sourceReview?.probeId === "extensions.osc633-d"
   const home = ctx.getCursor()
   const markType = sourceReview?.markType
-  const commandEnd = sourceReview?.selector === "133;D"
+  const commandEnd = sourceReview?.selector === "133;D" || osc633End
   const readerKey = markType ? "semantic-marks" : commandEnd ? "semantic-command-end" : undefined
   const declared = readerKey !== undefined && ctx.capabilities.extensions.has(readerKey)
   const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
+  if (osc633End && !readMarks) {
+    const reason = "no command-end reader in this adapter"
+    return {
+      ...parserStateResult(null, "OSC633 D command-end status readback", {}, reason),
+      tests: [{ id: "criterion", status: "test-todo", reason }],
+    }
+  }
+  const endControl =
+    osc633End && readMarks
+      ? (() => {
+          const before = readMarks()
+          ctx.feed("\x1b]133;D;0\x07")
+          const first = readMarks()
+          ctx.feed("\x1b]133;D;17\x07")
+          const second = readMarks()
+          return { before, first, second }
+        })()
+      : undefined
+  if (endControl) {
+    const { before, first, second } = endControl
+    const firstControl = first[before.length]
+    const secondControl = second[first.length]
+    const qualified =
+      first.length === before.length + 1 &&
+      second.length === first.length + 1 &&
+      firstControl?.type === "command-end" &&
+      firstControl.rawStatus === "0" &&
+      secondControl?.type === "command-end" &&
+      secondControl.rawStatus === "17" &&
+      before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
+      first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index]))
+    if (!qualified) {
+      const inert = JSON.stringify(before) === JSON.stringify(first) && JSON.stringify(first) === JSON.stringify(second)
+      const result = parserStateResult(
+        null,
+        "OSC133 D 0 and 17 qualify the same command-end reader",
+        endControl,
+        "Command-end reader did not report the two OSC133 controls",
+      )
+      if (inert) {
+        result.tests = [
+          { id: "criterion", status: "test-todo", reason: "Command-end reader did not report the two OSC133 controls" },
+        ]
+      }
+      if (!inert) {
+        result.observation = {
+          outcome: "error",
+          reason: "invalid-reply",
+          assertionType: "buffer_state",
+          note: "Command-end reader changed to an unexpected control status or altered earlier history",
+        }
+      }
+      return result
+    }
+  }
   const before = readMarks ? readMarks() : undefined
   ctx.feed(sequence + "X")
   const first = readMarks ? readMarks() : undefined
@@ -1299,7 +1425,7 @@ function promptMarkResult(
   if (commandEnd && readMarks && before && first) {
     ctx.feed("\x1b[2;3H")
     const secondBefore = readMarks()
-    const secondSequence = "\x1b]133;D;17\x07"
+    const secondSequence = `\x1b]${osc633End ? 633 : 133};D;17\x07`
     ctx.feed(secondSequence + "X")
     const second = readMarks()
     const secondCell = ctx.getCell(1, 2)
@@ -1307,36 +1433,63 @@ function promptMarkResult(
     ctx.feed("\x1b[1;1H")
     const firstMark = first[before.length]
     const secondMark = second[secondBefore.length]
-    return parserStateResult(
+    const supported =
       first.length === before.length + 1 &&
-        firstMark?.type === "command-end" &&
-        firstMark.rawStatus === "0" &&
-        second.length === secondBefore.length + 1 &&
-        secondMark?.type === "command-end" &&
-        secondMark.rawStatus === "17" &&
-        before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
-        first.length === secondBefore.length &&
-        first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(secondBefore[index])) &&
-        secondBefore.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index])) &&
-        secondCell.char === "X" &&
-        secondCursor.x === 3 &&
-        secondCursor.y === 1,
+      firstMark?.type === "command-end" &&
+      firstMark.rawStatus === "0" &&
+      second.length === secondBefore.length + 1 &&
+      secondMark?.type === "command-end" &&
+      secondMark.rawStatus === "17" &&
+      before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
+      first.length === secondBefore.length &&
+      first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(secondBefore[index])) &&
+      secondBefore.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index])) &&
+      secondCell.char === "X" &&
+      secondCursor.x === 3 &&
+      secondCursor.y === 1
+    const state = {
+      sequence,
+      secondSequence,
+      home,
+      target,
+      control,
+      cell: cell.char,
+      before,
+      first,
+      secondBefore,
+      second,
+      secondCell: secondCell.char,
+      secondCursor,
+      ...(endControl && { endControl }),
+    }
+    const result = parserStateResult(
+      supported,
       "Each target feed appends exactly one command-end with its exact raw status and preserves earlier history",
-      {
-        sequence,
-        secondSequence,
-        home,
-        target,
-        control,
-        cell: cell.char,
-        before,
-        first,
-        secondBefore,
-        second,
-        secondCell: secondCell.char,
-        secondCursor,
-      },
+      state,
     )
+    if (osc633End) {
+      const unchanged =
+        JSON.stringify(before) === JSON.stringify(first) &&
+        JSON.stringify(first) === JSON.stringify(secondBefore) &&
+        JSON.stringify(secondBefore) === JSON.stringify(second)
+      const consumed = secondCell.char === "X" && secondCursor.x === 3 && secondCursor.y === 1
+      if (!consumed) {
+        const reason = "Second command-end target consumption was not qualified"
+        return {
+          ...parserStateResult(null, "Both OSC633 D target feeds have qualified screen consumption", state, reason),
+          tests: [{ id: "criterion", status: "test-todo", reason }],
+        }
+      }
+      if (!supported && !unchanged) {
+        result.observation = {
+          outcome: "error",
+          reason: "invalid-reply",
+          assertionType: "buffer_state",
+          note: "OSC633 D reader changed to the wrong status or altered earlier history",
+        }
+      }
+    }
+    return result
   }
   if (markType && readMarks && before && first) {
     ctx.feed("\x1b[2;3H")
@@ -4551,14 +4704,8 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 633;P — VS Code-specific properties (Cwd, IsWindows, git status)
   {
-    ...probe(
-      "extensions.osc633-p",
-      (ctx) =>
-        promptMarkResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration", {
-          probeId: "extensions.osc633-p",
-          selector: 633,
-        }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
+    ...probe("extensions.osc633-p", promptCwdPropertyResult, (ctx) =>
+      promptMarkAppResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
     ),
     libAssertionType: "buffer_state",
   },

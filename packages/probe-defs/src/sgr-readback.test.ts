@@ -161,7 +161,6 @@ test.each([
 
 test.each([
   ["sgr.faint", "0"],
-  ["sgr.underline.curly", "0;4"],
   ["sgr.fg.truecolor", "0"],
   ["sgr.reset", "0;1;3;4"],
   ["sgr.selective-reset.bold", "0"],
@@ -231,9 +230,6 @@ test.each([
   ["sgr.bg.default", "0;104", "unsupported"],
   ["sgr.fg.default", "0;48;5;31", "supported"],
   ["sgr.bg.default", "0;38;2;255;42;0", "supported"],
-  ["sgr.underline.curly", "0;4:3:999", "inconclusive"],
-  ["sgr.underline.curly", "0;4:0:3", "inconclusive"],
-  ["sgr.underline.curly", "0;4:6", "inconclusive"],
   ["sgr.underline.single", "0;4:3:999", "inconclusive"],
   ["sgr.underline.single", "0;4:0:3", "inconclusive"],
   ["sgr.underline.single", "0;4:6", "inconclusive"],
@@ -263,6 +259,58 @@ test.each([
     expect(recorded.status).toBe("test-failure")
     expect(recorded.tests).toContainEqual(expect.objectContaining({ status: "test-failure", rawReplyRef: id }))
   }
+})
+
+// A style-qualified underline claim needs the reply's own style token. Any other reply — plain 4,
+// 4:1, another style, an unqualified 4: slot, or no underline at all — is a coverage record, never
+// a negative: a collapsed or omitted style cannot establish that the requested style is
+// unsupported (@cto 37277973, option i).
+test.each([
+  ["sgr.underline.curly", "0;4"],
+  ["sgr.underline.curly", "0;4:3:999"],
+  ["sgr.underline.curly", "0;4:0:3"],
+  ["sgr.underline.curly", "0;4:6"],
+  ["sgr.underline.dotted", "0;4"],
+  ["sgr.underline.dotted", "0;4:"],
+  ["sgr.underline.dotted", "0;4:1"],
+  ["sgr.underline.dotted", "0;4:2"],
+  ["sgr.underline.dotted", "0;4:0"],
+  ["sgr.underline.dotted", "0"],
+  ["sgr.underline.dashed", "0;4"],
+  ["sgr.underline.dashed", "0;4:"],
+  ["sgr.underline.double", "0;4"],
+  ["sgr.underline.double", "0"],
+] as const)("%s with DECRQSS %s is a PROBE TODO, never a negative", async (id, reply) => {
+  const { ctx } = qualifiedSgrReadbackSource(id, reply)
+  const result = await sgrTerm(id)(ctx)
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+  expect(result.observation).toBeUndefined()
+  expect(result.pass).toBe(false)
+  expect(result.response).toBe(
+    JSON.stringify({ sgr: reply, ...(RESET_SETUP[id] && { baseline: "0", setup: RESET_SETUP[id] }) }),
+  )
+  const recorded = recordExecutedProbe({
+    featureId: id,
+    attempt: { scope: "probe", startedAt: "2026-11-03T19:35:00.000Z" },
+    coverage: { ...result.notTested!, featureId: id, rawReplyRef: id },
+    assertions: [],
+    tests: result.tests,
+  })
+  expect(recorded.status).toBe("test-todo")
+})
+
+// The qualified side stays decided: each style grades supported only on its own token.
+test.each([
+  ["sgr.underline.curly", "0;4:3"],
+  ["sgr.underline.dotted", "0;4:4"],
+  ["sgr.underline.dashed", "0;4:5"],
+  ["sgr.underline.double", "0;21"],
+  ["sgr.underline.double", "0;4:2"],
+] as const)("%s still grades supported on its own style token %s", async (id, reply) => {
+  const { ctx } = qualifiedSgrReadbackSource(id, reply)
+  const result = await sgrTerm(id)(ctx)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+  expect(result.notTested).toBeUndefined()
 })
 
 // A scripted response alone would miss sending reset before reading setup. Check the bytes that
