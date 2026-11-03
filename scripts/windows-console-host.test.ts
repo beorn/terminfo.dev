@@ -113,7 +113,13 @@ const current = (os: string) => {
   draft.rawReplies = rawReplies()
   draft.assertions = assertions()
   draft.results = results
-  const value = finalizeCollectedDraft(draft as Parameters<typeof finalizeCollectedDraft>[0])
+  const value = finalizeCollectedDraft({
+    ...draft,
+    subject: draft.subject,
+    identity: draft.identity,
+    measuredAt: draft.measuredAt,
+    origin: draft.origin,
+  })
   return parseRun("fixture.json", JSON.stringify(value), ids, new Map([[suite.probeHash, suite]]))
 }
 const statusOf = (run: ReturnType<typeof current>) =>
@@ -147,8 +153,8 @@ describe("Windows console-host rule", () => {
     })
     expect(projection.table[run.runId]?.[ids[0]!]).toBe("test-todo")
     expect(classifyDevelopmentRun(run).states[ids[0]!]).toBe("test-todo")
-    // The raw run keeps the collector's sealed verdict; only the reader holds it.
-    expect(run.results?.find((result) => result.featureId === ids[0])?.status).toBe("supported")
+    // The writer retains the host prerequisite; readers use that recorded grade.
+    expect(run.results?.find((result) => result.featureId === ids[0])?.status).toBe("test-todo")
   })
   it("never touches a run outside Windows", () => {
     const states = statusOf(current("macos"))

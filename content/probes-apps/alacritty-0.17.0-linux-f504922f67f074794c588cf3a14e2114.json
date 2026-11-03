@@ -5161,7 +5161,7 @@
             198
           ],
           "rawReplyRef": "extensions.iterm2-images",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: blank target; no requested image.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: blank target; no requested image.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"extensions.iterm2-images\"]"
         }
       ],
@@ -5189,7 +5189,7 @@
         }
       ],
       "screenshotRef": "sha256:5ae25b78e03c4b1ea381d935552ffe90232d4cabce856bce760d0d7bfb58db98",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: blank target; no requested image.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: blank target; no requested image.; reviewed at 0.17.0, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"extensions.iterm2-images\"]"
     },
@@ -10573,7 +10573,7 @@
             199
           ],
           "rawReplyRef": "sgr.bold",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: visibly heavier strokes.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: visibly heavier strokes.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.bold\"]"
         }
       ],
@@ -10601,7 +10601,7 @@
         }
       ],
       "screenshotRef": "sha256:3e8f2b32381048ee1c40deaa875688e9c8f7804d8f8948243c20bcf54c282efe",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: visibly heavier strokes.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: visibly heavier strokes.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.bold\"]"
     },
@@ -10635,7 +10635,7 @@
             200
           ],
           "rawReplyRef": "sgr.faint",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: visibly dimmer sample.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: visibly dimmer sample.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.faint\"]"
         }
       ],
@@ -10663,7 +10663,7 @@
         }
       ],
       "screenshotRef": "sha256:4aedc93cf8d62e9617535d2ba0418febd9595fdb9a597d462b293f0a1690b2a3",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: visibly dimmer sample.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: visibly dimmer sample.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.faint\"]"
     },
@@ -11480,7 +11480,7 @@
             201
           ],
           "rawReplyRef": "sgr.hidden",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: sample text disappears; only the cursor cell remains.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: sample text disappears; only the cursor cell remains.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.hidden\"]"
         }
       ],
@@ -11508,7 +11508,7 @@
         }
       ],
       "screenshotRef": "sha256:f5ec71ef6baf653c54dabfd9c91ef49413d900a9c11f775333fb9c70e45d6524",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: sample text disappears; only the cursor cell remains.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: sample text disappears; only the cursor cell remains.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.hidden\"]"
     },
@@ -11542,7 +11542,7 @@
             202
           ],
           "rawReplyRef": "sgr.inverse",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: dark text on a filled light band.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: dark text on a filled light band.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.inverse\"]"
         }
       ],
@@ -11570,7 +11570,7 @@
         }
       ],
       "screenshotRef": "sha256:b270aafcb178faf0e4e309bf47980d8b60ab70a122fef7fc40338265e277f09f",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: dark text on a filled light band.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: dark text on a filled light band.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.inverse\"]"
     },
@@ -11604,7 +11604,7 @@
             203
           ],
           "rawReplyRef": "sgr.italic",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: slanted glyphs.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: slanted glyphs.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.italic\"]"
         }
       ],
@@ -11632,7 +11632,7 @@
         }
       ],
       "screenshotRef": "sha256:639b8ec5490b8ba5b1a7079cce9694f0aab9c03571449f46c9c94d475e8647eb",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: slanted glyphs.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: slanted glyphs.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.italic\"]"
     },
@@ -11666,7 +11666,7 @@
             209
           ],
           "rawReplyRef": "sgr.overline",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: independently retained target equals its control; no requested overline.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: independently retained target equals its control; no requested overline.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.overline\"]"
         }
       ],
@@ -11694,7 +11694,7 @@
         }
       ],
       "screenshotRef": "sha256:5750895c7f65c527d5430103da9d8f33d88c793654917d056f5a033486b073b8",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: independently retained target equals its control; no requested overline.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: independently retained target equals its control; no requested overline.; reviewed at 0.17.0, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.overline\"]"
     },
@@ -12239,7 +12239,7 @@
             204
           ],
           "rawReplyRef": "sgr.strikethrough",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: line through the middle of the text.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: line through the middle of the text.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.strikethrough\"]"
         }
       ],
@@ -12267,7 +12267,7 @@
         }
       ],
       "screenshotRef": "sha256:83f6612951ae0b8f9359d74b123d1c31d7d0898d9a37302e11f8a3a3b0037900",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: line through the middle of the text.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: line through the middle of the text.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.strikethrough\"]"
     },
@@ -12927,7 +12927,7 @@
             205
           ],
           "rawReplyRef": "sgr.underline.curly",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured wave across three adjacent rows.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured wave across three adjacent rows.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.curly\"]"
         }
       ],
@@ -12955,7 +12955,7 @@
         }
       ],
       "screenshotRef": "sha256:e35837afae3b7eaf3a3e74766716ae0858598e50fe6e3fe715e1a102f345e876",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured wave across three adjacent rows.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured wave across three adjacent rows.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.curly\"]"
     },
@@ -12989,7 +12989,7 @@
             206
           ],
           "rawReplyRef": "sgr.underline.dashed",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured dash pattern at the underline row.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured dash pattern at the underline row.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.dashed\"]"
         }
       ],
@@ -13017,7 +13017,7 @@
         }
       ],
       "screenshotRef": "sha256:656023e485dcdbe6c58dc4c94e79f837a7da30915e762e588ae6ed50958fed38",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured dash pattern at the underline row.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured dash pattern at the underline row.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.dashed\"]"
     },
@@ -13051,7 +13051,7 @@
             207
           ],
           "rawReplyRef": "sgr.underline.dotted",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured single-pixel dots at the underline row.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured single-pixel dots at the underline row.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.dotted\"]"
         }
       ],
@@ -13079,7 +13079,7 @@
         }
       ],
       "screenshotRef": "sha256:c50cab1cd91bddfcfca1f6096c11ef8c838d80518cfd9d53223c82626eefb3d2",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured single-pixel dots at the underline row.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: measured single-pixel dots at the underline row.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.dotted\"]"
     },
@@ -13113,7 +13113,7 @@
             210
           ],
           "rawReplyRef": "sgr.underline.double",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: independently retained target equals its control; no requested double underline.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: independently retained target equals its control; no requested double underline.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.double\"]"
         }
       ],
@@ -13141,7 +13141,7 @@
         }
       ],
       "screenshotRef": "sha256:5750895c7f65c527d5430103da9d8f33d88c793654917d056f5a033486b073b8",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: independently retained target equals its control; no requested double underline.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: independently retained target equals its control; no requested double underline.; reviewed at 0.17.0, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.double\"]"
     },
@@ -13175,7 +13175,7 @@
             208
           ],
           "rawReplyRef": "sgr.underline.single",
-          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: one solid underline rule.",
+          "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: one solid underline rule.; reviewed at 0.17.0, not re-verified",
           "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.single\"]"
         }
       ],
@@ -13203,7 +13203,7 @@
         }
       ],
       "screenshotRef": "sha256:6c761c65e4a263360fc8e55afabfd143079d2e4ef5abfb7ad4ec5b66f72a9bec",
-      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: one solid underline rule.",
+      "reason": "Exact-run CTO ruling a5361b78-9dc7-4c4c-a118-e118cdecce1d independently confirms this frame decision. Existing Alacritty review: one solid underline rule.; reviewed at 0.17.0, not re-verified",
       "status": "supported",
       "reviewRef": "[\"term\",\"alacritty\",\"0.17.0\",\"linux\",\"sgr.underline.single\"]"
     },

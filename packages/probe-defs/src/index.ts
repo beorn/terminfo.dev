@@ -3,6 +3,7 @@ export {
   SOURCE_ANSWERS,
   resolveSourceAnswer,
   sourceAnswerForRef,
+  sourceAnswerVersionLabel,
   sourceAnswerKey,
   parseSourceAnswerKey,
   repositoryIdentity,

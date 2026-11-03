@@ -16,21 +16,12 @@ import {
   type RunDraft,
   type UngradedDiagnostic,
   type TextQualification,
-  finalizeProbeResult,
-  sourceAnswerForRef,
-  type TextQualificationAssessment,
   type CollectorSelection,
   type CollectorAttempt,
   readCollectorSelection,
   readCollectorAttempt,
 } from "@terminfo/probe-defs"
-import { type LoadedRun, parseJsonStrict, resolveMeasuredSourceAnswer } from "@terminfo/run-parser"
-import {
-  canConcludeObservation,
-  textQualificationFailure,
-  consoleHostHold,
-  validateCorrectedObservation,
-} from "../../packages/run-parser/src/observations.ts"
+import { type LoadedRun, parseJsonStrict } from "@terminfo/run-parser"
 import {
   loadStoredRuns,
   RETAINED_ARTIFACT_KINDS,
@@ -48,9 +39,6 @@ import {
   validatePresentationSupersession,
 } from "../../scripts/interpretations.ts"
 export { parseInterpretations } from "../../scripts/interpretations.ts"
-
-/** Public migration explanation derived from legacy booleans, never an original run note. */
-export const HISTORICAL_RERUN_NOTE = "Historical result lacks retained attempt evidence; rerun required (TEST TODO)."
 
 type ReadObservation = HistoricalProbeRun["observations"][number]
 type ReadAssertion = HistoricalProbeRun["assertions"][number]
@@ -141,9 +129,8 @@ export interface SelectedExclusion {
 }
 
 /**
- * A current row is the collector's sealed result, never an observation regraded by this reader, with one
- * two reviewed exceptions through consoleHostHeldResults: Windows console-host (#30720) and exact-run
- * tool-gap withdrawal of an embedded review (#32014, CTO776bc352).
+ * A current row retains the collector's recorded grades and reasons. Required grading conditions,
+ * including Windows console-host ownership, are finalized before the run is stored.
  */
 export interface CurrentSelectedVersion {
   schemaVersion: 3 | 4
@@ -233,169 +220,9 @@ export interface SelectedProjection {
   treeSuiteId: string
 }
 
-function observationRecord(run: LoadedRun, observation: ReadObservation): SelectedCell["record"] {
-  const { rawReplyRef, screenshotRef } = observation
-  return {
-    ...(rawReplyRef && { rawReply: run.rawReplies[rawReplyRef] }),
-    assertions: run.assertions.filter((assertion) => assertion.featureId === observation.featureId),
-    ...(screenshotRef && {
-      screenshot: {
-        url: `/artifacts/${screenshotRef.slice("sha256:".length)}.png`,
-        sha256: screenshotRef.slice("sha256:".length),
-      },
-    }),
-    ...(observation.frames && {
-      // The frame's kind travels with its digest. A pixel frame also gets the .png URL the site can
-      // render; a text frame does NOT, because the site's evidence cell renders every frame as an
-      // <img> and its artifact inventory admits only .png. The public projection refuses a text
-      // frame BY NAME until the site can render one, rather than emitting a .txt URL nobody can.
-      frames: observation.frames.map((frame) => ({
-        role: frame.role,
-        label: frame.label,
-        capturedAt: frame.capturedAt,
-        kind: frame.kind ?? ("pixels" as const),
-        sha256: frame.ref.slice("sha256:".length),
-        ...(frame.kind === "text-cells" ? {} : { url: `/artifacts/${frame.ref.slice("sha256:".length)}.png` }),
-        ...(frame.sourceRef && { sourceRef: frame.sourceRef }),
-      })),
-    }),
-  }
-}
-
 export type { TextQualificationAssessment } from "@terminfo/probe-defs"
 
-/**
- * #30720, @cto rulings fc63f412, 1ee8cf0b and f126327b. Under ConPTY a Windows console host (conhost.exe or
- * OpenConsole.exe) sits between the collector and the terminal. It answers every query it implements
- * itself, swallows most others and passes only a few through. It also answers the DA1 sentinel (ESC [ c)
- * that ends each probe query, and it reads input in order. So within one query's stored reply, a reply
- * before the host's DA1 is the host's, a reply after it is the terminal's, and nothing after it means the
- * terminal was never heard from. A query with no sentinel (the cursor report ESC [ 6 n) is the host's.
- *
- * A Windows app's supported or unsupported verdict from a reply counts only when every query was answered
- * after the host's DA1. Otherwise both paths hold it with the reason this returns: the current path as
- * test-todo, the historical path as inconclusive with that note. The rule reads this run alone, never
- * another OS's answer. A plain reply string (a DA or XTVERSION reply) has no sentinel either, so it is the
- * host's, or none when empty. A test-failure stays visible as the repair item it is.
- *
- * Known limit, accepted by @cto: the scope is every Windows app run, so a future Windows context whose
- * host passes queries straight through is held here (under-counted), never mislabeled. Whoever adds such
- * a context changes this scope on purpose.
- */
-/** Both reviewed TODO rules share this one per-run projection; sealed source objects remain immutable. */
-export function consoleHostHeldResults(run: LoadedRun, interpretations: readonly Interpretation[]): ProbeResult[] {
-  if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
-  return run.results.map((result) => {
-    const gaps = interpretations.filter(
-      (entry) =>
-        entry.decision === "tool-gap" && entry.runSha256 && entry.featureId === result.featureId && applies(entry, run),
-    )
-    if (gaps.length > 1) throw new Error(`Run ${run.runId}/${result.featureId}: conflicting active tool-gap overlays`)
-    const gap = gaps[0]
-    const reason = gap?.reason ?? consoleHostHold(run, result, result.status)
-    if (reason === undefined) {
-      const ref = result.reviewRef ?? result.tests.find((test) => test.id === "review")?.reviewRef
-      if (!ref || !sourceAnswerForRef(ref)) return result
-      const answer = resolveMeasuredSourceAnswer({
-        subject: run.subject,
-        featureId: result.featureId,
-        ...(run.runtimeIdentity && { runtimeIdentity: run.runtimeIdentity }),
-        sourceRevision: run.sourceRevision,
-      })
-      if (answer.kind !== "answer" || !answer.label) return result
-      const label = answer.label
-      const annotate = (text: string | undefined): string =>
-        text?.includes(label) ? text : [text, label].filter(Boolean).join("; ")
-      // Presentation only: sealed grades, dates, measurement and provenance stay intact.
-      return {
-        ...result,
-        reason: annotate(result.reason),
-        tests: result.tests.map((test) => (test.id === "review" ? { ...test, reason: annotate(test.reason) } : test)),
-      }
-    }
-    const { status: _sealed, reviewRef, ...unsealed } = result
-    const test = {
-      id: gap ? "criterion" : "console-host",
-      status: "test-todo" as const,
-      attempt: gap ? result.attempt : { scope: "none" as const },
-      reason,
-      ...(gap && { assertionRefs: [] }),
-    }
-    return finalizeProbeResult({
-      ...unsealed,
-      ...(!gap && reviewRef !== undefined && { reviewRef }),
-      tests: gap ? result.tests.map((prior) => (prior.id === "review" ? test : prior)) : [...result.tests, test],
-      reason,
-    })
-  })
-}
-
-function prepareRunCells(
-  run: LoadedRun,
-  interpretations: readonly Interpretation[],
-  text: TextQualificationAssessment,
-): { cells: Record<string, SelectedCell>; correctedFeatures: ReadonlySet<string> } {
-  const cells: Record<string, SelectedCell> = {}
-  const correctedFeatures = new Set<string>()
-  for (const observation of run.observations) {
-    const hold = consoleHostHold(run, observation, observation.outcome)
-    cells[observation.featureId] = {
-      ...observation,
-      ...(run.legacy ? { note: HISTORICAL_RERUN_NOTE } : {}),
-      ...(hold !== undefined && { note: hold, consoleHostHold: hold }),
-      record: observationRecord(run, observation),
-      conclusive: hold === undefined && canConcludeObservation(run, observation, text),
-      ...(textQualificationFailure(run, observation, text) === undefined
-        ? {}
-        : { textQualificationReason: textQualificationFailure(run, observation, text) }),
-      chain: {
-        origin: run.origin,
-        method: observation.assertionType,
-        runId: run.runId,
-        runSha256: run.sha256,
-        ...(observation.rawReplyRef && { rawReplyRef: observation.rawReplyRef }),
-        ...(observation.screenshotRef && { screenshotRef: observation.screenshotRef }),
-      },
-    }
-  }
-  for (const entry of interpretations) {
-    if (!applies(entry, run) || !entry.observation || !entry.featureId || entry.origin === "documentation") continue
-    if (entry.observation.featureId !== entry.featureId) {
-      throw new Error(`interpretation ${entry.id}: observation feature mismatch`)
-    }
-    const recordedObservation = run.observations.find((observation) => observation.featureId === entry.featureId)
-    if (!recordedObservation) {
-      throw new Error(`interpretation ${entry.id}: no raw observation for ${entry.featureId}`)
-    }
-    let observation = entry.observation
-    if (correctedFeatures.has(entry.featureId)) throw new Error(`conflicting active corrections for ${entry.featureId}`)
-    correctedFeatures.add(entry.featureId)
-    observation = validateCorrectedObservation(run, entry)
-    const hold = consoleHostHold(run, observation, observation.outcome)
-    cells[entry.featureId] = {
-      ...observation,
-      ...(hold !== undefined && { note: hold, consoleHostHold: hold }),
-      record: observationRecord(run, observation),
-      conclusive: hold === undefined && canConcludeObservation(run, observation, text),
-      ...(textQualificationFailure(run, observation, text) === undefined
-        ? {}
-        : { textQualificationReason: textQualificationFailure(run, observation, text) }),
-      chain: {
-        origin: run.origin,
-        method: observation.assertionType,
-        runId: run.runId,
-        runSha256: run.sha256,
-        ...(observation.rawReplyRef && { rawReplyRef: observation.rawReplyRef }),
-        ...(observation.screenshotRef && { screenshotRef: observation.screenshotRef }),
-        correctionId: entry.id,
-        sources: entry.sources,
-      },
-    }
-  }
-  return { cells, correctedFeatures }
-}
-
-/** Classify one parsed development run with the projection's active corrections, without admission or selection. */
+/** Read one parsed development run's recorded statuses without admission, selection or regrading. */
 export function classifyDevelopmentRun(run: LoadedRun): {
   mode: "development"
   runId: string
@@ -409,7 +236,7 @@ export function classifyDevelopmentRun(run: LoadedRun): {
   return {
     mode: "development",
     runId: run.runId,
-    states: Object.fromEntries(consoleHostHeldResults(run, []).map((result) => [result.featureId, result.status])),
+    states: Object.fromEntries(run.results.map((result) => [result.featureId, result.status])),
   }
 }
 
@@ -611,7 +438,7 @@ export function projectResults(
     if (!run.results || !run.catalogIds || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
     }
-    const results = consoleHostHeldResults(run, active)
+    const results = run.results
     const aggregate = aggregateCurrentResults(results, run.catalogIds)
     const counts = aggregate.counts
     const states = Object.fromEntries(results.map((result) => [result.featureId, result.status]))
@@ -702,7 +529,6 @@ export function projectResults(
       policy.workingAttempts ?? [],
       catalogIds,
       admittedContextKeys(projection.versions),
-      active,
     ),
   }
 }
@@ -738,7 +564,6 @@ function composeContextSummaries(
   workingAttempts: readonly SelectedAttemptInput[],
   catalogIds: readonly string[],
   contextKeys: ReadonlyMap<string, string>,
-  interpretations: readonly Interpretation[],
 ): Record<string, SelectedContextSummary> {
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
@@ -791,7 +616,8 @@ function composeContextSummaries(
       cells[result.featureId] = { origin: { runId: run.runId, resultId: result.featureId }, run, result }
     }
     for (const run of baselines) {
-      for (const result of consoleHostHeldResults(run, interpretations)) remember(run, result)
+      if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
+      for (const result of run.results) remember(run, result)
     }
     const selected = candidates.flatMap((run) => {
       const selection = readCollectorSelection(run.rawReplies)
@@ -800,7 +626,8 @@ function composeContextSummaries(
     selected.sort(compareContextAttempts)
     const attempts: SelectedContextAttempt[] = []
     for (const { run, selection, attempt } of selected) {
-      const results = consoleHostHeldResults(run, interpretations)
+      if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
+      const results = run.results
       // A real initialized TODO is useful missing-evidence data when no prior cell exists; it
       // never replaces a prior cell and never becomes an emitted measurement.
       for (const result of results) {

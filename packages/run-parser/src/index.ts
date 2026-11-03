@@ -2,7 +2,6 @@
 import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import {
-  REPLY_PATH_AUDIT_REVIEW,
   SOURCE_NEGATIVE_REVIEW,
   SEMANTIC_PROMPT_SOURCE_REVIEW,
   HARNESS_INCOMPLETE_TEST,

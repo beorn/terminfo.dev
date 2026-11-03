@@ -42,7 +42,7 @@ import { fullContextCensus, type CensusContext } from "../docs/data/full-census.
 import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/collected-run.ts"
 import { reviewedContextFor } from "../docs/data/current-results.ts"
-import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
+import { classifyDevelopmentRun, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
@@ -764,7 +764,7 @@ export async function collectPass(
         textSnapshots.set(ref, readVerifiedArtifact(dirname(path), ref, path, "text-snapshot"))
       }
       if (!run.results || !run.catalogIds) throw new Error("Current run lacks frozen results")
-      row.summary = aggregateCurrentResults(consoleHostHeldResults(run, []), run.catalogIds)
+      row.summary = aggregateCurrentResults(run.results, run.catalogIds)
       row.classification = classifyDevelopmentRun(run)
       row.status = "classified"
     } catch (error) {

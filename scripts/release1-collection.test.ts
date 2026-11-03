@@ -136,10 +136,9 @@ if (currentManifest.schemaVersion !== 4 || !currentManifest.catalogIds) {
   throw new Error("Collection fixture requires the committed schema-4 catalogue")
 }
 
-// #32014: both entry points resolve the same private non-C1 embedded targets until Phase 1.4.
-// Frozen run bytes at 9e319ac6 stay outside active content; canonical parsing remains real.
+// Retained fixture results stay authoritative when later tool-gap reviews are present.
 it.each(["projection", "collection"] as const)(
-  "%s resolves six exact-run tool-gap overlays",
+  "%s preserves stored results when six tool-gap reviews are added",
   async (entry) => {
     const paths = [
       "probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
@@ -182,6 +181,7 @@ it.each(["projection", "collection"] as const)(
         entry === "projection"
           ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash)
           : collectPass(fingerprintFixture.directory, { runner: "local" }, { contexts: [] })
+      const baseline = entry === "projection" ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash) : undefined
       const storePath = join(CONTENT, "interpretations.json")
       const original = readFileSync(storePath, "utf8")
       const stored: unknown = JSON.parse(original)
@@ -194,7 +194,8 @@ it.each(["projection", "collection"] as const)(
         const result = await invoke()
         if (entry === "projection") {
           const projection = result as ReturnType<typeof loadSelectedResults>
-          for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("test-todo")
+          expect(projection).toEqual(baseline)
+          for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("untestable")
         } else {
           const pass = result as Awaited<ReturnType<typeof collectPass>>
           expect(pass.contexts).toEqual([])
