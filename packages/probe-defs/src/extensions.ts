@@ -86,6 +86,8 @@ import { SIXEL_BOUNDS, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
 /** A minimal solid-red 8x8 PNG; the OSC 1337 inline image target renders it as reviewable pixels. */
 const ITERM2_RED_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mP4z8CAFTEMLQkAKP8/wc53yE8AAAAASUVORK5CYII="
+/** The OSC 1337 inline-image request both arms feed: an 8x8 red PNG, BEL-terminated. */
+const ITERM2_INLINE_IMAGE = "\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07"
 
 /**
  * Font-ligature sample: ONE line so the pair fits the minimum admitted capture geometry, and the
@@ -1446,7 +1448,7 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "286fddf6632e43ccd62f9050be41ec7b2908e43e",
     buildHash: "30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074",
     lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
-    codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 1337, 3008],
     sourceCitation:
       "vt100 0.16.2 src/perform.rs:198-238 dispatches unmatched OSCs to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 286fddf6632e43ccd62f9050be41ec7b2908e43e installs title, icon and clipboard callbacks with no unhandled_osc override",
   },
@@ -4924,8 +4926,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.iterm2-images",
       (ctx) => {
+        // An engine whose audited source drops OSC 1337 takes the source-negative review, so its cell can be
+        // decided Unsupported from source; every other engine keeps the observable review (#32225).
+        if (absentOscAudit(ctx.runtimeIdentity, 1337)) {
+          return sourceAbsentOsc("extensions.iterm2-images", 1337, ITERM2_INLINE_IMAGE, "inline image")(ctx)
+        }
         if (replyPathAuditFor(ctx, "extensions.iterm2-images")) {
-          ctx.feedCapture("\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07")
+          ctx.feedCapture(ITERM2_INLINE_IMAGE)
         }
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
         return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
