@@ -655,13 +655,17 @@ describe("reply-path audit", () => {
     return statuses[0]!
   }
 
-  /** The route prose that names this artifact; the table no longer carries it. */
+  /**
+   * The route prose for ONE audit cell: the reply-path original that names this artifact, never a sibling artifact's
+   * provenance that happens to share the answer. The table no longer carries the prose (@cto review of the strip,
+   * e94cbcac).
+   */
   const replyPathRoute = (artifactSha: string, featureId: string): string => {
-    const reasons = replyPathAnswers(artifactSha, featureId).flatMap((answer) =>
-      answer.originals
-        .filter((original) => original.reviewer === "reply-path-audit")
-        .map((original) => original.reason),
+    const originals = replyPathAnswers(artifactSha, featureId).flatMap((answer) =>
+      answer.originals.filter((original) => original.reviewer === "reply-path-audit"),
     )
+    const named = originals.filter((original) => original.reason.includes(artifactSha.slice(0, 8)))
+    const reasons = (named.length > 0 ? named : originals).map((original) => original.reason)
     if (reasons.length === 0) throw new Error(`no reply-path route for ${featureId} at ${artifactSha.slice(0, 8)}`)
     return reasons.join("\n")
   }
@@ -776,11 +780,13 @@ describe("reply-path audit", () => {
     {
       name: "native conceal",
       digest: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+      core: "332b2aef",
       priors: ["e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0"],
     },
     {
       name: "native absolute retained rows",
       digest: "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
+      core: "332b2aef",
       priors: [
         "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
         "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
@@ -789,11 +795,13 @@ describe("reply-path audit", () => {
     {
       name: "native nullable modes",
       digest: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+      core: "332b2aef",
       priors: ["61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03"],
     },
     {
       name: "historical native overline",
       digest: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
+      core: "332b2aef",
       priors: [
         "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
@@ -802,6 +810,7 @@ describe("reply-path audit", () => {
     {
       name: "native",
       digest: "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
+      core: "332b2aef",
       priors: [
         "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
@@ -810,9 +819,10 @@ describe("reply-path audit", () => {
     {
       name: "WASM",
       digest: "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
+      core: "5714ed07",
       priors: ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf"],
     },
-  ])("the rebuilt $name artifact retains its prior Ghostty audit sets", ({ digest, priors }) => {
+  ])("the rebuilt $name artifact retains its prior Ghostty audit sets", ({ digest, priors, core }) => {
     const prior = Object.fromEntries(
       priors.flatMap((sha) => {
         const audits = REPLY_PATH_AUDITS.get(sha)
@@ -834,6 +844,8 @@ describe("reply-path audit", () => {
     for (const [id, audit] of Object.entries(prior)) {
       expect(rebuilt![id]).toMatchObject({ query: audit.query })
       expect(rebuilt![id]!.matches).toBe(audit.matches)
+      // The table carries no citation; the route prose naming this artifact's library commit lives with its answer.
+      expect(replyPathRoute(digest, id), id).toContain(core)
     }
   })
 
@@ -889,6 +901,11 @@ describe("reply-path audit", () => {
       expect(audit).toMatchObject({ query: prior[id]!.query })
       expect(audit.matches).toBe(prior[id]!.matches)
       expect(audit, id).toBeDefined()
+      // @cto review of the strip (e94cbcac): the route prose moved to the kept answers. The old `not.toContain(prior
+      // artifact)` half no longer holds there — those reasons name the rebuild's predecessor as provenance — and is
+      // reported to the reviewer rather than dropped.
+      expect(replyPathRoute(sha, id), id).toContain("5714ed07")
+      if (id in stays) expect(replyPathRoute(sha, id), id).toContain(stays[id]!)
     }
   })
 
@@ -908,6 +925,9 @@ describe("reply-path audit", () => {
       const audit = rebuilt[id]!
       expect(audit).toMatchObject({ query: prior[id]!.query })
       expect(audit.matches).toBe(prior[id]!.matches)
+      expect(replyPathRoute("ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", id), id).toContain(
+        "5714ed07",
+      )
     }
   })
 
@@ -932,6 +952,9 @@ describe("reply-path audit", () => {
         expect(audit).toMatchObject({ query: prior[id]!.query })
         expect(audit.matches).toBe(prior[id]!.matches)
       }
+      expect(replyPathRoute("5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", id), id).toContain(
+        "5714ed07",
+      )
     }
   })
 
@@ -950,6 +973,9 @@ describe("reply-path audit", () => {
     for (const [id, audit] of Object.entries(rebuilt)) {
       expect(audit).toMatchObject({ query: prior[id]!.query })
       expect(audit.matches).toBe(prior[id]!.matches)
+      expect(replyPathRoute("d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", id), id).toContain(
+        "5714ed07",
+      )
     }
   })
   const indexedCells = [...REPLY_PATH_AUDITS].flatMap(([auditKey, audits]) =>
@@ -1481,6 +1507,9 @@ describe("reply-path audit", () => {
       expect(replyPathStatus("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id), id).toBe(
         "untestable",
       )
+      const route = replyPathRoute("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id)
+      expect(route, id).toContain("patch:586-588")
+      expect(route, id).not.toContain("parses it")
     }
 
     for (const id of [
@@ -1504,6 +1533,10 @@ describe("reply-path audit", () => {
       expect(replyPathStatus("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id), id).toBe(
         "unsupported",
       )
+      // The route prose names the parse-time rejection; `682-687` appears in no kept answer and is reported instead.
+      const route = replyPathRoute("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id)
+      expect(route, id).toContain("patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501")
+      expect(route, id).toContain("only under initAlloc (stream.zig:506-510)")
     }
   })
 
@@ -1603,9 +1636,14 @@ describe("reply-path audit", () => {
     const readRows = ["extensions.osc52-clipboard", "extensions.osc52-read"]
     for (const id of [...noReply, ...parserRejected].filter((id) => !readRows.includes(id))) {
       expect(rows?.[id], id).toBeDefined()
+      const route = replyPathRoute(sha, id)
+      expect(route, id).toContain("lib.rs:21-53")
+      expect(route, id).not.toContain("artifactf309015f")
     }
-    expect(rows?.["extensions.osc52-clipboard"]).toBeDefined()
-    expect(rows?.["extensions.osc52-read"]).toBeDefined()
+    for (const id of readRows) {
+      expect(rows?.[id], id).toBeDefined()
+      expect(replyPathRoute(sha, id), id).toContain("lib.rs:50-52")
+    }
     expect(rows?.["extensions.osc52-write"]).toBeUndefined()
     expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc52-write"]).toBeDefined()
     expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc99-kitty-notify"]).toBeDefined()

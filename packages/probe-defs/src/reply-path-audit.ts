@@ -27,8 +27,8 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   // dcs_hook/dcs_put/dcs_unhook arms routed through core's dcs.Handler, all transcribed from core 5714ed07
   // src/termio/stream_handler.zig, and removes their no-op lines; core 5714ed07 is unchanged. device.primary-da,
   // device.secondary-da, device.xtversion, device.decrqss, device.xtgettcap and extensions.sixel-da1 (via DA1, no 4)
-  // now reply and leave this table. The 12 ruled stays carry query, matches and kind unchanged with citations for this
-  // artifact; the other 32 ce01cd0d rows are carried unchanged except for naming this artifact.
+  // now reply and leave this table. The 12 ruled stays carry query and matches unchanged for this artifact; the other
+  // 32 ce01cd0d rows are carried unchanged except for naming this artifact. Route prose lives in the kept answers.
   // #32121: core delta = src/terminal/PageList.zig memset only (upstream 420de124);
   // every row carried unchanged except naming this artifact.
   [
@@ -83,8 +83,8 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   // Ghostty WASM rebuilt to answer DECRPM (#32024, Termless bcebe2e9). The inner patch delta from 5c38594a only ADDS the
   // .request_mode / .request_mode_unknown arms (transcribed from core 5714ed07 src/termio/stream_handler.zig:525-555) and
   // removes their two no-op lines; core 5714ed07 is unchanged. device.decrpm and extensions.osc5522-clipboard now reply
-  // and leave this table. Every other 5c38594a row is carried with query, matches and kind unchanged; its patch line
-  // citations name the lines in the ce01cd0d patch (the no-op block moved from :657 to :676).
+  // and leave this table. Every other 5c38594a row is carried with query and matches unchanged; the route prose that
+  // names the ce01cd0d patch lines (the no-op block moved from :657 to :676) lives in the kept answers.
   [
     "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
     {
@@ -137,8 +137,8 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   // Ghostty WASM rebuilt to answer DECRPM (#32024, Termless bcebe2e9). The inner patch delta from 5c38594a only ADDS the
   // .request_mode / .request_mode_unknown arms (transcribed from core 5714ed07 src/termio/stream_handler.zig:525-555) and
   // removes their two no-op lines; core 5714ed07 is unchanged. device.decrpm and extensions.osc5522-clipboard now reply
-  // and leave this table. Every other 5c38594a row is carried with query, matches and kind unchanged; its patch line
-  // citations name the lines in the ce01cd0d patch (the no-op block moved from :657 to :676).
+  // and leave this table. Every other 5c38594a row is carried with query and matches unchanged; the route prose that
+  // names the ce01cd0d patch lines (the no-op block moved from :657 to :676) lives in the kept answers.
   [
     "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
     {
@@ -197,7 +197,7 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   // Ghostty WASM rebuilt to forward the core viewport (31392, @cto 34bea86e). The inner patch delta from d80a8110
   // only ADDS ghostty_terminal_get_viewport_state/scroll_viewport and their header/export lines; ResponseHandler,
   // size_report and every cited no-op arm are byte-identical, and core 5714ed07 is unchanged. Each row below was
-  // rechecked against the 5c38594a patch; its patch line citations name the lines in that patch.
+  // rechecked against the 5c38594a patch; the route prose naming those lines lives in the kept answers.
   [
     "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
     {
@@ -312,7 +312,7 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       "extensions.sixel-da1": { query: "\u001b[c" },
     },
   ],
-  // Ghostty WASM URI-only rebuild (31385). Exact prior query bytes, matching and kinds retained; old rows stay unchanged.
+  // Ghostty WASM URI-only rebuild (31385). Exact prior query bytes and matching retained; old rows stay unchanged.
   [
     "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
     {
@@ -374,7 +374,7 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   // because DWARF embeds absolute build paths and Zig cache object names. The key names the physical file.
   // Ghostty source332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28; Termless source2d97417328b7b1d086f9396b9a1731216ed134cc.
   // The actual store d70f2f8a binary strips to the SAME code identity; both builds use the same Ghostty core above.
-  // Native tree03033e2d and wrapper tree8810d9d2 are unchanged; all 53 d70f2f8a source citations carry verbatim.
+  // Native tree03033e2d and wrapper tree8810d9d2 are unchanged; all 53 d70f2f8a query/matches pairs carry verbatim.
   // The getDefaultColors :571 pointer stays qualified at Termless5afcc676 (the same function is :576 at2d974173).
   [
     "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
@@ -498,7 +498,7 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   // native tree 82c63b6f. ResponseHandler now answers DSR 5/6, DECRQM (?7, ?5522 -> ;0$y) and the kitty keyboard
   // query, so the 11 rows for those cells are not carried; the 42 kept rows re-cite the route through the handler.
   // S6 mode-readback/release rebuild: same audited parser and reply routing, exact new binary; no history alias.
-  // Chronological retained-buffer rebuild: exact new artifact, independent current-source citations.
+  // Chronological retained-buffer rebuild: exact new artifact, independent current-source audit.
   // Conceal-only rebuild; historical artifact entries remain independent and unchanged.
   [
     "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
