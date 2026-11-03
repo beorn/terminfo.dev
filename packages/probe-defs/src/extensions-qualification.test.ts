@@ -372,6 +372,43 @@ test("iterm2-images keeps the observable review for a declared-supporting engine
   expect(fed).toEqual([])
 })
 
+// #32225: vt100-rust has no DCS handler, so its Sixel cell takes the source-negative review behind the X sentinel.
+// A fake engine that exposes Sixel storage keeps the storage review even on the audited identity, and storage alone
+// never reads as a negative or a pass (CTO a44f1c74); a lapsed identity keeps the observable review.
+test("sixel takes the vt100Rust source-negative review only without Sixel storage", () => {
+  const vt100 = absentOscBatch.find((entry) => entry.engine === "vt100Rust")!
+  const sixel = callback("extensions.sixel").lib!
+  const run = (runtimeIdentity: HeadlessRuntimeIdentity, char = "X", extra: Partial<LibProbeSource> = {}) => {
+    const fed: string[] = []
+    const result = sixel({
+      runtimeIdentity,
+      capabilities: { extensions: new Set(), sixel: false },
+      feed: (data: string) => void fed.push(data),
+      getCell: () => ({ char }),
+      ...extra,
+    } as unknown as LibProbeSource)
+    return { result, fed }
+  }
+  const inert = run(vt100.identity)
+  expect(inert.result.criterionBranch).toBe("source-negative-review")
+  expect(inert.result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
+  expect(inert.result.tests?.[0]?.reason).toContain("vte 0.15.0 src/lib.rs:779-789")
+  expect(inert.fed).toEqual(["\x1b[1;1H\x1b[2K\x1bPq#1;2;100;0;0~\x1b\\X"])
+  expect(run(vt100.identity, "?").result.assertions).toBeUndefined()
+  expect(run({ ...vt100.identity, engineVersion: "wrong" }).result.criterionBranch).toBe("headless-observable-review")
+  const images: { data: string; row: number; col: number }[] = []
+  const supporting = run(vt100.identity, "X", {
+    capabilities: { extensions: new Set(), sixel: true },
+    feed: (data: string) => {
+      const match = /\x1bPq(.*)\x1b\\/.exec(data)
+      if (match) images.push({ data: match[1]!, row: 0, col: 0 })
+    },
+    getSixelImages: () => [...images],
+  } as unknown as Partial<LibProbeSource>)
+  expect(supporting.result.criterionBranch).toBe("headless-observable-review")
+  expect(supporting.result.assertions).toBeUndefined()
+})
+
 // #32087: kitty's provenance.sourceCommit is kitty's own upstream commit, so a Termless pin move
 // (termlessRevision) keeps the six kitty OSC reviews, while a different kitty binary does not.
 test("kitty OSC source review survives a Termless revision move and lapses on a different binary", () => {
