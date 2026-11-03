@@ -1,6 +1,6 @@
 /**
- * @failure A kept answer drifts from a committed run, a disputed cell picks a side, or an engine citation is
- *          attributed without the build receipt that produced the measured binary (@cto de41833e, 85a9cfd9).
+ * @failure A kept answer drifts from a committed run, a disputed cell picks a side, or a kept citation names the
+ *          engine core, which no committed run may read (@cto de41833e, 85a9cfd9).
  * @level l0
  * @consumer Source-answer application at the writer and the canonical run reader
  * @reach fs-walk vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-mux/*.json
@@ -20,7 +20,7 @@ import {
   type SourceAnswer,
   type SourceAnswerSubject,
 } from "@terminfo/probe-defs"
-import { readEngineReceipt, resolveMeasuredSourceAnswer } from "./source-answers.ts"
+import { resolveMeasuredSourceAnswer } from "./source-answers.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..")
 const GHOSTTY_RUN = "ghostty-0.4.0-linux-3f3e920e-ebf8-4d81-ace1-52445a05a992.json"
@@ -116,29 +116,10 @@ describe("kept answers against every current committed run", () => {
     }
   })
 
-  it("attributes engine citations through the receipt, so no committed run reads a ghostty checkout", () => {
-    const runs = currentRuns()
-    expect(runs.length).toBeGreaterThan(0)
-    const ghostty = runs.find((entry) => entry.name === GHOSTTY_RUN)!.run
+  // @cto de41833e c2 removed the build receipt, so a kept engine citation could only resolve as an own-version
+  // answer with nothing behind it. No kept row may name the engine core.
+  it("keeps the engine core out of every kept citation", () => {
     const core = repositoryIdentity("https://github.com/ghostty-org/ghostty")
-
-    // The receipt is read at the pinned Termless revision through the production loader and it names this binary.
-    const receipt = readEngineReceipt(ghostty.runtimeIdentity)
-    expect(receipt?.core.repository ? repositoryIdentity(receipt.core.repository) : undefined).toBe(core)
-    expect(receipt?.core.commit).toMatch(/^[a-f0-9]{40}$/)
-    const ghosttyLoaded = "loadedBinary" in ghostty.runtimeIdentity! ? ghostty.runtimeIdentity.loadedBinary.sha256 : ""
-    expect(receipt?.outputs["ghostty-vt.wasm"]).toBe(ghosttyLoaded)
-
-    // No committed run reads the engine core today, and no ghostty checkout exists here, so every cell above
-    // resolved without one. The gate that keeps that true is the wasm output: a js-source run names no binary.
-    for (const { name, run } of runs.filter((entry) => entry.name !== GHOSTTY_RUN)) {
-      if (!("loadedBinary" in run.runtimeIdentity!))
-        expect(readEngineReceipt(run.runtimeIdentity), name).toBeUndefined()
-      else
-        expect(readEngineReceipt(run.runtimeIdentity)?.outputs["ghostty-vt.wasm"], name).not.toBe(
-          run.runtimeIdentity.loadedBinary.sha256,
-        )
-    }
     const cited = new Set(
       SOURCE_ANSWERS.flatMap((row) =>
         row.answers.flatMap((answer) => answer.citedBlobs.map((blob) => blob.repository)),

@@ -20,16 +20,6 @@ export interface SourceAnswerInput {
   sourceRevision?: string | null
   /** The I/O boundary resolves only this repository's immutable commit/path, or reports object absence. */
   readBlob?: (repository: string, commit: string, path: string) => string | undefined
-  /**
-   * The engine build receipt the I/O owner read at the pinned Termless revision. It names the engine source the
-   * loaded binary was built from and the wasm that build produced (@cto de41833e condition 2).
-   */
-  engineReceipt?: EngineReceipt
-}
-
-export interface EngineReceipt {
-  readonly outputs: Readonly<Record<string, string>>
-  readonly core: { readonly repository: string; readonly commit: string }
 }
 
 /** Owner/repo identity, so a citation may spell the same repository as a remote or a URL. */
@@ -42,9 +32,28 @@ export function repositoryIdentity(repository: string): string {
     .toLowerCase()
 }
 
-const ENGINE_CORE_REPOSITORY = "https://github.com/ghostty-org/ghostty"
-const ENGINE_OUTPUT = "ghostty-vt.wasm"
+const TERMLESS_REPOSITORY = "git@github.com:beorn/termless.git"
+const TERMINFO_REPOSITORY = "git@github.com:beorn/terminfo.dev.git"
 const VT100_RUST_PREFIX = "packages/vt100-rust/"
+
+/**
+ * The only public pending causes. A stored resolution may carry a private detail after the label; a consumer
+ * forwards the matched label and never the stored text (@cto 18a3b98f).
+ */
+export const SOURCE_ANSWER_PENDING_LABELS = {
+  changed: "cited source changed",
+  disagree: "kept answers disagree",
+  unresolvable: "cited source not resolvable",
+} as const
+
+export type SourceAnswerPendingReason =
+  | (typeof SOURCE_ANSWER_PENDING_LABELS)[keyof typeof SOURCE_ANSWER_PENDING_LABELS]
+  | `cited source not resolvable at ${string}`
+
+/** The label for an answer kept at its reviewed version but not re-verified against the current source. */
+export function sourceAnswerVersionLabel(version: string): string {
+  return `reviewed at ${version}, not re-verified`
+}
 
 /** Static kept answers; the one-time converter checks the source/provenance and emitted shape. */
 export const SOURCE_ANSWERS = retainedAnswers as readonly SourceAnswer[]
@@ -60,11 +69,7 @@ export type SourceAnswerResolution =
   | { kind: "none" }
   | {
       kind: "pending"
-      reason:
-        | "cited source changed"
-        | "kept answers disagree"
-        | "cited source not resolvable"
-        | `cited source not resolvable at ${string}`
+      reason: SourceAnswerPendingReason
       rowKeys: string[]
       /** Every kept answer that disagreed, so a pending cell can name each original rather than only its key. */
       answers?: readonly SourceAnswer["answers"][number][]
@@ -136,43 +141,32 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
               runtime.integrity.repository === blob.repository
                 ? runtime.integrity
                 : undefined
-            const core = repositoryIdentity(blob.repository) === repositoryIdentity(ENGINE_CORE_REPOSITORY)
-            const loaded = runtime !== undefined && "loadedBinary" in runtime ? runtime.loadedBinary.sha256 : undefined
-            const receipt = input.engineReceipt
-            // The receipt speaks only for the binary it built; another artifact never borrows it.
-            const receiptApplies =
-              receipt !== undefined && loaded !== undefined && receipt.outputs[ENGINE_OUTPUT] === loaded
-            if (core && receiptApplies && blob.commit !== receipt.core.commit) {
-              throw new Error(
-                `Engine citation ${blob.repository}@${blob.commit}:${blob.path} differs from the build receipt's ${receipt.core.commit}`,
-              )
-            }
+            const termless = repositoryIdentity(blob.repository) === repositoryIdentity(TERMLESS_REPOSITORY)
+            const owned = repositoryIdentity(blob.repository) === repositoryIdentity(TERMINFO_REPOSITORY)
             // The addon is built at its own source commit, not at the pinned Termless revision; a path the
             // measured identity cannot place is covered by neither and stays unresolvable (@cto de41833e c3).
-            const addon =
-              blob.repository === "git@github.com:beorn/termless.git" && blob.path.startsWith(VT100_RUST_PREFIX)
+            const addon = termless && blob.path.startsWith(VT100_RUST_PREFIX)
             const revision =
               source?.revision ??
-              (core
-                ? receiptApplies
-                  ? receipt.core.commit
-                  : undefined
-                : blob.repository === "git@github.com:beorn/termless.git"
-                  ? addon
-                    ? runtime?.kind === "native"
-                      ? runtime.provenance.sourceCommit
-                      : undefined
-                    : runtime?.termlessRevision
-                  : blob.repository === "git@github.com:beorn/terminfo.dev.git"
-                    ? input.sourceRevision
-                    : undefined)
+              (termless
+                ? addon
+                  ? runtime?.kind === "native"
+                    ? runtime.provenance.sourceCommit
+                    : undefined
+                  : runtime?.termlessRevision
+                : owned
+                  ? input.sourceRevision
+                  : undefined)
             const unavailable = (at = revision) => ({
               kind: "unavailable" as const,
-              ...(at && { reason: `cited source not resolvable at ${blob.repository}@${at.slice(0, 12)}` as const }),
+              ...(at && {
+                reason:
+                  `${SOURCE_ANSWER_PENDING_LABELS.unresolvable} at ${blob.repository}@${at.slice(0, 12)}` as const,
+              }),
             })
             const facts = [
               ...(input.blobs ?? []),
-              ...(blob.repository === "git@github.com:beorn/termless.git"
+              ...(termless
                 ? (runtime?.adapterSources ?? []).map((source) => ({
                     repository: blob.repository,
                     path: source.path,
@@ -181,20 +175,17 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
                 : []),
             ].filter(
               (fact) =>
-                fact.repository === blob.repository && fact.path === blob.path && /^[a-f0-9]{40}$/.test(fact.oid),
+                repositoryIdentity(fact.repository) === repositoryIdentity(blob.repository) &&
+                fact.path === blob.path &&
+                /^[a-f0-9]{40}$/.test(fact.oid),
             )
             const oids = new Set(facts.map((fact) => fact.oid))
             // An exact immutable commit addresses the converted blob. A different commit
             // alone does not establish whether this path changed. Explicit path OIDs win.
             if (oids.size === 1) return { kind: oids.has(blob.oid) ? "same" : "changed" }
             if (oids.size > 1 || source?.cleanTree === false) return unavailable()
-            // An engine citation this binary's receipt does not describe is unresolvable, never borrowed.
-            if (core && !receiptApplies) return unavailable()
             if (addon && !revision) return unavailable()
             if (!revision) return { kind: "unknown" }
-            // The receipt names the commit but no engine checkout is declared, so the blob stays unread: covered,
-            // not verified. A declared checkout (readBlob) is the only cure, never a fallback (@cto de41833e c4).
-            if (core && revision === blob.commit) return { kind: "unknown" }
             if (revision === blob.commit) return { kind: "same" }
             const current = input.readBlob?.(blob.repository, revision, blob.path)
             if (!current) return unavailable()
@@ -213,19 +204,18 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
         return { row, answer, key: sourceAnswerKey(row.subject, row.featureId), own, changed, verified, unavailable }
       }),
     )
-  const pending = (
-    reason: Extract<SourceAnswerResolution, { kind: "pending" }>["reason"],
-    matches: typeof candidates,
-  ): SourceAnswerResolution => ({
+  const pending = (reason: SourceAnswerPendingReason, matches: typeof candidates): SourceAnswerResolution => ({
     kind: "pending",
     reason,
     rowKeys: [...new Set(matches.map((match) => match.key))],
     // Only a disagreement needs each original named; other pending reasons point at one candidate set.
-    ...(reason === "kept answers disagree" && { answers: [...new Set(matches.map((match) => match.answer))] }),
+    ...(reason === SOURCE_ANSWER_PENDING_LABELS.disagree && {
+      answers: [...new Set(matches.map((match) => match.answer))],
+    }),
   })
   const applicable = candidates.filter((match) => !match.changed && !match.unavailable && (match.own || match.verified))
   if (new Set(applicable.map((match) => match.answer.status)).size > 1) {
-    return pending("kept answers disagree", applicable)
+    return pending(SOURCE_ANSWER_PENDING_LABELS.disagree, applicable)
   }
   const first = applicable[0]
   if (first) {
@@ -237,12 +227,12 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
       rows: [...new Set(applicable.map((match) => match.row))],
       answers: applicable.map((match) => match.answer),
       rowKeys: [...new Set(applicable.map((match) => match.key))],
-      ...(unverified && { label: `reviewed at ${unverified.row.subject.version}, not re-verified` }),
+      ...(unverified && { label: sourceAnswerVersionLabel(unverified.row.subject.version) }),
     }
   }
   const changed = candidates.filter((match) => match.changed)
-  if (changed.length) return pending("cited source changed", changed)
+  if (changed.length) return pending(SOURCE_ANSWER_PENDING_LABELS.changed, changed)
   const missing = candidates.find((match) => match.unavailable?.reason)
   if (missing?.unavailable?.reason) return pending(missing.unavailable.reason, candidates)
-  return candidates.length ? pending("cited source not resolvable", candidates) : { kind: "none" }
+  return candidates.length ? pending(SOURCE_ANSWER_PENDING_LABELS.unresolvable, candidates) : { kind: "none" }
 }
