@@ -18,9 +18,34 @@ The five assertion types classify the deciding observation: `query_reply` reads 
 
 The five display labels are Supported, Unsupported, Untestable, Test to-do and Test failure. Their stored code values remain `supported`, `unsupported`, `untestable`, `test-todo` and `test-failure`; this vocabulary change does not change status or publication behavior. Pending review is a reason under Test to-do, not an additional status.
 
+Callback observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`, not five result statuses.
+The [writer and finalizer](src/helpers.ts) fold explicit tests and diagnostics into the result:
+a supported observation can still have a failed or pending required test; an inconclusive observation alone
+does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named
+missing-observable coverage defaults to Test to-do; rowless inconclusive without that coverage defaults
+to Test failure. Untestable still requires the implemented review reference.
+The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
+The `CellState` value `inconclusive` denotes reviewed Untestable, `error` denotes Test failure and `untested` denotes
+Test to-do; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
+
 New pending source reviews use the existing Test to-do status. Legacy captures retain their recorded source-negative review Test failure; readers accept both pending forms without rewriting history. The author supplies source-cited answers through the existing review intake/apply path, with the same capture digest and lapse checks; no independent per-result signer is required. A pending review is neither a feature failure nor a seal blocker. Actual failed criterion tests retain their precedence.
 
 Terminal tiers describe progress: 0 missing, 1 incomplete, 2 broken and 3 done. These are distinct from the former Release 1 query/reply group and from color depth. This terminology defines no thresholds and changes no status computation.
+
+The existing [completeness helper](../../docs/data/release-scope.ts) uses the supplied graded positions:
+empty means tier 0; any Test to-do means tier 1, even alongside failures; otherwise a Test failure means
+tier 2; otherwise tier 3. The helper itself does not verify full catalogue membership.
+The numerical support share is Supported divided by all graded positions, not results done divided by total.
+The [nine exact environment IDs](src/environment-groups.ts) remain visible but excluded from grading,
+the denominator and completeness tiers. The [admin report's](../admin/report.tsx) literal `N/M` means
+manual-by-design, NOT MEASURED for their Test to-do rows; it is not a numerical fraction or a sixth stored status.
+An [OS row's inherited or reference source](../../docs/os/%5Bid%5D.paths.ts) can supply its displayed counts;
+those are the source's results, not an independent measurement of that app and OS.
+
+[Catalog coverage](../../docs/data/probe-status.ts) is separate again: automated, partial, manual,
+undeclared or unprobed. A catalog manual/partial override takes precedence; otherwise the existing
+definition, callback-arm and assertion-declaration checks determine coverage. These labels neither grade
+a result nor establish that both positive and negative controls exist. Overrides and result statuses stay unchanged.
 
 Review, intake/apply, admission, seal and capture binding remain implemented during the transition to their approved Phase 1 removal. The procedures below describe that current machinery; this terminology change grants no new workflow permission and does not lift an existing END hold.
 
