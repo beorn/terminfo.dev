@@ -538,7 +538,8 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
         `Viewport hold failed: ${failures.map(({ operation }) => operation).join(", ")}`,
       )
     }
-    if (failures.length === 1) throw failures[0]!.error
+    const failure = failures[0]
+    if (failure) throw failure.error
   }
 }
 
