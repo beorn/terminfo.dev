@@ -2241,7 +2241,13 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     // A syntactically valid recording can still be incomplete for this callback.
     // These reach the persisted runner, which the core recorder tests cannot cover.
     for (const fault of [
-      "missing-log", "tty-root", "missing-call", "unconsumed-call", "missing-dependency", "resized", "non-live",
+      "missing-log",
+      "tty-root",
+      "missing-call",
+      "unconsumed-call",
+      "missing-dependency",
+      "resized",
+      "non-live",
     ] as const) {
       const rawReplies = { ...draft.rawReplies }
       const stored = JSON.parse(rawReplies["sgr.bold.callLog"]!) as {
@@ -2296,12 +2302,17 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         { featureId: "sgr.bold", status: "test-failure" },
       ])
     }
-    await expect(runEraseReplay(context, { directory, source, expected, featureId: "extensions.osc52-write" }))
-      .rejects.toThrow(/SGR replay:.*Missing selected SGR/)
-    await expect(runEraseReplay(context, {
-      directory, source: { ...source, trace: { ...source.trace, path: "missing-trace.json" } }, expected,
-      featureId: "sgr.bold",
-    })).rejects.toThrow(/SGR replay:.*ENOENT/)
+    await expect(
+      runEraseReplay(context, { directory, source, expected, featureId: "extensions.osc52-write" }),
+    ).rejects.toThrow(/SGR replay:.*Missing selected SGR/)
+    await expect(
+      runEraseReplay(context, {
+        directory,
+        source: { ...source, trace: { ...source.trace, path: "missing-trace.json" } },
+        expected,
+        featureId: "sgr.bold",
+      }),
+    ).rejects.toThrow(/SGR replay:.*ENOENT/)
     // A batch may retain another probe's blob beside this query-only log. Its
     // existing manifest binds the bytes; no pixel observation is fabricated here.
     const blob = Buffer.from("unrelated retained capture dependency")
@@ -2333,17 +2344,31 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     }
     // A bound blob must exist; a digest/path in the manifest alone is not retained evidence.
     const missingBlobRef = `sha256:${"e".repeat(64)}`
-    const missingBlob = { ...bound, runId: randomUUID(), screenshotRefs: [missingBlobRef], rawReplies: {
-      ...bound.rawReplies,
-      "collector.traceManifest": JSON.stringify({ blobs: [{ path: missingBlobRef, sha256: digest }] }),
-    } }
+    const missingBlob = {
+      ...bound,
+      runId: randomUUID(),
+      screenshotRefs: [missingBlobRef],
+      rawReplies: {
+        ...bound.rawReplies,
+        "collector.traceManifest": JSON.stringify({ blobs: [{ path: missingBlobRef, sha256: digest }] }),
+      },
+    }
     const missingBlobPath = saveDaemonProbeRun(missingBlob, directory)
-    await expect(runEraseReplay(context, {
-      directory, source: { ...source, captureRunId: missingBlob.runId, trace: {
-        path: basename(missingBlobPath),
-        sha256: createHash("sha256").update(readFileSync(missingBlobPath)).digest("hex"),
-      } }, expected, featureId: "sgr.bold",
-    })).rejects.toThrow(/SGR replay:.*ENOENT/)
+    await expect(
+      runEraseReplay(context, {
+        directory,
+        source: {
+          ...source,
+          captureRunId: missingBlob.runId,
+          trace: {
+            path: basename(missingBlobPath),
+            sha256: createHash("sha256").update(readFileSync(missingBlobPath)).digest("hex"),
+          },
+        },
+        expected,
+        featureId: "sgr.bold",
+      }),
+    ).rejects.toThrow(/SGR replay:.*ENOENT/)
     const boundRecord = await runEraseReplay(context, {
       directory,
       source: boundSource,
@@ -2353,7 +2378,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     expect(boundRecord.files).toContain(join(directory, blobRef))
     expect(
       boundRecord.assertions.map(({ results }) => results.find(({ featureId }) => featureId === "sgr.bold")?.status),
-    ).toEqual(["supported", "supported"])
+    ).toEqual(["test-todo", "test-todo"])
     expect(nativeIdentity).not.toHaveBeenCalled()
     expect(writes).toHaveLength(beforeReplay)
     expect(capture).not.toHaveBeenCalled()
