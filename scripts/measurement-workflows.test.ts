@@ -104,8 +104,8 @@ vm.runInNewContext(source, {require:(name)=>name==='node:child_process'?native:r
           .trim()
           .split("\n")
           .map((line) => JSON.parse(line))
-        expect(entries.filter((entry) => entry.file === "/usr/bin/defaults")).toHaveLength(8)
-        expect(entries.at(-1).persisted).toBe(false)
+        expect(entries.filter((entry) => typeof entry === "object" && entry !== null && "file" in entry && entry.file === "/usr/bin/defaults")).toHaveLength(8)
+        expect(entries.at(-1)).toMatchObject({ persisted: false })
         expect(readFileSync(join(directory, "github-output"), "utf8")).toContain("iterm_consent_check=true")
       }
     } finally {
