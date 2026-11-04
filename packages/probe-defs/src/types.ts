@@ -464,7 +464,9 @@ export interface DerivedSourceTreeArtifact {
 
 /**
  * An installed app may come from a retained file, a measured sealed macOS system volume, or a source
- * tree this repo derived a flat artifact from.
+ * tree this repo derived a flat artifact from, or an installed Developer ID signed bundle.
+ * The signed-bundle alternative records the measured signature and separate executable digest;
+ * it does not establish installer/upstream provenance, notarization or running-image identity.
  */
 export type AppSourceArtifact =
   | { path: string; sha256: string }
@@ -474,6 +476,10 @@ export type AppSourceArtifact =
       snapshotUUID: string
       snapshotName: string
       sealed: true
+      codeSignature: { identifier: string; cdHash: string; strictVerified: true }
+    }
+  | {
+      kind: "developer-id-signed-bundle"
       codeSignature: { identifier: string; cdHash: string; strictVerified: true }
     }
   | DerivedSourceTreeArtifact

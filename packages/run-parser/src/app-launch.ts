@@ -82,6 +82,24 @@ export function parseDerivedSourceTree(
   return { kind: "derived-source-tree", url, revision, narSri, sha256 }
 }
 
+function parseCodeSignature(
+  value: unknown,
+  path: string,
+): {
+  identifier: string
+  cdHash: string
+  strictVerified: true
+} {
+  if (!object(value)) fail(path, "missing appLaunch.sourceArtifact.codeSignature")
+  const identifier = asString(value.identifier, path, "appLaunch.codeSignature.identifier")
+  const cdHash = asString(value.cdHash, path, "appLaunch.codeSignature.cdHash")
+  if (!/^[a-f0-9]{40}$/.test(cdHash)) fail(path, "invalid appLaunch.sourceArtifact.codeSignature.cdHash")
+  if (value.strictVerified !== true) {
+    fail(path, "appLaunch.sourceArtifact.codeSignature.strictVerified must be true")
+  }
+  return { identifier, cdHash, strictVerified: true }
+}
+
 export function parseAppLaunchReceipt(
   value: unknown,
   originKind: RunOrigin["kind"],
@@ -219,24 +237,27 @@ export function parseAppLaunchReceipt(
       fail(path, "invalid appLaunch.sourceArtifact.snapshotUUID")
     }
     if (value.sourceArtifact.sealed !== true) fail(path, "appLaunch.sourceArtifact.sealed must be true")
-    if (!object(value.sourceArtifact.codeSignature)) fail(path, "missing appLaunch.sourceArtifact.codeSignature")
-    const identifier = asString(
-      value.sourceArtifact.codeSignature.identifier,
-      path,
-      "appLaunch.codeSignature.identifier",
-    )
-    const cdHash = asString(value.sourceArtifact.codeSignature.cdHash, path, "appLaunch.codeSignature.cdHash")
-    if (!/^[a-f0-9]{40}$/.test(cdHash)) fail(path, "invalid appLaunch.sourceArtifact.codeSignature.cdHash")
-    if (value.sourceArtifact.codeSignature.strictVerified !== true) {
-      fail(path, "appLaunch.sourceArtifact.codeSignature.strictVerified must be true")
-    }
+    const codeSignature = parseCodeSignature(value.sourceArtifact.codeSignature, path)
     sourceArtifact = {
       kind: "sealed-macos-system-volume",
       macOSBuild,
       snapshotUUID,
       snapshotName,
       sealed: true,
-      codeSignature: { identifier, cdHash, strictVerified: true },
+      codeSignature,
+    }
+  } else if (value.sourceArtifact.kind === "developer-id-signed-bundle") {
+    if (Object.keys(value.sourceArtifact).sort().join(",") !== "codeSignature,kind") {
+      fail(path, "invalid developer-id-signed-bundle appLaunch.sourceArtifact fields")
+    }
+    const signature = value.sourceArtifact.codeSignature
+    if (!object(signature)) fail(path, "missing appLaunch.sourceArtifact.codeSignature")
+    if (Object.keys(signature).sort().join(",") !== "cdHash,identifier,strictVerified") {
+      fail(path, "invalid developer-id-signed-bundle appLaunch.sourceArtifact.codeSignature fields")
+    }
+    sourceArtifact = {
+      kind: "developer-id-signed-bundle",
+      codeSignature: parseCodeSignature(signature, path),
     }
   } else if (value.sourceArtifact.kind === "derived-source-tree") {
     sourceArtifact = parseDerivedSourceTree(value.sourceArtifact, path, "appLaunch.sourceArtifact")
