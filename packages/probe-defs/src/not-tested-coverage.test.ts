@@ -177,7 +177,7 @@ const headlessStateFeatures = [
     "sgr.selective-reset.italic",
     ["C", "X", "Y"],
     "sgr.selective-reset.italic: measured setup attributes clear on Y and unrelated attributes remain set",
-    "complete compound criterion pending: italic and bold on the styled setup cell in the headless readback",
+    "compound reset not decided: italic and bold not shown at setup; every claimed facet must be seeded and read",
   ],
   [
     "sgr.fg.standard",
