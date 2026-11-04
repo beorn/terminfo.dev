@@ -1135,17 +1135,18 @@ function weztermNativeAvailable(): boolean {
 }
 
 test.for([
-  ["wezterm", weztermNativeAvailable(), async () => createWeztermBackend()],
-  ["ghostty-native", isGhosttyNativeAvailable(), async () => createGhosttyNativeBackend()],
-  ["ghostty wasm", true, () => resolveGhosttyWasm()],
+  ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
+  ["ghostty-native", isGhosttyNativeAvailable(), true, async () => createGhosttyNativeBackend()],
+  ["ghostty wasm", true, false, () => resolveGhosttyWasm()],
 ] as const)(
   "%s parsed-toast engine keeps OSC 9 and OSC 777 TEST TODO with no reader",
-  async ([name, available, create], context) => {
+  async ([name, available, oscMetadata, create], context) => {
     if (!available) context.skip(`${name} native addon unavailable (NOT MEASURED)`)
     const value = await create()
     value.init({ cols: 80, rows: 24 })
     try {
-      expect(hasExtension(value, "osc-metadata")).toBe(false)
+      // Ghostty native declares osc-metadata for its OSC 9;4 reader only (#32271); no toast engine has a toast reader.
+      expect(hasExtension(value, "osc-metadata")).toBe(oscMetadata)
       const source = createLibProbeSource(value, undefined, undefined, undefined)
       expect(source.getNotifications).toBeUndefined()
       expect(source.getOsc777Payloads).toBeUndefined()
@@ -1161,6 +1162,48 @@ test.for([
       }
     } finally {
       value.destroy()
+    }
+  },
+)
+
+// @failure #32271: Kitty and Ghostty native store the last OSC 9;4 report, but no binding read it, so the progress
+// criterion stayed grid-only. Named gaps keep the other two undeclared: WezTerm's stored Progress::None covers
+// never-reported, 9;4;0 and paused (tattoy-wezterm-term fork.5 performer.rs:1080-1085, terminal.rs:37-43), and
+// ghostty-web's WASM API exposes no progress reader (@cto 3636f1ee).
+// @level l1
+// @consumer extensions.osc9-progress through the actual LibProbeSource
+test.for([
+  ["kitty", isKittyAvailable(), true, async () => createKittyBackend()],
+  ["ghostty-native", isGhosttyNativeAvailable(), true, async () => createGhosttyNativeBackend()],
+  ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
+  ["ghostty wasm", true, false, () => resolveGhosttyWasm()],
+] as const)(
+  "%s OSC 9;4 progress grades through the stored-report reader only where the engine stores one",
+  async ([name, available, reader, create], context) => {
+    if (!available) context.skip(`${name} engine unavailable (NOT MEASURED)`)
+    const configDirectory = name === "kitty" ? mkdtempSync(join(tmpdir(), "terminfo-kitty-config-")) : undefined
+    if (configDirectory) vi.stubEnv("KITTY_CONFIG_DIRECTORY", configDirectory)
+    const value = await create()
+    value.init({ cols: 80, rows: 24 })
+    try {
+      const source = createLibProbeSource(value, undefined, undefined, undefined)
+      const result = registryDefinitions(["extensions.osc9-progress"])[0]!.lib!(source)
+      if (reader) {
+        expect(result.notTested).toBeUndefined()
+        expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+        // Clearing last restores the engine: a state-0 report, never "never reported".
+        expect(source.getProgress!()).toMatchObject({ state: 0 })
+      } else {
+        expect(source.getProgress).toBeUndefined()
+        expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+        expect(result.observation).toBeUndefined()
+      }
+    } finally {
+      value.destroy()
+      if (configDirectory) {
+        vi.unstubAllEnvs()
+        rmSync(configDirectory, { recursive: true, force: true })
+      }
     }
   },
 )
