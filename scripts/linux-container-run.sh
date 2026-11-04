@@ -324,7 +324,7 @@ mux_receipt_target() {
 }
 
 await_owned_daemon() {
-  local daemon_dir=$1 app_pid=$2 previous_pid=${3:-0} files candidate
+  local daemon_dir=$1 app_pid=$2 previous_pid=${3:-0} socket_receipt=${4:-} files candidate mux_socket mux_state=
   for _ in $(seq 1 150); do
     files=("$daemon_dir"/*.json)
     if [[ "${#files[@]}" == 1 && -f "${files[0]}" ]]; then
@@ -332,14 +332,29 @@ await_owned_daemon() {
       if [[ "$candidate" != "$previous_pid" ]]; then
         jq -e --arg run "$TERMINFO_RUN_ID" '.runId == $run and (.port | type == "number") and (.token | type == "string")' \
           "${files[0]}" >/dev/null || { echo "Daemon registration has wrong run ID or invalid fields" >&2; return 2; }
-        printf '%s\n' "${files[0]}"
-        return 0
+        if [[ -n "$socket_receipt" ]]; then
+          [[ -r "$socket_receipt" ]] && IFS= read -r mux_socket < "$socket_receipt" && [[ -n "$mux_socket" ]] || {
+            echo "Owned tmux socket receipt cannot supply a socket path: $socket_receipt" >&2; return 2;
+          }
+          mux_state=$(tmux -S "$mux_socket" display-message -p -t "terminfo-$TERMINFO_RUN_ID" \
+            '#{window_name}|#{pane_current_command}') || {
+            echo "Owned tmux metadata query failed on $mux_socket for terminfo-$TERMINFO_RUN_ID" >&2; return 2;
+          }
+        fi
+        if [[ -z "$socket_receipt" || "$mux_state" == 'bun|bun' ]]; then
+          printf '%s\n' "${files[0]}"
+          return 0
+        fi
       fi
     fi
     kill -0 "$app_pid" 2>/dev/null || { echo "Owned terminal exited before collector registration" >&2; return 2; }
     sleep 0.1
   done
-  echo "Expected exactly one live owned collector registration, different from $previous_pid" >&2
+  if [[ -n "$socket_receipt" && -n "$mux_state" ]]; then
+    echo "Owned tmux on $mux_socket did not reach bun|bun in collector readiness: $mux_state" >&2
+  else
+    echo "Expected exactly one live owned collector registration, different from $previous_pid" >&2
+  fi
   return 2
 }
 
@@ -758,7 +773,11 @@ if [[ "${1:-}" == "--inside" ]]; then
     preflight_pid=$collector_pid
     read -r outer_shell_pid < /out/outer-shell.pid
     kill "$preflight_pid"
-    daemon_file=$(await_owned_daemon "$daemon_dir" "$daemon_pid" "$preflight_pid") || { cat /out/daemon.log >&2; exit 2; }
+    mux_socket_receipt=
+    [[ "$TERMINFO_MUX_KIND" != tmux ]] || mux_socket_receipt=/out/mux-socket.txt
+    daemon_file=$(await_owned_daemon "$daemon_dir" "$daemon_pid" "$preflight_pid" "$mux_socket_receipt") || {
+      cat /out/daemon.log >&2; exit 2;
+    }
     jq 'del(.token)' "$daemon_file" > /out/mux-daemon-registration.json
     collector_pid=$(jq -er .pid /out/mux-daemon-registration.json)
     port=$(jq -er .port /out/mux-daemon-registration.json)

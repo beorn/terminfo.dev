@@ -641,6 +641,12 @@ bytes. Darwin Screen retains its full measured version line; the parser's one ad
 both normalized subject joins. These source paths do not establish native qualification or authorize a
 capture, corpus placement or publication.
 
+The owned Linux tmux launcher extends its existing collector-registration poll with one
+metadata query per poll to the recorded socket and run session. Before calibration,
+both the window name and pane command must be `bun`; the existing poll bound and sleep
+stay unchanged. This readiness observation does not qualify pixels: complete-frame
+calibration and restoration still decide whether the native capture can proceed.
+
 Multiplexer expectation declarations describe routing, not terminal support:
 
 - **`pass-through`**: the bytes reach the outer terminal and its reply returns to the pane.

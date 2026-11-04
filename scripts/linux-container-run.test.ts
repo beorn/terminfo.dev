@@ -433,6 +433,57 @@ mux_receipt_target "$2" "$$" "$PPID" "$$" tmux "$BASH" 3.7c "$3" "$4" "terminfo-
   },
 )
 
+// Registration can precede tmux's status rename (#32226). The existing receipt tests do
+// not exercise readiness; use the real poll with only the metadata provider doubled.
+it.each(["settles", "never-settles", "missing-receipt"])("owned tmux readiness: %s", (mode) => {
+  const daemons = join(dir, "daemons")
+  mkdirSync(daemons)
+  const runId = "a".repeat(32)
+  writeFileSync(join(daemons, "collector.json"), JSON.stringify({ pid: 96, runId, port: 1234, token: "fixture" }))
+  const socket = join(dir, "owned.sock")
+  if (mode !== "missing-receipt") writeFileSync(join(dir, "mux-socket.txt"), socket + "\n")
+  writeFileSync(join(dir, "count"), "0")
+  writeFileSync(join(dir, "queries"), "")
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      [
+        'source "$1"',
+        "TERMINFO_RUN_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "root=$2 mode=$3",
+        "sleep() { :; }",
+        "tmux() {",
+        '  printf "%s\\n" "$*" >> "$root/queries"',
+        '  local count; count=$(cat "$root/count"); count=$((count + 1))',
+        '  printf "%s" "$count" > "$root/count"',
+        '  if [[ "$mode" == settles && "$count" -ge 3 ]]; then printf "bun|bun\\n"',
+        '  elif [[ "$mode" == settles && "$count" == 2 ]]; then printf "bun|bash\\n"',
+        '  else printf "tmux|bun\\n"; fi',
+        "}",
+        'await_owned_daemon "$root/daemons" "$$" 95 "$root/mux-socket.txt"',
+      ].join("\n"),
+      "_",
+      launcher,
+      dir,
+      mode,
+    ],
+    { encoding: "utf8" },
+  )
+  expect(result.status, result.stderr).toBe(mode === "settles" ? 0 : 2)
+  const queries = readFileSync(join(dir, "queries"), "utf8").trim().split("\n").filter(Boolean)
+  expect(queries).toHaveLength(mode === "settles" ? 3 : mode === "never-settles" ? 150 : 0)
+  expect(
+    queries.every(
+      (query) =>
+        query ===
+        "-S " + socket + " display-message -p -t terminfo-" + runId + " #{window_name}|#{pane_current_command}",
+    ),
+  ).toBe(true)
+  if (mode === "settles") expect(result.stdout.trim()).toBe(join(daemons, "collector.json"))
+  else expect(result.stderr).toContain(mode === "missing-receipt" ? "socket receipt" : "bun|bun")
+})
+
 describe("container run receipt composition", () => {
   it("combines host image identity with the matching container measurements", () => {
     const { result, output } = compose()
