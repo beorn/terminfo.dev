@@ -514,18 +514,27 @@ function readDarwinMuxAttachment(input: DarwinMuxInput, assertion: ProcessOwnerA
     if (!isAbsolute(socketPath)) throw new Error("Darwin tmux socket is not an absolute measured path")
     const listed = run(["-S",socketPath,"list-clients","-F","#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}"]).stdout.trim().split("\n")
     const fields = listed[0]?.split("\t")
-    if (listed.length !== 1 || fields?.length !== 4 || !/^[0-9]+$/.test(fields[0]!)) throw new Error("Darwin tmux has no unique measured attached client")
-    const clientRows = readProcessAncestry(Number(fields[0]), assertion.ownerPid)
+    if (listed.length !== 1 || !fields || fields.length !== 4) throw new Error("Darwin tmux has no unique measured attached client")
+    const [clientPid, clientTty, sessionId, sessionName] = fields
+    if (!clientPid || !clientTty || !sessionId || !sessionName || !/^[0-9]+$/.test(clientPid)) throw new Error("Darwin tmux attached-client fields are missing or malformed")
+    const clientRows = readProcessAncestry(Number(clientPid), assertion.ownerPid)
     const row = clientRows[0]
     if (!row || row.uid === undefined || row.startedAtEpochSeconds === undefined || row.ttyRdev === undefined || clientRows[1]?.pid !== shell.pid || row.kernelExecutable !== binary) {
       throw new Error("Darwin tmux client is not the measured outer shell child")
     }
+    if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(clientTty) || statSync(clientTty).rdev !== row.ttyRdev) {
+      throw new Error("Darwin tmux listed client TTY differs from the measured client")
+    }
     client = {...row, startedAtEpochSeconds:row.startedAtEpochSeconds, ttyRdev:row.ttyRdev, executablePath:row.comm, uid:row.uid}
-    session = fields[3]!
+    session = sessionName
     const serverPid = run(["-S",socketPath,"display-message","-p","#{pid}"]).stdout.trim()
     const panes = run(["-S",socketPath,"list-panes","-a","-F","#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}"]).stdout.trim().split("\n")
-    const pane = panes.map(line=>line.split("\t")).filter(row=>row[0]===fields[2]&&row[2]===String(collector.pid)&&row[4]===socketPath)
+    const pane = panes.map(line=>line.split("\t")).filter(row=>row[0]===sessionId&&row[2]===String(collector.pid)&&row[4]===socketPath)
     if (serverPid !== String(server.pid) || pane.length !== 1) throw new Error("Darwin tmux socket/session does not join the measured collector/server")
+    const paneTty = pane[0]?.[3]
+    if (!paneTty || !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(paneTty) || statSync(paneTty).rdev !== collector.ttyRdev) {
+      throw new Error("Darwin tmux listed pane TTY differs from the measured collector")
+    }
   }
   if (!statSync(socketPath).isSocket()) throw new Error(`Darwin mux socket ${socketPath} is not a socket`)
   if (!client) throw new Error("Darwin mux has no measured attached client")
@@ -850,6 +859,8 @@ export async function createOwnedTerminal(options: {
   terminalApp?: TerminalAppOwnerAssertion
   process?: ProcessOwnerAssertion
   darwinMux?: DarwinMuxInput
+  /** Retain this outer collector's identity before the launcher attaches a mux. */
+  darwinPreflight?: boolean
   darwinHosted?: { receiptPath: string }
   windowsHosted?: { receiptPath: string }
 }): Promise<OwnedTerminal> {
@@ -861,6 +872,7 @@ export async function createOwnedTerminal(options: {
     terminalApp,
     process: processOwner,
     darwinMux,
+    darwinPreflight,
     darwinHosted,
     windowsHosted,
   } = options
@@ -875,6 +887,7 @@ export async function createOwnedTerminal(options: {
   let processOwnerPid: number | undefined
   let processOwnerBasis: string | undefined
   let darwinAttachment: DarwinMuxAttachmentProof | undefined
+  let preflightIdentity: {pid:number;startedAtEpochSeconds:number;launchRunId:string} | undefined
   let hostedReceiptSha256: string | undefined
   let hostedPid1Comm: string | undefined
   /** The console host whose buffer the Windows cell read sees, or the reason none could be
@@ -916,6 +929,11 @@ export async function createOwnedTerminal(options: {
     processOwnerBasis = `Disposable prerequisite satisfied by run-scoped process owner pid ${assertion.ownerPid}, marker ${marker.flag} ${marker.value}`
     processOwnerPid = assertion.ownerPid
     binding = darwinAttachment ? darwinHostedOutput(out) : darwinOutput(out, assertion.tty)
+    if (darwinPreflight) {
+      const collector = readProcessAncestry(process.pid, process.pid)[0]
+      if (!collector || collector.startedAtEpochSeconds === undefined) throw new Error("Darwin outer collector birth could not be measured")
+      preflightIdentity = {pid:collector.pid,startedAtEpochSeconds:collector.startedAtEpochSeconds,launchRunId:expectedLaunchRunId}
+    }
   } else if (darwinHosted) {
     if (process.platform !== "darwin") throw new Error("Owned Darwin hosted terminal requires Darwin")
     const receipt = readDisposableReceipt(darwinHosted.receiptPath)
@@ -1026,6 +1044,7 @@ export async function createOwnedTerminal(options: {
       outputBinding: binding,
       geometryAtGrant,
       ...(muxAttachmentProof && { muxAttachment: muxAttachmentProof }),
+      ...(preflightIdentity && { preflightIdentity }),
       ...(terminalApp && {
         ownerAssertion: parseTerminalAppOwner(terminalApp),
         ownerAssertionSource: "authenticated-admin-request",

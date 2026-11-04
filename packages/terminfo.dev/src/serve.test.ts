@@ -49,14 +49,18 @@ it.each(["tmux", "screen", "darwin-screen"])(
         fixture:{definition:"callbacks",config:"--config NONE",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}}
     const path=join(process.env.HOME,"runtime.json")
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
-    let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt
+    let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
-    mock.module("./packages/terminfo.dev/src/detect.ts",()=>({detectTerminal:()=>({name:mux,version,os:target.os,osVersion:"fixture"})}))
+    mock.module("./packages/terminfo.dev/src/detect.ts",()=>({detectTerminal:()=>({name:preflightOnly?"kitty":mux,version:preflightOnly?"0.49.2":version,os:target.os,osVersion:"fixture"})}))
     mock.module("./packages/terminfo.dev/src/tty.ts",()=>({...tty,withRawMode:async fn=>fn(),drainStdin:async()=>{},
-      queryWithSentinelOutcome:async(sequence,pattern)=>{const raw=sequence.includes("[18t")?"\x1b[8;24;80t":sequence==="\x1b[>c"?"\x1b[>83;"+(darwin?"40003":"40901")+";0c\x1b[?1;2c":mux==="screen"?"\x1b[?1;2c":"\x1bP>|tmux 3.6\x1b\\\x1b[?1;2;4c";return {raw,rawBase64:Buffer.from(raw).toString("base64"),match:pattern.exec(raw),reason:"reply"}}}))
+      queryWithSentinelOutcome:async(sequence,pattern)=>{const raw=sequence.includes("[18t")?"\x1b[8;24;80t":preflightOnly?"\x1bP>|kitty(0.49.2)\x1b\\\x1b[?62;52;c":sequence==="\x1b[>c"?"\x1b[>83;"+(darwin?"40003":"40901")+";0c\x1b[?1;2c":mux==="screen"?"\x1b[?1;2c":"\x1bP>|tmux 3.6\x1b\\\x1b[?1;2;4c";return {raw,rawBase64:Buffer.from(raw).toString("base64"),match:pattern.exec(raw),reason:"reply"}}}))
     mock.module("./packages/terminfo.dev/src/owned-terminal.ts",()=>({...owned,createOwnedTerminal:async options=>{
+      if(preflightOnly){
+        assert.equal(options.darwinPreflight,true)
+        return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({preflightIdentity:{...preflight,launchRunId:"a".repeat(32)}}),readCells:async()=>{throw new Error("No frame requested")},dispose:async()=>{}}
+      }
       if(darwin)assert.equal(options.process.asserter,"terminfo-admin")
       else assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
       const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
@@ -66,7 +70,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
         ...(!darwin?{clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(!hasAttachment?{muxAttachmentProof:attachment}:{})}}:{}),dispose:async()=>{}}
     }}))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
-      assert.equal(options.subject.kind,"mux");assert.equal(options.subject.id,mux)
+      assert.equal(options.subject.kind,preflightOnly?"term":"mux");assert.equal(options.subject.id,preflightOnly?"kitty":mux)
       if(!darwin)assert.equal(options.ownedTerminal.clipboard.assertOwned,verify)
       else assert.equal(options.ownedTerminal.clipboard,undefined)
       inBatch=true
@@ -111,6 +115,11 @@ it.each(["tmux", "screen", "darwin-screen"])(
     suppliedTarget=target
     outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({...preflight,pid:96,launchRunId:"a".repeat(32)});write()
     await assert.rejects(collect(),/preflight.*attachment/i)
+    if(darwin){
+      preflightOnly=true;writeFileSync(path,JSON.stringify(outerApp.provenance))
+      const outer=await collect()
+      assert.deepEqual(JSON.parse(outer.rawReplies["collector.preflightIdentity"]),{...preflight,launchRunId:"a".repeat(32)})
+    }
   `,
       ],
       {
@@ -711,7 +720,7 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
     mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
       ownedTerminalVerifiedFor: () => true,
       createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", ${ownerPidField}
-        summary: "owned process fixture", readGeometry: async () => geometry, dispose: async () => {} })
+        summary: JSON.stringify({preflightIdentity:{pid:process.pid,startedAtEpochSeconds:1792698257,launchRunId:"a".repeat(32)}}), readGeometry: async () => geometry, dispose: async () => {} })
     }))
     mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
       withRawMode: async callback => callback(), drainStdin: async () => {},
