@@ -35,9 +35,9 @@ function source(
       extensions: new Set<string>(),
     },
     feed(text: string) {
-      const windowTitle = /\x1b\]2;([^\x07]*)\x07/.exec(text)?.[1]
+      const windowTitle = /\x1b\](?:0|2);([^\x07]*)\x07/.exec(text)?.[1]
       if (windowTitle !== undefined && !options.ignoresTitleSetup) title = windowTitle
-      const iconLabel = /\x1b\]1;([^\x07]*)\x07/.exec(text)?.[1]
+      const iconLabel = /\x1b\](?:0|1);([^\x07]*)\x07/.exec(text)?.[1]
       if (icon && iconLabel !== undefined && !options.ignoresIconSet) {
         icon.current = iconLabel
         if (options.changesTitle) title = iconLabel

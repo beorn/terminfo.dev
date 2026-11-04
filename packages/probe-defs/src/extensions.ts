@@ -1241,7 +1241,9 @@ function emptyNativeHostReply(
   // A pass observed independently of the silent read (the engine's retained OSC 52 write) keeps its grade.
   return observedHostCause(
     ctx,
-    result.pass || result.notTested ? result : notTestedResult(NO_SAME_PATH_CONTROL, { query, response: result.response ?? "" }),
+    result.pass || result.notTested
+      ? result
+      : notTestedResult(NO_SAME_PATH_CONTROL, { query, response: result.response ?? "" }),
     "clipboard-load",
     "clipboard-read-permission",
     query,
@@ -1385,7 +1387,11 @@ function promptMarkResult(
       second.length === first.length + 1 &&
       firstControl?.type === (commandEnd ? "command-end" : markType) &&
       secondControl?.type === (commandEnd ? "command-end" : markType) &&
-      (!commandEnd || (firstControl?.type === "command-end" && firstControl.rawStatus === "0" && secondControl?.type === "command-end" && secondControl.rawStatus === "17")) &&
+      (!commandEnd ||
+        (firstControl?.type === "command-end" &&
+          firstControl.rawStatus === "0" &&
+          secondControl?.type === "command-end" &&
+          secondControl.rawStatus === "17")) &&
       before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
       first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index]))
     readerQualified = qualified
@@ -1535,7 +1541,9 @@ function promptMarkResult(
         secondCursor,
       },
     )
-    if (!result.pass && !readerQualified) return notTestedResult(NO_SAME_PATH_CONTROL, { endControl, observed: result.response })
+    if (!result.pass && !readerQualified) {
+      return notTestedResult(NO_SAME_PATH_CONTROL, { endControl, observed: result.response })
+    }
     return result
   }
   if (declared) {
@@ -2641,10 +2649,13 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   const state = { writes }
   if (!controlVerified) return explain(notTestedResult(NO_SAME_PATH_CONTROL, { control, controlled, ...state }))
   if (writes.length === 0) {
-    return explain(notTestedResult(
-      "control OSC 52 c write recorded but the probe write was not; same-run observations disagree",
-      { control, controlled, ...state },
-    ))
+    return explain(
+      notTestedResult("control OSC 52 c write recorded but the probe write was not; same-run observations disagree", {
+        control,
+        controlled,
+        ...state,
+      }),
+    )
   }
   return explain(parserStateResult(null, expected, state, note, undefined, "query_reply"))
 }
@@ -4364,13 +4375,17 @@ export const extensionsProbes: ProbeDefinition[] = [
           if (controlled !== control) return notTestedResult(NO_SAME_PATH_CONTROL, { before, control, controlled })
           ctx.feed(`\x1b]2;${requested}\x07`)
           const title = ctx.getTitle()
-          return parserStateResult(title === requested ? true : title === control ? false : null, "OSC 2 sets the exact requested window title", {
-            before,
-            control,
-            controlled,
-            requested,
-            title,
-          })
+          return parserStateResult(
+            title === requested ? true : title === control ? false : null,
+            "OSC 2 sets the exact requested window title",
+            {
+              before,
+              control,
+              controlled,
+              requested,
+              title,
+            },
+          )
         } finally {
           ctx.feed(`\x1b]0;${before}\x07`)
           if (beforeIcon !== undefined) ctx.feed(`\x1b]1;${beforeIcon}\x07`)
@@ -4527,7 +4542,9 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
         const restored = ctx.getCwd()
         const supported = first === firstUri && second === secondUri && restored === before
-        if (!supported && controlled !== controlUri) return notTestedResult(NO_SAME_PATH_CONTROL, { before, controlUri, controlled, first, second, restored })
+        if (!supported && controlled !== controlUri) {
+          return notTestedResult(NO_SAME_PATH_CONTROL, { before, controlUri, controlled, first, second, restored })
+        }
         return parserStateResult(
           supported,
           `OSC 7 stores successive exact URIs ${firstUri}, ${secondUri} and restores the original URI`,

@@ -162,11 +162,12 @@ test.each(["osc133-a", "osc133-b", "osc133-c", "osc133-d", "osc633-a", "osc633-b
   "extensions.%s keeps a declared but inert reader undecided",
   (name) => {
     const working = semanticSurfaceSource()
-    const source = name === "osc8"
-      ? { ...working, getHyperlinkAt: () => null }
-      : name === "osc7-cwd"
-        ? { ...working, getCwd: () => null }
-        : { ...working, getSemanticMarks: () => [] }
+    const source =
+      name === "osc8"
+        ? { ...working, getHyperlinkAt: () => null }
+        : name === "osc7-cwd"
+          ? { ...working, getCwd: () => null }
+          : { ...working, getSemanticMarks: () => [] }
     const result = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!.lib!(source)
     expect(result.observation?.outcome).not.toBe("unsupported")
     expect(result.notTested).toEqual({
@@ -183,11 +184,18 @@ test.each(["wrong URI", "leaking URI"])("OSC 8 keeps an observed %s unsupported"
     ...working,
     getHyperlinkAt(row: number, col: number) {
       const uri = working.getHyperlinkAt!(row, col)
-      return fault === "wrong URI" ? (uri === null ? null : "https://example.com/wrong")
-        : col === 5 ? working.getHyperlinkAt!(row, 4) : uri
+      return fault === "wrong URI"
+        ? uri === null
+          ? null
+          : "https://example.com/wrong"
+        : col === 5
+          ? working.getHyperlinkAt!(row, 4)
+          : uri
     },
   }
-  expect(extensionsProbes.find((entry) => entry.id === "extensions.osc8")!.lib!(source).observation?.outcome).toBe("unsupported")
+  expect(extensionsProbes.find((entry) => entry.id === "extensions.osc8")!.lib!(source).observation?.outcome).toBe(
+    "unsupported",
+  )
 })
 
 test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with %s", async (name, mutation) => {
@@ -234,7 +242,11 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   expect(disabledSource.getCwd?.(), `${id}: negative control restores the working directory`).toBe(disabledCwd)
   // A roundtrip mismatch leaves the write/read combination undecided; it is not an engine negative.
   expect(disabled.after, `${id}: only ${mutation} is disabled`).toBe(
-    id === "extensions.osc52-clipboard" ? "inconclusive" : id === "extensions.osc52-write" || id === "extensions.osc8" ? undefined : "unsupported",
+    id === "extensions.osc52-clipboard"
+      ? "inconclusive"
+      : id === "extensions.osc52-write" || id === "extensions.osc8"
+        ? undefined
+        : "unsupported",
   )
   if (id === "extensions.osc52-clipboard") {
     expect(probe.lib!(disabledSource).observation).toMatchObject({
