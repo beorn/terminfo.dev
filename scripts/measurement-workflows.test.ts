@@ -19,6 +19,61 @@ import { expect, test } from "vitest"
 
 const root = join(import.meta.dirname, "..")
 
+// The actual shell must launch and record one array. Parser fixtures cannot catch a
+// workflow that records a parallel recipe or never writes the uploaded handoff.
+test.each([
+  ["macos", "ghostty"],
+  ["macos", "wezterm"],
+  ["macos", "alacritty"],
+  ["windows", "windows-terminal"],
+  ["windows", "alacritty"],
+  ["windows", "wezterm"],
+])("%s %s launches the exact array retained by the argv apparatus", (os, app) => {
+  const workflow = parse(readFileSync(join(root, `.github/workflows/${os}-measurement.yml`), "utf8"))
+  const collect = workflow.jobs[`measure-${os}`].steps.find((step: { id?: string }) => step.id === "collect").run
+  const arm = collect.match(new RegExp(`\\n\\s+${app}\\)\\n([\\s\\S]*?)\\n\\s+;;`))
+  expect(arm, "the production direct-launch case exists").not.toBeNull()
+  const directory = mkdtempSync(join(tmpdir(), "launch-array-"))
+  const out = join(directory, "artifacts")
+  const bundle = join(directory, "Fixture.app")
+  const launched = join(directory, "invoked.json")
+  mkdirSync(out)
+  mkdirSync(join(bundle, "Contents/MacOS"), { recursive: true })
+  mkdirSync(join(directory, "home"))
+  try {
+    for (const binary of [
+      join(bundle, "Contents/MacOS", app),
+      join(directory, "windows-terminal/WindowsTerminal.exe"),
+      join(directory, "alacritty/alacritty.exe"),
+      join(directory, "wezterm/wezterm-gui.exe"),
+    ]) {
+      mkdirSync(dirname(binary), { recursive: true })
+      writeFileSync(binary, `#!/usr/bin/env node\nif (process.argv[2] === '--version') console.log('fixture 1.0'); else require('node:fs').writeFileSync(process.env.INVOKED, JSON.stringify(process.argv.slice(1)));\n`, { mode: 0o755 })
+    }
+    const result = spawnSync("/bin/bash", ["-e", "-c", `cygpath() { printf '%s' "$2"; };\n${arm![1]}\nwait`], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: join(directory, "home"),
+        RUNNER_TEMP: directory,
+        APP_BUNDLE: bundle,
+        APPARATUS: root,
+        OUT: out,
+        INVOKED: launched,
+        WIN_OUT: "C:\\run with spaces",
+        WIN_COMMAND: "C:\\run with spaces\\serve.ps1",
+        COMMAND_PATH: join(directory, "serve with spaces.command"),
+      },
+    })
+    expect(result.status, result.stderr).toBe(0)
+    const actual = JSON.parse(readFileSync(launched, "utf8"))
+    expect(actual.length).toBeGreaterThan(0)
+    expect(JSON.parse(readFileSync(join(out, "app-argv.json"), "utf8"))).toEqual(actual)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // Startup evidence must precede readiness, survive early errors and append collector stderr.
 // Existing argv/YAML tests never execute the generated shell, so they missed the empty archive.
 test.each(["waiting", "bad-receipt", "collector", "selected"] as const)(
