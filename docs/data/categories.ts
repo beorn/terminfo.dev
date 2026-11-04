@@ -15,7 +15,7 @@ export interface CategoryMeta {
   label: string
   order: number
   description: string
-  /** The scope label the cohorts filter over; `slice()` in @terminfo/catalog reads it. */
+  /** The scope label the cohorts filter over; the cohort tests read it. */
   slice: Slice
 }
 
