@@ -3038,8 +3038,12 @@ function osc0IconTitleResult(
 
 function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   const note = "No controlled resize and cell-content readback to measure reflow"
+  const reflowEvidence = {
+    declaredReflow: ctx.capabilities.reflow === true,
+    ...(ctx.getReflowState && { reflowSetting: ctx.getReflowState() }),
+  }
   const resizeSource = ctx.resize
-  if (!resizeSource) return notTestedResult(note, { declaredReflow: ctx.capabilities.reflow === true })
+  if (!resizeSource) return notTestedResult(note, reflowEvidence)
   const initial = { cols: ctx.cols, scrollback: ctx.getScrollback() }
   const height = initial.scrollback.screenLines
   if (
@@ -3050,7 +3054,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   ) {
     return {
       pass: false,
-      response: JSON.stringify(initial),
+      response: JSON.stringify({ ...reflowEvidence, initial }),
       note: "Reflow fixture needs a fresh bottom main buffer with at least eight screen rows",
       tests: [
         {
@@ -3081,7 +3085,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   }
   type AlternatePhase = NonNullable<ReturnType<typeof measureAlternateReflow>["measurement"]>
   const state = {
-    declaredReflow: ctx.capabilities.reflow === true,
+    ...reflowEvidence,
     initial,
     fixture: { soft: "ABCDEFGHIJKLMNOPQR", hard: ["HARD-a", "HARD-b"] },
     actions: [] as Array<
@@ -3240,11 +3244,13 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       ["history-grow", 12, 20],
       ["history-shrink", 20, 12],
     ] as const) {
-      // Reset is essential here: ED2 clears the active screen, not the retained buffer.
+      // Reset alone need not clear retained history (libvterm preserves it).
+      // Issue the existing explicit clear before checking the fresh fixture.
       state.actions.push({ kind: "reset" })
       ctx.reset()
       readBound = height
       resize(from)
+      clear()
       const fresh = read(`${id}.fresh`, from)
       const record = (outcome: HistoryPhase["outcome"], reason: string) => {
         state.historyPhases.push({
@@ -3338,6 +3344,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       ctx.reset()
       readBound = height
       resize(from)
+      clear()
       const fresh = read(`${id}.fresh`, from)
       const phase = (outcome: AlternatePhase["outcome"], reason: string): AlternatePhase => ({
         id,

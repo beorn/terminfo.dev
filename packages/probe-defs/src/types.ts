@@ -770,6 +770,8 @@ export interface LibProbeSource {
     bg: { r: number; g: number; b: number } | null
     cursor: { r: number; g: number; b: number } | null
   }
+  /** Effective instance reflow setting; absent: backend does not report. */
+  getReflowState?(): { enabled: boolean }
   /** Icon name. Present only when the backend reports it separately from the window title. */
   getIconLabel?(): string
   /** Exact OSC 7 URI; null is an observed unset slot, absent means no reader. */

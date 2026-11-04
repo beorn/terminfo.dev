@@ -98,6 +98,11 @@ Terminal-query timeouts and apparatus errors without a native capture-command ca
 - `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
 
+The reflow callback retains optional `getReflowState()` instance evidence as
+`response.reflowSetting`, independently of `declaredReflow`. An absent reader means
+not reported: the response omits the setting, without inferring false or using the
+capability declaration. The setting does not decide the measured resize phases.
+
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
 

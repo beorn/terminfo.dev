@@ -386,6 +386,7 @@ export function createLibProbeSource(
     getHyperlinkAt: readLink,
     getDefaultColors: readDefaultColors,
     getIconLabel: readIconLabel,
+    getReflowState: typeof backend.getReflowState === "function" ? backend.getReflowState.bind(backend) : undefined,
     getCwd: readCwd,
     getNotifications: readNotifications,
     getOsc777Payloads: readOsc777Payloads,
