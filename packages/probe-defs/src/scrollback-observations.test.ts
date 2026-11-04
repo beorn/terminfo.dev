@@ -1507,11 +1507,14 @@ function viewportApplication(
     dropOutput?: boolean
     deferOutput?: boolean
     parseReply?: boolean
+    snapOnDa1?: "ordinary" | "synchronized"
     changingChrome?: boolean
     opaqueHistory?: boolean
     digest?: "missing" | "empty"
     captureError?: boolean | "after-up"
     inputError?: boolean
+    upError?: boolean
+    wheelReturnError?: boolean
     cleanupError?: boolean
   } = {},
 ) {
@@ -1550,8 +1553,10 @@ function viewportApplication(
         top = Math.max(0, top - (options.upRows ?? 1))
         ups++
         downsSinceUp = 0
+        if (options.upError) throw new Error("viewport up click failed")
       }
       if (button === 5) {
+        if (options.wheelReturnError) throw new Error("viewport wheel return failed")
         flushOutput()
         const blocked =
           options.down === "ignored" ||
@@ -1599,6 +1604,9 @@ function viewportApplication(
     const outputSynchronized = synchronized || bytes.includes("\x1b[?2026h")
     const text = bytes.replace(/\x1b\[([?\d;:]*)([A-Za-z])/g, (_sequence, parameters: string, command: string) => {
       if (parameters === "?2026") synchronized = command === "h"
+      if (command === "c" && parameters === "" && options.snapOnDa1 === (ups < 3 ? "ordinary" : "synchronized")) {
+        top = bottom()
+      }
       if (command === "J" && parameters === "2") {
         lines.splice(0, lines.length, "")
         row = col = top = 0
@@ -1650,7 +1658,7 @@ function viewportApplication(
     )
     // Only rendered pixels decide equality: offsets and capture labels do not enter the digest.
     const pixelsDigest = createHash("sha256")
-      .update(JSON.stringify({ grid, chrome: options.changingChrome ? frames.length : 0 }))
+      .update(JSON.stringify({ grid, chrome: options.changingChrome && targetWrites > 0 ? frames.length : 0 }))
       .digest("hex")
     const frame: ObservationFrame = {
       ...request,
@@ -1686,11 +1694,11 @@ test.each([
   expect(result.assertions).toContainEqual(
     expect.objectContaining({ assertionType: "screenshot", kind: outcome === "supported" ? "positive" : "negative" }),
   )
-  // Each phase confirms A with a second complete frame before any downward input.
-  expect(app.frames).toHaveLength(15)
-  expect(app.frames.map(({ down }) => down)).toEqual([0, 0, 0, 0, 0, 22, 22, 44, 44, 44, 44, 44, 66, 66, 88])
+  // Each phase checks DA1 inertness at U, then confirms A before any downward input.
+  expect(app.frames).toHaveLength(17)
+  expect(app.frames.map(({ down }) => down)).toEqual([0, 0, 0, 0, 0, 0, 22, 22, 44, 44, 44, 44, 44, 44, 66, 66, 88])
   const reference = app.frames[0]!.frame.pixelsDigest
-  for (const index of [5, 7, 12, 14]) expect(app.frames[index]!.frame.pixelsDigest).toBe(reference)
+  for (const index of [6, 8, 14, 16]) expect(app.frames[index]!.frame.pixelsDigest).toBe(reference)
 })
 
 function expectViewportTodo(result: ProbeCallbackResult) {
@@ -1768,7 +1776,7 @@ test("app viewport restores again after R before any synchronized setup", async 
   const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
   expectViewportTodo(result)
   expect(result.notTested?.noObservable).toContain("restoration to bottom not proven")
-  expect(app.frames).toHaveLength(8)
+  expect(app.frames).toHaveLength(9)
   expect(app.activity().synchronizedWrites).toBe(0)
   expect(app.writes.join("")).not.toContain("\x1b[?2026h")
 })
@@ -1791,6 +1799,7 @@ test("app viewport restores history and preserves capture and cleanup failures t
   const result = findScrollback("scrollback.viewport-hold-output").term!(app.context)
   await expect(result).rejects.toBeInstanceOf(AggregateError)
   await expect(result).rejects.toMatchObject({
+    message: "Viewport hold failed: primary error, cursor restore",
     errors: [
       expect.objectContaining({ message: "viewport capture failed" }),
       expect.objectContaining({ message: "viewport cleanup failed" }),
@@ -1815,11 +1824,59 @@ test.each([true, false])("app viewport witnesses deferred output before its pixe
   const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
   if (reply) {
     expect(result.observation?.outcome).toBe("unsupported")
-    expect(app.activity().parseWitnesses).toBe(2)
+    expect(app.activity().parseWitnesses).toBe(4)
   } else {
     expectViewportTodo(result)
     expect(result.notTested?.noObservable).toBe("output parse not witnessed before the output frame")
-    expect(app.activity().parseWitnesses).toBe(1)
+    expect(app.activity().parseWitnesses).toBe(2)
   }
+  expect(app.activity().top).toBe(app.activity().bottom)
+})
+
+// Printable-output policies cannot expose a DA1 query that itself moves the viewport.
+// The same-run inertness control must qualify independently in both phases.
+test.each(["ordinary", "synchronized"] as const)("app viewport withholds a DA1-induced %s snap", async (phase) => {
+  const app = viewportApplication(undefined, { snapOnDa1: phase })
+  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  expectViewportTodo(result)
+  expect(result.notTested?.noObservable).toBe("parse witness moved the viewport")
+  expect(app.activity().targetWrites).toBe(phase === "ordinary" ? 0 : 1)
+  expect(app.activity().top).toBe(app.activity().bottom)
+})
+
+// Capture/cursor failure coverage misses a failed wheel return. A cleanup failure
+// must preserve the primary error and override a pending TODO result.
+test.each(["capture error", "TODO"] as const)(
+  "app viewport propagates wheel return failure after %s",
+  async (cause) => {
+    const app = viewportApplication(undefined, {
+      wheelReturnError: true,
+      ...(cause === "capture error" ? { captureError: "after-up" as const } : { upRows: 1000 }),
+    })
+    const result = findScrollback("scrollback.viewport-hold-output").term!(app.context)
+    if (cause === "capture error") {
+      await expect(result).rejects.toBeInstanceOf(AggregateError)
+      await expect(result).rejects.toMatchObject({
+        message: "Viewport hold failed: primary error, wheel return",
+        errors: [
+          expect.objectContaining({ message: "viewport capture failed" }),
+          expect.objectContaining({ message: "viewport wheel return failed" }),
+        ],
+      })
+    } else {
+      await expect(result).rejects.toThrow("viewport wheel return failed")
+    }
+    expect(app.writes.at(-1)).toBe("\x1b[?2026l\x1b[?25h")
+  },
+)
+
+// Input can move before its promise rejects; setting the cleanup obligation only
+// after await leaves the real viewport scrolled on this error path.
+test("app viewport returns to bottom when its first upward click moves then throws", async () => {
+  const app = viewportApplication(undefined, { upError: true })
+  await expect(findScrollback("scrollback.viewport-hold-output").term!(app.context)).rejects.toThrow(
+    "viewport up click failed",
+  )
+  expect(app.activity().downs).toBeGreaterThan(0)
   expect(app.activity().top).toBe(app.activity().bottom)
 })
