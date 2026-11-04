@@ -174,8 +174,8 @@ function oscReplyResult(
 }
 
 /**
- * Live's grading of one OSC query outcome. A library probe source on a proven reply path offers the same
- * outcome through `queryWithSentinelOutcome` (#30554), so both arms grade through here.
+ * Live's reading of one OSC query outcome. A library probe source on a proven reply path offers the same
+ * outcome through `queryWithSentinelOutcome` (#30554), so both arms read through here.
  */
 function oscOutcomeResult(reply: TerminalQueryOutcome, expected: string): ProbeCallbackResult {
   return oscReplyResult(reply.raw, replyFrame(reply), expected, reply.sentinel)
@@ -246,7 +246,7 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
 const SIXEL_GEOMETRY_QUERY = "\x1b[?2;1;0S"
 const SIXEL_GEOMETRY_REPLY = /\x1b\[\?2;[0-9;]*S/
 
-/** Live's grading of one Sixel geometry outcome, shared by both arms (#30554). */
+/** Live's reading of one Sixel geometry outcome, shared by both arms (#30554). */
 function sixelGeometryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
   return sixelGeometryResult(reply.raw, replyFrame(reply), reply.sentinel)
 }
@@ -259,7 +259,7 @@ function sixelGeometryResult(
 ): ProbeCallbackResult {
   // xterm replies with CSI ? Pi ; Ps ; Pv S, but omits the value on failure, so the
   // measured failure frame is two parameters (CSI ? 2 ; 3 S). Requiring a third
-  // parameter graded that documented failure as a malformed geometry.
+  // parameter read that documented failure as a malformed geometry.
   const reply = frame ? /\x1b\[\?2;([0-9]+)(?:;([0-9;]*))?S/.exec(frame) : null
   if (!reply) {
     const malformed = frame !== null
@@ -477,7 +477,7 @@ const HIGHLIGHT_TEST_COLOURS = ["3030/6060/9090", "9090/3030/6060", "6060/9090/3
  * initial value is restored from a finally, so the run leaves the slot as it found it. A silent
  * initial read is inconclusive: without it a reset has nothing to be compared against. The set colour
  * is chosen to differ from the observed initial one, so a terminal that starts on the usual test
- * value still gets an observable change to grade the reset against.
+ * value still gets an observable change to check the reset against.
  */
 function highlightResetProbe(id: string, setCode: number, resetCode: number): ProbeDefinition {
   const querySeq = `\x1b]${setCode};?\x07`
@@ -1044,7 +1044,7 @@ function probeForeground(before: string): string {
  * App-side reset exchange (27832): read the colour, set it, read the change back, reset it, read
  * the restoration back — the termless restore discipline against a real terminal. The collector
  * runs this only with a verified disposable receipt or a verified run-scoped process owner, so
- * mutation is confined to that disposable machine or process; a failed restore is graded, never retried into a pass.
+ * mutation is confined to that disposable machine or process; a failed restore is recorded, never retried into a pass.
  */
 async function colorResetAppProbe(
   ctx: TermProbeSource,
@@ -1148,7 +1148,7 @@ function colorStackColors(before: string): { a: string; b: string; c: string } {
 }
 
 /**
- * Per-operation colour-stack grade (#31904, @cto 6e4f7300). The POP fixture (set A, push, set B,
+ * Per-operation colour-stack decision (#31904, @cto 6e4f7300). The POP fixture (set A, push, set B,
  * pop) and the PUSH fixture (set A, set B, push, set C, pop) both run; none of A, B or C is the
  * foreground the run started with. A set the reply does not show leaves the stack unobservable: a
  * coverage record (PROBE TODO, null review), never a negative, as the palette arm treats a failed
@@ -1182,8 +1182,8 @@ function colorStackResult(
       : sameRgbText(pushFixture.restored, colors.c)
         ? "persisted"
         : "other"
-  const verdict = decideStackOperation(operation, pop, push)
-  return stackStateResult(verdict, expected, { ...state, pop, push }, "query_reply")
+  const stackDecision = decideStackOperation(operation, pop, push)
+  return stackStateResult(stackDecision, expected, { ...state, pop, push }, "query_reply")
 }
 
 /**
@@ -1202,9 +1202,9 @@ type ParsedToast = { title: string | null; body: string }
 type ToastStep = { write: string; before: number; added: ParsedToast[] | null }
 
 /**
- * Grade one OSC toast family through the engine's parsed-toast store (@cto 3cc4a3ae, #32272). The store does not say
- * which OSC made a toast, so each step feeds one sequence and reads only what it added: the graded family's no-toast
- * control must add nothing, the other family's toast (the cross control) must add exactly itself, and the graded feed
+ * Check one OSC toast family through the engine's parsed-toast store (@cto 3cc4a3ae, #32272). The store does not say
+ * which OSC made a toast, so each step feeds one sequence and reads only what it added: the current family's no-toast
+ * control must add nothing, the other family's toast (the cross control) must add exactly itself, and the current feed
  * must add exactly one verbatim toast. Unsupported needs the cross control; without it the cell stays PROBE TODO.
  */
 function parsedToastResult(
@@ -1239,9 +1239,9 @@ function parsedToastResult(
     )
   }
   const cross = step(family.cross.write)
-  const graded = step(family.graded.write)
-  const pass = addsOnly(graded, family.graded.matches)
-  const state = { noToast, cross, graded }
+  const toastStep = step(family.graded.write)
+  const pass = addsOnly(toastStep, family.graded.matches)
+  const state = { noToast, cross, graded: toastStep }
   if (!pass && !addsOnly(cross, family.cross.matches)) {
     return notTestedResult(
       `${NO_SAME_PATH_CONTROL}: ${family.label} cross control did not add exactly its own toast; this reader is not shown to observe toasts`,
@@ -1266,7 +1266,7 @@ function readsIconTitleState(
 /**
  * Record the measured cause of an empty reply to a host-owned query on a native artifact: this run captured the
  * empty target response while the collector supplied no such host input. It is an observation, never a source
- * citation, and it does not change the verdict (#32246).
+ * citation, and it does not change the callback result (#32246).
  */
 function observedHostCause(
   ctx: LibProbeSource,
@@ -1292,7 +1292,7 @@ function emptyNativeHostReply(
   empty: boolean,
 ): ProbeCallbackResult {
   if (!empty || ctx.runtimeIdentity?.kind !== "native") return result
-  // A pass observed independently of the silent read (the engine's retained OSC 52 write) keeps its grade.
+  // A pass observed independently of the silent read (the engine's retained OSC 52 write) keeps its observed outcome.
   return observedHostCause(
     ctx,
     result.pass || result.notTested
@@ -2196,16 +2196,16 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
     async (ctx) => {
       // queryWithSentinelOutcome appends the DA1 follow-up, so this write is exactly CSI ? u + CSI c, unmutating.
       const detection = await ctx.queryWithSentinelOutcome(`\x1b[?u`, KITTY_FLAGS)
-      const verdict = kittyDetection(detection.raw)
-      if (verdict.kind !== "answered") {
-        if (verdict.kind === "absent") return kittyProtocolAbsent(detection.raw)
+      const protocolDetection = kittyDetection(detection.raw)
+      if (protocolDetection.kind !== "answered") {
+        if (protocolDetection.kind === "absent") return kittyProtocolAbsent(detection.raw)
         const reason =
-          verdict.reason === "invalid-reply"
+          protocolDetection.reason === "invalid-reply"
             ? "invalid-reply"
             : detection.reason === "timeout"
               ? "timeout"
               : "no-response"
-        return kittyInconclusive(verdict, reason, detection.raw)
+        return kittyInconclusive(protocolDetection, reason, detection.raw)
       }
       ctx.write(`\x1b[>${pushValue}u`) // explicit push; a throw here pops nothing
       try {
@@ -2292,18 +2292,18 @@ function notificationQueryResult(reply: TerminalQueryOutcome, id: string, fallba
 }
 
 /**
- * Live's reading of one string-graded query outcome: no matched frame grades through unansweredQuery, a
- * matched frame through the site's grader. A library probe source on a proven reply path offers the same
- * outcome through `queryWithSentinelOutcome` (#30554), so both arms read it here. The grader reads only the
+ * Live's reading of one query outcome handled by a result callback: no matched frame is handled by unansweredQuery, a
+ * matched frame through the site's result callback. A library probe source on a proven reply path offers the same
+ * outcome through `queryWithSentinelOutcome` (#30554), so both arms read it here. The result callback reads only the
  * frame; the result keeps the whole read window, DA1 answer included, as the observed evidence.
  */
 function matchedReplyResult(
   reply: TerminalQueryOutcome,
   missingNote: string,
-  grade: (frame: string) => ProbeCallbackResult,
+  resultForFrame: (frame: string) => ProbeCallbackResult,
 ): ProbeCallbackResult {
   if (!reply.match) return unansweredQuery(reply, missingNote)
-  return { ...grade(reply.match[0] ?? ""), response: reply.raw }
+  return { ...resultForFrame(reply.match[0] ?? ""), response: reply.raw }
 }
 
 function keyboardFlagsResult(response: string, flagBits: number): ProbeCallbackResult {
@@ -2669,7 +2669,7 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const retained = ctx.getClipboardState()
   // #32091: the declared clipboard-load recipe query still runs, so a native host route retains its capture. The
-  // verdict below reads only the engine's retained write; the query's reply or silence does not grade it, and a
+  // callback result below reads only the engine's retained write; the query's reply or silence does not decide it, and a
   // silent read carries the audited host-input cause (kitty's default read-clipboard-ask waits on a human).
   const query = "\x1b]52;c;?\x07"
   const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
@@ -3808,7 +3808,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       const id = "extensions.kitty-graphics.animation"
       const capture = ctx.capture
       if (!capture) {
-        // No pixel adapter: an instrument limit, named before a byte, never a feature verdict.
+        // No pixel adapter: an instrument limit, named before a byte, never a support conclusion.
         const note =
           "Kitty animation is pixels over time; this arm has no pixel capture, so the missing adapter is pixel capture and playback is not observable here"
         return {
@@ -3922,7 +3922,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           "control",
           "Redraw control, whole window after one ordinary glyph outside the rectangle",
         )
-        const verdict = decideKittyAnimation({
+        const captureDecision = decideKittyAnimation({
           playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
           retry,
           clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
@@ -3937,38 +3937,38 @@ export const extensionsProbes: ProbeDefinition[] = [
           gapMs: KITTY_GAP_MS,
           loop: KITTY_LOOP_FOREVER,
           playbackElapsedMs,
-          playback: verdict.outcome,
+          playback: captureDecision.outcome,
           placementAck: placement.raw,
           frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
         })
         return {
-          pass: verdict.outcome === "supported",
+          pass: captureDecision.outcome === "supported",
           response: observed,
           observation: {
-            outcome: verdict.outcome,
-            ...(verdict.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+            outcome: captureDecision.outcome,
+            ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
             assertionType: "screenshot",
             screenshotRef: playbackSecond.ref,
             frames,
-            note: verdict.note,
+            note: captureDecision.note,
           },
-          ...(verdict.decidedBy === "a missing region digest"
+          ...(captureDecision.decidedBy === "a missing region digest"
             ? {
                 criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-                tests: [{ id: "review" as const, status: "probe-todo" as const, reason: verdict.note }],
+                tests: [{ id: "review" as const, status: "probe-todo" as const, reason: captureDecision.note }],
               }
             : {}),
-          ...(verdict.outcome === "inconclusive"
+          ...(captureDecision.outcome === "inconclusive"
             ? {}
             : {
                 assertions: [
                   {
                     assertionType: "screenshot" as const,
-                    kind: verdict.outcome === "supported" ? ("positive" as const) : ("negative" as const),
+                    kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                     expected:
                       "Two target frames of one run, no write between them, differ on the animation rectangle while frame selection differs, a one-frame image holds still, the cursor-only capture is equal and a redraw changes the screen outside the rectangle",
                     observed,
-                    note: `decided by ${verdict.decidedBy}`,
+                    note: `decided by ${captureDecision.decidedBy}`,
                   },
                 ],
               }),
@@ -4058,7 +4058,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           `Placeholder grid with image ${String(placeholderId)} composited over U+10EEEE cells`,
         )
         // A single equal pair is never a negative: the with-image state is re-read after a delay
-        // before any unsupported verdict (the same delayed-capture shape reset.decaln uses).
+        // before any unsupported observation (the same delayed-capture shape reset.decaln uses).
         await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
         const withImageSecond = await shoot(
           "target",
@@ -4097,7 +4097,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         await ctx.queryWithSentinelOutcome(kittyPlace(ordinaryId), kittyReplyFrame({ i: String(ordinaryId) }))
         ctx.write(kittyPark())
         const ordinary = await shoot("control", "Ordinary a=p placement of the same pixels in the same rectangle")
-        const verdict = decideKittyPlaceholders({
+        const captureDecision = decideKittyPlaceholders({
           withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
           withoutImage: withoutImage.regionDigest,
           guard: [guardWithImage.regionDigest, guardWithoutImage.regionDigest],
@@ -4126,33 +4126,33 @@ export const extensionsProbes: ProbeDefinition[] = [
           frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
         })
         return {
-          pass: verdict.outcome === "supported",
+          pass: captureDecision.outcome === "supported",
           response: observed,
           observation: {
-            outcome: verdict.outcome,
-            ...(verdict.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+            outcome: captureDecision.outcome,
+            ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
             assertionType: "screenshot",
             screenshotRef: withImageSecond.ref,
             frames,
-            note: verdict.note,
+            note: captureDecision.note,
           },
-          ...(verdict.decidedBy === "a missing region digest"
+          ...(captureDecision.decidedBy === "a missing region digest"
             ? {
                 criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-                tests: [{ id: "review" as const, status: "probe-todo" as const, reason: verdict.note }],
+                tests: [{ id: "review" as const, status: "probe-todo" as const, reason: captureDecision.note }],
               }
             : {}),
-          ...(verdict.outcome === "inconclusive"
+          ...(captureDecision.outcome === "inconclusive"
             ? {}
             : {
                 assertions: [
                   {
                     assertionType: "screenshot" as const,
-                    kind: verdict.outcome === "supported" ? ("positive" as const) : ("negative" as const),
+                    kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                     expected:
                       "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move while the ordinary placement painted against the captured blank",
                     observed,
-                    note: `decided by ${verdict.decidedBy}`,
+                    note: `decided by ${captureDecision.decidedBy}`,
                   },
                 ],
               }),
@@ -4208,7 +4208,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       async (ctx) => {
         // Sixel paints outside the cell grid. On an arm that reads cells there is nothing to
         // compare, and the missing adapter is pixel capture — named before a byte, as an
-        // instrument limit in the 3a8bddd5 shape, never a feature verdict.
+        // instrument limit in the 3a8bddd5 shape, never a support conclusion.
         if (!ctx.capture || ctx.captureKind === "text-cells") {
           const note =
             "Sixel paints pixels outside the cell grid; this arm has no pixel capture, so the missing adapter is pixel capture and the rendering is not observable here"
@@ -4837,7 +4837,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.notifications",
       (ctx) => {
-        // A parsed-toast store keeps no OSC code, so it is graded by single-sequence deltas (@cto 3cc4a3ae).
+        // A parsed-toast store keeps no OSC code, so it is checked by single-sequence deltas (@cto 3cc4a3ae).
         if (!ctx.getNotifications && ctx.getToasts) {
           const body = "terminfo-9-toast"
           return parsedToastResult(ctx, ctx.getToasts, {
@@ -4847,7 +4847,7 @@ export const extensionsProbes: ProbeDefinition[] = [
               write: "\x1b]777;notify;terminfo-9-cross-title;terminfo-9-cross-body\x07",
               matches: (toast) => toast.title === "terminfo-9-cross-title" && toast.body === "terminfo-9-cross-body",
             },
-            // OSC 9 carries a body only: the title the engine stores is recorded, never graded.
+            // OSC 9 carries a body only: the title the engine stores is recorded, never checked.
             graded: { write: `\x1b]9;${body}\x07`, matches: (toast) => toast.body === body },
             expected: `OSC 9 adds exactly one parsed toast with body ${body}`,
           })
@@ -5265,7 +5265,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => {
         // Without a raw OSC 777 reader the grid is the only witness, and it cannot see a notification.
         const readPayloads = ctx.getOsc777Payloads
-        // A parsed-toast store keeps no OSC code, so it is graded by single-sequence deltas (@cto 3cc4a3ae).
+        // A parsed-toast store keeps no OSC code, so it is checked by single-sequence deltas (@cto 3cc4a3ae).
         if (!readPayloads && ctx.getToasts) {
           const toast = { title: "terminfo-777-toast-title", body: "terminfo-777-toast-body" }
           return parsedToastResult(ctx, ctx.getToasts, {
