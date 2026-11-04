@@ -1198,6 +1198,64 @@ function noSamePathControl(sequence: string) {
   }
 }
 
+type ParsedToast = { title: string | null; body: string }
+type ToastStep = { write: string; before: number; added: ParsedToast[] | null }
+
+/**
+ * Grade one OSC toast family through the engine's parsed-toast store (@cto 3cc4a3ae, #32272). The store does not say
+ * which OSC made a toast, so each step feeds one sequence and reads only what it added: the graded family's no-toast
+ * control must add nothing, the other family's toast (the cross control) must add exactly itself, and the graded feed
+ * must add exactly one verbatim toast. Unsupported needs the cross control; without it the cell stays TEST TODO.
+ */
+function parsedToastResult(
+  ctx: LibProbeSource,
+  readToasts: NonNullable<LibProbeSource["getToasts"]>,
+  family: {
+    label: string
+    noToast: string
+    cross: { write: string; matches(toast: ParsedToast): boolean }
+    graded: { write: string; matches(toast: ParsedToast): boolean }
+    expected: string
+  },
+): ProbeCallbackResult {
+  const read = () => readToasts.call(ctx).map((toast) => ({ title: toast.title, body: toast.body }))
+  const step = (write: string): ToastStep => {
+    const before = read()
+    ctx.feed(write)
+    const after = read()
+    // Entries already stored must stay as they were; a rewritten list adds nothing attributable to this feed.
+    const kept = JSON.stringify(after.slice(0, before.length)) === JSON.stringify(before)
+    return { write, before: before.length, added: kept ? after.slice(before.length) : null }
+  }
+  const addsOnly = (result: ToastStep, matches: (toast: ParsedToast) => boolean) => {
+    const [toast, ...rest] = result.added ?? []
+    return toast !== undefined && rest.length === 0 && matches(toast)
+  }
+  const noToast = step(family.noToast)
+  if (noToast.added?.length !== 0) {
+    return notTestedResult(
+      `${NO_SAME_PATH_CONTROL}: ${family.label} no-toast control changed the toast store; this reader is not shown to add only toasts`,
+      { noToast },
+    )
+  }
+  const cross = step(family.cross.write)
+  const graded = step(family.graded.write)
+  const pass = addsOnly(graded, family.graded.matches)
+  const state = { noToast, cross, graded }
+  if (!pass && !addsOnly(cross, family.cross.matches)) {
+    return notTestedResult(
+      `${NO_SAME_PATH_CONTROL}: ${family.label} cross control did not add exactly its own toast; this reader is not shown to observe toasts`,
+      state,
+    )
+  }
+  return parserStateResult(
+    pass,
+    family.expected,
+    state,
+    "Measures the engine's parsed-toast store, not OS notification delivery",
+  )
+}
+
 /** A source exposing both icon-label and title readers takes the controlled buffer-state read. */
 function readsIconTitleState(
   source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel">,
@@ -4775,6 +4833,21 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.notifications",
       (ctx) => {
+        // A parsed-toast store keeps no OSC code, so it is graded by single-sequence deltas (@cto 3cc4a3ae).
+        if (!ctx.getNotifications && ctx.getToasts) {
+          const body = "terminfo-9-toast"
+          return parsedToastResult(ctx, ctx.getToasts, {
+            label: "OSC 9",
+            noToast: "\x1b]9;4;0\x07",
+            cross: {
+              write: "\x1b]777;notify;terminfo-9-cross-title;terminfo-9-cross-body\x07",
+              matches: (toast) => toast.title === "terminfo-9-cross-title" && toast.body === "terminfo-9-cross-body",
+            },
+            // OSC 9 carries a body only: the title the engine stores is recorded, never graded.
+            graded: { write: `\x1b]9;${body}\x07`, matches: (toast) => toast.body === body },
+            expected: `OSC 9 adds exactly one parsed toast with body ${body}`,
+          })
+        }
         if (!ctx.getNotifications) {
           const note = "Declared OSC 9 capability does not establish desktop notification delivery"
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
@@ -5188,6 +5261,24 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => {
         // Without a raw OSC 777 reader the grid is the only witness, and it cannot see a notification.
         const readPayloads = ctx.getOsc777Payloads
+        // A parsed-toast store keeps no OSC code, so it is graded by single-sequence deltas (@cto 3cc4a3ae).
+        if (!readPayloads && ctx.getToasts) {
+          const toast = { title: "terminfo-777-toast-title", body: "terminfo-777-toast-body" }
+          return parsedToastResult(ctx, ctx.getToasts, {
+            label: "OSC 777",
+            noToast: "\x1b]777;preexec\x07",
+            // OSC 9 carries a body only: the cross control checks the body, whatever title the engine stores.
+            cross: {
+              write: "\x1b]9;terminfo-777-cross-body\x07",
+              matches: (stored) => stored.body === "terminfo-777-cross-body",
+            },
+            graded: {
+              write: `\x1b]777;notify;${toast.title};${toast.body}\x07`,
+              matches: (stored) => stored.title === toast.title && stored.body === toast.body,
+            },
+            expected: `OSC 777 notify adds exactly one parsed toast with title ${toast.title} and body ${toast.body}`,
+          })
+        }
         if (!readPayloads) return noSamePathControl("\x1b]777;notify;test;body\x07")(ctx)
         const read = () => [...readPayloads.call(ctx)]
         // Grading rule 2: a non-notify control must read back verbatim on this reader before any Unsupported (@cto cd6b67d9).

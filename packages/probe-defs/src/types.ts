@@ -782,6 +782,8 @@ export interface LibProbeSource {
   getOsc777Payloads?(): readonly string[]
   /** The engine's stored last OSC 9;4 report (raw state code, stored value); null means never reported. */
   getProgress?(): { state: number; value: number | null } | null
+  /** Copied parsed OSC 9/777 toasts, engine fields verbatim, in order; the store does not say which OSC made one. */
+  getToasts?(): readonly { title: string | null; body: string }[]
   /** Copied entries selected by semantic-marks (starts) or semantic-command-end (raw completion); absent means no reader. */
   getSemanticMarks?(): readonly (
     | {

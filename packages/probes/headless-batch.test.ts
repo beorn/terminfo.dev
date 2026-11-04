@@ -1147,10 +1147,11 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
 // Ghostty native backends predate osc-metadata getProgress (#32271); CI run 41794400168 failed both rows there. Every
 // row runs in both homes: OWNED_LAYOUT picks the owned Termless contract (reader declared and graded) or the published
 // one (no reader, TEST TODO), so a broken owned reader still fails.
-// @failure #32053: engine stores parsed toasts only; OSC 9 and 777;notify;X arrive identical. WezTerm
+// @failure #32053, #32272: engine stores parsed toasts only; OSC 9 and 777;notify;X arrive identical. WezTerm
 // (performer.rs:904-933) and Ghostty (osc.zig:94-98) keep {title, body} toasts, so no raw reader can attribute the
-// code or rebuild the payload, and a reader declared on them would grade a guess. Their OSC 9 and OSC 777 cells
-// must stay TEST TODO with no reader, never Unsupported (@cto 94631c52, 91f6fd75).
+// code or rebuild the payload (@cto 94631c52, 91f6fd75). The owned Termless exposes that store as getToasts, graded by
+// single-sequence deltas with a cross control (@cto 3cc4a3ae); the published 0.10.2 and Ghostty WASM have no reader,
+// so their cells stay TEST TODO, never Unsupported.
 // @level l1
 // @consumer extensions.notifications and extensions.osc777-notify through the actual LibProbeSource
 function weztermNativeAvailable(): boolean {
@@ -1162,25 +1163,44 @@ function weztermNativeAvailable(): boolean {
   }
 }
 
+// The OSC 9 title each engine stores: Ghostty builds "" (osc9.zig:279-281), WezTerm reports none (performer.rs:904-911).
 test.for([
-  ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
-  ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, async () => createGhosttyNativeBackend()],
-  ["ghostty wasm", true, false, () => resolveGhosttyWasm()],
+  ["wezterm", weztermNativeAvailable(), OWNED_LAYOUT, null, async () => createWeztermBackend()],
+  ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, "", async () => createGhosttyNativeBackend()],
+  ["ghostty wasm", true, false, null, () => resolveGhosttyWasm()],
 ] as const)(
-  "%s parsed-toast engine keeps OSC 9 and OSC 777 TEST TODO with no reader",
-  async ([name, available, oscMetadata, create], context) => {
+  "%s parsed-toast engine grades OSC 9 and OSC 777 only through its toast reader",
+  async ([name, available, reader, osc9Title, create], context) => {
     if (!available) context.skip(`${name} native addon unavailable (NOT MEASURED)`)
     const value = await create()
     value.init({ cols: 80, rows: 24 })
     try {
-      // Ghostty native declares osc-metadata for its OSC 9;4 reader only (#32271); no toast engine has a toast reader.
-      expect(hasExtension(value, "osc-metadata")).toBe(oscMetadata)
+      expect(hasExtension(value, "osc-metadata")).toBe(reader)
       const source = createLibProbeSource(value, undefined, undefined, undefined)
       expect(source.getNotifications).toBeUndefined()
       expect(source.getOsc777Payloads).toBeUndefined()
       const [notifications, osc777] = registryDefinitions(["extensions.notifications", "extensions.osc777-notify"]).map(
         (definition) => definition.lib!(source),
       )
+      if (reader) {
+        for (const result of [notifications!, osc777!]) {
+          expect(result.notTested).toBeUndefined()
+          expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+        }
+        // Each step's added toasts are the engine's own fields: the OSC 9 title is recorded verbatim, never graded.
+        expect(JSON.parse(notifications!.response!)).toMatchObject({
+          noToast: { added: [] },
+          cross: { added: [{ title: "terminfo-9-cross-title", body: "terminfo-9-cross-body" }] },
+          graded: { added: [{ title: osc9Title, body: "terminfo-9-toast" }] },
+        })
+        expect(JSON.parse(osc777!.response!)).toMatchObject({
+          noToast: { added: [] },
+          cross: { added: [{ title: osc9Title, body: "terminfo-777-cross-body" }] },
+          graded: { added: [{ title: "terminfo-777-toast-title", body: "terminfo-777-toast-body" }] },
+        })
+        return
+      }
+      expect(source.getToasts).toBeUndefined()
       expect(notifications!.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
       expect(notifications!.tests).toMatchObject([{ id: "review", status: "test-todo" }])
       expect(osc777!.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })

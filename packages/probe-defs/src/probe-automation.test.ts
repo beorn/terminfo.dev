@@ -4777,3 +4777,95 @@ describe("OSC 9;4 progress reader grading", () => {
     expect(result.observation).toBeUndefined()
   })
 })
+
+// @failure #32272: Ghostty and WezTerm keep only parsed {title, body} toasts, so OSC 9 and OSC 777 arrive in one store
+// with no code. A same-family set control is the feature itself and makes Unsupported unreachable, so each criterion
+// needs a no-toast control and the other family's toast as its cross control (@cto 3cc4a3ae). These rows run without
+// any native engine.
+// @level l1
+// @consumer extensions.notifications and extensions.osc777-notify library callbacks through getToasts
+describe("parsed-toast store grading", () => {
+  type Toast = { title: string | null; body: string }
+  type Store = {
+    /** Families the engine stores; the other is dropped. */
+    families?: readonly ("9" | "777")[]
+    /** The title the engine stores for OSC 9 (Ghostty "", WezTerm null). */
+    osc9Title?: string | null
+    /** Mangle the body of these families. */
+    wrongBody?: readonly ("9" | "777")[]
+    /** Append a toast on every feed, toast or not. */
+    everyFeed?: boolean
+  }
+  /** A scripted engine with one parsed-toast store for both families. */
+  function toastSource(store: Store = {}): LibProbeSource {
+    const toasts: Toast[] = []
+    const families = store.families ?? ["9", "777"]
+    const body = (family: "9" | "777", value: string) =>
+      store.wrongBody?.includes(family) ? `${value}-mangled` : value
+    return context({
+      feed(text) {
+        const added = toasts.length
+        for (const [, payload] of text.matchAll(/\x1b\]9;([^\x07]*)\x07/g)) {
+          if (!payload!.startsWith("4;") && families.includes("9")) {
+            toasts.push({ title: store.osc9Title === undefined ? "" : store.osc9Title, body: body("9", payload!) })
+          }
+        }
+        for (const [, title, value] of text.matchAll(/\x1b\]777;notify;([^;\x07]*);([^\x07]*)\x07/g)) {
+          if (families.includes("777")) toasts.push({ title: title!, body: body("777", value!) })
+        }
+        if (store.everyFeed && toasts.length === added) toasts.push({ title: null, body: "unrelated" })
+      },
+      getToasts: () => toasts.map((toast) => ({ ...toast })),
+    })
+  }
+  const criteria = [
+    { id: "extensions.notifications", label: "OSC 9", graded: "9", other: "777" },
+    { id: "extensions.osc777-notify", label: "OSC 777", graded: "777", other: "9" },
+  ] as const
+  const noToastReason = (label: string) =>
+    `${NO_SAME_PATH_CONTROL}: ${label} no-toast control changed the toast store; this reader is not shown to add only toasts`
+  const crossReason = (label: string) =>
+    `${NO_SAME_PATH_CONTROL}: ${label} cross control did not add exactly its own toast; this reader is not shown to observe toasts`
+
+  describe.each(criteria)("$label", ({ id, label, graded, other }) => {
+    test.each([
+      ['a correct store with OSC 9 title ""', toastSource()],
+      ["a correct store with OSC 9 title null", toastSource({ osc9Title: null })],
+      ["a store that toasts only the graded family", toastSource({ families: [graded] })],
+    ])("%s grades Supported", (_label, source) => {
+      const result = probe(id).lib!(source)
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+    })
+
+    test.each([
+      ["toasts only the other family", toastSource({ families: [other] })],
+      ["mangles only the graded family's body", toastSource({ wrongBody: [graded] })],
+    ])("a store that %s grades Unsupported", (_label, source) => {
+      const result = probe(id).lib!(source)
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+    })
+
+    test.each([
+      ["never stores", toastSource({ families: [] }), crossReason(label)],
+      ["mangles every body", toastSource({ wrongBody: ["9", "777"] }), crossReason(label)],
+      ["is a stale fixed list", context({ getToasts: () => [{ title: "stale", body: "notice" }] }), crossReason(label)],
+      ["appends on every feed", toastSource({ everyFeed: true }), noToastReason(label)],
+    ])("a store that %s stays TEST TODO", (_label, source, reason) => {
+      const result = probe(id).lib!(source)
+      // The rendered not-tested reason is notTested.noObservable, so the specific reason must be on it.
+      expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: reason })
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+    })
+  })
+
+  test("an absent store keeps each criterion's no-reader route", () => {
+    const notifications = probe("extensions.notifications").lib!(context({}))
+    expect(notifications.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+    const osc777 = probe("extensions.osc777-notify").lib!(context({}))
+    expect(osc777.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    for (const result of [notifications, osc777]) expect(result.observation).toBeUndefined()
+  })
+})
