@@ -5,7 +5,9 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { recordExecutedProbe } from "./helpers.ts"
+import { NO_SAME_PATH_CONTROL, recordExecutedProbe } from "./helpers.ts"
+import { COLOUR_CAPTURE } from "./sgr-colour-capture.ts"
+import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { resetProbes } from "./reset.ts"
 import { sgrProbes } from "./sgr.ts"
 import type { ProbeCallbackResult, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
@@ -127,15 +129,31 @@ test("every sgr probe decides from the terminal's own DECRQSS report", async () 
   }
 })
 
-test.each(["0", "1"])("a bold DECRQSS reply %s retains owned capture evidence when available", async (reply) => {
-  const { ctx } = sgrReadbackSource(reply, true)
-  const result = await sgrTerm("sgr.bold")(ctx)
-  expect(result.observation?.assertionType).toBe("screenshot")
-  expect(result.observation?.outcome).toBe("inconclusive")
-  expect(result.observation?.frames).toHaveLength(2)
-  expect(result.observation?.note).toContain("DECRQSS")
-  expect(result.observation?.note).toContain(reply)
-  expect(result.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-todo" }))
+// The existing colour/reset registries and blink callback own the pixel oracles; the other rows do not.
+const PLAIN_STYLE_REPLIES = DECIDED.filter(
+  ([id]) => id !== "sgr.blink" && !(id in COLOUR_CAPTURE) && !(id in RESET_FAMILY_CAPTURE),
+)
+
+test.each([
+  ...PLAIN_STYLE_REPLIES.map(([id, reply]) => [id, reply, "supported"] as const),
+  ["sgr.bold", "0", "test-todo"] as const,
+])("%s retains DECRQSS %s without an owned pixel oracle (%s)", async (id, reply, status) => {
+  const { ctx, queries } = sgrReadbackSource(reply)
+  let captures = 0
+  ctx.capture = async () => {
+    captures++
+    throw new Error("A style without an owned pixel oracle must retain its DECRQSS decision")
+  }
+  const result = await sgrTerm(id)(ctx)
+  if (status === "supported") {
+    expect(result.observation).toMatchObject({ assertionType: "query_reply", outcome: "supported" })
+  } else {
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.observation).toBeUndefined()
+  }
+  expect(result.response).toBe(JSON.stringify({ sgr: reply }))
+  expect(queries).toHaveLength(1)
+  expect(captures).toBe(0)
 })
 
 // Reset support requires a measured transition. The existing final-state cases above accepted a
@@ -259,6 +277,13 @@ test.each([
   ["sgr.selective-reset.underline", "0;1;4:6", "inconclusive"],
 ] as const)("%s with DECRQSS %s is %s", async (id, reply, outcome) => {
   const { ctx } = qualifiedSgrReadbackSource(id, reply)
+  let captures = 0
+  if (outcome === "inconclusive") {
+    ctx.capture = async () => {
+      captures++
+      throw new Error("A malformed SGR reply must not enter capture")
+    }
+  }
   const result = await sgrTerm(id)(ctx)
   expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
   expect(result.pass).toBe(outcome === "supported")
@@ -266,6 +291,7 @@ test.each([
     JSON.stringify({ sgr: reply, ...(RESET_SETUP[id] && { baseline: "0", setup: RESET_SETUP[id] }) }),
   )
   if (outcome === "inconclusive") {
+    expect(captures).toBe(0)
     expect(result.observation?.note).toBeTruthy()
     expect(result.assertions ?? []).toHaveLength(0)
     // An attempted malformed reply must remain unsuccessful at the stored-result boundary too.
@@ -306,7 +332,19 @@ test.each([
   ["sgr.underline.double", "0"],
 ] as const)("%s with DECRQSS %s is a PROBE TODO, never a negative", async (id, reply) => {
   const { ctx } = qualifiedSgrReadbackSource(id, reply)
+  let captures = 0
+  const plainStyle = PLAIN_STYLE_REPLIES.some(([plain]) => plain === id)
+  if (plainStyle) {
+    ctx.capture = async () => {
+      captures++
+      throw new Error("An unjudged capture must not replace a plain style's named DECRQSS cause")
+    }
+  }
   const result = await sgrTerm(id)(ctx)
+  if (plainStyle) {
+    expect(captures).toBe(0)
+    expect(result.notTested?.noObservable).toBe(result.note)
+  }
   expect(result.notTested?.reason).toBe("no-semantic-observable")
   expect(result.observation).toBeUndefined()
   expect(result.pass).toBe(false)

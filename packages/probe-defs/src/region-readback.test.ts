@@ -1565,6 +1565,20 @@ test.each(SELECTIVE_COMPANION_ROWS)(
   },
 )
 
+test("a valid final reset reply retains the owning region oracle's independent pixel decision", async () => {
+  const terminal = statefulTerminal(ALL_ATTRS, { ris: true, replies: ["0", "1;3", "1"], resetMisses: ["italic"] })
+  const probe = sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.italic")
+  if (!probe?.term) throw new Error("missing selective italic callback")
+  const result = await probe.term(terminal.ctx)
+  // The final state report says italic cleared; the existing pixel fixture observes that it did not.
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
+  expect(result.assertions?.[0]?.kind).toBe("negative")
+  expect(terminal.queries).toHaveLength(3)
+  expect(terminal.captures.length).toBeGreaterThan(0)
+  expect(result.response).toContain('"sgr":"1"')
+  expect(result.observation?.note).toContain("DECRQSS")
+})
+
 test("an unqualified setup retains an independent measurement refusal and propagates a capture error with cleanup", async () => {
   const probe = sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.underline")
   if (!probe?.term) throw new Error("missing selective underline callback")
