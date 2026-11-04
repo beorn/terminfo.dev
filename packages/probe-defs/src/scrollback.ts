@@ -455,8 +455,9 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       await input.injectClick(4)
       const anchor = await frame(`${phase} U`)
       state.U = anchor
-      if (sameFrame(anchor, bottom) || sameFrame(anchor, reference))
+      if (sameFrame(anchor, bottom) || sameFrame(anchor, reference)) {
         return todo("viewport anchor placement not established")
+      }
       const output = `\r\nvh-${prefix}-out\r\n${tail}`
       ctx.write(phase === "ordinary" ? output : `\x1b[?2026h${output}\x1b[?2026l`)
       const after = await frame(`${phase} A`, "target")
