@@ -28,7 +28,7 @@ import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { readProbeCapture } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
 import * as headlessIdentity from "../../../probes/headless-identity.ts"
-import { derivedSuiteManifest } from "../../../admin/versions.ts"
+import { derivedSuiteManifest, sourceSuiteEnvironment } from "../../../admin/versions.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
 import { collectTextQualification } from "../text-qualification.ts"
 import { createClipboardTransaction, type LinuxClipboardAdapter } from "../linux-clipboard.ts"
@@ -2169,7 +2169,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       if (!assertionPath) throw new Error("Missing persisted assertion")
       const executingManifest = derivedSuiteManifest()
       expect(assertion.suiteId).toBe(executingManifest.probeHash)
-      expect(assertion.sourceRevision).toBe(executingManifest.sourceRevision)
+      expect(assertion.sourceRevision).toBe(sourceSuiteEnvironment().TERMINFO_SOURCE_REVISION)
       expect(assertion.sourceRevision).not.toBe(draft.sourceRevision)
       expect(
         parseRun(
