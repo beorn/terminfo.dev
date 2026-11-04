@@ -841,6 +841,7 @@ test.each([
     }),
   )
   expect(result.pass).toBe(expected)
+  expect(result.observation?.outcome).toBe(expected ? "supported" : "unsupported")
 })
 
 test("headless scrollback uses initialized screenLines rather than a 24-row assumption", () => {
