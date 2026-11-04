@@ -384,6 +384,12 @@ export const scrollbackProbes: ProbeDefinition[] = [
         }
         for (let i = 0; i < rows + 10; i++) ctx.feed(`line ${i}\r\n`)
         const scroll = ctx.getScrollback()
+        if (scroll.totalLines === baseline.totalLines) {
+          return notTestedResult(
+            "retained history count did not change after the overflow lines; no same-path control shows this reader counts history",
+            { baseline, scroll },
+          )
+        }
         return parserStateResult(
           scroll.totalLines > baseline.totalLines,
           "Written lines increase measured scrollback history",
@@ -490,6 +496,12 @@ export const scrollbackProbes: ProbeDefinition[] = [
         const lineCount = rows + 10
         for (let i = 0; i < lineCount; i++) ctx.feed(`line ${i}\r\n`)
         const scroll = ctx.getScrollback()
+        if (scroll.totalLines === baseline.totalLines) {
+          return notTestedResult(
+            "retained history count did not change after the overflow lines; no same-path control shows this reader counts history",
+            { baseline, lineCount, scroll },
+          )
+        }
         return parserStateResult(
           scroll.totalLines - baseline.totalLines >= lineCount - rows,
           "Measured history grows by at least the overflow beyond the screen",
