@@ -29,7 +29,7 @@ import {
   cellWidthTransition,
   type DecrpmPs,
   stackStateResult,
-  stackVerdict,
+  decideStackOperation,
   type StackReading,
 } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
@@ -254,7 +254,7 @@ function captureStackResult(
   expected: string,
   readings: { pop: StackReading; push: StackReading },
   reads: readonly CaptureRead[],
-  decided: { pass: boolean | null; note?: string } = stackVerdict(operation, readings.pop, readings.push),
+  decided: { pass: boolean | null; note?: string } = decideStackOperation(operation, readings.pop, readings.push),
 ): ProbeCallbackResult {
   const frames = reads.flatMap((read) => read.result.observation?.frames ?? [])
   const screenshotRef = reads.find((read) => read.result.observation?.screenshotRef)?.result.observation?.screenshotRef
@@ -442,7 +442,7 @@ async function xtModeSaveCapture(ctx: TermProbeSource, operation: "push" | "pop"
           : "restore returned DECAWM off whatever was saved, so no save was observed",
     })
   }
-  const verdict = stackVerdict(operation, pop, push)
+  const verdict = decideStackOperation(operation, pop, push)
   return captureStackResult(operation, expected, { pop, push }, reads, {
     pass: verdict.pass,
     note:
@@ -587,7 +587,7 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
         : plain(pushCells.y)
           ? "persisted"
           : "other"
-    const verdict = stackVerdict(operation, pop, push)
+    const verdict = decideStackOperation(operation, pop, push)
     return stackStateResult(verdict, expected, { ...state, pop, push })
   } finally {
     if (pushed) ctx.feed("\x1b[#}")
@@ -693,7 +693,7 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
             state,
           )
     }
-    const verdict = stackVerdict(operation, pop, push)
+    const verdict = decideStackOperation(operation, pop, push)
     const note =
       pop === "persisted" && push === "persisted"
         ? "save then restore restored no earlier state"
@@ -785,7 +785,7 @@ function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): P
         : sameRgb(pushY, COLOR_STACK_GREEN)
           ? "persisted"
           : "other"
-    const verdict = stackVerdict(operation, pop, push)
+    const verdict = decideStackOperation(operation, pop, push)
     return stackStateResult(verdict, expected, { ...state, pop, push })
   } finally {
     if (pushed) ctx.feed("\x1b[#Q")

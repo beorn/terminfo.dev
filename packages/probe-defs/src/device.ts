@@ -11,7 +11,7 @@ import {
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
-  stackVerdict,
+  decideStackOperation,
   stackStateResult,
 } from "./helpers.ts"
 
@@ -278,7 +278,7 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string, operation: "p
             : "other"
     // Two absent stack effects still cannot isolate a failed push from a failed pop (#32246).
     if (pop === "persisted" && push === "persisted") return notTestedResult(NO_SAME_PATH_CONTROL, state)
-    return stackStateResult(stackVerdict(operation, pop, push), expected, { ...state, pop, push })
+    return stackStateResult(decideStackOperation(operation, pop, push), expected, { ...state, pop, push })
   } finally {
     try {
       if (pushed) ctx.feed("\x1b[23;0t")

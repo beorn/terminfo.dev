@@ -133,7 +133,7 @@ export type StackReading = "restored" | "earlier" | "persisted" | "other"
  * - Nothing restored in either fixture is the joint negative both rows carry: push then pop
  *   restored no earlier state. Any other combination, including fixtures that disagree, is null.
  */
-export function stackVerdict(
+export function decideStackOperation(
   operation: "push" | "pop",
   pop: StackReading,
   push: StackReading,
