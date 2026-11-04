@@ -37,7 +37,7 @@ import {
   sgrCaptureTooSmall,
   unmeasuredCellResult,
   stackStateResult,
-  stackVerdict,
+  decideStackOperation,
   type StackReading,
 } from "./helpers.ts"
 import { measureAlternateReflow } from "./modes.ts"
@@ -1182,7 +1182,7 @@ function colorStackResult(
       : sameRgbText(pushFixture.restored, colors.c)
         ? "persisted"
         : "other"
-  const verdict = stackVerdict(operation, pop, push)
+  const verdict = decideStackOperation(operation, pop, push)
   return stackStateResult(verdict, expected, { ...state, pop, push }, "query_reply")
 }
 
