@@ -45,6 +45,133 @@ import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { parseSuiteManifest, parseRun } from "@terminfo/run-parser"
 import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
+import { projectResults } from "../../../docs/data/selected-results.ts"
+import { aggregateCurrentResults, computeFeatureResults } from "../../../docs/data/release-scope.ts"
+import { CensusReport, renderReport } from "../report.tsx"
+import { renderString } from "silvery"
+import React from "react"
+
+// A representative raw Supported result must not conceal the composed feature's disagreement.
+test("report renders computed conflicts with unscored environment rows and original evidence", async () => {
+  const featureId = "sgr.bold"
+  const environmentId = "device.env-term"
+  const catalogIds = [featureId, environmentId]
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "report-conflict",
+    sourceRevision: "2".repeat(40),
+    adapterVersion: "4",
+    catalogIds,
+    probes: { term: catalogIds, lib: [], mux: [] },
+  }
+  const draft = initializeRunDraft({
+    runId: "conflict-representative",
+    sourceRevision: manifest.sourceRevision,
+    manifest,
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
+  })
+  const startedAt = "2026-11-04T12:00:00.000Z"
+  const attempt = { scope: "probe", startedAt }
+  const bytes = JSON.stringify({
+    ...draft,
+    subject: {
+      kind: "term",
+      id: "kitty",
+      version: "0.49.2",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: startedAt,
+    origin: { kind: "collector" },
+    rawReplies: {
+      [featureId]: "ACK",
+      "collector.selection": JSON.stringify({ ids: [featureId] }),
+      "collector.collectionAttempt": JSON.stringify({ ids: [featureId], startedAt, result: "completed" }),
+    },
+    assertions: [
+      {
+        featureId,
+        kind: "positive",
+        assertionType: "query_reply",
+        rawReplyRef: featureId,
+        expected: "ACK",
+        observed: "ACK",
+      },
+    ],
+    results: draft.results.map((result) =>
+      result.featureId === featureId
+        ? {
+            featureId,
+            status: "supported",
+            assertionType: "query_reply",
+            rawReplyRef: featureId,
+            attempt,
+            tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0], rawReplyRef: featureId }],
+          }
+        : result,
+    ),
+  })
+  const run = parseRun("representative.json", bytes, catalogIds, new Map([[manifest.probeHash, manifest]]))
+  const original = JSON.stringify(run)
+  const projection = projectResults([run], catalogIds, { currentProbeHash: manifest.probeHash }, [])
+  const view = projection.contexts["term:kitty"]
+  const cell = view?.cells[featureId]
+  const conflict = computeFeatureResults(
+    [
+      { featureId, probeId: `${featureId}:output`, method: "output", status: "unsupported" },
+      { featureId, probeId: `${featureId}:end-to-end`, method: "end-to-end", status: "supported" },
+    ],
+    catalogIds,
+  )[featureId]
+  if (!view || !cell || !conflict) {
+    throw new Error("Synthetic report fixture requires its selected context, result and conflict")
+  }
+  const aggregate = aggregateCurrentResults(
+    [
+      { featureId, status: conflict.status },
+      { featureId: environmentId, status: "probe-todo" },
+    ],
+    catalogIds,
+  )
+  const composed = {
+    ...projection,
+    contexts: {
+      "term:kitty": {
+        ...view,
+        cells: { ...view.cells, [featureId]: { ...cell, featureResult: conflict } },
+        counts: aggregate.counts,
+        score: { supported: aggregate.supported, all: aggregate.denominator },
+        complete: aggregate.complete,
+      },
+    },
+  }
+  const plain = (await renderReport(composed, catalogIds)).replace(/\x1b\[[0-9;]*m/g, "")
+  const matrix = plain.split("Feature comparison")[1]?.split("Observation reasons and notes")[0]
+  expect(matrix?.split("\n").find((row) => row.trimStart().startsWith(featureId))).toMatch(/\bCONFLICT\b/)
+  expect(matrix?.split("\n").find((row) => row.trimStart().startsWith(environmentId))).toMatch(/\bN\/M\b/)
+  expect(plain).toContain("0/1 Supported / all (0%)")
+  expect(plain).toMatch(/\b1 PROBE\s+CONFLICT\b/)
+  expect(plain).toContain("result coverage incomplete")
+  expect(plain).toContain(`${featureId}:output`)
+  expect(plain).toContain(`${featureId}:end-to-end`)
+  expect(plain).toContain(`${featureId}: conflict-representative / ${featureId}`)
+  const narrow = (
+    await renderString(React.createElement(CensusReport, { projection: composed, featureIds: catalogIds, width: 28 }), {
+      width: 28,
+    })
+  ).replace(/\x1b\[[0-9;]*m/g, "")
+  const narrowMatrix = narrow.split("Feature comparison")[1]?.split("Observation reasons and notes")[0]
+  expect(narrowMatrix?.split("\n").find((row) => row.trimStart().startsWith(featureId))).toMatch(/\bCONFLICT\b/)
+  expect(narrowMatrix).toMatch(/CONFLICT\s+PROBE\s+CONFLICT/)
+  expect(cell.result.status).toBe("supported")
+  expect(JSON.stringify(run)).toBe(original)
+})
 
 // This journey boots several real CLI processes; 5s is not a report performance contract.
 test("report renders reviewed outcomes, failures and missing cells", () => {

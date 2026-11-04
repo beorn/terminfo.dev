@@ -2,25 +2,37 @@
 
 import React from "react"
 import { Box, Text, renderString } from "silvery"
-import type { SelectedProjection, SelectedContextSummary } from "../../docs/data/selected-results.ts"
+import type {
+  SelectedProjection,
+  SelectedContextSummary,
+  SelectedContextCell,
+} from "../../docs/data/selected-results.ts"
 
-import type { ProbeResult } from "@terminfo/probe-defs"
 import { isEnvironmentGroup } from "@terminfo/probe-defs"
 import { currentCoverageSentence } from "../../docs/data/release-scope.ts"
 
 type CurrentColumn = { label: string; contextKey: string; view: SelectedContextSummary }
-type StateToken = "YES" | "NO" | "UNTEST" | "FAIL" | "TODO" | "N/M" | "—"
+type StateToken = "YES" | "NO" | "UNTEST" | "FAIL" | "TODO" | "CONFLICT" | "N/M" | "—"
 
 function score(run: SelectedContextSummary): string {
   return `${run.score.supported}/${run.score.all} Supported / all (${Math.round((100 * run.score.supported) / run.score.all)}%)`
 }
 
-function stateToken(cell: ProbeResult | undefined): StateToken {
-  if (!cell) return "—"
+function stateToken(cell: SelectedContextCell | undefined): StateToken {
+  if (!cell) {
+    return "—"
+  }
   // D132 B (#30917): the nine environment positions are recorded PROBE TODO by the catalogue but are
   // manual by design, not graded, and were never measured. They must never read as TODO.
-  if (cell.status === "probe-todo" && isEnvironmentGroup(cell.featureId)) return "N/M"
-  switch (cell.status) {
+  const environment = isEnvironmentGroup(cell.result.featureId)
+  const status = environment ? cell.result.status : cell.featureResult?.status
+  if (status === undefined) {
+    throw new Error(`Report feature ${cell.result.featureId} lacks its computed feature result`)
+  }
+  if (status === "probe-todo" && environment) {
+    return "N/M"
+  }
+  switch (status) {
     case "supported":
       return "YES"
     case "unsupported":
@@ -31,10 +43,12 @@ function stateToken(cell: ProbeResult | undefined): StateToken {
       return "TODO"
     case "probe-invalid":
       return "FAIL"
+    case "probe-conflict":
+      return "CONFLICT"
   }
 }
 
-function StateCell({ cell, width }: { cell: ProbeResult | undefined; width: number }): React.ReactElement {
+function StateCell({ cell, width }: { cell: SelectedContextCell | undefined; width: number }): React.ReactElement {
   const token = stateToken(cell)
   const color = token === "YES" ? "$success" : token === "NO" ? "$error" : "$muted"
   return (
@@ -97,8 +111,8 @@ function FeatureMatrix({
         Feature comparison
       </Text>
       <Text color="$muted">
-        YES Supported · NO Unsupported · UNTEST Untestable · TODO PROBE TODO · FAIL PROBE INVALID · N/M manual by design
-        (catalogue), NOT MEASURED
+        YES Supported · NO Unsupported · UNTEST Untestable · TODO PROBE TODO · FAIL PROBE INVALID · CONFLICT PROBE
+        CONFLICT · N/M manual by design (catalogue), NOT MEASURED
       </Text>
       {groups.map((group) => (
         <Box key={group[0]?.label} flexDirection="column" marginBottom={1}>
@@ -118,7 +132,7 @@ function FeatureMatrix({
                 <Text>{id}</Text>
               </Box>
               {group.map((column) => (
-                <StateCell key={column.label} cell={column.view.cells[id]?.result} width={columnWidth} />
+                <StateCell key={column.label} cell={column.view.cells[id]} width={columnWidth} />
               ))}
             </Box>
           ))}
@@ -154,11 +168,18 @@ export function CensusReport({
       <Text bold>Observation reasons and notes</Text>
       {columns.flatMap((column) =>
         featureIds.flatMap((id) => {
-          const cell = column.view.cells[id]?.result
-          if (!cell?.reason) return []
+          const cell = column.view.cells[id]
+          const conflict =
+            cell?.featureResult?.status === "probe-conflict"
+              ? `PROBE CONFLICT: disagreeing probes ${cell.featureResult.conflictingProbes.join(", ")}`
+              : undefined
+          const note = [conflict, cell?.result.reason].filter((value) => value !== undefined).join("; ")
+          if (!note) {
+            return []
+          }
           return [
             <Text key={`${column.label}:${id}`}>
-              {column.label} {id}: {cell.reason ?? ""}
+              {column.label} {id}: {note}
             </Text>,
           ]
         }),

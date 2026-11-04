@@ -16,7 +16,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
+import { isEnvironmentGroup, type FeatureResultStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { originalRunFor } from "../docs/data/selected-results.ts"
@@ -90,7 +90,7 @@ interface TerminalStats {
   yes: number
   no: number
   pct: number
-  results: Record<string, ProbeStatus>
+  results: Record<string, FeatureResultStatus>
   baselineCompliance: Record<string, { total: number; yes: number; pct: number; complete: boolean }>
   uniquelySupported: string[]
   uniquelyMissing: string[]
@@ -108,7 +108,7 @@ export interface AnalysisEntry {
   sources?: AnalysisSource[]
   versions?: string[]
   score?: { supported: number; all: number }
-  counts?: Record<ProbeStatus, number>
+  counts?: Record<FeatureResultStatus, number>
   complete?: boolean
 }
 
@@ -183,11 +183,11 @@ function loadAnnotations(): Record<string, { note: string; url?: string }> {
 }
 
 interface SelectedAnalysisInput {
-  recordedResults: ProbeResult[]
+  recordedResults: Array<{ featureId: string; status: FeatureResultStatus }>
   catalogIds: string[]
   aggregate: CurrentAggregate
   sourceId: string
-  results: Record<string, ProbeStatus>
+  results: Record<string, FeatureResultStatus>
   versions: string[]
   type: "term" | "lib" | "mux"
   sources: AnalysisSource[]
@@ -200,7 +200,17 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   for (const [key, { contextKey, selected: version }] of selected) {
     if (!version.subject) throw new Error(`Analysis context ${key} has no physical subject`)
     if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
-    const recordedResults = Object.values(version.cells).map((cell) => cell.result)
+    const recordedResults = Object.values(version.cells).map((cell) => {
+      const { featureId, status } = cell.result
+      if (isEnvironmentGroup(featureId)) {
+        return { featureId, status }
+      }
+      if (!cell.featureResult) {
+        throw new Error(`Analysis context ${contextKey}/${featureId} lacks its computed feature result`)
+      }
+      return { featureId, status: cell.featureResult.status }
+    })
+    const statuses = Object.fromEntries(recordedResults.map(({ featureId, status }) => [featureId, status]))
     const sources = version.contributingRunIds.map((runId): AnalysisSource => {
       const original = originalRunFor(projection, contextKey, runId)
       return {
@@ -213,9 +223,7 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
     })
     resultMap.set(key, {
       sourceId: version.subject.id,
-      results: Object.fromEntries(
-        version.catalogIds.map((id) => [id, version.cells[id]?.result.status ?? "probe-todo"]),
-      ),
+      results: Object.fromEntries(version.catalogIds.map((id) => [id, statuses[id] ?? "probe-todo"])),
       recordedResults,
       catalogIds: version.catalogIds,
       aggregate: aggregateCurrentResults(recordedResults, version.catalogIds),
@@ -267,7 +275,7 @@ function computeTerminalStats(
   data: SelectedAnalysisInput,
   features: Record<string, FeatureMeta>,
   baselineFeatures: Record<string, string[]>,
-  allTerminalResults: Map<string, { results: Record<string, ProbeStatus> }>,
+  allTerminalResults: Map<string, { results: Record<string, FeatureResultStatus> }>,
 ): TerminalStats {
   const results = data.results
   const total = data.aggregate.denominator
