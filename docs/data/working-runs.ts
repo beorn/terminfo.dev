@@ -186,6 +186,7 @@ export function loadWorkingRun(
   }
   const runRoot = realpathSync(selection.dir) + sep
   const retainedPaths = [...collection.runs]
+  const runCount = retainedPaths.length
   if (Object.hasOwn(collection, "suiteManifest")) {
     if (
       typeof collection.suiteManifest !== "string" ||
@@ -199,13 +200,13 @@ export function loadWorkingRun(
   const checkedPaths = retainedPaths.map((path, index) => {
     const rawPath = resolve(selection.dir, path)
     if (!existsSync(rawPath) || !realpathSync(rawPath).startsWith(runRoot)) {
-      const resource = index < collection.runs.length ? "raw capture" : "suite manifest"
+      const resource = index < runCount ? "raw capture" : "suite manifest"
       throw new Error(`${collectionPath}: ${resource} ${path} outside the run directory or absent`)
     }
     return rawPath
   })
-  const rawPaths = checkedPaths.slice(0, collection.runs.length)
-  const manifestPath = checkedPaths[collection.runs.length]
+  const rawPaths = checkedPaths.slice(0, runCount)
+  const manifestPath = checkedPaths[runCount]
   const runs: LoadedRun[] = []
   const seen = new Set<string>()
   for (const rawPath of rawPaths) {

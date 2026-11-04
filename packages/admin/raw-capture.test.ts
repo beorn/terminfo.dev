@@ -70,7 +70,7 @@ describe("loadRawCapture: the one raw-capture reader fails loudly", () => {
       join(REPO, "content/probes-libs/vterm-0.10.1-linux-a22f06ca-2505-4c0d-a518-b0b01f8bbe76.json"),
       "utf8",
     )
-    const header = JSON.parse(bytes) as { probeHash: string }
+    const header = JSON.parse(bytes) as Record<string, unknown> & { probeHash: string }
     expect(header.probeHash).not.toBe(probeSuiteSnapshot().probeHash)
     writeFileSync(path, bytes)
     const baseline = loadRawCapture(path, { root: REPO, catalogIds: [] })
@@ -86,15 +86,16 @@ describe("loadRawCapture: the one raw-capture reader fails loudly", () => {
     expect(historical.catalogIds).toEqual(baseline.catalogIds)
     expect(readFileSync(path, "utf8")).toBe(bytes)
     expect(() =>
-      loadRawCapture(path, { ...options, bytes: JSON.stringify({ ...JSON.parse(bytes), suiteId: "ffffffffffff" }) }),
+      loadRawCapture(path, { ...options, bytes: JSON.stringify({ ...header, suiteId: "ffffffffffff" }) }),
     ).toThrow(`suiteId disagrees with manifest ${header.probeHash}`)
     const retainedManifest = readFileSync(manifestPath, "utf8")
+    const declaration = JSON.parse(retainedManifest) as Record<string, unknown>
     const absentPath = join(root, "absent", `${header.probeHash}.json`)
     expect(() => loadRawCapture(path, { root: REPO, catalogIds: [], manifestPath: absentPath })).toThrow(absentPath)
     for (const invalid of [
       "{ invalid JSON",
-      JSON.stringify({ ...JSON.parse(retainedManifest), probeHash: "ffffffffffff" }),
-      JSON.stringify({ ...JSON.parse(retainedManifest), schemaVersion: 5 }),
+      JSON.stringify({ ...declaration, probeHash: "ffffffffffff" }),
+      JSON.stringify({ ...declaration, schemaVersion: 5 }),
     ]) {
       writeFileSync(manifestPath, invalid)
       expect(() => loadRawCapture(path, { root: REPO, catalogIds: [], manifestPath })).toThrow(manifestPath)

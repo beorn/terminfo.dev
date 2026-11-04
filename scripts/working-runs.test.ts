@@ -149,7 +149,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     const baseline = loadWorkingRun(selection, { root, catalogIds })
     const rawPath = fixture.collected.runs[0]!
     const bytes = readFileSync(rawPath, "utf8")
-    const suiteId = JSON.parse(bytes).probeHash as string
+    const header = JSON.parse(bytes) as { probeHash: string }
+    const suiteId = header.probeHash
     mkdirSync(join(fixture.dir, "headless", "suites"))
     const suiteManifest = `suites/${suiteId}.json`
     copyFileSync(join(root, "content", "suites", `${suiteId}.json`), join(fixture.dir, "headless", suiteManifest))
@@ -176,7 +177,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     "refuses a declared private manifest with %s instead of falling back to the committed declaration",
     (failure) => {
       const fixture = collection()
-      const suiteId = JSON.parse(readFileSync(fixture.collected.runs[0]!, "utf8")).probeHash as string
+      const header = JSON.parse(readFileSync(fixture.collected.runs[0]!, "utf8")) as { probeHash: string }
+      const suiteId = header.probeHash
       const filedId = failure === "filed id" ? "ffffffffffff" : suiteId
       const suiteManifest = failure === "wrong form" ? "suites/not-a-suite.json" : `suites/${filedId}.json`
       const manifestPath = join(fixture.dir, "headless", suiteManifest)

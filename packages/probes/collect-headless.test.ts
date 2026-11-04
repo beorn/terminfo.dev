@@ -111,7 +111,9 @@ it.each([true, false])(
     expect(readdirSync(join(dir, "suites"))).toEqual([`${suite.probeHash}.json`])
     const manifestPath = join(dir, collection.suiteManifest!)
     expect(parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))).toEqual(derivedSuiteManifest(suite))
-    expect(JSON.parse(readFileSync(join(dir, "collection.json"), "utf8")).suiteManifest).toBe(collection.suiteManifest)
+    expect(JSON.parse(readFileSync(join(dir, "collection.json"), "utf8"))).toMatchObject({
+      suiteManifest: collection.suiteManifest,
+    })
     parseRun(path, readFileSync(path, "utf8"), suite.catalogIds!, new Map([[suite.probeHash, suite]]))
     // Raw collection is never END; existing writer tests cannot observe coordinator custody.
     expect(path).toMatch(/\.draft\.json$/)
