@@ -2276,7 +2276,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       await expect(
         runEraseReplay(context, { directory, source: invalidSource, expected, featureId: "sgr.bold" }),
         fault,
-      ).rejects.toThrow(/Incomplete:/)
+      ).rejects.toThrow(fault === "tty-root" ? /SGR source shape does not match its live capture/ : /Incomplete:/)
       expect(context.task.meta.terminfoErase?.failureResults, fault).toMatchObject([
         { featureId: "sgr.bold", status: "test-failure" },
       ])
@@ -2377,6 +2377,8 @@ it("retains same-callback control and target frames without declaring visual sup
   ])
   const trace = JSON.parse(batch.rawReplies["sgr.underline.curly"]!) as { captures: unknown[] }
   expect(trace.captures).toHaveLength(2)
+  // The capture writer clones the batch before persistence; recorder proxies must not escape.
+  expect(structuredClone(batch)).toEqual(batch)
   expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
     checks: [{ featureId: "sgr.underline.curly", pre: { rows: 24, cols: 80 }, post: { rows: 24, cols: 80 } }],
   })
