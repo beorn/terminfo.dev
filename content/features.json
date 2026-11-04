@@ -2117,7 +2117,7 @@
     "baseline": "rich",
     "sequence": "CSI ? Pi ; Pa ; Pv S",
     "body": "XTSMGRAPHICS can report the current Sixel graphics geometry in pixels. Item 2 selects Sixel geometry and action 1 reads it; a successful reply carries width and height. A reply to item 1 reports color registers instead. This read measures reported geometry; rendering requires separate evidence. See xterm’s control-sequence documentation for the response statuses.",
-    "probe": "Send <code>CSI ? 2 ; 1 ; 0 S</code> (read current Sixel geometry). Only <code>CSI ? 2 ; 0 ; width ; height S</code> with two positive dimensions supports the report. Malformed replies, protocol failures, and silence without sentinel evidence are TEST FAILURE. Silence is Unsupported only when a DA1 sentinel proves the terminal answered within the response window but returned no geometry reply."
+    "probe": "Send <code>CSI ? 2 ; 1 ; 0 S</code> (read current Sixel geometry). Only <code>CSI ? 2 ; 0 ; width ; height S</code> with two positive dimensions supports the report. Malformed replies and protocol failures are TEST FAILURE. Silence is Unsupported only when a DA1 sentinel in the same run proves the target answered within the response window but returned no geometry reply. Silence without that sentinel evidence is TEST FAILURE in an app and TEST TODO in a headless library."
   },
   "extensions.osc9-progress": {
     "name": "OSC 9;4 progress bar",

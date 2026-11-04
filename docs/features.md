@@ -270,11 +270,11 @@ Getting Unicode right is essential for TUI applications to maintain proper **cur
 
 The catalog includes measured and unmeasured features. Result cells identify the observation’s method, terminal version and context; protocol documentation explains intended behavior separately from measurements. See [how probing works and its limits](/contribute#what-a-probe-can-establish).
 
-For **terminal applications**, query probes record replies such as cursor positions or protocol acknowledgements. Controlled app captures can establish particular visible properties when reviewed against a stated fixture. A reply alone does not demonstrate rendering or input-event delivery.
+For **terminal applications**, query probes record replies such as cursor positions or protocol acknowledgements. Controlled app captures can establish particular visible properties only through a same-run pixel check against a stated fixture. A reply alone does not demonstrate rendering or input-event delivery.
 
 For **headless backends**, [Termless](https://termless.dev) sends sequences and tests replies or programmatic terminal state. These assertions can verify cell contents, attributes or cursor behavior. A PNG drawn from that state illustrates the grid; it does not capture the terminal app’s renderer.
 
-The methods complement each other. Missing observations are TEST TODO; an attempted probe without a result is TEST FAILURE; a reviewed inability to measure is Untestable. Permissions and intermediaries such as multiplexers are part of the measurement context.
+The methods complement each other. Missing observations are TEST TODO; an attempted probe without a result is TEST FAILURE; Untestable has no current route. Permissions and intermediaries such as multiplexers are part of the measurement context.
 
 ---
 
