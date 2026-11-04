@@ -18,7 +18,7 @@
  */
 import { expect, test } from "vitest"
 import { sgrProbes } from "./sgr.ts"
-import { COLOUR_CAPTURE, colourCaptureVerdict } from "./sgr-colour-capture.ts"
+import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
 import { captureRegionVerdict } from "./region-readback.ts"
 import type {
   CaptureCells,
@@ -645,7 +645,7 @@ test("the colour verdict drops the oracle's negative assertion and keeps the fra
   const frames: ObservationFrame[] = [
     { kind: "pixels", role: "control", label: "seed", capturedAt: 1, ref: "sha256:seed", pixelsDigest: "d" },
   ]
-  const downgraded = colourCaptureVerdict("sgr.fg.standard", {
+  const downgraded = colourCaptureCallbackResult("sgr.fg.standard", {
     pass: false,
     response: "seed=1 after=1 expected=2",
     observation: {

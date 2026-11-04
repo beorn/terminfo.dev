@@ -141,7 +141,7 @@ export function colourCaptureNote(id: string): string | undefined {
  * cannot separate an ignored sequence from one painted identically to the sibling, so they read
  * inconclusive BY NAME here. A supported observation carries the note that says what was compared.
  */
-export function colourCaptureVerdict(id: string, verdict: ProbeCallbackResult): ProbeCallbackResult {
+export function colourCaptureCallbackResult(id: string, verdict: ProbeCallbackResult): ProbeCallbackResult {
   const note = colourCaptureNote(id)
   const observation = verdict.observation
   if (note === undefined || observation === undefined) return verdict

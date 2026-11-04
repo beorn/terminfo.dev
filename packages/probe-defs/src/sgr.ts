@@ -28,7 +28,7 @@ import {
 import { kittyWait } from "./kitty-capture.ts"
 import { captureRegionVerdict, cropPositionRefusal } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
-import { COLOUR_CAPTURE, colourCaptureVerdict } from "./sgr-colour-capture.ts"
+import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
@@ -278,7 +278,7 @@ export function sgrTermReadback(
       }
       if (colour) {
         const verdict = await captureRegionVerdict(ctx, id, colour, true)
-        if (verdict) return colourCaptureVerdict(id, verdict)
+        if (verdict) return colourCaptureCallbackResult(id, verdict)
       }
       return fallback(ctx)
     }
