@@ -209,9 +209,11 @@ pixel capture in one fresh Linux Ghostty job. Its optional input-fixture wheel b
 configuration/application provenance; until that bound is justified from the pinned application, the job
 omits it and the callback returns named Test to-do before I/O. The configuration sets only wheel movement,
 never output-scroll policy. Separate ordinary/synchronized phases require key delivery, unique anchors,
-constructed-tail bottom equality after all downward inputs, and a second verified restore after the
-comparison scroll. Both qualified holds are positive; a qualified snap or bottom-relative motion is
-negative. Any unqualified phase withholds the result; capture/harness errors fail. Complete pixel digests
+a same-run DA1 parse witness before two equal output frames, constructed-tail bottom equality after all
+downward inputs, and a second verified restore after the comparison scroll. Once an upward notch is sent,
+cleanup also attempts a return to bottom on TODO and error exits. Both qualified holds are positive;
+a qualified snap or bottom-relative motion is negative. Any unqualified phase withholds the result;
+capture/harness errors fail. Complete pixel digests
 use the existing ED3 frame comparator without masks or container-ref equality. Other application contexts
 retain the catalog manual recipe. No production capture or result is supplied by this implementation.
 
