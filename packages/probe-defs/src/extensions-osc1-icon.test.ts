@@ -100,14 +100,18 @@ test("headless osc1 requires a verified title control before deciding independen
   const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc1-icon")
   const result = probe!.lib!(source({ current: "original-icon" }, { ignoresTitleSetup: true }))
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
+  expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
 })
 
-test.each(["original-icon", "test-icon"])("headless osc1 rejects an ignored write from initial label %s", (initial) => {
-  const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc1-icon")
-  const result = probe!.lib!(source({ current: initial }, { ignoresIconSet: true }))
-  expect(result.observation).toMatchObject({ outcome: "unsupported" })
-})
+test.each(["original-icon", "test-icon"])(
+  "headless osc1 keeps an unqualified icon path undecided from %s",
+  (initial) => {
+    const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc1-icon")
+    const result = probe!.lib!(source({ current: initial }, { ignoresIconSet: true }))
+    expect(result.observation).toBeUndefined()
+    expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
+  },
+)
 
 // The title criterion must witness a change, including when the old title already equals the
 // usual payload. Existing OSC 1 controls exercise title setup but never the OSC 2 probe itself.
