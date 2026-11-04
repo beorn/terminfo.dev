@@ -402,6 +402,9 @@ test.each([
     tests: result.tests,
   })
   expect(recorded.status).toBe("test-todo")
+  expect(recorded.reason).toContain("setup prerequisite was not established")
+  expect(result.notTested?.noObservable).toBe(result.note)
+  expect(recorded.reason).toContain(result.note!)
 })
 
 test.each([
