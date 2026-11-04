@@ -748,7 +748,7 @@ describe("window-operation qualification", () => {
 
   // #32246 (operator 2026-11-03): the former source-audited title-stack artifacts and JS source trees no longer grade
   // Unsupported; an observed setup with an un-restored title stays TEST TODO whatever the runtime identity, while real
-  // restoration still reads Supported and an unobservable setup still takes the headless observable review.
+  // restoration still reads Supported and an unobservable setup still says this run cannot decide it.
   test.each([
     [
       "formerly audited WASM artifact",

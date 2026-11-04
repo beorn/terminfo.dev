@@ -1032,7 +1032,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               proofState = ["absent", "failed to load", "inconclusive", "source-capable"].includes(receipt.proofState)
                 ? receipt.proofState
                 : "inconclusive"
-              detail = `retained proof state ${receipt.proofState}; independent visual review pending`
+              detail = `retained proof state ${receipt.proofState}; it does not decide the ligature`
               if ("reason" in receipt && typeof receipt.reason === "string" && receipt.reason !== "") {
                 detail += `: ${receipt.reason}`
               }

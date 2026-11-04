@@ -341,7 +341,7 @@ sequences for `!= -> => <= ==` with liga/calt on and off. A glyph-ID difference 
 capability independently of the renderer; position differences alone do not. The collector retains
 the validated `fixture.font` bytes as `collector.fontSource` for every non-mux Linux run selecting the
 font review, including plain receipts from other launchers. The retained receipt and spaced-control and
-target frames supply the evidence for assessment. Missing or inconclusive proof leaves Test to-do naming
+target frames are kept with the result, but no same-run check grades them. Missing or inconclusive proof leaves Test to-do naming
 `#32062 font control` and its proof state; it does not establish Untestable on a pixel arm.
 This does not change earlier captures or xterm's rendering pin.
 
