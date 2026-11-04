@@ -143,7 +143,7 @@ test("the record parses strictly and admits only the run, owner and bytes it nam
   )
 })
 
-// @cto 72e4b60b: the join reads no file (the probe run's directory is removed on success), so every
+// @cto 72e4b60b: the join reads no file (the run's directory is removed on success), so every
 // shape refusal is proved at the parser, by name.
 test("the record refuses each malformed field by name", () => {
   const base = JSON.parse(record()) as Record<string, unknown>

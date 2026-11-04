@@ -139,7 +139,7 @@ export function parseOuterLaunchRecord(source: string): OuterLaunchRecord {
 /**
  * The admission join, mirroring Linux's `muxFixtureMatches`: re-hash the retained text and require the
  * proof's citation to equal it, then compare every identity the record names against the proof. It
- * reads no file: `runApp`'s success path removes the probe run's directory, so the record's own shas
+ * reads no file: `runApp`'s success path removes the run's directory, so the record's own shas
  * are the retained bytes this join can honestly compare (@cto 72e4b60b). A mismatch returns its named
  * cause; nothing falls back to a pass.
  */

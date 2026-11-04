@@ -4,8 +4,8 @@
  * "one loader").
  *
  * A raw capture is evidence, never an admitted or reviewed result. This reader validates the bytes through the
- * canonical `parseRun` in capture mode against the suite's trusted manifest and returns the parsed run; it grades,
- * admits and publishes nothing.
+ * canonical `parseRun` in capture mode against the suite's trusted manifest and returns the parsed run; it decides
+ * no probe results and admits and publishes nothing.
  *
  * The trusted manifest is the committed `content/suites/<suite>.json`, or, when no manifest is committed, the
  * manifest derived from THIS tree's own probe sources, but only when the capture names exactly this tree's suite
