@@ -87,7 +87,10 @@ test.each([
   ["cursor.hide", "set (Ps 1) -> reset (Ps 2)"],
   ["modes.insert-replace", "set (Ps 1) -> reset (Ps 2)"],
 ] as const)("%s is decided supported by its readback query on a responding terminal", async (id, observed) => {
-  const result = await termProbe(id)(kittySource(true))
+  // This contract exercises query-only readback; an owned capture would decide visual SGR instead.
+  const source = kittySource(true)
+  const { capture: _capture, ...queryOnly } = source
+  const result = await termProbe(id)(id === "sgr.bold" ? queryOnly : source)
   expect(result.pass).toBe(true)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
@@ -139,7 +142,7 @@ test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
 )
 
 test("an incorrect SGR value is negative; an absent selector without setup is TODO", async () => {
-  const ctx = kittySource(true)
+  const { capture: _capture, ...ctx } = kittySource(true)
   let reported = "38;2;0;0;255"
   const original = ctx.queryWithSentinelOutcome
   ctx.queryWithSentinelOutcome = async (sequence, pattern, timeoutMs) => {
@@ -162,7 +165,7 @@ test("an incorrect SGR value is negative; an absent selector without setup is TO
 // Kitty 0.49.2 answers DECRQSS with the full normalized SGR list, not just the set codes:
 // after CSI 0 m CSI 1 m it reported "0;22;1" (reset, normal intensity, bold).
 test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => {
-  const ctx = kittySource(true)
+  const { capture: _capture, ...ctx } = kittySource(true)
   ctx.queryWithSentinelOutcome = async (sequence) => {
     if (sequence.startsWith("\x1bP$qm")) {
       return { match: ["\x1bP1$r0;22;1m\x1b\\", "0;22;1"], reason: "reply", raw: "", rawBase64: "" }
@@ -234,7 +237,7 @@ test("a forbid-only SGR claim names the forbidden codes in its expected text", a
 })
 
 test("an SGR claim that requires a code keeps the required code as its expected text", async () => {
-  const ctx = kittySource(true)
+  const { capture: _capture, ...ctx } = kittySource(true)
   const result = await termProbe("sgr.selective-reset.italic")(ctx)
   expect(result.assertions?.[0]?.expected).toContain("DECRQSS reports 1 after")
 })
