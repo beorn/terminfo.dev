@@ -15,7 +15,7 @@ import { originalRunFor, type SelectedProjection } from "./selected-results.ts"
 import { scopeAggregate, type ScopeResult } from "./full-scope.ts"
 import {
   environmentGroupIds,
-  gradedFeatureIds,
+  scoredFeatureIds,
   isEnvironmentGroup,
 } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { CensusContext, ContextKind } from "./full-census.ts"
@@ -96,7 +96,7 @@ export function buildFullProjectRows(args: {
   return {
     requiredSuiteId: args.requiredSuiteId,
     catalogRows: args.catalogIds.length,
-    gradedRows: gradedFeatureIds(args.catalogIds).length,
+    gradedRows: scoredFeatureIds(args.catalogIds).length,
     environmentGroups: environmentGroupIds(args.catalogIds).length,
     contexts: rows,
     collected: rows.filter((row) => row.collected).length,

@@ -5,7 +5,7 @@
  * @reach fs-walk vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-mux/*.json
  * @testonly none
  */
-import { gradedFeatureIds } from "@terminfo/probe-defs"
+import { scoredFeatureIds } from "@terminfo/probe-defs"
 import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import {
@@ -398,7 +398,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       import terminalPaths from ${entry("docs/terminals/[id].paths.ts")};
       import { generateApi } from ${entry("scripts/generate-api.ts")};
       import { generateAnalysis } from ${entry("scripts/generate-analysis.ts")};
-      import { gradedFeatureIds } from ${entry("packages/probe-defs/src/index.ts")};
+      import { scoredFeatureIds } from ${entry("packages/probe-defs/src/index.ts")};
       const started = performance.now();
       const content = ${JSON.stringify(join(root, "content"))};
       const out = ${JSON.stringify(out)};
@@ -481,7 +481,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(matrix.stats[key].score,selected.score);
         // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
         // analysis row agree on 264 while the run still records all 273 positions.
-        assert.equal(selected.score.all,gradedFeatureIds(selected.catalogIds).length);
+        assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).length);
         const page=pages.find(page=>page.params.backendId===key);
         assert.equal(page.params.total,String(selected.score.all));
         assert.equal(page.params.yes,String(selected.score.supported));
@@ -780,7 +780,7 @@ describe("selected-run consumer parity", () => {
         const analyses = generateAnalysis()
         const terminal = analyses["terminals/kitty"]
         const feature = analyses["sgr/1-bold"]
-        const all = gradedFeatureIds(selected.catalogIds).length
+        const all = scoredFeatureIds(selected.catalogIds).length
         expect(terminal?.score).toEqual({ supported: all - 1, all })
         expect(terminal?.analysis).toContain("less than full recorded support")
         expect(terminal?.analysis).not.toContain("Observed unsupported")
@@ -1351,7 +1351,7 @@ describe("selected-run consumer parity", () => {
     const catalog = site.baselines.core?.length ?? 0
     expect(catalog).toBeGreaterThan(1)
     // The core baseline holds 80 catalogue positions, one of them an ungraded environment group.
-    const graded = gradedFeatureIds(site.baselines.core ?? []).length
+    const graded = scoredFeatureIds(site.baselines.core ?? []).length
     expect(graded).toBe(catalog - 1)
     expect(site.baselineStats.kitty?.core).toMatchObject({
       score: { all: graded, supported: 1 },
