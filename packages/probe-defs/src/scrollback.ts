@@ -435,6 +435,7 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   const tail = Array.from({ length: ctx.rows }, (_, row) => `vh-tail-${row}`).join("\r\n")
   let failed = false
   let primary: unknown
+  let scrolled = false
   try {
     ctx.write("\x1b[?25l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[2J\x1b[H")
     ctx.write(tail)
@@ -453,6 +454,7 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       state.delivery = control
       if (!control) return todo("viewport input delivery not observed")
       await input.injectClick(4)
+      scrolled = true
       const anchor = await frame(`${phase} U`)
       state.U = anchor
       if (sameFrame(anchor, bottom) || sameFrame(anchor, reference)) {
@@ -460,8 +462,14 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       }
       const output = `\r\nvh-${prefix}-out\r\n${tail}`
       ctx.write(phase === "ordinary" ? output : `\x1b[?2026h${output}\x1b[?2026l`)
+      const parsed = await ctx.queryWithSentinelOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 1000)
+      state.outputParse = parsed
+      if (!parsed.match) return todo("output parse not witnessed before the output frame")
       const after = await frame(`${phase} A`, "target")
       state.A = after
+      const confirmed = await frame(`${phase} A confirmation`, "target")
+      state.AConfirmed = confirmed
+      if (!sameFrame(after, confirmed)) return todo("output frame still changing")
       await moveDown()
       const arrived = await frame(`${phase} B1`)
       state.B1 = arrived
@@ -509,12 +517,19 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     primary = error
     throw error
   } finally {
+    const errors: unknown[] = failed ? [primary] : []
+    try {
+      if (scrolled) await moveDown()
+    } catch (cleanup) {
+      errors.push(cleanup)
+    }
     try {
       ctx.write("\x1b[?2026l\x1b[?25h")
     } catch (cleanup) {
-      if (failed) throw new AggregateError([primary, cleanup], "Viewport hold and cursor cleanup both failed")
-      throw cleanup
+      errors.push(cleanup)
     }
+    if (errors.length > 1) throw new AggregateError(errors, "Viewport hold and cursor cleanup both failed")
+    if (errors.length === 1) throw errors[0]
   }
 }
 
