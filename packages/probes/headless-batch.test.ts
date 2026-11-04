@@ -1116,13 +1116,22 @@ test.skipIf(!isKittyAvailable())(
       }
       const cached = source.getSemanticMarks!()
       const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
-      expect(definition.lib!(source).observation).toMatchObject({ outcome: "unsupported" })
+      const inert = definition.lib!(source)
+      expect(inert.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+      expect(inert.observation).toBeUndefined()
+      expect(inert.assertions).toBeUndefined()
       reader.mockRestore()
       const realReader = source.getSemanticMarks!.bind(source)
       vi.spyOn(source, "getSemanticMarks").mockImplementation(() =>
         realReader().map((mark) => (mark.type === "command-end" ? { ...mark, rawStatus: "wrong" } : mark)),
       )
-      expect(definition.lib!(source).observation).toMatchObject({ outcome: "unsupported" })
+      const malformedControl = definition.lib!(source)
+      expect(malformedControl.notTested).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: NO_SAME_PATH_CONTROL,
+      })
+      expect(malformedControl.observation).toBeUndefined()
+      expect(malformedControl.assertions).toBeUndefined()
       value.capabilities.extensions.delete("semantic-command-end")
       const undeclared = createLibProbeSource(value, undefined, undefined, undefined)
       expect(undeclared.getSemanticMarks).toBeUndefined()
