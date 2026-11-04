@@ -80,7 +80,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
             : mode === "precondition" || mode === "painted-seed"
               ? { supported: 10, "test-failure": 1 }
               : { "test-failure": 11 }
-      expect(report).toMatchObject({ counts })
+      expect(report, record.error).toMatchObject({ counts })
       // Automatic trace evaluation is diagnostic too; old outcome checks missed its implicit seal.
       const rawPath = record.files[0]
       if (!rawPath) throw new Error("Missing raw capture for derived assertion binding")

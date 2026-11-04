@@ -2134,8 +2134,9 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     { ...source, captureSourceRevision: "other-source" },
     { ...source, trace: { ...source.trace, sha256: "0".repeat(64) } },
     { ...source, trace: { ...source.trace, path: "../outside.json" } },
-  ])
+  ]) {
     expect(() => readProbeCapture(directory, invalid, expected)).toThrow()
+  }
   expect(() =>
     readProbeCapture(directory, source, { ...expected, subject: { ...expected.subject, version: "other" } }),
   ).toThrow()
