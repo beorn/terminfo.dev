@@ -116,6 +116,9 @@ export async function runEraseReplay(
         const session = withCallLog<TermProbeSource>(null, { mode: "replay", log })
         const startedAt = new Date().toISOString()
         try {
+          if (session.context.kind !== validated.source.kind) {
+            throw new IncompleteReplay("SGR source shape does not match its live capture")
+          }
           return [{ featureId: definition.id, startedAt, result: await callback(session.context), checks: [] }]
         } finally {
           session.finish()
