@@ -25,9 +25,9 @@ import {
 } from "./testing/group-harness.ts"
 
 /** #32246: a former source-review site returns the TEST TODO coverage record, never a source-decided result. */
-function expectNoSamePathTodo(result: ProbeCallbackResult) {
+function expectNoSamePathTodo(result: ProbeCallbackResult, noObservable = NO_SAME_PATH_CONTROL) {
   expect(result.pass).toBe(false)
-  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
   expect(result.criterionBranch).toBeUndefined()
   expect(result.tests).toBeUndefined()
   expect(result.observation).toBeUndefined()
@@ -313,13 +313,16 @@ test("a row reading overline is notTested when the bit is null, bound when prese
 })
 
 /**
- * A cell that does not show the selected attribute or colour has no same-path control in this run, so it is the
- * TEST TODO coverage record ("test-todo"), never a source-decided negative (#32246).
+ * A cell without the selected attribute or colour retains its named missing-observable or no-control
+ * TEST TODO cause, never a source-decided negative (#32246).
  */
+const underlineColorUnexposed =
+  "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
 const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   id: string,
   mutation: string,
   negativeOutcome: "inconclusive" | "unsupported" | "test-todo",
+  noObservable?: string,
 ])[] = [
   ["sgr.bold", "bold-noop", "inconclusive"],
   ["sgr.faint", "faint-noop", "test-todo"],
@@ -334,9 +337,9 @@ const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   ["sgr.hidden", "hidden-noop", "test-todo"],
   ["sgr.strikethrough", "strikethrough-noop", "test-todo"],
   ["sgr.overline", "overline-noop", "inconclusive"],
-  ["sgr.underline.color", "underline-color-noop", "test-todo"],
-  ["sgr.underline-color-indexed", "underline-color-indexed-noop", "test-todo"],
-  ["sgr.underline-color-rgb", "underline-color-rgb-noop", "test-todo"],
+  ["sgr.underline.color", "underline-color-noop", "test-todo", underlineColorUnexposed],
+  ["sgr.underline-color-indexed", "underline-color-indexed-noop", "test-todo", underlineColorUnexposed],
+  ["sgr.underline-color-rgb", "underline-color-rgb-noop", "test-todo", underlineColorUnexposed],
   ["sgr.underline-color-reset", "sgr59-noop", "unsupported"],
   ["sgr.fg.standard", "fg-standard-noop", "test-todo"],
   ["sgr.bg.standard", "bg-standard-noop", "test-todo"],
@@ -363,7 +366,7 @@ test("SGR_SEMANTIC_SURFACE_CONTROLS covers all 32 SGR contract rows with distinc
 
 test.each(SGR_SEMANTIC_SURFACE_CONTROLS)(
   "%s reads supported on createSemanticSurface and %s when %s is active",
-  async (id, mutation, negativeOutcome) => {
+  async (id, mutation, negativeOutcome, noObservable) => {
     const row = SGR_CONTRACT.find((entry) => entry.id === id)
     const probe = sgrProbes.find((entry) => entry.id === id)
     expect(row, `the SGR contract names ${id}`).toBeDefined()
@@ -383,7 +386,7 @@ test.each(SGR_SEMANTIC_SURFACE_CONTROLS)(
     const negativeSurface = createSemanticSurface({ mutations: [mutation] })
     const negativeResult = probe.lib(libProbeSource(negativeSurface))
     expect(negativeResult.pass).toBe(false)
-    if (negativeOutcome === "test-todo") expectNoSamePathTodo(negativeResult)
+    if (negativeOutcome === "test-todo") expectNoSamePathTodo(negativeResult, noObservable)
     else expect(negativeResult.observation?.outcome).toBe(negativeOutcome)
     const negativeGraded = await regradeRow(probe, row, {
       headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),

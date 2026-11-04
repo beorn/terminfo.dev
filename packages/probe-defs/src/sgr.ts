@@ -421,7 +421,7 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         const expected = `${id}: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell`
         const framed = blueControl.char === "A" && greenControl.char === "B" && target.char === "X"
         if (framed && target.underlineColor == null) {
-          return parserStateResult(null, expected, state, undefined, UNDERLINE_COLOR_UNEXPOSED)
+          return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
         }
         if (
           blueControl.char !== "A" ||
@@ -949,8 +949,8 @@ export const sgrProbes: ProbeDefinition[] = [
   sgrProbe(
     "sgr.hidden",
     "\x1b[8m",
-    (cell) => cell.hidden === true,
-    undefined,
+    (cell) => (cell.hidden == null ? null : cell.hidden === true),
+    (cell) => (cell.hidden == null ? "cell.hidden field not exposed" : null),
     { require: [8] },
     "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
   ),
@@ -997,7 +997,7 @@ export const sgrProbes: ProbeDefinition[] = [
           "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults"
         const framed = default4.char === "A" && target5.char === "X" && default5.char === "B" && target4.char === "Y"
         if (framed && target5.underlineColor == null && target4.underlineColor == null) {
-          return parserStateResult(null, expected, state, undefined, UNDERLINE_COLOR_UNEXPOSED)
+          return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
         }
         if (
           default4.char !== "A" ||

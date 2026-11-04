@@ -105,6 +105,7 @@ capability declaration. The setting does not decide the measured resize phases.
 
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
+Library `cell.hidden: null` means conceal is not reported; missing cell observables retain their named Test to-do cause without deciding terminal support.
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named Test to-do
 when no clipboard-state witness is wired; a read negative cannot measure the write.

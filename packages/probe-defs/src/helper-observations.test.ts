@@ -60,6 +60,9 @@ const baseCell = {
   wide: false,
 }
 
+const underlineColorUnexposed =
+  "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
+
 // @failure Missing reset readback is interpreted as a measured reset (null becomes !null).
 // @level l0
 // @consumer DECSTR headless observations.
@@ -575,6 +578,11 @@ test("unexposed overline and default conceal flags cannot establish negative sup
     const measured = probe.lib(headless({ getCell: () => ({ ...baseCell, hidden: true, overline: true }) }))
     expect(measured.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(measured.assertions, id).toMatchObject([{ kind: "positive" }])
+    if (id === "sgr.hidden") {
+      const unexposed = probe.lib(headless({ getCell: () => ({ ...baseCell, hidden: null }) }))
+      expectNoSamePathTodo(unexposed, id, "cell.hidden field not exposed")
+      expect(JSON.parse(unexposed.response ?? ""), id).toMatchObject({ char: "X", hidden: null })
+    }
   }
 })
 
@@ -593,8 +601,9 @@ test("underline color needs an observed color, not only an underline or a consum
         }),
       }),
     )
-    // #31379, #32246: a cell fed SGR 58 that reports no underline color has no same-path control: TEST TODO.
-    expectNoSamePathTodo(unexposed, id)
+    // Missing cell readback retains its named cause without deciding terminal support.
+    expectNoSamePathTodo(unexposed, id, underlineColorUnexposed)
+    expect(JSON.parse(unexposed.response ?? ""), id).toMatchObject({ target: { char: "X" } })
 
     const colored = probe.lib(
       headless({
@@ -650,7 +659,8 @@ test("indexed underline color follows two distinct measured palette controls", a
     )
 
   const unexposed = run(undefined, undefined)
-  expectNoSamePathTodo(unexposed)
+  expectNoSamePathTodo(unexposed, undefined, underlineColorUnexposed)
+  expect(JSON.parse(unexposed.response ?? "")).toMatchObject({ target5: { char: "X" }, target4: { char: "Y" } })
 
   const matched = run(index5, index4)
   expect(matched.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
@@ -737,7 +747,12 @@ test("a null underline color from an adapter with no color readback is TEST TODO
         }),
       }),
     )
-    expectNoSamePathTodo(result, id)
+    expectNoSamePathTodo(result, id, underlineColorUnexposed)
+    expect(JSON.parse(result.response ?? ""), id).toMatchObject(
+      indexed
+        ? { target5: { char: "X", underlineColor: null }, target4: { char: "Y", underlineColor: null } }
+        : { target: { char: "X", underlineColor: null } },
+    )
   }
 })
 
