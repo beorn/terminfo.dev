@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   finalizeProbeResult,
-  type CapturedRunDraft as CollectedProbeRun,
+  type CapturedRunDraft,
   type AssertionType,
   type ProbeSubject,
 } from "@terminfo/probe-defs"
@@ -19,7 +19,7 @@ function replySource(sequence: string, reply: string): "host" | "terminal" | "no
 }
 
 /** The console host a reason names: a text read's recorded host, else the ownership receipt's image. */
-function consoleHostBinary(run: CollectedProbeRun): string {
+function consoleHostBinary(run: CapturedRunDraft): string {
   const hosts = new Set(
     run.results.flatMap((cell) =>
       cell.host ? [`${cell.host.image} ${cell.host.executableSha256.slice(0, "sha256:".length + 12)}`] : [],
@@ -38,7 +38,7 @@ function consoleHostBinary(run: CollectedProbeRun): string {
 }
 
 function consoleHostHold(
-  run: CollectedProbeRun,
+  run: CapturedRunDraft,
   cell: { featureId: string; assertionType?: AssertionType; rawReplyRef?: string },
   verdict: string,
 ): string | undefined {
@@ -70,9 +70,9 @@ function consoleHostHold(
 
 /** Finalize one measured capture with applicable source answers. */
 export function finalizeCollectedDraft(
-  run: CollectedProbeRun,
+  run: CapturedRunDraft,
   intended?: { kind: ProbeSubject["kind"]; id: string; version: string },
-): CollectedProbeRun {
+): CapturedRunDraft {
   if (run.schemaVersion !== 4 || !Array.isArray(run.results)) {
     throw new Error("Final writer requires the current schema-4 draft; historical runs are read-only")
   }
@@ -120,7 +120,7 @@ export function finalizeCollectedDraft(
 
 /** Preserve one immutable collected run under its measured identity. */
 export function saveDaemonProbeRun(
-  run: CollectedProbeRun,
+  run: CapturedRunDraft,
   directory: string,
   intended?: { kind: ProbeSubject["kind"]; id: string; version: string },
 ): string {

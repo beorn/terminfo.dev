@@ -13,7 +13,7 @@ import {
 import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import {
-  type CapturedRunDraft as CollectedProbeRun,
+  type CapturedRunDraft,
   type ProbeSuiteManifest,
   type RunDraft,
 } from "@terminfo/probe-defs"
@@ -287,7 +287,7 @@ export async function readRetainedDaemonProbeResponse(
     receipt?: { manifest: ProbeSuiteManifest; collectorRevision: string }
   } = {},
 ): Promise<
-  | { kind: "captured"; run: CollectedProbeRun; path: string; sha256: string }
+  | { kind: "captured"; run: CapturedRunDraft; path: string; sha256: string }
   | { kind: "empty-selection"; run: RunDraft; path: string; sha256: string }
 > {
   const bytes = Buffer.from(await response.arrayBuffer())

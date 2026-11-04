@@ -25,7 +25,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import { initializeRunDraft, recordCollectorSelection, recordCollectorAttempt } from "@terminfo/probe-defs"
-import type { CapturedRunDraft as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import type { CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -50,7 +50,7 @@ const trustedReceipt = {
   collectorRevision: "a".repeat(40),
 }
 
-function collectorRun(): CollectedProbeRun {
+function collectorRun(): CapturedRunDraft {
   return {
     source: { kind: "live" },
     schemaVersion: 4,
@@ -129,7 +129,7 @@ it("keeps the Darwin editor IPC path short despite a long per-user temporary dir
 // Previous review-application tests did not verify source shape or private file permissions.
 it("writes one immutable current capture and refuses a mismatched intended version", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
-  const run: CollectedProbeRun = {
+  const run: CapturedRunDraft = {
     source: { kind: "live" },
     schemaVersion: 4,
     intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
@@ -164,7 +164,7 @@ it("writes one immutable current capture and refuses a mismatched intended versi
     /exactly.*kind: live/,
   )
   const path = saveDaemonProbeRun(run, dir, { kind: "term", id: "kitty", version: "0.49.1" })
-  const saved = JSON.parse(readFileSync(path, "utf8")) as CollectedProbeRun
+  const saved = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
   expect(saved.rawReplies["device.primary-da"]).toBe("\x1b[?62;4c")
   expect(lstatSync(path).mode & 0o777).toBe(0o600)
   expect(() => saveDaemonProbeRun(run, dir, { kind: "term", id: "kitty", version: "0.49.1" })).toThrow()
@@ -679,7 +679,7 @@ it("retains pending results without review snapshots", () => {
     { id: "review", status: "probe-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
   ]
   const path = saveDaemonProbeRun(run, root)
-  const saved = JSON.parse(readFileSync(path, "utf8")) as CollectedProbeRun
+  const saved = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
   expect(saved.results[0]!.tests[0]!.status).toBe("probe-todo")
   expect(
     Object.keys(saved.rawReplies).some(
