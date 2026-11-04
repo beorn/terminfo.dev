@@ -383,13 +383,14 @@ export function composeWorkingView(
     const suiteId = run.probeHash
     const cells = run.results.map((result) => {
       const cell = review?.selected.cells[result.featureId]
-      if (cell && !isEnvironmentGroup(result.featureId) && !cell.featureResult) {
-        throw new Error(`Reviewed context ${review!.contextKey}/${result.featureId} lacks its computed feature result`)
+      const status = isEnvironmentGroup(result.featureId) ? cell?.result.status : cell?.featureResult?.status
+      if (cell && status === undefined) {
+        throw new Error(`Reviewed context ${review?.contextKey}/${result.featureId} lacks its computed feature result`)
       }
       const reviewedSide: ReviewedSide | undefined =
-        cell && review
+        cell && review && status !== undefined
           ? {
-              status: isEnvironmentGroup(result.featureId) ? cell.result.status : cell.featureResult!.status,
+              status,
               ...(cell.result.criterionBranch !== undefined && { criterionBranch: cell.result.criterionBranch }),
               runId: cell.run.runId,
               suiteId: cell.run.probeHash ?? cell.run.suiteId,

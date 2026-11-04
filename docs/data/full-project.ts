@@ -156,13 +156,13 @@ function buildRow(
     return { ...base, collected: false, cause: "selected run is historical; stored current results required" }
   }
   const byId = new Map(results.map((result) => [result.featureId, result]))
-  if (picked.run.context && !args.projection) {
+  const projection = args.projection
+  if (picked.run.context && !projection) {
     throw new Error(`Current context ${picked.run.key} needs its original projection history`)
   }
   for (const source of onSuiteSources) {
-    const original = picked.run.context
-      ? originalRunFor(args.projection!, picked.run.key, source.runId).results
-      : results
+    const original =
+      picked.run.context && projection ? originalRunFor(projection, picked.run.key, source.runId).results : results
     for (const id of args.catalogIds) {
       if (!original?.some((result) => result.featureId === id)) {
         throw new Error(`Current run ${source.runId} lacks recorded catalogue feature ${id}`)
@@ -212,8 +212,9 @@ function buildRow(
       catalogIds: args.catalogIds,
       results: results.map((result) => {
         const status = states.get(result.featureId)
-        if (status === undefined)
+        if (status === undefined) {
           throw new Error(`Current context ${picked.run.key} has foreign feature ${result.featureId}`)
+        }
         return { featureId: result.featureId, status: held.has(result.featureId) ? "probe-todo" : status }
       }),
     }),
