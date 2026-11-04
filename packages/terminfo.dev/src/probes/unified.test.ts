@@ -2332,9 +2332,10 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       trace: { path: basename(boundPath), sha256: createHash("sha256").update(readFileSync(boundPath)).digest("hex") },
     }
     // A bound blob must exist; a digest/path in the manifest alone is not retained evidence.
-    const missingBlob = { ...bound, runId: randomUUID(), screenshotRefs: ["missing-blob"], rawReplies: {
+    const missingBlobRef = `sha256:${"e".repeat(64)}`
+    const missingBlob = { ...bound, runId: randomUUID(), screenshotRefs: [missingBlobRef], rawReplies: {
       ...bound.rawReplies,
-      "collector.traceManifest": JSON.stringify({ blobs: [{ path: "missing-blob", sha256: digest }] }),
+      "collector.traceManifest": JSON.stringify({ blobs: [{ path: missingBlobRef, sha256: digest }] }),
     } }
     const missingBlobPath = saveDaemonProbeRun(missingBlob, directory)
     await expect(runEraseReplay(context, {
