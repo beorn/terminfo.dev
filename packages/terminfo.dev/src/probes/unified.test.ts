@@ -2226,6 +2226,45 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         { featureId: "sgr.bold", status: "test-failure" },
       ])
     }
+    // A batch may retain another probe's blob beside this query-only log. Its
+    // existing manifest binds the bytes; no pixel observation is fabricated here.
+    const blob = Buffer.from("unrelated retained capture dependency")
+    const digest = createHash("sha256").update(blob).digest("hex")
+    const blobRef = `sha256:${digest}`
+    writeFileSync(join(directory, blobRef), blob)
+    const bound = {
+      ...draft,
+      subject: draft.subject,
+      identity: draft.identity,
+      measuredAt: draft.measuredAt,
+      origin: draft.origin,
+      runId: randomUUID(),
+      screenshotRefs: [blobRef],
+      rawReplies: {
+        ...draft.rawReplies,
+        "collector.traceManifest": JSON.stringify({
+          captureKind: "buffer_state",
+          geometry: { rows: 24, cols: 80 },
+          blobs: [{ path: blobRef, sha256: digest }],
+        }),
+      },
+    }
+    const boundPath = saveDaemonProbeRun(bound, directory)
+    const boundSource = {
+      ...source,
+      captureRunId: bound.runId,
+      trace: { path: basename(boundPath), sha256: createHash("sha256").update(readFileSync(boundPath)).digest("hex") },
+    }
+    const boundRecord = await runEraseReplay(context, {
+      directory,
+      source: boundSource,
+      expected,
+      featureId: "sgr.bold",
+    })
+    expect(boundRecord.files).toContain(join(directory, blobRef))
+    expect(
+      boundRecord.assertions.map(({ results }) => results.find(({ featureId }) => featureId === "sgr.bold")?.status),
+    ).toEqual(["supported", "supported"])
     expect(nativeIdentity).not.toHaveBeenCalled()
     expect(writes).toHaveLength(beforeReplay)
     expect(capture).not.toHaveBeenCalled()
