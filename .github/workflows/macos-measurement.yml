@@ -205,14 +205,13 @@ jobs:
           test -d "$APP_BUNDLE" || { echo "Required terminal bundle missing: $APP_BUNDLE" >&2; exit 1; }
           if [ "$APP_ID" != terminal-app ]; then sudo xattr -cr "$APP_BUNDLE"; fi
 
-      # The image grants Screen Recording to Terminal, /bin/bash and the runner agent only. Terminal.app
-      # holds its own grant, and Ghostty, Alacritty, WezTerm and Warp are spawned from this shell, so the
-      # agent stays their TCC responsible process. iTerm2 and cmux open through LaunchServices and the two
-      # editors answer TCC as themselves (run 39701460666 TCC log: accessing=<app bundle id>), so their
-      # screencapture is refused. Grant those four the way the image's configure-tccdb-macos.sh grants
-      # Terminal: an access row in both TCC databases, and a replayd approval for macOS 15's reminder.
+      # Ghostty, Alacritty, WezTerm and Warp are spawned from this shell, so the agent stays their
+      # TCC responsible process. Terminal.app needs its own explicit grant: run 41806285584 retained
+      # its Screen Recording prompt despite the image's expected grant. iTerm2 and cmux open through
+      # LaunchServices and the two editors answer TCC as themselves (run 39701460666 TCC log).
+      # Grant these apps using the existing access row in both TCC databases and replayd approval.
       - name: Grant Screen Recording to apps that are their own responsible process
-        if: matrix.id == 'iterm2' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode'
+        if: matrix.id == 'terminal-app' || matrix.id == 'iterm2' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode'
         env:
           APP_BUNDLE: ${{ matrix.bundle }}
         run: |

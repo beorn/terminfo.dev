@@ -980,8 +980,9 @@ test("macOS workflow's two-window diagnostic grep matches the census refusal the
 // The generated-command subprocess above owns the stdout/stderr contract (27917 / 28533).
 // It replaces the literal-redirection regex, which misclassified stderr append as stdout output.
 
-// 30655: iTerm2, cmux and the two editors are their own TCC responsible process, so the image's
-// Screen Recording grants never reach their screencapture. No other test runs the grant step: this
+// 30655 / 31400: Terminal, iTerm2, cmux and the two editors need their own Screen Recording grant.
+// Terminal's retained prompt disproves the inherited-image grant assumption. This executes eligibility
+// as well as the grant step; omitting Terminal used to pass. No other test runs the grant step: this
 // executes it with the macOS commands as fixtures, proving it grants the bundle's own identifier in
 // both TCC databases before launch and fails the job when a grant does not read back.
 test.each(["granted", "unreadable"] as const)(
@@ -991,10 +992,10 @@ test.each(["granted", "unreadable"] as const)(
       "measure-macos"
     ].steps as { name?: string; id?: string; if?: string; run: string }[]
     const grant = steps.find((step) => step.name?.startsWith("Grant Screen Recording"))
-    if (!grant) throw new Error("the macOS workflow has no Screen Recording grant step")
+    if (!grant?.if) throw new Error("the macOS workflow has no Screen Recording grant condition")
     expect(steps.indexOf(grant)).toBeLessThan(steps.findIndex((step) => step.id === "collect"))
-    for (const id of ["iterm2", "cmux", "cursor", "com.microsoft.VSCode"]) {
-      expect(grant.if).toContain(`matrix.id == '${id}'`)
+    for (const id of ["terminal-app", "iterm2", "cmux", "cursor", "com.microsoft.VSCode"]) {
+      expect(runInNewContext(grant.if, { matrix: { id } })).toBe(true)
     }
     const directory = mkdtempSync(join(tmpdir(), "screen-grant-"))
     const bin = join(directory, "bin")
