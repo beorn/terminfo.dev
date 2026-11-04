@@ -293,17 +293,17 @@ const c154SemanticMarkFeatures = [
   ["extensions.osc133-b", "\x1b]133;B\x07"],
   ["extensions.osc133-c", "\x1b]133;C\x07"],
   ["extensions.osc133-d", "\x1b]133;D;0\x07"],
-  ["extensions.osc133-p", "\x1b]133;P;Cwd=/tmp\x07"],
+  ["extensions.osc133-p", "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"],
   ["extensions.osc633-a", "\x1b]633;A\x07"],
   ["extensions.osc633-b", "\x1b]633;B\x07"],
   ["extensions.osc633-c", "\x1b]633;C\x07"],
-  ["extensions.osc633-e", "\x1b]633;E;ls -la;nonce123\x07"],
+  ["extensions.osc633-e", "\x1b]633;E;ls -la;nonce123\x07", "OSC 633;E commandline-with-nonce mark registration"],
 ] as const
 
 test("the 9 headless C154 semantic-mark features emit named coverage only after recorded home/marker/control writes and qualified cursor reads", () => {
   // osc633-d and osc633-p read their own reader routes (#32247), covered in extensions-contract.test.ts.
   expect(c154SemanticMarkFeatures).toHaveLength(9)
-  for (const [id, sequence] of c154SemanticMarkFeatures) {
+  for (const [id, sequence, noObservable] of c154SemanticMarkFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)
     const fed: string[] = []
@@ -322,15 +322,20 @@ test("the 9 headless C154 semantic-mark features emit named coverage only after 
     })
     expect(fed, id).toEqual(["\x1b[1;1H", `${sequence}X`, "\x1b[1;1H"])
     expect(read, id).toBe(3)
-    expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.notTested, id).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: noObservable ?? NO_SAME_PATH_CONTROL,
+    })
     expect(result.criterionBranch, id).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
     expect(result.tests, id).toEqual([
       {
         id: "review",
         status: "test-todo",
-        reason: expect.stringMatching(
-          /OSC 133 \/ 633 mark was consumed but this run has no qualified declared mark or zone reader/,
-        ),
+        reason: noObservable
+          ? "OSC 133 P / 633 E consumed; no property or command-line observer exists in this run"
+          : expect.stringMatching(
+              /OSC 133 \/ 633 mark was consumed but this run has no qualified declared mark or zone reader/,
+            ),
       },
     ])
     expect(JSON.parse(result.response ?? "{}"), id).toEqual({

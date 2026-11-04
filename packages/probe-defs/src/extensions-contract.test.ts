@@ -140,21 +140,25 @@ test("OSC 2 changing to a different title is inconclusive", () => {
   expect(result.observation?.outcome).toBe("inconclusive")
 })
 
-test("OSC 52 recorded control and missing target retain the same-run disagreement", () => {
+// Batch 11: the existing missing-target case did not cover a target recorded without its control.
+test.each(["control", "target"])("OSC 52 missing %s cannot establish support", (missing) => {
   const working = semanticSurfaceSource()
   let writes = 0
   const source = {
     ...working,
     feed(text: string) {
-      if (/^\x1b\]52;c;[^?]/u.test(text) && ++writes === 2) return
+      if (/^\x1b\]52;c;[^?]/u.test(text) && ++writes === (missing === "control" ? 1 : 2)) return
       working.feed(text)
     },
   }
   const result = extensionsProbes.find((entry) => entry.id === "extensions.osc52-write")!.lib!(source)
-  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.observation).toBeUndefined()
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "control OSC 52 c write recorded but the probe write was not; same-run observations disagree",
+    noObservable:
+      missing === "control"
+        ? "observation not decided: no same-path control in this run"
+        : "control OSC 52 c write recorded but the probe write was not; same-run observations disagree",
   })
 })
 
@@ -193,6 +197,29 @@ test("OSC 7 restores its baseline when the control reader throws", () => {
     "control reader failed",
   )
   expect(working.getCwd!()).toBe("file://localhost/original")
+})
+
+// Batch 11: successful A/B writes with ignored cleanup are a measurement error, not a target negative.
+test("OSC 7 reports an error when target writes work but restoring an empty baseline is ignored", () => {
+  const working = semanticSurfaceSource()
+  expect(working.getCwd!()).toBeNull()
+  const source = {
+    ...working,
+    feed(text: string) {
+      if (text === "\x1b]7;\x07" || text === "\x1b]633;P;Cwd=\x07") return
+      working.feed(text)
+    },
+  }
+  const result = extensionsProbes.find((entry) => entry.id === "extensions.osc7-cwd")!.lib!(source)
+  expect(result.observation).toMatchObject({ outcome: "error", reason: "invalid-reply" })
+  expect(JSON.parse(result.response!)).toMatchObject({
+    before: null,
+    controlUri: "file://localhost/terminfo-cwd-control",
+    controlled: "file://localhost/terminfo-cwd-control",
+    first: "file://localhost/terminfo-cwd-A",
+    second: "file://localhost/terminfo-cwd-B",
+    restored: "file://localhost/terminfo-cwd-B",
+  })
 })
 
 test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with %s", async (name, mutation) => {
@@ -254,6 +281,19 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   expect(disabledSource.feedCapture("\x1b[c"), `${id}: unrelated DA1 still answers`).toMatch(/^\x1b\[\?[0-9;]+c$/u)
 
   const semantic = /^extensions\.osc(133|633)-([abcd])$/u.exec(id)
+  // A stored negative must carry the successful independent control, not just the target's marks.
+  if (semantic && semantic[2] !== "d") {
+    const retained = JSON.parse(probe.lib!(disabledSource).response!)
+    expect(retained).toMatchObject({
+      endControl: { before: expect.any(Array), first: expect.any(Array), second: expect.any(Array) },
+    })
+  }
+  if (id === "extensions.osc7-cwd") {
+    expect(JSON.parse(probe.lib!(disabledSource).response!)).toMatchObject({
+      controlUri: "file://localhost/terminfo-cwd-control",
+      controlled: "file://localhost/terminfo-cwd-control",
+    })
+  }
   if (semantic) {
     const otherNamespace = semantic[1] === "133" ? "633" : "133"
     const selector = semantic[2]!
@@ -291,10 +331,23 @@ test.each(["semantic-prompts", "osc-633-vscode", "osc133-p", "osc633-e"])(
   "extensions.%s retains its explicit TODO with available shared readers",
   (name) => {
     const probe = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!
-    for (const source of [inertLibProbeSource(), semanticSurfaceSource()]) {
+    for (const [consumes, source] of [
+      [false, inertLibProbeSource()],
+      [true, semanticSurfaceSource()],
+    ] as const) {
       const result = probe.lib!(source)
       expect(result.tests, name).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
       expect(result.observation?.outcome, name).not.toBe("supported")
+      if (consumes && (name === "osc133-p" || name === "osc633-e")) {
+        expect(result.tests?.[0]?.reason).toBe(
+          "OSC 133 P / 633 E consumed; no property or command-line observer exists in this run",
+        )
+        expect(result.notTested?.noObservable).toBe(
+          name === "osc133-p"
+            ? "OSC 133;P properties mark registration"
+            : "OSC 633;E commandline-with-nonce mark registration",
+        )
+      }
     }
   },
 )

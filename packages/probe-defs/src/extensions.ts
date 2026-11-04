@@ -1535,6 +1535,7 @@ function promptMarkResult(
         second,
         secondCell: secondCell.char,
         secondCursor,
+        endControl,
       },
     )
     if (!result.pass && !readerQualified) {
@@ -1554,8 +1555,10 @@ function promptMarkResult(
   }
   return reviewResult(
     SEMANTIC_PROMPT_SOURCE_REVIEW,
-    "OSC 133 / 633 mark was consumed but this run has no qualified declared mark or zone reader",
-    NO_SAME_PATH_CONTROL,
+    readerKey === undefined
+      ? "OSC 133 P / 633 E consumed; no property or command-line observer exists in this run"
+      : "OSC 133 / 633 mark was consumed but this run has no qualified declared mark or zone reader",
+    readerKey === undefined ? noObservable : NO_SAME_PATH_CONTROL,
     { home, target, control, cell: cell.char },
   )
 }
@@ -2630,6 +2633,8 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
     .filter((part) => part !== undefined)
     .join("; ")
   const expected = JSON.stringify({ selector: "c", payload: encoded })
+  const state = { writes }
+  if (!controlVerified) return explain(notTestedResult(NO_SAME_PATH_CONTROL, { control, controlled, ...state }))
   if (match) {
     return explain(
       parserStateResult(
@@ -2642,8 +2647,6 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
       ),
     )
   }
-  const state = { writes }
-  if (!controlVerified) return explain(notTestedResult(NO_SAME_PATH_CONTROL, { control, controlled, ...state }))
   if (writes.length === 0) {
     return explain(
       notTestedResult("control OSC 52 c write recorded but the probe write was not; same-run observations disagree", {
@@ -4538,15 +4541,24 @@ export const extensionsProbes: ProbeDefinition[] = [
           if (ctx.getCwd() !== before) ctx.feed(`\x1b]633;P;Cwd=${before ?? ""}\x07`)
         }
         const restored = ctx.getCwd()
-        const supported = first === firstUri && second === secondUri && restored === before
-        if (!supported && controlled !== controlUri) {
+        const supported = first === firstUri && second === secondUri
+        if (!supported && controlled !== controlUri && restored === before) {
           return notTestedResult(NO_SAME_PATH_CONTROL, { before, controlUri, controlled, first, second, restored })
         }
-        return parserStateResult(
-          supported,
+        const result = parserStateResult(
+          restored === before ? supported : null,
           `OSC 7 stores successive exact URIs ${firstUri}, ${secondUri} and restores the original URI`,
-          { before, first, second, restored, writes },
+          { before, controlUri, controlled, first, second, restored, writes },
         )
+        if (restored !== before) {
+          result.observation = {
+            outcome: "error",
+            reason: "invalid-reply",
+            assertionType: "buffer_state",
+            note: "Cwd restored readback did not match the original URI",
+          }
+        }
+        return result
       },
       () => {
         const note = "No working-directory metadata readback for OSC 7"
