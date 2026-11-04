@@ -5,7 +5,7 @@
  * @testonly none
  * @reach fs-walk <fixture-only: /tmp/terminfo-disposable-receipts>
  */
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
@@ -2168,6 +2168,9 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       const assertionPath = record.files.find((file) => file.endsWith(assertion.runId + ".assertion.draft.json"))
       if (!assertionPath) throw new Error("Missing persisted assertion")
       const executingManifest = derivedSuiteManifest()
+      expect(assertion.suiteId).toBe(executingManifest.probeHash)
+      expect(assertion.sourceRevision).toBe(executingManifest.sourceRevision)
+      expect(assertion.sourceRevision).not.toBe(draft.sourceRevision)
       expect(
         parseRun(
           assertionPath,
@@ -2176,6 +2179,52 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
           new Map([[executingManifest.probeHash, executingManifest]]),
         ).source,
       ).toEqual(source)
+    }
+    // A syntactically valid recording can still be incomplete for this callback.
+    // These reach the persisted runner, which the core recorder tests cannot cover.
+    for (const fault of ["missing-log", "tty-root", "missing-call", "unconsumed-call", "missing-dependency"] as const) {
+      const rawReplies = { ...draft.rawReplies }
+      const stored = JSON.parse(rawReplies["sgr.bold.callLog"]!) as {
+        root: { entries: Array<[string, unknown]> }
+        calls: Array<Record<string, unknown>>
+      }
+      if (fault === "missing-log") delete rawReplies["sgr.bold.callLog"]
+      else {
+        if (fault === "tty-root") stored.root.entries = stored.root.entries.filter(([key]) => key !== "kind")
+        if (fault === "missing-call") stored.calls.pop()
+        if (fault === "unconsumed-call") {
+          const last = stored.calls.at(-1)
+          if (!last) throw new Error("Fixture has no ordered calls")
+          stored.calls.push({ ...last, id: stored.calls.length })
+        }
+        rawReplies["sgr.bold.callLog"] = JSON.stringify(stored)
+      }
+      const invalid = {
+        ...draft,
+        subject: draft.subject,
+        identity: draft.identity,
+        measuredAt: draft.measuredAt,
+        origin: draft.origin,
+        runId: randomUUID(),
+        rawReplies,
+        screenshotRefs: fault === "missing-dependency" ? [`sha256:${"d".repeat(64)}`] : [],
+      }
+      const invalidPath = saveDaemonProbeRun(invalid, directory)
+      const invalidSource = {
+        ...source,
+        captureRunId: invalid.runId,
+        trace: {
+          path: basename(invalidPath),
+          sha256: createHash("sha256").update(readFileSync(invalidPath)).digest("hex"),
+        },
+      }
+      await expect(
+        runEraseReplay(context, { directory, source: invalidSource, expected, featureId: "sgr.bold" }),
+        fault,
+      ).rejects.toThrow(/Incomplete:/)
+      expect(context.task.meta.terminfoErase?.failureResults, fault).toMatchObject([
+        { featureId: "sgr.bold", status: "test-failure" },
+      ])
     }
     expect(nativeIdentity).not.toHaveBeenCalled()
     expect(writes).toHaveLength(beforeReplay)
