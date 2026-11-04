@@ -2,6 +2,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
 import { isatty, WriteStream } from "node:tty"
 import { dirname, isAbsolute, join } from "node:path"
+import type { MuxAttachmentProof } from "@terminfo/probe-defs"
 import { retain } from "./capture-core.ts"
 import { readDisposableReceipt } from "./disposable-receipt.ts"
 import type { LiveExecutable } from "./linux-capture.ts"
@@ -217,6 +218,8 @@ export interface OwnedTerminal {
   /** Canonical identity from the hosted receipt's executable mapping, shared by both platforms. */
   readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
   readonly clipboard?: LinuxClipboardAdapter
+  /** One verified attachment carrier for both platforms; clipboard is only a Linux adapter. */
+  readonly muxAttachmentProof?: MuxAttachmentProof
   readGeometry(): Promise<GeometryMeasurement>
   /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
    * visible window from the console host's buffer, and the two macOS terminals whose pixel geometry
@@ -881,13 +884,14 @@ export async function createOwnedTerminal(options: {
         captureRunId,
       )
     }
+    const muxAttachmentProof = clipboard?.muxAttachmentProof
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
     const summary = JSON.stringify({
       platform: binding.platform,
       outputBinding: binding,
       geometryAtGrant,
-      ...(clipboard?.muxAttachmentProof && { muxAttachment: clipboard.muxAttachmentProof }),
+      ...(muxAttachmentProof && { muxAttachment: muxAttachmentProof }),
       ...(terminalApp && {
         ownerAssertion: parseTerminalAppOwner(terminalApp),
         ownerAssertionSource: "authenticated-admin-request",
@@ -926,6 +930,7 @@ export async function createOwnedTerminal(options: {
       ...(appPid !== undefined && { appPid }),
       ...(hostedAppId && { hostedAppId }),
       ...(clipboard && { clipboard }),
+      ...(muxAttachmentProof && { muxAttachmentProof }),
       async readGeometry() {
         if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned geometry read has no live bound capture")
         // A Windows console has no device to re-open, so the re-read is the console's own identity:

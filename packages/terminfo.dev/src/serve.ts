@@ -52,6 +52,7 @@ import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.
 import { calibrateCaptureOrigin } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
+import { muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
   createOwnedTerminal,
@@ -790,7 +791,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       installTextCapture(ownedTerminal)
     }
     const clipboard = ownedTerminal?.clipboard
-    const attachment = clipboard?.muxAttachmentProof
+    const attachment = ownedTerminal?.muxAttachmentProof
     let batch: Awaited<ReturnType<typeof runProbeBatch>>
     try {
       if (
@@ -799,7 +800,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           attachment.captureRunId !== captureRunId ||
           attachment.mux !== muxSubject.id ||
           attachment.mux !== muxSubject.mux ||
-          attachment.executable.version !== muxSubject.version ||
+          !muxAttachmentVersionMatches(attachment, muxSubject.version) ||
           attachment.config.path !== muxSubject.config)
       ) {
         throw new Error("Mux target differs from the verified mux attachment")
