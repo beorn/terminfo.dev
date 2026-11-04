@@ -13,7 +13,7 @@ function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-function readReference(directory: string, reference: unknown): Buffer {
+export function readReference(directory: string, reference: unknown): Buffer {
   if (
     !object(reference) ||
     Object.keys(reference).sort().join(",") !== "path,sha256" ||
@@ -83,16 +83,18 @@ export function readProbeCapture(
       throw new IncompleteReplay("Capture dependencies lack their blob manifest")
     }
     const blobPaths = new Set<string>()
+    const blobDigests = new Set<string>()
     for (const blob of manifest.blobs) {
       readReference(directory, blob)
       if (!object(blob) || typeof blob.path !== "string" || blobPaths.has(blob.path)) {
         throw new IncompleteReplay("Capture contains duplicate blob references")
       }
       blobPaths.add(blob.path)
+      blobDigests.add("sha256:" + blob.sha256)
       files.push(join(directory, blob.path))
     }
     for (const path of references) {
-      if (!blobPaths.has(path)) throw new IncompleteReplay("Capture has an unbound blob: " + path)
+      if (!blobDigests.has(path)) throw new IncompleteReplay("Capture has an unbound blob: " + path)
     }
   }
   return { capture, files }

@@ -475,7 +475,7 @@ describe("daemon HTTP boundary", () => {
         const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
         const {createDarwinCapture} = await import("./packages/terminfo.dev/src/darwin-capture.ts")
         mock.module("./packages/terminfo.dev/src/detect.ts", () => ({detectTerminal:()=>({name:"kitty",version:"0.49.1",os:"macos",osVersion:"fixture"})}))
-        mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({...owned,createOwnedTerminal:()=>createDarwinCapture(process.env.HOME,{appPid:41})}))
+        mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({...owned,createOwnedTerminal:()=>createDarwinCapture(process.env.HOME,{appPid:41,onRetained:()=>{}})}))
         const {startDaemon} = await import("./packages/terminfo.dev/src/serve.ts")
         await startDaemon()
         const directory=join(process.env.HOME,".terminfo-dev","daemons")

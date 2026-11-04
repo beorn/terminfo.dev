@@ -80,7 +80,13 @@ function digest(bytes: Buffer): string {
 
 /** Retain content-addressed bytes and return their `sha256:` ref. An identical repeat is the same
  * artifact, not an error; different bytes behind the same digest is named rather than overwritten. */
-export function retain(directory: string, bytes: Buffer, extension: string): string {
+export function retain(
+  directory: string,
+  bytes: Buffer,
+  extension: string,
+  onRetained: (artifact: { path: string; sha256: string }) => void,
+): string {
+  if (typeof onRetained !== "function") throw new Error("Capture retention requires its artifact observer")
   const hash = digest(bytes)
   const path = join(directory, `${hash}.${extension}`)
   try {
@@ -89,6 +95,7 @@ export function retain(directory: string, bytes: Buffer, extension: string): str
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
     if (!readFileSync(path).equals(bytes)) throw new Error(`Capture artifact digest collision at ${path}`)
   }
+  onRetained({ path, sha256: hash })
   return `sha256:${hash}`
 }
 
@@ -252,6 +259,7 @@ export async function decodeCapture({
 /** Finish one acquired frame; currency and capture scheduling belong to the caller. */
 export async function finishCapture(input: {
   directory: string
+  onRetained: Parameters<typeof retain>[3]
   checkpoint: Checkpoint
   source: CaptureSource
   png: Buffer
@@ -262,14 +270,14 @@ export async function finishCapture(input: {
   /** Absolute deadline for the one decode this finalizer runs when `decoded` is absent (30092). */
   deadline?: number
 }): Promise<Awaited<ReturnType<ProbeCapture>>> {
-  const { directory, checkpoint, source, png, origin, trace, decoded: predecoded, deadline } = input
+  const { directory, onRetained, checkpoint, source, png, origin, trace, decoded: predecoded, deadline } = input
   const { featureId, role, label, cells, pixelGeometry } = checkpoint
   const { width, height, format, bytes: original, capturedAt } = source
   if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
     throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
   }
-  const sourceRef = retain(directory, original, format)
-  const ref = retain(directory, png, "png")
+  const sourceRef = retain(directory, original, format, onRetained)
+  const ref = retain(directory, png, "png", onRetained)
   const sourceStem = sourceRef.replace(/^sha256:/, "")
   const pngStem = ref.replace(/^sha256:/, "")
   if ((cells === undefined) !== (pixelGeometry === undefined)) {

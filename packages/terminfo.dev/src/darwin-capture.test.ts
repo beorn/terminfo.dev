@@ -126,7 +126,7 @@ test("Darwin capture falls back to a region capture of the window bounds when th
       return Buffer.alloc(0)
     })
   try {
-    const adapter = await createDarwinCapture(directory, { appPid: 41 })
+    const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
     // #30392 C1/C3: the census taken at install is carried out of the adapter, and it is the same
     // census the first frame was taken against — the selected window by id and bounds, not a re-read.
     const { result } = await adapter.captureRaw({
@@ -218,7 +218,7 @@ test.each(["command failure", "missing output"])(
         return Buffer.from("actual stdout")
       })
     try {
-      const adapter = await createDarwinCapture(directory, { appPid: 41 })
+      const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
       // #30392 C1/C2: this fixture answers the install census and the pre-capture census differently,
       // so the recorded observations prove which read was kept; a refused capture adds no third read.
       expect(adapter.installCensus.observations).toEqual({
@@ -316,7 +316,7 @@ test("Darwin raw calibration decodes once and within the caller's deadline (3009
     return Buffer.from(`${own.bounds.width}x${own.bounds.height}`)
   })
   try {
-    const adapter = await createDarwinCapture(directory, { appPid: 41 })
+    const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
     const deadline = Date.now() + 5_000
     const { decoded, result } = await adapter.captureRaw(
       { featureId: "extensions.truecolor", role: "control", label: "diagnostic" },

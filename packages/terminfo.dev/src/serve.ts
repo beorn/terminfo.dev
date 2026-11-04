@@ -16,7 +16,7 @@
 import { createStyle } from "@silvery/ansi"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
-import { dirname, isAbsolute, join, win32 } from "node:path"
+import { dirname, isAbsolute, join, relative, win32 } from "node:path"
 import { homedir } from "node:os"
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { execFileSync } from "node:child_process"
@@ -427,6 +427,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     const terminal = detectTerminal()
     const probeHash = manifest.probeHash
     const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+    const retainedArtifacts = new Map<string, { path: string; sha256: string }>()
+    const onRetained: Parameters<typeof retain>[3] = (artifact) => {
+      if (!captureDirectory) throw new Error("Retained capture artifact has no configured capture directory")
+      const path = relative(dirname(captureDirectory), artifact.path).split("\\").join("/")
+      if (!path || path.startsWith("../") || isAbsolute(path)) {
+        throw new Error("Retained capture artifact is outside its bundle root: " + artifact.path)
+      }
+      const previous = retainedArtifacts.get(path)
+      if (previous && previous.sha256 !== artifact.sha256) throw new Error("Retained capture path changed: " + path)
+      retainedArtifacts.set(path, { path, sha256: artifact.sha256 })
+    }
     const clipboardReceipt = process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT
     const hostedReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
     const kind = ownedTerminalKind({
@@ -547,7 +558,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
         // second write, and a digest that maps to different bytes is named instead of overwritten.
         // The bytes are the ones the frame's ref hashed — never a re-encoded copy.
-        retain(artifactDirectory, result.retained, "txt")
+        retain(artifactDirectory, result.retained, "txt", onRetained)
         retainedTextSnapshots.set(result.frame.ref, result.retained)
         return { frame: result.frame, trace: result.trace }
       }
@@ -723,12 +734,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       if ((textFirst && installTextCapture(terminal)) || !captureDirectory) return
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
-      const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
+      const darwinCapture = await createDarwinCapture(captureDirectory, { appPid, onRetained })
       installPixelCapture(darwinCapture, darwinCapture.installCensus)
     }
     if (captureDirectory && process.platform === "linux") {
       if (!executable) throw new Error("Configured Linux capture lacks measured executable")
-      installPixelCapture(await createLinuxCapture(captureDirectory, executable))
+      installPixelCapture(await createLinuxCapture(captureDirectory, executable, onRetained))
       input = await createLinuxInput(executable)
     } else if (provenancePath) {
       // A controlled Linux run with no capture directory cannot make a frame, so a probe that needs
@@ -742,6 +753,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     if (kind === "linux") {
       if (!clipboardReceipt || !executable) throw new Error("Owned clipboard receipt lacks measured executable")
       ownedTerminal = await createOwnedTerminal({
+        onRetained,
         captureRunId,
         out,
         expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
@@ -750,6 +762,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     } else if (kind === "terminalApp") {
       if (!options.terminalAppOwner) throw new Error("Owned Terminal.app collection lacks owner assertion")
       ownedTerminal = await createOwnedTerminal({
+        onRetained,
         captureRunId,
         out,
         expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
@@ -759,6 +772,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     } else if (kind === "process") {
       if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
       ownedTerminal = await createOwnedTerminal({
+        onRetained,
         captureRunId,
         out,
         expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
@@ -770,6 +784,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     } else if (kind === "darwinHosted") {
       if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
       ownedTerminal = await createOwnedTerminal({
+        onRetained,
         captureRunId,
         out,
         expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
@@ -783,6 +798,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       // the receipt names the launched WindowsTerminal.exe or alacritty.exe, the collector proves it is
       // an ancestor, and every geometry probe then reads the console it is actually writing to.
       ownedTerminal = await createOwnedTerminal({
+        onRetained,
         captureRunId,
         out,
         expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
@@ -1051,6 +1067,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       retainedTextSnapshots,
       textQualificationStartedAt ? { scope: "probe", startedAt: textQualificationStartedAt } : undefined,
     )
+    if (retainedArtifacts.size > 0) {
+      captured.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...retainedArtifacts.values()] })
+    }
     recordCollectorAttempt(captured, { ids: selectedIds, startedAt: collectionStartedAt, result: "completed" })
     Object.assign(draft, captured)
     checkpoint()

@@ -1,11 +1,13 @@
 /** Retain collection evidence privately and place normalized runs in the corpus. */
 import { constants, copyFileSync, lstatSync, mkdirSync, realpathSync } from "node:fs"
 import { spawnSync } from "node:child_process"
-import { basename, dirname, join, relative, resolve, sep } from "node:path"
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
 import { getTrustedSuiteReceipt } from "../../terminfo.dev/src/serve.ts"
 import { placeCollectedRun } from "../corpus-placement.ts"
+import { parseJsonStrict } from "@terminfo/run-parser"
+import { readReference } from "../../probes/erase-capture.ts"
 
 /** A default corpus write must belong to an authoring branch. */
 function assertAuthoringCheckout(cwd: string): void {
@@ -76,6 +78,7 @@ export function retainCollectedRun(
   retainedResponsePath: string,
   intended?: Parameters<typeof saveDaemonProbeRun>[2],
   outputDirectory?: string,
+  sourceRoot?: string,
 ): string {
   if (outputDirectory !== undefined) assertPrivateCollectionOutput(outputDirectory)
   const directory = resolve(outputDirectory ?? dirname(retainedResponsePath))
@@ -83,6 +86,44 @@ export function retainCollectedRun(
   if (resolve(original) !== resolve(retainedResponsePath)) {
     mkdirSync(directory, { recursive: true })
     copyFileSync(retainedResponsePath, original, constants.COPYFILE_EXCL)
+  }
+  const manifestRaw = run.rawReplies["collector.traceManifest"]
+  if (manifestRaw !== undefined) {
+    const manifest = parseJsonStrict("capture persistence manifest", manifestRaw)
+    if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest) || !("blobs" in manifest) || !Array.isArray(manifest.blobs)) {
+      throw new Error("Capture persistence requires its retained blob manifest")
+    }
+    if (manifest.blobs.length > 0 && sourceRoot === undefined) {
+      throw new Error("Capture persistence requires sourceRoot for retained blobs")
+    }
+    const paths = new Set<string>()
+    for (const blob of manifest.blobs) {
+      const path = blob !== null && typeof blob === "object" && "path" in blob ? String(blob.path) : "<invalid path>"
+      try {
+        readReference(sourceRoot!, blob)
+        if (paths.has(path)) throw new Error("Duplicate retained artifact path")
+        paths.add(path)
+        mkdirSync(directory, { recursive: true })
+        const physicalRoot = realpathSync(directory)
+        let parent = directory
+        for (const part of path.split("/").slice(0, -1)) {
+          parent = join(parent, part)
+          try { mkdirSync(parent) } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+          }
+          const contained = relative(physicalRoot, realpathSync(parent))
+          if (contained === ".." || contained.startsWith(`..${sep}`) || isAbsolute(contained)) {
+            throw new Error("Destination parent escapes capture bundle")
+          }
+        }
+        try { copyFileSync(join(sourceRoot!, path), join(directory, path), constants.COPYFILE_EXCL) } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+        }
+        readReference(directory, blob)
+      } catch (cause) {
+        throw new Error(`Capture persistence failed for ${path}`, { cause })
+      }
+    }
   }
   const source = saveDaemonProbeRun(run, directory, intended)
   console.log(`  Retained private collected run ${source}`)
@@ -93,9 +134,10 @@ export function writeCollectedRun(
   run: Parameters<typeof saveDaemonProbeRun>[0],
   retainedResponsePath: string,
   intended?: Parameters<typeof saveDaemonProbeRun>[2],
+  sourceRoot?: string,
 ): string {
   assertAuthoringCheckout(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."))
-  const source = retainCollectedRun(run, retainedResponsePath, intended)
+  const source = retainCollectedRun(run, retainedResponsePath, intended, undefined, sourceRoot)
   const destination = placeCollectedRun(source, getTrustedSuiteReceipt().manifest)
   console.log(`  Written collected run ${destination}`)
   return destination
