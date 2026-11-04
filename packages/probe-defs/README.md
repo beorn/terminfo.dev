@@ -381,9 +381,9 @@ the capture response, and the note names the deciding instrument. Malformed setu
 and the three multi-attribute reference refusals keep their existing behavior.
 Without a deciding independent capture, an omitted setup attribute retains named Test to-do coverage
 and both raw query phases, just as an omitted final attribute does; it is not a broken measurement.
-With an owned capture, valid final SGR state replies and named missing-observable results use the
-existing visual oracle; its same-run controls decide the visual claim, and the unchanged DECRQSS
-reply stays in the note. The existing sixth callback supplies that capture without a new API.
+With an owned colour, reset-family or blink oracle, valid final SGR state replies and named
+missing-observable results use its same-run pixel controls; the unchanged DECRQSS reply stays in
+the note. Plain style rows without an owned oracle retain their DECRQSS decision and named cause.
 Malformed replies and failed baseline/setup controls keep their failures; independent setup
 capture keeps its existing eligibility. A valid state reply and different pixel result measure
 different properties, not a conflict.

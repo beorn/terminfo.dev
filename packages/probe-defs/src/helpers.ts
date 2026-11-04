@@ -1103,7 +1103,14 @@ export function sgrProbe(
         }
       }
       if (readback) {
-        const decided = await sgrReadbackDecision(ctx, id, sequence, readback, undefined, captureResult)
+        const decided = await sgrReadbackDecision(
+          ctx,
+          id,
+          sequence,
+          readback,
+          undefined,
+          capture ? captureResult : undefined,
+        )
         if (decided) return decided
       }
       const captured = await captureResult()
