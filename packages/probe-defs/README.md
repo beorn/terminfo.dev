@@ -2,7 +2,7 @@
 
 `@terminfo/probe-defs` defines term feature probes, their observations and the shared run model. Start at the [exports and probe registry](src/index.ts); [types.ts](src/types.ts) owns the record types.
 
-This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored grades change.
+This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored results change.
 
 ## Vocabulary and current code
 
@@ -33,7 +33,7 @@ The [legacy presentation keys](../../docs/data/release-scope.ts) are a different
 The `FeatureResultDisplayState` value `inconclusive` denotes Untestable (no current route reaches it), `error` denotes PROBE INVALID and `untested` denotes
 PROBE TODO; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
 
-No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A grade comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is PROBE TODO with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. PROBE INVALID means the probe or harness broke or got data it cannot trust. There is no route to Untestable: a probe whose setup has no observable for every subject of a kind reads PROBE TODO, and source never sets it per engine. A probe never implements the feature itself.
+No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A probe result comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is PROBE TODO with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. PROBE INVALID means the probe or harness broke or got data it cannot trust. There is no route to Untestable: a probe whose setup has no observable for every subject of a kind reads PROBE TODO, and source never sets it per engine. A probe never implements the feature itself.
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
@@ -41,11 +41,11 @@ External release and publication remain held until the actual full Phase 1.4 mer
 
 Terminal tiers describe progress: 0 missing, 1 incomplete, 2 broken and 3 done. These are distinct from the former Release 1 query/reply group and from color depth. This terminology defines no thresholds and changes no status computation.
 
-The existing [completeness helper](../../docs/data/release-scope.ts) uses the supplied graded positions:
+The existing [completeness helper](../../docs/data/release-scope.ts) uses the supplied scored catalogue positions:
 empty means tier 0; any PROBE TODO means tier 1, even alongside failures; otherwise a PROBE INVALID means
 tier 2; otherwise tier 3. The helper itself does not verify full catalogue membership.
-The numerical support share is Supported divided by all graded positions, not results done divided by total.
-The [nine exact environment IDs](src/environment-groups.ts) remain visible but excluded from grading,
+The numerical support share is Supported divided by all scored catalogue positions, not results done divided by total.
+The [nine exact environment IDs](src/environment-groups.ts) remain visible but excluded from scoring,
 the denominator and completeness tiers. The [admin report's](../admin/report.tsx) literal `N/M` means
 manual-by-design, NOT MEASURED for their PROBE TODO rows; it is not a numerical fraction or a sixth stored status.
 An [OS row's inherited or reference source](../../docs/os/%5Bid%5D.paths.ts) can supply its displayed counts;
@@ -53,7 +53,7 @@ those are the source's results, not an independent measurement of that app and O
 
 [Catalog coverage](../../docs/data/probe-status.ts) is separate again: automated, partial, manual,
 undeclared or unprobed. A catalog manual/partial override takes precedence; otherwise the existing
-definition, callback-arm and assertion-declaration checks determine coverage. These labels neither grade
+definition, callback-arm and assertion-declaration checks determine coverage. These labels neither decide
 a result nor establish that both positive and negative controls exist. Overrides and result statuses stay unchanged.
 
 Collection retains measured records. External release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
@@ -63,7 +63,7 @@ The pass records private attempts, custody and coverage.
 Failed hosted collection retains its original delegated draft as failure custody when canonical `run.json` is absent.
 Only a source-, suite-, run- and selection-bound collector attempt with a recorded start establishes execution;
 a job-start marker alone does not. A nonzero collector exit reports `failed`, with its exit code and log path.
-This custody never supplies grades or bypasses canonical validation.
+This custody never supplies support conclusions or bypasses canonical validation.
 The read-only admin `report --scoreboard <inputs...>` accepts explicit raw captures or pass files/directories, preserves pass identities,
 and uses the canonical selected-results reader and local `origin/live` revision to distinguish selection from proven publication.
 
@@ -114,7 +114,7 @@ not reported: the response omits the setting, without inferring false or using t
 capability declaration. The setting does not decide the measured resize phases.
 
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
-not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
+not a reset state or a terminal-support result. Callbacks retain it explicitly.
 Library `cell.hidden: null` means conceal is not reported; missing cell observables retain their named PROBE TODO cause without deciding terminal support.
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO
@@ -217,7 +217,7 @@ anchor, keeping its distance from bottom. Marker readability is checked only aft
 to bottom. Both phases must qualify: both bottom-relative outcomes are negative with the reason
 "viewport kept its distance from bottom instead of its anchor"; one bottom-relative outcome mixed
 with any other outcome is inconclusive. Otherwise either qualified snap is negative and both holds
-are positive. Failed controls and every other drift withhold a verdict. Missing history or scroll
+are positive. Failed controls and every other drift withhold a support conclusion. Missing history or scroll
 control/state names coverage; operational and cleanup errors propagate. Retained buffer-state evidence has baseline, anchor,
 control, ordinary and synchronized keys. The exact DECSET 2026 bytes exercise output inside that
 block without claiming painting support. The app arm uses existing owned wheel input and whole-window
@@ -243,7 +243,7 @@ with named scroll-control coverage, not a measured scroll result.
 A declaration of absence paired with a present scroll control is an inconclusive apparatus
 contradiction, with no review row. An undeclared missing scroll control keeps ordinary named coverage.
 Scripted callback tests cover these branches and the exact two-phase arithmetic independently of
-engine versions; historical captures and grades are unchanged.
+engine versions; historical captures and results are unchanged.
 
 For libvterm 0.3.3, ED3 and the two history-count library callbacks perform no history reads or
 writes: the adapter reports screen extent, while retained history belongs to an embedding application.
@@ -253,7 +253,7 @@ Other identities keep their existing criteria.
 
 - `ProbeCallbackResult` has three arms: a measured `observation`; `notTested` coverage naming a missing semantic observable; or execution-only, nonempty PROBE TODO/PROBE INVALID `tests`, each with a mandatory reason. Execution-only callbacks have no observation, assertions or coverage. Callbacks can select a criterion branch.
 - `Observation` records an outcome and required `assertionType`. `ProbeAssertion` records the independently positive/negative predicate, required `assertionType`, expected state and retained observed evidence.
-- `ProbeResult` stores the feature's execution status, attempt, required tests, selected criterion branch and evidence references. Its optional primary `assertionType` names only a retained observation; absence is not a sixth type. Legacy `pass` never grades it.
+- `ProbeResult` stores the feature's execution status, attempt, required tests, selected criterion branch and evidence references. Its optional primary `assertionType` names only a retained observation; absence is not a sixth type. Legacy `pass` never decides it.
 - `RunDraft` is a private schema-4 envelope: explicit source, run/suite identity, `intendedSubject`, measured `subject` when available, raw replies, assertions, artifact references and probe results. Subject kinds are `term`, `lib` and `mux`.
 - `CapturedRunDraft` and `CurrentRun` require measured subject, identity, time and origin; `Run` aliases the current shape. Historical stored bytes are immutable. A historical `sealedAt` field is ignored for current parsing and selection.
 
@@ -264,7 +264,7 @@ A callback can mark explicit failure tests that need actual request evidence. An
 The callback-only `replyFailureTestIds` never enters a stored result or draft. After the callback returns,
 the TTY or headless producer uses `withReplyFailureEvidence` to append escaped sent/received bytes and the
 actual timeout or synchronous capture boundary to only those marked failure-test reasons. Readers find the
-attempts in the stored criterion test's reason; the observation note and top-level summary stay unchanged. Grades, test IDs,
+attempts in the stored criterion test's reason; the observation note and top-level summary stay unchanged. Callback conclusions, test IDs,
 criterion branches, observations and assertions remain callback-owned. Missing request records remain
 named failures; they do not prove that a producer is absent. Proved missing required capabilities or
 identity-bound declarations retain named PROBE TODO results without markers. Malformed replies, sentinel negatives
@@ -334,12 +334,12 @@ Each required row cites only its own phase's assertions; the existing mixed-main
 only main assertions. The shared finalizer gives required failures precedence over PROBE TODO results, then
 measured negatives, then support. Main reflow with retained physical history is Unsupported;
 missing qualified history remains PROBE TODO, and corrupt tails or unmatched layouts remain failures.
-The reason names the graded phases and their results.
+The reason names the required phases and their results.
 
 Alternate-screen phases retain their statuses, positive/negative assertions and raw response but
-do not decide the grade: full-screen apps redraw on resize, and intentional physical-row preservation
-there does not negate main-screen or history reflow. The reason reports alternate results as not graded.
-Invalid alternate evidence stays visible without vetoing the graded phases; cleanup failures still error.
+do not decide the probe result: full-screen apps redraw on resize, and intentional physical-row preservation
+there does not negate main-screen or history reflow. The reason reports alternate results as excluded from the support decision.
+Invalid alternate evidence stays visible without vetoing the required phases; cleanup failures still error.
 
 Supported reasons state: "ASCII reflow measured on main screen and retained history; wide characters,
 cursor on a wrapped line and terminal-app resize unmeasured". No broader coverage is inferred, and
@@ -347,7 +347,7 @@ the separate terminal-app arm remains PROBE TODO. Private apparatus results gran
 corpus placement; the native absolute-row consumer hold remains with independent batch review.
 
 The libvterm adapter retains native history, enables `vterm_screen_enable_reflow` and records that
-setting. Libvterm is graded by the same main-screen and retained-history criterion; the recorded
+setting. Libvterm is checked against the same main-screen and retained-history criterion; the recorded
 setting alone never establishes support. A default-config source observation is not engine
 capability absence and cannot replace the observed criterion.
 
@@ -357,7 +357,7 @@ sequences for `!= -> => <= ==` with liga/calt on and off. A glyph-ID difference 
 capability independently of the renderer; position differences alone do not. The collector retains
 the validated `fixture.font` bytes as `collector.fontSource` for every non-mux Linux run selecting the
 font review, including plain receipts from other launchers. The retained receipt and spaced-control and
-target frames are kept with the result, but no same-run check grades them. Missing or inconclusive proof leaves PROBE TODO naming
+target frames are kept with the result, but no same-run check derives a support conclusion from them. Missing or inconclusive proof leaves PROBE TODO naming
 `#32062 font control` and its proof state; it does not establish Untestable on a pixel arm.
 This does not change earlier captures or xterm's rendering pin.
 
@@ -379,7 +379,7 @@ The seven host-input library rows (`input.xtest-key`, `input.xtest-click`, `inpu
 `input.button-event-mouse`, `input.pixel-mouse`, `input.urxvt-mouse`, `input.x10-mouse`) and
 `extensions.clipboard-paste` retain `os-input-review`, with reason
 "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
-This remains a review PROBE TODO; there is no standing class rule, callback grade or change to earlier captures.
+This remains a review PROBE TODO; there is no standing class rule, callback support conclusion or change to earlier captures.
 
 Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video 5, synchronized output 2026,
 DECSCLM 4 and color-scheme reporting 2031. Snapshot Ps 1/3 is Supported without mutation; Ps 0/4 is
@@ -398,7 +398,7 @@ Its library arm stays `headless-observable-review` with null assertion type and 
 The missing presentation-speed observable remains PROBE TODO.
 
 Reset-family capture recipes can supply an optional `RegionReadback.setupReference`: an independently
-authored full setup, painted behind the existing witness. The seed must match it before any verdict.
+authored full setup, painted behind the existing witness. The seed must match it before any support conclusion.
 Companion rows also compare a neutral ignored frame against the expected preserved attribute; missing
 setup or an inseparable reference stays inconclusive. Recipes without the member keep four frames.
 A qualified baseline followed by a complete but unqualified SGR setup report may use this existing
@@ -507,19 +507,19 @@ Most native raw-reply entries are serialized traces. Identity-query entries reta
 
 Native execution can also change the recorded result: for example, a measured resize retains the callback observation but adds a failed geometry test. A callback conclusion is not the final run status. This migration classifies existing observations; probe writes retain their existing representation, order and bytes.
 
-**Frames are evidence, not verdicts.** `ObservationFrame` distinguishes pixel frames from `text-cells` frames; pixel and cell rectangles/digests are not interchangeable.
+**Frames supply evidence; they do not decide support.** `ObservationFrame` distinguishes pixel frames from `text-cells` frames; pixel and cell rectangles/digests are not interchangeable.
 
 Declared visual criteria use [region readback](src/region-readback.ts) to compare stable,
 cell-aligned pixel crops against independently painted references behind a paint witness.
 For each declared frame, the sentinel must complete a same-crop space→glyph→space→glyph
 roundtrip with exact repeatable digests; an intermediate clear alone cannot qualify paint.
 This relies on faithful current captures and ordered terminal paint, not arbitrary adapter replay
-or compositor completion. Missing roundtrip returns retain `no freshness witness` review. Both initial stability captures remain in the result frames because response-backed assertions cite their cell and whole-image digests. A missing pixel geometry emits a required failure row naming the missing report, retaining attempted query evidence without a feature verdict.
+or compositor completion. Missing roundtrip returns retain `no freshness witness` review. Both initial stability captures remain in the result frames because response-backed assertions cite their cell and whole-image digests. A missing pixel geometry emits a required failure row naming the missing report, retaining attempted query evidence without a support conclusion.
 Expected-change and expected-no-change claims have separate controls; an unchanged frame
 without freshness evidence remains review PROBE TODO. Each decided signal retains its own
 assertion. Missing discriminators and unmeasured feature facets remain named review rows;
 cursor-shape cell and blink-phase sampling belongs to #31812. Historical frames acquire no
-new comparison or grade.
+new comparison or support conclusion.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
@@ -542,7 +542,7 @@ deleted, with an ordinary `a=p` placement of the same pixels — measured agains
 live control; this queue transmits quietly, so no acknowledgement exists to inherit. The placeholder row
 adds two in-run pixel controls in place of the cell readback it used to require: a layout guard — the same
 short ASCII written immediately right of the grid and captured with the row below it, byte-identical in both
-states, so a terminal that reflows when the image arrives is inconclusive by name rather than graded on a
+states, so a terminal that reflows when the image arrives is inconclusive by name rather than judged on a
 moved rectangle — and a same-image veto, which makes the with-image rectangle supported only when it is
 pixel-identical to the ordinary placement of the same opaque image over the same cells. Where a run does
 expose a cells adapter, unequal readbacks still veto to inconclusive before the table, and a text-only run
@@ -571,7 +571,7 @@ registry (including colors and resets) requires a screenshot for that feature in
 Only the result's own screenshot reference matched to a non-text-cells frame in that probe's captures counts;
 a batch-wide reference or an assertion labelled screenshot does not. A missing frame retains a pending `visual` test with
 reason `visual effect not observed in this run` when a Supported or Unsupported result lacks that evidence.
-Existing pending and failure results retain their causes; a screenshot never supplies a verdict by presence alone.
+Existing pending and failure results retain their causes; a screenshot never establishes support by presence alone.
 The Termless backend registry owns the optional `rendering` product declaration: `render-capable` or
 `parser-only`, with cited sources beside its values. Parser-only libraries keep their parser decisions.
 An undeclared library retains a named missing-declaration PROBE TODO identifying its selector and
@@ -587,7 +587,7 @@ inconclusive; an exact canonical nonce reply is positive. The write and combined
 keep their existing roundtrip requirement: a read negative never decides either write claim.
 
 Feature-specific criteria keep those distinctions local.
-The canonical Kitty graphics direct-RGB query grades a correlated printable reply as supported for
+The canonical Kitty graphics direct-RGB query classifies a correlated printable reply as supported for
 `OK` and unsupported for an error, retaining the exact message and protocol recognition in its assertion.
 Missing, malformed and uncorrelated replies stay inconclusive. Placement, transmission and visible
 rendering keep their separate criteria; a query refusal never establishes their support or absence.
@@ -659,7 +659,7 @@ The writer checks intended id/version against known measured values without repl
 
 The capture writer retains measured identity and recorded result statuses. Private diagnostic collection preserves its response and normalized snapshot outside the source repository.
 
-A missing instrument remains PROBE TODO with its reason; it does not establish a support grade. The cited suite manifest retains catalogue entry hashes in `catalogEntrySha256`.
+A missing instrument remains PROBE TODO with its reason; it does not establish a support conclusion. The cited suite manifest retains catalogue entry hashes in `catalogEntrySha256`.
 
 Every library backend declares the `adapter-sources` extension from its one adapter registry.
 Reply-delivery declarations, when present, share that registry's same source array; identity alone grants no reply capability.
@@ -675,7 +675,7 @@ The remeasure instrument reads `collection.json` from the headless collector, pa
 
 New headless collections retain the producer's existing schema 4 suite declaration once, before workers start, at `suites/<probeHash>.json` inside their private output directory. Their `collection.json` names it through `suiteManifest`. The working-run reader supplies this confined file explicitly to the canonical raw-capture reader, so the original run and probe evidence remains readable after the executable suite changes. A declared manifest that is missing, malformed or misfiled fails loudly; it never falls back to another declaration. Legacy collections without the field retain their existing committed/current-suite trust and unreadable banner.
 
-Only the working-run reader supplies this private manifest input. It reads raw, unreviewed evidence; selected results, public results, release scope and admission never consume it. No accepted grade, corpus placement or publication authority follows from retaining the declaration. Old captures without a retained declaration are not reconstructed or rewritten.
+Only the working-run reader supplies this private manifest input. It reads raw, unreviewed evidence; selected results, public results, release scope and admission never consume it. No accepted result, corpus placement or publication authority follows from retaining the declaration. Old captures without a retained declaration are not reconstructed or rewritten.
 
 `measureRenderedWidth` returns a number or a named readback cause: `no-reply` with its step,
 `control-mismatch` with its step and observed cursor, or `wrapped` with its observed cursor.
