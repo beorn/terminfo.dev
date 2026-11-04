@@ -31,7 +31,7 @@ import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
 import { validateObservation, parseRun } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -1142,18 +1142,21 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
   }
 })
 
+// Standalone component CI checks out terminfo.dev alone and resolves the published @termless 0.10.2, whose Kitty and
+// Ghostty native backends predate osc-metadata getProgress (#32271); CI run 41794400168 failed both rows there. Every
+// row runs in both homes: the loaded package's recorded home (vendor/ is the owned Termless, node_modules/ the
+// published one) picks which contract it asserts, so a broken owned reader still fails.
+function ownedTermless(specifier: string): boolean {
+  const loaded = realpathSync(Bun.resolveSync(specifier, fileURLToPath(import.meta.url)))
+  return headlessIdentity.recordedPath(loaded).startsWith("vendor/")
+}
+
 // @failure #32053: engine stores parsed toasts only; OSC 9 and 777;notify;X arrive identical. WezTerm
 // (performer.rs:904-933) and Ghostty (osc.zig:94-98) keep {title, body} toasts, so no raw reader can attribute the
 // code or rebuild the payload, and a reader declared on them would grade a guess. Their OSC 9 and OSC 777 cells
 // must stay TEST TODO with no reader, never Unsupported (@cto 94631c52, 91f6fd75).
 // @level l1
 // @consumer extensions.notifications and extensions.osc777-notify through the actual LibProbeSource
-// Standalone component CI checks out terminfo.dev alone and resolves the published @termless packages, whose Kitty and
-// Ghostty native backends predate osc-metadata getProgress (#32271). These rows describe the owned Termless sibling,
-// so they run only where that layout exists and skip by name elsewhere (CI run 41794400168 failed both rows there).
-const OWNED_TERMLESS = existsSync(fileURLToPath(new URL("../../../termless", import.meta.url)))
-const NOT_OWNED_TERMLESS = "standalone layout resolves the published @termless packages, not the owned Termless"
-
 function weztermNativeAvailable(): boolean {
   try {
     loadWeztermNative()
@@ -1165,13 +1168,17 @@ function weztermNativeAvailable(): boolean {
 
 test.for([
   ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
-  ["ghostty-native", isGhosttyNativeAvailable(), true, async () => createGhosttyNativeBackend()],
+  [
+    "ghostty-native",
+    isGhosttyNativeAvailable(),
+    ownedTermless("@termless/ghostty-native"),
+    async () => createGhosttyNativeBackend(),
+  ],
   ["ghostty wasm", true, false, () => resolveGhosttyWasm()],
 ] as const)(
   "%s parsed-toast engine keeps OSC 9 and OSC 777 TEST TODO with no reader",
   async ([name, available, oscMetadata, create], context) => {
     if (!available) context.skip(`${name} native addon unavailable (NOT MEASURED)`)
-    if (oscMetadata && !OWNED_TERMLESS) context.skip(`${name}: ${NOT_OWNED_TERMLESS} (NOT MEASURED)`)
     const value = await create()
     value.init({ cols: 80, rows: 24 })
     try {
@@ -1203,15 +1210,19 @@ test.for([
 // @level l1
 // @consumer extensions.osc9-progress through the actual LibProbeSource
 test.for([
-  ["kitty", isKittyAvailable(), true, async () => createKittyBackend()],
-  ["ghostty-native", isGhosttyNativeAvailable(), true, async () => createGhosttyNativeBackend()],
+  ["kitty", isKittyAvailable(), ownedTermless("@termless/kitty"), async () => createKittyBackend()],
+  [
+    "ghostty-native",
+    isGhosttyNativeAvailable(),
+    ownedTermless("@termless/ghostty-native"),
+    async () => createGhosttyNativeBackend(),
+  ],
   ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
   ["ghostty wasm", true, false, () => resolveGhosttyWasm()],
 ] as const)(
   "%s OSC 9;4 progress grades through the stored-report reader only where the engine stores one",
   async ([name, available, reader, create], context) => {
     if (!available) context.skip(`${name} engine unavailable (NOT MEASURED)`)
-    if (reader && !OWNED_TERMLESS) context.skip(`${name}: ${NOT_OWNED_TERMLESS} (NOT MEASURED)`)
     const configDirectory = name === "kitty" ? mkdtempSync(join(tmpdir(), "terminfo-kitty-config-")) : undefined
     if (configDirectory) vi.stubEnv("KITTY_CONFIG_DIRECTORY", configDirectory)
     const value = await create()
