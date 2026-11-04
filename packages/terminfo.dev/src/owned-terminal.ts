@@ -1224,7 +1224,7 @@ export async function createOwnedTerminal(options: {
           ? linuxOutput(out)
           : terminalApp
             ? darwinOutput(out, parseTerminalAppOwner(terminalApp).tabTty)
-            : processOwner
+            : processOwner && !darwinAttachment
               ? darwinOutput(out, parseProcessOwnerAssertion(processOwner).tty)
               : darwinHostedOutput(out)
         if (
