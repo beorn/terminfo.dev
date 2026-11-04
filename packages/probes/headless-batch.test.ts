@@ -1077,6 +1077,44 @@ const VTERM_MARK_CASES = [
   ["extensions.osc633-c", 633, "output"],
 ] as const
 
+// @failure The native Kitty icon callback is dropped before the registered probe can observe it; cached labels can
+// survive later input or reset and impersonate fresh icon state. Existing Kitty tests only read window titles.
+// @level l5
+// @consumer Registered OSC1/OSC0 callbacks through Kitty's real native bridge and production collector source.
+test.skipIf(!isKittyAvailable())("Kitty icon observations retain independent titles across OSC1, OSC0 and reset", () => {
+  const value = createKittyBackend({ cols: 80, rows: 24 })
+  const feed = (text: string) => value.feed(new TextEncoder().encode(text))
+  try {
+    feed("\x1b]2;original-window\x07")
+    expect(value.getTitle()).toBe("original-window")
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    for (const id of ["extensions.osc1-icon", "extensions.osc0-icon-title"]) {
+      const result = registryDefinitions([id])[0]!.lib!(source)
+      expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      expect(value.getTitle(), id).toBe("original-window")
+    }
+    feed("\x1b]1;previous-icon\x07")
+    value.reset()
+    const result = registryDefinitions(["extensions.osc1-icon"])[0]!.lib!(source)
+    expect(result.observation).toMatchObject({ outcome: "supported" })
+    const observed = JSON.parse(result.response!) as {
+      requested: string
+      control: string
+      after: { icon: string; title: string }
+    }
+    expect(observed.after).toEqual({ icon: observed.requested, title: observed.control })
+    expect(observed.after.icon).not.toBe("previous-icon")
+    value.init({ cols: 80, rows: 24 })
+    const fresh = registryDefinitions(["extensions.osc1-icon"])[0]!.lib!(
+      createLibProbeSource(value, undefined, undefined, undefined),
+    )
+    expect(JSON.parse(fresh.response!).before).toEqual({ icon: "", title: "" })
+    expect(fresh.observation).toMatchObject({ outcome: "supported" })
+  } finally {
+    value.destroy()
+  }
+})
+
 // @failure A command-end-only native reader misgrades A/C or accepts cached/wrong raw status as a new D event.
 // @level l1
 // @consumer Registered OSC133D and start callbacks through the actual Kitty collector source.
