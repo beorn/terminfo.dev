@@ -170,6 +170,7 @@ function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
   expect(parsed.results).toEqual(batch.results)
   return JSON.parse(batch.rawReplies["extensions.reflow"]!) as {
     declaredReflow: boolean
+    reflowSetting?: { enabled: boolean }
     phases: Array<{ outcome: string }>
     historyPhases: Array<{ id: string; status: string; outcome: string; reason: string }>
     alternatePhases: Array<{ id: string; status: string; outcome: string; reason: string }>
@@ -187,111 +188,129 @@ function mainAndHistoryAssertions(batch: Awaited<ReturnType<typeof collectBatch>
 // CTO F4a/g: existing evidence-only assertions missed feature promotion and history-row reference ownership.
 // @level l1
 // @consumer Registered reflow callback through the real headless source and canonical batch result.
-test.each([false, true])("production reflow controls ignore the capability declaration (%s)", async (declared) => {
-  const definition = registryDefinitions(["extensions.reflow"])[0]!
-  const batch = await collectBatch(
-    async () => {
-      const value = createXtermBackend()
-      // Vary metadata alone; the actual engine keeps its default configuration.
-      const capabilities = { ...value.capabilities, reflow: declared }
-      Object.defineProperty(value, "capabilities", { get: () => capabilities })
-      return value
-    },
-    "xtermjs",
-    [
-      {
-        ...definition,
-        lib(ctx: LibProbeSource) {
-          // Every production source uses this factory, independently of declared feature support.
-          expect(ctx).toHaveProperty("resize", expect.any(Function))
-          return definition.lib!(ctx)
-        },
+test.each([
+  { declared: false, enabled: true },
+  { declared: true, enabled: false },
+  { declared: false, enabled: undefined },
+  { declared: true, enabled: undefined },
+])(
+  "production reflow controls ignore the capability declaration ($declared, setting $enabled)",
+  async ({ declared, enabled }) => {
+    const definition = registryDefinitions(["extensions.reflow"])[0]!
+    const batch = await collectBatch(
+      async () => {
+        const value = createXtermBackend()
+        // The reported instance setting and declared support are independent evidence.
+        if (enabled !== undefined) {
+          Object.defineProperty(value, "getReflowState", {
+            value() {
+              expect(this).toBe(value)
+              return { enabled }
+            },
+          })
+        }
+        // Vary metadata alone; the actual engine keeps its default configuration.
+        const capabilities = { ...value.capabilities, reflow: declared }
+        Object.defineProperty(value, "capabilities", { get: () => capabilities })
+        return value
       },
-    ],
-  )
-  expect(batch.ungradedDiagnostics).toEqual({})
-  // @failure Alternate reflow measurements never reach the real collector; existing main/history checks cannot detect that gap.
-  // @consumer CTO-approved alternate-only evidence, kept outside the required-test fold.
-  expect(reflowEvidence(batch).alternatePhases).toMatchObject([
-    { id: "alternate-grow", status: "unsupported", outcome: "preserved-wraps" },
-    { id: "alternate-shrink", status: "unsupported", outcome: "truncated" },
-  ])
-  expect(batch.assertions.filter(({ expected }) => expected.startsWith("alternate-")).map(({ kind }) => kind)).toEqual([
-    "negative",
-    "negative",
-  ])
-  const alternate = reflowEvidence(batch)
-  for (const { id } of alternate.alternatePhases) {
-    expect(alternate.alternateRoundtrips[id]).toMatchObject({
-      roundtrip: { pass: true },
-      identity: { before: false, entered: true, target: true, control: true, restored: false, after: false },
-    })
-    const target = alternate.actions.findIndex((action) => action.kind === "read" && action.name === `${id}.after`)
-    const control = alternate.actions.findIndex(
-      (action) => action.kind === "read" && action.name === `${id}.control-after`,
+      "xtermjs",
+      [
+        {
+          ...definition,
+          lib(ctx: LibProbeSource) {
+            // Every production source uses this factory, independently of declared feature support.
+            expect(ctx).toHaveProperty("resize", expect.any(Function))
+            return definition.lib!(ctx)
+          },
+        },
+      ],
     )
-    expect(target).toBeGreaterThanOrEqual(0)
-    expect(control).toBeGreaterThan(target)
-    const sameState = alternate.actions.slice(target + 1, control)
-    expect(sameState.some((action) => action.kind === "reset" || action.kind === "resize")).toBe(false)
-    expect(sameState.some((action) => /\x1b\[\?1049[hl]/.test(action.text ?? ""))).toBe(false)
-  }
-  expect(batch.results).toMatchObject([
-    {
-      featureId: "extensions.reflow",
-      status: "supported",
-      reason: expect.stringContaining(
-        "ASCII reflow measured on main screen and retained history; wide characters, cursor on a wrapped line and terminal-app resize unmeasured",
-      ),
-      assertionType: "buffer_state",
-      tests: expect.arrayContaining([
-        expect.objectContaining({ id: "main-grow", status: "supported" }),
-        expect.objectContaining({ id: "main-shrink", status: "supported" }),
-        expect.objectContaining({ id: "history-grow", status: "supported" }),
-        expect.objectContaining({ id: "history-shrink", status: "supported" }),
-      ]),
-    },
-  ])
-  expect(batch.results[0]!.reason).toContain("reported, not graded")
-  // F4g: checking status alone misses default-all references and references borrowed from another phase.
-  expect(batch.results[0]!.tests.map(({ id }) => id)).toEqual([
-    "main-grow",
-    "main-shrink",
-    "history-grow",
-    "history-shrink",
-  ])
-  for (const row of batch.results[0]!.tests) {
-    expect(row.assertionRefs).toHaveLength(1)
-    expect(row.assertionRefs!.map((index) => batch.assertions[index]!.expected.split(":")[0])).toEqual([row.id])
-  }
-  expect(mainAndHistoryAssertions(batch)).toMatchObject([
-    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
-    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
-    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
-    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
-  ])
-  const observed = reflowEvidence(batch)
-  expect(observed).toMatchObject({ declaredReflow: declared, phases: [{ outcome: "reflow" }, { outcome: "reflow" }] })
-  // Main-only coverage cannot detect lost history or hard-line boundaries. Check the actual full
-  // buffer, including every hard witness, independently of the required-test fold.
-  expect(observed.historyPhases).toMatchObject([
-    { id: "history-grow", outcome: "reflow", status: "supported" },
-    { id: "history-shrink", outcome: "reflow", status: "supported" },
-  ])
-  for (const id of ["history-grow", "history-shrink"]) {
-    const before = observed.reads[`${id}.before`]!
-    const after = observed.reads[`${id}.after`]!
-    expect(before.scrollback.totalLines - before.scrollback.screenLines).toBeGreaterThan(4)
-    expect(after.cells).toHaveLength(after.scrollback.totalLines)
-    const lines = after.cells.map((row: string[]) => row.join("").trimEnd())
-    expect(lines.slice(0, id === "history-grow" ? 3 : 4)).toEqual(
-      id === "history-grow"
-        ? ["ABCDEFGHIJKLMNOPQR", "HARD-a", "HARD-b"]
-        : ["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"],
-    )
-    expect(lines.slice(-48)).toEqual(Array.from({ length: 48 }, (_, i) => `R${String(i).padStart(3, "0")}`))
-  }
-})
+    expect(batch.ungradedDiagnostics).toEqual({})
+    // @failure Alternate reflow measurements never reach the real collector; existing main/history checks cannot detect that gap.
+    // @consumer CTO-approved alternate-only evidence, kept outside the required-test fold.
+    expect(reflowEvidence(batch).alternatePhases).toMatchObject([
+      { id: "alternate-grow", status: "unsupported", outcome: "preserved-wraps" },
+      { id: "alternate-shrink", status: "unsupported", outcome: "truncated" },
+    ])
+    expect(
+      batch.assertions.filter(({ expected }) => expected.startsWith("alternate-")).map(({ kind }) => kind),
+    ).toEqual(["negative", "negative"])
+    const alternate = reflowEvidence(batch)
+    for (const { id } of alternate.alternatePhases) {
+      expect(alternate.alternateRoundtrips[id]).toMatchObject({
+        roundtrip: { pass: true },
+        identity: { before: false, entered: true, target: true, control: true, restored: false, after: false },
+      })
+      const target = alternate.actions.findIndex((action) => action.kind === "read" && action.name === `${id}.after`)
+      const control = alternate.actions.findIndex(
+        (action) => action.kind === "read" && action.name === `${id}.control-after`,
+      )
+      expect(target).toBeGreaterThanOrEqual(0)
+      expect(control).toBeGreaterThan(target)
+      const sameState = alternate.actions.slice(target + 1, control)
+      expect(sameState.some((action) => action.kind === "reset" || action.kind === "resize")).toBe(false)
+      expect(sameState.some((action) => /\x1b\[\?1049[hl]/.test(action.text ?? ""))).toBe(false)
+    }
+    expect(batch.results).toMatchObject([
+      {
+        featureId: "extensions.reflow",
+        status: "supported",
+        reason: expect.stringContaining(
+          "ASCII reflow measured on main screen and retained history; wide characters, cursor on a wrapped line and terminal-app resize unmeasured",
+        ),
+        assertionType: "buffer_state",
+        tests: expect.arrayContaining([
+          expect.objectContaining({ id: "main-grow", status: "supported" }),
+          expect.objectContaining({ id: "main-shrink", status: "supported" }),
+          expect.objectContaining({ id: "history-grow", status: "supported" }),
+          expect.objectContaining({ id: "history-shrink", status: "supported" }),
+        ]),
+      },
+    ])
+    expect(batch.results[0]!.reason).toContain("reported, not graded")
+    // F4g: checking status alone misses default-all references and references borrowed from another phase.
+    expect(batch.results[0]!.tests.map(({ id }) => id)).toEqual([
+      "main-grow",
+      "main-shrink",
+      "history-grow",
+      "history-shrink",
+    ])
+    for (const row of batch.results[0]!.tests) {
+      expect(row.assertionRefs).toHaveLength(1)
+      expect(row.assertionRefs!.map((index) => batch.assertions[index]!.expected.split(":")[0])).toEqual([row.id])
+    }
+    expect(mainAndHistoryAssertions(batch)).toMatchObject([
+      { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+      { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+      { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+      { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+    ])
+    const observed = reflowEvidence(batch)
+    if (enabled === undefined) expect(observed).not.toHaveProperty("reflowSetting")
+    else expect(observed.reflowSetting).toEqual({ enabled })
+    expect(observed).toMatchObject({ declaredReflow: declared, phases: [{ outcome: "reflow" }, { outcome: "reflow" }] })
+    // Main-only coverage cannot detect lost history or hard-line boundaries. Check the actual full
+    // buffer, including every hard witness, independently of the required-test fold.
+    expect(observed.historyPhases).toMatchObject([
+      { id: "history-grow", outcome: "reflow", status: "supported" },
+      { id: "history-shrink", outcome: "reflow", status: "supported" },
+    ])
+    for (const id of ["history-grow", "history-shrink"]) {
+      const before = observed.reads[`${id}.before`]!
+      const after = observed.reads[`${id}.after`]!
+      expect(before.scrollback.totalLines - before.scrollback.screenLines).toBeGreaterThan(4)
+      expect(after.cells).toHaveLength(after.scrollback.totalLines)
+      const lines = after.cells.map((row: string[]) => row.join("").trimEnd())
+      expect(lines.slice(0, id === "history-grow" ? 3 : 4)).toEqual(
+        id === "history-grow"
+          ? ["ABCDEFGHIJKLMNOPQR", "HARD-a", "HARD-b"]
+          : ["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"],
+      )
+      expect(lines.slice(-48)).toEqual(Array.from({ length: 48 }, (_, i) => `R${String(i).padStart(3, "0")}`))
+    }
+  },
+)
 
 // @failure A genuine non-reflowing engine truncates on shrink and is mislabeled as a broken probe.
 // @level l1
@@ -300,23 +319,23 @@ test.each([false, true])("production reflow controls ignore the capability decla
 test.each([
   ["vt100", resolveVt100],
   ["libvterm", resolveLibvterm],
-] as const)("reflow retains measured truncation on %s without failing the feature", async (name, producer) => {
+] as const)("reflow retains measured engine limits on %s without failing the feature", async (name, producer) => {
   const batch = await collectBatch(producer, name, registryDefinitions(["extensions.reflow"]))
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results).toMatchObject([
     {
       featureId: "extensions.reflow",
-      status: name === "libvterm" ? "test-todo" : "unsupported",
+      status: "unsupported",
       reason: expect.stringContaining("main-grow"),
       tests: expect.arrayContaining([
-        // libvterm keeps its default reflow option off; these are internal observations, not a final grade.
-        expect.objectContaining({ id: "main-grow", status: "unsupported" }),
-        expect.objectContaining({ id: "main-shrink", status: "unsupported" }),
+        // The combined libvterm artifact enables native main reflow while
+        // retained physical history still supplies a measured negative.
+        expect.objectContaining({ id: "main-grow", status: name === "libvterm" ? "supported" : "unsupported" }),
+        expect.objectContaining({ id: "main-shrink", status: name === "libvterm" ? "supported" : "unsupported" }),
         ...["history-grow", "history-shrink"].map((id) =>
           expect.objectContaining({
             id,
-            status: name === "libvterm" ? "test-todo" : "unsupported",
-            ...(name === "libvterm" && { reason: "engine retained no history", assertionRefs: [] }),
+            status: "unsupported",
           }),
         ),
       ]),
@@ -324,18 +343,22 @@ test.each([
   ])
   expect(batch.results[0]!.reason).toContain("main-shrink")
   expect(reflowEvidence(batch)).toMatchObject({
-    phases: [{ outcome: "preserved-wraps" }, { outcome: "truncated" }],
+    phases:
+      name === "libvterm"
+        ? [{ outcome: "reflow" }, { outcome: "reflow" }]
+        : [{ outcome: "preserved-wraps" }, { outcome: "truncated" }],
   })
   expect(
     batch.assertions.filter((assertion) => assertion.expected.startsWith("main-")).map((assertion) => assertion.kind),
-  ).toEqual(["negative", "negative"])
+  ).toEqual(name === "libvterm" ? ["positive", "positive"] : ["negative", "negative"])
   const history = reflowEvidence(batch).historyPhases
   if (name === "libvterm") {
     expect(history).toMatchObject([
-      { status: "test-todo", reason: "engine retained no history" },
-      { status: "test-todo", reason: "engine retained no history" },
+      { outcome: "preserved-wraps", status: "unsupported" },
+      { outcome: "truncated", status: "unsupported" },
     ])
-    expect(mainAndHistoryAssertions(batch)).toHaveLength(2)
+    expect(mainAndHistoryAssertions(batch)).toHaveLength(4)
+    expect(reflowEvidence(batch).reflowSetting).toEqual({ enabled: true })
   } else {
     expect(history).toMatchObject([
       { outcome: "preserved-wraps", status: "unsupported" },
