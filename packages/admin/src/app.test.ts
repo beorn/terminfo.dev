@@ -241,6 +241,13 @@ test("Kitty text collection owns a run-local socket and removes it with its one 
     term: "xterm-kitty",
   })
   await handleApp("kitty", {})
+  const [binary, args] = vi.mocked(spawnSync).mock.calls[0]!
+  expect(captureTerminalAppReceipt).toHaveBeenCalledWith(
+    expect.objectContaining({ provider: "kitty", kittyPid: 777 }),
+    555,
+    "2.15",
+    [binary, ...args!],
+  )
   expect(spawnSync).toHaveBeenCalledWith(
     "/Applications/kitty.app/Contents/MacOS/kitty",
     [
@@ -285,6 +292,8 @@ describe("WezTerm cli-process arm", () => {
   test("launches through the CLI with the run-scoped config marker and owns the GUI process", async () => {
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
     await handleApp("wezterm", {})
+    const [binary, args] = vi.mocked(spawn).mock.calls[0]!
+    expect(captureTerminalAppReceipt).toHaveBeenCalledWith(ownedWindow, 555, "2.15", [binary, ...args!])
     expect(writeFileSync).toHaveBeenCalledWith("/private/run/wezterm-private-run.lua", "return {}\n", {
       flag: "wx",
       mode: 0o600,
@@ -330,6 +339,19 @@ describe("WezTerm cli-process arm", () => {
     })
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
   })
+
+  test("retains a measured unsupported-signature reason without inventing a receipt", async () => {
+    vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    vi.mocked(captureTerminalAppReceipt).mockReturnValueOnce({
+      trace: { argvAbsentReason: "not Developer ID", codesignDetailsRaw: "Identifier=fixture" },
+    })
+    await handleApp("wezterm", {})
+    const saved = vi.mocked(saveDaemonProbeRun).mock.calls[0]![0]
+    expect(saved.origin).toEqual({ kind: "collector" })
+    expect(saved.rawReplies["collector.appLaunchTrace"]).toBe(
+      JSON.stringify({ argvAbsentReason: "not Developer ID", codesignDetailsRaw: "Identifier=fixture" }),
+    )
+  })
 })
 
 describe("Ghostty cli-process arm", () => {
@@ -350,6 +372,8 @@ describe("Ghostty cli-process arm", () => {
       scriptPath: "/private/run/serve-private-run.sh",
     })
     await handleApp("ghostty", {})
+    const [binary, args] = vi.mocked(spawn).mock.calls[0]!
+    expect(captureTerminalAppReceipt).toHaveBeenCalledWith(ownedWindow, 555, "2.15", [binary, ...args!])
     expect(writeFileSync).toHaveBeenCalledWith(
       "/private/run/ghostty-private-run",
       "command = /private/run/serve-private-run.sh\nconfirm-close-surface = false\nquit-after-last-window-closed = true\nwindow-save-state = never\n",
@@ -552,6 +576,7 @@ test.each([
     await handleApp(input, {})
     expect(spawn).toHaveBeenCalledTimes(1)
     const [spawnPath, args, options] = vi.mocked(spawn).mock.calls[0]!
+    expect(captureTerminalAppReceipt).toHaveBeenCalledWith(ownedWindow, 555, "2.15", [spawnPath, ...args!])
     const bundleReads = vi
       .mocked(readFileSync)
       .mock.calls.flatMap(([path], index) =>
