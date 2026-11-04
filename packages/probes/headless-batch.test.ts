@@ -31,7 +31,7 @@ import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
 import { validateObservation, parseRun } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -42,6 +42,7 @@ import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
 import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, replyFailure } from "../probe-defs/src/helpers.ts"
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
+import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
@@ -1144,13 +1145,8 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
 
 // Standalone component CI checks out terminfo.dev alone and resolves the published @termless 0.10.2, whose Kitty and
 // Ghostty native backends predate osc-metadata getProgress (#32271); CI run 41794400168 failed both rows there. Every
-// row runs in both homes: the loaded package's recorded home (vendor/ is the owned Termless, node_modules/ the
-// published one) picks which contract it asserts, so a broken owned reader still fails.
-function ownedTermless(specifier: string): boolean {
-  const loaded = realpathSync(Bun.resolveSync(specifier, fileURLToPath(import.meta.url)))
-  return headlessIdentity.recordedPath(loaded).startsWith("vendor/")
-}
-
+// row runs in both homes: OWNED_LAYOUT picks the owned Termless contract (reader declared and graded) or the published
+// one (no reader, TEST TODO), so a broken owned reader still fails.
 // @failure #32053: engine stores parsed toasts only; OSC 9 and 777;notify;X arrive identical. WezTerm
 // (performer.rs:904-933) and Ghostty (osc.zig:94-98) keep {title, body} toasts, so no raw reader can attribute the
 // code or rebuild the payload, and a reader declared on them would grade a guess. Their OSC 9 and OSC 777 cells
@@ -1168,12 +1164,7 @@ function weztermNativeAvailable(): boolean {
 
 test.for([
   ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
-  [
-    "ghostty-native",
-    isGhosttyNativeAvailable(),
-    ownedTermless("@termless/ghostty-native"),
-    async () => createGhosttyNativeBackend(),
-  ],
+  ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, async () => createGhosttyNativeBackend()],
   ["ghostty wasm", true, false, () => resolveGhosttyWasm()],
 ] as const)(
   "%s parsed-toast engine keeps OSC 9 and OSC 777 TEST TODO with no reader",
@@ -1210,13 +1201,8 @@ test.for([
 // @level l1
 // @consumer extensions.osc9-progress through the actual LibProbeSource
 test.for([
-  ["kitty", isKittyAvailable(), ownedTermless("@termless/kitty"), async () => createKittyBackend()],
-  [
-    "ghostty-native",
-    isGhosttyNativeAvailable(),
-    ownedTermless("@termless/ghostty-native"),
-    async () => createGhosttyNativeBackend(),
-  ],
+  ["kitty", isKittyAvailable(), OWNED_LAYOUT, async () => createKittyBackend()],
+  ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, async () => createGhosttyNativeBackend()],
   ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
   ["ghostty wasm", true, false, () => resolveGhosttyWasm()],
 ] as const)(

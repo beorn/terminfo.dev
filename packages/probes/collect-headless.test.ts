@@ -5,7 +5,7 @@
  * @reach fs-walk <fixture-only: coordinator enumerates its owned temporary worker output>
  * @testonly none
  */
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -19,6 +19,7 @@ import {
 } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { collectHeadlessRuns } from "./collect-headless.ts"
+import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
 const dirs: string[] = []
 afterEach(() => {
@@ -114,7 +115,6 @@ it.each([true, false])(
 )
 // The real worker loads headless-identity.ts, which requires the owned vterm checkout beside this one;
 // standalone component CI tests out terminfo.dev alone, so this runs wherever that layout exists.
-const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.meta.url)))
 // AC1: mocked coordinator tests cannot detect a worker still passing ALL_PROBES to the batch.
 // This existing worker boundary measures one embedded fixture backend, never a Terminal app.
 it.runIf(OWNED_LAYOUT)(
