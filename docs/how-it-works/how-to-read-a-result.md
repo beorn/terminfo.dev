@@ -1,6 +1,6 @@
 ---
 title: How to read a result
-description: What each result label means and cannot show, and what "corrected after review" and Review history are
+description: What each result label means and cannot show, and what Result history is
 prev:
   text: How we measure
   link: /how-it-works/how-we-measure
@@ -31,10 +31,6 @@ An observation's **assertion type** says what kind of evidence the probe read: `
 
 A successful capture does not itself establish the visual effect; only a same-run pixel check decides it. Missing authorization or a tool we have not built yet can leave a required test unstarted; other evidence does not turn that missing measurement into Unsupported or Untestable.
 
-## "Corrected after review"
-
-Screenshots decide a criterion only through a machine-readable pixel check in the same run. There is no current route for a reviewer to change a result to Supported, Unsupported or Untestable; a result without a passing pixel check stays TEST TODO. Older results may still carry this notice from an earlier review; it means the shown grade differs from the recorded one, not that a mistake was found.
-
 ## Untestable, TEST TODO and TEST FAILURE
 
 **Untestable** has no current route: no result reaches it until a per-kind declaration exists. **TEST TODO** means required work remains, including an unattempted probe or a missing observable. **TEST FAILURE** means an attempted test broke or could not produce a valid result; it describes the test, not the terminal.
@@ -46,7 +42,7 @@ Screenshots decide a criterion only through a machine-readable pixel check in th
 - **TEST TODO: the probe was not sent** — the run skipped this probe, for example because it would change the terminal's state; we send such probes only to a disposable test terminal.
 - **TEST FAILURE: the terminal accepted the query, but nothing visible changed** — this is a failure when the required observation did not resolve the claim; a validated negative oracle can establish Unsupported instead.
 - **TEST FAILURE: the attempt did not establish a result** — a reply, measurement or engine state was recorded, but proves nothing either way.
-- **TEST TODO: screenshots await a pixel check** — the screenshots were taken, but no same-run pixel check decided the effect in them; see "Corrected after review" above.
+- **TEST TODO: screenshots await a pixel check** — the screenshots were taken, but no same-run pixel check decided the effect in them.
 
 ## No grade
 
@@ -56,11 +52,11 @@ Screenshots decide a criterion only through a machine-readable pixel check in th
 - **TEST TODO** — no attempt covers this feature in the selected run. This does not mean Unsupported.
 - **TEST TODO: no reviewed run for this terminal yet** — see [Contribute a run](/how-it-works/contribute-a-run).
 
-## Review history
+## Result history
 
 A collapsible section at the bottom of the result details, next to the assertionType:
 
-- **Review history** — the recorded result, who changed it and why, and the **evidence presentation review**: the approval to show this result's own screenshots or raw reply. Without it, the page shows no images and says so.
+- **Result history** — the recorded result and the **evidence presentation approval**: the approval to show this result's own screenshots or raw reply. Without it, the page shows no images and says so.
 - **Screenshots** — the two frames, each with capture time, SHA-256 and a link to the original.
 - **Technical details · raw trace** — the raw bytes.
 - **Current probe guidance** — what the probe tests today; a description, not evidence.

@@ -459,7 +459,11 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
   expect(captured.criterionBranch).toBe("visual-review")
   expect(captured.tests).toEqual([
     { id: "capture", status: "supported", assertionRefs: [0] },
-    { id: "review", status: "test-todo", reason: "Valid control and target capture; required visual review pending" },
+    {
+      id: "review",
+      status: "test-todo",
+      reason: "Valid control and target capture; no same-run pixel check decides it",
+    },
   ])
   expect(captured.assertions).toEqual([
     {

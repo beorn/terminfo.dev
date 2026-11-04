@@ -677,8 +677,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           return { error: message }
         }
       }
-      const review = (reason: string) =>
-        colorReadbackReviewResult(`OSC ${resetCode}: ${reason}; independent review required`, state)
+      const review = (reason: string) => colorReadbackReviewResult(`OSC ${resetCode}: ${reason}`, state)
       const baselineRead = read()
       if ("error" in baselineRead) return review("default-color baseline could not be read")
       const baseline = (state.baseline = baselineRead.colors)
@@ -860,10 +859,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
             )
           }
           return answer(
-            colorReadbackReviewResult(
-              "OSC 104 post-reset indexed readings are missing or contradictory; independent review required",
-              state,
-            ),
+            colorReadbackReviewResult("OSC 104 post-reset indexed readings are missing or contradictory", state),
           )
         }
         if (control.verified && resetRaw === "" && restoredRaw === "") {
@@ -894,7 +890,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           if (control.verified) {
             return answer(
               colorReadbackReviewResult(
-                `OSC ${resetCode}: reset produced neither the baseline nor the verified seed; independent review required`,
+                `OSC ${resetCode}: reset produced neither the baseline nor the verified seed`,
                 state,
               ),
             )
@@ -909,7 +905,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         if (control.setterRaw === "" && control.seededRaw === "" && resetRaw === "" && restoredRaw === "") {
           return answer(
             colorReadbackReviewResult(
-              `OSC ${setCode} initial and seeded queries answered nothing, so OSC ${resetCode} reset readback needs independent review`,
+              `OSC ${setCode} initial and seeded queries answered nothing, so OSC ${resetCode} reset has no readback`,
               state,
             ),
           )

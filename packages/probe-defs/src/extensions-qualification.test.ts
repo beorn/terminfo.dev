@@ -907,6 +907,13 @@ test.each([
     const expectedWrites = readings[0] instanceof Error ? [] : writesExpected
     const reviewed = run(readings)
     expect(reviewed.result.criterionBranch).toBe("color-readback-review")
+    expect(reviewed.result.tests).toEqual([
+      {
+        id: "review",
+        status: "test-todo",
+        reason: `${reviewed.result.notTested!.noObservable}, so this run cannot decide it`,
+      },
+    ])
     expect(reviewed.result.observation).toBeUndefined()
     expect(reviewed.result.assertions).toBeUndefined()
     expect(JSON.parse(reviewed.result.response!)).toMatchObject({ writes: expectedWrites, errors: expectedErrors })
