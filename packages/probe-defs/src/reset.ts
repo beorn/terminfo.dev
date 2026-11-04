@@ -117,7 +117,7 @@ export const resetProbes: ProbeDefinition[] = [
               "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;7mX\x1b[0mY",
               "reset.sgr",
               { setup: "\x1b[1;3;7m", reset: "\x1b[0m" },
-              "The control shows a bold+italic+inverse X; the target adds reset Y, so review can check Y is unstyled",
+              "The control shows a bold+italic+inverse X; the target adds reset Y; the capture alone does not decide the reset effect",
             )
           } finally {
             ctx.write("\x1b[0m")
