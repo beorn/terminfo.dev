@@ -10,6 +10,7 @@ import {
   ALACRITTY_VERSION_PATTERN,
   WINDOWS_MESA_RENDERER_DLLS,
   parseAppLaunchReceipt,
+  transformInvocation,
 } from "../packages/run-parser/src/app-launch.ts"
 
 function required(key: string): string {
@@ -471,6 +472,15 @@ async function context(mode: "start" | "emit") {
 
 async function main(): Promise<void> {
   const [mode, startPath, receiptPath, extra] = process.argv.slice(2)
+  if (mode === "--app-argv") {
+    if (startPath !== undefined)
+      throw new Error("Usage: hosted-runner-receipt.ts --app-argv < NUL-separated invocation")
+    const input = readFileSync(0, "utf8")
+    const argv = input.length === 0 ? [] : input.split("\0")
+    if (argv.at(-1) === "") argv.pop()
+    process.stdout.write(JSON.stringify(transformInvocation(argv)) + "\n")
+    return
+  }
   if ((mode !== "start" && mode !== "emit") || !startPath || (mode === "emit" ? !receiptPath : receiptPath) || extra) {
     throw new Error(
       "Usage: hosted-runner-receipt.ts start <absolute-start.json> | emit <absolute-start.json> <absolute-host-measured.json>",

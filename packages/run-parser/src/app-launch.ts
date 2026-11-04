@@ -82,6 +82,43 @@ export function parseDerivedSourceTree(
   return { kind: "derived-source-tree", url, revision, narSri, sha256 }
 }
 
+/** The one pre-persistence invocation transform; explicit sensitive indexes/values always win. */
+export function transformInvocation(
+  argv: readonly string[],
+  declaredSensitive: readonly (number | string)[] = [],
+): string[] {
+  if (argv.length === 0 || !argv[0]) throw new Error("Invocation argv requires an invoked binary")
+  const redacted = argv.map((value, index) =>
+    declaredSensitive.includes(index) || declaredSensitive.includes(value) ? "[redacted]" : value,
+  )
+  const sensitiveName = /(token|secret|password|passwd|api-?key|credential|auth|bearer|session)/i
+  for (let index = 1; index < argv.length; index++) {
+    const argument = argv[index]!
+    if (argument === "--") break
+    if (argument === "-" || !argument.startsWith("-")) continue
+    const equals = argument.indexOf("=")
+    const name = (equals < 0 ? argument : argument.slice(0, equals)).replace(/^-+/, "")
+    if (!sensitiveName.test(name)) continue
+    if (equals >= 0) {
+      if (redacted[index] !== "[redacted]") redacted[index] = argument.slice(0, equals + 1) + "[redacted]"
+    } else {
+      const next = argv[index + 1]
+      if (next !== undefined && !next.startsWith("-")) redacted[++index] = "[redacted]"
+    }
+  }
+  return redacted
+}
+
+function parseInvocation(value: unknown, path: string): string[] {
+  if (!Array.isArray(value) || value.length === 0 || typeof value[0] !== "string" || value[0].length === 0) {
+    fail(path, "appLaunch.argv must be a non-empty invocation array")
+  }
+  if (!value.every((argument): argument is string => typeof argument === "string")) {
+    fail(path, "appLaunch.argv entries must be strings")
+  }
+  return [...value]
+}
+
 function parseCodeSignature(
   value: unknown,
   path: string,
@@ -110,11 +147,15 @@ export function parseAppLaunchReceipt(
   if (originKind !== "collector" || subjectKind !== "term" || !object(value)) {
     fail(path, "appLaunch requires an app collector run")
   }
+  const argv = value.argv === undefined ? undefined : parseInvocation(value.argv, path)
   if (Object.hasOwn(value, "platform") && value.platform !== "win32") {
     fail(path, "unknown appLaunch.platform")
   }
   if (value.platform === "win32") {
-    const keys = Object.keys(value).sort().join(",")
+    const keys = Object.keys(value)
+      .filter((key) => key !== "argv")
+      .sort()
+      .join(",")
     if (
       keys !== "executablePath,executableSha256,platform,productVersion,sourceArtifact" &&
       keys !== "executablePath,executableSha256,mesaRenderer,platform,productVersion,sourceArtifact"
@@ -201,6 +242,7 @@ export function parseAppLaunchReceipt(
     }
     return {
       platform: "win32",
+      ...(argv !== undefined && { argv }),
       executablePath,
       productVersion,
       executableSha256,
@@ -270,6 +312,7 @@ export function parseAppLaunchReceipt(
     fail(path, "unknown appLaunch.sourceArtifact kind")
   }
   return {
+    ...(argv !== undefined && { argv }),
     bundlePath,
     cfBundleShortVersionString,
     cfBundleVersion,

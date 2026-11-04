@@ -9,7 +9,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { parseAppLaunchReceipt } from "./app-launch.ts"
+import { parseAppLaunchReceipt, transformInvocation } from "./app-launch.ts"
 
 // Retain only the measured receipt verbatim; this parser does not decode a capture run.
 const ZEROS = "0".repeat(64)
@@ -254,7 +254,15 @@ describe("a measured Windows launch uses the same parser", () => {
 // This is parser contract data, not a measured codesign classification or Mac capture.
 // The bundle parser previously silently dropped argv; the Windows arm rejected it as an extra field.
 it("preserves transformed invocation argv without substituting the measured executable", () => {
-  const receipt = { ...appLaunchOf(), argv: ["/invoked/wezterm", "--token=[redacted]", "--", "verbatim value"] }
+  const receipt = {
+    ...appLaunchOf(),
+    argv: [
+      "/invoked/wezterm",
+      "--token=[redacted]",
+      "--",
+      ...Array.from({ length: 128 }, (_, index) => `verbatim value ${index}`),
+    ],
+  }
   expect(parse(receipt)).toEqual(receipt)
 })
 
@@ -317,3 +325,29 @@ describe("Developer ID signed bundle source contract", () => {
     expect(() => parse({ ...appLaunchOf(), sourceArtifact })).toThrow(diagnostic)
   })
 })
+
+// The CLI cannot supply the launch owner's explicit sensitivity declarations; this pins that separate caller contract.
+it("explicit sensitivity wins after option termination and over otherwise public config paths", () => {
+  expect(
+    transformInvocation(
+      [
+        "/app",
+        "--config-file",
+        "/private/public-marker",
+        "--session",
+        "run-marker",
+        "--",
+        "declared secret",
+        "public positional",
+      ],
+      [2, "declared secret"],
+    ),
+  ).toEqual(["/app", "--config-file", "[redacted]", "--session", "[redacted]", "--", "[redacted]", "public positional"])
+})
+
+it.each([[], [""], [123], ["/app", null], "/app", null])(
+  "refuses malformed optional invocation arrays by name: %#",
+  (argv) => {
+    expect(() => parse({ ...appLaunchOf(), argv })).toThrow(/appLaunch.argv/)
+  },
+)

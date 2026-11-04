@@ -1056,6 +1056,14 @@ test("argv handoff transforms before persistence from the empty three-file appar
     expect(JSON.parse(await readFile(handoff, "utf8"))).toEqual(expected)
     expect(child.stdout + child.stderr).not.toContain("private-token-value")
     expect(child.stdout + child.stderr).not.toContain("private=with=equals")
+    const empty = spawnSync("node", [join(dir, "scripts/hosted-runner-receipt.ts"), "--app-argv"], {
+      cwd: dir,
+      encoding: "utf8",
+      input: "",
+    })
+    expect(empty.status).toBe(1)
+    expect(empty.stderr).toContain("Invocation argv requires an invoked binary")
+    expect(empty.stdout).toBe("")
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

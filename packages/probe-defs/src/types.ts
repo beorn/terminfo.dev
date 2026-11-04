@@ -435,12 +435,18 @@ export type AppLaunchReceipt =
       bundlePath: string
       cfBundleShortVersionString: string
       cfBundleVersion: string
+      /** Transformed invoked array, argv[0] first; may differ from the measured executable.
+       * Absent means not recorded. Redaction precedes every persistence; no environment is captured. */
+      argv?: string[]
       executablePath: string
       executableSha256: string
       sourceArtifact: AppSourceArtifact
     }
   | {
       platform: "win32"
+      /** Transformed invoked array, argv[0] first; may differ from the measured executable.
+       * Absent means not recorded. Redaction precedes every persistence; no environment is captured. */
+      argv?: string[]
       executablePath: string
       productVersion: string
       executableSha256: string
