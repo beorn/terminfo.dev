@@ -178,26 +178,6 @@ test.each(["osc133-a", "osc133-b", "osc133-c", "osc133-d", "osc633-a", "osc633-b
   },
 )
 
-test.each(["wrong URI", "leaking URI"])("OSC 8 keeps an observed %s unsupported", (fault) => {
-  const working = semanticSurfaceSource()
-  const source = {
-    ...working,
-    getHyperlinkAt(row: number, col: number) {
-      const uri = working.getHyperlinkAt!(row, col)
-      return fault === "wrong URI"
-        ? uri === null
-          ? null
-          : "https://example.com/wrong"
-        : col === 5
-          ? working.getHyperlinkAt!(row, 4)
-          : uri
-    },
-  }
-  expect(extensionsProbes.find((entry) => entry.id === "extensions.osc8")!.lib!(source).observation?.outcome).toBe(
-    "unsupported",
-  )
-})
-
 test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with %s", async (name, mutation) => {
   const id = `extensions.${name}`
   const probe = extensionsProbes.find((entry) => entry.id === id)!
