@@ -5017,30 +5017,26 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
         const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
         const requested = before.icon === "test-icon" ? "test-icon-2" : "test-icon"
+        const iconControl = before.icon === "terminfo-icon-control" ? "terminfo-icon-control-2" : "terminfo-icon-control"
         const control =
           before.title === "terminfo-title-control" ? "terminfo-title-control-2" : "terminfo-title-control"
         try {
+          ctx.feed(`\x1b]0;${iconControl}\x07`)
+          const controlledIcon = ctx.getIconLabel()
+          if (controlledIcon !== iconControl) {
+            return notTestedResult(NO_SAME_PATH_CONTROL, { before, iconControl, controlledIcon })
+          }
           ctx.feed(`\x1b]2;${control}\x07`)
           const title = ctx.getTitle()
           if (title !== control) {
-            return {
-              pass: false,
-              response: JSON.stringify({ before, control, title }),
-              tests: [
-                {
-                  id: "criterion",
-                  status: "test-failure",
-                  reason: "OSC 2 window-title control was not read back, so OSC 1 title independence cannot be decided",
-                },
-              ],
-            }
+            return notTestedResult(NO_SAME_PATH_CONTROL, { before, iconControl, controlledIcon, control, title })
           }
           ctx.feed(`\x1b]1;${requested}\x07`)
           const after = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
           return parserStateResult(
             after.icon === requested && after.title === control,
             "OSC 1 sets the icon name without changing the independently verified window title",
-            { before, requested, control, after },
+            { before, iconControl, controlledIcon, requested, control, after },
           )
         } finally {
           ctx.feed(`\x1b]1;${before.icon}\x07`)
