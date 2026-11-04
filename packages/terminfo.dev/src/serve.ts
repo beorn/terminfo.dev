@@ -799,11 +799,18 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       if (kind === "process" && !muxSubject) {
         if (!ownedTerminal) throw new Error("Darwin outer collector has no verified owner")
         const ownership = parseJsonStrict("Darwin outer collector ownership", ownedTerminal.summary)
-        if (!ownership || typeof ownership !== "object" || Array.isArray(ownership) || !("preflightIdentity" in ownership)) {
+        if (
+          !ownership ||
+          typeof ownership !== "object" ||
+          Array.isArray(ownership) ||
+          !("preflightIdentity" in ownership)
+        ) {
           throw new Error("Darwin outer collector ownership lacks measured preflight identity")
         }
         const identity = ownership.preflightIdentity
-        if (!identity || typeof identity !== "object" || Array.isArray(identity)) throw new Error("Darwin outer collector preflight identity is not an object")
+        if (!identity || typeof identity !== "object" || Array.isArray(identity)) {
+          throw new Error("Darwin outer collector preflight identity is not an object")
+        }
         draft.rawReplies["collector.preflightIdentity"] = JSON.stringify(identity)
       }
       if (

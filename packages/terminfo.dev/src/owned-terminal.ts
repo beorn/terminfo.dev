@@ -6,7 +6,12 @@ import { dirname, isAbsolute, join } from "node:path"
 import type { DarwinMuxAttachmentProof, MuxAttachmentProof, OuterAppProof, ProbeSubject } from "@terminfo/probe-defs"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
-import { readDisposableReceipt, parseLstart, parseMuxAttachmentProof, HOSTED_IDENTITY_SOURCES } from "./disposable-receipt.ts"
+import {
+  readDisposableReceipt,
+  parseLstart,
+  parseMuxAttachmentProof,
+  HOSTED_IDENTITY_SOURCES,
+} from "./disposable-receipt.ts"
 import type { LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
@@ -38,7 +43,13 @@ import {
   type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
-import { assertOwnedProcess, runScopedMarker, processCommand, argvCarriesMarker, type ProcessMarker } from "./owned-process.ts"
+import {
+  assertOwnedProcess,
+  runScopedMarker,
+  processCommand,
+  argvCarriesMarker,
+  type ProcessMarker,
+} from "./owned-process.ts"
 
 export { HOSTED_WINDOWS_EXECUTABLE, hostedWindowsAppFromExecutablePath, type HostedWindowsApp, type HostedWindowsAppId }
 
@@ -405,24 +416,39 @@ function readProcessAncestry(startPid: number, stopPid?: number): AncestryRow[] 
     seen.add(pid)
     const measured = process.platform === "darwin" && stopPid !== undefined
     const env = { ...process.env, LC_ALL: "C", TZ: "UTC" }
-    const birth = () => parseLstart(execFileSync("/bin/ps", ["-p", String(pid), "-o", "lstart="], {
-      encoding: "utf8", timeout: 1000, maxBuffer: 256, env,
-    }))
+    const birth = () =>
+      parseLstart(
+        execFileSync("/bin/ps", ["-p", String(pid), "-o", "lstart="], {
+          encoding: "utf8",
+          timeout: 1000,
+          maxBuffer: 256,
+          env,
+        }),
+      )
     const before = measured ? birth() : undefined
-    const line = execFileSync("/bin/ps", measured
-      ? ["-p", String(pid), "-o", "pid=,ppid=,uid=,ruid=,tty="]
-      : ["-p", String(pid), "-o", "pid=", "-o", "ppid=", "-o", "comm="], {
-      encoding: "utf8",
-      timeout: 1000,
-      maxBuffer: 256,
-      env,
-    }).trim()
+    const line = execFileSync(
+      "/bin/ps",
+      measured
+        ? ["-p", String(pid), "-o", "pid=,ppid=,uid=,ruid=,tty="]
+        : ["-p", String(pid), "-o", "pid=", "-o", "ppid=", "-o", "comm="],
+      {
+        encoding: "utf8",
+        timeout: 1000,
+        maxBuffer: 256,
+        env,
+      },
+    ).trim()
     const match = (measured ? /^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)$/ : /^(\d+)\s+(\d+)\s+(.+)$/).exec(line)
     const pidText = match?.[1]
     const ppidText = match?.[2]
-    const comm = measured ? execFileSync("/bin/ps", ["-p", String(pid), "-o", "comm="], {
-      encoding: "utf8", timeout: 1000, maxBuffer: 256, env,
-    }).trim() : match?.[3]
+    const comm = measured
+      ? execFileSync("/bin/ps", ["-p", String(pid), "-o", "comm="], {
+          encoding: "utf8",
+          timeout: 1000,
+          maxBuffer: 256,
+          env,
+        }).trim()
+      : match?.[3]
     if (!pidText || !ppidText || comm === undefined || Number(pidText) !== pid) {
       throw new Error(`Hosted Darwin ancestry ps parse failed for pid ${pid}: ${JSON.stringify(line)}`)
     }
@@ -444,9 +470,13 @@ function readProcessAncestry(startPid: number, stopPid?: number): AncestryRow[] 
       else {
         if (!tty || !/^tty[a-zA-Z0-9._-]+$/.test(tty)) throw new Error(`Darwin pid ${pid} has no measured TTY name`)
         const raw = execFileSync("/usr/bin/stat", ["-f", "%r", `/dev/${tty}`], {
-          encoding: "utf8", timeout: 1000, maxBuffer: 256,
+          encoding: "utf8",
+          timeout: 1000,
+          maxBuffer: 256,
         })
-        if (!/^[0-9]+\n?$/.test(raw)) throw new Error(`Darwin pid ${pid} TTY rdev is not decimal: ${JSON.stringify(raw)}`)
+        if (!/^[0-9]+\n?$/.test(raw)) {
+          throw new Error(`Darwin pid ${pid} TTY rdev is not decimal: ${JSON.stringify(raw)}`)
+        }
         row.ttyRdev = Number(raw.trim())
       }
       const command = processCommand(pid)
@@ -466,28 +496,49 @@ type DarwinMuxInput = { subject: ProbeSubject; outerApp: OuterAppProof }
 
 /** Complete the existing proof from the one ancestry reader. Historical launch bytes stay intact;
  * the existing placement owner performs their strict outer-launch join. */
-function readDarwinMuxAttachment(input: DarwinMuxInput, assertion: ProcessOwnerAssertion, captureRunId: string): DarwinMuxAttachmentProof {
-  const {subject, outerApp} = input
+function readDarwinMuxAttachment(
+  input: DarwinMuxInput,
+  assertion: ProcessOwnerAssertion,
+  captureRunId: string,
+): DarwinMuxAttachmentProof {
+  const { subject, outerApp } = input
   const mux = subject.id
   if (subject.kind !== "mux" || (mux !== "screen" && mux !== "tmux") || subject.mux !== mux || !subject.config) {
     throw new Error("Darwin mux target has no measured mux/configuration")
   }
   const rows = readProcessAncestry(process.pid, assertion.ownerPid)
-  const chain = rows.map(row => {
+  const chain = rows.map((row) => {
     if (row.uid === undefined || row.startedAtEpochSeconds === undefined || row.ttyRdev === undefined) {
       throw new Error(`Darwin pid ${row.pid} lacks measured birth, UID or TTY`)
     }
-    return { pid: row.pid, ppid: row.ppid, uid: row.uid, startedAtEpochSeconds: row.startedAtEpochSeconds,
-      executablePath: row.comm, ttyRdev: row.ttyRdev,
-      kernelExecutable: row.kernelExecutable, kernelExecutableReader: row.kernelExecutableReader,
-      kernelExecutableError: row.kernelExecutableError, kernelExecutableAttempts: row.kernelExecutableAttempts }
+    return {
+      pid: row.pid,
+      ppid: row.ppid,
+      uid: row.uid,
+      startedAtEpochSeconds: row.startedAtEpochSeconds,
+      executablePath: row.comm,
+      ttyRdev: row.ttyRdev,
+      kernelExecutable: row.kernelExecutable,
+      kernelExecutableReader: row.kernelExecutableReader,
+      kernelExecutableError: row.kernelExecutableError,
+      kernelExecutableAttempts: row.kernelExecutableAttempts,
+    }
   })
-  const collector = chain[0], shell = chain.at(-3), owner = chain.at(-1)
+  const collector = chain[0],
+    shell = chain.at(-3),
+    owner = chain.at(-1)
   const server = chain[mux === "screen" ? 2 : 1]
-  if (!collector || !shell || !owner || !server?.kernelExecutable) throw new Error("Darwin mux ancestry lacks named roles")
+  if (!collector || !shell || !owner || !server?.kernelExecutable) {
+    throw new Error("Darwin mux ancestry lacks named roles")
+  }
   const binary = server.kernelExecutable
   const run = (args: string[], screenRead = false) => {
-    const result = spawnSync(binary, args, { encoding: "utf8", timeout: 1000, maxBuffer: 4096, env: {...process.env,LC_ALL:"C",TZ:"UTC"} })
+    const result = spawnSync(binary, args, {
+      encoding: "utf8",
+      timeout: 1000,
+      maxBuffer: 4096,
+      env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+    })
     if (result.error || result.signal || (result.status !== 0 && !(screenRead && result.status === 1))) {
       throw new Error(`Darwin mux ${binary} ${args.join(" ")} failed: ${JSON.stringify(result)}`)
     }
@@ -495,7 +546,10 @@ function readDarwinMuxAttachment(input: DarwinMuxInput, assertion: ProcessOwnerA
   }
   let client: DarwinMuxAttachmentProof["chain"][number] | undefined = mux === "screen" ? chain[3] : undefined
   const argv = rows[mux === "screen" ? 3 : 1]?.command?.split(/\s+/) ?? []
-  if (/\s/.test(subject.config) || !argvCarriesMarker(argv, {flag:mux === "screen" ? "-c" : "-f",value:subject.config})) {
+  if (
+    /\s/.test(subject.config) ||
+    !argvCarriesMarker(argv, { flag: mux === "screen" ? "-c" : "-f", value: subject.config })
+  ) {
     throw new Error("Darwin mux live argv differs from its explicit configuration")
   }
   const named = argv.indexOf("-S")
@@ -505,32 +559,72 @@ function readDarwinMuxAttachment(input: DarwinMuxInput, assertion: ProcessOwnerA
   if (mux === "screen") {
     session = selected
     const listing = run(["-ls", session], true).stdout.replaceAll("\r", "")
-    const attached = listing.split("\n").filter(line => line.trim() === `${server.pid}.${session}\t(Attached)`)
+    const attached = listing.split("\n").filter((line) => line.trim() === `${server.pid}.${session}\t(Attached)`)
     const directory = /^1 Socket in (\/[^\n]+)\.$/m.exec(listing)?.[1]
-    if (attached.length !== 1 || !directory || !client) throw new Error("Darwin Screen listing lacks its measured attached server/session")
+    if (attached.length !== 1 || !directory || !client) {
+      throw new Error("Darwin Screen listing lacks its measured attached server/session")
+    }
     socketPath = join(directory, `${server.pid}.${session}`)
   } else {
     socketPath = selected
     if (!isAbsolute(socketPath)) throw new Error("Darwin tmux socket is not an absolute measured path")
-    const listed = run(["-S",socketPath,"list-clients","-F","#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}"]).stdout.trim().split("\n")
+    const listed = run([
+      "-S",
+      socketPath,
+      "list-clients",
+      "-F",
+      "#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}",
+    ])
+      .stdout.trim()
+      .split("\n")
     const fields = listed[0]?.split("\t")
-    if (listed.length !== 1 || !fields || fields.length !== 4) throw new Error("Darwin tmux has no unique measured attached client")
+    if (listed.length !== 1 || !fields || fields.length !== 4) {
+      throw new Error("Darwin tmux has no unique measured attached client")
+    }
     const [clientPid, clientTty, sessionId, sessionName] = fields
-    if (!clientPid || !clientTty || !sessionId || !sessionName || !/^[0-9]+$/.test(clientPid)) throw new Error("Darwin tmux attached-client fields are missing or malformed")
+    if (!clientPid || !clientTty || !sessionId || !sessionName || !/^[0-9]+$/.test(clientPid)) {
+      throw new Error("Darwin tmux attached-client fields are missing or malformed")
+    }
     const clientRows = readProcessAncestry(Number(clientPid), assertion.ownerPid)
     const row = clientRows[0]
-    if (!row || row.uid === undefined || row.startedAtEpochSeconds === undefined || row.ttyRdev === undefined || clientRows[1]?.pid !== shell.pid || row.kernelExecutable !== binary) {
+    if (
+      !row ||
+      row.uid === undefined ||
+      row.startedAtEpochSeconds === undefined ||
+      row.ttyRdev === undefined ||
+      clientRows[1]?.pid !== shell.pid ||
+      row.kernelExecutable !== binary
+    ) {
       throw new Error("Darwin tmux client is not the measured outer shell child")
     }
     if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(clientTty) || statSync(clientTty).rdev !== row.ttyRdev) {
       throw new Error("Darwin tmux listed client TTY differs from the measured client")
     }
-    client = {...row, startedAtEpochSeconds:row.startedAtEpochSeconds, ttyRdev:row.ttyRdev, executablePath:row.comm, uid:row.uid}
+    client = {
+      ...row,
+      startedAtEpochSeconds: row.startedAtEpochSeconds,
+      ttyRdev: row.ttyRdev,
+      executablePath: row.comm,
+      uid: row.uid,
+    }
     session = sessionName
-    const serverPid = run(["-S",socketPath,"display-message","-p","#{pid}"]).stdout.trim()
-    const panes = run(["-S",socketPath,"list-panes","-a","-F","#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}"]).stdout.trim().split("\n")
-    const pane = panes.map(line=>line.split("\t")).filter(row=>row[0]===sessionId&&row[2]===String(collector.pid)&&row[4]===socketPath)
-    if (serverPid !== String(server.pid) || pane.length !== 1) throw new Error("Darwin tmux socket/session does not join the measured collector/server")
+    const serverPid = run(["-S", socketPath, "display-message", "-p", "#{pid}"]).stdout.trim()
+    const panes = run([
+      "-S",
+      socketPath,
+      "list-panes",
+      "-a",
+      "-F",
+      "#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}",
+    ])
+      .stdout.trim()
+      .split("\n")
+    const pane = panes
+      .map((line) => line.split("\t"))
+      .filter((row) => row[0] === sessionId && row[2] === String(collector.pid) && row[4] === socketPath)
+    if (serverPid !== String(server.pid) || pane.length !== 1) {
+      throw new Error("Darwin tmux socket/session does not join the measured collector/server")
+    }
     const paneTty = pane[0]?.[3]
     if (!paneTty || !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(paneTty) || statSync(paneTty).rdev !== collector.ttyRdev) {
       throw new Error("Darwin tmux listed pane TTY differs from the measured collector")
@@ -542,25 +636,48 @@ function readDarwinMuxAttachment(input: DarwinMuxInput, assertion: ProcessOwnerA
   const launch = outerApp.rawReplies["collector.outerLaunch"]
   if (!rawPreflight || !launch) throw new Error("Darwin mux lacks retained preflight identity or outer launch bytes")
   const value = parseJsonStrict("Darwin mux outer preflight", rawPreflight)
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Darwin mux preflight identity is not an object")
-  const preflight = value as Record<string,unknown>
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Darwin mux preflight identity is not an object")
+  }
+  const preflight = value as Record<string, unknown>
   if (preflight.launchRunId !== assertion.launchRunId) throw new Error("Darwin mux preflight names another launch run")
   const bootReader = HOSTED_IDENTITY_SOURCES.macOS.sources.bootIdSha256
-  const bootId = execFileSync(`/usr/sbin/${bootReader.command}`, [...bootReader.args], {encoding:"utf8",timeout:1000,maxBuffer:256}).trim()
+  const bootId = execFileSync(`/usr/sbin/${bootReader.command}`, [...bootReader.args], {
+    encoding: "utf8",
+    timeout: 1000,
+    maxBuffer: 256,
+  }).trim()
   const version = run([mux === "screen" ? "-v" : "-V"], mux === "screen")
   const versionText = version.stdout + version.stderr
   const tokens = mux === "tmux" ? measuredVersionTokens(versionText) : []
   if (mux === "tmux" && tokens.length !== 1) throw new Error("Darwin tmux version has no unique measured version")
   const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex")
-  const proof = parseMuxAttachmentProof({ platform:"darwin", mux, bootId,
-    receiptSha256:digest(launch),launchRunId:assertion.launchRunId,captureRunId,
-    preflightCollector:{pid:preflight.pid,startedAtEpochSeconds:preflight.startedAtEpochSeconds},
-    outerShell:{pid:shell.pid,startedAtEpochSeconds:shell.startedAtEpochSeconds,ttyRdev:shell.ttyRdev},
-    outerTerminal:{pid:assertion.ownerPid,startedAtEpochSeconds:owner.startedAtEpochSeconds},
-    collector:{pid:collector.pid,startedAtEpochSeconds:collector.startedAtEpochSeconds,ttyRdev:collector.ttyRdev},
-    attachedClient:{pid:client.pid,startedAtEpochSeconds:client.startedAtEpochSeconds,ttyRdev:client.ttyRdev},
-    chain, executable:{path:binary,sha256:digest(readFileSync(binary)),version:mux === "screen" ? versionText : tokens[0]},
-    config:{path:subject.config,sha256:digest(readFileSync(subject.config))},socketPath,session })
+  const proof = parseMuxAttachmentProof({
+    platform: "darwin",
+    mux,
+    bootId,
+    receiptSha256: digest(launch),
+    launchRunId: assertion.launchRunId,
+    captureRunId,
+    preflightCollector: { pid: preflight.pid, startedAtEpochSeconds: preflight.startedAtEpochSeconds },
+    outerShell: { pid: shell.pid, startedAtEpochSeconds: shell.startedAtEpochSeconds, ttyRdev: shell.ttyRdev },
+    outerTerminal: { pid: assertion.ownerPid, startedAtEpochSeconds: owner.startedAtEpochSeconds },
+    collector: {
+      pid: collector.pid,
+      startedAtEpochSeconds: collector.startedAtEpochSeconds,
+      ttyRdev: collector.ttyRdev,
+    },
+    attachedClient: { pid: client.pid, startedAtEpochSeconds: client.startedAtEpochSeconds, ttyRdev: client.ttyRdev },
+    chain,
+    executable: {
+      path: binary,
+      sha256: digest(readFileSync(binary)),
+      version: mux === "screen" ? versionText : tokens[0],
+    },
+    config: { path: subject.config, sha256: digest(readFileSync(subject.config)) },
+    socketPath,
+    session,
+  })
   if (proof.platform !== "darwin") throw new Error("Darwin mux producer returned another platform")
   return proof
 }
@@ -887,7 +1004,7 @@ export async function createOwnedTerminal(options: {
   let processOwnerPid: number | undefined
   let processOwnerBasis: string | undefined
   let darwinAttachment: DarwinMuxAttachmentProof | undefined
-  let preflightIdentity: {pid:number;startedAtEpochSeconds:number;launchRunId:string} | undefined
+  let preflightIdentity: { pid: number; startedAtEpochSeconds: number; launchRunId: string } | undefined
   let hostedReceiptSha256: string | undefined
   let hostedPid1Comm: string | undefined
   /** The console host whose buffer the Windows cell read sees, or the reason none could be
@@ -931,8 +1048,14 @@ export async function createOwnedTerminal(options: {
     binding = darwinAttachment ? darwinHostedOutput(out) : darwinOutput(out, assertion.tty)
     if (darwinPreflight) {
       const collector = readProcessAncestry(process.pid, process.pid)[0]
-      if (!collector || collector.startedAtEpochSeconds === undefined) throw new Error("Darwin outer collector birth could not be measured")
-      preflightIdentity = {pid:collector.pid,startedAtEpochSeconds:collector.startedAtEpochSeconds,launchRunId:expectedLaunchRunId}
+      if (!collector || collector.startedAtEpochSeconds === undefined) {
+        throw new Error("Darwin outer collector birth could not be measured")
+      }
+      preflightIdentity = {
+        pid: collector.pid,
+        startedAtEpochSeconds: collector.startedAtEpochSeconds,
+        launchRunId: expectedLaunchRunId,
+      }
     }
   } else if (darwinHosted) {
     if (process.platform !== "darwin") throw new Error("Owned Darwin hosted terminal requires Darwin")

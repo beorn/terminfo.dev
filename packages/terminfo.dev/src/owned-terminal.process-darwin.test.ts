@@ -27,13 +27,22 @@ const directories: string[] = []
 // The tmux fixture explicitly marks synthetic kernel answers: r13b predates that reader. Neither
 // source check qualifies a native Mac capture or proves the historical binary bytes.
 test.each([
-  ["screen", "valid"], ["screen", "changed-birth"], ["screen", "missing-tty"],
-  ["tmux", "valid"], ["tmux", "changed-birth"], ["tmux", "missing-tty"],
-  ["tmux", "wrong-client-tty"], ["tmux", "wrong-pane-tty"],
+  ["screen", "valid"],
+  ["screen", "changed-birth"],
+  ["screen", "missing-tty"],
+  ["tmux", "valid"],
+  ["tmux", "changed-birth"],
+  ["tmux", "missing-tty"],
+  ["tmux", "wrong-client-tty"],
+  ["tmux", "wrong-pane-tty"],
   ["screen", "preflight"],
 ])("%s owner produces measured mux attachment: %s", (mux, fault) => {
   const specimen = JSON.parse(readFileSync(join(import.meta.dirname, `fixtures/darwin-${mux}-process.json`), "utf8"))
-  const result = spawnSync(process.execPath, ["-e", String.raw`
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
     import {mock} from "bun:test"
     import assert from "node:assert/strict"
     import {EventEmitter} from "node:events"
@@ -136,10 +145,13 @@ test.each([
       assert.ok(reads.filter(r=>r.args.includes("lstart=")).every(r=>r.env?.LC_ALL==="C"&&r.env?.TZ==="UTC"))
       await grant.dispose();console.log("PROOF")
     }catch(e){console.log("ERROR "+e.message)}
-  `], {cwd:packageRoot,encoding:"utf8",timeout:20000})
-  expect(result.status,result.stderr).toBe(0)
-  if(fault==="valid"||fault==="preflight")expect(result.stdout.trim(),result.stderr).toBe("PROOF")
-  else expect(result.stdout).toMatch(fault==="changed-birth"?/birth|changed|identity/i:/TTY/)
+  `,
+    ],
+    { cwd: packageRoot, encoding: "utf8", timeout: 20000 },
+  )
+  expect(result.status, result.stderr).toBe(0)
+  if (fault === "valid" || fault === "preflight") expect(result.stdout.trim(), result.stderr).toBe("PROOF")
+  else expect(result.stdout).toMatch(fault === "changed-birth" ? /birth|changed|identity/i : /TTY/)
 })
 
 afterEach(() => {
