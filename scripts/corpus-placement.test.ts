@@ -15,7 +15,7 @@ import { afterEach, expect, test, vi } from "vitest"
 import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { parseSuiteManifest, parseRun, parseJsonStrict } from "@terminfo/run-parser"
-import { serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
+import { parseOuterLaunchRecord, serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
 import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
 import { writeCollectedRun } from "../packages/admin/src/collected-run.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -573,7 +573,16 @@ test.each(["missing-outer", "wrong-outer", "missing-attachment", "invalid-attach
 
 // Accepted: a mux attachment must join the retained outer launch to this run and executable.
 // Missing-proof tests do not distinguish a valid join from a writer that accepts any attachment.
-test.each(["valid", "wrong-capture", "wrong-owner"] as const)("Darwin mux attachment join: %s", (fault) => {
+// The parser's admitted Screen binary line includes a build date; placement joins its proved
+// version to the normalized subject. The tmux journey alone cannot expose that representation gap.
+test.each([
+  ["tmux", "valid"],
+  ["tmux", "wrong-capture"],
+  ["tmux", "wrong-owner"],
+  ["screen", "valid"],
+  ["screen", "wrong-version"],
+  ["screen", "missing-outer-launch"],
+] as const)("Darwin %s attachment join: %s", (mux, fault) => {
   const f = fixture()
   const launchRunId = "12".repeat(16)
   const executablePath = "/Applications/kitty.app/Contents/MacOS/kitty"
@@ -605,7 +614,7 @@ test.each(["valid", "wrong-capture", "wrong-owner"] as const)("Darwin mux attach
   ) => ({ pid, ppid, uid, startedAtEpochSeconds, executablePath: path, ttyRdev })
   const attachment = {
     platform: "darwin",
-    mux: "tmux",
+    mux,
     bootId,
     receiptSha256: digest(launch),
     launchRunId,
@@ -627,14 +636,42 @@ test.each(["valid", "wrong-capture", "wrong-owner"] as const)("Darwin mux attach
     socketPath: "/tmp/run/mux.sock",
     session: "owned",
   }
+  if (mux === "screen") {
+    const kernelHop = (pid: number, ppid: number, uid: number, path: string, tty: number | null, kernel = path) => ({
+      ...hop(pid, ppid, uid, 1792678808, path, tty),
+      kernelExecutable: kernel,
+      kernelExecutableReader: "proc_pidpath" as const,
+      kernelExecutableError: null,
+      kernelExecutableAttempts: [{ reader: "proc_pidpath", result: kernel.length, error: null }],
+    })
+    Object.assign(attachment, {
+      outerShell: { pid: 55772, startedAtEpochSeconds: 1792678808, ttyRdev: 268435456 },
+      outerTerminal: { pid: 55770, startedAtEpochSeconds: 1792678808 },
+      attachedClient: { pid: 55802, startedAtEpochSeconds: 1792678808, ttyRdev: 268435456 },
+      chain: [
+        kernelHop(55803, 55804, 501, "/Users/codi/.bun/bin/bun", 268435459),
+        kernelHop(55804, 55800, 0, "login", 268435459, "/usr/bin/login"),
+        kernelHop(55800, 55802, 501, "/usr/bin/SCREEN", null, "/usr/bin/screen"),
+        kernelHop(55802, 55772, 501, "/usr/bin/screen", 268435456),
+        kernelHop(55772, 55771, 501, "/bin/bash", 268435456),
+        kernelHop(55771, 55770, 0, "/usr/bin/login", 268435456),
+        kernelHop(55770, 55757, 501, executablePath, null),
+      ],
+      executable: {
+        path: "/usr/bin/screen",
+        sha256: digest("screen"),
+        version: "Screen version 4.00.03 (FAU) 23-Oct-06",
+      },
+    })
+  }
   const subject = {
     kind: "mux" as const,
-    id: "tmux",
-    version: "3.6",
+    id: mux,
+    version: mux === "screen" ? (fault === "wrong-version" ? "4.00.04" : "4.00.03") : "3.6",
     os: "macos",
     osVersion: null,
     outerTerminal: "kitty",
-    mux: "tmux",
+    mux,
     config: attachment.config.path,
     permissions: null,
   }
@@ -675,12 +712,29 @@ test.each(["valid", "wrong-capture", "wrong-owner"] as const)("Darwin mux attach
       },
     },
   })
+  if (mux === "screen") {
+    const screenDraft = draft as CapturedRunDraft
+    screenDraft.rawReplies["device.primary-da"] = "\u001b[?1;2c"
+    screenDraft.rawReplies["collector.xtversion"] = "\u001b[?1;2c"
+    screenDraft.rawReplies["collector.da2"] =
+      `\u001b[>83;${fault === "wrong-version" ? "40004" : "40003"};0c\u001b[?1;2c`
+    const screenLaunch = serializeOuterLaunchRecord({
+      ...parseOuterLaunchRecord(launch),
+      outerTerminal: attachment.outerTerminal,
+    })
+    attachment.receiptSha256 = digest(screenLaunch)
+    screenDraft.rawReplies["collector.terminalOwnership"] = JSON.stringify({ muxAttachment: attachment })
+    if (fault === "missing-outer-launch") delete screenDraft.outerApp!.rawReplies["collector.outerLaunch"]
+    else screenDraft.outerApp!.rawReplies["collector.outerLaunch"] = screenLaunch
+  }
   writeFileSync(f.source, JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft)))
   if (fault === "valid") {
     expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
   } else {
     expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(
-      /mux-attachment-invalid|Darwin mux receipt refused/,
+      fault === "missing-outer-launch"
+        ? /has no collector\.outerLaunch reply/
+        : /mux-attachment-invalid|Darwin mux receipt refused/,
     )
     expect(existsSync(join(f.content, "suites"))).toBe(false)
   }
