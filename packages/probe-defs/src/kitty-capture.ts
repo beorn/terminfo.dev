@@ -277,7 +277,7 @@ export interface KittyAnimationEvidence {
   readonly playbackElapsedMs: number
 }
 
-export interface KittyVerdict {
+export interface KittyCaptureDecision {
   readonly outcome: "supported" | "unsupported" | "inconclusive"
   readonly note: string
   /** The control or measurement that decided it, in the row's own words. */
@@ -293,7 +293,7 @@ function pairNames(pair: KittyDigestPair): string {
  * that agree are never a negative until the pipeline and the surface are both shown alive and the
  * pair is retried at twice the gap.
  */
-export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyVerdict {
+export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCaptureDecision {
   const missing = (
     [
       ["playback", evidence.playback],
@@ -397,7 +397,7 @@ export interface KittyPlaceholderEvidence {
  * must equal the ordinary `a=p` placement of the same opaque image over the same cells. Quiet mode
  * means no acknowledgement exists to inherit, and a cells adapter, where present, can only veto.
  */
-export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): KittyVerdict {
+export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): KittyCaptureDecision {
   const [withFirst, withSecond] = evidence.withImage
   const [guardWith, guardWithout] = evidence.guard
   if (withFirst === undefined || withSecond === undefined) {
