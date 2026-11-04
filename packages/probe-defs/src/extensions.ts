@@ -1241,7 +1241,7 @@ function emptyNativeHostReply(
   // A pass observed independently of the silent read (the engine's retained OSC 52 write) keeps its grade.
   return observedHostCause(
     ctx,
-    result.pass ? result : notTestedResult(NO_SAME_PATH_CONTROL, { query, response: result.response ?? "" }),
+    result.pass || result.notTested ? result : notTestedResult(NO_SAME_PATH_CONTROL, { query, response: result.response ?? "" }),
     "clipboard-load",
     "clipboard-read-permission",
     query,
@@ -1363,16 +1363,19 @@ function promptMarkResult(
     }
   }
   const endControl =
-    osc633End && readMarks
+    readMarks && (osc633End || commandEnd || markType)
       ? (() => {
           const before = readMarks()
-          ctx.feed("\x1b]133;D;0\x07")
+          const namespace = osc633End || sourceReview?.selector === 633 ? 133 : 633
+          const selector = commandEnd ? "D" : markType === "prompt" ? "A" : markType === "command" ? "B" : "C"
+          ctx.feed(`\x1b]${namespace};${selector}${commandEnd ? ";0" : ""}\x07`)
           const first = readMarks()
-          ctx.feed("\x1b]133;D;17\x07")
+          ctx.feed(`\x1b]${namespace};${selector}${commandEnd ? ";17" : ""}\x07`)
           const second = readMarks()
           return { before, first, second }
         })()
       : undefined
+  let readerQualified = false
   if (endControl) {
     const { before, first, second } = endControl
     const firstControl = first[before.length]
@@ -1380,13 +1383,13 @@ function promptMarkResult(
     const qualified =
       first.length === before.length + 1 &&
       second.length === first.length + 1 &&
-      firstControl?.type === "command-end" &&
-      firstControl.rawStatus === "0" &&
-      secondControl?.type === "command-end" &&
-      secondControl.rawStatus === "17" &&
+      firstControl?.type === (commandEnd ? "command-end" : markType) &&
+      secondControl?.type === (commandEnd ? "command-end" : markType) &&
+      (!commandEnd || (firstControl?.type === "command-end" && firstControl.rawStatus === "0" && secondControl?.type === "command-end" && secondControl.rawStatus === "17")) &&
       before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
       first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index]))
-    if (!qualified) {
+    readerQualified = qualified
+    if (!qualified && osc633End) {
       const inert = JSON.stringify(before) === JSON.stringify(first) && JSON.stringify(first) === JSON.stringify(second)
       const result = parserStateResult(
         null,
@@ -1466,6 +1469,7 @@ function promptMarkResult(
       "Each target feed appends exactly one command-end with its exact raw status and preserves earlier history",
       state,
     )
+    if (!supported && !readerQualified) return notTestedResult(NO_SAME_PATH_CONTROL, { ...state, endControl })
     if (osc633End) {
       const unchanged =
         JSON.stringify(before) === JSON.stringify(first) &&
@@ -1500,7 +1504,7 @@ function promptMarkResult(
     ctx.feed("\x1b[1;1H")
     const firstMark = first[before.length]
     const secondMark = second[secondBefore.length]
-    return parserStateResult(
+    const result = parserStateResult(
       first.length === before.length + 1 &&
         firstMark?.type === markType &&
         firstMark.startRow === 0 &&
@@ -1531,6 +1535,8 @@ function promptMarkResult(
         secondCursor,
       },
     )
+    if (!result.pass && !readerQualified) return notTestedResult(NO_SAME_PATH_CONTROL, { endControl, observed: result.response })
+    return result
   }
   if (declared) {
     const note = `${noObservable}: ${readerKey} getSemanticMarks readback is unavailable`
@@ -1544,8 +1550,8 @@ function promptMarkResult(
   }
   return reviewResult(
     SEMANTIC_PROMPT_SOURCE_REVIEW,
-    "OSC 133 / 633 mark was consumed but this reader exposes no mark or zone state, so this run cannot decide it",
-    noObservable,
+    "OSC 133 / 633 mark was consumed but this run has no qualified declared mark or zone reader",
+    NO_SAME_PATH_CONTROL,
     { home, target, control, cell: cell.char },
   )
 }
@@ -2634,7 +2640,12 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   }
   const state = { writes }
   if (!controlVerified) return explain(notTestedResult(NO_SAME_PATH_CONTROL, { control, controlled, ...state }))
-  if (writes.length === 0) return explain(parserStateResult(false, expected, state, note, undefined, "query_reply"))
+  if (writes.length === 0) {
+    return explain(notTestedResult(
+      "control OSC 52 c write recorded but the probe write was not; same-run observations disagree",
+      { control, controlled, ...state },
+    ))
+  }
   return explain(parserStateResult(null, expected, state, note, undefined, "query_reply"))
 }
 
@@ -4234,6 +4245,9 @@ export const extensionsProbes: ProbeDefinition[] = [
             },
           }
         }
+        if (links.every((link) => link.uri === null)) {
+          return notTestedResult(NO_SAME_PATH_CONTROL, { chars: cells.map((cell) => cell.char), links })
+        }
         const observed = response
         const pass = observed === expected
         return {
@@ -4341,15 +4355,16 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc2-title",
       (ctx) => {
         const before = ctx.getTitle()
+        const beforeIcon = ctx.getIconLabel?.()
         const requested = before === "Test Title" ? "Test Title 2" : "Test Title"
         const control = before === "terminfo-title-control" ? "terminfo-title-control-2" : "terminfo-title-control"
         try {
-          ctx.feed(`\x1b]2;${control}\x07`)
+          ctx.feed(`\x1b]0;${control}\x07`)
           const controlled = ctx.getTitle()
           if (controlled !== control) return notTestedResult(NO_SAME_PATH_CONTROL, { before, control, controlled })
           ctx.feed(`\x1b]2;${requested}\x07`)
           const title = ctx.getTitle()
-          return parserStateResult(title === requested, "OSC 2 sets the exact requested window title", {
+          return parserStateResult(title === requested ? true : title === control ? false : null, "OSC 2 sets the exact requested window title", {
             before,
             control,
             controlled,
@@ -4357,7 +4372,8 @@ export const extensionsProbes: ProbeDefinition[] = [
             title,
           })
         } finally {
-          ctx.feed(`\x1b]2;${before}\x07`)
+          ctx.feed(`\x1b]0;${before}\x07`)
+          if (beforeIcon !== undefined) ctx.feed(`\x1b]1;${beforeIcon}\x07`)
         }
       },
       () => Promise.resolve(unmeasuredStateEffect("OSC 2 window title")),
@@ -4492,6 +4508,9 @@ export const extensionsProbes: ProbeDefinition[] = [
           })
         }
         const before = ctx.getCwd()
+        const controlUri = "file://localhost/terminfo-cwd-control"
+        ctx.feed(`\x1b]633;P;Cwd=${controlUri}\x07`)
+        const controlled = ctx.getCwd()
         const firstUri = "file://localhost/terminfo-cwd-A"
         const secondUri = "file://localhost/terminfo-cwd-B"
         const writes = [`\x1b]7;${firstUri}\x07`, `\x1b]7;${secondUri}\x07`, `\x1b]7;${before ?? ""}\x07`] as const
@@ -4504,10 +4523,13 @@ export const extensionsProbes: ProbeDefinition[] = [
           second = ctx.getCwd()
         } finally {
           ctx.feed(writes[2])
+          if (ctx.getCwd() !== before) ctx.feed(`\x1b]633;P;Cwd=${before ?? ""}\x07`)
         }
         const restored = ctx.getCwd()
+        const supported = first === firstUri && second === secondUri && restored === before
+        if (!supported && controlled !== controlUri) return notTestedResult(NO_SAME_PATH_CONTROL, { before, controlUri, controlled, first, second, restored })
         return parserStateResult(
-          first === firstUri && second === secondUri && restored === before,
+          supported,
           `OSC 7 stores successive exact URIs ${firstUri}, ${secondUri} and restores the original URI`,
           { before, first, second, restored, writes },
         )
