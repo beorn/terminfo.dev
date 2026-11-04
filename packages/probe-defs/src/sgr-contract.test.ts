@@ -364,9 +364,16 @@ test("SGR_SEMANTIC_SURFACE_CONTROLS covers all 32 SGR contract rows with distinc
   expect(new Set(SGR_SEMANTIC_SURFACE_CONTROLS.map(([, mutation]) => mutation)).size).toBe(32)
 })
 
-test.each(SGR_SEMANTIC_SURFACE_CONTROLS)(
-  "%s reads supported on createSemanticSurface and %s when %s is active",
-  async (id, mutation, negativeOutcome, noObservable) => {
+test.each(
+  SGR_SEMANTIC_SURFACE_CONTROLS.map(([id, mutation, negativeOutcome, noObservable]) => ({
+    id,
+    mutation,
+    negativeOutcome,
+    noObservable,
+  })),
+)(
+  "$id reads supported on createSemanticSurface and $mutation when $negativeOutcome is active",
+  async ({ id, mutation, negativeOutcome, noObservable }) => {
     const row = SGR_CONTRACT.find((entry) => entry.id === id)
     const probe = sgrProbes.find((entry) => entry.id === id)
     expect(row, `the SGR contract names ${id}`).toBeDefined()

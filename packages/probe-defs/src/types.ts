@@ -842,7 +842,8 @@ export interface LibProbeSource {
     /** null = this producer does not report the attribute; never a terminal-support claim. */
     strikethrough: boolean | null
     inverse: boolean
-    hidden: boolean
+    /** null = this producer does not report the attribute; never a terminal-support claim. */
+    hidden: boolean | null
     /** null = this producer does not report the attribute; never a terminal-support claim. */
     blink: boolean | null
     /** null = this producer does not report the attribute; never a terminal-support claim. */
