@@ -45,7 +45,7 @@ We publish a contributed run only with that line. Add to the issue:
 
 1. **Identity.** The terminal's own reply inside the run, and its version, must match the terminal you name.
 2. **Scope.** A partial run is kept as history, not shown as current support. Missing probes are not failures.
-3. **Evidence.** Each result is graded by its evidence, with the same rules as a lab run. A screenshot claim needs the original image.
-4. **Grading.** Each result comes from the same-run checks recorded in your raw file; no reviewer changes it. Your raw file stays unchanged; the result page links to it.
+3. **Evidence.** Each probe result is determined from its evidence, with the same rules as a lab run. A screenshot claim needs the original image.
+4. **Probe result.** Each probe result comes from the same-run checks recorded in your raw file; no reviewer changes it. Your raw file stays unchanged; the result page links to it.
 
 The run then becomes that setup's current result, with its run ID and measurement time; older runs stay in the API as history. You are credited on the terminal's page. `[confirm: the form of the credit — name, handle or issue link — and the review time we promise, including how a declined run is answered]`

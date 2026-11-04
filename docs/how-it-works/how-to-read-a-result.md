@@ -36,7 +36,7 @@ A successful capture does not itself establish the visual effect; only a same-ru
 **Untestable** has no current route: no result reaches it until a per-kind declaration exists. **PROBE TODO** means required work remains, including an unattempted probe or a missing observable. **PROBE INVALID** means an attempted test broke or could not produce a valid result; it describes the test, not the terminal.
 
 - **PROBE INVALID: no usable reply** or **PROBE INVALID: no reply in time** — the query was attempted, but no result arrived before the deadline and no documented negative response established Unsupported.
-- **PROBE INVALID: the reply was not in the expected form** — we do not grade a reply we cannot parse.
+- **PROBE INVALID: the reply was not in the expected form** — we cannot derive a Supported or Unsupported probe result from a reply we cannot parse.
 - **PROBE TODO: permission prevented the query from starting** — no measurement was attempted.
 - **PROBE INVALID: an attempted permission test did not produce a valid result** — a denial is a failure only when the attempted test did not establish a documented negative result.
 - **PROBE TODO: the probe was not sent** — the run skipped this probe, for example because it would change the terminal's state; we send such probes only to a disposable test terminal.
@@ -44,7 +44,7 @@ A successful capture does not itself establish the visual effect; only a same-ru
 - **PROBE INVALID: the attempt did not establish a result** — a reply, measurement or engine state was recorded, but proves nothing either way.
 - **PROBE TODO: screenshots await a pixel check** — the screenshots were taken, but no same-run pixel check decided the effect in them.
 
-## No grade
+## Other feature results
 
 - **PROBE TODO: no reviewed evidence** — an old result without evidence does not establish a current status.
 - **PROBE INVALID: the test did not complete** — this describes the attempt, not the terminal.

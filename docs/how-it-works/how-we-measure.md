@@ -1,6 +1,6 @@
 ---
 title: How we measure
-description: How a probe run works, for real terminal apps and for terminal engines, and where the lab stops
+description: How a run works, for real terminal apps and for terminal engines, and where the lab stops
 prev:
   text: How it works
   link: /how-it-works/
