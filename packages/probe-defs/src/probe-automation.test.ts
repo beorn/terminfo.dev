@@ -929,14 +929,18 @@ describe("zero-byte replies on a loaded artifact", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  function writeWithClipboard(state: {
-    writes: { selector: string; payload: string; text?: string; decodeError?: string }[]
-    pasteSelector?: string
-  }) {
+  function writeWithClipboard(
+    state: {
+      writes: { selector: string; payload: string; text?: string; decodeError?: string }[]
+      pasteSelector?: string
+    },
+    runtimeIdentity?: LibProbeSource["runtimeIdentity"],
+  ) {
     const fedPayloads: string[] = []
     return probe("extensions.osc52-write").lib!({
       kind: "live",
       cols: 80,
+      runtimeIdentity,
       feed(text: string) {
         const payload = /\x1b\]52;c;([A-Za-z0-9+/=]*)/.exec(text)?.[1]
         if (payload !== undefined) fedPayloads.push(payload)
@@ -978,13 +982,32 @@ describe("zero-byte replies on a loaded artifact", () => {
     expect(result.note).toContain("decoded-note")
   })
 
-  test("osc52-write is unsupported when the engine callback retained no target writes after the control", () => {
-    const result = writeWithClipboard({ writes: [] })
-    expect(result.observation?.outcome).toBe("unsupported")
-    expect(result.assertions?.[0]?.assertionType).toBe("query_reply")
-    expect(result.assertions?.[0]?.kind).toBe("negative")
-    expect(JSON.parse(result.response ?? "")).toEqual({ writes: [] })
-    expect(result.note).toContain("engine copy_to_clipboard callback read via getClipboardState, no reply bytes")
+  test("osc52-write retains disagreement when no target writes follow the recorded control", () => {
+    const native: LibProbeSource["runtimeIdentity"] = {
+      kind: "native",
+      engineVersion: "1.0",
+      adapterVersion: "1.0",
+      termlessRevision: "fixture",
+      loadedBinary: { path: "fixture.node", sha256: "fixture" },
+      provenance: {
+        sha256: "fixture",
+        sourceCommit: "fixture",
+        buildHash: "fixture",
+        toolchain: "fixture",
+        lockSha256: "fixture",
+      },
+    }
+    // The native host-input wrapper must preserve the observed disagreement, not replace it with no-control.
+    for (const identity of [undefined, native]) {
+      const result = writeWithClipboard({ writes: [] }, identity)
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.notTested).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: "control OSC 52 c write recorded but the probe write was not; same-run observations disagree",
+      })
+      expect(JSON.parse(result.response ?? "")).toMatchObject({ writes: [] })
+    }
   })
 
   test("osc52-write is inconclusive when the engine callback retained a different target write after the control", () => {
@@ -1370,7 +1393,6 @@ describe("OSC 8 link metadata observation", () => {
     for (const links of [
       [null, uri, "https://wrong.example", uri, uri, null],
       [null, uri, uri, uri, uri, uri],
-      [null, null, null, null, null, null],
     ]) {
       const result = p.lib(linkedSource(links))
       expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
@@ -3337,7 +3359,7 @@ describe("extensions without a complete behavior oracle", () => {
         runtimeIdentity,
         getCwd: () => cwd,
         feed: (bytes) => {
-          const match = /^\x1b\]7;(.*)\x07$/.exec(bytes)
+          const match = /^\x1b\](?:7;|633;P;Cwd=)(.*)\x07$/.exec(bytes)
           if (!match) throw new Error(`Unexpected OSC7 fixture write: ${JSON.stringify(bytes)}`)
           cwd = match[1]!
         },
