@@ -90,17 +90,21 @@ export function retainCollectedRun(
   const manifestRaw = run.rawReplies["collector.traceManifest"]
   if (manifestRaw !== undefined) {
     const manifest = parseJsonStrict("capture persistence manifest", manifestRaw)
-    if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest) || !("blobs" in manifest) || !Array.isArray(manifest.blobs)) {
+    if (
+      manifest === null ||
+      typeof manifest !== "object" ||
+      Array.isArray(manifest) ||
+      !("blobs" in manifest) ||
+      !Array.isArray(manifest.blobs)
+    ) {
       throw new Error("Capture persistence requires its retained blob manifest")
-    }
-    if (manifest.blobs.length > 0 && sourceRoot === undefined) {
-      throw new Error("Capture persistence requires sourceRoot for retained blobs")
     }
     const paths = new Set<string>()
     for (const blob of manifest.blobs) {
+      if (sourceRoot === undefined) throw new Error("Capture persistence requires sourceRoot for retained blobs")
       const path = blob !== null && typeof blob === "object" && "path" in blob ? String(blob.path) : "<invalid path>"
       try {
-        readReference(sourceRoot!, blob)
+        readReference(sourceRoot, blob)
         if (paths.has(path)) throw new Error("Duplicate retained artifact path")
         paths.add(path)
         mkdirSync(directory, { recursive: true })
@@ -108,7 +112,9 @@ export function retainCollectedRun(
         let parent = directory
         for (const part of path.split("/").slice(0, -1)) {
           parent = join(parent, part)
-          try { mkdirSync(parent) } catch (error) {
+          try {
+            mkdirSync(parent)
+          } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
           }
           const contained = relative(physicalRoot, realpathSync(parent))
@@ -116,7 +122,9 @@ export function retainCollectedRun(
             throw new Error("Destination parent escapes capture bundle")
           }
         }
-        try { copyFileSync(join(sourceRoot!, path), join(directory, path), constants.COPYFILE_EXCL) } catch (error) {
+        try {
+          copyFileSync(join(sourceRoot, path), join(directory, path), constants.COPYFILE_EXCL)
+        } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
         }
         readReference(directory, blob)

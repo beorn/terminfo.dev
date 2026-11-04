@@ -6,15 +6,16 @@
  * @reach fs-walk <fixture-only: /tmp/terminfo-disposable-receipts>
  */
 import { createHash, randomUUID } from "node:crypto"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { readCallLog, withCallLog } from "viprobe"
+import { createCallLog, readCallLog, withCallLog } from "viprobe"
 import {
   ALL_PROBES,
   initializeRunDraft,
   type ProbeSuiteManifest,
+  type ObservationFrame,
   type TextQualification,
   type TermProbeSource,
 } from "@terminfo/probe-defs"
@@ -29,6 +30,7 @@ import { readProbeCapture } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
 import * as headlessIdentity from "../../../probes/headless-identity.ts"
 import { derivedSuiteManifest, sourceSuiteEnvironment } from "../../../admin/versions.ts"
+import { finishCapture } from "../capture-core.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
 import { collectTextQualification } from "../text-qualification.ts"
 import { createClipboardTransaction, type LinuxClipboardAdapter } from "../linux-clipboard.ts"
@@ -2426,19 +2428,34 @@ it("retains same-callback control and target frames without declaring visual sup
     if (value.includes("\x1b[6n")) process.stdin.emit("data", Buffer.from("\x1b[1;2R"))
     return true
   }) as typeof process.stdout.write
-  const frames = [
-    { role: "control" as const, ref: `sha256:${"a".repeat(64)}`, capturedAt: 1, label: "Unstyled X" },
-    { role: "target" as const, ref: `sha256:${"b".repeat(64)}`, capturedAt: 2, label: "sgr.underline.curly" },
-  ]
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const artifacts = join(directory, "artifacts")
+  mkdirSync(artifacts)
+  const blobs = new Map<string, { path: string; sha256: string }>()
+  const frames: ObservationFrame[] = []
   const checkpoints: Array<{ featureId: string; role: string; writes: string }> = []
   const batch = await runProbeBatch({
     ids: ["sgr.underline.curly"],
     ownedTerminal: geometryOwner(measured(24, 80)),
-    capture: async ({ featureId, role }) => {
+    capture: async ({ featureId, role, label }) => {
       checkpoints.push({ featureId, role, writes: writes.join("") })
-      const frame = frames[checkpoints.length - 1]
-      if (!frame) throw new Error("Unexpected capture checkpoint")
-      return { frame, trace: { windowId: "owned-window", geometry: "800x600", font: "fixture" } }
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+        "base64",
+      )
+      const captured = await finishCapture({
+        directory: artifacts,
+        onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
+        checkpoint: { featureId, role, label },
+        source: { format: "png", bytes: png, width: 1, height: 1, capturedAt: checkpoints.length },
+        png,
+        decoded: { width: 1, height: 1, rgba: new Uint8Array([255, 0, 0, 255]) },
+        origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
+        trace: {},
+      })
+      frames.push(captured.frame)
+      return captured
     },
   })
   expect(checkpoints.map(({ featureId, role }) => ({ featureId, role }))).toEqual([
@@ -2450,7 +2467,7 @@ it("retains same-callback control and target frames without declaring visual sup
   const styledSample = "\x1b[4:3mAaBb 0123456789 - terminal text"
   expect(checkpoints[0]?.writes).not.toContain(styledSample)
   expect(checkpoints[1]?.writes).toContain(styledSample)
-  expect(batch.screenshotRefs).toEqual(frames.map(({ ref }) => ref))
+  expect(batch.screenshotRefs).toEqual([...new Set(frames.map(({ ref }) => ref))])
   expect(batch.observations).toEqual([
     expect.objectContaining({
       featureId: "sgr.underline.curly",
@@ -2470,6 +2487,52 @@ it("retains same-callback control and target frames without declaring visual sup
     checks: [{ featureId: "sgr.underline.curly", pre: { rows: 24, cols: 80 }, post: { rows: 24, cols: 80 } }],
   })
   expect(batch.suiteComplete).toBe(false)
+  batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
+  const draft = asRun(batch)
+  const open = (candidate: typeof draft, label: string) => {
+    const bytes = Buffer.from(JSON.stringify(candidate)),
+      path = label + ".json"
+    writeFileSync(join(directory, path), bytes, { flag: "wx" })
+    return readProbeCapture(
+      directory,
+      {
+        kind: "trace",
+        trace: { path, sha256: createHash("sha256").update(bytes).digest("hex") },
+        captureRunId: draft.runId,
+        captureSuiteId: draft.suiteId,
+        captureSourceRevision: draft.sourceRevision,
+      },
+      { manifest, sourceRevision, subject: draft.subject! },
+    )
+  }
+  expect(open(draft, "source-log-positive").files.length).toBeGreaterThan(1)
+  const log = readCallLog(JSON.parse(batch.rawReplies["sgr.underline.curly.callLog"]!))
+  const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
+  const negativeLog = createCallLog()
+  const changedSource = Object.defineProperties(
+    {},
+    Object.fromEntries(
+      Object.entries(Object.getOwnPropertyDescriptors(replay.context)).map(([key, descriptor]) => [
+        key,
+        descriptor.get
+          ? { enumerable: true, configurable: true, get: () => Reflect.get(replay.context, key) }
+          : { enumerable: true, configurable: true, writable: true, value: Reflect.get(replay.context, key) },
+      ]),
+    ),
+  ) as TermProbeSource
+  changedSource.capture = async (checkpoint) => ({
+    ...(await replay.context.capture!(checkpoint)),
+    sourceRef: "sha256:" + "e".repeat(64),
+  })
+  const recording = withCallLog(changedSource, { mode: "record", log: negativeLog })
+  const callback = ALL_PROBES.find(({ id }) => id === "sgr.underline.curly")?.term
+  if (!callback) throw new Error("Missing retained SGR callback")
+  await callback(recording.context)
+  recording.finish()
+  replay.finish()
+  const negative = structuredClone(draft)
+  negative.rawReplies["sgr.underline.curly.callLog"] = JSON.stringify(negativeLog)
+  expect(() => open(negative, "source-log-negative")).toThrow(/unbound blob/)
 })
 
 // 27875: a controlled-Linux run with no capture directory cannot make a frame. A probe that needs

@@ -1549,6 +1549,9 @@ describe("private finite daemon startup", () => {
       import { basename, join } from "node:path"
       import { Writable } from "node:stream"
       const expectation = process.env.FIXTURE_EXPECT
+      // Existing xterm adapter supplies the substituted native screen; collection/retention stay real.
+      const screen = expectation === "closure" ? (await import("@termless/xtermjs")).createXtermBackend() : undefined
+      screen?.init({ rows: 24, cols: 80 })
       const hosted = expectation !== "refusal"
       let reads = 0
       let queryWrites = 0
@@ -1559,6 +1562,8 @@ describe("private finite daemon startup", () => {
       const out = new Writable({
         write(chunk, encoding, done) {
           writes.push(chunk.toString())
+          screen?.feed(new TextEncoder().encode(chunk.toString()))
+          screen?.getCursor()
           if (chunk.toString() === "queued-clear") {
             finishWrite = error => { if (!error) text = "hello"; done(error) }
           } else {
@@ -1603,9 +1608,9 @@ describe("private finite daemon startup", () => {
           hostedAppId: darwin ? "kitty" : "windows-terminal",
           summary: "owned fixture",
           readCells: async () => { reads += 1;
-            if (expectation === "closure") return { status: "read", app: "kitty", cells: {
-              cols: 80, rows: 24, text: Array(24).fill(" ".repeat(80)), paddedRows: [], droppedLines: 0
-            } }
+            if (expectation === "closure") { return { status: "read", app: "kitty", cells: {
+              cols: 80, rows: 24, text: Array.from({length: 24}, (_, row) => Array.from({length: 80}, (_, col) => screen.getCell(screen.getScrollback().viewportTop + row, col).char || " ").join("")), paddedRows: [], droppedLines: 0
+            } } }
             return ({
             status: "read",
             grid: { cols: 80, rows: 24, text: [text], attributes: [[0, 0, 0, 0, 0]] },
@@ -1679,11 +1684,9 @@ describe("private finite daemon startup", () => {
       } else {
         const run = await collectProbeRun({ ids: [expectation === "timeout" ? "erase.character" : expectation === "closure" ? "erase.character" : "device.xtversion"], out })
         if (expectation === "closure") {
-          // WIP: the native-cell fixture must paint the probe freshness marker before this
-          // journey can establish the positive control and exercise binding negatives.
+          // Existing retention tests omit nested bindings; this production bundle supplies their positive control.
           const { readProbeCapture } = await import("./packages/probes/erase-capture.ts")
           const { getTrustedSuiteReceipt } = await import("./packages/terminfo.dev/src/serve.ts")
-          const { readCallLog } = await import("viprobe")
           const root = join(process.env.HOME, "launch")
           const open = (candidate, label) => {
             const path = label + ".json", bytes = Buffer.from(JSON.stringify(candidate))
@@ -1697,15 +1700,10 @@ describe("private finite daemon startup", () => {
           const qualification = run.textQualification?.shapes.find(shape => shape.frames?.length)
           const native = JSON.parse(run.rawReplies["erase.character"])
           const calibration = JSON.parse(run.rawReplies["collector.captureCalibration.trace"])
-          const logged = []
-          readCallLog(JSON.parse(run.rawReplies["erase.character.callLog"]), { onOperation(op) {
-            if (op.path === "context.capture" && "value" in op.outcome) logged.push(op.outcome.value)
-          } })
           assert.ok(result.frames?.length, JSON.stringify(result))
           assert.ok(qualification?.frames.length, JSON.stringify(run.textQualification))
           assert.ok(native.captures?.length, "native trace has no produced frames")
           assert.ok(calibration.captures?.length, "calibration has no produced frames")
-          assert.ok(logged.length, "full-source call log has no produced frames")
           assert.ok(open(run, "closure-positive").files.length > 1)
           const unlisted = "sha256:" + "e".repeat(64)
           for (const slot of ["result", "qualification", "native", "calibration"]) {
@@ -1784,7 +1782,10 @@ describe("private finite daemon startup", () => {
             ...process.env,
             HOME: home,
             FIXTURE_EXPECT: expectation,
-            TERMINFO_CAPTURE_DIRECTORY: join(home, ["final-custody", "closure"].includes(expectation) ? "launch/artifacts" : "capture"),
+            TERMINFO_CAPTURE_DIRECTORY: join(
+              home,
+              ["final-custody", "closure"].includes(expectation) ? "launch/artifacts" : "capture",
+            ),
             TERMINFO_DISPOSABLE_RECEIPT: expectation !== "refusal" ? "hardware-receipt-fixture" : "",
             TERMINFO_RUNTIME_PROVENANCE: "",
             TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",

@@ -332,9 +332,9 @@ test.runIf(process.platform === "linux")(
   "a matching process path with the wrong executable digest cannot authorize capture",
   async () => {
     const { directory } = fixture()
-    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable("0".repeat(64)), () => {})).rejects.toThrow(
-      "executable digest mismatch",
-    )
+    await expect(
+      createLinuxCapture(join(directory, "frames"), liveExecutable("0".repeat(64)), () => {}),
+    ).rejects.toThrow("executable digest mismatch")
   },
 )
 
@@ -698,7 +698,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   expect(readFileSync(join(directory, retained[format]!))).toEqual(source.bytes)
   await expect(
     finishCapture({
-    onRetained: () => {},
+      onRetained: () => {},
       directory,
       checkpoint,
       source,
@@ -709,7 +709,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   ).rejects.toThrow(/named text-area origin/)
   await expect(
     finishCapture({
-    onRetained: () => {},
+      onRetained: () => {},
       directory,
       checkpoint,
       source,
@@ -721,7 +721,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   const unpaired = { ...checkpoint, pixelGeometry: undefined }
   await expect(
     finishCapture({
-    onRetained: () => {},
+      onRetained: () => {},
       directory,
       checkpoint: unpaired,
       source,
@@ -733,7 +733,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   process.env.TEST_CAPTURE_FORCE_CAPTURE = "639x480"
   await expect(
     finishCapture({
-    onRetained: () => {},
+      onRetained: () => {},
       directory,
       checkpoint,
       source,
@@ -771,7 +771,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   process.env.TEST_CAPTURE_FAIL = "conversion"
   await expect(
     finishCapture({
-    onRetained: () => {},
+      onRetained: () => {},
       directory,
       checkpoint: { featureId: "fixture.plain", role: "control", label: "plain" },
       source,
@@ -796,7 +796,7 @@ test.each(["xwd", "png"] as const)(
       capturedAt: 123,
     }
     const result = await finishCapture({
-    onRetained: () => {},
+      onRetained: () => {},
       directory,
       checkpoint: {
         featureId: "erase.screen.scrollback",

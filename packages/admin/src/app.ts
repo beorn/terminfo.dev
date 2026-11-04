@@ -682,7 +682,13 @@ async function probeDaemon(
   }
   const mode = outputDirectory === undefined ? "written" : "retained"
   if (outputDirectory !== undefined) {
-    const source = retainCollectedRun(run, retained.path, { kind: "term", id: appId, version }, outputDirectory, options.captureBundleRoot)
+    const source = retainCollectedRun(
+      run,
+      retained.path,
+      { kind: "term", id: appId, version },
+      outputDirectory,
+      options.captureBundleRoot,
+    )
     console.log(`  Retained private development run ${source}`)
   } else {
     writeCollectedRun(run, retained.path, { kind: "term", id: appId, version }, options.captureBundleRoot)
