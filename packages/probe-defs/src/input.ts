@@ -701,7 +701,6 @@ const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
     readonly branch: typeof HEADLESS_OBSERVABLE_REVIEW
     readonly limit: string
     readonly noObservable: string
-    readonly reviewNotice: string
   }
 >([
   [
@@ -712,7 +711,6 @@ const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
         "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554 into prompt_start.click_events (:74), while the WASM binding does not forward click_events (termless 2719cfd ghostty-wasm-api.patch:624-627) and a headless library run has no pointer surface; #30936",
       noObservable:
         "WASM binding does not forward OSC 133 click_events and headless library context has no pointer surface",
-      reviewNotice: "returned before encodeMouse; independent Untestable review required",
     },
   ],
 ])

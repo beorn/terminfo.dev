@@ -245,10 +245,10 @@ export const resetProbes: ProbeDefinition[] = [
         // #30701, @cto ruling C: a getMode that reports no applicationCursor state is a field the backend
         // does not expose (TEST TODO); an exposed mode that stayed off is still unmeasured.
         if (before === null || after === null) {
-          const noObservable = "the application-cursor mode (DECCKM) state in the headless getMode readback"
+          const noObservable = "The headless getMode readback exposes no application-cursor mode (DECCKM) state"
           return reviewResult(
             HEADLESS_OBSERVABLE_REVIEW,
-            `Headless observable review required: ${noObservable}`,
+            `${noObservable}, so this run cannot decide it`,
             noObservable,
             {
               before,
@@ -408,7 +408,7 @@ export const resetProbes: ProbeDefinition[] = [
               assertionType: "screenshot",
               screenshotRef: target.ref,
               frames: [control, target, delayedTarget, cursorOnlyControl, redrawControl],
-              note: `${postAlignmentCursor === null ? "No post-DECALN CPR response; processing barrier unconfirmed. " : ""}Known non-E grid, initial and delayed DECALN targets, cursor-only control and ordinary-glyph redraw control captured; repeated E glyphs across measured rows and columns require independent review. CPR at the already-homed cursor records responsiveness, not DECALN recognition or render completion`,
+              note: `${postAlignmentCursor === null ? "No post-DECALN CPR response; processing barrier unconfirmed. " : ""}Known non-E grid, initial and delayed DECALN targets, cursor-only control and ordinary-glyph redraw control captured; no same-run pixel check decides whether E glyphs repeat across measured rows and columns. CPR at the already-homed cursor records responsiveness, not DECALN recognition or render completion`,
             },
             assertions: [
               {

@@ -255,7 +255,7 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
   expect(soft.notTested).toEqual({ reason: "no-semantic-observable", noObservable: expect.stringContaining("DECCKM") })
   expect(soft.criterionBranch).toBe("headless-observable-review")
   expect(soft.tests).toEqual([
-    { id: "review", status: "test-todo", reason: expect.stringContaining("Headless observable review required:") },
+    { id: "review", status: "test-todo", reason: "The headless getMode readback exposes no application-cursor mode (DECCKM) state, so this run cannot decide it" },
   ])
   // An exposed mode that stayed off is unmeasured, never a coverage record.
   expect(find("reset.soft")(headless()).observation).toMatchObject({ outcome: "inconclusive" })

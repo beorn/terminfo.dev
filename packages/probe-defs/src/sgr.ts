@@ -163,7 +163,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
         assertionType: "screenshot",
         screenshotRef: styledFrames[0]?.ref,
         frames,
-        note: "No measured raster, so the samples cannot be compared by region digest; the control and nine samples need review together",
+        note: "No measured raster, so the samples cannot be compared by region digest; no same-run pixel check decides the blink",
       },
     }
   }

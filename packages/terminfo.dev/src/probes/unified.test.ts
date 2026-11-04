@@ -3304,7 +3304,7 @@ it.each([
       if (id === "cursor.shape") {
         expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({ cursorCell: null })
         expect(result.tests.find((check) => check.id === "review")?.reason).toBe(
-          "Cursor shape frames captured; review pending: undeclared cursor discriminator #31812 (cursor cell and blink phase unmeasured)",
+          "Cursor shape frames captured; cursor discriminator #31812 is undeclared (cursor cell and blink phase unmeasured), so this run cannot decide it",
         )
       }
       Object.assign(draft.rawReplies, batch.rawReplies)

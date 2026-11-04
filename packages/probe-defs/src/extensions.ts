@@ -1544,7 +1544,7 @@ function promptMarkResult(
   }
   if (declared) {
     const note = `${noObservable}: ${readerKey} getSemanticMarks readback is unavailable`
-    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
       home,
       target,
       control,
@@ -3654,7 +3654,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.font-ligatures",
       () => {
         const note = "Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
           ligatureSample: FONT_LIGATURE_TARGET,
         })
       },
@@ -3727,7 +3727,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-graphics.animation",
     (ctx) => {
       const note = "Declared Kitty graphics capability does not establish timed animation playback"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
         declared: ctx.capabilities.kittyGraphics === true,
       })
     },
@@ -3912,7 +3912,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-graphics.unicode-placeholders",
     (ctx) => {
       const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
         declared: ctx.capabilities.kittyGraphics === true,
       })
     },
@@ -4128,7 +4128,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           })
         }
         const note = "Declared Sixel capability does not establish rendered pixels"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
           declared: ctx.capabilities.sixel === true,
         })
       },
@@ -4235,7 +4235,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             ? `Engine ${identity.engineVersion}, adapter ${identity.adapterVersion}`
             : "Adapter (runtime identity unavailable)"
           const note = `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`
-          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
             chars: cells.map((cell) => cell.char),
             links,
           })
@@ -4514,7 +4514,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => {
         if (!ctx.getCwd) {
           const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
-          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
             declared: ctx.capabilities.extensions.has("osc7"),
           })
         }
@@ -4757,7 +4757,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => {
         if (!ctx.getNotifications) {
           const note = "Declared OSC 9 capability does not establish desktop notification delivery"
-          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
             declared: ctx.capabilities.extensions.has("osc9"),
           })
         }
@@ -4795,7 +4795,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.iterm2-images",
       (ctx) => {
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
           declared: ctx.capabilities.extensions.has("iterm2Images"),
         })
       },

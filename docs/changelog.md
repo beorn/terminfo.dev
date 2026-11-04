@@ -10,7 +10,7 @@ Private preparation; final corrected-suite data and publication tests remain pen
 - **Inspectable evidence and explanations.** Result details expose available raw traces, assertions and original frames. The explanation guide connects how we measure, how to read a result and how to contribute a run.
 - **Coverage, support and build freshness.** Coverage and support have separate denominators. TEST TODO is one of five reader labels. Source and build metadata identify the site build; rebuilding is not a new terminal measurement.
 
-The retained selected snapshot covers three Kitty 0.49.2 Linux permission/configuration contexts and eleven headless targets. Its reviewed frames support colored-underline appearance; this snapshot establishes no exact 24-bit RGB claim. This adds no macOS or Windows app measurements; earlier excluded runs remain history.
+The retained selected snapshot covers three Kitty 0.49.2 Linux permission/configuration contexts and eleven headless targets. Its frames were reviewed under the earlier rule; without a same-run pixel check they establish no colored-underline support. This adds no macOS or Windows app measurements; earlier excluded runs remain history.
 
 Three gaps remain open: public standalone controlled-capture reproduction, result-local visual expectations for historical reviews, and undated manual pointer confirmations. See the [roadmap](/roadmap).
 

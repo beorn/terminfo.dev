@@ -1440,7 +1440,7 @@ describe("OSC 8 link metadata observation", () => {
       })
       expect(unreported.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
       expect(unreported.tests).toEqual([
-        { id: "review", status: "test-todo", reason: `Headless observable review required: ${unreported.note}` },
+        { id: "review", status: "test-todo", reason: `${unreported.note}, so this run cannot decide it` },
       ])
       expect(unreported.assertions).toBeUndefined()
       expect(JSON.parse(unreported.response ?? "")).toEqual({

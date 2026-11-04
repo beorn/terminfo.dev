@@ -253,7 +253,7 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
     // No title readback means this adapter exposes no title observable, which decides neither operation
     // (Ghostty native reads empty at all three steps, #31387); it takes the headless observable review.
     const note = "Title setup was not observable"
-    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
       original,
       changed,
       restored,

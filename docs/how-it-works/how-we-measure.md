@@ -19,7 +19,7 @@ Every current result comes from such a run, made in our lab or [contributed](/ho
 
 A probe collects evidence as one of five **assertion types**: `query_reply`, the terminal's answer to a query; `buffer_state`, the cells, cursor and modes read from the engine; `screenshot`, captured pixels; `input_bytes`, the bytes an app received for an OS input event; or `clipboard`, what an OSC 52 write put on the clipboard. What the probe read is separate from the rule that judges it. A reply can establish a reported value; it cannot establish how a glyph or image was rendered.
 
-An **observation** is what the probe recorded. An **assertion** compares expected with actual. The **result** is the reported conclusion. These meanings apply whether the decision comes from a valid automatic comparison or a required review of retained evidence.
+An **observation** is what the probe recorded. An **assertion** compares expected with actual. The **result** is the reported conclusion. These meanings apply when the decision comes from a valid same-run automatic comparison.
 
 ## What one run does
 
