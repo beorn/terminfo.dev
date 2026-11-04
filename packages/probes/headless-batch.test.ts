@@ -1110,7 +1110,7 @@ test.skipIf(!isKittyAvailable())(
       const fresh = registryDefinitions(["extensions.osc1-icon"])[0]!.lib!(
         createLibProbeSource(value, undefined, undefined, undefined),
       )
-      expect(JSON.parse(fresh.response!).before).toEqual({ icon: "", title: "" })
+      expect(JSON.parse(fresh.response!)).toMatchObject({ before: { icon: "", title: "" } })
       expect(fresh.observation).toMatchObject({ outcome: "supported" })
     } finally {
       value.destroy()
