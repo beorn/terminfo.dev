@@ -184,7 +184,7 @@ export async function requestDaemonProbe(
     const failure = `Daemon on port ${daemon.port}: HTTP ${response.status}`
     let retained: { path: string; sha256: string }
     try {
-      // A failure body is evidence even when it is not valid UTF-8 or a ProbeRun.
+      // A failure body is evidence even when it is not valid UTF-8 or a valid collected run record.
       retained = retainDaemonResponseBytes(Buffer.from(await response.arrayBuffer()))
     } catch (cause) {
       throw Object.assign(

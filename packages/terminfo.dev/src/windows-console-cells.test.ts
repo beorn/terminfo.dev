@@ -1,7 +1,7 @@
 /**
  * @failure The hosted Windows arm decides rows on a buffer nobody read: a console host selected
  *   from the wrong process, a read region the host clipped and decoded anyway, or the host's
- *   wide-glyph encoding read as plain text would each grade characters never on screen.
+ *   wide-glyph encoding read as plain text would each report characters never on screen.
  * @level l1
  * @consumer readWindowsConsoleCells, the Windows half of the hosted-arm cell readback.
  * @testonly none

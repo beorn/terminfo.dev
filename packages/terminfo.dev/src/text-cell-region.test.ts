@@ -1,6 +1,6 @@
 /**
  * @failure A checkpoint that names cells the text read does not cover is silently cropped, so the
- *   frame's cell digest is taken over fewer cells than the row asked about and a verdict is graded
+ *   frame's cell digest is taken over fewer cells than the row asked about and a probe result is decided
  *   from a rectangle nobody requested.
  * @level l1
  * @consumer collectProbeRun's text-snapshot adapter, the one place a text frame is built.

@@ -534,7 +534,7 @@ describe("TTY transaction replies", () => {
     })
     // @cto 30625 b050f6b9: the 20 ms deadline ends this read long before the configured 250 ms grace,
     // so the observed silence is a partial window and carries NO certificate. The read stays a
-    // sentinel outcome with its bytes, and the grader records it inconclusive.
+    // sentinel outcome with its bytes, and the callback records an inconclusive observation.
     expect(sentinel.sentinel).toBeUndefined()
 
     const timeoutBytes = Buffer.from("\x1b]unrelated")
@@ -646,10 +646,10 @@ describe("TTY transaction replies", () => {
     expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
   })
 
-  // #30625 @dev/12 review (2026-10-23): a deadline that cuts the grace window short must not grade
-  // a negative. One DA1 near the deadline, then silence, is a partial window: inconclusive, not
+  // #30625 @dev/12 review (2026-10-23): a deadline that cuts the grace window short must not justify a negative observation.
+  // One DA1 near the deadline, then silence, is a partial window: an inconclusive observation, not
   // "silent for the whole grace window". The repeated-DA1 regression above misses this because its
-  // earlier DA1 bytes already suppress negative grading.
+  // earlier DA1 bytes already rule out a negative observation.
   it("never grades a sentinel negative when the deadline cuts the grace window short", async () => {
     const listenersBefore = process.stdin.listenerCount("data")
     const started = Date.now()
@@ -667,7 +667,7 @@ describe("TTY transaction replies", () => {
     expect(observedAfterSentinel).toBeLessThan(250)
     // The existing shape for an incomplete, unmatched read (@cto 30625 partial-grace ruling): the DA1
     // answer is kept as the reason and its bytes are retained, and NO silence certificate is emitted.
-    // Without the facts, device.ts's existing grader records inconclusive/no-response, never a negative
+    // Without the facts, device.ts's existing callback records an inconclusive/no-response observation, never a negative observation
     // (device-observations.test.ts "without the measured ordering a frame after DA1 stays unreadable").
     expect(outcome.match).toBe(null)
     expect(outcome.reason).toBe("sentinel")
@@ -707,7 +707,7 @@ describe("TTY transaction replies", () => {
   })
 
   // #30559 (@cto 86260f80 rule 2): bytes ahead of the DA1 answer that match nothing end as the sentinel outcome, with
-  // its facts, after the grace window; the grader then refuses a negative over those bytes.
+  // its facts, after the grace window; the callback then refuses a negative observation over those bytes.
   it.each([
     { name: "unmatched bytes", bytes: "\x1b]11;rgb:0000/0000/0000\x1b\\\x1b[?1;2c" },
     { name: "a DA1-shaped reply", bytes: "\x1b[?1;2c\x1b[?1;2c" },

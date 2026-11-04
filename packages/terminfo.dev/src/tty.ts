@@ -329,8 +329,8 @@ function matchResponseNative(
       }
       // DA1 answered and no reply preceded it. Keep reading for the grace window, then decide on the whole
       // read (#30559, @cto 86260f80): a later DA1-shaped answer makes everything before it the reply. A
-      // reply inside the window still grades by the reply, carrying the ordering note; anything else,
-      // bytes ahead of the answer included, is the sentinel outcome, which the grader records as "negative
+      // reply inside the window is retained as the reply, carrying the ordering note; anything else,
+      // bytes ahead of the answer included, is the sentinel outcome, which the probe callback records as "negative
       // by sentinel", citing these numbers, only when nothing preceded the answer. The facts time the
       // sentinel's own answer, so a later DA1-shaped answer re-stamps them (@cto a40ae9b7).
       const start = sentinelAnswer(buf)?.start
@@ -351,7 +351,7 @@ function matchResponseNative(
             // A window cut short proves nothing about the configured silence (@cto 30625 b050f6b9):
             // the facts carry only when the OBSERVED interval covers the full grace, decided by the
             // measurement, never by which timer happened to fire. A matched reply always keeps its
-            // DA1-before-reply ordering facts, or late-reply grading breaks.
+            // DA1-before-reply ordering facts, or interpreting a late reply breaks.
             read.match ? sentinelFacts : eligibleFacts(),
           ),
         Math.max(0, Math.min(graceMs, untilDeadline)),

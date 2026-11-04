@@ -207,7 +207,7 @@ export interface DisposableReceipt {
   /** The identity the receipt names, when its kind declares one, so a reader on main can see what
    * the claim rests on instead of only a digest of bytes it cannot read (27874). */
   identity?: ContainerIdentity
-  /** sha256 of the exact bytes the verdict was read from, so a run names the receipt it trusted. */
+  /** sha256 of the exact receipt bytes, so a run names the receipt it trusted. */
   sha256: string
   /** The launch receipt the apparatus measured, validated by the ONE parser run-parser validates
    * with, for the collector to copy into origin.appLaunch without adding or editing a field. A kind
@@ -452,7 +452,7 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
       const error = input.kernelExecutableError
       if (error !== null && typeof error !== "string") fail(subject, "kernelExecutableError must be text or null")
       // R3 (@cto): kernelExecPath produces only two shapes — a path with its reader and no error, or
-      // no path with the reason. Anything else is not a read, so it refuses instead of grading.
+      // no path with the reason. Anything else is not a read, so it refuses instead of accepting unreadable evidence.
       if (resolved !== null && reader === null) fail(subject, "a kernel executable path names no reader")
       if (resolved === null && reader !== null) fail(subject, "kernelExecutableReader names a reader but no path")
       if (resolved !== null && error !== null) fail(subject, "a kernel executable path carries an error")

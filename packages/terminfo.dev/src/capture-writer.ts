@@ -35,10 +35,10 @@ function consoleHostBinary(run: CapturedRunDraft): string {
 function consoleHostHold(
   run: CapturedRunDraft,
   cell: { featureId: string; assertionType?: AssertionType; rawReplyRef?: string },
-  verdict: string,
+  status: string,
 ): string | undefined {
   if (run.subject.kind !== "term" || run.subject.os?.toLowerCase() !== "windows") return undefined
-  if (verdict !== "supported" && verdict !== "unsupported") return undefined
+  if (status !== "supported" && status !== "unsupported") return undefined
   if (cell.assertionType !== "query_reply" || cell.rawReplyRef === undefined) {
     return undefined
   }
@@ -108,7 +108,7 @@ export function finalizeCollectedDraft(
       ],
     }
   })
-  // Grades come only from what this run observed; a stored source answer never sets one (#32246).
+  // Probe result statuses come only from what this run observed; a stored source answer never sets one (#32246).
   captured.results = captured.results.map((result) => finalizeProbeResult(result))
   return captured
 }

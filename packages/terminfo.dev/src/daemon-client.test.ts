@@ -458,7 +458,7 @@ it("preserves the failed HTTP status when its original body cannot be read", asy
   expect(failure).not.toHaveProperty("sha256")
 })
 
-// A failed response is evidence, not a ProbeRun: invalid UTF-8 must not discard its original bytes.
+// A failed response is evidence, not a collected run record: invalid UTF-8 must not discard its original bytes.
 it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])])(
   "retains failed daemon HTTP originals before rejecting collection (30412): %j",
   async (bytes) => {
