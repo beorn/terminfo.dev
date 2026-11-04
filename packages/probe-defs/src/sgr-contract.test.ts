@@ -471,7 +471,7 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
 )
 
 test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
-  "%s keeps an incomplete compound criterion TEST TODO without a same-path control",
+  "%s names the unobserved setup facets while retaining TEST TODO",
   (id) => {
     const probe = sgrProbes.find((entry) => entry.id === id)!
     const result = probe.lib!(
@@ -483,23 +483,48 @@ test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
         ]),
       ),
     )
-    expectNoSamePathTodo(result)
+    expect(result.notTested).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: `compound reset not decided: ${id.endsWith("bold") ? "dim and italic" : "italic"} not shown at setup; every claimed facet must be seeded and read`,
+    })
+    expect(result.pass).toBe(false)
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(result.tests).toBeUndefined()
+    expect(result.criterionBranch).toBeUndefined()
     expect(JSON.parse(result.response!)).toMatchObject({ before: { bold: true, dim: null, italic: null } })
   },
 )
 
-test("a distinct reset seed with an unexposed reset cell is TEST TODO without a same-path control", () => {
-  const source = libProbeSource(cellsModel([{ char: "C" }, { char: "X", fg: { r: 205, g: 0, b: 0 } }, { char: "R" }]))
-  const read = source.getCell
-  source.getCell = (row, col) => {
-    const cell = read(row, col)
-    // An invalid producer omitted the required field; this is not a seedless fixture.
-    if (col === 2) Reflect.deleteProperty(cell, "fg")
-    return cell
-  }
-  const result = sgrProbes.find((entry) => entry.id === "sgr.fg.default")!.lib!(source)
-  expectNoSamePathTodo(result)
-})
+test.each(["fg", "bg"] as const)(
+  "a distinct %s seed names its unexposed reset field while retaining TEST TODO",
+  (channel) => {
+    const source = libProbeSource(
+      cellsModel([{ char: "C" }, { char: "X", [channel]: { r: 205, g: 0, b: 0 } }, { char: "R" }]),
+    )
+    const read = source.getCell
+    source.getCell = (row, col) => {
+      const cell = read(row, col)
+      // The reset field is unexposed; this is not a seedless fixture or an engine absence claim.
+      if (col === 2) Reflect.deleteProperty(cell, channel)
+      return cell
+    }
+    const result = sgrProbes.find((entry) => entry.id === `sgr.${channel}.default`)!.lib!(source)
+    expect(result.notTested).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: `reset cell exposes no ${channel === "fg" ? "foreground" : "background"} colour after a distinct seed; an unexposed value cannot show the reset`,
+    })
+    expect(result.pass).toBe(false)
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(result.tests).toBeUndefined()
+    expect(result.criterionBranch).toBeUndefined()
+    expect(JSON.parse(result.response!)).toMatchObject({
+      before: { [channel]: { r: 205, g: 0, b: 0 } },
+      after: { char: "R" },
+    })
+  },
+)
 
 test.each(["wrong requested color", "baseline already requested color"])(
   "SGR59 names its requested-color prerequisite: %s",

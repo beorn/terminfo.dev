@@ -512,12 +512,9 @@ function measuredReset(
   const cleared = set.filter(shown).every((attribute) => measuredAttribute(after, attribute) === false)
   const retained = preserve.filter(shown).every((attribute) => measuredAttribute(after, attribute) === true)
   if (cleared && retained && (!set.some(shown) || !preserve.every(shown))) {
-    return parserStateResult(
-      null,
-      expected,
+    return notTestedResult(
+      `compound reset not decided: ${unshown.join(" and ")} not shown at setup; every claimed facet must be seeded and read`,
       state,
-      undefined,
-      `complete compound criterion pending: ${unshown.join(" and ")} on the styled setup cell in the headless readback`,
     )
   }
   return parserStateResult(
@@ -842,12 +839,9 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, state)
         }
         if (resetColor === undefined) {
-          return parserStateResult(
-            null,
-            expected,
+          return notTestedResult(
+            `reset cell exposes no ${channel === "fg" ? "foreground" : "background"} colour after a distinct seed; an unexposed value cannot show the reset`,
             state,
-            undefined,
-            `a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`,
           )
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
