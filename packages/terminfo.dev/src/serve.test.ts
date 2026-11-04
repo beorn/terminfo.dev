@@ -1533,7 +1533,7 @@ describe("private finite daemon startup", () => {
     }
   })
 
-  it.each(["capture", "pending-write", "write-error", "refusal", "timeout", "non-windows"])(
+  it.each(["capture", "pending-write", "write-error", "refusal", "timeout", "non-windows", "final-custody"])(
     "a hosted text capture with a retention directory takes the %s branch without Linux provenance",
     (expectation) => {
       home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-capture-"))
@@ -1544,15 +1544,15 @@ describe("private finite daemon startup", () => {
           `
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
-      import { readdirSync, readFileSync } from "node:fs"
-      import { join } from "node:path"
+      import { readdirSync, readFileSync, rmSync } from "node:fs"
+      import { basename, join } from "node:path"
       import { Writable } from "node:stream"
       const expectation = process.env.FIXTURE_EXPECT
       const hosted = expectation !== "refusal"
       let reads = 0
       let queryWrites = 0
       const writes = []
-      const darwin = ["pending-write", "write-error", "non-windows"].includes(expectation)
+      const darwin = ["pending-write", "write-error", "non-windows", "final-custody"].includes(expectation)
       let text = "stale"
       let finishWrite
       const out = new Writable({
@@ -1586,6 +1586,7 @@ describe("private finite daemon startup", () => {
       let capture
       let captureKind = "absent"
       let captured = false
+      let retainedFrame
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
@@ -1648,14 +1649,17 @@ describe("private finite daemon startup", () => {
             } else {
               text = "hello"
               options.out.write("probe-paint")
-              await tty.withTTYOperation(() => options.capture({ role: "witness", label: "fixture" }), options.out)
+              const retained = await tty.withTTYOperation(() => options.capture({ role: "control", label: "fixture" }), options.out)
+              retainedFrame = retained.frame
               captured = true
             }
           }
           return {
             results: options.draft.results, rawReplies: {},
             observations: [],
-            assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
+            assertions: [], screenshotRefs: [],
+            ...(expectation === "final-custody" && { textSnapshotRefs: [retainedFrame.ref] }),
+            ungradedDiagnostics: {}, suiteComplete: false
           }
         }
       }))
@@ -1691,6 +1695,35 @@ describe("private finite daemon startup", () => {
         }
         assert.equal(queryWrites, darwin ? 0 : 1)
         if (!darwin) assert.ok(writes.indexOf("probe-paint") < writes.indexOf("\\x1b[6n"))
+        if (expectation === "final-custody") {
+          // A reader-only manifest fixture misses both producer omission and launch cleanup loss.
+          assert.equal(typeof run.rawReplies["collector.traceManifest"], "string", "producer did not seal retained artifact paths")
+          const manifestBytes = run.rawReplies["collector.traceManifest"]
+          const manifest = JSON.parse(manifestBytes)
+          assert.equal(manifest.blobs.length, 1)
+          assert.equal(manifest.blobs[0].path, "artifacts/" + frames[0])
+          const originalBytes = Buffer.from(JSON.stringify(run))
+          const { readRetainedDaemonProbeResponse } = await import("./packages/terminfo.dev/src/daemon-client.ts")
+          const { getTrustedSuiteReceipt } = await import("./packages/terminfo.dev/src/serve.ts")
+          const original = await readRetainedDaemonProbeResponse(new Response(originalBytes), {
+            directory: join(process.env.HOME, "responses"), receipt: getTrustedSuiteReceipt()
+          })
+          assert.equal(original.kind, "captured")
+          const { retainCollectedRun } = await import("./packages/admin/src/collected-run.ts")
+          const finalRoot = join(process.env.HOME, "final")
+          const final = retainCollectedRun(original.run, original.path, undefined, finalRoot, join(process.env.HOME, "launch"))
+          assert.equal(JSON.parse(readFileSync(final, "utf8")).rawReplies["collector.traceManifest"], manifestBytes)
+          assert.deepEqual(readFileSync(join(finalRoot, basename(original.path))), originalBytes)
+          rmSync(join(process.env.HOME, "launch"), { recursive: true })
+          const { readProbeCapture } = await import("./packages/probes/erase-capture.ts")
+          const reopened = readProbeCapture(finalRoot, {
+            kind: "trace", trace: { path: basename(original.path), sha256: original.sha256 },
+            captureRunId: run.runId, captureSuiteId: run.suiteId, captureSourceRevision: run.sourceRevision
+          }, { manifest: getTrustedSuiteReceipt().manifest, sourceRevision: run.sourceRevision, subject: run.subject })
+          assert.equal(reopened.capture.rawReplies["collector.traceManifest"], manifestBytes)
+          assert.ok(reopened.files.includes(join(finalRoot, manifest.blobs[0].path)))
+          assert.match(readFileSync(join(finalRoot, manifest.blobs[0].path), "utf8"), /hello/u)
+        }
       }
       `,
         ],
@@ -1700,7 +1733,7 @@ describe("private finite daemon startup", () => {
             ...process.env,
             HOME: home,
             FIXTURE_EXPECT: expectation,
-            TERMINFO_CAPTURE_DIRECTORY: join(home, "capture"),
+            TERMINFO_CAPTURE_DIRECTORY: join(home, expectation === "final-custody" ? "launch/artifacts" : "capture"),
             TERMINFO_DISPOSABLE_RECEIPT: expectation !== "refusal" ? "hardware-receipt-fixture" : "",
             TERMINFO_RUNTIME_PROVENANCE: "",
             TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
