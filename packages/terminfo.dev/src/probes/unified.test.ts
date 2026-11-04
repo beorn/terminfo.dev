@@ -2266,7 +2266,6 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       }
       const invalid = {
         ...draft,
-        ...(fault === "non-live" && { source }),
         subject: draft.subject,
         identity: draft.identity,
         measuredAt: draft.measuredAt,
@@ -2276,6 +2275,11 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         screenshotRefs: fault === "missing-dependency" ? [`sha256:${"d".repeat(64)}`] : [],
       }
       const invalidPath = saveDaemonProbeRun(invalid, directory)
+      if (fault === "non-live") {
+        const nonLive = JSON.parse(readFileSync(invalidPath, "utf8"))
+        nonLive.source = source
+        writeFileSync(invalidPath, JSON.stringify(nonLive))
+      }
       const invalidSource = {
         ...source,
         captureRunId: invalid.runId,
