@@ -548,6 +548,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let title = ""
   let iconLabel = ""
   let titleStack: string[] = []
+  const clipboard = new Map<string, string>()
+  const clipboardWrites: ReturnType<NonNullable<LibProbeSource["getClipboardState"]>>["writes"] = []
   /** Bytes the surface owes a caller in reply to a query (DECRQCRA, DSR, DA, DECRQSS, XTWINOPS), read back by feedCapture. */
   let replies = ""
 
@@ -606,6 +608,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     title = ""
     iconLabel = ""
     titleStack = []
+    clipboard.clear()
+    clipboardWrites.length = 0
     replies = ""
   }
   clear()
@@ -1208,7 +1212,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       else if (final === "v") copyRect(params)
       else if (final === "r" || final === "t") changeRectAttributes(params, final === "t")
       else if (final === "p" && prefix === "?" && !mutations.has("decrpm-noop")) {
-        const ps = decrpmState(first)
+        const ps = first === 5522 ? (mutations.has("osc5522-unsupported") ? 0 : 1) : decrpmState(first)
         if (ps !== null) replies += `\x1b[?${first};${ps}$y`
       }
     } else if (intermediate === "*") {
@@ -1683,8 +1687,24 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       if (!mutations.has(`osc${code}-noop`)) dynamicColors.set(resetCode, initialColors.get(resetCode)!)
       return
     }
-    if (code === "1" && !mutations.has("xtwinops-20-noop")) iconLabel = payload
-    else if (code === "2") title = payload
+    if (code === "52") {
+      const [selector, encoded] = payload.split(";")
+      if (selector === undefined || encoded === undefined) return
+      if (encoded === "?") {
+        // An unset clipboard is a complete empty payload, not a missing reply.
+        if (!mutations.has("osc52-read-noop")) replies += `\x1b]52;${selector};${clipboard.get(selector) ?? ""}\x07`
+      } else if (!mutations.has("osc52-write-noop")) {
+        clipboard.set(selector, encoded)
+        clipboardWrites.push({ selector, payload: encoded, text: atob(encoded) })
+      }
+      return
+    }
+    if (code === "0" && !mutations.has("osc0-noop")) {
+      iconLabel = payload
+      title = payload
+    } else if (code === "1" && !mutations.has("xtwinops-20-noop") && !mutations.has("osc1-noop")) {
+      iconLabel = payload
+    } else if (code === "2" && !mutations.has("osc2-noop")) title = payload
     else if (code === "4" || code === "5") {
       const query = /^(\d+);\?$/u.exec(payload)
       const colors = code === "4" ? palette : specialColors
@@ -1870,6 +1890,12 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     },
     getTitle() {
       return title
+    },
+    getIconLabel() {
+      return iconLabel
+    },
+    getClipboardState() {
+      return { writes: clipboardWrites.map((write) => ({ ...write })) }
     },
     getCell(row: number, col: number): SurfaceCellState {
       const cell = cellAt(row, col)
