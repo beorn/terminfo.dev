@@ -873,6 +873,56 @@ function geometryOwner(
   }
 }
 
+// Direct viewport fixtures bypass this input adaptation. Static pixels deliberately refuse the
+// seed: the contract here is bound transport and missing-bound I/O ordering, never app support.
+it.each([false, true])("carries viewport wheel placement through the native batch (bound: %s)", async (present) => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const receiptPath = join(directory, "host-measured.json")
+  writeFileSync(receiptPath, JSON.stringify(validContainerReceipt()))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = receiptPath
+  const bound = {
+    maxRowsPerNotch: 1,
+    configurationHash: "fixture-wheel-config",
+    applicationVersion: "fixture-app-version",
+    applicationHash: "fixture-app-hash",
+  }
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const injectKey = vi.fn(async () => {})
+  const injectClick = vi.fn(async () => {})
+  const capture = vi.fn(async ({ role, label }: { role: "control" | "target"; label: string }) => ({
+    frame: { role, label, capturedAt: 1, ref: `sha256:${"a".repeat(64)}`, pixelsDigest: "unchanged-surface" },
+    trace: {},
+  }))
+  const id = "scrollback.viewport-hold-output"
+  const batch = await runProbeBatch({
+    ids: [id],
+    subject: { kind: "term", id: "kitty", os: "linux" },
+    ownedTerminal: geometryOwner(measured(8, 30)),
+    input: { injectKey, injectClick, ...(present && { wheelPlacement: bound }) },
+    capture,
+  })
+  const row = batch.results.find((result) => result.featureId === id)!
+  expect(row).toMatchObject({
+    status: "test-todo",
+    reason: present ? "viewport seed not observed" : "wheel placement bound not established",
+  })
+  expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({
+    wheelPlacement: present ? bound : null,
+  })
+  expect(capture).toHaveBeenCalledTimes(present ? 2 : 0)
+  expect(writes.length > 0).toBe(present)
+  expect(injectKey).not.toHaveBeenCalled()
+  expect(injectClick).not.toHaveBeenCalled()
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+})
+
 it("declines a declared callback with missing or conflicting owned geometry before any feature bytes", async () => {
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "reset.ris")!
