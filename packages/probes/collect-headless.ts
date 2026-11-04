@@ -82,10 +82,10 @@ export interface HeadlessCollection {
 }
 
 /**
- * A headless collection records the LIVE suite snapshot, not a stored declaration: this collector
- * legitimately runs on composed trees, and admission declares the manifest in the same commit as
- * the run it produced (27832 manifest direction (2)). A run whose suite is never admitted cannot be
- * cited, which is the correct outcome — not a collection-time failure.
+ * A headless collection derives its LIVE suite snapshot, never from a stored declaration.
+ * It retains that declaration in its private output for later run and probe evidence reads.
+ * Admission separately declares manifests alongside accepted runs; retaining private evidence
+ * neither admits a run nor makes it an accepted result.
  */
 function trustedSuite() {
   const suite = probeSuiteSnapshot()
