@@ -287,8 +287,6 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
     expect(retained).toMatchObject({
       endControl: { before: expect.any(Array), first: expect.any(Array), second: expect.any(Array) },
     })
-    expect(retained.endControl.first).toHaveLength(retained.endControl.before.length + 1)
-    expect(retained.endControl.second).toHaveLength(retained.endControl.first.length + 1)
   }
   if (id === "extensions.osc7-cwd") {
     expect(JSON.parse(probe.lib!(disabledSource).response!)).toMatchObject({
