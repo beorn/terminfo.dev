@@ -12,11 +12,7 @@ import {
 } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import {
-  type CapturedRunDraft,
-  type ProbeSuiteManifest,
-  type RunDraft,
-} from "@terminfo/probe-defs"
+import { type CapturedRunDraft, type ProbeSuiteManifest, type RunDraft } from "@terminfo/probe-defs"
 import { decodeCollectorDraft, decodeExactUtf8 } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
 import {

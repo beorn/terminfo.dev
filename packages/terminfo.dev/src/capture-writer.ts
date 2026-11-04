@@ -1,12 +1,7 @@
 /** Shared immutable capture finalization and persistence for every collector. */
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import {
-  finalizeProbeResult,
-  type CapturedRunDraft,
-  type AssertionType,
-  type ProbeSubject,
-} from "@terminfo/probe-defs"
+import { finalizeProbeResult, type CapturedRunDraft, type AssertionType, type ProbeSubject } from "@terminfo/probe-defs"
 
 const DA1_QUERY = "\u001b[c"
 const DA1_REPLY = /\u001b\[\?[0-9;]*c/u
