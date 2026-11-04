@@ -70,13 +70,13 @@ const headlessObservableFeatures = [
   ],
   [
     "reset.soft",
-    "the application-cursor mode (DECCKM) state in the headless getMode readback",
+    "The headless getMode readback exposes no application-cursor mode (DECCKM) state",
     { before: null, after: null },
   ],
 ] as const
 
 test.each(headlessObservableFeatures)(
-  "%s retains its missing observable and state for required review",
+  "%s retains its missing observable and state as TEST TODO",
   (id, noObservable, state) => {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)
@@ -99,7 +99,7 @@ test.each(headlessObservableFeatures)(
       {
         id: "review",
         status: "test-todo",
-        reason: `Headless observable review required: ${noObservable}`,
+        reason: `${noObservable}, so this run cannot decide it`,
       },
     ])
     expect(result.observation).toBeUndefined()
@@ -109,7 +109,7 @@ test.each(headlessObservableFeatures)(
 
 // S8 requires a missing DECRPM reply to retain its named review and both measured phases.
 // The presentation table cannot exercise this protocol arm; positive mode tests supply valid replies.
-test("modes.decsclm retains missing DECRPM coverage and measured state for required review", () => {
+test("modes.decsclm retains missing DECRPM coverage and measured state as TEST TODO", () => {
   const definition = ALL_PROBES.find((probe) => probe.id === "modes.decsclm")
   if (!definition?.lib) throw new Error("missing headless modes.decsclm")
   const result = definition.lib(context())

@@ -16,7 +16,7 @@ This describes the implemented system. Callbacks still perform live I/O and eval
 
 The five assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard. Probe setup and feed writes retain their existing order and bytes; they are not a sixth assertion type.
 
-The five display labels are Supported, Unsupported, Untestable, Test to-do and Test failure. Their stored code values remain `supported`, `unsupported`, `untestable`, `test-todo` and `test-failure`; this vocabulary change does not change status or publication behavior. Pending review is a reason under Test to-do, not an additional status.
+The five display labels are Supported, Unsupported, Untestable, Test to-do and Test failure. Their stored code values remain `supported`, `unsupported`, `untestable`, `test-todo` and `test-failure`; this vocabulary change does not change status or publication behavior. A missing same-run check is a reason under Test to-do, not an additional status.
 
 Callback observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`, not five result statuses.
 The [writer and finalizer](src/helpers.ts) fold explicit tests and diagnostics into the result:
@@ -418,7 +418,7 @@ An answered post-reset query still reporting the seed contradicts a fresh cell r
 Missing S-after stays TEST TODO even when F matches D; no storage reading is invented.
 Sentinel negatives keep their original DA1 response, with optional indexed-cell controls retained in the assertion note.
 Cell-decided results retain the original sentinel outcome and timing alongside their controls.
-Missing default or seed controls retain the existing query/sentinel/review rules, never a reset negative.
+Missing default or seed controls retain the existing query and sentinel rules, never a reset negative.
 The shared disposable reset still owns cleanup; operational errors propagate, preserving both causes
 when cleanup also fails. Complete initial query paths and other reset features are unchanged.
 
@@ -641,7 +641,7 @@ Every library backend declares the `adapter-sources` extension from its one adap
 Reply-delivery declarations, when present, share that registry's same source array; identity alone grants no reply capability.
 The collector verifies declared blobs against tracked imported source bytes once per runtime, then compares per-instance declarations.
 Missing identity or stale declarations are named collector errors. Historical captures may omit this field.
-Source engines bind repository and tree OID with `cleanTree: true`; dirty source leaves a review pending with a named reason.
+Source engines bind repository and tree OID with `cleanTree: true`; dirty source stays Test to-do with a named reason.
 
 [collected-run.ts](../admin/src/collected-run.ts) retains the private response and normalized run first. Explicit app and mux `--output` stops there. Default app, mux and server collection also calls [corpus-placement.ts](../admin/corpus-placement.ts), which checks the run, trusted suite and cited artifacts before placing them under `content/`. Release collection remains private. Collection does not authorize external release or publication; those remain held until the actual full Phase 1.4 merge and their existing authorization.
 

@@ -2426,7 +2426,7 @@ function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
         const noObservable = `${prior.notTested?.noObservable ?? "Mode deciding observable unavailable"}; ${reason}`
         const result = reviewResult(
           prior.criterionBranch ?? HEADLESS_OBSERVABLE_REVIEW,
-          `${prior.tests?.[0]?.reason ?? "Mode review required"}; ${reason}`,
+          `${prior.tests?.[0]?.reason ?? "Mode deciding observable unavailable"}; ${reason}`,
           noObservable,
           { priorResponse: prior.response, ...state },
         )

@@ -514,7 +514,7 @@ export const cursorProbes: ProbeDefinition[] = [
               assertionType: "screenshot",
               screenshotRef: target.ref,
               frames: [control, target],
-              note: "DECRQSS cursor-style report unanswered; cursor pixels captured, shape difference requires review",
+              note: "DECRQSS cursor-style report unanswered; cursor pixels captured; no same-run pixel check decides the shape difference",
             },
             criterionBranch: "visual-review",
             tests: [
@@ -523,7 +523,7 @@ export const cursorProbes: ProbeDefinition[] = [
                 id: "review",
                 status: "test-todo",
                 reason:
-                  "Cursor shape frames captured; review pending: undeclared cursor discriminator #31812 (cursor cell and blink phase unmeasured)",
+                  "Cursor shape frames captured; cursor discriminator #31812 is undeclared (cursor cell and blink phase unmeasured), so this run cannot decide it",
               },
             ],
             assertions: [

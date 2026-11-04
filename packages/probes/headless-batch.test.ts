@@ -4583,7 +4583,7 @@ function expectTitleSetupReview(batch: Awaited<ReturnType<typeof collectBatch>>)
         {
           id: "review",
           status: "test-todo",
-          reason: "Headless observable review required: Title setup was not observable",
+          reason: "Title setup was not observable, so this run cannot decide it",
         },
       ],
     })),
