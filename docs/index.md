@@ -245,7 +245,7 @@ function backendTooltip(name, version) {
 
 <p class="section-subtitle">Real terminal measurements. Select a terminal for results and recorded evidence.</p>
 
-<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">PROBE TODO / PROBE INVALID / PROBE CONFLICT</span><span class="legend-manual">{{ environmentGroupCount }} environment groups: manual by design (catalogue), ungraded</span></div>
+<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">PROBE TODO / PROBE INVALID / PROBE CONFLICT</span><span class="legend-manual">{{ environmentGroupCount }} environment groups: manual by design (catalogue)</span></div>
 
 <div class="platform-filter">
   <label for="app-platform-filter">Platform:</label>

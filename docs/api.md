@@ -34,21 +34,21 @@ Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutpu
 | `supported`    | Supported     | The recorded criterion was satisfied                            |
 | `unsupported`  | Unsupported   | The functioning test obtained the defined negative result       |
 | `untestable`   | Untestable    | No current route; no result reaches it                          |
-| `probe-todo`    | PROBE TODO     | Required work remains; this is not a terminal feature verdict   |
+| `probe-todo`    | PROBE TODO     | Required work remains; feature support is not decided   |
 | `probe-invalid` | PROBE INVALID  | An attempted test or collection failed to obtain a valid result |
 
 Each stored run has exactly one result per catalog ID. Original raw run documents are immutable and served verbatim. Older stored runs retain `test-todo` and `test-failure`; current readers map those words one to one to `probe-todo` and `probe-invalid`. Supported, Unsupported and Untestable retain their meanings. This is a vocabulary rename, not a re-grade or a rewrite of stored content.
 
 A composed `featureResults[featureId]` also carries `strength` and `conflictingProbes`. When supported and unsupported probes disagree, its feature-only status is `probe-conflict` (PROBE CONFLICT); individual probes and their tests still use only the five statuses above. Conflict prevents completion.
 
-`score.supported / score.all` is Supported divided by the **graded** catalog positions (264 for a current
+`score.supported / score.all` is Supported divided by the **term features** (264 for a current
 273-row run). Untestable, PROBE TODO and PROBE INVALID remain in that denominator. The nine environment
 groups (`device.env-*`) are recorded in `results` and in the catalogue membership check, but are
-ungraded: **manual by design (catalogue)** and excluded from the score. Stored results remain visible;
+**manual by design (catalogue)** and excluded from the score. Stored results remain visible;
 only a stored PROBE TODO is displayed as **NOT MEASURED**.
 
-A context's `complete` is true only when its PROBE TODO, PROBE INVALID and PROBE CONFLICT counts among the graded
-features are both zero. Completion does not imply full support.
+A context's `complete` is true only when its PROBE TODO, PROBE INVALID and PROBE CONFLICT counts among the term
+features are all zero. Completion does not imply full support.
 
 An absent current context cannot count as complete.
 

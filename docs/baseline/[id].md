@@ -117,7 +117,7 @@ function platformIcons(b) {
 
 <p class="baseline-description" v-html="p.description"></p>
 
-<p class="baseline-meta">{{ p.featureCount }} features in this baseline<template v-if="environmentGroupCount">, including {{ environmentGroupCount }} environment {{ environmentGroupCount === 1 ? 'group' : 'groups' }}: manual by design (catalogue), ungraded</template></p>
+<p class="baseline-meta">{{ p.featureCount }} features in this baseline<template v-if="environmentGroupCount">, including {{ environmentGroupCount }} environment {{ environmentGroupCount === 1 ? 'group' : 'groups' }}: manual by design (catalogue)</template></p>
 
 <div v-if="p.analysis" class="analysis">
   <div class="analysis-header">
