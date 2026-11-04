@@ -20,7 +20,7 @@ import {
   type RunDraft,
   type CapturedRunDraft,
 } from "@terminfo/probe-defs"
-import { parseRun } from "@terminfo/run-parser"
+import { canonicalJson, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
 import { assertDeclaredNativeSha, collectBatch, errorMessage, finalizeHeadlessAttempt } from "./headless-batch.ts"
@@ -75,6 +75,7 @@ function loadedBackend(value: unknown, specifier: string): TerminalBackend {
 
 export interface HeadlessCollection {
   directory: string
+  suiteManifest?: string
   requested: string[]
   runs: string[]
   failures: Array<{ backend: string; package: string; error: string }>
@@ -340,6 +341,17 @@ export async function collectHeadlessRuns(
   const directory = outputDirectory ?? mkdtempSync(join(tmpdir(), "terminfo-headless-v3-"))
   mkdirSync(directory, { recursive: true })
   if (readdirSync(directory).length > 0) throw new Error(`Headless output directory is not empty: ${directory}`)
+  const suiteManifest = `suites/${suite.probeHash}.json`
+  const suiteManifestPath = join(directory, suiteManifest)
+  const manifestBytes = `${canonicalJson(derivedSuiteManifest(suite))}\n`
+  const retainedManifest = parseSuiteManifest(suiteManifestPath, manifestBytes)
+  if (retainedManifest.probeHash !== suite.probeHash) {
+    throw new Error(
+      `${suiteManifestPath}: retained suite ${retainedManifest.probeHash} disagrees with producer suite ${suite.probeHash}`,
+    )
+  }
+  mkdirSync(dirname(suiteManifestPath))
+  writeFileSync(suiteManifestPath, manifestBytes, { flag: "wx" })
   const runs: string[] = []
   const failures: HeadlessCollection["failures"] = []
 
@@ -538,7 +550,7 @@ export async function collectHeadlessRuns(
     }
   }
 
-  const collection: HeadlessCollection = { directory, requested, runs, failures }
+  const collection: HeadlessCollection = { directory, suiteManifest, requested, runs, failures }
   writeFileSync(join(directory, "collection.json"), `${JSON.stringify(collection, null, 2)}\n`, { flag: "wx" })
   return collection
 }

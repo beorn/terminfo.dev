@@ -1,7 +1,7 @@
 /** Record and validate the immutable declaration of an executable probe suite. */
 
 import { existsSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import type { ProbeSuiteSnapshot } from "./versions.ts"
 import { parseSuiteManifest, canonicalJson } from "@terminfo/run-parser"
@@ -68,9 +68,22 @@ export function readExplicitSuiteTarget(root: string, suiteId: string): Explicit
       `${path}: no suite manifest carries that id, so \"--suite ${suiteId}\" names no suite in this registry`,
     )
   }
+  return { suiteId, path, manifest: readSuiteManifestFile(path, suiteId) }
+}
+
+export function readSuiteManifestFile(path: string, suiteId: string): ProbeSuiteManifest {
+  if (!SUITE_ID_RE.test(suiteId) || basename(path) !== `${suiteId}.json`) {
+    throw new Error(`${path}: expected a suite manifest filed as ${suiteId}.json with a twelve-lowercase-hex suite id`)
+  }
+  let source: string
+  try {
+    source = readFileSync(path, "utf8")
+  } catch (cause) {
+    throw new Error(`${path}: cannot read suite manifest for ${suiteId}`, { cause })
+  }
   let manifest: ProbeSuiteManifest
   try {
-    manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+    manifest = parseSuiteManifest(path, source)
   } catch (cause) {
     throw new Error(`${path}: the suite manifest does not parse, so --suite ${suiteId} cannot name a target`, {
       cause,
@@ -81,7 +94,7 @@ export function readExplicitSuiteTarget(root: string, suiteId: string): Explicit
       `${path}: the manifest declares suite ${manifest.probeHash}, not ${suiteId}; --suite refuses a misfiled record`,
     )
   }
-  return { suiteId, path, manifest }
+  return manifest
 }
 
 /** Verify a stored declaration against the currently executable suite. */

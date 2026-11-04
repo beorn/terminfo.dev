@@ -667,6 +667,10 @@ Source engines bind repository and tree OID with `cleanTree: true`; dirty source
 
 The remeasure instrument reads `collection.json` from the headless collector, parses each named run against its suite, and copies each recorded `featureId` and status into `cells.json` or `cells.partial.json`. Failed engines are reported as refusals; an empty capture contributes no cells. The instrument records the suite for each engine and keeps incomplete output separate. These private measurements do not publish the site.
 
+New headless collections retain the producer's existing schema 4 suite declaration once, before workers start, at `suites/<probeHash>.json` inside their private output directory. Their `collection.json` names it through `suiteManifest`. The working-run reader supplies this confined file explicitly to the canonical raw-capture reader, so the original run and probe evidence remains readable after the executable suite changes. A declared manifest that is missing, malformed or misfiled fails loudly; it never falls back to another declaration. Legacy collections without the field retain their existing committed/current-suite trust and unreadable banner.
+
+Only the working-run reader supplies this private manifest input. It reads raw, unreviewed evidence; selected results, public results, release scope and admission never consume it. No accepted grade, corpus placement or publication authority follows from retaining the declaration. Old captures without a retained declaration are not reconstructed or rewritten.
+
 `measureRenderedWidth` returns a number or a named readback cause: `no-reply` with its step,
 `control-mismatch` with its step and observed cursor, or `wrapped` with its observed cursor.
 All width callbacks distinguish these before applying their numeric feature criterion: missing

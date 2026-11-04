@@ -19,7 +19,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseJsonStrict, parseRun, type LoadedRun } from "@terminfo/run-parser"
-import { readExplicitSuiteTarget } from "./suite-manifest.ts"
+import { readExplicitSuiteTarget, readSuiteManifestFile } from "./suite-manifest.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "./versions.ts"
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -61,7 +61,7 @@ function trustedManifest(path: string, root: string, suiteId: string): ProbeSuit
  */
 export function loadRawCapture(
   path: string,
-  options: { root: string; catalogIds: readonly string[]; bytes?: string },
+  options: { root: string; catalogIds: readonly string[]; bytes?: string; manifestPath?: string },
 ): LoadedRun {
   let bytes = options.bytes
   if (bytes === undefined) {
@@ -82,7 +82,10 @@ export function loadRawCapture(
   ) {
     throw new Error(`${path}: a raw capture requires runId, probeHash and sourceRevision`)
   }
-  const manifest = trustedManifest(path, options.root, header.probeHash)
+  const manifest =
+    options.manifestPath === undefined
+      ? trustedManifest(path, options.root, header.probeHash)
+      : readSuiteManifestFile(options.manifestPath, header.probeHash)
   if (header.suiteId !== manifest.probeHash) {
     throw new Error(`${path}: suiteId disagrees with manifest ${manifest.probeHash}`)
   }

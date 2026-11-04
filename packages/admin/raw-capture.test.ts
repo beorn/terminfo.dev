@@ -63,6 +63,44 @@ describe("loadRawCapture: the one raw-capture reader fails loudly", () => {
     expect(() => loadRawCapture(path, { root, catalogIds: [] })).toThrow(`suiteId disagrees with manifest ${tree}`)
   })
 
+  it("reads retained run and probe history against the producer manifest after the executable suite changes", () => {
+    const root = scratchRoot()
+    const path = join(root, "historical.draft.json")
+    const bytes = readFileSync(
+      join(REPO, "content/probes-libs/vterm-0.10.1-linux-a22f06ca-2505-4c0d-a518-b0b01f8bbe76.json"),
+      "utf8",
+    )
+    const header = JSON.parse(bytes) as { probeHash: string }
+    expect(header.probeHash).not.toBe(probeSuiteSnapshot().probeHash)
+    writeFileSync(path, bytes)
+    const baseline = loadRawCapture(path, { root: REPO, catalogIds: [] })
+    mkdirSync(join(root, "suites"))
+    const manifestPath = join(root, "suites", `${header.probeHash}.json`)
+    writeFileSync(manifestPath, readFileSync(join(REPO, "content", "suites", `${header.probeHash}.json`)))
+    expect(() => loadRawCapture(path, { root, catalogIds: [] })).toThrow("has no committed manifest")
+    const options = { root, catalogIds: [], manifestPath }
+    const historical = loadRawCapture(path, options)
+    expect(historical.runId).toBe(baseline.runId)
+    expect(historical.results).toEqual(baseline.results)
+    expect(historical.assertions).toEqual(baseline.assertions)
+    expect(historical.catalogIds).toEqual(baseline.catalogIds)
+    expect(readFileSync(path, "utf8")).toBe(bytes)
+    expect(() =>
+      loadRawCapture(path, { ...options, bytes: JSON.stringify({ ...JSON.parse(bytes), suiteId: "ffffffffffff" }) }),
+    ).toThrow(`suiteId disagrees with manifest ${header.probeHash}`)
+    const retainedManifest = readFileSync(manifestPath, "utf8")
+    const absentPath = join(root, "absent", `${header.probeHash}.json`)
+    expect(() => loadRawCapture(path, { root: REPO, catalogIds: [], manifestPath: absentPath })).toThrow(absentPath)
+    for (const invalid of [
+      "{ invalid JSON",
+      JSON.stringify({ ...JSON.parse(retainedManifest), probeHash: "ffffffffffff" }),
+      JSON.stringify({ ...JSON.parse(retainedManifest), schemaVersion: 5 }),
+    ]) {
+      writeFileSync(manifestPath, invalid)
+      expect(() => loadRawCapture(path, { root: REPO, catalogIds: [], manifestPath })).toThrow(manifestPath)
+    }
+  })
+
   it("is the only raw-capture parser both consumers use", () => {
     for (const consumer of ["packages/admin/src/report.ts", "docs/data/working-runs.ts"]) {
       const source = readFileSync(join(REPO, consumer), "utf8")
