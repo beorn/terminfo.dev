@@ -143,6 +143,40 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(loaded.runs[0]?.runId).toBe("a22f06ca-2505-4c0d-a518-b0b01f8bbe76")
   })
 
+  // Retained hourly summaries predate the vocabulary rename; canonical-only envelopes miss this boundary.
+  it("reads legacy count keys identically without rewriting the envelope and still detects mismatched counts", () => {
+    const fixture = collection()
+    const canonical = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })
+    const counts = fixture.summary.rollups.vterm.counts
+    for (const [legacy, status] of [
+      ["test-todo", "probe-todo"],
+      ["test-failure", "probe-invalid"],
+    ] as const) {
+      Reflect.set(counts, legacy, counts[status])
+      Reflect.deleteProperty(counts, status)
+    }
+    fixture.save()
+    const summaryPath = join(fixture.dir, "summary.json")
+    const retained = readFileSync(summaryPath, "utf8")
+    expect(loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })).toEqual(canonical)
+    expect(readFileSync(summaryPath, "utf8")).toBe(retained)
+    Reflect.set(counts, "test-todo", Number(Reflect.get(counts, "test-todo")) + 1)
+    fixture.save()
+    expect(() => loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })).toThrow("disagrees")
+  })
+
+  it.each(["test-todo", "test-failure", "unknown-status"])(
+    "rejects an ambiguous or unknown hourly count key %s",
+    (key) => {
+      const fixture = collection()
+      Reflect.set(fixture.summary.rollups.vterm.counts, key, 0)
+      fixture.save()
+      expect(() => loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })).toThrow(
+        key === "unknown-status" ? "unknown status key unknown-status" : "both legacy and canonical keys",
+      )
+    },
+  )
+
   it("names a missing current collection", () => {
     const parent = runsDir()
     const dir = run(parent, OLD, { complete: true })
@@ -256,6 +290,71 @@ describe("workingCell: reviewed stays the headline, raw sits beside it (requirem
 })
 
 describe("raw cells never enter an accepted rollup (requirement 3)", () => {
+  // Single-method raw/reviewed comparisons cannot detect a lost computed feature conflict.
+  it("keeps a composed conflict as the reviewed headline while raw and environment statuses stay raw", () => {
+    const subject = {
+      kind: "lib",
+      id: "fixture",
+      version: "1",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    }
+    const results = ["a.one", "device.env-term"].map((featureId) => ({
+      featureId,
+      status: "supported",
+      tests: [],
+      attempt: { scope: "none" },
+    }))
+    const stored = {
+      runId: "reviewed-run",
+      subject,
+      results,
+      probeHash: "suite",
+      suiteId: "suite",
+      suiteFreshness: "tree suite current",
+      measuredAt: "2026-11-04T00:00:00Z",
+      sourceRevision: "a".repeat(40),
+    }
+    const selected = {
+      subject,
+      cells: Object.fromEntries(
+        results.map((result) => [
+          result.featureId,
+          { result, run: stored, ...(result.featureId === "a.one" && { featureResult: { status: "probe-conflict" } }) },
+        ]),
+      ),
+    }
+    const projection = {
+      versions: { "lib:fixture": [stored] },
+      history: { "lib:fixture": [stored] },
+    } as unknown as Parameters<typeof composeWorkingView>[0]
+    const reviewed = new Map([["fixture", { contextKey: "lib:fixture", selected }]]) as unknown as Parameters<
+      typeof composeWorkingView
+    >[1]
+    const working = {
+      id: OLD,
+      dir: "/unused",
+      startedAt: stored.measuredAt,
+      runs: [{ ...stored, runId: "working-run" }],
+      unmeasured: [],
+    } as unknown as LoadedWorkingRun
+    const retained = JSON.stringify({ projection, selected, working })
+    const view = composeWorkingView(projection, reviewed, working)
+    expect(view.contexts[0]?.cells[0]).toMatchObject({
+      reviewed: { status: "probe-conflict", display: "probe-conflict" },
+      raw: { status: "supported", differsFromReviewed: true },
+    })
+    expect(view.contexts[0]?.cells[1]).toMatchObject({
+      reviewed: { status: "supported" },
+      raw: { status: "supported", differsFromReviewed: false },
+    })
+    expect(view.contexts[0]).toMatchObject({ positions: 1, counts: { supported: 1, "probe-conflict": 0 } })
+    expect(JSON.stringify({ projection, selected, working })).toBe(retained)
+  })
   it("leaves the accepted projection and every accepted api/v3 field unchanged when a working run is added", () => {
     const contentDir = join(import.meta.dirname, "..", "content")
     const { projection } = loadCurrentResults(contentDir)

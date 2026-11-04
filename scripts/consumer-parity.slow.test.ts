@@ -747,6 +747,53 @@ it("analysis validation refuses stale live values and key drift but labels histo
 }, 30_000)
 
 describe("selected-run consumer parity", () => {
+  // Representative raw probes cannot answer a composed conflict; existing parity fixtures have no disagreement.
+  it.each(["supported", "unsupported"] as const)(
+    "keeps a composed conflict out of analysis support and gap claims when its raw probe is %s",
+    (rawStatus) => {
+      const projection = currentResults.loadCurrentResults("").projection
+      const selected = requiredContext(projection, "term", "kitty")
+      const entry = { contextKey: selected.contextKey, selected }
+      for (const [id, cell] of Object.entries(selected.cells)) {
+        cell.result.status = "supported"
+        if (cell.featureResult) {
+          Object.assign(cell.featureResult, { status: "supported" })
+        }
+        if (id === "sgr.bold") {
+          if (!cell.featureResult) {
+            throw new Error("Missing computed bold fixture result")
+          }
+          cell.result.status = rawStatus
+          Object.assign(cell.featureResult, {
+            status: "probe-conflict",
+            strength: null,
+            probeId: null,
+            conflictingProbes: ["sgr.bold:output", "sgr.bold:visual"],
+          })
+        }
+      }
+      const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
+      const targets = vi.spyOn(currentResults, "compatibilitySubjects").mockReturnValue(new Map([["kitty", entry]]))
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+      const stored = JSON.stringify(Object.values(selected.cells).map((cell) => cell.result))
+      try {
+        const analyses = generateAnalysis()
+        const terminal = analyses["terminals/kitty"]
+        const feature = analyses["sgr/1-bold"]
+        const all = gradedFeatureIds(selected.catalogIds).length
+        expect(terminal?.score).toEqual({ supported: all - 1, all })
+        expect(terminal?.analysis).toContain("less than full recorded support")
+        expect(terminal?.analysis).not.toContain("Observed unsupported")
+        expect(feature?.analysis).toContain("No recorded support")
+        expect(feature?.analysis).not.toContain("Not supported by")
+        expect(JSON.stringify(Object.values(selected.cells).map((cell) => cell.result))).toBe(stored)
+      } finally {
+        warning.mockRestore()
+        targets.mockRestore()
+        selection.mockRestore()
+      }
+    },
+  )
   it("publishes v3 run references that resolve to digest-verified full run documents", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-run-documents-"))
     try {

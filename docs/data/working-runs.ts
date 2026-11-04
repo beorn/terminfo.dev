@@ -22,8 +22,14 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { join, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
-import { PROBE_STATUSES, type ProbeStatus } from "@terminfo/probe-defs"
-import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
+import {
+  PROBE_STATUSES,
+  FEATURE_RESULT_STATUSES,
+  isEnvironmentGroup,
+  type ProbeStatus,
+  type FeatureResultStatus,
+} from "@terminfo/probe-defs"
+import { parseJsonStrict, storedProbeStatus, type LoadedRun } from "@terminfo/run-parser"
 import { loadRawCapture, UntrustedSuiteError } from "../../packages/admin/raw-capture.ts"
 import { compatibilitySubjects, loadCurrentResults, type CurrentResult } from "./current-results.ts"
 import { admittedContextKeys, originalRunFor, workingSubjectKey, type SelectedProjection } from "./selected-results.ts"
@@ -151,18 +157,32 @@ export function loadWorkingRun(
   }
   const rollups = summary.rollups
   if (!record(rollups)) throw new Error(`${summaryPath}: complete run requires per-engine rollups`)
+  const decodedCounts = new Map<string, Map<FeatureResultStatus, number>>()
   for (const engine of expected) {
     const rollup = rollups[engine]
     const counts = record(rollup) ? rollup.counts : undefined
-    if (
-      !record(counts) ||
-      !PROBE_STATUSES.every(
-        (status) =>
-          typeof counts[status] === "number" && Number.isInteger(counts[status]) && Number(counts[status]) >= 0,
-      )
-    ) {
+    if (!record(counts)) {
       throw new Error(`${summaryPath}: missing or invalid rollup for ${engine}`)
     }
+    const normalized = new Map<FeatureResultStatus, number>()
+    for (const [key, count] of Object.entries(counts)) {
+      const decoded = storedProbeStatus(key)
+      const status = FEATURE_RESULT_STATUSES.find((status) => status === decoded)
+      if (status === undefined) {
+        throw new Error(`${summaryPath}: rollup for ${engine} has unknown status key ${key}`)
+      }
+      if (normalized.has(status)) {
+        throw new Error(`${summaryPath}: rollup for ${engine} contains both legacy and canonical keys for ${status}`)
+      }
+      if (typeof count !== "number" || !Number.isInteger(count) || count < 0) {
+        throw new Error(`${summaryPath}: missing or invalid rollup for ${engine}`)
+      }
+      normalized.set(status, count)
+    }
+    if (!PROBE_STATUSES.every((status) => normalized.has(status))) {
+      throw new Error(`${summaryPath}: missing or invalid rollup for ${engine}`)
+    }
+    decodedCounts.set(engine, normalized)
   }
   const runRoot = realpathSync(selection.dir) + sep
   // Check every expected resource before an older-suite warning can return early.
@@ -201,16 +221,18 @@ export function loadWorkingRun(
     }
     seen.add(engine)
     const rollup = rollups[engine]
+    const counts = decodedCounts.get(engine)
     const actual = rollupTerminalStatuses(
       Object.fromEntries((run.results ?? []).map((result) => [result.featureId, result.status])),
       options.catalogIds,
     )
     if (
       !record(rollup) ||
-      !record(rollup.counts) ||
+      !counts ||
       rollup.positions !== actual.positions ||
       rollup.environmentPositions !== actual.environmentPositions ||
-      PROBE_STATUSES.some((status) => record(rollup.counts) && rollup.counts[status] !== actual.counts[status])
+      // The feature-only conflict counter was absent in retained five-status hourly summaries.
+      FEATURE_RESULT_STATUSES.some((status) => (counts.get(status) ?? 0) !== actual.counts[status])
     ) {
       throw new Error(`${summaryPath}: rollup for ${engine} disagrees with recorded capture ${rawPath}`)
     }
@@ -287,7 +309,7 @@ export interface RawSide {
 }
 
 export interface ReviewedSide {
-  status: ProbeStatus
+  status: FeatureResultStatus
   criterionBranch?: string
   runId: string
   suiteId: string
@@ -308,7 +330,7 @@ export interface WorkingCell {
 }
 
 // No cell waits on a source review any more (#32246): a retired source-negative cell reads its own status.
-const display = (side: { status: ProbeStatus }): string => side.status
+const display = (side: { status: FeatureResultStatus }): string => side.status
 
 /** The per-cell provenance rule; pure, so the headline rule is tested without a corpus. */
 export function workingCell(raw: RawSide, reviewed: ReviewedSide | undefined): WorkingCell {
@@ -383,10 +405,14 @@ export function composeWorkingView(
     const suiteId = run.probeHash
     const cells = run.results.map((result) => {
       const cell = review?.selected.cells[result.featureId]
+      const status = isEnvironmentGroup(result.featureId) ? cell?.result.status : cell?.featureResult?.status
+      if (cell && status === undefined) {
+        throw new Error(`Reviewed context ${review?.contextKey}/${result.featureId} lacks its computed feature result`)
+      }
       const reviewedSide: ReviewedSide | undefined =
-        cell && review
+        cell && review && status !== undefined
           ? {
-              status: cell.result.status,
+              status,
               ...(cell.result.criterionBranch !== undefined && { criterionBranch: cell.result.criterionBranch }),
               runId: cell.run.runId,
               suiteId: cell.run.probeHash ?? cell.run.suiteId,

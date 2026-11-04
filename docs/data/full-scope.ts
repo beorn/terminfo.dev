@@ -3,7 +3,7 @@
  * positions stay in `catalogRows` (a run records them) but are ungraded, so they are never in
  * `denominator` — D132 B (#30917).
  */
-import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
+import type { FeatureResultStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults } from "./release-scope.ts"
 
 /** Current execution score: every frozen graded feature stays in the denominator. */
@@ -12,7 +12,7 @@ export interface ScopeResult {
   catalogRows: number
   denominator: number
   supported: number
-  counts: Record<ProbeStatus, number>
+  counts: Record<FeatureResultStatus, number>
   fraction: string
   pct: number
   complete: boolean
@@ -20,7 +20,7 @@ export interface ScopeResult {
     key: string
     catalogRows: number
     supported: number
-    counts: Record<ProbeStatus, number>
+    counts: Record<FeatureResultStatus, number>
     fraction: string
     pct: number
     complete: boolean
@@ -30,7 +30,7 @@ export interface ScopeResult {
 export function scopeAggregate(input: {
   scope: string
   catalogIds: readonly string[]
-  results: readonly ProbeResult[]
+  results: readonly { featureId: string; status: FeatureResultStatus }[]
 }): ScopeResult {
   const aggregate = aggregateCurrentResults(input.results, input.catalogIds)
   const grouped = new Map<string, string[]>()

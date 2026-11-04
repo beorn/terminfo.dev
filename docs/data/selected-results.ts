@@ -515,6 +515,7 @@ function composeContextSummaries(
       string,
       {
         version: string
+        suite: string | null
         probes: Map<ProbeMethod | null, { run: LoadedRun; result: ProbeResult }>
       }
     >()
@@ -522,13 +523,16 @@ function composeContextSummaries(
       const classification = classifyResultMethod(result, run.subject, run.assertions)
       const method = classification.kind === "method" ? classification.method : null
       const prior = currentMethods.get(result.featureId)
-      // Unmapped/open attempts and subject-version changes retain the previous latest-rerun semantics.
+      // Unmapped/open attempts, subject-version changes and new suites replace historical methods.
       const probes =
-        prior?.version === run.subject.version && method !== null && !prior.probes.has(null)
+        prior?.version === run.subject.version &&
+        prior.suite === run.probeHash &&
+        method !== null &&
+        !prior.probes.has(null)
           ? prior.probes
           : new Map<ProbeMethod | null, { run: LoadedRun; result: ProbeResult }>()
       probes.set(method, { run, result })
-      currentMethods.set(result.featureId, { version: run.subject.version, probes })
+      currentMethods.set(result.featureId, { version: run.subject.version, suite: run.probeHash, probes })
       const currentProbes = [...probes].map(([probeMethod, probe]) => ({
         ...probe,
         probeId: `${result.featureId}:${probeMethod ?? "unobserved"}`,

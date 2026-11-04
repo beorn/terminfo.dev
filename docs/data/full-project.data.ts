@@ -80,6 +80,7 @@ export function loadFullProjectData(): FullProjectData {
     catalogIds: catalogIdsInDisplayOrder(),
     candidates,
     requiredSuiteId,
+    projection,
   })
   const evidenceContexts: Record<string, PublicContextSummary> = {}
   for (const row of rows.contexts) {
