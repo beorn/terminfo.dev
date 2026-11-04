@@ -547,10 +547,82 @@ jobs:
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
           # The receipt exists before strict parsing. Release collection ONLY after producer success.
           touch "$OUT/collector-ready"
+          ITERM_CONSENT_PID=""
+          if [[ "$APP_ID" = iterm2 && "$CAPTURE_RUN_ID" = 18f8ea627153436fbb6a03572beb00ca && "$PROBE_IDS" = '["extensions.iterm2-images"]' ]]; then
+            echo 'iterm_consent_check=true' >> "$GITHUB_OUTPUT"
+            node - "$OUT" "$CAPTURE_RUN_ID" > "$OUT/iterm-consent.log" 2>&1 <<'ITERM_ONE_CONSENT' &
+          const { spawnSync } = require('node:child_process');
+          const { readFileSync, existsSync } = require('node:fs');
+          const { join } = require('node:path');
+          const [out, captureId] = process.argv.slice(2);
+          const command = (file, args) => {
+            const result = spawnSync(file, args, { encoding: 'utf8', timeout: 5000, killSignal: 'SIGKILL', maxBuffer: 262144 });
+            console.log(JSON.stringify({ file, args, status: result.status, signal: result.signal, error: result.error?.message, stdout: result.stdout, stderr: result.stderr }));
+            if (result.error || result.signal) throw new Error(`Native command failed: ${file}`);
+            return result;
+          };
+          const required = (file, args) => {
+            const result = command(file, args);
+            if (result.status !== 0) throw new Error(`Native command unmeasured: ${file}: ${result.stderr}`);
+            return result.stdout.trim();
+          };
+          const ui = String.raw`function run(argv) {
+            const matches = Application('System Events').applicationProcesses.whose({unixId: Number(argv[0])})();
+            if (matches.length !== 1) throw new Error('Owned iTerm process unavailable');
+            const dialogs = [];
+            for (const window of matches[0].windows()) dialogs.push(window, ...window.sheets());
+            const targets = dialogs.filter(dialog => dialog.staticTexts().some(text => text.value() === 'Allow Terminal-Initiated Display?'));
+            if (targets.length === 0) return JSON.stringify({state:'waiting',windows:dialogs.length});
+            if (targets.length !== 1) throw new Error('Display dialog identity ambiguous');
+            const dialog = targets[0];
+            const boxes = dialog.checkBoxes().filter(box => box.name() === 'Remember my choice');
+            const buttons = dialog.buttons().filter(button => button.name() === 'Yes');
+            if (boxes.length !== 1 || Number(boxes[0].value()) !== 0 || buttons.length !== 1) throw new Error('Remember must be unchecked and one native Yes must exist');
+            if (argv[1] === 'click') buttons[0].click();
+            return JSON.stringify({state:argv[1] === 'click' ? 'clicked' : 'ready',remember:0,windows:dialogs.length});
+          }`;
+          (async () => {
+            const deadline = Date.now() + 540000;
+            const receipt = JSON.parse(readFileSync(join(out, 'host-measured.json'), 'utf8'));
+            if (receipt.appLaunch?.bundlePath !== '/Applications/iTerm.app' || receipt.appLaunch?.cfBundleShortVersionString !== '3.6.11') throw new Error('Owned iTerm receipt/version unavailable');
+            const executable = receipt.appLaunch.executablePath;
+            const domain = required('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', '/Applications/iTerm.app/Contents/Info.plist']);
+            if (domain !== 'com.googlecode.iterm2') throw new Error('Unexpected iTerm preferences domain');
+            const keys = ['NoSyncSuppressDownloadConfirmation', 'NoSyncSuppressDownloadConfirmation_selection', 'LoadPrefsFromCustomFolder', 'PrefsCustomFolder'];
+            const preferences = () => Object.fromEntries(keys.map(key => {
+              const result = command('/usr/bin/defaults', ['read', domain, key]);
+              if (result.status !== 0 && !(result.status === 1 && /does not exist/.test(result.stderr))) throw new Error(`Preference unavailable: ${key}`);
+              return [key, {status:result.status,value:result.status === 0 ? result.stdout.trim() : null}];
+            }));
+            const before = preferences();
+            if (before.NoSyncSuppressDownloadConfirmation.value === '1' || before.LoadPrefsFromCustomFolder.value === '1') throw new Error('Initial suppression or custom preferences prevent this check');
+            const pid = required('/usr/bin/pgrep', ['-x', 'iTerm2']);
+            if (!/^[0-9]+$/.test(pid) || required('/bin/ps', ['-p', pid, '-o', 'comm=']) !== executable) throw new Error('Owned iTerm process identity unavailable');
+            console.log(JSON.stringify({captureId,launchRunId:receipt.runId,executable,pid,domain,before}));
+            while (Date.now() < deadline) {
+              const observed = JSON.parse(required('/usr/bin/osascript', ['-l', 'JavaScript', '-e', ui, pid, 'inspect']));
+              if (observed.state === 'ready') {
+                required('/usr/sbin/screencapture', ['-x', join(out, 'iterm-consent-before.png')]);
+                console.log(required('/usr/bin/osascript', ['-l', 'JavaScript', '-e', ui, pid, 'click']));
+                required('/usr/sbin/screencapture', ['-x', join(out, 'iterm-consent-after.png')]);
+                const after = preferences();
+                console.log(JSON.stringify({after,persisted:JSON.stringify(before) !== JSON.stringify(after)}));
+                if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Effective preference persistence changed');
+                return;
+              }
+              if (existsSync(join(out, 'collector-exit'))) throw new Error('Collector completed without the required consent observation');
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            throw new Error('Native display consent unmeasured within existing collector bound');
+          })().catch(error => { console.error('iTerm single-job consent unmeasured:', error); process.exitCode = 1; });
+          ITERM_ONE_CONSENT
+            ITERM_CONSENT_PID=$!
+          fi
           # WezTerm's collect step measured 200 s, 200 s, 307 s and >333 s (30655); 600 s keeps it inside the bound.
           for attempt in {1..600}; do
             if [ -f "$OUT/collector-exit" ]; then
               status="$(cat "$OUT/collector-exit")"
+              if [[ -n "$ITERM_CONSENT_PID" ]]; then wait "$ITERM_CONSENT_PID"; fi
               test "$status" = 0 || {
                 echo "$APP_ID collector failed ($status); see collector.log artifact" >&2
                 if [ "$APP_ID" = iterm2 ]; then
@@ -572,7 +644,7 @@ jobs:
           exit 1
 
       - name: Preserve terminal launch failure evidence
-        if: always() && (matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')))
+        if: always() && (matrix.id == 'terminal-app' || steps.collect.outputs.iterm_consent_check == 'true' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')))
         env:
           APP_ID: ${{ matrix.id }}
           ITERM_LAUNCH_START: ${{ steps.collect.outputs.iterm_launch_start }}
