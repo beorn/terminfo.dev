@@ -122,6 +122,8 @@ console.log(value);
     const start = join(dir, "start.json")
     const receipt = join(dir, "host-measured.json")
     const first = await run("start", start)
+    const argv = [join(bundle, "Contents/MacOS/ghostty"), "--token", "[redacted]"]
+    await writeFile(join(dir, "app-argv.json"), JSON.stringify(argv))
     const emitted = await run("emit", start, receipt)
     const bytes = await readFile(receipt, "utf8")
     expect(parseDisposableReceipt(bytes).kind).toBe("github-hosted-runner")
@@ -134,6 +136,7 @@ console.log(value);
     // Every field is measured: the bundle's own Info.plist, the executable's bytes, the installer
     // bytes this job installed. Nothing here is a declared or detected value (28216).
     const launch = {
+      argv,
       bundlePath: realpathSync(bundle),
       cfBundleShortVersionString: "1.3.1",
       cfBundleVersion: "1",
@@ -184,8 +187,11 @@ console.log(value);
     env.APP_BUNDLE = weztermBundle
     env.BREW_CASK_PATH = weztermInstaller
     const weztermReceipt = join(dir, "wezterm-host-measured.json")
+    const weztermArgv = [weztermExecutable, "start", "--", "/bin/bash", "/command with spaces"]
+    await writeFile(join(dir, "app-argv.json"), JSON.stringify(weztermArgv))
     await run("emit", start, weztermReceipt)
     expect(parseDisposableReceipt(await readFile(weztermReceipt, "utf8")).appLaunch).toEqual({
+      argv: weztermArgv,
       bundlePath: realpathSync(weztermBundle),
       cfBundleShortVersionString: "20240203",
       cfBundleVersion: "20240203",
@@ -608,12 +614,15 @@ if (cmd.includes('Get-NetAdapter')) {
     const start = join(dir, "start.json")
     const receipt = join(dir, "host-measured.json")
     await run("start", start)
+    const argv = [executablePath, "--token=[redacted]", "powershell.exe"]
+    await writeFile(join(dir, "app-argv.json"), JSON.stringify(argv))
     await run("emit", start, receipt)
     const bytes = await readFile(receipt, "utf8")
     const parsed = parseDisposableReceipt(bytes)
     expect(parsed.kind).toBe("github-hosted-runner")
     // The same producer/parser carry the measured Windows app and retained archive, never wt.exe.
     expect(parsed.appLaunch).toEqual({
+      argv,
       platform: "win32",
       executablePath,
       productVersion,
@@ -624,6 +633,20 @@ if (cmd.includes('Get-NetAdapter')) {
         sha256: createHash("sha256").update(zipBytes).digest("hex"),
       },
     })
+    // Expected direct-launch input cannot silently degrade to historical absence, and
+    // malformed handoff bytes must never be echoed into always-retained failure logs.
+    await rm(join(dir, "app-argv.json"))
+    await expect(run("emit", start, join(dir, "missing-argv.json"))).rejects.toThrow(
+      /cannot read transformed invocation handoff.*app-argv.json/,
+    )
+    await expect(readFile(join(dir, "missing-argv.json"))).rejects.toMatchObject({ code: "ENOENT" })
+    await writeFile(join(dir, "app-argv.json"), '{"secret":"malformed-private-sentinel"}')
+    await expect(run("emit", start, join(dir, "malformed-argv.json"))).rejects.toMatchObject({
+      message: expect.stringMatching(/invocation handoff.*must contain an array/),
+      stderr: expect.not.stringContaining("malformed-private-sentinel"),
+    })
+    await expect(readFile(join(dir, "malformed-argv.json"))).rejects.toMatchObject({ code: "ENOENT" })
+    await writeFile(join(dir, "app-argv.json"), JSON.stringify(argv))
     const decoded = JSON.parse(bytes) as {
       vm: { identityAtJobStart: Record<string, string> }
     }
@@ -646,8 +669,11 @@ if (cmd.includes('Get-NetAdapter')) {
     env.FAKE_PRODUCT_VERSION = "0.2026.10.14"
     env.FAKE_EXE_FILE = "wezterm-gui.exe"
     env.FAKE_ZIP_FILE = "wezterm.zip"
+    const weztermArgv = [weztermExe, "start", "--", "powershell.exe"]
+    await writeFile(join(dir, "app-argv.json"), JSON.stringify(weztermArgv))
     await run("emit", start, join(dir, "wezterm-host-measured.json"))
     expect(parseDisposableReceipt(await readFile(join(dir, "wezterm-host-measured.json"), "utf8")).appLaunch).toEqual({
+      argv: weztermArgv,
       platform: "win32",
       executablePath: weztermExe,
       productVersion: "0.2026.10.14",
@@ -822,10 +848,13 @@ if (cmd.includes('Get-NetAdapter')) {
     const start = join(dir, "start.json")
     const receipt = join(dir, "host-measured.json")
     await run("ok", "start", start)
+    const argv = [winExecutablePath, "--command", "powershell.exe"]
+    await writeFile(join(dir, "app-argv.json"), JSON.stringify(argv))
     const emitted = await run("ok", "emit", start, receipt)
     expect(emitted.stderr).toContain('alacritty --version stdout (28 bytes): "alacritty 0.17.0 (94e7c88)\\r\\n"')
     const parsed = parseDisposableReceipt(await readFile(receipt, "utf8"))
     expect(parsed.appLaunch).toEqual({
+      argv,
       platform: "win32",
       executablePath: winExecutablePath,
       productVersion: "0.17.0",

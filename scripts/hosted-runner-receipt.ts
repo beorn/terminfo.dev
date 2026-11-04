@@ -536,7 +536,28 @@ async function main(): Promise<void> {
     .slice(0, 32)
   // Both hosted app routes measure their launch; a declared installation version is never evidence.
   const os = required("RUNNER_OS")
-  const appLaunch = os === "macOS" ? measureAppLaunch() : os === "Windows" ? measureWindowsAppLaunch() : undefined
+  let appLaunch = os === "macOS" ? measureAppLaunch() : os === "Windows" ? measureWindowsAppLaunch() : undefined
+  const appId = os === "Linux" ? undefined : required("APP_ID")
+  const direct =
+    (os === "macOS" && ["ghostty", "wezterm", "alacritty"].includes(appId!)) ||
+    (os === "Windows" && ["windows-terminal", "wezterm", "alacritty"].includes(appId!))
+  if (direct) {
+    // The workflow has already transformed this exact launch array before its first disk write.
+    // Read only this handoff; never reconstruct argv from a process command line or another recipe.
+    const handoff = join(dirname(receiptPath!), "app-argv.json")
+    let argv: unknown
+    try {
+      argv = JSON.parse(readFileSync(handoff, "utf8"))
+    } catch (cause) {
+      throw new Error(`Hosted receipt cannot read transformed invocation handoff ${handoff}`, { cause })
+    }
+    if (!Array.isArray(argv)) throw new Error(`Hosted receipt invocation handoff ${handoff} must contain an array`)
+    appLaunch = parseAppLaunchReceipt({ ...appLaunch, argv }, "collector", "term", handoff)
+  } else {
+    process.stderr.write(
+      `appLaunch argv absent: ${os === "Linux" ? "Linux has no app launch receipt" : `${appId} is a wrapper or an unpromoted hosted launch route`}\n`,
+    )
+  }
   const bytes =
     JSON.stringify(
       {
