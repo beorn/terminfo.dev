@@ -37,7 +37,9 @@ test.each([
   ["tmux", "wrong-pane-tty"],
   ["screen", "preflight"],
 ])("%s owner produces measured mux attachment: %s", (mux, fault) => {
-  const specimen = JSON.parse(readFileSync(join(import.meta.dirname, `fixtures/darwin-${mux}-process.json`), "utf8"))
+  const specimen = JSON.parse(
+    readFileSync(join(import.meta.dirname, `fixtures/darwin-${mux}-process.json`), "utf8"),
+  ) as { rows: { tty: string }[] }
   const result = spawnSync(
     process.execPath,
     [
