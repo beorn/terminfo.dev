@@ -109,8 +109,12 @@ function captureSignedBundle(
   })
   const first = measure()
   // Bundle versions are distinct from the selected CLI version; WezTerm's plist is a placeholder.
-  const signature = () => {
-    const commands: { command: string; argv: string[]; status: number | null; stdout: string; stderr: string }[] = []
+  type Command = { command: string; argv: string[]; status: number | null; stdout: string; stderr: string }
+  const signature = (): (
+    | { absent: string }
+    | { codeSignature: { identifier: string; cdHash: string; strictVerified: true } }
+  ) & { raw: string; commands: Command[] } => {
+    const commands: Command[] = []
     const codesign = (argv: string[]) => {
       const result = spawnSync("codesign", argv, { encoding: "utf8", timeout: 15_000 })
       commands.push({
@@ -132,8 +136,9 @@ function captureSignedBundle(
     const raw = String(details.stderr ?? "") + String(details.stdout ?? "")
     if (details.error || details.signal) throw new Error("Owned app codesign display could not run")
     if (strict.status !== 0) {
-      if (/code object is not signed at all|^Signature=adhoc$/m.test(raw))
+      if (/code object is not signed at all|^Signature=adhoc$/m.test(raw)) {
         return { absent: "unsigned or ad-hoc", raw, commands }
+      }
       throw new Error("Owned app signature is invalid or modified: " + strict.stderr)
     }
     if (!requirement || requirement.error || requirement.signal || details.status !== 0) {
@@ -147,12 +152,13 @@ function captureSignedBundle(
     }
     const identifier = /^Identifier=(.+)$/m.exec(raw)?.[1]?.trim()
     const cdHash = /^CDHash=([a-fA-F0-9]+)$/m.exec(raw)?.[1]?.toLowerCase()
-    if (!identifier || !cdHash || !/^[a-f0-9]{40}$/.test(cdHash))
+    if (!identifier || !cdHash || !/^[a-f0-9]{40}$/.test(cdHash)) {
       throw new Error("Owned app codesign identifier or CDHash is invalid")
+    }
     return { codeSignature: { identifier, cdHash, strictVerified: true as const }, raw, commands }
   }
   const observed = signature()
-  if (observed.absent)
+  if ("absent" in observed) {
     return {
       trace: {
         argvAbsentReason: observed.absent,
@@ -160,12 +166,14 @@ function captureSignedBundle(
         codesignCommandsRaw: JSON.stringify(observed.commands),
       },
     }
+  }
   assertOwnedTerminalWindow(window, daemonPid)
   const last = measure()
   const checked = signature()
   if (
     realpathSync(window.executablePath) !== executablePath ||
     JSON.stringify(last) !== JSON.stringify(first) ||
+    "absent" in checked ||
     JSON.stringify(checked.codeSignature) !== JSON.stringify(observed.codeSignature)
   ) {
     throw new Error("Owned app bundle facts or signature changed during receipt capture")
@@ -176,7 +184,7 @@ function captureSignedBundle(
       bundlePath,
       ...first,
       executablePath,
-      sourceArtifact: { kind: "developer-id-signed-bundle", codeSignature: observed.codeSignature! },
+      sourceArtifact: { kind: "developer-id-signed-bundle", codeSignature: observed.codeSignature },
       ...(argv && { argv }),
     },
     trace: {
@@ -187,7 +195,7 @@ function captureSignedBundle(
       ...(argv
         ? {
             argvRedactedIndexes: JSON.stringify(
-              argv.flatMap((value, index) => (value === invocation![index] ? [] : [index])),
+              argv.flatMap((value, index) => (value === invocation?.[index] ? [] : [index])),
             ),
           }
         : { argvAbsentReason: "invocation array was not supplied by the launch owner" }),

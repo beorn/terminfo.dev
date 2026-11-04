@@ -200,12 +200,12 @@ test.each([
     const values = args.map(String)
     let stdout: string
     if (cmd === "codesign" && scenario === "missing-tool")
-      return { status: null, stdout: "", stderr: "", error: new Error("ENOENT codesign") } as ReturnType<
+      {return { status: null, stdout: "", stderr: "", error: new Error("ENOENT codesign") } as ReturnType<
         typeof spawnSync
-      >
+      >}
     if ((cmd === "ps" || cmd === "/bin/ps") && values.includes("ppid=")) stdout = "777\n"
     else if ((cmd === "ps" || cmd === "/bin/ps") && values.includes("command="))
-      stdout = owner.executablePath + " --config-file=/private/run/ghostty-run\n"
+      {stdout = owner.executablePath + " --config-file=/private/run/ghostty-run\n"}
     else if ((cmd === "ps" || cmd === "/bin/ps") && values.includes("comm=")) stdout = owner.executablePath + "\n"
     else if (cmd === "codesign" && values.includes("-dv")) {
       displays++

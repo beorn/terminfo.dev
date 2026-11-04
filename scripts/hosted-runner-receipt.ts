@@ -473,8 +473,9 @@ async function context(mode: "start" | "emit") {
 async function main(): Promise<void> {
   const [mode, startPath, receiptPath, extra] = process.argv.slice(2)
   if (mode === "--app-argv") {
-    if (startPath !== undefined)
+    if (startPath !== undefined) {
       throw new Error("Usage: hosted-runner-receipt.ts --app-argv < NUL-separated invocation")
+    }
     const input = readFileSync(0, "utf8")
     const argv = input.length === 0 ? [] : input.split("\0")
     if (argv.at(-1) === "") argv.pop()
@@ -538,13 +539,15 @@ async function main(): Promise<void> {
   const os = required("RUNNER_OS")
   let appLaunch = os === "macOS" ? measureAppLaunch() : os === "Windows" ? measureWindowsAppLaunch() : undefined
   const appId = os === "Linux" ? undefined : required("APP_ID")
+  if (!receiptPath) throw new Error("Hosted receipt emit requires its explicit receipt path")
   const direct =
-    (os === "macOS" && ["ghostty", "wezterm", "alacritty"].includes(appId!)) ||
-    (os === "Windows" && ["windows-terminal", "wezterm", "alacritty"].includes(appId!))
+    appId !== undefined &&
+    ((os === "macOS" && ["ghostty", "wezterm", "alacritty"].includes(appId)) ||
+      (os === "Windows" && ["windows-terminal", "wezterm", "alacritty"].includes(appId)))
   if (direct) {
     // The workflow has already transformed this exact launch array before its first disk write.
     // Read only this handoff; never reconstruct argv from a process command line or another recipe.
-    const handoff = join(dirname(receiptPath!), "app-argv.json")
+    const handoff = join(dirname(receiptPath), "app-argv.json")
     let argv: unknown
     try {
       argv = JSON.parse(readFileSync(handoff, "utf8"))
@@ -572,7 +575,6 @@ async function main(): Promise<void> {
       null,
       2,
     ) + "\n"
-  if (!receiptPath) throw new Error("Hosted receipt emit requires its explicit receipt path")
   mkdirSync(dirname(receiptPath), { recursive: true })
   writeFileSync(receiptPath, bytes, { flag: "wx", mode: 0o444 })
   // Write THEN parse the exact persisted bytes. Shell callers must stop on any parser failure.

@@ -92,8 +92,8 @@ export function transformInvocation(
     declaredSensitive.includes(index) || declaredSensitive.includes(value) ? "[redacted]" : value,
   )
   const sensitiveName = /(token|secret|password|passwd|api-?key|credential|auth|bearer|session)/i
-  for (let index = 1; index < argv.length; index++) {
-    const argument = argv[index]!
+  for (const [index, argument] of argv.entries()) {
+    if (index === 0) continue
     if (argument === "--") break
     if (argument === "-" || !argument.startsWith("-")) continue
     const equals = argument.indexOf("=")
@@ -103,7 +103,7 @@ export function transformInvocation(
       if (redacted[index] !== "[redacted]") redacted[index] = argument.slice(0, equals + 1) + "[redacted]"
     } else {
       const next = argv[index + 1]
-      if (next !== undefined && !next.startsWith("-")) redacted[++index] = "[redacted]"
+      if (next !== undefined && !next.startsWith("-")) redacted[index + 1] = "[redacted]"
     }
   }
   return redacted
