@@ -64,6 +64,13 @@ const EXTENSIONS_SEMANTIC_SURFACE_CONTROLS = [
   ["sixel-geometry-report", "sixel-geometry-noop"],
   ["osc66-text-sizing", "osc66-noop"],
   ["osc99-kitty-notify", "osc99-noop"],
+  ["osc2-title", "osc2-noop"],
+  ["osc0-icon-title", "osc0-noop"],
+  ["osc1-icon", "osc1-noop"],
+  ["osc52-clipboard", "osc52-write-noop"],
+  ["osc52-write", "osc52-write-noop"],
+  ["osc52-read", "osc52-read-noop"],
+  ["osc5522-clipboard", "osc5522-unsupported"],
 ] as const
 
 const KITTY_DISABLED_BITS = new Map<string, number>([
@@ -767,6 +774,59 @@ test("every decided extension contract row is satisfied by its required protocol
     const graded = await regradeRow(probe, row, context)
     expect(graded.after, `${row.id} outcome must be supported when simulated reply arrives`).toBe("supported")
     expect(graded.satisfies, `${row.id} must satisfy contract`).toBe(true)
+  }
+})
+
+test("clipboard paste follows injected keys and nonce framing while its library arm stays pending", async () => {
+  const id = "extensions.clipboard-paste"
+  const probe = extensionsProbes.find((entry) => entry.id === id)!
+  const row = EXTENSIONS_CONTRACT.find((entry) => entry.id === id)!
+  for (const source of [inertLibProbeSource(), libProbeSource(createSemanticSurface())]) {
+    expect(probe.lib!(source).tests, "a library surface cannot prove OS input").toMatchObject([
+      { status: "test-todo" },
+    ])
+  }
+  const inert = await regradeRow(probe, row, { term: replayTermProbeSource(new Map()) })
+  expect(inert.after, "missing input/clipboard facilities cannot establish support").not.toBe("supported")
+
+  for (const rawNonce of [false, true]) {
+    const context = decidedSatisfactionSources(id).term!
+    const injected: string[] = []
+    const writes: string[] = []
+    const input: NonNullable<typeof context.input> = {
+      ...context.input!,
+      injectKey: async (key) => {
+        injected.push(key)
+        await context.input!.injectKey(key)
+      },
+    }
+    const graded = await regradeRow(probe, row, {
+      term: {
+        ...context,
+        input,
+        write: (text) => {
+          writes.push(text)
+          context.write(text)
+        },
+        readInput: async (...args) => {
+          const frames = await context.readInput!(...args)
+          return rawNonce
+            ? (frames?.map((frame) => frame.replace("\x1b[200~", "").replace("\x1b[201~", "")) ?? null)
+            : frames
+        },
+      },
+    })
+    expect(graded.after, rawNonce ? "unbracketed nonce is an observed negative" : "owned bracketed nonce arrives").toBe(
+      rawNonce ? "unsupported" : "supported",
+    )
+    expect(injected, "the read must execute plain-a and paste injection, not return canned input").toEqual([
+      "a",
+      "ctrl+shift+v",
+    ])
+    expect(writes.filter((text) => text.includes("2004")), "the callback restores bracketed-paste mode").toEqual([
+      "\x1b[?2004h",
+      "\x1b[?2004l",
+    ])
   }
 })
 
