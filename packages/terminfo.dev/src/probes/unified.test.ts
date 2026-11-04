@@ -2266,7 +2266,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         rawReplies["sgr.bold.callLog"] = JSON.stringify(stored)
       }
       if (fault === "resized") {
-        const geometry = JSON.parse(rawReplies["collector.geometry"]!) as { checks: Array<{ post: { cols: number } }> }
+        const geometry = JSON.parse(rawReplies["collector.geometry"]!) as { checks: [{ post: { cols: number } }] }
         geometry.checks[0].post.cols = 79
         rawReplies["collector.geometry"] = JSON.stringify(geometry)
       }
