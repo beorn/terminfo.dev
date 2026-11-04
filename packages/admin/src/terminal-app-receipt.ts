@@ -110,28 +110,36 @@ function captureSignedBundle(
   const first = measure()
   // Bundle versions are distinct from the selected CLI version; WezTerm's plist is a placeholder.
   const signature = () => {
-    const strict = spawnSync("codesign", ["--verify", "--strict", bundlePath], { encoding: "utf8", timeout: 15_000 })
+    const commands: { command: string; argv: string[]; status: number | null; stdout: string; stderr: string }[] = []
+    const codesign = (argv: string[]) => {
+      const result = spawnSync("codesign", argv, { encoding: "utf8", timeout: 15_000 })
+      commands.push({
+        command: "codesign",
+        argv,
+        status: result.status,
+        stdout: String(result.stdout ?? ""),
+        stderr: String(result.stderr ?? ""),
+      })
+      return result
+    }
+    const strict = codesign(["--verify", "--strict", bundlePath])
     if (strict.error || strict.signal || strict.status === null || strict.status === 2) {
       throw new Error("Owned app codesign strict verification failed: " + (strict.error?.message ?? strict.stderr))
     }
     const requirement =
-      strict.status === 0
-        ? spawnSync("codesign", ["--verify", "--strict", "-R", DEVELOPER_ID_REQUIREMENT, bundlePath], {
-            encoding: "utf8",
-            timeout: 15_000,
-          })
-        : undefined
-    const details = spawnSync("codesign", ["-dv", "--verbose=4", bundlePath], { encoding: "utf8", timeout: 15_000 })
+      strict.status === 0 ? codesign(["--verify", "--strict", "-R", DEVELOPER_ID_REQUIREMENT, bundlePath]) : undefined
+    const details = codesign(["-dv", "--verbose=4", bundlePath])
     const raw = String(details.stderr ?? "") + String(details.stdout ?? "")
     if (details.error || details.signal) throw new Error("Owned app codesign display could not run")
     if (strict.status !== 0) {
-      if (/code object is not signed at all|^Signature=adhoc$/m.test(raw)) return { absent: "unsigned or ad-hoc", raw }
+      if (/code object is not signed at all|^Signature=adhoc$/m.test(raw))
+        return { absent: "unsigned or ad-hoc", raw, commands }
       throw new Error("Owned app signature is invalid or modified: " + strict.stderr)
     }
     if (!requirement || requirement.error || requirement.signal || details.status !== 0) {
       throw new Error("Owned app codesign requirement or display failed")
     }
-    if (requirement.status === 3) return { absent: "not Developer ID", raw }
+    if (requirement.status === 3) return { absent: "not Developer ID", raw, commands }
     if (requirement.status !== 0) {
       throw new Error(
         "Owned app Developer ID requirement failed with exit " + String(requirement.status) + ": " + requirement.stderr,
@@ -141,10 +149,17 @@ function captureSignedBundle(
     const cdHash = /^CDHash=([a-fA-F0-9]+)$/m.exec(raw)?.[1]?.toLowerCase()
     if (!identifier || !cdHash || !/^[a-f0-9]{40}$/.test(cdHash))
       throw new Error("Owned app codesign identifier or CDHash is invalid")
-    return { codeSignature: { identifier, cdHash, strictVerified: true as const }, raw }
+    return { codeSignature: { identifier, cdHash, strictVerified: true as const }, raw, commands }
   }
   const observed = signature()
-  if (observed.absent) return { trace: { argvAbsentReason: observed.absent, codesignDetailsRaw: observed.raw } }
+  if (observed.absent)
+    return {
+      trace: {
+        argvAbsentReason: observed.absent,
+        codesignDetailsRaw: observed.raw,
+        codesignCommandsRaw: JSON.stringify(observed.commands),
+      },
+    }
   assertOwnedTerminalWindow(window, daemonPid)
   const last = measure()
   const checked = signature()
@@ -167,6 +182,8 @@ function captureSignedBundle(
     trace: {
       ownerPid: window.provider === "kitty" ? window.kittyPid : window.ownerPid,
       codesignDetailsRaw: observed.raw,
+      codesignCommandsRaw: JSON.stringify(observed.commands),
+      codesignRecheckCommandsRaw: JSON.stringify(checked.commands),
       ...(argv
         ? {
             argvRedactedIndexes: JSON.stringify(
@@ -266,6 +283,7 @@ export function captureTerminalAppReceipt(
       daemonPid,
       daemonTty,
       daemonTtyRaw,
+      argvAbsentReason: "AppleScript wrapper does not observe the Terminal.app invocation array",
       runningApplicationsRaw: first.raw,
       processPathRaw,
       codesignVerify: "exit 0",

@@ -741,20 +741,26 @@ it("a verified disposable receipt runs the reset exchange and records its kind a
 
 // 28216: the apparatus measures the launch receipt and the collector only CARRIES it, so the block
 // reaches origin.appLaunch with nothing rebuilt, added or edited on the measured side.
-it.each([false, true])("copies the apparatus-measured launch block and names only absent invocation (argv=%s)", async (withArgv) => {
-  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
-  receiptDirectories.push(directory)
-  const receipt = hostedLaunchReceipt()
-  receipt.appLaunch = { ...receipt.appLaunch, ...(withArgv ? { argv: ["/invoked/iterm", "--token=[redacted]"] } : {}) }
-  const path = join(directory, "host-measured.json")
-  writeFileSync(path, JSON.stringify(receipt))
-  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
-  process.stdout.write = (() => true) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "iterm2", os: "macos" } })
-  expect(batch.appLaunch).toEqual(receipt.appLaunch)
-  if (withArgv) expect(batch.rawReplies["collector.appLaunchTrace"]).toBeUndefined()
-  else expect(JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!).argvAbsentReason).toMatch(/iterm2.*wrapper/)
-})
+it.each([false, true])(
+  "copies the apparatus-measured launch block and names only absent invocation (argv=%s)",
+  async (withArgv) => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+    receiptDirectories.push(directory)
+    const receipt = hostedLaunchReceipt()
+    receipt.appLaunch = {
+      ...receipt.appLaunch,
+      ...(withArgv ? { argv: ["/invoked/iterm", "--token=[redacted]"] } : {}),
+    }
+    const path = join(directory, "host-measured.json")
+    writeFileSync(path, JSON.stringify(receipt))
+    process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "iterm2", os: "macos" } })
+    expect(batch.appLaunch).toEqual(receipt.appLaunch)
+    if (withArgv) expect(batch.rawReplies["collector.appLaunchTrace"]).toBeUndefined()
+    else expect(JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!).argvAbsentReason).toMatch(/iterm2.*wrapper/)
+  },
+)
 
 it("refuses a mutating probe when neither owned terminal nor disposable receipt is presented", async () => {
   const writes: string[] = []

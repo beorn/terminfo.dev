@@ -360,7 +360,14 @@ export async function runProbeBatch(
     bindReceiptToRun(disposable, options.subject, "collector.disposableOwnership")
   }
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
-  if (disposable?.appLaunch) batch.appLaunch = disposable.appLaunch
+  if (disposable?.appLaunch) {
+    batch.appLaunch = disposable.appLaunch
+    if (disposable.appLaunch.argv === undefined) {
+      batch.rawReplies["collector.appLaunchTrace"] = JSON.stringify({
+        argvAbsentReason: `${options.subject.id}: hosted wrapper or unpromoted route did not observe an app invocation array`,
+      })
+    }
+  }
   batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(
     disposable
       ? {
