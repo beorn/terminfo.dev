@@ -170,3 +170,43 @@ describe("owned Terminal.app receipt", () => {
     }
   })
 })
+
+// A CLI-owned app must not borrow Terminal.app's globally running instance or sealed-volume receipt.
+// Existing Terminal-only controls cannot detect that wrong-subject receipt on the five direct routes.
+test("captures the CLI owner's signed bundle instead of the unrelated running Terminal app", () => {
+  const owner = {
+    provider: "cli-process",
+    ownerPid: 777,
+    tty: "/dev/ttys003",
+    executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+    marker: { flag: "--config-file", value: "/private/run/ghostty-run" },
+  }
+  vi.mocked(spawnSync).mockImplementation((command, args = []) => {
+    const cmd = String(command)
+    const values = args.map(String)
+    let stdout: string
+    if ((cmd === "ps" || cmd === "/bin/ps") && values.includes("ppid=")) stdout = "777\n"
+    else if ((cmd === "ps" || cmd === "/bin/ps") && values.includes("command="))
+      stdout = owner.executablePath + " --config-file=/private/run/ghostty-run\n"
+    else if ((cmd === "ps" || cmd === "/bin/ps") && values.includes("comm=")) stdout = owner.executablePath + "\n"
+    else if (cmd === "codesign" && values.includes("-dv"))
+      stdout = "Identifier=org.ghostty\nCDHash=" + "12".repeat(20) + "\n"
+    else stdout = commandOutput(cmd, values)
+    return { status: 0, stdout, stderr: cmd === "codesign" ? stdout : "", error: undefined } as ReturnType<
+      typeof spawnSync
+    >
+  })
+  const capture = captureTerminalAppReceipt(
+    owner as unknown as Parameters<typeof captureTerminalAppReceipt>[0],
+    555,
+    "2.15",
+  )
+  expect(capture.receipt).toMatchObject({
+    bundlePath: "/Applications/Ghostty.app",
+    executablePath: owner.executablePath,
+    sourceArtifact: {
+      kind: "developer-id-signed-bundle",
+      codeSignature: { identifier: "org.ghostty", cdHash: "12".repeat(20), strictVerified: true },
+    },
+  })
+})
