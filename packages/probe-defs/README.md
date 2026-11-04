@@ -255,7 +255,7 @@ Other identities keep their existing criteria.
 - `Observation` records an outcome and required `assertionType`. `ProbeAssertion` records the independently positive/negative predicate, required `assertionType`, expected state and retained observed evidence.
 - `ProbeResult` stores the feature's execution status, attempt, required tests, selected criterion branch and evidence references. Its optional primary `assertionType` names only a retained observation; absence is not a sixth type. Legacy `pass` never grades it.
 - `RunDraft` is a private schema-4 envelope: explicit source, run/suite identity, `intendedSubject`, measured `subject` when available, raw replies, assertions, artifact references and probe results. Subject kinds are `term`, `lib` and `mux`.
-- `CapturedRunDraft` and `CurrentProbeRun` require measured subject, identity, time and origin; `ProbeRun` aliases the current shape. Historical stored bytes are immutable. A historical `sealedAt` field is ignored for current parsing and selection.
+- `CapturedRunDraft` and `CurrentRun` require measured subject, identity, time and origin; `Run` aliases the current shape. Historical stored bytes are immutable. A historical `sealedAt` field is ignored for current parsing and selection.
 
 The legacy callback `pass` still exists for the [diagnostic Vitest runner](../probes/run-unified.probe.ts), including the execution-only arm. Current collectors record observations/tests through `recordExecutedProbe`; even `pass: true` with an explicit PROBE INVALID test stays failure. Cleanup #30929 removes `pass` from every arm.
 

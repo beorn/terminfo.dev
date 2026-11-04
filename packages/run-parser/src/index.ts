@@ -19,7 +19,7 @@ import {
   type RetainedHostRecipeCause,
   type RunDraft,
   type CapturedRunDraft,
-  type HistoricalProbeRun,
+  type HistoricalRun,
   type ProbeResult,
   type ProbeAttempt,
   type ProbeTestResult,
@@ -29,7 +29,7 @@ import {
   type NotTestedCoverage,
   type Observation,
   type ProbeAssertion,
-  type ProbeRun,
+  type Run,
   type ProbeSubject,
   type RunOrigin,
   type HeadlessRuntimeIdentity,
@@ -55,7 +55,7 @@ interface LoadedRunFields {
   sha256: string
   runId: string
   subject: ProbeSubject
-  identity: ProbeRun["identity"]
+  identity: Run["identity"]
   runtimeIdentity?: HeadlessRuntimeIdentity
   provenance?: RunProvenance
   outerApp?: OuterAppProof
@@ -82,8 +82,8 @@ interface LoadedRunFields {
   intendedSubject?: Partial<ProbeSubject>
 }
 
-type ReadObservation = HistoricalProbeRun["observations"][number]
-type ReadAssertion = HistoricalProbeRun["assertions"][number]
+type ReadObservation = HistoricalRun["observations"][number]
+type ReadAssertion = HistoricalRun["assertions"][number]
 export type LoadedRun = LoadedRunFields &
   (
     | { schemaVersion: 4; source: RunDraft["source"]; assertions: ProbeAssertion[]; observations: Observation[] }

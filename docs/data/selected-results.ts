@@ -16,7 +16,7 @@ import {
   type ProbeResult,
   type ProbeStatus,
   type FeatureResultStatus,
-  type HistoricalProbeRun,
+  type HistoricalRun,
   type ObservationFrame,
   type ProbeSubject,
   type RunOrigin,
@@ -40,8 +40,8 @@ function fail(path: string, message: string): never {
   throw new Error(`${path}: ${message}`)
 }
 
-type ReadObservation = HistoricalProbeRun["observations"][number]
-type ReadAssertion = HistoricalProbeRun["assertions"][number]
+type ReadObservation = HistoricalRun["observations"][number]
+type ReadAssertion = HistoricalRun["assertions"][number]
 export interface SelectedCell extends ReadObservation {
   conclusive: boolean
   /** Same-run mapping failure, computed from retained evidence; absent when no assessment failed. */
