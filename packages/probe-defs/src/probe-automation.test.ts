@@ -165,55 +165,60 @@ describe("native host recipe callers", () => {
     ["extensions.osc30101-color-stack-pop", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
     ["device.xtwinops-14", "text-area-size", "pixel-geometry", "\x1b[14t"],
     ["extensions.osc52-clipboard", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
+    ["extensions.osc52-clipboard", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07", true],
     ["extensions.osc52-write", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
     ["extensions.osc52-read", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
-  ] as const)("%s retains its actual empty host query cause", (id, recipe, missing, query) => {
-    for (const qualified of [false, true]) {
-      const definition = probe(id)
-      const captured: string[] = []
-      const silence = {
-        match: null,
-        reason: "sentinel" as const,
-        raw: "\x1b[?1;2c",
-        rawBase64: "G1s/MTsyYw==",
-        sentinel: { atMs: 0, graceMs: 250 },
-      }
-      const result = definition.lib!(
-        context({
-          ...(qualified && {
-            queryWithSentinelOutcome(sequence: string) {
+  ] as const)(
+    "%s retains its actual empty host query cause",
+    (id, recipe, missing, query, withClipboardWitness: boolean = false) => {
+      for (const qualified of [false, true]) {
+        const definition = probe(id)
+        const captured: string[] = []
+        const silence = {
+          match: null,
+          reason: "sentinel" as const,
+          raw: "\x1b[?1;2c",
+          rawBase64: "G1s/MTsyYw==",
+          sentinel: { atMs: 0, graceMs: 250 },
+        }
+        const result = definition.lib!(
+          context({
+            ...(qualified && {
+              queryWithSentinelOutcome(sequence: string) {
+                captured.push(sequence)
+                return silence
+              },
+            }),
+            runtimeIdentity: nativeIdentity,
+            ...(withClipboardWitness && { getClipboardState: () => ({ writes: [] }) }),
+            feedCapture(sequence) {
               captured.push(sequence)
-              return silence
+              return ""
             },
           }),
-          runtimeIdentity: nativeIdentity,
-          feedCapture(sequence) {
-            captured.push(sequence)
-            return ""
-          },
-        }),
-      )
-      expect(captured).toContain(query)
-      expect(definition.libHostRecipes).toContainEqual({ recipe, query, missing: [missing] })
-      // The cause is what this run observed, never a source citation (#32246).
-      expect(result.hostRecipeCauses).toMatchObject([{ recipe, cause: { kind: "observed", missing, query } }])
-      const { hostRecipeCauses: _custody, ...criterion } = result
-      // A colour reply the probe itself decides matches the identity-less run; an all-zero native capture has no
-      // same-path control in this run and is the undecided record (@cto 9fad23d7, refined rule 4). The cause is kept.
-      const bare = definition.lib!(
-        context({ feedCapture: () => "", ...(qualified && { queryWithSentinelOutcome: () => silence }) }),
-      )
-      if (recipe === "color-request" && criterion.notTested === undefined) {
-        expect(criterion).toEqual(bare)
-      } else if (recipe === "color-request") {
-        expect(criterion.notTested?.reason).toBe("no-semantic-observable")
-        expect(criterion.observation).toBeUndefined()
-      } else {
-        expect(criterion.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
-        expect(criterion.observation).toBeUndefined()
+        )
+        expect(captured).toContain(query)
+        expect(definition.libHostRecipes).toContainEqual({ recipe, query, missing: [missing] })
+        // The cause is what this run observed, never a source citation (#32246).
+        expect(result.hostRecipeCauses).toMatchObject([{ recipe, cause: { kind: "observed", missing, query } }])
+        const { hostRecipeCauses: _custody, ...criterion } = result
+        // A colour reply the probe itself decides matches the identity-less run; an all-zero native capture has no
+        // same-path control in this run and is the undecided record (@cto 9fad23d7, refined rule 4). The cause is kept.
+        const bare = definition.lib!(
+          context({ feedCapture: () => "", ...(qualified && { queryWithSentinelOutcome: () => silence }) }),
+        )
+        if (recipe === "color-request" && criterion.notTested === undefined) {
+          expect(criterion).toEqual(bare)
+        } else if (recipe === "color-request") {
+          expect(criterion.notTested?.reason).toBe("no-semantic-observable")
+          expect(criterion.observation).toBeUndefined()
+        } else {
+          expect(criterion.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+          expect(criterion.observation).toBeUndefined()
+        }
       }
-    }
-  })
+    },
+  )
 
   /**
    * @failure #32091: kitty's default read-clipboard-ask prompt held every OSC 52 read for a human, so osc52-read would
