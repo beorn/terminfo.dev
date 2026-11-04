@@ -1129,7 +1129,7 @@
     "slug": "total-lines",
     "tags": ["xterm-extensions"],
     "body": "Tests whether the terminal can report the total number of lines in the buffer (visible + scrollback). This is used by testing frameworks and terminal introspection tools to verify scrollback behavior.\n\nScrollback size is not standardized by ECMA-48, DEC manuals, or terminfo. This probe exists for terminal testing and introspection: a harness needs to know whether output entered scrollback and how much history exists. Real terminal emulators expose this information inconsistently, so Termless treats it as a backend capability rather than a portable app feature.",
-    "probe": "Write 10 more lines than the measured screen height and verify history grows by at least the 10 overflow lines.",
+    "probe": "Write 10 more lines than the measured screen height and verify retained history grows by at least those 10 lines. Growth of 1 to 9 lines is Unsupported. No change in the count is TEST TODO, because nothing in the run shows that the reader counts history.",
     "baseline": "core",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html"
   },

@@ -804,6 +804,26 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
   }
 })
 
+test.each(["scrollback.accumulate", "scrollback.total-lines"] as const)(
+  "%s leaves unchanged history count untested without a same-path control",
+  (id) => {
+    const probe = scrollbackProbes.find((item) => item.id === id)
+    if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
+    const result = probe.lib(
+      headless({
+        getScrollback: () => ({ viewportOffset: 0, totalLines: 37, screenLines: 37 }),
+      }),
+    )
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(result.notTested).toEqual({
+      reason: "no-semantic-observable",
+      noObservable:
+        "retained history count did not change after the overflow lines; no same-path control shows this reader counts history",
+    })
+    expect(result.assertions).toBeUndefined()
+  },
+)
+
 test.each([
   ["scrollback.total-lines", 9, false],
   ["scrollback.total-lines", 10, true],
