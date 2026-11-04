@@ -750,6 +750,8 @@ export interface LibProbeSource {
   getNotifications?(): readonly string[]
   /** Copied OSC 777 payloads after "777;", verbatim and in order, notify or not; absent means no reader. */
   getOsc777Payloads?(): readonly string[]
+  /** The engine's stored last OSC 9;4 report (raw state code, stored value); null means never reported. */
+  getProgress?(): { state: number; value: number | null } | null
   /** Copied entries selected by semantic-marks (starts) or semantic-command-end (raw completion); absent means no reader. */
   getSemanticMarks?(): readonly (
     | {

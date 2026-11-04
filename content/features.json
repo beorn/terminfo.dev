@@ -2125,7 +2125,7 @@
     "url": "https://conemu.github.io/en/AnsiEscapeCodes.html#ConEmu_specific_OSC",
     "tags": ["osc", "conemu"],
     "body": "OSC 9;4 is a ConEmu-originated protocol for reporting task progress to the terminal. The sequence <code>ESC ] 9 ; 4 ; st ; pr BEL</code> sets progress state (st: 0=remove, 1=normal, 2=error, 3=indeterminate, 4=paused) and percentage (pr: 0-100). Terminals render this as a native progress indicator — typically in the tab bar, title bar, or taskbar.\n\nOriginally a ConEmu extension, it has been widely adopted: Ghostty (1.2+), iTerm2 (3.6.6+), Windows Terminal, Konsole, mintty, and WezTerm all support it. This makes it one of the most cross-terminal ways to display progress. CLI tools like curl, wget, and build systems can emit these sequences to provide native progress feedback.",
-    "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>.",
+    "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>. Library engines with a stored OSC 9;4 report reader are measured at the engine's stored state, never progress display: a control <code>OSC 9;4;1;37</code> must read back as state 1 with value 37 before any Unsupported, then <code>OSC 9;4;3</code> must store state 3 and a final <code>OSC 9;4;0</code> must store state 0, never no report. The error state 2, the paused state 4, 100%, and the stored values for states 0 and 3 are not graded.",
     "baseline": "rich"
   },
   "extensions.osc66-text-sizing": {

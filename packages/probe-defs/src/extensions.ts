@@ -4860,13 +4860,48 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 9;4 — progress bar (ConEmu protocol, adopted by Ghostty, iTerm2, Windows Terminal, etc.)
-  probe(
-    "extensions.osc9-progress",
-    // Feed the ConEmu progress form; consumption alone does not measure progress display.
-    noSamePathControl("\x1b]9;4;1;50\x07"),
-    () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),
-    null,
-  ),
+  {
+    ...probe(
+      "extensions.osc9-progress",
+      (ctx) => {
+        // Without a progress reader, feed the ConEmu form only; consumption alone does not measure progress.
+        const readProgress = ctx.getProgress
+        if (!readProgress) return noSamePathControl("\x1b]9;4;1;50\x07")(ctx)
+        const read = () => {
+          const report = readProgress.call(ctx)
+          return report && { state: report.state, value: report.value }
+        }
+        // Grading rule 2: a set control must read back on this reader before any Unsupported (@cto 3636f1ee).
+        const writes = ["\x1b]9;4;1;37\x07", "\x1b]9;4;3\x07", "\x1b]9;4;0\x07"] as const
+        const before = read()
+        ctx.feed(writes[0])
+        const control = read()
+        // A control counts only when its change was seen: a report already at state 1, value 37 proves nothing.
+        const stale = before?.state === 1 && before.value === 37
+        if (stale || control?.state !== 1 || control.value !== 37) {
+          // Clearing last restores the engine either way.
+          ctx.feed(writes[2])
+          return notTestedResult(
+            `${NO_SAME_PATH_CONTROL}: OSC 9;4;1;37 control did not read back as state 1, value 37; this reader is not shown to observe the OSC 9;4 path`,
+            { before, control, writes: [writes[0], writes[2]] },
+          )
+        }
+        ctx.feed(writes[1])
+        const indeterminate = read()
+        ctx.feed(writes[2])
+        const cleared = read()
+        return parserStateResult(
+          indeterminate?.state === 3 && cleared?.state === 0,
+          "OSC 9;4 stores the last report's state: 3 after 9;4;3, then 0, never no report, after 9;4;0",
+          { before, control, indeterminate, cleared, writes },
+          "Measures the engine's stored OSC 9;4 state, not progress display; the error state 2, the paused state 4, 100%, and the stored values for states 0 and 3 are not graded",
+        )
+      },
+      () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),
+      null,
+    ),
+    libAssertionType: "buffer_state",
+  },
 
   // OSC 66 — text sizing protocol (Kitty, sets text scale/cell width)
   {
