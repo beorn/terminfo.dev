@@ -1024,7 +1024,10 @@ test("1049 exit after an unqualified entry is TEST TODO, and source never decide
   const definition = alt1049Probe("exit")
   const audited = alt1049Source("ignored-entry")
   const result = definition.lib!(withRuntimeIdentity(audited.context, VT100_SOURCE_IDENTITY))
-  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: "alternate-screen entry not observed, so exit cannot be attributed" })
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "alternate-screen entry not observed, so exit cannot be attributed",
+  })
   expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
   expect(JSON.parse(result.response!)).not.toHaveProperty("sourceCitation")
@@ -1040,7 +1043,9 @@ test("the same entry failure is TEST TODO on a moved, dirty or different source"
   for (const integrity of unauditedIdentities) {
     const { context } = alt1049Source("ignored-entry")
     const result = definition.lib!(withRuntimeIdentity(context, { ...VT100_SOURCE_IDENTITY, integrity }))
-    expect(result.notTested?.noObservable, JSON.stringify(integrity)).toBe("alternate-screen entry not observed, so exit cannot be attributed")
+    expect(result.notTested?.noObservable, JSON.stringify(integrity)).toBe(
+      "alternate-screen entry not observed, so exit cannot be attributed",
+    )
     expect(result.assertions, JSON.stringify(integrity)).toBeUndefined()
   }
 })
