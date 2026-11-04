@@ -39,7 +39,7 @@ test.each([
 ])("%s owner produces measured mux attachment: %s", (mux, fault) => {
   const specimen = JSON.parse(
     readFileSync(join(import.meta.dirname, `fixtures/darwin-${mux}-process.json`), "utf8"),
-  ) as { rows: { tty: string }[] }
+  ) as { rows: [{ tty: string }, ...unknown[]] }
   const result = spawnSync(
     process.execPath,
     [
