@@ -34,7 +34,7 @@ import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-
 import { publicResults } from "../docs/data/public-results.ts"
 import type { PublicVersion, PublicContextSummary } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
-import type { CellState } from "../docs/data/release-scope.ts"
+import type { FeatureResultDisplayState } from "../docs/data/release-scope.ts"
 import { probeHash } from "../packages/admin/versions.ts"
 
 /** One synthetic current run: only the target fields the selection rule reads. */

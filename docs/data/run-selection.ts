@@ -1,6 +1,6 @@
 /** One context selection rule shared by compatibility and full-project readers. */
 import type { FeatureResultStatus, ProbeResult } from "@terminfo/probe-defs"
-import { hasCurrentSource, type CellState, type SuiteRelation } from "./release-scope.ts"
+import { hasCurrentSource, type FeatureResultDisplayState, type SuiteRelation } from "./release-scope.ts"
 import {
   originalRunFor,
   type SelectedVersion,
@@ -36,13 +36,13 @@ export interface ContextCandidate {
    * The run's states as the projection published them (28792 item 1). A reader cuts its bars over
    * this, never over the raw `cells`.
    */
-  states: Readonly<Record<string, CellState | FeatureResultStatus>>
+  states: Readonly<Record<string, FeatureResultDisplayState | FeatureResultStatus>>
 }
 
 export interface HistoricalContextCandidate extends ContextCandidate {
   cells: ShareCells
   results?: never
-  states: Readonly<Record<string, CellState>>
+  states: Readonly<Record<string, FeatureResultDisplayState>>
 }
 
 export interface CurrentContextCandidate extends ContextCandidate {
@@ -61,7 +61,7 @@ export function candidateFromSelected(
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion,
-  states: Readonly<Record<string, CellState>>,
+  states: Readonly<Record<string, FeatureResultDisplayState>>,
 ): HistoricalContextCandidate
 export function candidateFromSelected(
   key: string,
@@ -71,12 +71,12 @@ export function candidateFromSelected(
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion | CurrentSelectedVersion,
-  states: Readonly<Record<string, CellState | FeatureResultStatus>>,
+  states: Readonly<Record<string, FeatureResultDisplayState | FeatureResultStatus>>,
 ): ContextCandidate
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion | CurrentSelectedVersion | SelectedContextSummary,
-  states: Readonly<Record<string, CellState | FeatureResultStatus>>,
+  states: Readonly<Record<string, FeatureResultDisplayState | FeatureResultStatus>>,
   projection?: SelectedProjection,
 ): ContextCandidate | undefined {
   if ("contributingRunIds" in selected) {

@@ -35,7 +35,7 @@ export function visibleCategoryIds(
  * claims, error is PROBE INVALID, and untested is PROBE TODO. A missing cell or evidence "none" means
  * no feature measurement started; an undecided attempt is a failed test, not terminal non-support.
  */
-export type CellState = "supported" | "unsupported" | "inconclusive" | "error" | "untested"
+export type FeatureResultDisplayState = "supported" | "unsupported" | "inconclusive" | "error" | "untested"
 
 function utcDate(measuredAt: string): string {
   const value = new Date(measuredAt)

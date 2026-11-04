@@ -30,7 +30,7 @@ Highlight reset cannot be decided without an initial colour reading. When the DA
 OSC 17 or 19 supplies no initial colour, the callback records a named PROBE TODO; broken or untrustworthy
 measurement remains PROBE INVALID. Silence alone does not establish Unsupported.
 The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
-The `CellState` value `inconclusive` denotes Untestable (no current route reaches it), `error` denotes PROBE INVALID and `untested` denotes
+The `FeatureResultDisplayState` value `inconclusive` denotes Untestable (no current route reaches it), `error` denotes PROBE INVALID and `untested` denotes
 PROBE TODO; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
 
 No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A grade comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is PROBE TODO with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. PROBE INVALID means the probe or harness broke or got data it cannot trust. There is no route to Untestable: a probe whose setup has no observable for every subject of a kind reads PROBE TODO, and source never sets it per engine. A probe never implements the feature itself.
