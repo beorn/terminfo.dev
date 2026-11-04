@@ -1,12 +1,19 @@
+import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, realpathSync } from "node:fs"
 import { join } from "node:path"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
-import { runningTerminal, type TerminalAppWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
+import {
+  runningTerminal,
+  assertOwnedTerminalWindow,
+  type TerminalAppWindow,
+  type OwnedTerminalWindow,
+} from "../../terminfo.dev/src/terminal-app-window.ts"
+import { transformInvocation } from "../../run-parser/src/app-launch.ts"
 import { run, tty } from "../../terminfo.dev/src/owned-process.ts"
 
 export interface TerminalAppCapture {
-  receipt: AppLaunchReceipt
+  receipt?: AppLaunchReceipt
   trace: Record<string, string | number>
 }
 
@@ -81,12 +88,104 @@ function field(raw: string, name: string): string {
   return match[1]
 }
 
+const DEVELOPER_ID_REQUIREMENT =
+  "=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
+
+/** The signed-bundle source strategy of this same owned-app measurer. */
+function captureSignedBundle(
+  window: Exclude<OwnedTerminalWindow, TerminalAppWindow>,
+  daemonPid: number,
+  invocation?: readonly string[],
+): TerminalAppCapture {
+  assertOwnedTerminalWindow(window, daemonPid)
+  const executablePath = realpathSync(window.executablePath)
+  const separator = executablePath.indexOf(".app/Contents/MacOS/")
+  if (separator < 0) throw new Error("Owned app executable has no measured macOS bundle path")
+  const bundlePath = realpathSync(executablePath.slice(0, separator + 4))
+  const measure = () => ({
+    cfBundleShortVersionString: plist(bundlePath, "CFBundleShortVersionString"),
+    cfBundleVersion: plist(bundlePath, "CFBundleVersion"),
+    executableSha256: createHash("sha256").update(readFileSync(executablePath)).digest("hex"),
+  })
+  const first = measure()
+  // Bundle versions are distinct from the selected CLI version; WezTerm's plist is a placeholder.
+  const signature = () => {
+    const strict = spawnSync("codesign", ["--verify", "--strict", bundlePath], { encoding: "utf8", timeout: 15_000 })
+    if (strict.error || strict.signal || strict.status === null || strict.status === 2) {
+      throw new Error("Owned app codesign strict verification failed: " + (strict.error?.message ?? strict.stderr))
+    }
+    const requirement =
+      strict.status === 0
+        ? spawnSync("codesign", ["--verify", "--strict", "-R", DEVELOPER_ID_REQUIREMENT, bundlePath], {
+            encoding: "utf8",
+            timeout: 15_000,
+          })
+        : undefined
+    const details = spawnSync("codesign", ["-dv", "--verbose=4", bundlePath], { encoding: "utf8", timeout: 15_000 })
+    const raw = String(details.stderr ?? "") + String(details.stdout ?? "")
+    if (details.error || details.signal) throw new Error("Owned app codesign display could not run")
+    if (strict.status !== 0) {
+      if (/code object is not signed at all|^Signature=adhoc$/m.test(raw)) return { absent: "unsigned or ad-hoc", raw }
+      throw new Error("Owned app signature is invalid or modified: " + strict.stderr)
+    }
+    if (!requirement || requirement.error || requirement.signal || details.status !== 0) {
+      throw new Error("Owned app codesign requirement or display failed")
+    }
+    if (requirement.status === 3) return { absent: "not Developer ID", raw }
+    if (requirement.status !== 0) {
+      throw new Error(
+        "Owned app Developer ID requirement failed with exit " + String(requirement.status) + ": " + requirement.stderr,
+      )
+    }
+    const identifier = /^Identifier=(.+)$/m.exec(raw)?.[1]?.trim()
+    const cdHash = /^CDHash=([a-fA-F0-9]+)$/m.exec(raw)?.[1]?.toLowerCase()
+    if (!identifier || !cdHash || !/^[a-f0-9]{40}$/.test(cdHash))
+      throw new Error("Owned app codesign identifier or CDHash is invalid")
+    return { codeSignature: { identifier, cdHash, strictVerified: true as const }, raw }
+  }
+  const observed = signature()
+  if (observed.absent) return { trace: { argvAbsentReason: observed.absent, codesignDetailsRaw: observed.raw } }
+  assertOwnedTerminalWindow(window, daemonPid)
+  const last = measure()
+  const checked = signature()
+  if (
+    realpathSync(window.executablePath) !== executablePath ||
+    JSON.stringify(last) !== JSON.stringify(first) ||
+    JSON.stringify(checked.codeSignature) !== JSON.stringify(observed.codeSignature)
+  ) {
+    throw new Error("Owned app bundle facts or signature changed during receipt capture")
+  }
+  const argv = invocation && transformInvocation(invocation)
+  return {
+    receipt: {
+      bundlePath,
+      ...first,
+      executablePath,
+      sourceArtifact: { kind: "developer-id-signed-bundle", codeSignature: observed.codeSignature! },
+      ...(argv && { argv }),
+    },
+    trace: {
+      ownerPid: window.provider === "kitty" ? window.kittyPid : window.ownerPid,
+      codesignDetailsRaw: observed.raw,
+      ...(argv
+        ? {
+            argvRedactedIndexes: JSON.stringify(
+              argv.flatMap((value, index) => (value === invocation![index] ? [] : [index])),
+            ),
+          }
+        : { argvAbsentReason: "invocation array was not supplied by the launch owner" }),
+    },
+  }
+}
+
 /** Run after private runId registration and /info verification, before the immutable raw write. */
 export function captureTerminalAppReceipt(
-  window: TerminalAppWindow,
+  window: OwnedTerminalWindow,
   daemonPid: number,
   intendedVersion: string,
+  invocation?: readonly string[],
 ): TerminalAppCapture {
+  if (window.provider !== "terminal-app") return captureSignedBundle(window, daemonPid, invocation)
   if (!Number.isSafeInteger(daemonPid) || daemonPid < 1) throw new Error("Invalid owned daemon PID")
   const daemonTtyRaw = run("ps", ["-p", String(daemonPid), "-o", "tty="]).stdout
   const daemonTty = tty(daemonTtyRaw)

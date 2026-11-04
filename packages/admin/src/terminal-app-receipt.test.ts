@@ -173,40 +173,95 @@ describe("owned Terminal.app receipt", () => {
 
 // A CLI-owned app must not borrow Terminal.app's globally running instance or sealed-volume receipt.
 // Existing Terminal-only controls cannot detect that wrong-subject receipt on the five direct routes.
-test("captures the CLI owner's signed bundle instead of the unrelated running Terminal app", () => {
+// These are explicit contract-model command results, not a measured Mac exit-code fixture.
+test.each([
+  "developer-id",
+  "bundle-version-differs",
+  "not-developer-id",
+  "unsigned",
+  "missing-tool",
+  "modified",
+  "unexpected-exit",
+  "bad-facts",
+  "changed-facts",
+] as const)("captures the CLI owner without borrowing Terminal and classifies signature outcomes: %s", (scenario) => {
   const owner = {
-    provider: "cli-process",
+    provider: "cli-process" as const,
     ownerPid: 777,
     tty: "/dev/ttys003",
     executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
     marker: { flag: "--config-file", value: "/private/run/ghostty-run" },
   }
+  let displays = 0
   vi.mocked(spawnSync).mockImplementation((command, args = []) => {
     const cmd = String(command)
     const values = args.map(String)
     let stdout: string
+    if (cmd === "codesign" && scenario === "missing-tool")
+      return { status: null, stdout: "", stderr: "", error: new Error("ENOENT codesign") } as ReturnType<
+        typeof spawnSync
+      >
     if ((cmd === "ps" || cmd === "/bin/ps") && values.includes("ppid=")) stdout = "777\n"
     else if ((cmd === "ps" || cmd === "/bin/ps") && values.includes("command="))
       stdout = owner.executablePath + " --config-file=/private/run/ghostty-run\n"
     else if ((cmd === "ps" || cmd === "/bin/ps") && values.includes("comm=")) stdout = owner.executablePath + "\n"
-    else if (cmd === "codesign" && values.includes("-dv"))
-      stdout = "Identifier=org.ghostty\nCDHash=" + "12".repeat(20) + "\n"
-    else stdout = commandOutput(cmd, values)
-    return { status: 0, stdout, stderr: cmd === "codesign" ? stdout : "", error: undefined } as ReturnType<
+    else if (cmd === "codesign" && values.includes("-dv")) {
+      displays++
+      stdout =
+        scenario === "unsigned"
+          ? "code object is not signed at all\n"
+          : "Identifier=org.ghostty\n" +
+            (scenario === "bad-facts"
+              ? ""
+              : "CDHash=" + (scenario === "changed-facts" && displays > 1 ? "34" : "12").repeat(20) + "\n")
+    } else stdout = commandOutput(cmd === "/bin/ps" ? "ps" : cmd, values)
+    const status =
+      cmd !== "codesign"
+        ? 0
+        : values.includes("-R")
+          ? scenario === "not-developer-id"
+            ? 3
+            : scenario === "unexpected-exit"
+              ? 2
+              : 0
+          : values.includes("--verify") && ["unsigned", "modified"].includes(scenario)
+            ? 1
+            : 0
+    return { status, stdout, stderr: cmd === "codesign" ? stdout : "", error: undefined } as ReturnType<
       typeof spawnSync
     >
   })
-  const capture = captureTerminalAppReceipt(
-    owner as unknown as Parameters<typeof captureTerminalAppReceipt>[0],
-    555,
-    "2.15",
-  )
-  expect(capture.receipt).toMatchObject({
+  const capture = () =>
+    captureTerminalAppReceipt(owner, 555, scenario === "bundle-version-differs" ? "cli-build-tag" : "2.15", [
+      "/invoked/ghostty",
+      "--token=private",
+      "--config-file=/private/public-config",
+    ])
+  const failure = {
+    "missing-tool": /strict verification failed/,
+    modified: /invalid or modified/,
+    "unexpected-exit": /failed with exit 2/,
+    "bad-facts": /identifier or CDHash/,
+    "changed-facts": /changed during receipt/,
+  }[scenario as "missing-tool" | "modified" | "unexpected-exit" | "bad-facts" | "changed-facts"]
+  if (failure) {
+    expect(capture).toThrow(failure)
+    return
+  }
+  const result = capture()
+  if (scenario === "not-developer-id" || scenario === "unsigned") {
+    expect(result.receipt).toBeUndefined()
+    expect(result.trace.argvAbsentReason).toBe(scenario === "unsigned" ? "unsigned or ad-hoc" : "not Developer ID")
+    return
+  }
+  expect(result.receipt).toMatchObject({
     bundlePath: "/Applications/Ghostty.app",
     executablePath: owner.executablePath,
+    argv: ["/invoked/ghostty", "--token=[redacted]", "--config-file=/private/public-config"],
     sourceArtifact: {
       kind: "developer-id-signed-bundle",
       codeSignature: { identifier: "org.ghostty", cdHash: "12".repeat(20), strictVerified: true },
     },
   })
+  expect(JSON.stringify(result)).not.toContain('private"')
 })
