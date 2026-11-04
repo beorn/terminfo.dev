@@ -2559,9 +2559,8 @@ it("retains same-callback control and target frames without declaring visual sup
     directory,
   )
   expect(readFileSync(join(finalRoot, "response.json"))).toEqual(originalBytes)
-  expect(JSON.parse(readFileSync(saved, "utf8")).rawReplies["collector.traceManifest"]).toBe(
-    batch.rawReplies["collector.traceManifest"],
-  )
+  const savedRun = JSON.parse(readFileSync(saved, "utf8")) as { rawReplies: Record<string, string> }
+  expect(savedRun.rawReplies["collector.traceManifest"]).toBe(batch.rawReplies["collector.traceManifest"])
   rmSync(directory, { recursive: true })
   const source = {
     kind: "trace" as const,
@@ -2580,6 +2579,7 @@ it("retains same-callback control and target frames without declaring visual sup
     featureId: "sgr.underline.curly",
   })
   expect(replayed.assertions).toHaveLength(2)
+  expect(structuredClone(replayed)).toEqual(replayed)
   const live = batch.results.find(({ featureId }) => featureId === "sgr.underline.curly")!
   for (const assertion of replayed.assertions) {
     expect(assertion.results.find(({ featureId }) => featureId === live.featureId)).toMatchObject({
