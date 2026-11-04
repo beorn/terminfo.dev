@@ -18,6 +18,7 @@
         "@terminfo/probe-defs": "workspace:*",
         "@terminfo/probes": "workspace:*",
         "@terminfo/run-parser": "workspace:*",
+        "@termless/xtermjs": "0.10.2",
         "@vue/server-renderer": "3.5.43",
         "oxfmt": "0.71.0",
         "terminfo.dev": "workspace:*",
