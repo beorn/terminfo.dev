@@ -986,21 +986,20 @@ test("1049 exit concludes only the full roundtrip and keeps restoration defects 
   }
 })
 
-test("1049 exit keeps an unattributed entry failure inconclusive", () => {
+test("1049 exit after an unqualified entry is TEST TODO: the entry is a missing prerequisite (@cto 84e7b78b)", () => {
   const definition = alt1049Probe("exit")
   const { context } = alt1049Source("ignored-entry")
   const result = definition.lib!(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "alternate-screen entry not observed, so exit cannot be attributed",
+  })
+  expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
 })
 
-// #31388: an engine whose source implements no alternate screen cannot enter one, so its ?1049 exit is not an
-// "unattributed" result — it is an absence decided by source, the same shape as the audited title stack
-// (device.ts TITLE_STACK_UNIMPLEMENTED_AUDITS, @cto 863bef67). The audit must key on the loaded source
-// identity (integrity.repository + revision + treeOid + cleanTree), never on an adapter or engine name, so a
-// moved or locally modified source falls back to the existing inconclusive answer instead of inheriting a
-// negative. Qualifier fixture rekeyed from the vt100 23:34 PST capture to parser repair9e99e4d2/treeb941dae4;
-// Historical capture measured the old tree; this rekeyed fixture is qualification input, not capture attestation.
+// A vt100 source identity, kept to prove that no loaded source (pinned, moved, dirty or different) decides the
+// ?1049 exit after an unqualified entry: source never grades (#32246, @cto batch7 A-F1 and 84e7b78b).
 const VT100_SOURCE_IDENTITY = {
   kind: "js",
   adapterVersion: "0.10.2",
@@ -1020,16 +1019,18 @@ const VT100_SOURCE_IDENTITY = {
 const withRuntimeIdentity = (context: LibProbeSource, runtimeIdentity: unknown): LibProbeSource =>
   Object.assign(context, { runtimeIdentity }) as LibProbeSource
 
-test("1049 exit stays inconclusive on a source with no alternate screen: source never decides it (#32246)", () => {
+// An unqualified entry is a missing prerequisite for the exit: TEST TODO, never TEST FAILURE (@cto 84e7b78b, #32246).
+test("1049 exit after an unqualified entry is TEST TODO, and source never decides it (#32246)", () => {
   const definition = alt1049Probe("exit")
   const audited = alt1049Source("ignored-entry")
   const result = definition.lib!(withRuntimeIdentity(audited.context, VT100_SOURCE_IDENTITY))
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: "alternate-screen entry not observed, so exit cannot be attributed" })
+  expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
   expect(JSON.parse(result.response!)).not.toHaveProperty("sourceCitation")
 })
 
-test("the same entry failure stays inconclusive on a moved, dirty or different source", () => {
+test("the same entry failure is TEST TODO on a moved, dirty or different source", () => {
   const definition = alt1049Probe("exit")
   const unauditedIdentities = [
     { ...VT100_SOURCE_IDENTITY.integrity, revision: "0".repeat(40) },
@@ -1039,10 +1040,7 @@ test("the same entry failure stays inconclusive on a moved, dirty or different s
   for (const integrity of unauditedIdentities) {
     const { context } = alt1049Source("ignored-entry")
     const result = definition.lib!(withRuntimeIdentity(context, { ...VT100_SOURCE_IDENTITY, integrity }))
-    expect(result.observation, JSON.stringify(integrity)).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-    })
+    expect(result.notTested?.noObservable, JSON.stringify(integrity)).toBe("alternate-screen entry not observed, so exit cannot be attributed")
     expect(result.assertions, JSON.stringify(integrity)).toBeUndefined()
   }
 })

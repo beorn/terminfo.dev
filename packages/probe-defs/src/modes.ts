@@ -942,13 +942,9 @@ function altScreenRoundtrip(
     if (!entered) {
       const state = { seedA, seedB, blankA, blankB, ...(!screen.clearsOnEnter && { seedShown }) }
       if (phase === "exit") {
-        // An exit across an unqualified entry is unattributable; source never decides it (#32246, @cto batch7 A-F1).
-        return parserStateResult(
-          null,
-          expected,
-          state,
-          "Entry did not clear the seeded primary spans; exit cannot be attributed",
-        )
+        // An unqualified entry is a missing prerequisite for the exit: TEST TODO, and source never decides it
+        // (#32246, @cto batch7 A-F1 and 84e7b78b).
+        return notTestedResult("alternate-screen entry not observed, so exit cannot be attributed", state)
       }
       return parserStateResult(
         false,
