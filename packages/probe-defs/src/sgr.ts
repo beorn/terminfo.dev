@@ -513,7 +513,7 @@ function measuredReset(
   const retained = preserve.filter(shown).every((attribute) => measuredAttribute(after, attribute) === true)
   if (cleared && retained && (!set.some(shown) || !preserve.every(shown))) {
     return notTestedResult(
-      `compound reset not decided: ${unshown.join(" and ")} not shown at setup; every claimed facet must be seeded and read`,
+      `compound reset not decided: ${unshown.join(" and ")} not shown at setup; a reset needs at least one shown set facet and every preserved facet shown`,
       state,
     )
   }

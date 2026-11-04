@@ -833,7 +833,7 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
     expectNoSamePathTodo(
       unobservedSetup,
       id,
-      `compound reset not decided: ${unshown} not shown at setup; every claimed facet must be seeded and read`,
+      `compound reset not decided: ${unshown} not shown at setup; a reset needs at least one shown set facet and every preserved facet shown`,
     )
     if (erasedSentinel) {
       const lost = read(erasedSentinel)
@@ -866,7 +866,7 @@ test.each([
     expectNoSamePathTodo(
       result,
       id,
-      `compound reset not decided: ${unshown} not shown at setup; every claimed facet must be seeded and read`,
+      `compound reset not decided: ${unshown} not shown at setup; a reset needs at least one shown set facet and every preserved facet shown`,
     )
   } else {
     expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
