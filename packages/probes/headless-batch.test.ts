@@ -1,5 +1,5 @@
 /**
- * @failure Headless exceptions borrow an app marker, mismarked observations enter a graded batch, or a missing worker artifact is hidden by a stack line.
+ * @failure Headless exceptions borrow an app marker, mismarked observations enter a batch of probe results, or a missing worker artifact is hidden by a stack line.
  * @level l1
  * @consumer Production headless batch collector
  * @reach imports headless-batch.ts and collect-headless.ts at the production backend/worker boundary
@@ -590,7 +590,7 @@ test("reflow qualifies main, history, and alternate phases when primary ED 2 scr
 // @level l1
 // @consumer Actual vterm alternate resize/readback; the xterm case above supplies complete physical negatives.
 // CTO F4b: main positive/history negative is an engine limit, not a cross-buffer failure or perpetual TODO.
-test("alternate reflow records real vterm logical layouts without cross-buffer grading", async () => {
+test("alternate reflow records real vterm logical layouts without deciding a probe result from another buffer", async () => {
   const batch = await collectBatch(
     async () => createVtermBackend(),
     "vterm",
@@ -631,7 +631,7 @@ test("alternate reflow records real vterm logical layouts without cross-buffer g
 // @level l1
 // @consumer Alternate-only raw evidence through the registered callback and production source.
 // Existing main/history tests never enter alternate; mode tests never resize its target.
-// CTO F4e: invalid alternate evidence remains reported but cannot veto four qualified graded phases.
+// CTO F4e: invalid alternate evidence remains reported but cannot veto four qualified measured phases.
 // Prior aggregate TODO assertions could not detect an accidental alternate-failure fold.
 // F2/F3: require the deciding reason; setup failures must stay invalid even when mode identity
 // is false or unavailable. Status-only cases miss a removed identity check or the wrong failing control.
@@ -1145,11 +1145,11 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
 
 // Standalone component CI checks out terminfo.dev alone and resolves the published @termless 0.10.2, whose Kitty and
 // Ghostty native backends predate osc-metadata getProgress (#32271); CI run 41794400168 failed both rows there. Every
-// row runs in both homes: OWNED_LAYOUT picks the owned Termless contract (reader declared and graded) or the published
+// row runs in both homes: OWNED_LAYOUT picks the owned Termless contract (reader declared and tested) or the published
 // one (no reader, PROBE TODO), so a broken owned reader still fails.
 // @failure #32053, #32272: engine stores parsed toasts only; OSC 9 and 777;notify;X arrive identical. WezTerm
 // (performer.rs:904-933) and Ghostty (osc.zig:94-98) keep {title, body} toasts, so no raw reader can attribute the
-// code or rebuild the payload (@cto 94631c52, 91f6fd75). The owned Termless exposes that store as getToasts, graded by
+// code or rebuild the payload (@cto 94631c52, 91f6fd75). The owned Termless exposes that store as getToasts, tested by
 // single-sequence deltas with a cross control (@cto 3cc4a3ae); the published 0.10.2 has no reader, so its cells stay
 // PROBE TODO, never Unsupported. The owned ghostty-web WASM keeps the same toasts as the native engine (@cto c65d2a67).
 // @level l1
@@ -1169,7 +1169,7 @@ test.for([
   ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, "", async () => createGhosttyNativeBackend()],
   ["ghostty wasm", true, OWNED_LAYOUT, "", () => resolveGhosttyWasm()],
 ] as const)(
-  "%s parsed-toast engine grades OSC 9 and OSC 777 only through its toast reader",
+  "%s parsed-toast engine records OSC 9 and OSC 777 probe results only through its toast reader",
   async ([name, available, reader, osc9Title, create], context) => {
     if (!available) context.skip(`${name} native addon unavailable (NOT MEASURED)`)
     const value = await create()
@@ -1187,7 +1187,7 @@ test.for([
           expect(result.notTested).toBeUndefined()
           expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
         }
-        // Each step's added toasts are the engine's own fields: the OSC 9 title is recorded verbatim, never graded.
+        // Each step's added toasts are the engine's own fields: the OSC 9 title is recorded verbatim, never used to decide the probe result.
         expect(JSON.parse(notifications!.response!)).toMatchObject({
           noToast: { added: [] },
           cross: { added: [{ title: "terminfo-9-cross-title", body: "terminfo-9-cross-body" }] },
@@ -1226,7 +1226,7 @@ test.for([
   ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
   ["ghostty wasm", true, OWNED_LAYOUT, () => resolveGhosttyWasm()],
 ] as const)(
-  "%s OSC 9;4 progress grades through the stored-report reader only where the engine stores one",
+  "%s OSC 9;4 progress probe results are decided through the stored-report reader only where the engine stores one",
   async ([name, available, reader, create], context) => {
     if (!available) context.skip(`${name} engine unavailable (NOT MEASURED)`)
     const configDirectory = name === "kitty" ? mkdtempSync(join(tmpdir(), "terminfo-kitty-config-")) : undefined
@@ -1339,7 +1339,7 @@ test.skipIf(!isKittyAvailable())(
   },
 )
 
-// @failure A command-end-only native reader misgrades A/C or accepts cached/wrong raw status as a new D event.
+// @failure A command-end-only native reader misreads A/C or accepts cached/wrong raw status as a new D event.
 // @level l1
 // @consumer Registered OSC133D and start callbacks through the actual Kitty collector source.
 // Existing private callback tests cannot observe the public reader binding or the deciding callback route.
@@ -1402,7 +1402,7 @@ test.skipIf(!isKittyAvailable())(
   },
 )
 
-// @failure A registered semantic callback grades consumption or cached records instead of new typed, positioned marks.
+// @failure A registered semantic callback decides a probe result from consumption or cached records instead of new typed, positioned marks.
 // @level l1
 // @consumer Eight vterm semantic cells through the real adapter, collector and registry.
 test.for(VTERM_MARK_CASES)(
@@ -1551,7 +1551,7 @@ test("real vterm mark observations survive the registered batch producer", async
 // @failure Raw Sixel storage is promoted to rendering support, or the partial reason claims storage from a stale reader.
 // @level l1
 // @consumer The Sixel rendering cell, with its separately retained storage facet.
-test("real vterm Sixel storage sharpens the TODO reason without grading rendering", () => {
+test("real vterm Sixel storage sharpens the TODO reason without deciding a rendering probe result", () => {
   const value = createVtermBackend({ cols: 80, rows: 24 })
   try {
     const source = createLibProbeSource(value, undefined, undefined, undefined)
@@ -1696,7 +1696,7 @@ test.each([
   { fault: "title-control" },
   { fault: "icon-readback" },
   { fault: "title-readback" },
-] as const)("audited xterm OSC 0 $fault survives the actual collector without a grade leak", async ({ fault }) => {
+] as const)("audited xterm OSC 0 $fault survives the collector without a false result", async ({ fault }) => {
   const id = "extensions.osc0-icon-title"
   const identity = {
     kind: "js",
@@ -1867,7 +1867,7 @@ test("DECSSCLS real-vterm parser-state PROBE TODO survives collection and canoni
   expect(parsed.results).toEqual(finalized.results)
 }, 30_000)
 
-// @failure A D/633 prompt result at the formerly audited WezTerm identity becomes a collector error, or is graded
+// @failure A D/633 prompt result at the formerly audited WezTerm identity becomes a collector error, or its probe result is decided
 //   from source instead of staying PROBE TODO (#32246).
 // @level l1 @consumer collectBatch plus capture parser; callback tests cannot catch declaration rejection.
 test("Wezterm prompt PROBE TODO rows survive actual collection and capture binding", async () => {
@@ -1955,12 +1955,12 @@ test("Wezterm prompt PROBE TODO rows survive actual collection and capture bindi
     results: batch.results,
     assertions: batch.assertions,
   }
-  // #32246: the formerly audited WezTerm identity grades no prompt mark from source; each stays PROBE TODO, untyped.
+  // #32246: the formerly audited WezTerm identity decides no prompt-mark result from source; each stays PROBE TODO, untyped.
   for (const id of ids) {
     const row = captured.results.find((entry) => entry.featureId === id)!
     expect(row).toMatchObject({ featureId: id, status: "probe-todo" })
     expect(row.criterionBranch).not.toBe("source-negative-review")
-    // osc633-d/-p report their reader route as an inconclusive observation (#32247); still PROBE TODO, never graded.
+    // osc633-d/-p report their reader route as an inconclusive observation (#32247); still PROBE TODO, never a terminal support claim.
     if (id !== "extensions.osc633-d" && id !== "extensions.osc633-p") expect(row).not.toHaveProperty("assertionType")
     expect(captured.runtimeIdentity).toEqual(identity)
   }
@@ -2745,7 +2745,7 @@ test.each([
   ).toThrow("requires the performed action")
 })
 
-// @failure A Vterm input cell at the formerly audited identity is graded from source, or its PROBE TODO coverage record
+// @failure A Vterm input cell at the formerly audited identity has a probe result decided from source, or its PROBE TODO coverage record
 //   is lost when recorded as a real headless batch (#32246).
 // @consumer The four registered Vterm input callbacks through collectBatch; no capture or attestation.
 test("formerly audited Vterm input cells record PROBE TODO coverage through the collector", async () => {
@@ -2905,7 +2905,7 @@ test("mouse collector distinguishes unavailable state/pixels, measured no-report
 // @failure Cell coordinates are falsely accepted as a pixel-coordinate witness.
 // @level l1
 // @consumer The production pixel library criterion with explicit cell and pixel coordinates.
-test("pixel library arm never grades a cell-coordinate encoder report", async () => {
+test("pixel library arm never uses a cell-coordinate encoder report to decide a probe result", async () => {
   const backend = createVtermBackend()
   const encode = vi
     .spyOn(backend, "encodeMouse")
@@ -3149,8 +3149,8 @@ test("retains a qualified headless shell mark's required source review through p
   expect(captured.rawReplies[id]).toBe(batch.rawReplies[id])
 })
 
-// The no-response grade hid that no F4 engine can read a colour back headless (#30547, @cto D-B): a silent first
-// readback must ask for review with its raw query retained, while an engine that answers keeps its measured grade.
+// The no-response probe result hid that no F4 engine can read a colour back headless (#30547, @cto D-B): a silent first
+// readback must ask for review with its raw query retained, while an engine that answers keeps its measured probe result.
 const COLOR_READBACK_IDS = [
   "extensions.osc104-reset-palette",
   "extensions.osc110-reset-fg",
@@ -3219,7 +3219,7 @@ test.each([
   },
 )
 
-test("keeps the measured grade when the engine answers its colour readback", async () => {
+test("keeps the measured probe result when the engine answers its colour readback", async () => {
   const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions(COLOR_READBACK_IDS))
   expect(batch.observations).toEqual(
     COLOR_READBACK_IDS.map((featureId) =>
@@ -3353,7 +3353,7 @@ for (const [name, create, available] of [
 }
 
 // #31373 (@cto 15cf18e4): a capture that reached an engine callback its adapter does not reproduce is a harness gap.
-// The adapters above report no such callback, so no existing collector test could grade one.
+// The adapters above report no such callback, so no existing collector test could decide such a probe result.
 // xterm.js stands in for an adapter that reports one unreproduced callback per OSC 52 read.
 function unreproducingXterm() {
   const value = createXtermBackend()
@@ -3377,7 +3377,7 @@ function unreproducingXterm() {
 test.each([
   { name: "silent", query: "\x1b]52;c;?\x1b\\", harness: true },
   { name: "replied", query: "\x1b]52;c;?\x1b\\\x1b[6n", harness: false },
-])("grades a capture that reached an unreproduced callback ($name)", async ({ query, harness }) => {
+])("records a probe result for a capture that reached an unreproduced callback ($name)", async ({ query, harness }) => {
   const value = unreproducingXterm()
   const measured = (reply: string): ProbeCallbackResult => ({ ...fakeProbeResult("query_reply"), response: reply })
   const batch = await collectBatch(async () => value, "xtermjs", [
@@ -3422,7 +3422,7 @@ test.each([
   )
 })
 
-test("real vterm grades interior-region SU without moving the row above into history", async () => {
+test("real vterm records an interior-region SU probe result without moving the row above into history", async () => {
   const id = "scrollback.scroll-up"
   const probe = ALL_PROBES.find((item) => item.id === id)
   if (!probe) throw new Error(`Missing ${id} registry definition`)
@@ -3485,7 +3485,7 @@ test("retains Bun's missing artifact cause and path beside the failed worker std
   }
 })
 
-test("attributes headless exceptions only to the headless marker and leaves legacy throws ungraded", async () => {
+test("attributes headless exceptions only to the headless marker and retains legacy throws as diagnostics", async () => {
   const throws = () => {
     throw new TypeError("Callback failed")
   }
@@ -3507,7 +3507,7 @@ test("attributes headless exceptions only to the headless marker and leaves lega
   expect(batch.assertions).toEqual([])
 })
 
-test("routes real registry constructor markers while multi-method callbacks remain ungraded", async () => {
+test("routes real registry constructor markers while multi-method callbacks remain diagnostics", async () => {
   const ids = [
     "sgr.bold",
     "cursor.move.absolute",
@@ -3574,7 +3574,7 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
 })
 
 test.each(["factory", "init"] as const)(
-  "keeps a declared-none setup failure ungraded at %s instead of emitting an unparsable error",
+  "retains a declared-none setup failure as a diagnostic at %s instead of emitting an unparsable error",
   async (stage) => {
     const value = await backend()
     const failure = new Error(`${stage} failed`)
@@ -3594,7 +3594,7 @@ test.each(["factory", "init"] as const)(
     )
     expect(callback).not.toHaveBeenCalled()
     // The canonical parser admits none only as an inconclusive refusal, so a collector failure on a
-    // none arm stays a named ungraded diagnostic instead of becoming an error observation.
+    // none arm stays a named diagnostic without a probe result instead of becoming an error observation.
     expect(batch.observations).toEqual([])
     expect(batch.ungradedDiagnostics).toEqual({
       declines: { kind: "collector-error", name: "Error", message: `headless xtermjs probe declines: ${stage} failed` },
@@ -3602,7 +3602,7 @@ test.each(["factory", "init"] as const)(
   },
 )
 
-test("a real none-declaring probe keeps its setup failure ungraded", async () => {
+test("a real none-declaring probe retains its setup failure as a diagnostic", async () => {
   const ligatures = ALL_PROBES.find((probe) => probe.id === "extensions.font-ligatures")
   expect(ligatures?.libAssertionType).toBeNull()
   const batch = await collectBatch(
@@ -3785,7 +3785,7 @@ test.each([
       assertions: [],
       notTested: [],
       // `none` cannot carry an error: the canonical parser admits it only as an inconclusive
-      // refusal, so this contradiction stays a named ungraded diagnostic.
+      // refusal, so this contradiction stays a named diagnostic without a probe result.
       ungradedDiagnostics: {
         "invalid-none": {
           kind: "collector-error",
@@ -3834,7 +3834,7 @@ const qualifiedOscIdentities = {
 } as const
 
 // 30581: a refused callback result keeps its response under its feature id and its refused observation and
-// assertions as text in the refusal, on every recorder branch, so the run file shows what the grader saw.
+// assertions as text in the refusal, on every recorder branch, so the run file shows what the probe saw.
 test.each([
   {
     name: "xtermjs",
@@ -3952,7 +3952,7 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
   expect(read(captured).results).toEqual(batch.results)
   expect(read(finalizeCollectedDraft(captured)).results).toEqual(batch.results)
   // The parser-level-rejection rule is gone with the source answers (#32246): a PROBE TODO row that claims a type
-  // stays PROBE TODO, never a graded negative.
+  // stays PROBE TODO, never an Unsupported probe result.
   const mislabeled = structuredClone(captured)
   for (const result of mislabeled.results.slice(1)) result.assertionType = "query_reply"
   for (const assertion of mislabeled.assertions.filter((entry) => entry.featureId !== ids[0])) {
@@ -4169,13 +4169,13 @@ test("a result with no observation keeps its response and refused assertions", a
       kind: "collector-error",
       name: "Error",
       message:
-        'Callback for legacy returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded; refused assertion(kind=positive, expected="X", observed="X")',
+        'Callback for legacy returned neither an observation nor a not-tested coverage record; no probe result can be decided; refused assertion(kind=positive, expected="X", observed="X")',
     },
   })
   expect(probeReplies(batch)).toStrictEqual({ legacy: "X" })
 })
 
-// 30585: a grader that got no reply names that as its reason, and the reason is the record of the missing raw.
+// 30585: a probe that got no reply names that as its reason, and the reason is the record of the missing raw.
 // The observation keeps its measured reason; a rowless callback is a writer defect and synthesizes no raw reply.
 test("admits an inconclusive no-response result with its named reason and no synthesized raw", async () => {
   const batch = await collectBatch(backend, "xtermjs", [
@@ -4220,7 +4220,7 @@ test("refuses a callback result that is neither a measurement nor a coverage rec
         kind: "collector-error",
         name: "Error",
         message:
-          "Callback for legacy returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded",
+          "Callback for legacy returned neither an observation nor a not-tested coverage record; no probe result can be decided",
       },
     },
   })
@@ -4373,7 +4373,7 @@ test("refuses named coverage that arrives beside supported observation and asser
   })
 })
 
-// AC3: feature support cannot authorize metadata readback. Existing tests grade
+// AC3: feature support cannot authorize metadata readback. Existing tests decide probe results from
 // outcomes but do not catch a placeholder hyperlink=null presented as reported.
 test("OSC 8 feature without metadata extension omits the cell field", () => {
   const value = createXtermBackend({ cols: 80, rows: 24 })

@@ -265,7 +265,7 @@ export function feedCapture(
  * synchronous, so the read is decided once. A DA1 capture with no DA1 answer has ended the way live's
  * timeout does: no sentinel facts, and never the `sentinel` outcome. Once DA1 answered, bytes ahead of
  * its answer that match nothing end as live's do, in the `sentinel` outcome over those bytes, which
- * the grader never calls silence (#30559, @cto 86260f80).
+ * the probe never treats as silence (#30559, @cto 86260f80).
  */
 function sentinelOutcome(
   backend: TerminalBackend,
@@ -299,7 +299,7 @@ function sentinelOutcome(
  * G1 (#30554, @cto 452bc032): a proven path delivers every reply inside its capture, so any byte the
  * engine sends after the callback returned contradicts the proof. Listen through the grace window and
  * drain adapters that read pending input on state reads. Late bytes come back to the caller, which
- * refuses the callback's grade as a collector error, never the negative it built on the silence.
+ * refuses the callback's probe result as a collector error, never the negative it built on the silence.
  */
 async function listenForLateReply(
   backend: TerminalBackend,
@@ -494,13 +494,13 @@ function refusedClaimEvidence(result: ProbeCallbackResult): string {
   return parts.join(" and ")
 }
 
-/** A refusal's text names the claim it refused, so the run file keeps what the grader concluded. */
+/** A refusal's text names the claim it refused, so the run file keeps the probe conclusion. */
 function withRefusedClaim(message: string, result: ProbeCallbackResult): string {
   const refused = refusedClaimEvidence(result)
   return refused ? `${message}; refused ${refused}` : message
 }
 
-/** A silent capture beside an unreproduced callback grades the harness, keeping the measured response beside it. */
+/** A silent capture beside an unreproduced callback records a harness probe result, keeping the measured response beside it. */
 function harnessIncompleteResult(
   backendName: string,
   record: UnreproducedRecord,
@@ -538,7 +538,7 @@ function recordResult(
   retainCallbackResponse(batch, id, result)
   // The union makes one of the two records mandatory, so a typed callback always lands here
   // with a measurement. An untyped caller that returns neither gets a loud collector error
-  // instead of the old ungraded legacy-callback record.
+  // instead of the old legacy-callback diagnostic.
   const widened: { observation?: ProbeCallbackResult["observation"] } = result
   const explicit = widened.observation
   if (
@@ -559,7 +559,7 @@ function recordResult(
       kind: "collector-error",
       name: "Error",
       message: withRefusedClaim(
-        `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
+        `Callback for ${id} returned neither an observation nor a not-tested coverage record; no probe result can be decided`,
         result,
       ),
     }
@@ -842,7 +842,7 @@ export async function collectBatch(
         }
         batch.rawReplies[recordRef] = JSON.stringify(hostRecord)
       }
-      // G1 runs before the callback's grade is kept: a late byte refuses that grade as a collector error,
+      // G1 runs before the callback's probe result is kept: a late byte refuses that result as a collector error,
       // while the run file keeps what was observed, the on-time capture and the late bytes beside it.
       const late = sentinel.fired && proven ? await listenForLateReply(backend, proven.graceMs) : undefined
       if (late) {

@@ -1,5 +1,5 @@
 /**
- * @failure A region-readback kind row grades a correct terminal unsupported — or a wrong one supported — because its blank cells are compared against a single spelling and the fixture never meets a real parser; or a whole family drops out of this test because its kind table stopped being reachable from the barrel.
+ * @failure A region-readback kind row records an unsupported probe result for a correct terminal — or a wrong one supported — because its blank cells are compared against a single spelling and the fixture never meets a real parser; or a whole family drops out of this test because its kind table stopped being reachable from the barrel.
  * @level l1
  * @consumer Region-readback kind rows (charsets, editing, erase, scrollback, text) in the app/headless probe table.
  * @reach runs each kind row's parser arm on real xterm.js through the production headless context
@@ -179,14 +179,14 @@ const KIND_ROWS: readonly RegionReadbackRow[] = KIND_TABLES.flatMap(([, table]) 
 /**
  * The six sequences xterm.js does NOT implement. Every other kind row names a sequence xterm.js DOES
  * implement, so such a row that reads unsupported is the FIXTURE failing, not the terminal — which is
- * the shape must-fix 1 shipped: a blank spelled `" "` on one side only graded 17 of these rows
+ * the shape must-fix 1 shipped: a blank spelled `" "` on one side only decided probe results for 17 of these rows
  * unsupported against the four real backends @cto measured (@cto 28450 must-fix 1, 2026-10-12).
  * The declaring family is named in each id, so a future absent sequence says which family it is in.
  *
  * `editing.deccara`/`editing.decrara` stay on this list after converting to the kind (@cto 2026-10-18,
  * corrected in round 3): xterm.js has no `$r`/`$t` handler at all (measured on @xterm/headless 6: the
  * attributes stay clear through both sequences), so their real-parser reading is a measured
- * UNSUPPORTED. This is NOT a verdict change: the hand-written pair already read unsupported at base
+ * UNSUPPORTED. This is NOT a probe result change: the hand-written pair already read unsupported at base
  * 120ecf3a, which the retained run content/probes-libs/xtermjs-6.0.0-linux-c08837a5-*.json and a
  * re-measure through collectBatch both show (@cto round-2 B4).
  */
@@ -268,7 +268,7 @@ test("origin addressing measures its margin prerequisite and binds the real pars
 })
 
 // These remove one operation from the real fixture, rather than teaching a fake parser the answer.
-// They independently guard against a false positive and against grading an unproved prerequisite.
+// They independently guard against a false positive and against deciding a probe result from an unproved prerequisite.
 test.each([
   { missing: "DECOM", outcome: "unsupported", before: ["A", "U", "C", "D", "E", "", "Z"] },
   { missing: "DECSTBM", outcome: "inconclusive", before: ["A", "U", "B", "C", "D", "E", "Z"] },
@@ -299,7 +299,7 @@ test.each([
   }
 })
 
-test("every region-readback kind row grades its real xterm.js outcome", async () => {
+test("every region-readback kind row records its real xterm.js probe result", async () => {
   // These parser fixtures declare no reply delivery, so qualification is withheld loudly.
   // Consume only the expected progress and qualification diagnostics;
   // any other output remains a failure rather than disappearing into a blanket mock.

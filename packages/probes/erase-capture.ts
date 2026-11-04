@@ -75,7 +75,7 @@ export function readProbeCapture(
   }
   const files = [join(directory, source.trace.path)]
   const references = [...capture.screenshotRefs, ...capture.textSnapshotRefs]
-  // These are dependency slots, not a second observation/grading parser. Parsed frames
+  // These are dependency slots, not a second observation/result parser. Parsed frames
   // already have semantic validation; raw traces need only their binding checked here.
   const frameReference = (frame: unknown) => {
     if (!object(frame)) throw new IncompleteReplay("Capture frame binding is not an object")

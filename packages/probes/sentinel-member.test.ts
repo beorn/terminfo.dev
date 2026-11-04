@@ -241,7 +241,7 @@ test.each([
 })
 
 // #30559 (@cto 86260f80 rules 1 and 2): DA1 answered in its own capture after bytes that match nothing. The
-// outcome is live's, `sentinel` with its facts, which arms G1; the grader refuses a negative over those bytes.
+// outcome is live's, `sentinel` with its facts, which arms G1; the probe refuses a negative result over those bytes.
 test.each([
   { name: "unmatched bytes, then DA1", query: "\x1b]11;rgb:0000/0000/0000\x1b\\", answer: DA1 },
   { name: "a DA1-shaped reply to the query itself, then DA1", query: DA1, answer: DA1 },
@@ -266,7 +266,7 @@ test.each([
 test.each([
   { name: "a reply after the DA1 answer", query: "" },
   { name: "a reply after unmatched bytes and the DA1 answer", query: "\x1b]11;rgb:0000/0000/0000\x1b\\" },
-])("$name grades by the reply and carries the sentinel facts", ({ query }) => {
+])("$name decides a probe result from the reply and carries the sentinel facts", ({ query }) => {
   const onSentinel = vi.fn()
   const answer = `${DA1}\x1b[3;7R`
   const ctx = sourceOf(
@@ -446,7 +446,7 @@ interface ArmCase {
   outcome: "unsupported" | "inconclusive" | "probe-invalid"
 }
 
-// One real arm per grader family, both two-step arms, and DECRQSS's second step after an SGR refusal.
+// One real arm per reply-criterion family, both two-step arms, and DECRQSS's second step after an SGR refusal.
 const ARM_CASES: ArmCase[] = [
   { id: "extensions.osc0-icon-title", when: "silent", replies: {}, outcome: "probe-invalid" },
   { id: "device.xtversion", when: "silent", replies: {}, outcome: "unsupported" },
@@ -467,7 +467,7 @@ const ARM_CASES: ArmCase[] = [
 ]
 
 test.each(ARM_CASES)(
-  "$id, $when: the proven headless arm grades exactly as live grades the same outcomes",
+  "$id, $when: the proven headless arm records the same probe results as live for the same outcomes",
   async ({ id, replies, outcome }) => {
     const { lib, term } = armsOf(id)
     const { ctx, outcomes } = recordingSource((text) => (text === DA1_QUERY ? DA1 : (replies[text] ?? "")))
@@ -486,7 +486,7 @@ test.each(ARM_CASES)(
     } else expect(headless.observation?.outcome, id).toBe(outcome)
     if (outcome === "unsupported") expect(headless.observation?.note, id).toBe("negative by sentinel")
     expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
-    // Without the member the arm keeps today's capture-only reading, where silence never grades.
+    // Without the member the arm keeps today's capture-only reading, where silence never decides a probe result.
     const plain = lib(queryOnly(sourceOf(scripted((text) => replies[text] ?? ""))))
     if (Object.keys(replies).length === 0) {
       expect(plain.observation, id).toBeUndefined()
@@ -508,12 +508,12 @@ test.each(ARM_CASES)(
 )
 
 // #30559 (@cto 86260f80): DA1 answers after bytes that match nothing, here an OSC reply and Terminal.app's DA1-shaped
-// answer to DA3. Both collectors give the sentinel outcome over those bytes and the grader refuses a negative over
+// answer to DA3. Both collectors give the sentinel outcome over those bytes and the probe refuses a negative result over
 // them, so the headless arm publishes live's "no-response", never "timeout" where DA1 answered.
 test.each([
   { id: "device.xtversion", query: "\x1b[>0q", reply: "\x1b]11;rgb:0000/0000/0000\x1b\\" },
   { id: "device.tertiary-da", query: "\x1b[=c", reply: DA1 },
-])("$id: bytes ahead of the DA1 answer grade no-response, as live grades them", async ({ id, query, reply }) => {
+])("$id: bytes ahead of the DA1 answer give a no-response result, as live does", async ({ id, query, reply }) => {
   const { lib, term } = armsOf(id)
   const { ctx, outcomes } = recordingSource((text) => (text === DA1_QUERY ? DA1 : text === query ? reply : ""))
   const headless = lib(ctx)
@@ -529,7 +529,7 @@ test.each([
   expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
 })
 
-test("extensions.kitty-keyboard: once detection answers, a silent flags query grades as live grades it", async () => {
+test("extensions.kitty-keyboard: once detection answers, a silent flags query records the same probe result as live", async () => {
   const { lib, term } = armsOf("extensions.kitty-keyboard")
   const detection = `\x1b[?0u${DA1}`
   const fed: string[] = []
@@ -539,7 +539,7 @@ test("extensions.kitty-keyboard: once detection answers, a silent flags query gr
     return text === DA1_QUERY ? DA1 : ""
   })
   const headless = lib(ctx)
-  // Detection stays the DA1-graded capture both collectors already share; the flags query takes the member.
+  // Detection stays the DA1-qualified capture both collectors already share; the flags query takes the member.
   expect(fed).toEqual(["\x1b[?u\x1b[c", "\x1b[>1u", "\x1b[?u", DA1_QUERY, "\x1b[<u"])
   expect(headless.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
   const answered: TerminalQueryOutcome = {
@@ -554,7 +554,7 @@ test("extensions.kitty-keyboard: once detection answers, a silent flags query gr
 const IMAGE_ID = "7"
 const KITTY_DETECTION = `\x1b[?0u${DA1}`
 
-/** One case per string-grader site: the engine answers, and DA1 answers after it. */
+/** One case per string-matched query site: the engine answers, and DA1 answers after it. */
 const ANSWERED_CASES: { id: string; reply: (text: string) => string; liveFirst?: TerminalQueryOutcome[] }[] = [
   {
     id: "extensions.kitty-keyboard",
@@ -590,7 +590,7 @@ const ANSWERED_CASES: { id: string; reply: (text: string) => string; liveFirst?:
 ]
 
 test.each(ANSWERED_CASES)(
-  "$id: an answered string-graded query keeps the whole read window, DA1 answer included, as live does",
+  "$id: an answered string-matched query keeps the whole read window, DA1 answer included, as live does",
   async ({ id, reply, liveFirst = [] }) => {
     // Both arms draw the same image number, so the live twin can take the headless arm's allocation outcome.
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("0000002a-0000-4000-8000-000000000000")
@@ -600,7 +600,7 @@ test.each(ANSWERED_CASES)(
     const graded = outcomes.at(-1)
     const frame = graded?.match?.[0]
     if (!graded || !frame) throw new Error(`${id}: the member gave no answered outcome`)
-    // The grader reads only the frame; the result records everything the read window held.
+    // The probe reads only the frame; the result records everything the read window held.
     expect(headless.observation?.outcome, id).toBe("supported")
     expect(graded.raw, id).toBe(`${frame}${DA1}`)
     expect(headless.response, id).toBe(graded.raw)
