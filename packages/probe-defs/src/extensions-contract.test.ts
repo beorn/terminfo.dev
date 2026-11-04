@@ -1222,3 +1222,45 @@ test.each(["extensions.osc30001-color-stack-push", "extensions.osc30101-color-st
     expect(result.observation?.outcome).not.toBe("unsupported")
   },
 )
+
+// A declared capability and a working parser control cannot observe an OS or pixel effect.
+test.each([
+  "extensions.osc9-progress",
+  "extensions.osc176-app-id",
+  "extensions.osc440-audio",
+  "extensions.osc555-flash",
+  "extensions.osc666-termprop",
+  "extensions.osc710-font-normal",
+  "extensions.osc777-notify",
+  "extensions.osc3008-context",
+  "extensions.font-ligatures",
+  "extensions.iterm2-images",
+])("%s retains missing-observer TODO with declared working and inert sources", (id) => {
+  const probe = extensionsProbes.find((entry) => entry.id === id)!
+  for (const [profile, base] of [
+    ["working", libProbeSource(createSemanticSurface())],
+    ["inert", inertLibProbeSource()],
+  ] as const) {
+    const source = {
+      ...base,
+      capabilities: {
+        ...base.capabilities,
+        kittyGraphics: true,
+        sixel: true,
+        extensions: new Set(["osc7", "osc9", "iterm2Images"]),
+      },
+    }
+    const control = source.feedCapture("\x1b[c")
+    if (profile === "working") expect(control, `${id}: parser control works`).toMatch(/^\x1b\[\?[0-9;]+c$/u)
+    else expect(control, `${id}: inert control stays silent`).toBe("")
+
+    const result = probe.lib!(source)
+    expect(result.pass, `${id}: ${profile} has no effect observer`).toBe(false)
+    expect(result.notTested, id).toMatchObject({ reason: "no-semantic-observable" })
+    expect(result.observation, id).toBeUndefined()
+    expect(result.assertions, id).toBeUndefined()
+    if (result.tests !== undefined) {
+      for (const criterion of result.tests) expect(criterion.status, id).toBe("test-todo")
+    }
+  }
+})
