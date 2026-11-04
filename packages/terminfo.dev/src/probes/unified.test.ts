@@ -2153,10 +2153,14 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
   })
   const batch = await runProbeBatch({
     ids: ["sgr.bold"],
+    subject: { kind: "term", id: "kitty", os: "linux" },
     ownedTerminal: geometryOwner(measured(24, 80)),
     capture,
   })
-  expect(batch.results.find(({ featureId }) => featureId === "sgr.bold")?.status).toBe("supported")
+  expect(batch.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({
+    status: "test-todo",
+    reason: "visual effect not observed in this run",
+  })
   // The persistence boundary must accept a terminal query-reply capture without
   // inventing an erase buffer/geometry manifest or a headless runtime identity.
   const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
@@ -2212,7 +2216,8 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       expect(assertion.source).toEqual(source)
       expect(assertion.subject).toEqual(draft.subject)
       expect(assertion.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({
-        status: "supported",
+        status: "test-todo",
+        reason: "visual effect not observed in this run",
         assertionType: "query_reply",
       })
       const assertionPath = record.files.find((file) => file.endsWith(assertion.runId + ".assertion.draft.json"))
