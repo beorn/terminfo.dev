@@ -2545,6 +2545,7 @@ it("retains same-callback control and target frames without declaring visual sup
   writeFileSync(original, originalBytes)
   const finalRoot = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
   receiptDirectories.push(finalRoot)
+  const persistenceLog = vi.spyOn(console, "log").mockImplementation(() => {})
   const saved = retainCollectedRun(
     {
       ...draft,
@@ -2558,6 +2559,8 @@ it("retains same-callback control and target frames without declaring visual sup
     finalRoot,
     directory,
   )
+  expect(persistenceLog).toHaveBeenCalledWith(`  Retained private collected run ${saved}`)
+  persistenceLog.mockRestore()
   expect(readFileSync(join(finalRoot, "response.json"))).toEqual(originalBytes)
   const savedRun = JSON.parse(readFileSync(saved, "utf8")) as { rawReplies: Record<string, string> }
   expect(savedRun.rawReplies["collector.traceManifest"]).toBe(batch.rawReplies["collector.traceManifest"])
