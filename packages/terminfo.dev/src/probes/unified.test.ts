@@ -26,6 +26,7 @@ import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
 import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
+import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
 import { readProbeCapture } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
 import * as headlessIdentity from "../../../probes/headless-identity.ts"
@@ -2420,7 +2421,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
 
 // AC1/AC3: images belong to the callback's run before it is sealed. Existing
 // transport tests only observe replies and cannot detect a detached screenshot.
-it("retains same-callback control and target frames without declaring visual support", async () => {
+it("retains same-callback control and target frames without declaring visual support", async (context) => {
   verifiedBatchFixture()
   const writes: string[] = []
   process.stdout.write = ((value: string) => {
@@ -2533,6 +2534,62 @@ it("retains same-callback control and target frames without declaring visual sup
   const negative = structuredClone(draft)
   negative.rawReplies["sgr.underline.curly.callLog"] = JSON.stringify(negativeLog)
   expect(() => open(negative, "source-log-negative")).toThrow(/unbound blob/)
+
+  // The same producer-made SGR bundle must survive launch cleanup and reach the
+  // existing callback/finalizer twice offline. Reader-only checks miss that handoff.
+  if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) {
+    throw new Error("Incomplete retained SGR fixture")
+  }
+  const originalBytes = Buffer.from(JSON.stringify(draft))
+  const original = join(directory, "response.json")
+  writeFileSync(original, originalBytes)
+  const finalRoot = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(finalRoot)
+  const saved = retainCollectedRun(
+    {
+      ...draft,
+      subject: draft.subject,
+      identity: draft.identity,
+      measuredAt: draft.measuredAt,
+      origin: draft.origin,
+    },
+    original,
+    undefined,
+    finalRoot,
+    directory,
+  )
+  expect(readFileSync(join(finalRoot, "response.json"))).toEqual(originalBytes)
+  expect(JSON.parse(readFileSync(saved, "utf8")).rawReplies["collector.traceManifest"]).toBe(
+    batch.rawReplies["collector.traceManifest"],
+  )
+  rmSync(directory, { recursive: true })
+  const source = {
+    kind: "trace" as const,
+    trace: { path: "response.json", sha256: createHash("sha256").update(originalBytes).digest("hex") },
+    captureRunId: draft.runId,
+    captureSuiteId: draft.suiteId,
+    captureSourceRevision: draft.sourceRevision,
+  }
+  const expected = { manifest, sourceRevision, subject: draft.subject }
+  expect(readProbeCapture(finalRoot, source, expected).files.length).toBeGreaterThan(1)
+  const beforeOffline = writes.length
+  const replayed = await runEraseReplay(context, {
+    directory: finalRoot,
+    source,
+    expected,
+    featureId: "sgr.underline.curly",
+  })
+  expect(replayed.assertions).toHaveLength(2)
+  const live = batch.results.find(({ featureId }) => featureId === "sgr.underline.curly")!
+  for (const assertion of replayed.assertions) {
+    expect(assertion.results.find(({ featureId }) => featureId === live.featureId)).toMatchObject({
+      status: live.status,
+      reason: live.reason,
+      assertionType: live.assertionType,
+      frames: live.frames,
+    })
+  }
+  expect(writes).toHaveLength(beforeOffline)
 })
 
 // 27875: a controlled-Linux run with no capture directory cannot make a frame. A probe that needs
