@@ -64,11 +64,11 @@ const EXTENSIONS_SEMANTIC_SURFACE_CONTROLS = [
   ["sixel-geometry-report", "sixel-geometry-noop"],
   ["osc66-text-sizing", "osc66-noop"],
   ["osc99-kitty-notify", "osc99-noop"],
-  ["osc2-title", "osc2-target-noop"],
+  ["osc2-title", "osc2-noop"],
   ["osc0-icon-title", "osc0-noop"],
   ["osc1-icon", "osc1-noop"],
   ["osc52-clipboard", "osc52-write-noop"],
-  ["osc52-write", "osc52-target-write-noop"],
+  ["osc52-write", "osc52-write-noop"],
   ["osc52-read", "osc52-read-noop"],
   ["osc5522-clipboard", "osc5522-unsupported"],
   ["osc133-a", "osc133-a-noop"],
@@ -108,7 +108,6 @@ const KITTY_DISABLED_BITS = new Map<string, number>([
 test.each([
   ["osc2-title", "reader"],
   ["osc52-write", "reader"],
-  ["osc2-title", "osc2-noop"],
   ["osc52-write", "osc52-write-noop"],
 ])("extensions.%s retains TODO with unqualified %s", (name, fault) => {
   const probe = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!
@@ -126,6 +125,77 @@ test.each([
     noObservable: "observation not decided: no same-path control in this run",
   })
   expect(source.feedCapture("\x1b[c")).toMatch(/^\x1b\[\?[0-9;]+c$/u)
+})
+
+// #32265: these state changes qualify the reader but do not establish the requested effect.
+test("OSC 2 changing to a different title is inconclusive", () => {
+  const working = semanticSurfaceSource()
+  const source = {
+    ...working,
+    feed(text: string) {
+      working.feed(/^\x1b\]2;/u.test(text) ? "\x1b]2;unexpected-title\x07" : text)
+    },
+  }
+  const result = extensionsProbes.find((entry) => entry.id === "extensions.osc2-title")!.lib!(source)
+  expect(result.observation?.outcome).toBe("inconclusive")
+})
+
+test("OSC 52 recorded control and missing target retain the same-run disagreement", () => {
+  const working = semanticSurfaceSource()
+  let writes = 0
+  const source = {
+    ...working,
+    feed(text: string) {
+      if (/^\x1b\]52;c;[^?]/u.test(text) && ++writes === 2) return
+      working.feed(text)
+    },
+  }
+  const result = extensionsProbes.find((entry) => entry.id === "extensions.osc52-write")!.lib!(source)
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "control OSC 52 c write recorded but the probe write was not; same-run observations disagree",
+  })
+})
+
+test.each(["osc133-a", "osc133-b", "osc133-c", "osc133-d", "osc633-a", "osc633-b", "osc633-c", "osc7-cwd", "osc8"])(
+  "extensions.%s keeps a declared but inert reader undecided",
+  (name) => {
+    const working = semanticSurfaceSource()
+    const source =
+      name === "osc8"
+        ? { ...working, getHyperlinkAt: () => null }
+        : name === "osc7-cwd"
+          ? { ...working, getCwd: () => null }
+          : { ...working, getSemanticMarks: () => [] }
+    const result = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!.lib!(source)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(result.notTested).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: "observation not decided: no same-path control in this run",
+    })
+    expect(source.feedCapture("\x1b[c")).toMatch(/^\x1b\[\?[0-9;]+c$/u)
+  },
+)
+
+test.each(["wrong URI", "leaking URI"])("OSC 8 keeps an observed %s unsupported", (fault) => {
+  const working = semanticSurfaceSource()
+  const source = {
+    ...working,
+    getHyperlinkAt(row: number, col: number) {
+      const uri = working.getHyperlinkAt!(row, col)
+      return fault === "wrong URI"
+        ? uri === null
+          ? null
+          : "https://example.com/wrong"
+        : col === 5
+          ? working.getHyperlinkAt!(row, 4)
+          : uri
+    },
+  }
+  expect(extensionsProbes.find((entry) => entry.id === "extensions.osc8")!.lib!(source).observation?.outcome).toBe(
+    "unsupported",
+  )
 })
 
 test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with %s", async (name, mutation) => {
@@ -172,7 +242,11 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   expect(disabledSource.getCwd?.(), `${id}: negative control restores the working directory`).toBe(disabledCwd)
   // A roundtrip mismatch leaves the write/read combination undecided; it is not an engine negative.
   expect(disabled.after, `${id}: only ${mutation} is disabled`).toBe(
-    id === "extensions.osc52-clipboard" ? "inconclusive" : "unsupported",
+    id === "extensions.osc52-clipboard"
+      ? "inconclusive"
+      : id === "extensions.osc52-write" || id === "extensions.osc8"
+        ? undefined
+        : "unsupported",
   )
   if (id === "extensions.osc52-clipboard") {
     expect(probe.lib!(disabledSource).observation).toMatchObject({
