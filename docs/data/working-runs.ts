@@ -185,20 +185,34 @@ export function loadWorkingRun(
     decodedCounts.set(engine, normalized)
   }
   const runRoot = realpathSync(selection.dir) + sep
+  const retainedPaths = [...collection.runs]
+  const runCount = retainedPaths.length
+  if (Object.hasOwn(collection, "suiteManifest")) {
+    if (
+      typeof collection.suiteManifest !== "string" ||
+      !/^suites\/[0-9a-f]{12}\.json$/u.test(collection.suiteManifest)
+    ) {
+      throw new Error(`${collectionPath}: suiteManifest must name suites/<twelve-lowercase-hex-suite-id>.json`)
+    }
+    retainedPaths.push(resolve(selection.dir, "headless", collection.suiteManifest))
+  }
   // Check every expected resource before an older-suite warning can return early.
-  const rawPaths = collection.runs.map((path) => {
+  const checkedPaths = retainedPaths.map((path, index) => {
     const rawPath = resolve(selection.dir, path)
     if (!existsSync(rawPath) || !realpathSync(rawPath).startsWith(runRoot)) {
-      throw new Error(`${collectionPath}: raw capture ${path} outside the run directory or absent`)
+      const resource = index < runCount ? "raw capture" : "suite manifest"
+      throw new Error(`${collectionPath}: ${resource} ${path} outside the run directory or absent`)
     }
     return rawPath
   })
+  const rawPaths = checkedPaths.slice(0, runCount)
+  const manifestPath = checkedPaths[runCount]
   const runs: LoadedRun[] = []
   const seen = new Set<string>()
   for (const rawPath of rawPaths) {
     let run: LoadedRun
     try {
-      run = loadRawCapture(rawPath, { root: options.root, catalogIds: options.catalogIds })
+      run = loadRawCapture(rawPath, { root: options.root, catalogIds: options.catalogIds, manifestPath })
     } catch (error) {
       if (!(error instanceof UntrustedSuiteError)) throw error
       return {

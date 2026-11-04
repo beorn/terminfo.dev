@@ -17,10 +17,10 @@ import {
   type CapturedRunDraft,
   type RunDraft,
 } from "@terminfo/probe-defs"
-import { parseRun } from "@terminfo/run-parser"
+import { canonicalJson, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { collectHeadlessRuns } from "./collect-headless.ts"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
-import { probeSuiteSnapshot } from "../admin/versions.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 const dirs: string[] = []
 afterEach(() => {
   vi.useRealTimers()
@@ -45,6 +45,10 @@ it.each([true, false])(
     let capturePath = ""
     let captureBytes = ""
     vi.spyOn(Bun, "spawn").mockImplementation(((_argv: unknown, options: { env: Record<string, string> }) => {
+      const producerSuite = probeSuiteSnapshot()
+      expect(readFileSync(join(dir, "suites", `${producerSuite.probeHash}.json`), "utf8")).toBe(
+        `${canonicalJson(derivedSuiteManifest(producerSuite))}\n`,
+      )
       const draft = JSON.parse(readFileSync(options.env.TERMINFO_DRAFT_PATH!, "utf8")) as RunDraft
       expect(draft.rawReplies["collector.selection"]).toBe(JSON.stringify({ ids: ["device.primary-da"] }))
       const run: CapturedRunDraft = {
@@ -103,6 +107,13 @@ it.each([true, false])(
     })
     expect(readFileSync(capturePath, "utf8")).toBe(captureBytes)
     const suite = probeSuiteSnapshot()
+    expect(collection.suiteManifest).toBe(`suites/${suite.probeHash}.json`)
+    expect(readdirSync(join(dir, "suites"))).toEqual([`${suite.probeHash}.json`])
+    const manifestPath = join(dir, collection.suiteManifest!)
+    expect(parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))).toEqual(derivedSuiteManifest(suite))
+    expect(JSON.parse(readFileSync(join(dir, "collection.json"), "utf8"))).toMatchObject({
+      suiteManifest: collection.suiteManifest,
+    })
     parseRun(path, readFileSync(path, "utf8"), suite.catalogIds!, new Map([[suite.probeHash, suite]]))
     // Raw collection is never END; existing writer tests cannot observe coordinator custody.
     expect(path).toMatch(/\.draft\.json$/)

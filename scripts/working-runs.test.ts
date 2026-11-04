@@ -8,7 +8,7 @@
  * @testonly none
  */
 import { createHash } from "node:crypto"
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
@@ -142,6 +142,57 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(loaded.runs[0]?.results).toHaveLength(273)
     expect(loaded.runs[0]?.runId).toBe("a22f06ca-2505-4c0d-a518-b0b01f8bbe76")
   })
+
+  it("reads older retained probe history after a newer hourly run exists without admitting its raw results", () => {
+    const fixture = collection()
+    const selection = newestCompleteRun(fixture.parent)
+    const baseline = loadWorkingRun(selection, { root, catalogIds })
+    const rawPath = fixture.collected.runs[0]!
+    const bytes = readFileSync(rawPath, "utf8")
+    const header = JSON.parse(bytes) as { probeHash: string }
+    const suiteId = header.probeHash
+    mkdirSync(join(fixture.dir, "headless", "suites"))
+    const suiteManifest = `suites/${suiteId}.json`
+    copyFileSync(join(root, "content", "suites", `${suiteId}.json`), join(fixture.dir, "headless", suiteManifest))
+    Object.assign(fixture.collected, { suiteManifest })
+    fixture.save()
+    run(fixture.parent, PARTIAL, { complete: true })
+    expect(newestCompleteRun(fixture.parent).id).toBe(PARTIAL)
+    const historical = loadWorkingRun(selection, { root: runsDir(), catalogIds })
+    expect(historical.unreadable).toBeUndefined()
+    expect(historical.runs[0]?.runId).toBe(baseline.runs[0]?.runId)
+    expect(historical.runs[0]?.results).toEqual(baseline.runs[0]?.results)
+    expect(historical.runs[0]?.assertions).toEqual(baseline.runs[0]?.assertions)
+    const result = historical.runs[0]!.results![0]!
+    const accepted = reviewed("unsupported")
+    const acceptedBytes = JSON.stringify(accepted)
+    const cell = workingCell({ ...raw(result.status), runId: historical.runs[0]!.runId, suiteId }, accepted)
+    expect(cell.headline).toBe("reviewed")
+    expect(cell.reviewed).toEqual({ ...accepted, display: "unsupported" })
+    expect(JSON.stringify(accepted)).toBe(acceptedBytes)
+    expect(readFileSync(rawPath, "utf8")).toBe(bytes)
+  })
+
+  it.each(["wrong form", "missing file", "symlink escape", "filed id"])(
+    "refuses a declared private manifest with %s instead of falling back to the committed declaration",
+    (failure) => {
+      const fixture = collection()
+      const header = JSON.parse(readFileSync(fixture.collected.runs[0]!, "utf8")) as { probeHash: string }
+      const suiteId = header.probeHash
+      const filedId = failure === "filed id" ? "ffffffffffff" : suiteId
+      const suiteManifest = failure === "wrong form" ? "suites/not-a-suite.json" : `suites/${filedId}.json`
+      const manifestPath = join(fixture.dir, "headless", suiteManifest)
+      mkdirSync(join(fixture.dir, "headless", "suites"))
+      const sourcePath = join(root, "content", "suites", `${suiteId}.json`)
+      if (failure === "symlink escape") symlinkSync(sourcePath, manifestPath)
+      if (failure === "filed id") copyFileSync(sourcePath, manifestPath)
+      Object.assign(fixture.collected, { suiteManifest })
+      fixture.save()
+      expect(() => loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })).toThrow(
+        failure === "wrong form" ? "suiteManifest" : manifestPath,
+      )
+    },
+  )
 
   // Retained hourly summaries predate the vocabulary rename; canonical-only envelopes miss this boundary.
   it("reads legacy count keys identically without rewriting the envelope and still detects mismatched counts", () => {

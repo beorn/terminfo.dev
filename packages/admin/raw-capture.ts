@@ -7,10 +7,11 @@
  * canonical `parseRun` in capture mode against the suite's trusted manifest and returns the parsed run; it decides
  * no probe results and admits and publishes nothing.
  *
- * The trusted manifest is the committed `content/suites/<suite>.json`, or, when no manifest is committed, the
- * manifest derived from THIS tree's own probe sources, but only when the capture names exactly this tree's suite
- * (the hourly re-measure measures the tree it runs from, and release1-collection trusts the same derived manifest
- * for the drafts it writes). Any other suite has no trusted declaration here, and the capture is refused by name.
+ * Default trust is the committed `content/suites/<suite>.json`, or, when absent, the manifest derived from THIS
+ * tree's probe sources only when the capture names exactly this tree's suite. The qualified working-run reader
+ * can instead supply an explicit producer-retained manifest: that file is mandatory and exclusive, with no
+ * committed/current-tree fallback. Both routes share schema and filed-id validation and read evidence only,
+ * never admit or publish a result. A suite without one of these trusted declarations is refused by name.
  *
  * NO SILENT ERRORS: a missing file, malformed JSON, a header without its identity, an unknown suite, a suite id that
  * disagrees with its manifest, or a capture without recorded results each throw with the path and the cause.
@@ -19,7 +20,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseJsonStrict, parseRun, type LoadedRun } from "@terminfo/run-parser"
-import { readExplicitSuiteTarget } from "./suite-manifest.ts"
+import { readExplicitSuiteTarget, readSuiteManifestFile } from "./suite-manifest.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "./versions.ts"
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -61,7 +62,7 @@ function trustedManifest(path: string, root: string, suiteId: string): ProbeSuit
  */
 export function loadRawCapture(
   path: string,
-  options: { root: string; catalogIds: readonly string[]; bytes?: string },
+  options: { root: string; catalogIds: readonly string[]; bytes?: string; manifestPath?: string },
 ): LoadedRun {
   let bytes = options.bytes
   if (bytes === undefined) {
@@ -82,7 +83,10 @@ export function loadRawCapture(
   ) {
     throw new Error(`${path}: a raw capture requires runId, probeHash and sourceRevision`)
   }
-  const manifest = trustedManifest(path, options.root, header.probeHash)
+  const manifest =
+    options.manifestPath === undefined
+      ? trustedManifest(path, options.root, header.probeHash)
+      : readSuiteManifestFile(options.manifestPath, header.probeHash)
   if (header.suiteId !== manifest.probeHash) {
     throw new Error(`${path}: suiteId disagrees with manifest ${manifest.probeHash}`)
   }
