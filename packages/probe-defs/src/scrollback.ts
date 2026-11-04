@@ -453,13 +453,17 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       const control = await readInput(/^a/, 1000, () => input.injectKey("a"))
       state.delivery = control
       if (!control) return todo("viewport input delivery not observed")
-      await input.injectClick(4)
       scrolled = true
+      await input.injectClick(4)
       const anchor = await frame(`${phase} U`)
       state.U = anchor
       if (sameFrame(anchor, bottom) || sameFrame(anchor, reference)) {
         return todo("viewport anchor placement not established")
       }
+      state.anchorParse = await ctx.queryWithSentinelOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 1000)
+      const unchanged = await frame(`${phase} U prime`)
+      state.UPrime = unchanged
+      if (!sameFrame(unchanged, anchor)) return todo("parse witness moved the viewport")
       const output = `\r\nvh-${prefix}-out\r\n${tail}`
       ctx.write(phase === "ordinary" ? output : `\x1b[?2026h${output}\x1b[?2026l`)
       const parsed = await ctx.queryWithSentinelOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 1000)
@@ -517,19 +521,25 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     primary = error
     throw error
   } finally {
-    const errors: unknown[] = failed ? [primary] : []
+    const failures = failed ? [{ operation: "primary error", error: primary }] : []
     try {
       if (scrolled) await moveDown()
     } catch (cleanup) {
-      errors.push(cleanup)
+      failures.push({ operation: "wheel return", error: cleanup })
     }
     try {
       ctx.write("\x1b[?2026l\x1b[?25h")
     } catch (cleanup) {
-      errors.push(cleanup)
+      failures.push({ operation: "cursor restore", error: cleanup })
     }
-    if (errors.length > 1) throw new AggregateError(errors, "Viewport hold and cursor cleanup both failed")
-    if (errors.length === 1) throw errors[0]
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures.map(({ error }) => error),
+        `Viewport hold failed: ${failures.map(({ operation }) => operation).join(", ")}`,
+      )
+    }
+    const failure = failures[0]
+    if (failure) throw failure.error
   }
 }
 
