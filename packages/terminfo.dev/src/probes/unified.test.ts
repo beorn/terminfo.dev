@@ -10,8 +10,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { readCallLog } from "viprobe"
-import { ALL_PROBES, initializeRunDraft, type ProbeSuiteManifest, type TextQualification } from "@terminfo/probe-defs"
+import { readCallLog, withCallLog } from "viprobe"
+import {
+  ALL_PROBES,
+  initializeRunDraft,
+  type ProbeSuiteManifest,
+  type TextQualification,
+  type TermProbeSource,
+} from "@terminfo/probe-defs"
 import { replyFailure } from "../../../probe-defs/src/helpers.ts"
 import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
@@ -2072,6 +2078,41 @@ it("records failed clipboard restoration as collector error rather than retainin
     { status: "test-failure", featureId: "extensions.osc52-write", rawReplyRef: "extensions.osc52-write" },
   ])
   expect(batch.suiteComplete).toBe(false)
+})
+
+// #30932 AC3: a TTY-only log loses the source's optional capture method even when
+// DECRQSS decides the result before calling it. Existing reply/trace tests cannot
+// establish that the same source shape reaches the callback during offline replay.
+it("retains SGR query-reply source shape for strict offline replay", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((value: string) => {
+    writes.push(value)
+    if (value.includes("\x1bP$qm")) {
+      process.stdin.emit("data", Buffer.from("\x1bP1$r0;1m\x1b\\\x1b[?1;2c"))
+    }
+    return true
+  }) as typeof process.stdout.write
+  const capture = vi.fn(async () => {
+    throw new Error("A deciding DECRQSS reply must not invoke pixel capture")
+  })
+  const batch = await runProbeBatch({
+    ids: ["sgr.bold"],
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    capture,
+  })
+  expect(batch.results.find(({ featureId }) => featureId === "sgr.bold")?.status).toBe("supported")
+  const log = readCallLog(JSON.parse(batch.rawReplies["sgr.bold.callLog"]!))
+  const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
+  expect(typeof replay.context.capture).toBe("function")
+  const callback = ALL_PROBES.find(({ id }) => id === "sgr.bold")?.term
+  if (!callback) throw new Error("Missing SGR bold callback")
+  const beforeReplay = writes.length
+  const result = await callback(replay.context)
+  replay.finish()
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+  expect(writes).toHaveLength(beforeReplay)
+  expect(capture).not.toHaveBeenCalled()
 })
 
 // AC1/AC3: images belong to the callback's run before it is sealed. Existing
