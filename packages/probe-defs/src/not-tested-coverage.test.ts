@@ -76,7 +76,7 @@ const headlessObservableFeatures = [
 ] as const
 
 test.each(headlessObservableFeatures)(
-  "%s retains its missing observable and state as TEST TODO",
+  "%s retains its missing observable and state as PROBE TODO",
   (id, noObservable, state) => {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)
@@ -98,7 +98,7 @@ test.each(headlessObservableFeatures)(
     expect(result.tests).toEqual([
       {
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         reason: `${noObservable}, so this run cannot decide it`,
       },
     ])
@@ -109,7 +109,7 @@ test.each(headlessObservableFeatures)(
 
 // S8 requires a missing DECRPM reply to retain its named review and both measured phases.
 // The presentation table cannot exercise this protocol arm; positive mode tests supply valid replies.
-test("modes.decsclm retains missing DECRPM coverage and measured state as TEST TODO", () => {
+test("modes.decsclm retains missing DECRPM coverage and measured state as PROBE TODO", () => {
   const definition = ALL_PROBES.find((probe) => probe.id === "modes.decsclm")
   if (!definition?.lib) throw new Error("missing headless modes.decsclm")
   const result = definition.lib(context())
@@ -129,7 +129,7 @@ test("modes.decsclm retains missing DECRPM coverage and measured state as TEST T
   expect(result.tests).toEqual([
     {
       id: "review",
-      status: "test-todo",
+      status: "probe-todo",
       reason: "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
     },
   ])
@@ -147,7 +147,7 @@ test("modes.application-keypad retains its unchanged measured state as a named c
   expect(JSON.parse(result.response!)).toEqual({ setMode: false, resetMode: false })
   expect(result.pass).toBe(false)
   expect(result.tests).toEqual([
-    { id: "criterion", status: "test-todo", reason: "DECKPAM state pair: set false, reset false" },
+    { id: "criterion", status: "probe-todo", reason: "DECKPAM state pair: set false, reset false" },
   ])
   expect(result.observation).toEqual({
     outcome: "inconclusive",
@@ -253,7 +253,7 @@ test.each(headlessStateFeatures)(
       expect(result.notTested).toBeUndefined()
       expect(result.criterionBranch).toBeUndefined()
       expect(result.tests).toEqual([
-        { id: "criterion", status: "test-failure", reason: expect.stringContaining(reason) },
+        { id: "criterion", status: "probe-invalid", reason: expect.stringContaining(reason) },
       ])
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
@@ -330,7 +330,7 @@ test("the 9 headless C154 semantic-mark features emit named coverage only after 
     expect(result.tests, id).toEqual([
       {
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         reason: noObservable
           ? "OSC 133 P / 633 E consumed; no property or command-line observer exists in this run"
           : expect.stringMatching(

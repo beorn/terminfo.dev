@@ -59,7 +59,7 @@ const parse = (value: object) =>
 const todos = (): ProbeResult[] =>
   ids.map((featureId) => ({
     featureId,
-    status: "test-todo",
+    status: "probe-todo",
     attempt: { scope: "none" },
     tests: [],
     reason: "No implementation",
@@ -93,6 +93,118 @@ function supportedBaseline() {
     rawReplies: { ...value.rawReplies, ...Object.fromEntries(ids.slice(0, 4).map((id) => [id, "ACK"])) },
   })
 }
+// Gate 1: independent current methods combine; reruns replace only their method, never another version.
+it.each([false, true])("composes current methods without losing conflicts (selected=%s)", (selected) => {
+  const featureId = ids[0]!
+  const measured = (
+    name: string,
+    method: "query_reply" | "input_bytes" | null,
+    status: "supported" | "unsupported" | "probe-todo" | "probe-invalid",
+    hour: number,
+    version = "0.46.2",
+  ) => {
+    const startedAt = `2026-10-21T${String(hour).padStart(2, "0")}:00:00.000Z`
+    const retainedAttempt = { scope: "probe" as const, startedAt }
+    const results = todos()
+    results[0] = {
+      featureId,
+      status,
+      attempt: retainedAttempt,
+      ...(method ? { assertionType: method, rawReplyRef: featureId } : { reason: "Observable unavailable" }),
+      ...(status === "probe-invalid" && { reason: "Adapter failed" }),
+      tests: [
+        {
+          id: "criterion",
+          status,
+          attempt: retainedAttempt,
+          ...(method ? { assertionRefs: [0] } : {}),
+          ...(status === "probe-invalid" && { reason: "Adapter failed" }),
+        },
+      ],
+    }
+    const value = raw(results)
+    const reply = method === "input_bytes" ? JSON.stringify({ report: "ACK" }) : status === "supported" ? "ACK" : "NO"
+    return parse({
+      ...value,
+      runId: name,
+      measuredAt: startedAt,
+      subject: { ...value.subject, version },
+      assertions: method
+        ? [
+            {
+              featureId,
+              kind: status === "supported" ? "positive" : "negative",
+              assertionType: method,
+              rawReplyRef: featureId,
+              expected: "ACK",
+              observed: reply,
+              ...(method === "input_bytes" ? { action: "press test key" } : {}),
+            },
+          ]
+        : [],
+      rawReplies: {
+        ...value.rawReplies,
+        ...(method && { [featureId]: reply }),
+        ...(selected && hour > 5
+          ? {
+              "collector.selection": JSON.stringify({ ids: [featureId] }),
+              "collector.collectionAttempt": JSON.stringify({ ids: [featureId], startedAt, result: "completed" }),
+            }
+          : {}),
+      },
+    })
+  }
+  const output = measured("output", "query_reply", "unsupported", 5)
+  const interaction = measured("interaction", "input_bytes", "supported", 6)
+  const rerun = measured("output-rerun", "query_reply", "supported", 7)
+  const invalid = measured("weaker-invalid", "query_reply", "probe-invalid", 8)
+  const nextVersion = measured("new-version", "query_reply", "unsupported", 8, "0.46.3")
+  const unknown = measured("unknown-method", null, "probe-todo", 9, "0.46.3")
+  const inputs = [output, interaction, rerun, nextVersion, unknown]
+  const original = JSON.stringify([...inputs, invalid])
+  const compose = (runs: typeof inputs) => projectResults(runs, ids, { currentProbeHash: suite.probeHash }, [])
+  const conflicted = compose([output, interaction])
+  const cell = conflicted.contexts["term:kitty"]!.cells[featureId]!
+  expect(cell.featureResult).toMatchObject({
+    status: "probe-conflict",
+    strength: null,
+    conflictingProbes: [`${featureId}:output`, `${featureId}:end-to-end`],
+  })
+  expect(cell.result).toBe(interaction.results?.[0])
+  expect(cell.run).toBe(interaction)
+  expect(conflicted.contexts["term:kitty"]?.contributingRunIds).toEqual([output.runId, interaction.runId])
+  expect(
+    publicResults(conflicted, new Map()).projection.contexts["term:kitty"]?.featureResults[featureId]?.status,
+  ).toBe("probe-conflict")
+  const agreeing = compose([output, interaction, rerun]).contexts["term:kitty"]!.cells[featureId]!
+  expect(agreeing.featureResult).toMatchObject({
+    status: "supported",
+    strength: 5,
+    conflictingProbes: [],
+  })
+  expect(agreeing.result).toBe(interaction.results?.[0])
+  expect(agreeing.run).toBe(interaction)
+  expect(agreeing.origin.runId).toBe(interaction.runId)
+  const withInvalid = compose([output, interaction, invalid])
+  const decided = withInvalid.contexts["term:kitty"]!.cells[featureId]!
+  expect(decided.featureResult).toMatchObject({ status: "supported", strength: 5, probeId: `${featureId}:end-to-end` })
+  expect(decided.result).toBe(interaction.results?.[0])
+  expect(decided.run).toBe(interaction)
+  const published = publicResults(withInvalid, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!
+  expect(published).toMatchObject({ status: "supported", origin: { runId: interaction.runId } })
+  expect(published.tests.map((test) => test.status)).toEqual(["supported"])
+  expect(published.reason).toBeUndefined()
+  expect(
+    compose([output, interaction, rerun, nextVersion]).contexts["term:kitty"]?.cells[featureId]?.featureResult,
+  ).toMatchObject({ status: "unsupported", strength: 3, conflictingProbes: [] })
+  expect(compose(inputs).contexts["term:kitty"]?.cells[featureId]?.featureResult).toMatchObject({
+    status: "probe-todo",
+    strength: null,
+    conflictingProbes: [],
+  })
+  expect(JSON.stringify([...inputs, invalid])).toBe(original)
+})
+
 // CTO70df: invalid original evidence time must not silently fall through to key ordering.
 it.each([
   { sources: [] },
@@ -135,17 +247,27 @@ describe("current execution projection", () => {
     })
     const retained = JSON.stringify(run.results)
     const projection = projectResults([run], ids, { currentProbeHash: suite.probeHash }, [])
-    const published = publicResults(projection, new Map()).projection.contexts["term:kitty"]!
-    expect(published.cells[ids[1]!]!.attempt).toEqual({ scope: "none" })
-    expect(published.cells[ids[1]!]!.status).toBe("test-todo")
-    expect(published.cells[ids[2]!]!.reason ?? "").not.toMatch(/not selected/i)
+    const mapped = publicResults(projection, new Map())
+    const published = mapped.projection.contexts["term:kitty"]!
+    // API v3 names the public feature map without leaking the private selected cells.
+    expect(published).not.toHaveProperty("cells")
+    expect(Object.keys(published.featureResults)).toEqual(ids)
+    const traceReceipt = published.sources[run.runId]!.trace!
+    const trace = JSON.parse(mapped.documents.get(traceReceipt.url)!.bytes) as {
+      featureResults: Record<string, { status: string }>
+    }
+    expect(trace).not.toHaveProperty("cells")
+    expect(trace.featureResults[ids[1]!]).toMatchObject({ status: "probe-todo" })
+    expect(published.featureResults[ids[1]!]!.attempt).toEqual({ scope: "none" })
+    expect(published.featureResults[ids[1]!]!.status).toBe("probe-todo")
+    expect(published.featureResults[ids[2]!]!.reason ?? "").not.toMatch(/not selected/i)
     expect(JSON.stringify(run.results)).toBe(retained)
-    expect(published.cells[ids[1]!]!.reason ?? "").toMatch(/not selected/i)
-    expect(published.cells[ids[1]!]!.presentation).toEqual({ state: "not-reviewed" })
+    expect(published.featureResults[ids[1]!]!.reason ?? "").toMatch(/not selected/i)
+    expect(published.featureResults[ids[1]!]!.presentation).toEqual({ state: "not-reviewed" })
     const withoutSelection = parse(value)
     const unselectedProjection = projectResults([withoutSelection], ids, { currentProbeHash: suite.probeHash }, [])
     const unselectedPublic = publicResults(unselectedProjection, new Map()).projection.contexts["term:kitty"]!
-    expect(unselectedPublic.cells[ids[1]!]!.reason).toBeUndefined()
+    expect(unselectedPublic.featureResults[ids[1]!]!.reason).toBeUndefined()
   })
 
   // The reviewed-context replacement orders original evidence, never newer no-output attempts.
@@ -321,7 +443,7 @@ describe("current execution projection", () => {
 
   // #31594 AC1/AC2: whole-run fixtures cannot expose a partial run erasing untouched evidence.
   // The existing parser/projection seam must retain cells, not select the best-looking result.
-  it.each(["test-failure", "test-todo"] as const)(
+  it.each(["probe-invalid", "probe-todo"] as const)(
     "composes selected %s with original unselected and unreached results from two runs",
     (status) => {
       const prior = supportedBaseline()
@@ -335,7 +457,7 @@ describe("current execution projection", () => {
           {
             id: "criterion",
             status,
-            attempt: status === "test-todo" ? { scope: "none" } : emittedAttempt,
+            attempt: status === "probe-todo" ? { scope: "none" } : emittedAttempt,
             reason: "Selected callback retained this outcome",
           },
         ],
@@ -343,9 +465,11 @@ describe("current execution projection", () => {
       }
       nextResults[3] = {
         featureId: ids[3]!,
-        status: "test-todo",
+        status: "probe-todo",
         attempt: emittedAttempt,
-        tests: [{ id: "criterion", status: "test-todo", attempt: { scope: "none" }, reason: "Observable unavailable" }],
+        tests: [
+          { id: "criterion", status: "probe-todo", attempt: { scope: "none" }, reason: "Observable unavailable" },
+        ],
         reason: "Observable unavailable",
       }
       const selectedIds = [ids[0]!, ids[2]!, ids[3]!]
@@ -400,13 +524,13 @@ describe("current execution projection", () => {
       // #31610 AC1/AC4: the private fold above passed while the public mapper lost these cells.
       // RED at5044b105 used the old public seam and received TODO for both retained cells.
       const published = publicResults(projection, new Map()).projection.contexts["term:kitty"]!
-      expect(published.cells[ids[1]!]!.status).toBe("supported")
-      expect(published.cells[ids[2]!]!.status).toBe("supported")
+      expect(published.featureResults[ids[1]!]!.status).toBe("supported")
+      expect(published.featureResults[ids[2]!]!.status).toBe("supported")
       expect(published.contributingRunIds).toEqual([prior.runId, latest.runId])
       expect(published.counts).toEqual(current.counts)
-      expect(published.cells[ids[0]!]!.origin).toEqual({ runId: latest.runId, resultId: ids[0] })
-      expect(published.cells[ids[2]!]!.origin).toEqual({ runId: prior.runId, resultId: ids[2] })
-      expect(published.cells[ids[2]!]!.measuredAt).toBe(prior.measuredAt)
+      expect(published.featureResults[ids[0]!]!.origin).toEqual({ runId: latest.runId, resultId: ids[0] })
+      expect(published.featureResults[ids[2]!]!.origin).toEqual({ runId: prior.runId, resultId: ids[2] })
+      expect(published.featureResults[ids[2]!]!.measuredAt).toBe(prior.measuredAt)
       expect(published.attempts).toEqual([
         {
           runId: latest.runId,
@@ -486,7 +610,7 @@ describe("current execution projection", () => {
     const context = projection.contexts["term:kitty"]!
     expect(context.cells).toEqual({})
     expect(context.missingIds).toEqual(ids)
-    expect(context.counts["test-todo"]).toBe(ids.length)
+    expect(context.counts["probe-todo"]).toBe(ids.length)
     expect(context.contributingRunIds).toEqual([])
     expect(context.complete).toBe(false)
     expect(context.attempts).toMatchObject([{ runId: "original-draft", path: "original.draft.json", attempt: outcome }])
@@ -500,7 +624,7 @@ describe("current execution projection", () => {
     "orders selected emissions by %s, not measured time, per-probe time or input order",
     (_label, aHour, zHour, winner) => {
       const prior = supportedBaseline()
-      const selected = (runId: string, hour: string, status: "test-failure" | "test-todo", measuredHour: string) => {
+      const selected = (runId: string, hour: string, status: "probe-invalid" | "probe-todo", measuredHour: string) => {
         const results = todos()
         const probeAttempt = { scope: "probe" as const, startedAt: `2026-10-21T${measuredHour}:00:00.000Z` }
         results[0] = {
@@ -526,8 +650,8 @@ describe("current execution projection", () => {
           },
         })
       }
-      const a = selected("A", aHour!, "test-failure", "05")
-      const z = selected("Z", zHour!, "test-todo", "09")
+      const a = selected("A", aHour!, "probe-invalid", "05")
+      const z = selected("Z", zHour!, "probe-todo", "09")
       const projection = projectResults([prior, z, a], ids, { currentProbeHash: suite.probeHash }, [])
       const context = projection.contexts["term:kitty"]!
       expect(context.cells[ids[0]!]!.origin.runId).toBe(winner)
@@ -541,9 +665,9 @@ describe("current execution projection", () => {
     const selected = projection.contexts["term:kitty"]
     expect(Object.values(selected!.cells).map((cell) => cell.result)).toEqual(run.results)
     expect(selected?.score).toEqual({ supported: 0, all: 273 })
-    expect(selected?.counts["test-todo"]).toBe(273)
+    expect(selected?.counts["probe-todo"]).toBe(273)
     expect(selected?.complete).toBe(false)
-    expect(projection.table[run.runId]).toEqual(Object.fromEntries(ids.map((id) => [id, "test-todo"])))
+    expect(projection.table[run.runId]).toEqual(Object.fromEntries(ids.map((id) => [id, "probe-todo"])))
     expect(projection).toMatchObject({ contexts: { "term:kitty": { contributingRunIds: [run.runId] } } })
     const context = projection.contexts["term:kitty"]!
     expect(Object.values(context.cells).map((cell) => cell.origin)).toEqual(
@@ -554,9 +678,9 @@ describe("current execution projection", () => {
     const results = todos()
     results[0] = {
       featureId: ids[0]!,
-      status: "test-failure",
+      status: "probe-invalid",
       attempt,
-      tests: [{ id: "collection", status: "test-failure", attempt, reason: "callback threw" }],
+      tests: [{ id: "collection", status: "probe-invalid", attempt, reason: "callback threw" }],
       reason: "callback threw",
     }
     const projection = projectResults([parse(raw(results))], ids, { currentProbeHash: suite.probeHash }, [])
@@ -564,8 +688,9 @@ describe("current execution projection", () => {
       supported: 0,
       unsupported: 0,
       untestable: 0,
-      "test-todo": 272,
-      "test-failure": 1,
+      "probe-todo": 272,
+      "probe-invalid": 1,
+      "probe-conflict": 0,
     })
     expect(projection.contexts["term:kitty"]?.complete).toBe(false)
   })
@@ -607,7 +732,7 @@ describe("current execution projection", () => {
             attempt,
             tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0], rawReplyRef: featureId }],
           }
-        : { featureId, status: "test-todo", attempt: { scope: "none" }, tests: [], reason: "No implementation" },
+        : { featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [], reason: "No implementation" },
     )
     const splitSuite: ProbeSuiteManifest & { schemaVersion: 4 } = { ...suite, catalogIds: splitIds }
     const base = raw(results, splitSuite)
@@ -637,8 +762,9 @@ describe("current execution projection", () => {
       supported: 0,
       unsupported: 0,
       untestable: 0,
-      "test-todo": 264,
-      "test-failure": 0,
+      "probe-todo": 264,
+      "probe-invalid": 0,
+      "probe-conflict": 0,
     })
     expect(selected?.complete).toBe(false)
   })

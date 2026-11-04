@@ -15,7 +15,7 @@ const results = (entries: Record<string, ProbeStatus>): ProbeResult[] =>
     featureId,
     status,
     tests: [],
-    attempt: status === "test-todo" ? { scope: "none" } : { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+    attempt: status === "probe-todo" ? { scope: "none" } : { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
   }))
 // Retired exclusion tests could pass while unfinished current rows disappeared from the denominator.
 describe("current full-catalogue scope arithmetic", () => {
@@ -24,14 +24,21 @@ describe("current full-catalogue scope arithmetic", () => {
       "a.positive": "supported",
       "a.negative": "unsupported",
       "a.impossible": "untestable",
-      "b.pending": "test-todo",
-      "b.broken": "test-failure",
+      "b.pending": "probe-todo",
+      "b.broken": "probe-invalid",
     } as const
     const value = scopeAggregate({ scope: "kitty/linux", catalogIds: Object.keys(entries), results: results(entries) })
     expect(value.fraction).toBe("1/5")
     expect(value.pct).toBe(20)
     expect(value.denominator).toBe(5)
-    expect(value.counts).toEqual({ supported: 1, unsupported: 1, untestable: 1, "test-todo": 1, "test-failure": 1 })
+    expect(value.counts).toEqual({
+      supported: 1,
+      unsupported: 1,
+      untestable: 1,
+      "probe-todo": 1,
+      "probe-invalid": 1,
+      "probe-conflict": 0,
+    })
     expect(value.complete).toBe(false)
     expect(value.groups.map((group) => [group.key, group.fraction, group.pct, group.complete])).toEqual([
       ["a", "1/3", 33, true],
@@ -47,7 +54,7 @@ describe("current full-catalogue scope arithmetic", () => {
     expect(value).toMatchObject({ fraction: "0/2", denominator: 2, pct: 0, complete: true })
     expect(value.groups.every((group) => group.complete)).toBe(true)
   })
-  it.each(["test-todo", "test-failure"] as const)(
+  it.each(["probe-todo", "probe-invalid"] as const)(
     "never completes with required %s even at ninety percent support",
     (status) => {
       const ids = Array.from({ length: 10 }, (_, index) => "a.row" + index)
@@ -69,11 +76,11 @@ describe("current full-catalogue scope arithmetic", () => {
     const value = scopeAggregate({
       scope: "full-catalogue",
       catalogIds: ids,
-      results: results(Object.fromEntries(ids.map((id) => [id, "test-todo"]))),
+      results: results(Object.fromEntries(ids.map((id) => [id, "probe-todo"]))),
     })
     // Every recorded position stays a catalogue row; the nine environment positions are ungraded.
     expect(value).toMatchObject({ catalogRows: 273, denominator: 264, fraction: "0/264", complete: false })
-    expect(value.counts["test-todo"]).toBe(264)
+    expect(value.counts["probe-todo"]).toBe(264)
     expect(value.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(273)
   })
   it("refuses absent, duplicate or foreign result membership instead of synthesizing a status", () => {
@@ -81,7 +88,7 @@ describe("current full-catalogue scope arithmetic", () => {
     for (const rows of [
       results({ "a.one": "supported" }),
       [...results({ "a.one": "supported" }), ...results({ "a.one": "unsupported" })],
-      results({ "a.one": "supported", "c.foreign": "test-todo" }),
+      results({ "a.one": "supported", "c.foreign": "probe-todo" }),
     ]) {
       expect(() => scopeAggregate({ ...input, results: rows })).toThrow(/recorded catalogue membership/)
     }

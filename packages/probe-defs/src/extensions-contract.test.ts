@@ -344,7 +344,7 @@ test.each(["semantic-prompts", "osc-633-vscode", "osc133-p", "osc633-e"])(
       [true, semanticSurfaceSource()],
     ] as const) {
       const result = probe.lib!(source)
-      expect(result.tests, name).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+      expect(result.tests, name).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
       expect(result.observation?.outcome, name).not.toBe("supported")
       if (consumes && (name === "osc133-p" || name === "osc633-e")) {
         expect(result.tests?.[0]?.reason).toBe(
@@ -612,132 +612,135 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
 }
 
 const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
-  Record<string, { status: "test-todo" | "test-failure"; reason: string }>
+  Record<string, { status: "probe-todo" | "probe-invalid"; reason: string }>
 > = {
-  "extensions.osc22-pointer": { status: "test-todo", reason: "Cursor response does not measure OSC 22 pointer shape" },
+  "extensions.osc22-pointer": { status: "probe-todo", reason: "Cursor response does not measure OSC 22 pointer shape" },
   "extensions.osc777-notify": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Cursor response does not measure OSC 777 notification delivery",
   },
   "extensions.osc666-termprop": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Cursor response does not measure OSC 666 terminal property",
   },
   "extensions.osc3008-context": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Cursor response does not measure OSC 3008 systemd context",
   },
   "extensions.osc176-app-id": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Cursor response does not measure OSC 176 Wayland app-id",
   },
-  "extensions.osc555-flash": { status: "test-todo", reason: "Cursor response does not measure OSC 555 screen flash" },
-  "extensions.osc440-audio": { status: "test-todo", reason: "Cursor response does not measure OSC 440 audio playback" },
-  "extensions.truecolor": { status: "test-todo", reason: "No cursor response; RGB color was not measured" },
+  "extensions.osc555-flash": { status: "probe-todo", reason: "Cursor response does not measure OSC 555 screen flash" },
+  "extensions.osc440-audio": {
+    status: "probe-todo",
+    reason: "Cursor response does not measure OSC 440 audio playback",
+  },
+  "extensions.truecolor": { status: "probe-todo", reason: "No cursor response; RGB color was not measured" },
   // Both kitty pixel rows now have a deciding observation; without the terminal's own pixel report
   // the arm cannot map its rectangle onto cells and names the unanswered geometry queries.
   "extensions.kitty-graphics.animation": {
-    status: "test-failure",
+    status: "probe-invalid",
     reason:
       "extensions.kitty-graphics.animation: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
   },
   "extensions.kitty-graphics.unicode-placeholders": {
-    status: "test-failure",
+    status: "probe-invalid",
     reason:
       "extensions.kitty-graphics.unicode-placeholders: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
   },
   "extensions.sixel": {
-    status: "test-failure",
+    status: "probe-invalid",
     reason:
       "extensions.sixel: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
   },
   "extensions.osc8": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
   },
   "extensions.reflow": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "No controlled resize and cell-content readback to measure reflow",
   },
   "extensions.semantic-prompts": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "No shell prompt integration metadata or behavior readback for OSC 133",
   },
   "extensions.osc2-title": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "OSC 2 window title was not attempted; this probe has no effect readback or prior-state restoration",
   },
-  "extensions.osc7-cwd": { status: "test-todo", reason: "No working-directory metadata readback for OSC 7" },
+  "extensions.osc7-cwd": { status: "probe-todo", reason: "No working-directory metadata readback for OSC 7" },
   "extensions.osc-633-vscode": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "No VS Code shell integration metadata or behavior readback for OSC 633",
   },
   "extensions.osc133-a": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc133-b": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc133-c": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc133-d": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc133-p": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc633-a": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc633-b": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc633-c": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc633-d": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc633-e": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
   "extensions.osc633-p": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
-  "extensions.notifications": { status: "test-todo", reason: "No desktop notification delivery readback for OSC 9" },
+  "extensions.notifications": { status: "probe-todo", reason: "No desktop notification delivery readback for OSC 9" },
   "extensions.osc9-progress": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "OSC 9;4 progress display was not attempted; this probe has no effect readback or prior-state restoration",
   },
-  "extensions.osc1-icon": { status: "test-todo", reason: "No icon-name readback for OSC 1" },
+  "extensions.osc1-icon": { status: "probe-todo", reason: "No icon-name readback for OSC 1" },
   "extensions.osc117-reset-highlight-bg": {
-    status: "test-failure",
+    status: "probe-invalid",
     reason:
       "extensions.osc117-reset-highlight-bg: OSC 17 did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it",
   },
   "extensions.osc119-reset-highlight-fg": {
-    status: "test-failure",
+    status: "probe-invalid",
     reason:
       "extensions.osc119-reset-highlight-fg: OSC 19 did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it",
   },
   "extensions.osc710-font-normal": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "OSC 710 font selection was not attempted; this probe has no effect readback or prior-state restoration",
   },
   "extensions.osc720-scroll-up": {
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Cursor answered; scrollback viewport was not measured",
   },
 }
@@ -1019,7 +1022,7 @@ test("the harness replays every extension feature deterministically", async () =
     if (headlessReviews.has(row.id)) {
       const result = probe.lib!(headless)
       expect(result.criterionBranch, row.id).toBe("headless-observable-review")
-      expect(result.tests, row.id).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(result.tests, row.id).toMatchObject([{ id: "review", status: "probe-todo" }])
       expect((await regradeRow(probe, row, { headless })).after, row.id).toBeUndefined()
     }
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
@@ -1051,7 +1054,9 @@ test("clipboard paste follows injected keys and nonce framing while its library 
   const probe = extensionsProbes.find((entry) => entry.id === id)!
   const row = EXTENSIONS_CONTRACT.find((entry) => entry.id === id)!
   for (const source of [inertLibProbeSource(), libProbeSource(createSemanticSurface())]) {
-    expect(probe.lib!(source).tests, "a library surface cannot prove OS input").toMatchObject([{ status: "test-todo" }])
+    expect(probe.lib!(source).tests, "a library surface cannot prove OS input").toMatchObject([
+      { status: "probe-todo" },
+    ])
   }
   const inert = await regradeRow(probe, row, { term: replayTermProbeSource(new Map()) })
   expect(inert.after, "missing input/clipboard facilities cannot establish support").not.toBe("supported")
@@ -1151,7 +1156,7 @@ test("a decided extension row reads unsatisfied when silent or unacknowledged", 
   const result = probe.lib(silentSource)
   expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
-  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-invalid", reason: "no-response" })])
 })
 
 // The umbrella claims a whole lifecycle; a working A-only reader proves only its separate mark row.
@@ -1190,7 +1195,7 @@ test.each([
   const result = umbrella.lib!(makeSource())
   expect(result.pass).toBe(false)
   expect(result.tests).toEqual([
-    { id: "criterion", status: "test-todo", reason: "no full-lifecycle observable on this reader" },
+    { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
   ])
   expect(result.observation?.outcome).not.toBe("supported")
 })
@@ -1219,7 +1224,7 @@ test("a non-empty unparsed colour-stack readback fails with its raw reply retain
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
-      { status: "test-failure", reason: `Malformed OSC 10 reply: ${JSON.stringify(unparsed)}` },
+      { status: "probe-invalid", reason: `Malformed OSC 10 reply: ${JSON.stringify(unparsed)}` },
     ])
     expect(result).not.toHaveProperty("replyFailureTestIds")
     expect(JSON.parse(result.response ?? "null"), id).toEqual({ query: "\x1b]10;?\x07", originalRaw: unparsed })
@@ -1240,7 +1245,7 @@ test.each([
     if (!definition?.lib) throw new Error(`Missing ${id} headless arm`)
     const replies = [original, stage === "changed" ? raw : original, stage === "restored" ? raw : original]
     const result = definition.lib(libProbeSource({ ...inertModel(), feedCapture: () => replies.shift() ?? "" }))
-    expect(result.tests, id).toMatchObject([{ id: "criterion", status: "test-failure" }])
+    expect(result.tests, id).toMatchObject([{ id: "criterion", status: "probe-invalid" }])
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
     if (raw === "") expect(result, id).toHaveProperty("replyFailureTestIds", ["criterion"])
@@ -1264,7 +1269,7 @@ test("colour-stack cleanup cancels reply intent on the returned failure object",
       },
     }),
   )
-  expect(result.tests).toMatchObject([{ status: "test-failure", reason: expect.stringContaining("cleanup") }])
+  expect(result.tests).toMatchObject([{ status: "probe-invalid", reason: expect.stringContaining("cleanup") }])
   expect(result).not.toHaveProperty("replyFailureTestIds")
   expect(withReplyFailureEvidence(definition.id, result, { producer: "headless", attempts: [] })).toBe(result)
 })
@@ -1338,7 +1343,7 @@ test.each([
   }
   if (expected === "inconclusive") {
     expect(targetCount).toBe(0)
-    expect(result.tests).toContainEqual(expect.objectContaining({ status: "test-todo" }))
+    expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
   }
 })
 
@@ -1392,7 +1397,9 @@ test.each([
   const result = extensionsProbes.find((entry) => entry.id === "extensions.osc633-d")!.lib!(source)
   expect(result.observation?.outcome).toBe(expected)
   expect(marks[0]).toEqual(initial)
-  if (expected === "inconclusive") expect(result.tests).toContainEqual(expect.objectContaining({ status: "test-todo" }))
+  if (expected === "inconclusive") {
+    expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
+  }
   if (["supported", "unsupported", "error"].includes(expected)) {
     expect(writes).toContain("\x1b]133;D;0\x07")
     expect(writes).toContain("\x1b]133;D;17\x07")
@@ -1430,8 +1437,8 @@ function colourStackEngine(kind: "reset-default" | "stale" | "pop-noop" | "set-i
 }
 
 test.each([
-  ["reset-default", "extensions.osc30001-color-stack-push", "test-todo", "no push-only observation"],
-  ["reset-default", "extensions.osc30101-color-stack-pop", "test-todo", "no pop-only observation"],
+  ["reset-default", "extensions.osc30001-color-stack-push", "probe-todo", "no push-only observation"],
+  ["reset-default", "extensions.osc30101-color-stack-pop", "probe-todo", "no pop-only observation"],
   ["stale", "extensions.osc30001-color-stack-push", "unsupported", "push saved no current snapshot"],
   ["stale", "extensions.osc30101-color-stack-pop", "supported", undefined],
   ["pop-noop", "extensions.osc30001-color-stack-push", "unsupported", "push then pop restored no earlier state"],
@@ -1439,15 +1446,15 @@ test.each([
 ] as const)("a %s colour stack grades %s %s on its own operation", (kind, id, outcome, note) => {
   const probe = extensionsProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(colourStackEngine(kind))
-  if (outcome === "test-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  if (outcome === "probe-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
   else expect(result.observation?.outcome).toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
-  if (outcome === "test-todo") expect(result.assertions).toBeUndefined()
+  if (outcome === "probe-todo") expect(result.assertions).toBeUndefined()
 })
 
 // #32242 (@cto 4115d1bf): an engine that ignores the OSC 10 set never shows either stack operation,
-// so both rows are a coverage record (TEST TODO), never the negative main graded them.
+// so both rows are a coverage record (PROBE TODO), never the negative main graded them.
 test.each(["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"])(
   "%s with the OSC 10 set ignored is a coverage record, not a negative",
   (id) => {
@@ -1496,7 +1503,7 @@ test.each([
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
     if (result.tests !== undefined) {
-      for (const criterion of result.tests) expect(criterion.status, id).toBe("test-todo")
+      for (const criterion of result.tests) expect(criterion.status, id).toBe("probe-todo")
     }
   }
 })

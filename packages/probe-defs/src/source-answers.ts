@@ -3,7 +3,7 @@ import type { ProbeSubject } from "./types.ts"
 /**
  * The stored key shape of a retired source answer. No result is answered from source (operator 2026-11-03,
  * #32246); the answer table is deleted and stays readable in git history. A stored run still carries these keys,
- * so the reader recognises one by its shape and reads that cell as TEST TODO.
+ * so the reader recognises one by its shape and reads that cell as PROBE TODO.
  */
 export type SourceAnswerSubject = Pick<ProbeSubject, "kind" | "id" | "version" | "os">
 

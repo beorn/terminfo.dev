@@ -214,7 +214,7 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
     resultMap.set(key, {
       sourceId: version.subject.id,
       results: Object.fromEntries(
-        version.catalogIds.map((id) => [id, version.cells[id]?.result.status ?? "test-todo"]),
+        version.catalogIds.map((id) => [id, version.cells[id]?.result.status ?? "probe-todo"]),
       ),
       recordedResults,
       catalogIds: version.catalogIds,

@@ -178,7 +178,7 @@ beforeEach(() => {
       results: [
         {
           featureId: "sgr.bold",
-          status: "test-todo",
+          status: "probe-todo",
           attempt: { scope: "none" },
           tests: [],
           reason: "Required test missing",

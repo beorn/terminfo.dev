@@ -19,7 +19,7 @@ import { resetProbes } from "./reset.ts"
 import type { TermProbeSource, LibProbeSource, ProbeCallbackResult } from "./types.ts"
 
 /**
- * #32246: a former source-review site no longer grades from source; it returns the TEST TODO coverage record with
+ * #32246: a former source-review site no longer grades from source; it returns the PROBE TODO coverage record with
  * no observation, no negative assertion and no review branch.
  */
 function expectNoSamePathTodo(result: ProbeCallbackResult, id?: string, noObservable = NO_SAME_PATH_CONTROL) {
@@ -36,7 +36,7 @@ test("a received cursor cannot measure changed cells and retains a named TODO", 
   expect(result.tests).toContainEqual(
     expect.objectContaining({
       id: "review",
-      status: "test-todo",
+      status: "probe-todo",
       reason: "Cursor response does not measure changed cells",
     }),
   )
@@ -72,7 +72,7 @@ test("DECSTR retains unknown after-state instead of claiming a measured reset", 
   let reads = 0
   const result = probe.lib(headless({ getMode: () => (reads++ === 0 ? true : null) }))
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toContainEqual(expect.objectContaining({ status: "test-todo" }))
+  expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
 })
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
@@ -148,7 +148,7 @@ test("app reset observations require a measured effect and leave unmeasurable re
   expect(sgr).toMatchObject({
     tests: [
       expect.objectContaining({
-        status: "test-todo",
+        status: "probe-todo",
         reason: "Cursor advance does not measure SGR styling after reset",
       }),
     ],
@@ -215,7 +215,7 @@ test("app reset observations require a measured effect and leave unmeasurable re
   expect(method).toMatchObject({
     tests: [
       expect.objectContaining({
-        status: "test-todo",
+        status: "probe-todo",
         reason: "The app context has no reset() method or equivalent state readback",
       }),
     ],
@@ -260,7 +260,7 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
   expect(soft.tests).toEqual([
     {
       id: "review",
-      status: "test-todo",
+      status: "probe-todo",
       reason:
         "The headless getMode readback exposes no application-cursor mode (DECCKM) state, so this run cannot decide it",
     },
@@ -270,7 +270,7 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
 })
 
 // Carrier B: existing tests never exercised null/false state with an explicit source-review request.
-test("a former source-review request keeps TEST TODO with its state and leaves omitted-argument results unchanged", () => {
+test("a former source-review request keeps PROBE TODO with its state and leaves omitted-argument results unchanged", () => {
   const state = { char: "X", dim: false }
   const response = '{"char":"X","dim":false}'
   const expected = "faint attribute applied"
@@ -302,7 +302,7 @@ test("a former source-review request keeps TEST TODO with its state and leaves o
 })
 
 // Producer eligibility is independent of matching/writer tests: an unrendered fixture cannot be reviewed.
-test("a former SGR source review keeps a rendered nonpositive cell TEST TODO and preserves coverage", () => {
+test("a former SGR source review keeps a rendered nonpositive cell PROBE TODO and preserves coverage", () => {
   const reason = "Cell readback cannot distinguish unsupported faint styling from an unreported attribute"
   const definition = sgrProbe("sgr.faint", "\x1b[2m", (cell) => cell.dim, undefined, undefined, reason)
   if (!definition.lib) throw new Error("Missing faint parser callback")
@@ -351,7 +351,7 @@ test("SGR consumption stays inconclusive while headless cell state supports an a
   expect(consumed.pass).toBe(true)
   expect(consumed.observation).toBeUndefined()
   expect(consumed).toMatchObject({
-    tests: [expect.objectContaining({ status: "test-todo", reason: "Cursor advance does not verify SGR styling" })],
+    tests: [expect.objectContaining({ status: "probe-todo", reason: "Cursor advance does not verify SGR styling" })],
   })
   expect(consumed.assertions).toBeUndefined()
 
@@ -360,7 +360,7 @@ test("SGR consumption stays inconclusive while headless cell state supports an a
   expect(silent.tests).toEqual([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
     },
   ])
@@ -412,7 +412,7 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
     expect(result, `${geometry.rows}x${geometry.cols}`).toMatchObject({
       tests: [
         expect.objectContaining({
-          status: "test-todo",
+          status: "probe-todo",
           reason: `SGR fixture needs at least ${geometry.capture ? "3x34" : "1x2"}, measured ${geometry.rows}x${geometry.cols}`,
         }),
       ],
@@ -436,7 +436,7 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
   )
   expect(plain.observation).toBeUndefined()
   expect(plain).toMatchObject({
-    tests: [expect.objectContaining({ status: "test-todo", reason: "Cursor advance does not verify SGR styling" })],
+    tests: [expect.objectContaining({ status: "probe-todo", reason: "Cursor advance does not verify SGR styling" })],
   })
   expect(plainWrites.length).toBeGreaterThan(0)
 
@@ -469,7 +469,7 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
     { id: "capture", status: "supported", assertionRefs: [0] },
     {
       id: "review",
-      status: "test-todo",
+      status: "probe-todo",
       reason: "Valid control and target capture; no same-run pixel check decides it",
     },
   ])
@@ -522,7 +522,7 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
     expect(small.observation, id).toBeUndefined()
     expect(small, id).toMatchObject({
       tests: [
-        expect.objectContaining({ status: "test-todo", reason: "SGR fixture needs at least 3x34, measured 2x33" }),
+        expect.objectContaining({ status: "probe-todo", reason: "SGR fixture needs at least 3x34, measured 2x33" }),
       ],
     })
     expect(smallWrites, id).toEqual([])
@@ -548,7 +548,7 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
     expect(ok.tests, id).toMatchObject([
       {
         id: "criterion",
-        status: "test-failure",
+        status: "probe-invalid",
         reason: expect.stringContaining("the caller wrote before this refusal"),
       },
     ])
@@ -627,7 +627,7 @@ test("underline color needs an observed color, not only an underline or a consum
     const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
     expect(consumed.observation, id).toBeUndefined()
     expect(consumed, id).toMatchObject({
-      tests: [expect.objectContaining({ status: "test-todo", reason: "Cursor advance does not verify SGR styling" })],
+      tests: [expect.objectContaining({ status: "probe-todo", reason: "Cursor advance does not verify SGR styling" })],
     })
     expect(consumed.assertions, id).toBeUndefined()
   }
@@ -683,7 +683,7 @@ test("indexed underline color follows two distinct measured palette controls", a
   const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
   expect(consumed.observation).toBeUndefined()
   expect(consumed).toMatchObject({
-    tests: [expect.objectContaining({ status: "test-todo", reason: "Cursor advance does not verify SGR styling" })],
+    tests: [expect.objectContaining({ status: "probe-todo", reason: "Cursor advance does not verify SGR styling" })],
   })
 })
 
@@ -728,7 +728,7 @@ test("underline color reset needs both an observed colored before cell and defau
   expect(stillColored.assertions).toMatchObject([{ kind: "negative", observed: stillColored.response }])
 })
 
-test("a null underline color from an adapter with no color readback is TEST TODO, not unsupported", () => {
+test("a null underline color from an adapter with no color readback is PROBE TODO, not unsupported", () => {
   for (const id of ["sgr.underline.color", "sgr.underline-color-rgb", "sgr.underline-color-indexed"]) {
     const probe = sgrProbes.find((item) => item.id === id)
     if (!probe?.lib) throw new Error(`missing ${id} callback`)
@@ -999,7 +999,7 @@ test("indexed cube colors require two exact direct-RGB reference controls", () =
     })
     // #30701 (@cto cd391424): calibrated direct RGB that the indices miss is a custom palette OR an
     // adapter that does not resolve indices, so it stays inconclusive naming both; direct RGB that
-    // misses its fed value is an uncalibrated reference (TEST TODO).
+    // misses its fed value is an uncalibrated reference (PROBE TODO).
     for (const palette of [run([first, first], [first, second]), run([null, null], [first, second])]) {
       expect(palette?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
       expect(palette?.observation?.note, id).toContain("does not resolve indices")
@@ -1047,7 +1047,7 @@ test("truecolor probes distinguish exact sampled RGB from calibrated wrong RGB",
       expect(uncertain?.assertions, id).toBeUndefined()
     }
     // #30701 (@cto ruling C): targets that read no color are a measured ignore while the controls are
-    // calibrated, and have no observable when the controls show no color either (TEST TODO).
+    // calibrated, and have no observable when the controls show no color either (PROBE TODO).
     const ignored = run([null, null])
     expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
@@ -1084,7 +1084,7 @@ test("SGR 39 and 49 restore the measured default, including concrete RGB default
     expect(uncalibrated?.notTested, id).toMatchObject({ reason: "no-semantic-observable" })
     expect(uncalibrated?.criterionBranch, id).toBe("headless-observable-review")
     expect(uncalibrated?.tests, id).toEqual([
-      { id: "review", status: "test-todo", reason: expect.stringContaining("setup cell") },
+      { id: "review", status: "probe-todo", reason: expect.stringContaining("setup cell") },
     ])
     expect(uncalibrated?.observation, id).toBeUndefined()
     expect(uncalibrated?.assertions, id).toBeUndefined()
@@ -1105,7 +1105,7 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
       expect(answered.tests, id).toMatchObject([
         {
           id: "criterion",
-          status: family === "default" ? "test-failure" : "test-todo",
+          status: family === "default" ? "probe-invalid" : "probe-todo",
           reason:
             family === "default"
               ? "Cursor advance does not verify the reset rendered"
@@ -1119,7 +1119,7 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
       expect(silent.tests, id).toEqual([
         {
           id: "criterion",
-          status: "test-failure",
+          status: "probe-invalid",
           reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
         },
       ])
@@ -1160,7 +1160,7 @@ test("SGR reset cursor replies remain inconclusive and style cleanup runs on que
     )
     expect(result.observation, id).toBeUndefined()
     expect(result.tests, id).toEqual([
-      { id: "criterion", status: "test-todo", reason: "Cursor advance does not verify SGR reset" },
+      { id: "criterion", status: "probe-todo", reason: "Cursor advance does not verify SGR reset" },
     ])
     expect(result.assertions, id).toBeUndefined()
     expect(writes.at(-1), id).toBe("\x1b[0m")
@@ -1172,7 +1172,7 @@ test("SGR reset cursor replies remain inconclusive and style cleanup runs on que
   expect(silence.tests).toEqual([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
     },
   ])
@@ -1214,7 +1214,7 @@ test("cursor movement binds measured positions and parser state, never a missing
   expect(missingCursor.tests).toEqual([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
     },
   ])
@@ -1283,7 +1283,7 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
   expect(missing.tests).toEqual([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
     },
   ])

@@ -17,9 +17,9 @@ function score(run: SelectedContextSummary): string {
 
 function stateToken(cell: ProbeResult | undefined): StateToken {
   if (!cell) return "—"
-  // D132 B (#30917): the nine environment positions are recorded TEST TODO by the catalogue but are
+  // D132 B (#30917): the nine environment positions are recorded PROBE TODO by the catalogue but are
   // manual by design, not graded, and were never measured. They must never read as TODO.
-  if (cell.status === "test-todo" && isEnvironmentGroup(cell.featureId)) return "N/M"
+  if (cell.status === "probe-todo" && isEnvironmentGroup(cell.featureId)) return "N/M"
   switch (cell.status) {
     case "supported":
       return "YES"
@@ -27,9 +27,9 @@ function stateToken(cell: ProbeResult | undefined): StateToken {
       return "NO"
     case "untestable":
       return "UNTEST"
-    case "test-todo":
+    case "probe-todo":
       return "TODO"
-    case "test-failure":
+    case "probe-invalid":
       return "FAIL"
   }
 }
@@ -97,7 +97,7 @@ function FeatureMatrix({
         Feature comparison
       </Text>
       <Text color="$muted">
-        YES Supported · NO Unsupported · UNTEST Untestable · TODO TEST TODO · FAIL TEST FAILURE · N/M manual by design
+        YES Supported · NO Unsupported · UNTEST Untestable · TODO PROBE TODO · FAIL PROBE INVALID · N/M manual by design
         (catalogue), NOT MEASURED
       </Text>
       {groups.map((group) => (

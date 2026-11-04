@@ -73,7 +73,7 @@ test("direct mode fixtures decline invalid geometry and classify only measured v
       expect(events, `${id} at ${measuredRows}x${measuredCols}`).toEqual([])
       expect(result.observation, id).toBeUndefined()
       expect(result.tests, id).toMatchObject([
-        expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+        expect.objectContaining({ status: "probe-todo", reason: expect.any(String) }),
       ])
     }
     expect(definition.termNeedsGeometry, id).toBe(true)
@@ -150,7 +150,7 @@ test.each(stateFixtures)(
     expect(validEvents).toEqual([enter, "CPR", restore])
     expect(result.pass).toBe(false)
     expect(result.observation).toBeUndefined()
-    expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
+    expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-todo", reason: expect.any(String) })])
     expect(result.assertions).toBeUndefined()
   },
 )

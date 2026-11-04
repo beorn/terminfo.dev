@@ -15,7 +15,7 @@ import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "
 import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
-import type { ProbeStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus, FeatureResultStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
@@ -70,8 +70,8 @@ export interface ProbeData {
   features: FeatureResult[]
   /** category -> FeatureResult[] */
   categories: Record<string, FeatureResult[]>
-  /** Current terminal id -> feature id -> exact stored five-status value. */
-  results: Record<string, Record<string, ProbeStatus>>
+  /** Current terminal id -> feature id -> computed feature status. */
+  results: Record<string, Record<string, FeatureResultStatus>>
   /** backend name -> feature id -> published reason */
   notes: Record<string, Record<string, string>>
   /** Current scores use Supported/all positions, independently of completion. */
@@ -111,7 +111,7 @@ export interface ProbeData {
 
 interface CurrentStats {
   score: { supported: number; all: number }
-  counts: Record<ProbeStatus, number>
+  counts: CurrentAggregate["counts"]
   complete: boolean
   pct: number | null
 }
@@ -221,9 +221,13 @@ export function loadFullProbes(): ProbeData {
       type: kind,
       ...(os && { platforms: [os] }),
     })
-    results[key] = Object.fromEntries(selected.catalogIds.map((id) => [id, selected.cells[id]?.status ?? "test-todo"]))
+    results[key] = Object.fromEntries(
+      selected.catalogIds.map((id) => [id, selected.featureResults[id]?.status ?? "probe-todo"]),
+    )
     notes[key] = Object.fromEntries(
-      Object.values(selected.cells).flatMap((result) => (result.reason ? [[result.featureId, result.reason]] : [])),
+      Object.values(selected.featureResults).flatMap((result) =>
+        result.reason ? [[result.featureId, result.reason]] : [],
+      ),
     )
     stats[key] = {
       score: { ...selected.score },
@@ -250,12 +254,7 @@ export function loadFullProbes(): ProbeData {
   const releaseStale: Record<string, string | null> = {}
   for (const [key, entry] of bySubject) {
     const { selected } = entry
-    const original = projection.contexts[entry.contextKey]
-    if (!original) throw new Error(`Missing composed current context for ${key}`)
-    const bar = aggregateCurrentResults(
-      original.catalogIds.map((id) => ({ featureId: id, status: original.cells[id]?.result.status ?? "test-todo" })),
-      original.catalogIds,
-    )
+    const bar = aggregateCurrentResults(Object.values(selected.featureResults), selected.catalogIds)
     releaseBars[key] = bar
     releaseShares[key] = currentSupportedShare(bar)
     const sources = Object.values(selected.sources)
@@ -293,7 +292,7 @@ export function loadFullProbes(): ProbeData {
     releaseStale,
     releaseTable,
   }
-  computeBaselines(result, projection)
+  computeBaselines(result)
   return result
 }
 
@@ -305,7 +304,7 @@ export default {
   },
 }
 
-function computeBaselines(data: ProbeData, projection: import("./selected-results.ts").SelectedProjection): void {
+function computeBaselines(data: ProbeData): void {
   const baselineOrder = ["core", "modern", "rich", "unicode", "legacy"]
   const baselines: Record<string, string[]> = {}
   for (const bl of baselineOrder) baselines[bl] = []
@@ -322,17 +321,13 @@ function computeBaselines(data: ProbeData, projection: import("./selected-result
     baselineStats[backend.name] = backendStats
     const selected = data.selectedByBackend[backend.name]?.selected
     if (!selected) throw new Error(`Missing selected public run for ${backend.name}`)
-    const original = projection.contexts[selected.contextKey]
-    if (!original) throw new Error(`Missing composed current context ${selected.contextKey}`)
     for (const bl of baselineOrder) {
       const group = new Set(baselines[bl] ?? [])
-      const ids = original.catalogIds.filter((id) => group.has(id))
+      const ids = selected.catalogIds.filter((id) => group.has(id))
       if (!ids.length) continue
       const wanted = new Set(ids)
       const bar = aggregateCurrentResults(
-        original.catalogIds
-          .filter((id) => wanted.has(id))
-          .map((id) => ({ featureId: id, status: original.cells[id]?.result.status ?? "test-todo" })),
+        Object.values(selected.featureResults).filter((result) => wanted.has(result.featureId)),
         ids,
       )
       backendStats[bl] = {

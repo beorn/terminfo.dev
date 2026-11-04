@@ -76,7 +76,7 @@ test("fixed charset and reset fixtures require valid measured room before any by
       expect(events, `${id} at ${rows}x${cols}`).toEqual([])
       expect(result.observation, `${id} at ${rows}x${cols}`).toBeUndefined()
       expect(result.tests, `${id} at ${rows}x${cols}`).toMatchObject([
-        expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+        expect.objectContaining({ status: "probe-todo", reason: expect.any(String) }),
       ])
     }
     expect(definition.termNeedsGeometry, id).toBe(true)
@@ -98,7 +98,7 @@ test("fixed charset and reset fixtures require valid measured room before any by
       const valid = await definition.term(app(minRows, minCols, events, [], "silent"))
       expect(valid.observation, id).toBeUndefined()
       expect(valid.tests, id).toMatchObject([
-        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+        expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) }),
       ])
       expect(events.at(-1), id).toBe(id === "reset.soft" ? "mode" : "CPR")
     }
@@ -126,7 +126,7 @@ test("a charset row with no owned capture refuses by name and writes nothing", a
       expect(result.pass, id).toBe(false)
       expect(result.observation, `${id} at ${rows}x${cols}`).toBeUndefined()
       expect(result.tests, `${id} at ${rows}x${cols}`).toMatchObject([
-        expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("no owned capture adapter") }),
+        expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining("no owned capture adapter") }),
       ])
     }
   }
@@ -213,7 +213,7 @@ test("DEC special capture requires safe measured 3x5 before writes or captures",
     expect(result.observation).toBeUndefined()
     expect(result.tests).toMatchObject([
       expect.objectContaining({
-        status: "test-todo",
+        status: "probe-todo",
         reason: expect.stringContaining(`3x5`),
       }),
     ])
@@ -231,7 +231,7 @@ test("DEC special capture names a silent CSI 16 t as query, not ungraded pixels"
   const result = await definition.term(context)
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("CSI 16 t") }),
+    expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("CSI 16 t") }),
   ])
   expect(result.observation?.frames ?? []).toHaveLength(0)
 })
@@ -289,7 +289,7 @@ test("reset.sgr capture declines by name after a silent DECRQSS instead of gradi
   expect(events.some((event) => event.includes("\x1b[1;3;7mX"))).toBe(false)
   expect(result.pass).toBe(false)
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) })])
 })
 
 test("reset.sgr capture refuses an undersized terminal before any bytes or frames", async () => {
@@ -315,7 +315,7 @@ test("reset.sgr capture refuses an undersized terminal before any bytes or frame
     expect(capture, `${rows}x${cols}`).not.toHaveBeenCalled()
     expect(result.observation, `${rows}x${cols}`).toBeUndefined()
     expect(result.tests, `${rows}x${cols}`).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("3x34") }),
+      expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining("3x34") }),
     ])
   }
 })
@@ -407,14 +407,14 @@ test("DECALN refuses invalid geometry and absent capture without writes", async 
     }
     const result = await decaln().term!(context)
     expect(result.observation).toBeUndefined()
-    expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
+    expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-todo", reason: expect.any(String) })])
     expect(events).toEqual([])
   }
   expect(decaln().termNeedsGeometry).toBe(true)
   const events: string[] = []
   const refused = await decaln().term!(app(3, 6, events))
   expect(refused.observation).toBeUndefined()
-  expect(refused.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
+  expect(refused.tests).toMatchObject([expect.objectContaining({ status: "probe-todo", reason: expect.any(String) })])
   expect(events).toEqual([])
 })
 
@@ -434,7 +434,7 @@ test("charsets.utf8 asks the terminal's pixel report before painting its two-cel
   const result = await definition.term(context)
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("CSI 16 t") }),
+    expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("CSI 16 t") }),
   ])
   expect(frames).toEqual([])
   expect(events).toEqual([])

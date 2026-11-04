@@ -60,8 +60,9 @@ export default {
           supported: 0,
           unsupported: 1,
           untestable: 2,
-          "test-todo": 3,
-          "test-failure": 4,
+          "probe-todo": 3,
+          "probe-invalid": 4,
+          "probe-conflict": 5,
         }
         return (order[a.result] ?? 3) - (order[b.result] ?? 3)
       })

@@ -371,14 +371,14 @@ describe("in-run pixels verdicts", () => {
   )
 
   it.each([
-    ["missing report", "test-failure", "CSI 16 t"],
-    ["short grid", "test-todo", "at least 2x8"],
-    ["narrow grid", "test-todo", "at least 2x8"],
-    ["text adapter", "test-todo", "text-cells captures"],
-    ["text frame", "test-failure", "text-cells"],
-    ["missing cells digest", "test-failure", "required pixel cells digest"],
-    ["missing first digest", "test-failure", "required pixel cells digest"],
-    ...[1, 2, 3, 4].map((capture) => [`crop ${capture}`, "test-failure", "different screen positions"]),
+    ["missing report", "probe-invalid", "CSI 16 t"],
+    ["short grid", "probe-todo", "at least 2x8"],
+    ["narrow grid", "probe-todo", "at least 2x8"],
+    ["text adapter", "probe-todo", "text-cells captures"],
+    ["text frame", "probe-invalid", "text-cells"],
+    ["missing cells digest", "probe-invalid", "required pixel cells digest"],
+    ["missing first digest", "probe-invalid", "required pixel cells digest"],
+    ...[1, 2, 3, 4].map((capture) => [`crop ${capture}`, "probe-invalid", "different screen positions"]),
   ])("keeps DECSACE %s inconclusive and parser-valid", async (scenario, status, note) => {
     const id = "editing.decsace"
     const probe = editingProbes.find((entry) => entry.id === id)
@@ -465,10 +465,10 @@ describe("in-run pixels verdicts", () => {
       expect(observed[role].pixelsDigest).toBe(frameDigests(captured).whole)
     }
     const loaded = parseCallback(id, result, fixture)
-    expect(loaded.results?.[0]?.status).toBe("test-todo")
+    expect(loaded.results?.[0]?.status).toBe("probe-todo")
     expect(loaded.results?.[0]?.tests).toEqual([
       expect.objectContaining({ id: "capture", status: "supported" }),
-      expect.objectContaining({ id: "review", status: "test-todo", attempt: { scope: "none" } }),
+      expect.objectContaining({ id: "review", status: "probe-todo", attempt: { scope: "none" } }),
     ])
     // Schema-4 stores capture evidence in results and has no legacy observation entries.
     expect(loaded.observations).toEqual([])

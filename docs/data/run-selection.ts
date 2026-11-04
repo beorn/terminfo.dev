@@ -1,5 +1,5 @@
 /** One context selection rule shared by compatibility and full-project readers. */
-import type { ProbeStatus, ProbeResult } from "@terminfo/probe-defs"
+import type { FeatureResultStatus, ProbeResult } from "@terminfo/probe-defs"
 import { hasCurrentSource, type CellState, type SuiteRelation } from "./release-scope.ts"
 import {
   originalRunFor,
@@ -36,7 +36,7 @@ export interface ContextCandidate {
    * The run's states as the projection published them (28792 item 1). A reader cuts its bars over
    * this, never over the raw `cells`.
    */
-  states: Readonly<Record<string, CellState | ProbeStatus>>
+  states: Readonly<Record<string, CellState | FeatureResultStatus>>
 }
 
 export interface HistoricalContextCandidate extends ContextCandidate {
@@ -48,14 +48,14 @@ export interface HistoricalContextCandidate extends ContextCandidate {
 export interface CurrentContextCandidate extends ContextCandidate {
   results: ProbeResult[]
   cells?: never
-  states: Readonly<Record<string, ProbeStatus>>
+  states: Readonly<Record<string, FeatureResultStatus>>
 }
 
 /** The candidate for one context key, from the projection's own selected version. */
 export function candidateFromSelected(
   key: string,
   selected: SelectedContextSummary,
-  states: Readonly<Record<string, ProbeStatus>>,
+  states: Readonly<Record<string, FeatureResultStatus>>,
   projection: SelectedProjection,
 ): CurrentContextCandidate | undefined
 export function candidateFromSelected(
@@ -66,17 +66,17 @@ export function candidateFromSelected(
 export function candidateFromSelected(
   key: string,
   selected: CurrentSelectedVersion,
-  states: Readonly<Record<string, ProbeStatus>>,
+  states: Readonly<Record<string, FeatureResultStatus>>,
 ): CurrentContextCandidate
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion | CurrentSelectedVersion,
-  states: Readonly<Record<string, CellState | ProbeStatus>>,
+  states: Readonly<Record<string, CellState | FeatureResultStatus>>,
 ): ContextCandidate
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion | CurrentSelectedVersion | SelectedContextSummary,
-  states: Readonly<Record<string, CellState | ProbeStatus>>,
+  states: Readonly<Record<string, CellState | FeatureResultStatus>>,
   projection?: SelectedProjection,
 ): ContextCandidate | undefined {
   if ("contributingRunIds" in selected) {

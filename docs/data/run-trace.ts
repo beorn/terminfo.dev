@@ -319,7 +319,7 @@ export interface TraceDocument<Cell> {
   sourceRevision: string | null
   /** The identity the run recorded for itself. */
   identity: { recorded: string }
-  cells: Record<string, Cell>
+  featureResults: Record<string, Cell>
 }
 export type CurrentTraceDocument = TraceDocument<CurrentTraceCell>
 
@@ -489,9 +489,9 @@ type TraceVersion = Pick<SelectedVersion, "runId" | "sha256" | "measuredAt" | "i
 function traceDocument<Cell>(
   apiVersion: 2 | 3,
   version: TraceVersion,
-  cells: Record<string, Cell>,
+  featureResults: Record<string, Cell>,
 ): { url: string; sha256: string; bytes: string; document: TraceDocument<Cell> } | undefined {
-  if (Object.keys(cells).length === 0) return undefined
+  if (Object.keys(featureResults).length === 0) return undefined
   if (version.identity === undefined) throw new Error(`run ${version.runId}: no recorded identity for its trace`)
   const document: TraceDocument<Cell> = {
     ...(version.schemaVersion === 4 && version.source && { source: { ...version.source } }),
@@ -503,7 +503,7 @@ function traceDocument<Cell>(
     identity: {
       recorded: version.identity,
     },
-    cells,
+    featureResults,
   }
   const bytes = JSON.stringify(document) + "\n"
   return {

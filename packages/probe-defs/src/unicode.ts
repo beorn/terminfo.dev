@@ -17,7 +17,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 4)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Need at least four columns for width controls" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Need at least four columns for width controls" }],
           }
         }
         ctx.feed("\x1b[1;1H\x1b[2KAQ")
@@ -40,7 +40,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Fixture needs at least 3 columns" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Fixture needs at least 3 columns" }],
           }
         }
         // The row grades the rendered width of a plainly written ambiguous glyph, so it assumes
@@ -80,7 +80,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Need at least three measured columns" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Need at least three measured columns" }],
           }
         }
         const sample = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}"
@@ -110,7 +110,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Fixture needs at least 3 columns" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Fixture needs at least 3 columns" }],
           }
         }
         // The claim compares a plainly written ZWJ sequence, so it assumes the run decodes plain
@@ -150,7 +150,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 2) || !validSize(ctx.getScrollback().screenLines, 2)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Need at least two columns and two screen rows" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Need at least two columns and two screen rows" }],
           }
         }
         const expected = "Wide CJK character wraps from final column to row 2 while ASCII control is preserved"
@@ -184,7 +184,7 @@ export const unicodeProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Wide-wrap fixture needs at least 2x2, measured ${ctx.rows}x${cols}`,
               },
             ],
@@ -232,7 +232,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 10)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Need at least ten measured columns" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Need at least ten measured columns" }],
           }
         }
         try {
@@ -275,7 +275,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 10)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Fixture needs at least 10 columns" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Fixture needs at least 10 columns" }],
           }
         }
         try {

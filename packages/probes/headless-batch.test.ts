@@ -59,12 +59,12 @@ async function backend() {
 // Kitty uses an explicitly labelled xterm parser fixture: this tests undeclared-target recording,
 // not a Kitty execution, identity, rendering claim or capture.
 test.each([
-  { name: "xtermjs", create: backend, expected: "test-todo", reason: "visual effect not observed in this run" },
+  { name: "xtermjs", create: backend, expected: "probe-todo", reason: "visual effect not observed in this run" },
   { name: "vterm", create: async () => createVtermBackend(), expected: "supported", reason: undefined },
   {
     name: "kitty",
     create: backend,
-    expected: "test-todo",
+    expected: "probe-todo",
     reason: "rendering declaration missing for library kitty in @termless/core/backends.json",
   },
 ] as const)(
@@ -75,7 +75,7 @@ test.each([
       runId: "library-rendering-declaration-fixture",
       rawReplies: {},
       results: [
-        { featureId: definition.id, status: "test-todo" as const, attempt: { scope: "none" as const }, tests: [] },
+        { featureId: definition.id, status: "probe-todo" as const, attempt: { scope: "none" as const }, tests: [] },
       ],
     }
     const checkpoints: string[] = []
@@ -110,7 +110,7 @@ test("adapter-binding TODO names the initialized backend", async () => {
   )
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results).toMatchObject([
-    { status: "test-todo", tests: [{ id: "criterion", reason: "adapter binding xterm syncOutput" }] },
+    { status: "probe-todo", tests: [{ id: "criterion", reason: "adapter binding xterm syncOutput" }] },
   ])
   expect(batch.assertions).toEqual([])
 })
@@ -419,17 +419,17 @@ test.each([
     ],
   )
   expect(batch.ungradedDiagnostics).toEqual({})
-  expect(batch.results[0]!.status).toBe(corrupt ? "test-failure" : "test-todo")
+  expect(batch.results[0]!.status).toBe(corrupt ? "probe-invalid" : "probe-todo")
   expect(mainAndHistoryAssertions(batch)).toHaveLength(2)
   expect(reflowEvidence(batch).historyPhases).toMatchObject(
     corrupt
       ? [
-          { status: "test-failure", reason: expect.stringContaining("does not match the fed tail") },
-          { status: "test-failure", reason: expect.stringContaining("does not match the fed tail") },
+          { status: "probe-invalid", reason: expect.stringContaining("does not match the fed tail") },
+          { status: "probe-invalid", reason: expect.stringContaining("does not match the fed tail") },
         ]
       : [
-          { status: "test-todo", reason: `target not fully retained (H=${limit}, need 28)` },
-          { status: "test-todo", reason: `target not fully retained (H=${limit}, need 27)` },
+          { status: "probe-todo", reason: `target not fully retained (H=${limit}, need 28)` },
+          { status: "probe-todo", reason: `target not fully retained (H=${limit}, need 27)` },
         ],
   )
 })
@@ -493,10 +493,10 @@ test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "vie
       },
     ])
     expect(batch.ungradedDiagnostics).toEqual({})
-    expect(batch.results[0]!.status).toBe(fault === "viewport" ? "supported" : "test-failure")
+    expect(batch.results[0]!.status).toBe(fault === "viewport" ? "supported" : "probe-invalid")
     const observed = reflowEvidence(batch)
     expect(observed.historyPhases.map((phase: { status: string }) => phase.status)).toEqual(
-      fault === "viewport" ? ["supported", "supported"] : ["test-failure", "test-failure"],
+      fault === "viewport" ? ["supported", "supported"] : ["probe-invalid", "probe-invalid"],
     )
     expect(mainAndHistoryAssertions(batch)).toHaveLength(fault === "viewport" ? 4 : 2)
     if (fault === "bad-counts" || fault === "control-counts") {
@@ -636,54 +636,54 @@ test("alternate reflow records real vterm logical layouts without cross-buffer g
 // F2/F3: require the deciding reason; setup failures must stay invalid even when mode identity
 // is false or unavailable. Status-only cases miss a removed identity check or the wrong failing control.
 test.each([
-  { fault: "missing-mode", status: "test-todo", reason: "alternate buffer identity unavailable" },
-  { fault: "target-mode-missing", status: "test-todo", reason: "alternate buffer identity unavailable" },
-  { fault: "no-entry", status: "test-todo", reason: "alternate buffer not entered" },
+  { fault: "missing-mode", status: "probe-todo", reason: "alternate buffer identity unavailable" },
+  { fault: "target-mode-missing", status: "probe-todo", reason: "alternate buffer identity unavailable" },
+  { fault: "no-entry", status: "probe-todo", reason: "alternate buffer not entered" },
   {
     fault: "bogus-mode",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: expect.stringContaining("did not clear the seeded primary spans"),
   },
   {
     fault: "hard-row",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "Alternate resize matched neither complete layout, including hard rows and blank tails",
   },
   {
     fault: "blank-tail",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "Alternate resize matched neither complete layout, including hard rows and blank tails",
   },
   {
     fault: "control-switch",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "Post-resize alternate width control did not wrap at the requested column",
   },
   {
     fault: "control-identity",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "Alternate buffer identity changed during target or width-control readback",
   },
-  { fault: "slot-read", status: "test-failure", reason: "Alternate measurement failed: alternate slot read failed" },
-  { fault: "restore", status: "test-failure", reason: expect.stringContaining("PRIMARY-A not restored") },
+  { fault: "slot-read", status: "probe-invalid", reason: "Alternate measurement failed: alternate slot read failed" },
+  { fault: "restore", status: "probe-invalid", reason: expect.stringContaining("PRIMARY-A not restored") },
   {
     fault: "marker-missing-false",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "Alternate isolation did not qualify: Alternate marker was not measured",
   },
   {
     fault: "marker-readback-false",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "Alternate isolation did not qualify: Alternate-marker readback failed",
   },
   {
     fault: "marker-missing-null",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "Alternate isolation did not qualify: Alternate marker was not measured",
   },
   {
     fault: "marker-readback-null",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "Alternate isolation did not qualify: Alternate-marker readback failed",
   },
 ] as const)(
@@ -802,7 +802,7 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
       registryDefinitions(["extensions.reflow"]),
     )
     expect(batch.ungradedDiagnostics).toEqual({})
-    expect(batch.results[0]!.status).toBe("test-failure")
+    expect(batch.results[0]!.status).toBe("probe-invalid")
     expect(batch.results[0]!.reason).toContain("main-grow:")
     const observed = reflowEvidence(batch)
     if (fault === "hard-boundary") {
@@ -813,7 +813,7 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
           .map((assertion) => assertion.kind),
       ).toEqual(["negative", "positive"])
       expect(batch.results[0]!.tests).toContainEqual(
-        expect.objectContaining({ id: "criterion", status: "test-failure", assertionRefs: [0, 1] }),
+        expect.objectContaining({ id: "criterion", status: "probe-invalid", assertionRefs: [0, 1] }),
       )
     } else {
       expect(observed).toMatchObject({
@@ -1058,7 +1058,7 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
       const feed = vi.spyOn(value, "feed")
       const missing = definition.lib!(absent)
       expect(missing.criterionBranch).toBe("headless-observable-review")
-      expect(missing.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(missing.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
       expect(missing.observation).toBeUndefined()
       expect(missing.assertions).toBeUndefined()
       expect(feed).not.toHaveBeenCalled()
@@ -1072,7 +1072,7 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
 // criterion must read that as missing evidence, never as an engine that reports no working directory.
 // @level l1
 // @consumer extensions.osc7-cwd through the actual LibProbeSource
-test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a test-todo, never unsupported", async (context) => {
+test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a probe-todo, never unsupported", async (context) => {
   const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
   if (!existsSync(sibling)) context.skip(`Real-vterm metadata controls require missing sibling ${sibling}`)
   const value = createVtermBackend({ cols: 80, rows: 24 })
@@ -1085,7 +1085,7 @@ test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a test-to
     const feed = vi.spyOn(value, "feed")
     const cwd = registryDefinitions(["extensions.osc7-cwd"])[0]!.lib!(source)
     expect(cwd.criterionBranch).toBe("headless-observable-review")
-    expect(cwd.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+    expect(cwd.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
     expect(cwd.observation).toBeUndefined()
     expect(cwd.assertions).toBeUndefined()
     expect(feed).not.toHaveBeenCalled()
@@ -1098,7 +1098,7 @@ test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a test-to
 })
 
 // @failure #32053: Kitty receives every OSC 777 payload but its binding dropped them, so OSC 777 notify stayed a
-// grid-only test-todo; a stale or inert reader stays TEST TODO, and an absent reader keeps the old route.
+// grid-only probe-todo; a stale or inert reader stays PROBE TODO, and an absent reader keeps the old route.
 // @level l1
 // @consumer extensions.osc777-notify through the actual LibProbeSource on the real Kitty bridge
 test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe through the raw reader", () => {
@@ -1122,7 +1122,7 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
     ])
     expect(source.getOsc777Payloads!()[0]).toBe("preexec")
 
-    // A stale or inert reader records no control, so it stays TEST TODO, never Unsupported (@cto cd6b67d9).
+    // A stale or inert reader records no control, so it stays PROBE TODO, never Unsupported (@cto cd6b67d9).
     const stale = vi.spyOn(source, "getOsc777Payloads").mockReturnValue(["notify;stale;notice"])
     expect(definition.lib!(source).notTested).toMatchObject({ reason: "no-semantic-observable" })
     stale.mockRestore()
@@ -1146,12 +1146,12 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
 // Standalone component CI checks out terminfo.dev alone and resolves the published @termless 0.10.2, whose Kitty and
 // Ghostty native backends predate osc-metadata getProgress (#32271); CI run 41794400168 failed both rows there. Every
 // row runs in both homes: OWNED_LAYOUT picks the owned Termless contract (reader declared and graded) or the published
-// one (no reader, TEST TODO), so a broken owned reader still fails.
+// one (no reader, PROBE TODO), so a broken owned reader still fails.
 // @failure #32053, #32272: engine stores parsed toasts only; OSC 9 and 777;notify;X arrive identical. WezTerm
 // (performer.rs:904-933) and Ghostty (osc.zig:94-98) keep {title, body} toasts, so no raw reader can attribute the
 // code or rebuild the payload (@cto 94631c52, 91f6fd75). The owned Termless exposes that store as getToasts, graded by
 // single-sequence deltas with a cross control (@cto 3cc4a3ae); the published 0.10.2 has no reader, so its cells stay
-// TEST TODO, never Unsupported. The owned ghostty-web WASM keeps the same toasts as the native engine (@cto c65d2a67).
+// PROBE TODO, never Unsupported. The owned ghostty-web WASM keeps the same toasts as the native engine (@cto c65d2a67).
 // @level l1
 // @consumer extensions.notifications and extensions.osc777-notify through the actual LibProbeSource
 function weztermNativeAvailable(): boolean {
@@ -1202,7 +1202,7 @@ test.for([
       }
       expect(source.getToasts).toBeUndefined()
       expect(notifications!.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-      expect(notifications!.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(notifications!.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
       expect(osc777!.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
       for (const result of [notifications!, osc777!]) {
         expect(result.observation).toBeUndefined()
@@ -1360,11 +1360,11 @@ test.skipIf(!isKittyAvailable())(
         expect(start.criterionBranch, id).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
         expect(start.observation, id).toBeUndefined()
       }
-      // The umbrella callbacks stay TEST TODO until a full-lifecycle reader exists (b5fecd017, #32247).
+      // The umbrella callbacks stay PROBE TODO until a full-lifecycle reader exists (b5fecd017, #32247).
       for (const id of ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
         const umbrella = registryDefinitions([id])[0]!.lib!(source)
         expect(umbrella.tests, id).toEqual([
-          { id: "criterion", status: "test-todo", reason: "no full-lifecycle observable on this reader" },
+          { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
         ])
         expect(umbrella.observation, id).toBeUndefined()
       }
@@ -1445,7 +1445,7 @@ test.for(VTERM_MARK_CASES)(
       const absent = createLibProbeSource(value, undefined, undefined, undefined)
       const missing = definition.lib!(absent)
       expect(missing.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-      expect(missing.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(missing.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
       // Generic umbrella TODOs share this branch but do not identify the declared reader's missing tool.
       expect(missing.note, id).toContain("semantic-marks getSemanticMarks readback is unavailable")
       expect(missing.observation).toBeUndefined()
@@ -1559,12 +1559,12 @@ test("real vterm Sixel storage sharpens the TODO reason without grading renderin
     const result = definition.lib!(source)
     expect(result.note).toBe("payload retained at row/col; no raster; cell geometry unmeasured")
     expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-    expect(result.tests).toMatchObject([{ status: "test-todo" }])
+    expect(result.tests).toMatchObject([{ status: "probe-todo" }])
     expect(result.observation).toBeUndefined()
     expect(JSON.parse(result.response!)).toMatchObject({ storage: { retained: true } })
     vi.spyOn(source, "getSixelImages").mockReturnValue([])
     const stale = definition.lib!(source)
-    expect(stale.tests).toMatchObject([{ status: "test-todo" }])
+    expect(stale.tests).toMatchObject([{ status: "probe-todo" }])
     expect(JSON.parse(stale.response!)).toMatchObject({ storage: { retained: false } })
     expect(stale.note).not.toBe(result.note)
   } finally {
@@ -1597,7 +1597,7 @@ test("cwd readback errors propagate after restoring the original metadata", asyn
 // 31299: callback-only assertions miss a typed source review that the capture parser rejects.
 // Keep the real registered callback, pinned identity fixture, adapter, collector and parser on one path.
 test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-highlight-fg"])(
-  "%s reads TEST TODO, never a source review, through the actual collector",
+  "%s reads PROBE TODO, never a source review, through the actual collector",
   async (id) => {
     const definition = ALL_PROBES.find((entry) => entry.id === id)!
     // Source-audit input, not an attestation of this runner's checkout. Standalone CI has no owned siblings.
@@ -1678,8 +1678,8 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
     expect(parsed.results).toMatchObject([
       {
         featureId: id,
-        status: "test-todo",
-        tests: [{ id: "criterion", status: "test-todo" }],
+        status: "probe-todo",
+        tests: [{ id: "criterion", status: "probe-todo" }],
       },
     ])
     expect(parsed.results?.[0]?.criterionBranch).toBeUndefined()
@@ -1689,7 +1689,7 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
 // 31770 @cto a60bc57e N2: the unit cases in extensions-osc0-observations.test.ts call the OSC 0 callback
 // directly, so the collector wrapping of its control and getter failures was never fault-injected.
 // Real xterm backend, audited identity, registered callback and collectBatch on one path: a failed control
-// or a throwing getter must leave TEST FAILURE with both labels restored and no support or negative claim.
+// or a throwing getter must leave PROBE INVALID with both labels restored and no support or negative claim.
 test.each([
   { fault: "none" },
   { fault: "icon-control" },
@@ -1772,7 +1772,7 @@ test.each([
     return
   }
   expect(effectFed).toBe(fault.endsWith("-readback"))
-  expect(result).toMatchObject({ status: "test-failure" })
+  expect(result).toMatchObject({ status: "probe-invalid" })
   expect(observation?.outcome).not.toBe("supported")
   expect(observation?.outcome).not.toBe("unsupported")
   expect(batch.assertions.filter((entry) => entry.featureId === id)).toEqual([])
@@ -1780,7 +1780,7 @@ test.each([
     expect(batch.ungradedDiagnostics).toEqual({})
     expect(result!.tests).toMatchObject([
       {
-        status: "test-failure",
+        status: "probe-invalid",
         reason: expect.stringContaining("OSC 0 independent icon/title controls were not both read back"),
       },
     ])
@@ -1793,9 +1793,9 @@ test.each([
 })
 
 // Q2/bar93: callback tests miss a typed parser-state result rejected at the collector/parser boundary. Since #32246 the
-// former source review is TEST TODO coverage, which must still survive collection and parsing.
+// former source review is PROBE TODO coverage, which must still survive collection and parsing.
 // Canonical source validation lazily fetches historical Git blobs in CI's partial clones; this is not a speed test.
-test("DECSSCLS real-vterm parser-state TEST TODO survives collection and canonical parsing", async () => {
+test("DECSSCLS real-vterm parser-state PROBE TODO survives collection and canonical parsing", async () => {
   const id = "modes.decsscls"
   const manifest = {
     schemaVersion: 4 as const,
@@ -1813,9 +1813,9 @@ test("DECSSCLS real-vterm parser-state TEST TODO survives collection and canonic
     manifest,
   })
   const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions([id]), draft)
-  // #32246: no source review decides DECSSCLS; the parser-state cell is TEST TODO coverage with no negative assertion.
+  // #32246: no source review decides DECSSCLS; the parser-state cell is PROBE TODO coverage with no negative assertion.
   expect(batch.results).toMatchObject([
-    { featureId: id, status: "test-todo", tests: [{ id: "criterion", status: "test-todo" }] },
+    { featureId: id, status: "probe-todo", tests: [{ id: "criterion", status: "probe-todo" }] },
   ])
   expect(batch.results[0]).not.toHaveProperty("criterionBranch")
   expect(batch.results[0]).not.toHaveProperty("assertionType")
@@ -1854,7 +1854,7 @@ test("DECSSCLS real-vterm parser-state TEST TODO survives collection and canonic
   }
   const finalized = finalizeCollectedDraft(captured)
   expect(finalized.results).toMatchObject([
-    { featureId: id, status: "test-todo", tests: [{ id: "criterion", status: "test-todo" }] },
+    { featureId: id, status: "probe-todo", tests: [{ id: "criterion", status: "probe-todo" }] },
   ])
   expect(finalized.assertions).toEqual(batch.assertions)
   expect(finalized.rawReplies).toEqual(batch.rawReplies)
@@ -1868,9 +1868,9 @@ test("DECSSCLS real-vterm parser-state TEST TODO survives collection and canonic
 }, 30_000)
 
 // @failure A D/633 prompt result at the formerly audited WezTerm identity becomes a collector error, or is graded
-//   from source instead of staying TEST TODO (#32246).
+//   from source instead of staying PROBE TODO (#32246).
 // @level l1 @consumer collectBatch plus capture parser; callback tests cannot catch declaration rejection.
-test("Wezterm prompt TEST TODO rows survive actual collection and capture binding", async () => {
+test("Wezterm prompt PROBE TODO rows survive actual collection and capture binding", async () => {
   const ids = [
     "extensions.osc133-d",
     "extensions.osc633-a",
@@ -1955,12 +1955,12 @@ test("Wezterm prompt TEST TODO rows survive actual collection and capture bindin
     results: batch.results,
     assertions: batch.assertions,
   }
-  // #32246: the formerly audited WezTerm identity grades no prompt mark from source; each stays TEST TODO, untyped.
+  // #32246: the formerly audited WezTerm identity grades no prompt mark from source; each stays PROBE TODO, untyped.
   for (const id of ids) {
     const row = captured.results.find((entry) => entry.featureId === id)!
-    expect(row).toMatchObject({ featureId: id, status: "test-todo" })
+    expect(row).toMatchObject({ featureId: id, status: "probe-todo" })
     expect(row.criterionBranch).not.toBe("source-negative-review")
-    // osc633-d/-p report their reader route as an inconclusive observation (#32247); still TEST TODO, never graded.
+    // osc633-d/-p report their reader route as an inconclusive observation (#32247); still PROBE TODO, never graded.
     if (id !== "extensions.osc633-d" && id !== "extensions.osc633-p") expect(row).not.toHaveProperty("assertionType")
     expect(captured.runtimeIdentity).toEqual(identity)
   }
@@ -1973,13 +1973,13 @@ test("Wezterm prompt TEST TODO rows survive actual collection and capture bindin
   )
   expect(parsed.results).toHaveLength(7)
   expect(
-    parsed.results?.every((row) => row.criterionBranch !== "source-negative-review" && row.status === "test-todo"),
+    parsed.results?.every((row) => row.criterionBranch !== "source-negative-review" && row.status === "probe-todo"),
   ).toBe(true)
 })
 
 // #32099: callback-only tests miss a result rejected by an inherited query_reply declaration. Real engines must take
 // different branches through the same definitions, including xterm's actual mode2031 Ps0 negative; since #32246 the
-// vterm engines' former source reviews are untyped TEST TODO rows that must still survive collection and parsing.
+// vterm engines' former source reviews are untyped PROBE TODO rows that must still survive collection and parsing.
 test("source-qualified mode and mouse criteria survive collection and capture parsing", async () => {
   const ids = ["modes.synchronized-output", "modes.color-scheme-reporting", "input.pixel-mouse"]
   for (const [name, producer] of [
@@ -2096,7 +2096,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
         id,
       ).toMatchObject(
         name !== "xtermjs"
-          ? { status: "test-todo" }
+          ? { status: "probe-todo" }
           : {
               status: id === "modes.color-scheme-reporting" ? "unsupported" : "supported",
               assertionType: id === "input.pixel-mouse" ? "input_bytes" : "query_reply",
@@ -2147,7 +2147,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
     for (const row of parsed.results ?? []) {
       expect(row).toMatchObject(
         name !== "xtermjs"
-          ? { status: "test-todo" }
+          ? { status: "probe-todo" }
           : {
               status: row.featureId === "modes.color-scheme-reporting" ? "unsupported" : "supported",
               assertionType: row.featureId === "input.pixel-mouse" ? "input_bytes" : "query_reply",
@@ -2172,10 +2172,10 @@ test("retains registered reply failure evidence when the writer is unqualified",
     },
   })
   const result = batch.results[0]!
-  expect(result.status).toBe("test-failure")
+  expect(result.status).toBe("probe-invalid")
   expect(result.reason).toContain(`sent ${JSON.stringify("\x1b[?996n")}; received ""`)
   expect(result.reason).toContain("synchronous feed and getCursor boundary; timeout not applicable")
-  expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", rawReplyRef: id }])
+  expect(result.tests).toMatchObject([{ id: "criterion", status: "probe-invalid", rawReplyRef: id }])
   expect(batch.rawReplies[id]).toBe("")
 })
 
@@ -2190,12 +2190,12 @@ test.each([false, true])("retains only marked synchronous reply failure evidence
         expect(ctx.feedCapture("\x1b[9999n")).toBe("")
         return marked
           ? replyFailure("No probe reply")
-          : { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "No probe reply" }] }
+          : { pass: false, tests: [{ id: "criterion", status: "probe-invalid", reason: "No probe reply" }] }
       },
     },
   ])
   const result = batch.results[0]!
-  expect(result.status).toBe("test-failure")
+  expect(result.status).toBe("probe-invalid")
   expect(result.reason).toBe(
     marked
       ? 'No probe reply; sent "\\u001b[9999n"; received ""; synchronous feed and getCursor boundary; timeout not applicable'
@@ -2223,7 +2223,7 @@ test.each([
     },
   ])
   const reason = `Malformed ${kind} reply: ${JSON.stringify(reply)}`
-  expect(batch.results).toMatchObject([{ status: "test-failure", reason, tests: [{ reason }] }])
+  expect(batch.results).toMatchObject([{ status: "probe-invalid", reason, tests: [{ reason }] }])
   expect(batch.rawReplies[id]).toBe(reply)
   expect(JSON.stringify(batch)).not.toContain("replyFailureTestIds")
 })
@@ -2263,7 +2263,7 @@ test.each([
         },
       },
     ])
-    expect(batch.results).toMatchObject([{ status: disagree ? "test-failure" : "unsupported" }])
+    expect(batch.results).toMatchObject([{ status: disagree ? "probe-invalid" : "unsupported" }])
     const diagnostic =
       batch.observations[0]?.note ?? batch.results[0]?.tests.find((test) => test.id === "criterion")?.reason
     if (disagree) {
@@ -2300,7 +2300,7 @@ test.each(retainedDeccolm.rows)("DECCOLM retained $engine state survives the str
       kind: assertion.kind === "positive" ? ("positive" as const) : ("negative" as const),
     })),
   })
-  expect(legacy.results).toMatchObject([{ status: "test-failure" }])
+  expect(legacy.results).toMatchObject([{ status: "probe-invalid" }])
   expect(legacy.results[0]!.tests[0]!.reason).toContain("lacks matching raw state and assertion")
   expect(legacy.rawReplies[definition.id]).toBe(sample.raw)
   const repaired = await collect(callback)
@@ -2490,9 +2490,9 @@ test.each([
     expect(batch.results).toMatchObject([
       {
         featureId: id,
-        status: "test-todo",
+        status: "probe-todo",
         criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-        tests: [{ id: "review", status: "test-todo", reason: declaration!.reason }],
+        tests: [{ id: "review", status: "probe-todo", reason: declaration!.reason }],
       },
     ])
     expect(batch.observations).toEqual([])
@@ -2575,7 +2575,7 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
     expect.soft(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({ seedA: "PRIMARY-A", seedB: "PRIMARY-B" })
   }
   expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
-    status: "test-todo",
+    status: "probe-todo",
     reason: expect.stringContaining("adapter binding libvterm applicationKeypad"),
   })
 })
@@ -2643,7 +2643,7 @@ test("separates mode readback from headless OS-input review without fabricating 
       expect(batch.notTested.some((row) => row.featureId === result.featureId)).toBe(false)
       continue
     }
-    expect(result.status, result.featureId).toBe("test-todo")
+    expect(result.status, result.featureId).toBe("probe-todo")
     const expected = { reason: /OS-level XTEST/, raw: { input: false } }
     expect(result.reason, result.featureId).toMatch(expected.reason)
     expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
@@ -2658,7 +2658,7 @@ test("separates mode readback from headless OS-input review without fabricating 
     expect(result.tests, result.featureId).toContainEqual(
       expect.objectContaining({
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         attempt: { scope: "none" },
         rawReplyRef: result.featureId,
         reason: expect.any(String),
@@ -2745,10 +2745,10 @@ test.each([
   ).toThrow("requires the performed action")
 })
 
-// @failure A Vterm input cell at the formerly audited identity is graded from source, or its TEST TODO coverage record
+// @failure A Vterm input cell at the formerly audited identity is graded from source, or its PROBE TODO coverage record
 //   is lost when recorded as a real headless batch (#32246).
 // @consumer The four registered Vterm input callbacks through collectBatch; no capture or attestation.
-test("formerly audited Vterm input cells record TEST TODO coverage through the collector", async () => {
+test("formerly audited Vterm input cells record PROBE TODO coverage through the collector", async () => {
   const ids = ["input.modify-other-keys", "input.modify-other-keys-3", "input.xtest-key", "input.kitty-click-events"]
   // Identity is a unit fixture; it does not attest this runner or grant collection/admission.
   const identity = {
@@ -2840,7 +2840,7 @@ test("formerly audited Vterm input cells record TEST TODO coverage through the c
   )
   for (const id of ids) {
     const row = batch.results.find((entry) => entry.featureId === id)
-    expect(row).toMatchObject({ status: "test-todo" })
+    expect(row).toMatchObject({ status: "probe-todo" })
     expect(row?.criterionBranch).toBeUndefined()
     expect(row?.assertionType).toBeUndefined()
   }
@@ -2857,19 +2857,19 @@ test("mouse collector distinguishes unavailable state/pixels, measured no-report
     "vterm",
     registryDefinitions(["input.kitty-click-events"]),
   )
-  // #32246: the former source review of the kitty click encoder is TEST TODO coverage with no same-path control.
-  expect(kitty.results).toMatchObject([{ status: "test-todo", reason: NO_SAME_PATH_CONTROL }])
+  // #32246: the former source review of the kitty click encoder is PROBE TODO coverage with no same-path control.
+  expect(kitty.results).toMatchObject([{ status: "probe-todo", reason: NO_SAME_PATH_CONTROL }])
   const id = "input.pixel-mouse"
   const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
   const cases: { state: boolean | null; error?: string; expected: string }[] = [
-    { state: null, expected: "test-todo" },
+    { state: null, expected: "probe-todo" },
     { state: true, expected: "unsupported" },
     {
       state: true,
       error: "mouse encoding unavailable: fixture pixel binding unavailable",
-      expected: "test-todo",
+      expected: "probe-todo",
     },
-    { state: true, error: "broken encoder invariant", expected: "test-failure" },
+    { state: true, error: "broken encoder invariant", expected: "probe-invalid" },
   ]
   for (const { state, error, expected } of cases) {
     const backend = createVtermBackend()
@@ -2897,7 +2897,7 @@ test("mouse collector distinguishes unavailable state/pixels, measured no-report
   vi.spyOn(backend, "encodeMouse").mockReturnValue(new TextEncoder().encode("\x1b[<0;41;25M"))
   const broken = await collectBatch(async () => backend, "vterm", registryDefinitions([id]))
   expect(broken.results).toMatchObject([
-    { featureId: id, status: "test-failure", reason: expect.stringContaining("tracking reset") },
+    { featureId: id, status: "probe-invalid", reason: expect.stringContaining("tracking reset") },
   ])
   expect(new TextDecoder().decode(feed.mock.calls.at(-1)![0])).toBe(reset)
 })
@@ -2969,7 +2969,7 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
   const batch = await collectBatch(resolveVt100, "vt100", registryDefinitions(ids))
   expect(batch.results.map((row) => row.featureId)).toEqual(ids)
   for (const row of batch.results) {
-    expect(row.status).toBe("test-todo")
+    expect(row.status).toBe("probe-todo")
     expect(row.reason).toContain("mouse-encoding extension unavailable")
     expect(row.criterionBranch).toBeUndefined()
     expect(row.tests?.some((test) => test.id === "review" || test.reviewRef !== undefined)).not.toBe(true)
@@ -3090,7 +3090,7 @@ test("input.kitty-click-events measures unsupported on xtermjs via the delegated
     brokenBackend.destroy()
   }
 
-  // C3: encodeMouse method present without "mouse-encoding" in capabilities.extensions stays unwired -> TEST TODO.
+  // C3: encodeMouse method present without "mouse-encoding" in capabilities.extensions stays unwired -> PROBE TODO.
   const undeclaredBackend = await createXtermBackend()
   undeclaredBackend.init({ cols: 80, rows: 24 })
   try {
@@ -3123,11 +3123,11 @@ test("retains a qualified headless shell mark's required source review through p
   expect(batch.results).toEqual([
     expect.objectContaining({
       featureId: id,
-      status: "test-todo",
+      status: "probe-todo",
       criterionBranch: SEMANTIC_PROMPT_SOURCE_REVIEW,
       rawReplyRef: id,
       tests: [
-        expect.objectContaining({ id: "review", status: "test-todo", attempt: { scope: "none" }, rawReplyRef: id }),
+        expect.objectContaining({ id: "review", status: "probe-todo", attempt: { scope: "none" }, rawReplyRef: id }),
       ],
     }),
   ])
@@ -3200,7 +3200,7 @@ test.each([
         expect(result.criterionBranch, result.featureId).toBeUndefined()
         continue
       }
-      expect(result.status, result.featureId).toBe("test-todo")
+      expect(result.status, result.featureId).toBe("probe-todo")
       expect(result.criterionBranch, result.featureId).toBe("color-readback-review")
       expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
       const raw = JSON.parse(batch.rawReplies[result.featureId]!) as { query: string; originalRaw: string }
@@ -3213,7 +3213,7 @@ test.each([
         rawReplyRef: result.featureId,
       })
       expect(result.tests, result.featureId).toContainEqual(
-        expect.objectContaining({ id: "review", status: "test-todo", rawReplyRef: result.featureId }),
+        expect.objectContaining({ id: "review", status: "probe-todo", rawReplyRef: result.featureId }),
       )
     }
   },
@@ -3255,7 +3255,7 @@ test("checkpoints a probe attempt before invoking the headless callback", async 
   )
   expect(seen).toMatchObject({
     featureId: "checkpoint.fixture",
-    status: "test-todo",
+    status: "probe-todo",
     attempt: { scope: "probe", startedAt: expect.any(String) },
   })
 })
@@ -3389,11 +3389,11 @@ test.each([
     expect(batch.rawReplies["clipboard.read"]).toMatch(/^\x1b\[\d+;\d+R$/)
     return
   }
-  expect(result?.status).toBe("test-failure")
+  expect(result?.status).toBe("probe-invalid")
   expect(result?.tests).toEqual([
     expect.objectContaining({
       id: HARNESS_INCOMPLETE_TEST,
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "Harness incomplete: xtermjs did not reproduce clipboard_control; silence is not evidence",
     }),
   ])
@@ -3501,7 +3501,7 @@ test("attributes headless exceptions only to the headless marker and leaves lega
       name: "TypeError",
       message: "headless xtermjs probe " + id + ": Callback failed",
     })
-    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("test-failure")
+    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("probe-invalid")
   }
   expect(probeReplies(batch)).toEqual({})
   expect(batch.assertions).toEqual([])
@@ -3536,7 +3536,7 @@ test("routes real registry constructor markers while multi-method callbacks rema
     expect(batch.ungradedDiagnostics[id]).toMatchObject({
       message: "headless xtermjs probe " + id + ": Registry setup failed",
     })
-    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("test-failure")
+    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("probe-invalid")
   }
   expect(batch.assertions).toEqual([])
   expect(probeReplies(batch)).toEqual({})
@@ -3682,8 +3682,8 @@ test("attributes unavailable fixture grids to each probe without invoking callba
     definition("second", callback, { libAssertionType: "query_reply" }),
   ])
   expect(batch.results.filter((result) => ["first", "second"].includes(result.featureId))).toMatchObject([
-    { featureId: "first", status: "test-failure" },
-    { featureId: "second", status: "test-failure" },
+    { featureId: "first", status: "probe-invalid" },
+    { featureId: "second", status: "probe-invalid" },
   ])
   expect(batch.ungradedDiagnostics.first).toMatchObject({
     message: expect.stringContaining("headless xtermjs probe first:"),
@@ -3716,7 +3716,7 @@ test("rejects a returned method that disagrees with the marker and preserves mat
       "refused",
       () => ({
         pass: false,
-        tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
+        tests: [{ id: "criterion", status: "probe-todo", reason: "insufficient-evidence" }],
       }),
       { libAssertionType: "buffer_state" },
     ),
@@ -3916,11 +3916,11 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     adapterType: "js",
   })
   expect(batch.ungradedDiagnostics).toEqual({})
-  // #32246: the pending OSC 52 rows stay TEST TODO and carry no source branch or typed negative.
+  // #32246: the pending OSC 52 rows stay PROBE TODO and carry no source branch or typed negative.
   expect(batch.results).toMatchObject([
     { featureId: ids[0], status: "supported", assertionType: "buffer_state" },
-    { featureId: ids[1], status: "test-todo" },
-    { featureId: ids[2], status: "test-todo" },
+    { featureId: ids[1], status: "probe-todo" },
+    { featureId: ids[2], status: "probe-todo" },
   ])
   for (const row of batch.results.slice(1)) {
     expect(row, row.featureId).not.toHaveProperty("criterionBranch")
@@ -3951,15 +3951,15 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     parseRun("qualified-unit.capture.json", JSON.stringify(value), ids, new Map([[manifest.probeHash, manifest]]))
   expect(read(captured).results).toEqual(batch.results)
   expect(read(finalizeCollectedDraft(captured)).results).toEqual(batch.results)
-  // The parser-level-rejection rule is gone with the source answers (#32246): a TEST TODO row that claims a type
-  // stays TEST TODO, never a graded negative.
+  // The parser-level-rejection rule is gone with the source answers (#32246): a PROBE TODO row that claims a type
+  // stays PROBE TODO, never a graded negative.
   const mislabeled = structuredClone(captured)
   for (const result of mislabeled.results.slice(1)) result.assertionType = "query_reply"
   for (const assertion of mislabeled.assertions.filter((entry) => entry.featureId !== ids[0])) {
     assertion.assertionType = "query_reply"
   }
   const relabeled = read(mislabeled).results
-  expect(relabeled?.slice(1).map((row) => row.status)).toEqual(["test-todo", "test-todo"])
+  expect(relabeled?.slice(1).map((row) => row.status)).toEqual(["probe-todo", "probe-todo"])
   // The OSC 52 rows carry no state assertion any more (#32246); the measured OSC 0 snapshot keeps the check.
   const invalidState = structuredClone(captured)
   const stateAssertion = invalidState.assertions.find((entry) => entry.featureId === ids[0])!
@@ -4196,7 +4196,7 @@ test("admits an inconclusive no-response result with its named reason and no syn
   expect(batch.results).toStrictEqual([
     expect.objectContaining({
       featureId: "silent",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "writer default: inconclusive observation without test rows; callback defect",
     }),
   ])
@@ -4267,7 +4267,7 @@ test("refuses named coverage with no retained raw capture", async () => {
   ])
   expect(batch.notTested).toEqual([])
   expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
-    { featureId: "modes.bracketed-paste", status: "test-failure" },
+    { featureId: "modes.bracketed-paste", status: "probe-invalid" },
   ])
 })
 
@@ -4284,7 +4284,7 @@ test("a failed probe never becomes named coverage", async () => {
   ])
   expect(batch.notTested).toEqual([])
   expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
-    { featureId: "modes.bracketed-paste", status: "test-failure" },
+    { featureId: "modes.bracketed-paste", status: "probe-invalid" },
   ])
 })
 
@@ -4326,7 +4326,7 @@ test("refuses named coverage that arrives beside its returned error observation"
     },
   ])
   expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
-    { featureId: "modes.bracketed-paste", status: "test-failure" },
+    { featureId: "modes.bracketed-paste", status: "probe-invalid" },
   ])
   expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
     message: expect.stringContaining(
@@ -4359,7 +4359,7 @@ test("refuses named coverage that arrives beside supported observation and asser
   expect(batch.notTested).toEqual([])
   expect(batch.assertions).toEqual([])
   expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
-    { featureId: "modes.bracketed-paste", status: "test-failure" },
+    { featureId: "modes.bracketed-paste", status: "probe-invalid" },
   ])
   expect(batch.rawReplies["modes.bracketed-paste"]).toBe(JSON.stringify({ mode: true }))
   expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
@@ -4459,7 +4459,7 @@ test.skipIf(!ghosttyNativeAvailable)(
       registryDefinitions(ids),
     )
     expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual(
-      ids.map((featureId) => ({ featureId, status: metadataAvailable ? "supported" : "test-todo" })),
+      ids.map((featureId) => ({ featureId, status: metadataAvailable ? "supported" : "probe-todo" })),
     )
     // Native 0.10.2 lacks metadata; retain its TODO evidence and the source build's positive assertions.
     if (!metadataAvailable) {
@@ -4556,8 +4556,8 @@ test("records a complete explicit catalogue and retains probe attempt failure", 
     draft,
   )
   expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual([
-    { featureId: "attempted", status: "test-failure" },
-    { featureId: "unimplemented", status: "test-todo" },
+    { featureId: "attempted", status: "probe-invalid" },
+    { featureId: "unimplemented", status: "probe-todo" },
   ])
   expect(batch.results[0]?.attempt.scope).toBe("probe")
   expect(batch.results[0]?.reason).toContain("retained oracle failure")
@@ -4570,7 +4570,7 @@ test("retains execution-only failure bytes despite pass true and rejects a typed
     definition("execution-only", () => ({
       pass: true,
       response: "retained refusal",
-      tests: [{ id: "criterion", status: "test-failure", reason: "Timed out without a deciding observable" }],
+      tests: [{ id: "criterion", status: "probe-invalid", reason: "Timed out without a deciding observable" }],
     })),
     definition(
       "declared-null",
@@ -4583,11 +4583,11 @@ test("retains execution-only failure bytes despite pass true and rejects a typed
       { libAssertionType: null },
     ),
   ])
-  expect(result.results.map((entry) => entry.status)).toEqual(["test-failure", "test-failure"])
+  expect(result.results.map((entry) => entry.status)).toEqual(["probe-invalid", "probe-invalid"])
   expect(result.rawReplies).toMatchObject({ "execution-only": "retained refusal", "declared-null": "retained state" })
   expect(result.results[0]).toMatchObject({
     rawReplyRef: "execution-only",
-    tests: [expect.objectContaining({ status: "test-failure" })],
+    tests: [expect.objectContaining({ status: "probe-invalid" })],
   })
   expect(result.observations).toMatchObject([
     { featureId: "declared-null", outcome: "error", reason: "collector-error" },
@@ -4629,16 +4629,16 @@ test("a silent loaded binary collects a no-same-path-control TODO and an observe
   }))
   const batch = await collectBatch(backend, "xtermjs", definitions)
   expect(batch.results.find((row) => row.featureId === "device.xtgettcap")).toMatchObject({
-    status: "test-todo",
-    // #32246: a zero-byte reply on a loaded binary is TEST TODO with no same-path control, never a source audit.
-    tests: [{ id: "criterion", status: "test-todo", reason: NO_SAME_PATH_CONTROL }],
+    status: "probe-todo",
+    // #32246: a zero-byte reply on a loaded binary is PROBE TODO with no same-path control, never a source audit.
+    tests: [{ id: "criterion", status: "probe-todo", reason: NO_SAME_PATH_CONTROL }],
   })
   expect(batch.observations.find((row) => row.featureId === "sgr.bold")).toMatchObject({
     outcome: "supported",
     assertionType: "buffer_state",
   })
   expect(batch.results.find((row) => row.featureId === "sgr.bold")).toMatchObject({
-    status: "test-todo",
+    status: "probe-todo",
     reason: "visual effect not observed in this run",
   })
 })
@@ -4782,7 +4782,7 @@ test("refuses a declared native SHA mismatch before probe collection", async () 
 })
 
 // 31387: Ghostty native's adapter reports an empty title after OSC 2, so the title-stack round trip observes
-// nothing. A rowless inconclusive was folded to TEST FAILURE as a callback defect; an unobservable setup takes
+// nothing. A rowless inconclusive was folded to PROBE INVALID as a callback defect; an unobservable setup takes
 // the headless observable review instead, with the three empty readings retained as raw state.
 const TITLE_STACK_IDS = ["device.xtwinops-22", "device.xtwinops-23"] as const
 
@@ -4790,12 +4790,12 @@ function expectTitleSetupReview(batch: Awaited<ReturnType<typeof collectBatch>>)
   expect(batch.results).toMatchObject(
     TITLE_STACK_IDS.map((featureId) => ({
       featureId,
-      status: "test-todo",
+      status: "probe-todo",
       criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
       tests: [
         {
           id: "review",
-          status: "test-todo",
+          status: "probe-todo",
           reason: "Title setup was not observable, so this run cannot decide it",
         },
       ],

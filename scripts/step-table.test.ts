@@ -80,7 +80,7 @@ describe("the popover step table", () => {
   it("reads each run's own width, never the words 'the last column'", () => {
     const widths = [
       [warp, "unsupported", 123],
-      [alacrittyWindows, "test-todo", 100],
+      [alacrittyWindows, "probe-todo", 100],
       [terminalApp, "supported", 120],
     ] as const
     for (const [file, status, cols] of widths) {
@@ -91,7 +91,7 @@ describe("the popover step table", () => {
   })
 
   it("reports a held Windows result as held, not as a failed terminal", () => {
-    const table = describeStepTable(source(alacrittyWindows, "test-todo"))
+    const table = describeStepTable(source(alacrittyWindows, "probe-todo"))
     expect(table?.rows[2]?.result).toBe("held")
     expect(table?.rows[2]?.got).toBe("row 2, col 1")
   })

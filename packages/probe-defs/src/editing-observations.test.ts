@@ -432,6 +432,6 @@ test("decrqcra tests the one-cell character delta of the seeded rectangle", () =
   expect(missing).toMatchObject({
     pass: false,
     response: JSON.stringify({ first: "", second: "" }),
-    tests: [{ id: "criterion", status: "test-failure", reason: "no usable checksum reply" }],
+    tests: [{ id: "criterion", status: "probe-invalid", reason: "no usable checksum reply" }],
   })
 })

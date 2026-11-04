@@ -298,7 +298,7 @@ export async function runProbeBatch(
       options.draft?.results ??
       PROBE_DEFS.map((probe) => ({
         featureId: probe.id,
-        status: "test-todo",
+        status: "probe-todo",
         attempt: { scope: "none" },
         tests: [],
         reason: "Required callback has not started",
@@ -464,7 +464,7 @@ export async function runProbeBatch(
       pending.tests = [
         {
           id: "prerequisite",
-          status: "test-todo",
+          status: "probe-todo",
           attempt: { scope: "none" },
           reason: pending.reason,
           rawReplyRef: probe.id,
@@ -507,7 +507,7 @@ export async function runProbeBatch(
         const attempt = geometryStartedAt
           ? { scope: "probe" as const, startedAt: geometryStartedAt }
           : { scope: "none" as const }
-        pending.status = geometryStartedAt ? "test-failure" : "test-todo"
+        pending.status = geometryStartedAt ? "probe-invalid" : "probe-todo"
         pending.attempt = attempt
         pending.reason = diagnostic
         pending.rawReplyRef = probe.id
@@ -778,7 +778,7 @@ export async function runProbeBatch(
           callbackTests = [
             {
               id: "geometry",
-              status: "test-failure",
+              status: "probe-invalid",
               reason: `Measured geometry changed or became unavailable after ${probe.id}`,
             },
           ]
@@ -815,7 +815,7 @@ export async function runProbeBatch(
         result.tests?.length &&
         result.tests.every(
           (test) =>
-            (test.status === "test-todo" || test.status === "test-failure") &&
+            (test.status === "probe-todo" || test.status === "probe-invalid") &&
             typeof test.reason === "string" &&
             test.reason.trim().length > 0,
         )

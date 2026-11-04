@@ -213,12 +213,12 @@ vi.mock("../docs/data/current-results.ts", async () => {
           : cell?.outcome === "unsupported"
             ? "unsupported"
             : cell?.outcome === "error"
-              ? "test-failure"
-              : "test-todo"
+              ? "probe-invalid"
+              : "probe-todo"
       return {
         featureId,
         status,
-        attempt: (selectedIds ? selectedIds.includes(featureId) : status !== "test-todo")
+        attempt: (selectedIds ? selectedIds.includes(featureId) : status !== "probe-todo")
           ? { scope: "probe", startedAt: run.measuredAt }
           : { scope: "none" },
         tests: [],
@@ -431,7 +431,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
           const {sources, ...summary} = api.contexts[key];
           assert.deepEqual(summary, (({sources, ...rest}) => rest)(context));
           assert.deepEqual(keys(sources), keys(context.sources));
-          for (const [id, cell] of Object.entries(context.cells)) {
+          for (const [id, cell] of Object.entries(context.featureResults)) {
             assert.ok(sources[cell.origin.runId], key + "/" + id + " has original source");
             assert.equal(cell.measuredAt, sources[cell.origin.runId].measuredAt);
             assert.equal(cell.suiteId, sources[cell.origin.runId].suiteId);
@@ -824,7 +824,8 @@ describe("selected-run consumer parity", () => {
       // Every trace file is exactly one run document's receipt.
       const traces = versions.flatMap((version) => listed(`api/${version}/traces`))
       expect(traces.sort()).toEqual(receipts.sort())
-      const cellsOf = (url: string) => (JSON.parse(read(url)) as { cells: Record<string, unknown> }).cells
+      const cellsOf = (url: string) =>
+        (JSON.parse(read(url)) as { featureResults: Record<string, unknown> }).featureResults
       const cell = (url: string, featureId: string) => cellsOf(url)[featureId]
       expect(cell(`/api/v3/traces/${fixture.selected.sha256}.json`, "sgr.bold")).toMatchObject({ status: "supported" })
       const report = assertDeploymentLimits(out)
@@ -901,7 +902,7 @@ describe("selected-run consumer parity", () => {
       const trace = unpublished.documents.get(receipt.url)
       if (!trace) throw new Error(`Missing trace document ${receipt.url}`)
       expect(createHash("sha256").update(trace.bytes).digest("hex")).toBe(receipt.sha256)
-      const { cells } = JSON.parse(trace.bytes) as { cells: Record<string, unknown> }
+      const { featureResults: cells } = JSON.parse(trace.bytes) as { featureResults: Record<string, unknown> }
       expect(cells["sgr.bold"]).toEqual({
         status: "supported",
         ...(result.assertionType && { assertionType: result.assertionType }),
@@ -1036,7 +1037,7 @@ describe("selected-run consumer parity", () => {
       expect(site.stats.kitty).toMatchObject({
         // D132 B (#30917): the nine environment positions are recorded but never graded.
         score: { all: 264, supported: 1 },
-        counts: { supported: 1, unsupported: 1, "test-todo": 262 },
+        counts: { supported: 1, unsupported: 1, "probe-todo": 262 },
         complete: false,
       })
       expect(terminal?.params).toMatchObject({ total: "264", yes: "1", no: "1" })
@@ -1146,7 +1147,7 @@ describe("selected-run consumer parity", () => {
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
     expect(site.stats.screen).toMatchObject({
       score: { all: 264, supported: 0 },
-      counts: { supported: 0, unsupported: 1, untestable: 0, "test-todo": 263, "test-failure": 0 },
+      counts: { supported: 0, unsupported: 1, untestable: 0, "probe-todo": 263, "probe-invalid": 0 },
       complete: false,
     })
     expect(site.stats.screen?.pct).toBe(0)
@@ -1165,17 +1166,17 @@ describe("selected-run consumer parity", () => {
     const olderRunId = "screen-older-reviewed-sealed-cccccccc"
     const currentRunId = "screen-reviewed-sealed-dddddddd"
     expect(screen.contributingRunIds).toEqual([olderRunId, currentRunId])
-    expect(Object.values(screen.cells).filter((cell) => cell.origin.runId === olderRunId)).toHaveLength(1)
-    expect(Object.values(screen.cells).filter((cell) => cell.origin.runId === currentRunId)).toHaveLength(272)
-    expect(screen.cells["extensions.sixel"]).toMatchObject({
+    expect(Object.values(screen.featureResults).filter((cell) => cell.origin.runId === olderRunId)).toHaveLength(1)
+    expect(Object.values(screen.featureResults).filter((cell) => cell.origin.runId === currentRunId)).toHaveLength(272)
+    expect(screen.featureResults["extensions.sixel"]).toMatchObject({
       status: "unsupported",
       origin: { runId: olderRunId, resultId: "extensions.sixel" },
       suiteId: "older-suite",
       suiteRelation: "older",
       measuredAt: fixture.measuredAt,
     })
-    expect(screen.cells["sgr.bold"]).toMatchObject({
-      status: "test-todo",
+    expect(screen.featureResults["sgr.bold"]).toMatchObject({
+      status: "probe-todo",
       origin: { runId: currentRunId, resultId: "sgr.bold" },
       suiteRelation: "tree",
       measuredAt: fixture.screen.measuredAt,
@@ -1218,20 +1219,20 @@ describe("selected-run consumer parity", () => {
     const kitty = kittyEntry?.selected
     const screen = screenEntry?.selected
     const tmux = tmuxEntry?.selected
-    const bold = kitty?.cells["sgr.bold"]
+    const bold = kitty?.featureResults["sgr.bold"]
     if (!screen?.subject || !tmux?.subject || !bold || !screenEntry || !tmuxEntry) {
       throw new Error("Missing comparison fixtures")
     }
     function requiredResult(run: PublicContextSummary, id: string) {
-      const result = run.cells[id]
+      const result = run.featureResults[id]
       if (!result) throw new Error(`Missing fixture result ${id}`)
       return result
     }
     function refresh(entry: NonNullable<ReturnType<typeof loadProbes>["selectedByBackend"][string]>) {
       entry.states = Object.fromEntries(
-        Object.values(entry.selected.cells).map((result) => [result.featureId, result.status]),
+        Object.values(entry.selected.featureResults).map((result) => [result.featureId, result.status]),
       )
-      const aggregate = aggregateCurrentResults(Object.values(entry.selected.cells), entry.selected.catalogIds)
+      const aggregate = aggregateCurrentResults(Object.values(entry.selected.featureResults), entry.selected.catalogIds)
       entry.selected.complete = aggregate.complete
       entry.selected.counts = aggregate.counts
       entry.selected.score = { supported: aggregate.supported, all: aggregate.denominator }
@@ -1252,7 +1253,9 @@ describe("selected-run consumer parity", () => {
     const originalTmux = structuredClone(tmux)
     try {
       screen.subject.mux = tmux.subject.mux
-      for (const result of [...Object.values(screen.cells), ...Object.values(tmux.cells)]) result.status = "unsupported"
+      for (const result of [...Object.values(screen.featureResults), ...Object.values(tmux.featureResults)]) {
+        Object.assign(result, { status: "unsupported" })
+      }
       Object.assign(requiredResult(screen, "sgr.bold"), { assertionType: bold.assertionType, status: "unsupported" })
       Object.assign(requiredResult(tmux, "sgr.bold"), { assertionType: bold.assertionType, status: "supported" })
       Object.assign(requiredResult(screen, "extensions.sixel"), {
@@ -1306,12 +1309,12 @@ describe("selected-run consumer parity", () => {
     expect(site.baselineStats.kitty?.core).toMatchObject({
       score: { all: graded, supported: 1 },
       pct: Math.round(100 / graded),
-      counts: { supported: 1, unsupported: 0, untestable: 0, "test-failure": 0, "test-todo": graded - 1 },
+      counts: { supported: 1, unsupported: 0, untestable: 0, "probe-invalid": 0, "probe-todo": graded - 1 },
     })
     expect(site.baselineStats.screen?.core).toMatchObject({
       score: { all: graded, supported: 0 },
       pct: 0,
-      counts: { supported: 0, unsupported: 0, untestable: 0, "test-failure": 0, "test-todo": graded },
+      counts: { supported: 0, unsupported: 0, untestable: 0, "probe-invalid": 0, "probe-todo": graded },
     })
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
     const scores = JSON.parse(core?.params.scores || "[]") as Array<Record<string, unknown>>
@@ -1327,7 +1330,7 @@ describe("selected-run consumer parity", () => {
       screenBold.outcome = "error"
       screenBold.reason = "collector-error"
       expect(probesLoader.load().baselineStats.screen?.core).toMatchObject({
-        counts: { "test-failure": 1, "test-todo": graded - 1 },
+        counts: { "probe-invalid": 1, "probe-todo": graded - 1 },
         score: { all: graded, supported: 0 },
       })
     } finally {
@@ -1380,8 +1383,8 @@ describe("selected-run consumer parity", () => {
 
   it("uses selected public notes across routes without promoting unscoped annotations", () => {
     const data = loadProbes()
-    const reviewed = data.selectedByBackend.kitty?.selected.cells["sgr.bold"]
-    const inconclusive = data.selectedByBackend.screen?.selected.cells["sgr.bold"]
+    const reviewed = data.selectedByBackend.kitty?.selected.featureResults["sgr.bold"]
+    const inconclusive = data.selectedByBackend.screen?.selected.featureResults["sgr.bold"]
     if (!reviewed || !inconclusive) throw new Error("Missing selected bold cells in parity fixture")
     const originalNote = reviewed.reason
     const originalInconclusiveNote = inconclusive.reason
@@ -1445,7 +1448,7 @@ describe("selected-run consumer parity", () => {
         expect(comparison?.params.termAId === backendName ? comparisonRow?.noteA : comparisonRow?.noteB).toBe(expected)
         expect(terminalNote(backendName, featureId)).toBe(expected)
       }
-      expect(data.results.screen?.["sgr.bold"]).toBe("test-todo")
+      expect(data.results.screen?.["sgr.bold"]).toBe("probe-todo")
       const bold = features.find((page) => page.params.featureId === "sgr.bold")
       const boldResults = JSON.parse(bold?.params.backendResults ?? "[]") as Array<Record<string, unknown>>
       expect(boldResults.find((row) => row.name === "kitty")).not.toHaveProperty("url")

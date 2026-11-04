@@ -155,7 +155,7 @@ export function stackVerdict(
 
 /**
  * A stack row's headless result. A null verdict observed neither operation, so it is a coverage
- * record (TEST TODO, the review the ruling names), never a TEST FAILURE: nothing in the harness
+ * record (PROBE TODO, the review the ruling names), never a PROBE INVALID: nothing in the harness
  * failed (@cto 19664c4c). A broken measurement keeps its own parserStateResult(null, ...) failure.
  */
 export function stackStateResult(
@@ -173,7 +173,7 @@ export function replyFailure(reason: string): ExecutionOnlyProbeCallbackResult {
   return {
     pass: false,
     note: reason,
-    tests: [{ id: "criterion", status: "test-failure", reason }],
+    tests: [{ id: "criterion", status: "probe-invalid", reason }],
     replyFailureTestIds: ["criterion"],
   }
 }
@@ -208,9 +208,9 @@ export function withReplyFailureEvidence(
   if (!("replyFailureTestIds" in result) || !result.replyFailureTestIds?.length) return result
   const marked = new Set(result.replyFailureTestIds)
   for (const id of marked) {
-    if (!result.tests?.some((test) => test.id === id && test.status === "test-failure")) {
+    if (!result.tests?.some((test) => test.id === id && test.status === "probe-invalid")) {
       throw new Error(
-        `Callback ${featureId} reply marker ${id} must name a test-failure test; fix the callback builder use`,
+        `Callback ${featureId} reply marker ${id} must name a probe-invalid test; fix the callback builder use`,
       )
     }
   }
@@ -244,7 +244,7 @@ export function withReplyFailureEvidence(
   return {
     ...result,
     tests: result.tests?.map((test) =>
-      marked.has(test.id) && test.status === "test-failure" ? { ...test, reason: `${test.reason}; ${detail}` } : test,
+      marked.has(test.id) && test.status === "probe-invalid" ? { ...test, reason: `${test.reason}; ${detail}` } : test,
     ) as ExecutionOnlyProbeCallbackResult["tests"],
   }
 }
@@ -323,7 +323,7 @@ export function recordCollectorSelection(draft: RunDraft, ids: readonly string[]
   const selected = new Set(ids)
   for (const result of draft.results) {
     if (
-      result.status === "test-todo" &&
+      result.status === "probe-todo" &&
       result.attempt.scope === "none" &&
       result.tests.length === 0 &&
       (result.reason === UNSTARTED_PROBE_REASON || result.reason === UNSELECTED_PROBE_REASON)
@@ -407,22 +407,22 @@ export const SOURCE_NEGATIVE_REVIEW = "source-negative-review"
 export const SEMANTIC_PROMPT_SOURCE_REVIEW = "semantic-prompt-source-review"
 /**
  * The reason a former source-audit site records (@cto 9fad23d7, #32246): the probe ran and saw something, but no
- * control in this run showed the same observation path can report the state, so the cell stays TEST TODO (rule 4).
+ * control in this run showed the same observation path can report the state, so the cell stays PROBE TODO (rule 4).
  * Source code never decides it; a probe owner adds the same-path control per feature.
  */
 export const NO_SAME_PATH_CONTROL = "observation not decided: no same-path control in this run"
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as
- * notTestedResult, with the explicit branch naming its TEST TODO row. The position stays
- * TEST TODO with its named cause; nothing here grades support, delivery or
+ * notTestedResult, with the explicit branch naming its PROBE TODO row. The position stays
+ * PROBE TODO with its named cause; nothing here grades support, delivery or
  * Untestable.
  */
 export function reviewResult(branch: string, reason: string, noObservable: string, state: object): ProbeCallbackResult {
   return {
     ...notTestedResult(noObservable, state),
     criterionBranch: branch,
-    tests: [{ id: "review", status: "test-todo", reason }],
+    tests: [{ id: "review", status: "probe-todo", reason }],
   }
 }
 
@@ -468,7 +468,7 @@ export async function utf8DecodingRefusal(ctx: TermProbeSource, id: string): Pro
     tests: [
       {
         id: "utf8-context",
-        status: "test-todo",
+        status: "probe-todo",
         reason: "Measured decoding is ISO-8859-1; correct the pinned locale and rerun this UTF-8 criterion",
       },
     ],
@@ -554,7 +554,7 @@ export function renderedWidthFailure(
       tests: [
         {
           id: "criterion",
-          status: "test-todo",
+          status: "probe-todo",
           reason: `${stage} width: no cursor-position readback at ${value.step}`,
         },
       ],
@@ -576,7 +576,7 @@ export function renderedWidthFailure(
       return unknownKind(value.kind)
     }
     const reason = `${stage} width ${value.kind}${value.kind === "control-mismatch" ? ` at ${String(value.step)}` : ""}: observed ${position.row};${position.col}`
-    return { pass: false, response, tests: [{ id: "criterion", status: "test-failure", reason }] }
+    return { pass: false, response, tests: [{ id: "criterion", status: "probe-invalid", reason }] }
   }
   return unknownKind(value.kind)
 }
@@ -975,7 +975,7 @@ export function sgrPlainFixtureTooSmall(ctx: TermProbeSource): ProbeCallbackResu
   return {
     pass: false,
     tests: [
-      { id: "criterion", status: "test-todo", reason: `SGR fixture needs at least 1x2, measured ${rows}x${cols}` },
+      { id: "criterion", status: "probe-todo", reason: `SGR fixture needs at least 1x2, measured ${rows}x${cols}` },
     ],
   }
 }
@@ -997,7 +997,7 @@ export function sgrCaptureTooSmall(ctx: TermProbeSource, feature = "SGR capture"
     tests: [
       {
         id: "criterion",
-        status: "test-todo",
+        status: "probe-todo",
         reason: `${feature} needs at least ${SGR_CAPTURE_MIN_ROWS}x${SGR_CAPTURE_MIN_COLS}, measured ${rows}x${cols}`,
       },
     ],
@@ -1027,7 +1027,7 @@ export async function sgrCaptureFrames(
       { id: "capture", status: "supported", assertionRefs: [0] },
       {
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         reason: "Valid control and target capture; no same-run pixel check decides it",
       },
     ],
@@ -1143,7 +1143,7 @@ export function sgrProbe(
         tests: [
           {
             id: "criterion",
-            status: "test-todo",
+            status: "probe-todo",
             reason: `Cursor advance does not verify SGR styling${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
           },
         ],
@@ -1236,7 +1236,7 @@ export function cursorProbe(
         return {
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         }
       }
       ctx.write("\x1b[1;1H")
@@ -1349,7 +1349,7 @@ export function decrpmModeProbe(
           pass: false,
           response,
           note: "no DECRPM reply",
-          tests: [{ id: "criterion", status: "test-todo", reason: "no DECRPM reply" }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: "no DECRPM reply" }],
         }
       }
       if (modeNum === 2026 && snapshot === 2 && ps === 2) {
@@ -1359,7 +1359,7 @@ export function decrpmModeProbe(
           pass: false,
           response,
           note: reason,
-          tests: [{ id: "criterion", status: "test-failure", reason }],
+          tests: [{ id: "criterion", status: "probe-invalid", reason }],
         }
       }
       const supported = ps === 1 || ps === 3
@@ -1491,7 +1491,7 @@ export function headlessDecrpmArm(
               reason: "insufficient-evidence",
               note: reason + presentation,
             },
-            tests: [{ id: "criterion", status: "test-todo", reason }],
+            tests: [{ id: "criterion", status: "probe-todo", reason }],
           }
         }
         const note = `DECRPM mode ${modeNum}: set/reset replies and getMode agree${presentation}`
@@ -1705,7 +1705,7 @@ function cellWidthNamed(
       note: name,
     },
     ...(assertions && { assertions }),
-    tests: [{ id: "criterion", status: "test-failure", reason: `${name}: ${JSON.stringify(observed)}` }],
+    tests: [{ id: "criterion", status: "probe-invalid", reason: `${name}: ${JSON.stringify(observed)}` }],
   }
 }
 
@@ -1766,7 +1766,7 @@ export function cellWidthTransition(reads: CellWidthTransitionReads): ProbeCallb
         tests: [
           {
             id: "criterion",
-            status: "test-failure",
+            status: "probe-invalid",
             reason: `18t/sweep disagreement W=${sweep.width} vs ${claimed} (${phase})`,
           },
         ],
@@ -1839,7 +1839,7 @@ export function tooSmall(
     tests: [
       {
         id: "criterion",
-        status: "test-todo",
+        status: "probe-todo",
         reason: `${fixture} needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
       },
     ],
@@ -1911,7 +1911,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
   if (identity.engineVersion !== artifact.engineVersion || identity.adapterVersion !== artifact.adapterVersion) {
     return undefined
   }
-  // No source review decides this cell any more (#32246): the adapter offers no history reader, so it stays TEST TODO.
+  // No source review decides this cell any more (#32246): the adapter offers no history reader, so it stays PROBE TODO.
   return notTestedResult(`libvterm v${artifact.engineVersion} adapter exposes no retained scrollback history count`, {
     engineVersion: identity.engineVersion,
     adapterVersion: identity.adapterVersion,
@@ -1923,8 +1923,8 @@ export const HARNESS_INCOMPLETE_TEST = "harness"
 
 /**
  * A library probe on any engine (native, wasm or pure JS) whose every reply capture returned zero bytes has no same-path control in
- * this run, so silence alone never grades it (@cto 9fad23d7, #32246): the cell is TEST TODO. Observed buffers,
- * replies and callbacks that already carry a pass, a not-tested record or a TEST TODO keep their measured result.
+ * this run, so silence alone never grades it (@cto 9fad23d7, #32246): the cell is PROBE TODO. Observed buffers,
+ * replies and callbacks that already carry a pass, a not-tested record or a PROBE TODO keep their measured result.
  */
 function zeroReplyUndecided(
   lib: (ctx: LibProbeSource) => ProbeCallbackResult,
@@ -1962,7 +1962,7 @@ function zeroReplyUndecided(
       measured.pass ||
       measured.observation?.assertionType === "buffer_state" ||
       measured.notTested ||
-      measured.tests?.some((test) => test.status === "test-todo")
+      measured.tests?.some((test) => test.status === "probe-todo")
     ) {
       return measured
     }
@@ -2146,7 +2146,7 @@ export function initializeRunDraft(input: {
     intendedSubject: { ...input.intendedSubject },
     results: ids.map((featureId) => ({
       featureId,
-      status: "test-todo",
+      status: "probe-todo",
       attempt: { scope: "none" },
       tests: [],
       reason: UNSTARTED_PROBE_REASON,
@@ -2164,20 +2164,20 @@ export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeRe
     throw new Error(`${input.featureId} carries a source-answer reference; source answers no longer grade (#32246)`)
   }
   const tests = input.tests
-  const failed = tests.find((test) => test.status === "test-failure")
-  const pending = tests.find((test) => test.status === "test-todo")
+  const failed = tests.find((test) => test.status === "probe-invalid")
+  const pending = tests.find((test) => test.status === "probe-todo")
   const impossible = tests.find((test) => test.status === "untestable")
   let status: ProbeResult["status"]
   let reason = input.reason
   if (failed) {
-    status = "test-failure"
+    status = "probe-invalid"
     reason ??= failed.reason ?? "Required test failed after its attempt"
   } else if (pending || tests.length === 0) {
-    status = "test-todo"
+    status = "probe-todo"
     reason ??= pending?.reason ?? "Required feature implementation has not run"
   } else if (impossible) {
     // There is no route to Untestable: its only route was a stored review, and source answers no longer grade (#32246).
-    status = "test-todo"
+    status = "probe-todo"
     reason ??= impossible.reason ?? "no route to Untestable"
   } else {
     status = tests.some((test) => test.status === "unsupported") ? "unsupported" : "supported"
@@ -2232,7 +2232,7 @@ export function recordExecutedProbe(input: {
   if (!observation && !coverage && input.tests && !diagnostic) {
     if (
       input.tests.length === 0 ||
-      input.tests.some((test) => !["test-todo", "test-failure"].includes(test.status) || !test.reason?.trim())
+      input.tests.some((test) => !["probe-todo", "probe-invalid"].includes(test.status) || !test.reason?.trim())
     ) {
       throw new Error(`Execution-only callback ${featureId} requires nonempty TODO/FAILURE tests with reasons`)
     }
@@ -2240,14 +2240,14 @@ export function recordExecutedProbe(input: {
   const assertionRefs = input.assertions.flatMap((entry, index) => (entry.featureId === featureId ? [index] : []))
   const missingCapture = diagnostic?.kind === "collector-error" && diagnostic.name === "FrameUnavailable"
   const status = missingCapture
-    ? "test-todo"
+    ? "probe-todo"
     : diagnostic || observation?.outcome === "error"
-      ? "test-failure"
+      ? "probe-invalid"
       : observation?.outcome === "supported" || observation?.outcome === "unsupported"
         ? observation.outcome
         : coverage
-          ? "test-todo"
-          : "test-failure"
+          ? "probe-todo"
+          : "probe-invalid"
   const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
   // A reason the writer supplied outranks the writer default, which fires only when nothing else names the cause.
   // The generic observation word names nothing: a recorded test's own sentence reaches the row through
@@ -2279,7 +2279,7 @@ export function recordExecutedProbe(input: {
             }
             const refs =
               test.assertionRefs === undefined
-                ? test.status === "test-todo"
+                ? test.status === "probe-todo"
                   ? []
                   : assertionRefs
                 : test.assertionRefs.map((index) => {
@@ -2292,7 +2292,7 @@ export function recordExecutedProbe(input: {
             return {
               id: test.id,
               status: test.status,
-              attempt: test.status === "test-todo" ? { scope: "none" } : attempt,
+              attempt: test.status === "probe-todo" ? { scope: "none" } : attempt,
               assertionRefs: refs,
               ...(rawReplyRef && { rawReplyRef }),
               ...(test.reason && { reason: test.reason }),
@@ -2302,7 +2302,7 @@ export function recordExecutedProbe(input: {
             {
               id: "criterion",
               status,
-              attempt: status === "test-todo" ? { scope: "none" } : attempt,
+              attempt: status === "probe-todo" ? { scope: "none" } : attempt,
               assertionRefs,
               ...(rawReplyRef && { rawReplyRef }),
               ...(reason && { reason }),
@@ -2330,14 +2330,14 @@ export function recordCollectionFailure(
   draft.rawReplies[diagnosticRef] = diagnostic
   const attempt = { scope: "collection" as const, startedAt, diagnosticRef }
   draft.results = draft.results.map((result) =>
-    result.status === "test-todo" && delegated.has(result.featureId)
+    result.status === "probe-todo" && delegated.has(result.featureId)
       ? finalizeProbeResult({
           ...result,
           attempt,
           reason: diagnostic,
           tests: [
             ...result.tests.filter((test) => test.id !== "collection"),
-            { id: "collection", status: "test-failure", attempt, reason: diagnostic },
+            { id: "collection", status: "probe-invalid", attempt, reason: diagnostic },
           ],
         })
       : result,
@@ -2467,7 +2467,7 @@ function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
       if (heldMode !== undefined) {
         if (heldMode !== 1 && audit.engine !== "vt100") return prior
         return fallback(
-          `Held mode ${heldMode}: own DECSET/DECRST case stores state; adapter tool gap TEST TODO, no deciding mode observable`,
+          `Held mode ${heldMode}: own DECSET/DECRST case stores state; adapter tool gap PROBE TODO, no deciding mode observable`,
         )
       }
       if (command === undefined) return prior

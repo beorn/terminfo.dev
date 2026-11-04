@@ -627,7 +627,7 @@ it.each([
             expect(row.error).toContain(join(row.directory!, "collector.log"))
             const retained = JSON.parse(readFileSync(row.rawRun!, "utf8")) as RunDraft
             expect(readCollectorAttempt(retained.rawReplies)?.startedAt).toBe(actualStartedAt)
-            expect(retained.results.every((result) => result.status === "test-todo")).toBe(true)
+            expect(retained.results.every((result) => result.status === "probe-todo")).toBe(true)
           }
           if (inputChange === "macos-untrusted") expect(row.reason).toContain("differs from delegated identity")
         }
@@ -835,7 +835,7 @@ it.each([
           ],
           expect.objectContaining({ env: expect.objectContaining({ TERMINFO_PROBE_HASH: pass.probeHash }) }),
         )
-        // The fixture suite has no mux probes, so the launcher failure is the row error, not a test-failure.
+        // The fixture suite has no mux probes, so the launcher failure is the row error, not a probe-invalid.
         expect(row?.error).toMatch(new RegExp(`${id}/linux.*exited 17`))
       }
       for (const id of LINUX_APP_IDS) {
@@ -1393,7 +1393,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
     expect(run.subject).toMatchObject({ kind: "term", id: "kitty", os: "macos" })
     expect(run.suiteComplete).toBe(true)
-    expect(run.results?.every((result) => result.status === "test-todo")).toBe(true)
+    expect(run.results?.every((result) => result.status === "probe-todo")).toBe(true)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -1522,14 +1522,14 @@ it.each([
         origin: { kind: "collector" },
         measuredAt: specimen.measuredAt,
       }
-      appRun.results[0]!.status = "test-failure"
+      appRun.results[0]!.status = "probe-invalid"
       appRun.results[0]!.criterionBranch = SOURCE_NEGATIVE_REVIEW
       appRun.results[0]!.attempt = { scope: "probe", startedAt: measuredAt }
       appRun.results[0]!.reason = "Required source-negative review pending"
       appRun.results[0]!.tests = [
         {
           id: "review",
-          status: "test-failure",
+          status: "probe-invalid",
           attempt: { scope: "probe", startedAt: measuredAt },
           reason: "Required source-negative review pending",
         },
@@ -1566,21 +1566,21 @@ it.each([
         ...(fault !== "foreign-context" && { runtimeIdentity: specimen.runtimeIdentity }),
       }
       if (fault === "source-negative-pending" || fault === "missing-collection-receipt") {
-        run.results[0]!.status = "test-failure"
+        run.results[0]!.status = "probe-invalid"
         run.results[0]!.criterionBranch = SOURCE_NEGATIVE_REVIEW
         run.results[0]!.attempt = { scope: "probe", startedAt: measuredAt }
         run.results[0]!.reason = "Required source-negative review pending"
         run.results[0]!.tests = [
           {
             id: "review",
-            status: "test-failure",
+            status: "probe-invalid",
             attempt: { scope: "probe", startedAt: measuredAt },
             reason: "Required source-negative review pending",
           },
         ]
       } else {
         run.results[0]!.tests = [
-          { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
+          { id: "review", status: "probe-todo", attempt: { scope: "none" }, reason: "Required review pending" },
         ]
       }
       if (fault === "producer-zero-review") {
@@ -1709,7 +1709,7 @@ it.each([
       expect(readFileSync(row.rawRun!, "utf8")).toBe(producerBytes)
       if (fault === "producer-pending") {
         const retained = JSON.parse(producerBytes!) as CapturedRunDraft
-        expect(retained.results[0]!.tests[0]!.status).toBe("test-todo")
+        expect(retained.results[0]!.tests[0]!.status).toBe("probe-todo")
       }
       const receipt = JSON.parse(readFileSync(join(dirname(row.rawRun!), "collection.json"), "utf8")) as Pick<
         Awaited<ReturnType<typeof headless.collectHeadlessRuns>>,

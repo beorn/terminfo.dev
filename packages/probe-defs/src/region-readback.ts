@@ -214,7 +214,7 @@ function inconclusive(
  * shape — it reports evidence "query" instead (see captureRegionVerdict).
  */
 function refused(id: string, note: string): ProbeCallbackResult {
-  return { pass: false, tests: [{ id: "criterion", status: "test-todo", reason: note }] }
+  return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: note }] }
 }
 
 /**
@@ -232,7 +232,7 @@ function afterCallerBytes(result: ProbeCallbackResult | null, callerHasQuery: bo
     tests: [
       {
         id: "criterion",
-        status: "test-failure",
+        status: "probe-invalid",
         reason: `${result.tests[0].reason} — the caller wrote before this refusal, so this is not a zero-byte trace`,
       },
     ],
@@ -462,7 +462,7 @@ export function cropPositionRefusal(input: {
     tests: [
       {
         id: "comparison",
-        status: "test-failure",
+        status: "probe-invalid",
         reason: `Compared frames were cropped from different positions: ${named}`,
       },
     ],
@@ -669,11 +669,11 @@ export async function captureRegionGeometry(
     const note = `${id}: ${reported.missing}, so this run cannot map cells onto the captured window`
     if (!retainedReply) {
       if (missingRequiredReply) return replyFailure(note)
-      return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+      return { pass: false, tests: [{ id: "criterion", status: "probe-invalid", reason: note }] }
     }
     return {
       ...inconclusive(id, note, "insufficient-evidence", "query_reply"),
-      tests: [{ id: "criterion", status: "test-failure", reason: note }],
+      tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
       ...(missingRequiredReply ? { replyFailureTestIds: ["criterion"] } : {}),
     }
   }
@@ -864,7 +864,7 @@ export async function captureRegionReadbackDecision(
       return {
         ...execution,
         criterionBranch: "visual-review",
-        tests: [{ id: "review", status: "test-todo", reason: reviewReason }],
+        tests: [{ id: "review", status: "probe-todo", reason: reviewReason }],
         response: JSON.stringify({
           ...(result.response === undefined ? {} : { originalResponse: result.response }),
           review: {
@@ -878,7 +878,7 @@ export async function captureRegionReadbackDecision(
     return {
       ...result,
       criterionBranch: "visual-review",
-      tests: [{ id: "review", status: "test-todo", reason: reviewReason }],
+      tests: [{ id: "review", status: "probe-todo", reason: reviewReason }],
     }
   }
   if (!read) return discriminator ? review(refused(id, "no freshness witness"), "no freshness witness") : null

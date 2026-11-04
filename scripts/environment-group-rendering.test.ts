@@ -1,5 +1,5 @@
 /**
- * @failure A run's nine environment positions print as TEST TODO, so "manual by design" reads as
+ * @failure A run's nine environment positions print as PROBE TODO, so "manual by design" reads as
  *   unmeasured work and the published denominator disagrees with the bars, tooltips and sentences.
  * @level l2
  * @consumer terminfo.dev home, baseline, terminal, compare and full-scope pages plus the admin matrix
@@ -50,7 +50,7 @@ const catalogIds = [...ENVIRONMENT_GROUP_IDS, ...gradedIds]
 const todos = (): ProbeResult[] =>
   catalogIds.map((featureId) => ({
     featureId,
-    status: "test-todo",
+    status: "probe-todo",
     attempt: { scope: "none" },
     tests: [],
     reason: "No implementation",
@@ -158,8 +158,10 @@ describe("public test CLI coverage uses the collected manifest", () => {
         expect(stderr.mock.calls.flat().join(" ")).not.toContain("identity unverified")
         return
       }
-      const summary = output.mock.calls.map(([line]) => line).find((line) => line.includes("TEST FAILURE"))
-      expect(summary).toBe(`0 Supported · 0 Unsupported · 0 Untestable · 264 TEST TODO · 0 TEST FAILURE${clause}`)
+      const summary = output.mock.calls.map(([line]) => line).find((line) => line.includes("PROBE INVALID"))
+      expect(summary).toBe(
+        `0 Supported · 0 Unsupported · 0 Untestable · 264 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT${clause}`,
+      )
     } finally {
       output.mockRestore()
       stdout.mockRestore()
@@ -282,7 +284,7 @@ describe("public test CLI coverage uses the collected manifest", () => {
         ]
         run.results[0] = {
           featureId: "sgr.bold",
-          status: "test-todo",
+          status: "probe-todo",
           reason: "Independent review pending",
           assertionType: "query_reply",
           rawReplyRef: "sgr.bold",
@@ -294,7 +296,7 @@ describe("public test CLI coverage uses the collected manifest", () => {
               assertionRefs: [0],
               attempt: { scope: "probe", startedAt: run.measuredAt },
             },
-            { id: "review", status: "test-todo", reason: "Independent review pending", attempt: { scope: "none" } },
+            { id: "review", status: "probe-todo", reason: "Independent review pending", attempt: { scope: "none" } },
           ],
         }
       }
@@ -340,10 +342,10 @@ describe("public test CLI coverage uses the collected manifest", () => {
         if (pending) {
           expect(saved.rawReplies["sgr.bold"]).toBe("reply")
           expect(saved.results.find((row) => row.featureId === "sgr.bold")).toMatchObject({
-            status: "test-todo",
+            status: "probe-todo",
             rawReplyRef: "sgr.bold",
             tests: expect.arrayContaining([
-              { id: "review", status: "test-todo", reason: "Independent review pending", attempt: { scope: "none" } },
+              { id: "review", status: "probe-todo", reason: "Independent review pending", attempt: { scope: "none" } },
             ]),
           })
         }
@@ -368,12 +370,12 @@ describe("public test CLI coverage uses the collected manifest", () => {
   })
 })
 
-describe("#30917 environment groups are named, never TEST TODO", () => {
+describe("#30917 environment groups are named, never PROBE TODO", () => {
   it("names the groups the run recorded and leaves the graded counts alone", () => {
     const bar = aggregateCurrentResults(todos(), catalogIds)
     expect(bar.denominator).toBe(264)
     expect(currentCoverageSentence(bar, catalogIds)).toBe(
-      `0 Supported · 0 Unsupported · 0 Untestable · 264 TEST TODO · 0 TEST FAILURE · ${ENVIRONMENT_GROUP_IDS.length} environment groups manual by design (catalogue), ungraded`,
+      `0 Supported · 0 Unsupported · 0 Untestable · 264 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT · ${ENVIRONMENT_GROUP_IDS.length} environment groups manual by design (catalogue), ungraded`,
     )
     // A caller that does not know the catalogue never invents a count for it.
     expect(currentCoverageSentence(bar)).not.toContain("environment groups")
@@ -408,13 +410,13 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     const terminal = source("docs/terminals/[id].md")
     expect(terminal).toContain("currentCoverageSentence(measuredBar, selectedRun.catalogIds)")
     expect(terminal).toContain(
-      "aggregateCurrentResults('cells' in selection ? Object.values(selection.cells) : selection.results, selection.catalogIds)",
+      "aggregateCurrentResults('featureResults' in selection ? Object.values(selection.featureResults) : selection.results, selection.catalogIds)",
     )
     expect(terminal).toContain("const defaultRun = data.selectedByBackend[p.backendId]?.selected")
     expect(terminal).toContain("runSha.value ? recordedRuns.find(run => run.sha256 === runSha.value) : defaultRun")
   })
 
-  it("gives the evidence cell the manual-by-design words only for a stored TEST TODO", () => {
+  it("gives the evidence cell the manual-by-design words only for a stored PROBE TODO", () => {
     const cell = source("docs/.vitepress/theme/ResultEvidenceCell.vue")
     expect(cell).toContain("evidenceStatus(props.featureId, currentResult.value?.status)")
   })
@@ -424,13 +426,14 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     // environment override would publish "NOT MEASURED" over a real measurement.
     expect(evidenceStatus("device.env-term", "supported")).toEqual({ text: "Supported", icon: "✓", tone: "yes" })
     expect(evidenceStatus("device.env-term", "unsupported").text).toBe("Unsupported")
-    expect(evidenceStatus("device.env-term", "test-failure").text).toBe("TEST FAILURE")
-    // Only the catalogue's own TEST TODO wears the manual-by-design words, and never the TODO label.
-    expect(evidenceStatus("device.env-term", "test-todo")).toEqual(MANUAL_BY_DESIGN_STATUS)
-    expect(evidenceStatus("device.env-term", "test-todo").text).not.toBe("TEST TODO")
+    expect(evidenceStatus("device.env-term", "probe-invalid").text).toBe("PROBE INVALID")
+    // Only the catalogue's own PROBE TODO wears the manual-by-design words, and never the TODO label.
+    expect(evidenceStatus("device.env-term", "probe-todo")).toEqual(MANUAL_BY_DESIGN_STATUS)
+    expect(evidenceStatus("device.env-term", "probe-todo").text).not.toBe("PROBE TODO")
     expect(MANUAL_BY_DESIGN_STATUS.text).toBe("Manual by design (catalogue), NOT MEASURED")
     // A graded row keeps its stored status untouched.
-    expect(evidenceStatus("sgr.bold", "test-todo").text).toBe("TEST TODO")
+    expect(evidenceStatus("sgr.bold", "probe-todo").text).toBe("PROBE TODO")
+    expect(evidenceStatus("sgr.bold", "probe-conflict")).toEqual({ text: "PROBE CONFLICT", icon: "!", tone: "error" })
     expect(evidenceStatus("sgr.bold", undefined)).toEqual({ text: "", icon: "–", tone: "unknown" })
   })
 
@@ -438,12 +441,12 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     const api = source("docs/api.md")
     expect(api).toContain("graded** catalog positions")
     expect(api).toContain("ungraded: **manual by design (catalogue)**")
-    expect(api).toContain("only a stored TEST TODO")
+    expect(api).toContain("only a stored PROBE TODO")
     const full = source("docs/release/full-273.md")
     expect(full).toContain("data.gradedRows")
     expect(full).toContain("data.environmentGroups")
     expect(full).toContain("(manual by design, ungraded)")
-    expect(full).toContain("zero TEST TODO and zero TEST FAILURE among the graded features")
+    expect(full).toContain("zero PROBE TODO and zero PROBE INVALID among the graded features")
   })
 
   it("names the nine on the OS page tooltip too (D2)", () => {

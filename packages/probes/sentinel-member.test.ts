@@ -443,12 +443,12 @@ interface ArmCase {
   when: string
   /** The engine's reply to each query; anything unnamed is silent. DA1 always answers. */
   replies: Readonly<Record<string, string>>
-  outcome: "unsupported" | "inconclusive" | "test-failure"
+  outcome: "unsupported" | "inconclusive" | "probe-invalid"
 }
 
 // One real arm per grader family, both two-step arms, and DECRQSS's second step after an SGR refusal.
 const ARM_CASES: ArmCase[] = [
-  { id: "extensions.osc0-icon-title", when: "silent", replies: {}, outcome: "test-failure" },
+  { id: "extensions.osc0-icon-title", when: "silent", replies: {}, outcome: "probe-invalid" },
   { id: "device.xtversion", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.xtwinops-20", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.decrqss", when: "silent", replies: {}, outcome: "unsupported" },
@@ -479,7 +479,7 @@ test.each(ARM_CASES)(
     }
     const headless = lib(queryOnly(ctx))
     expect(outcomes.length, id).toBeGreaterThan(0)
-    if (outcome === "test-failure") {
+    if (outcome === "probe-invalid") {
       expect(headless.tests, id).toMatchObject([{ status: outcome }])
       expect(headless.replyFailureTestIds, id).toEqual(["criterion"])
       expect(headless.observation, id).toBeUndefined()
@@ -491,7 +491,7 @@ test.each(ARM_CASES)(
     if (Object.keys(replies).length === 0) {
       expect(plain.observation, id).toBeUndefined()
       expect(plain.tests, id).toContainEqual(
-        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+        expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) }),
       )
     } else {
       // A complete SGR refusal advances to DECSTBM; its empty capture retains a failure, not an observation.
@@ -499,7 +499,7 @@ test.each(ARM_CASES)(
       expect(plain.tests, id).toContainEqual(
         expect.objectContaining({
           id: "criterion",
-          status: "test-failure",
+          status: "probe-invalid",
           reason: expect.stringContaining("SGR refused; DECSTBM unanswered; DECRQSS facility still speaks"),
         }),
       )
@@ -665,7 +665,7 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
     ),
   })
   expect(batch.results.find((result) => result.featureId === "device.xtversion")).toMatchObject({
-    status: "test-failure",
+    status: "probe-invalid",
     rawReplyRef: "device.xtversion",
     reason: expect.stringContaining("late reply after sentinel"),
   })
@@ -769,7 +769,7 @@ test.each(["changed", "unavailable"] as const)(
     expect(callback).not.toHaveBeenCalled()
     expect(destroy).toHaveBeenCalledOnce()
     expect(batch.results[0]).toMatchObject({
-      status: "test-failure",
+      status: "probe-invalid",
       reason: expect.stringContaining(
         mode === "changed" ? "instance identity differs" : "instance identity unavailable",
       ),
@@ -900,7 +900,7 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "l
       expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
         decisions: { [id]: { member: true } },
       })
-      expect(batch.results[0]).toMatchObject({ status: "test-failure" })
+      expect(batch.results[0]).toMatchObject({ status: "probe-invalid" })
       expect(batch.ungradedDiagnostics[id]).toMatchObject({
         message: expect.stringContaining("late reply after sentinel"),
       })
@@ -913,7 +913,7 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "l
       return
     }
     if (mode === "missing" || mode === "error") {
-      expect(batch.results[0]).toMatchObject({ status: "test-failure" })
+      expect(batch.results[0]).toMatchObject({ status: "probe-invalid" })
       expect(batch.ungradedDiagnostics[id]).toMatchObject({
         message: expect.stringContaining(mode === "error" ? "original callback error" : "missing cause"),
       })

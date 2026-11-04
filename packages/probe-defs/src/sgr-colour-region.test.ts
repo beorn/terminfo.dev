@@ -601,7 +601,7 @@ for (const id of COLOUR_IDS) {
     expect(result.tests).toContainEqual(
       expect.objectContaining({
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         reason: "colour oracle cannot distinguish ignored from identical paint against the current reference",
       }),
     )
@@ -617,7 +617,9 @@ test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async
     const onCapture = await run(id, captured.ctx)
     expect(onCapture.observation).toBeUndefined()
     expect(onCapture).toMatchObject({
-      tests: [expect.objectContaining({ status: "test-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" })],
+      tests: [
+        expect.objectContaining({ status: "probe-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" }),
+      ],
     })
     // The generic 1x2 floor is checked first on both arms, exactly as it was before these rows moved
     // onto the capture row; the 3x34 capture guard is the stricter floor behind it.
@@ -628,7 +630,9 @@ test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async
     const onTerm = await run(id, { ...plain.ctx, capture: undefined, captureKind: undefined })
     expect(onTerm.observation).toBeUndefined()
     expect(onTerm).toMatchObject({
-      tests: [expect.objectContaining({ status: "test-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" })],
+      tests: [
+        expect.objectContaining({ status: "probe-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" }),
+      ],
     })
     expect(onTerm.tests?.[0]?.reason ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
     expect(plain.writes).toEqual([])
@@ -742,7 +746,7 @@ for (const id of REVIEW_IDS) {
       expect(result.tests).toMatchObject([
         {
           id: "criterion",
-          status: "test-failure",
+          status: "probe-invalid",
           reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
         },
       ])

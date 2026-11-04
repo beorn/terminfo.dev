@@ -575,7 +575,7 @@ test.each([
     expect(recorded.writes).toEqual([])
     expect(recorded.observation).toBeUndefined()
     expect(recorded.result.reason).toBe(`Required grant missing: ${refusal}`)
-    expect(recorded.result).toMatchObject({ status: "test-todo", tests: [{ id: "prerequisite" }] })
+    expect(recorded.result).toMatchObject({ status: "probe-todo", tests: [{ id: "prerequisite" }] })
     expect(recorded.assertions).toEqual([])
   }
 })

@@ -1033,7 +1033,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         // Current evidence projections bind explicit cell references, not unrelated collector fields.
         fontReview.rawReplyRef = "collector.fontSource"
       }
-      if (fontReview.status === "test-todo") {
+      if (fontReview.status === "probe-todo") {
         let proofState = "absent"
         let detail = "no structured native font source proof retained"
         if (fontSource !== undefined) {
@@ -1088,7 +1088,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     } else if (result === "failed") {
       draft.rawReplies["collector.prerequisite"] = diagnostic
       for (const row of draft.results) {
-        if (row.status === "test-todo" && selectedIds.includes(row.featureId)) row.reason = diagnostic
+        if (row.status === "probe-todo" && selectedIds.includes(row.featureId)) row.reason = diagnostic
       }
     }
     checkpoint()

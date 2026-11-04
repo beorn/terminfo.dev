@@ -179,7 +179,7 @@ On the measured hosted iTerm2 3.6.11 build, the
 "Allow Terminal-Initiated Display?" consent modal obscuring retained target frames.
 The modal is a measured obstruction, not a proven cause of the full collection's outer
 600-second wait. A later image/underline/blink diagnostic reproduced the obstruction and
-completed; all three feature statuses remained Test to-do. Neither unfinished draft statuses
+completed; all three feature statuses remained PROBE TODO. Neither unfinished draft statuses
 nor successful capture subtests establish accepted feature grades.
 
 The retained Terminal.app post-repair capture refused the selected window image and the
@@ -217,7 +217,7 @@ prior scrollback and an empty last row after overflow. The [retained-byte assess
 requires the cited recipe/version and all five expected grids, not a stored pass flag.
 The current writer requires a declared text claim, a macOS terminal subject and no console
 host; Windows CPR does not satisfy that prerequisite. A Windows text-frame row retains a
-text-qualification Test to-do, with existing required failures still taking precedence.
+text-qualification PROBE TODO, with existing required failures still taking precedence.
 
 Preparation restores measured visibility/autowrap and verifies the reset blank grid through
 the existing capture lifecycle; failure to prove it fails the run. This proves neither retained

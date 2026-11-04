@@ -79,7 +79,7 @@ export function createDraft(
     "This command creates files offline and does not send them. Review this draft before posting it as a GitHub issue.",
     "If you choose to contribute, include this consent statement:",
     "I dedicate these results to the public domain (CC0 1.0) so terminfo.dev can publish them under any license.",
-    ...(!complete ? ["Current execution is incomplete: TEST TODO or TEST FAILURE remains."] : []),
+    ...(!complete ? ["Current execution is incomplete: PROBE TODO or PROBE INVALID remains."] : []),
     "",
     "## Measured context and coverage",
     "",

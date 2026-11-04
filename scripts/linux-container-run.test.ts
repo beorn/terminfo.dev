@@ -212,11 +212,11 @@ it("font control retains capable glyph IDs, exact font hash and the actual priva
   }
 })
 
-it("font control keeps different positions with unchanged glyph IDs TEST TODO", () => {
+it("font control keeps different positions with unchanged glyph IDs PROBE TODO", () => {
   const fixture = fontControl("positions-only")
   expect(fixture.result.status, fixture.result.stderr).toBe(0)
   const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
-  expect(receipt.status).toBe("test-todo")
+  expect(receipt.status).toBe("probe-todo")
   expect(receipt.proofState).toBe("inconclusive")
   expect(receipt.reason).toContain("control #32062")
   expect(receipt.reason).toMatch(/glyph|substitut|ligatur/i)
@@ -224,12 +224,12 @@ it("font control keeps different positions with unchanged glyph IDs TEST TODO", 
   expect(fontGlyphIds(receipt.harfbuzz.on)).toEqual(fontGlyphIds(receipt.harfbuzz.off))
 })
 
-it("missing or failed HarfBuzz retains a named TEST TODO receipt instead of aborting or grading an engine", () => {
+it("missing or failed HarfBuzz retains a named PROBE TODO receipt instead of aborting or grading an engine", () => {
   for (const scenario of ["missing", "failed"] as const) {
     const fixture = fontControl(scenario)
     expect(fixture.result.status, fixture.result.stderr).toBe(0)
     const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
-    expect(receipt.status).toBe("test-todo")
+    expect(receipt.status).toBe("probe-todo")
     expect(receipt.proofState).toBe(scenario === "missing" ? "absent" : "failed to load")
     expect(receipt.reason).toContain("control #32062")
     expect(receipt.reason).toMatch(/hb-shape|HarfBuzz|missing|failed/i)
@@ -633,7 +633,7 @@ describe("frame-less container run", () => {
       selected(
         ["device.primary-da", "cursor.shape"],
         ["cursor.shape", "device.primary-da"],
-        ["test-todo", "test-failure"],
+        ["probe-todo", "probe-invalid"],
       ).status,
     ).toBe(0)
   })
@@ -1049,7 +1049,7 @@ it.each([false, true])("writes a Linux completion receipt for captured bytes, pe
   }
   if (pending) {
     capture.results.find((row) => row.featureId === "device.primary-da")!.tests = [
-      { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+      { id: "review", status: "probe-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
     ]
   }
   writeFileSync(join(dir, "v3-capture.json"), JSON.stringify(capture))
@@ -1126,7 +1126,7 @@ it.each([false, true])("writes a Linux completion receipt for captured bytes, pe
   if (pending) {
     expect(saved.results.find((row) => row.featureId === "device.primary-da")?.tests).toContainEqual({
       id: "review",
-      status: "test-todo",
+      status: "probe-todo",
       attempt: { scope: "none" },
       reason: "Required context review pending",
     })

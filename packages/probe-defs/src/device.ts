@@ -172,7 +172,7 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
         (spec.id === "device.xtwinops-14" && /^\x1b\[4;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw)) ||
         (spec.id === "device.xtwinops-16" && /^\x1b\[6;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
       if (spec.id === "device.xtwinops-14" || spec.id === "device.xtwinops-16") {
-        // #32246: a zero geometry reply has no same-path control in this run, so it stays TEST TODO.
+        // #32246: a zero geometry reply has no same-path control in this run, so it stays PROBE TODO.
         if (zeroGeometry && result.observation?.outcome === "inconclusive") {
           return notTestedResult(NO_SAME_PATH_CONTROL, { query: spec.query, raw })
         }
@@ -672,7 +672,7 @@ export const deviceProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
               },
             ],
@@ -703,7 +703,7 @@ export const deviceProbes: ProbeDefinition[] = [
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: "probe-todo",
               reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
             },
           ],

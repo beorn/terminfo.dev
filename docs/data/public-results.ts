@@ -3,7 +3,7 @@ import { createHash } from "node:crypto"
 import { isEnvironmentGroup, readCollectorSelection } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
-  ProbeStatus,
+  FeatureResultStatus,
   ConsoleBufferOwner,
   Observation,
   ObservationFrame,
@@ -14,6 +14,7 @@ import type {
   TextCellsObservationFrame,
 } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentResult } from "./current-results.ts"
+import type { FeatureResult } from "./release-scope.ts"
 import {
   type SelectedCell,
   type SelectedContextSummary,
@@ -93,7 +94,7 @@ function traceReceipt(
   const prior = documents.get(trace.url)
   if (prior && prior.bytes !== trace.bytes) throw new Error(`Conflicting trace document ${trace.url}`)
   const actualSha256 = createHash("sha256").update(trace.bytes).digest("hex")
-  for (const featureId of Object.keys(trace.document.cells)) {
+  for (const featureId of Object.keys(trace.document.featureResults)) {
     const loaded = readCellTrace(trace.document, {
       schemaVersion,
       runId: trace.document.runId,
@@ -140,7 +141,7 @@ export interface PublicProbeResult extends Pick<
   reason?: string
   /**
    * The Windows console-host hold this reader applied (#30720): it names the host that answered the
-   * queries, which is why the cell reads TEST TODO. Published even when the cell's own evidence prose is
+   * queries, which is why the cell reads PROBE TODO. Published even when the cell's own evidence prose is
    * not approved for publication, because it explains the displayed verdict rather than adding evidence.
    */
   hold?: string
@@ -169,16 +170,19 @@ export interface PublicProjection {
 
 export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
   selected: PublicContextSummary
-  states: Readonly<Record<string, ProbeStatus>>
+  states: Readonly<Record<string, FeatureResultStatus>>
 }
 
 /** An original run's public receipt, separate from a context's composed cells. */
 export type PublicRunMetadata = Omit<PublicVersion, "results">
 
+export type PublicFeatureResult = Omit<PublicProbeResult, "status"> &
+  Pick<FeatureResult, "status" | "strength" | "conflictingProbes">
+
 export interface PublicContextSummary extends Omit<SelectedContextSummary, "cells" | "attempts"> {
-  cells: Record<
+  featureResults: Record<
     string,
-    PublicProbeResult & {
+    PublicFeatureResult & {
       origin: { runId: string; resultId: string }
       measuredAt: string
       suiteId: string
@@ -209,7 +213,7 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
   const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
     const hold = result.tests.find((check) => check.id === "console-host")?.reason
     const selection =
-      result.status === "test-todo" && result.attempt.scope === "none" && !isEnvironmentGroup(result.featureId)
+      result.status === "probe-todo" && result.attempt.scope === "none" && !isEnvironmentGroup(result.featureId)
         ? readCollectorSelection(version.rawReplies)
         : undefined
     // Scheduling facts explain an untouched row without presenting unreviewed callback evidence.
@@ -274,17 +278,24 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
         const { results: _results, ...metadata } = mapVersion(original)
         sources[runId] = metadata
       }
-      const cells = Object.fromEntries(
+      const featureResults = Object.fromEntries(
         Object.entries(context.cells).map(([id, cell]) => {
           const original = originalRunFor(projection, key, cell.origin.runId)
           const result = mapVersion(original).results.find((row) => row.featureId === cell.origin.resultId)
           if (!result) {
             throw new Error(`Original run ${original.runId} lacks result ${cell.origin.resultId} for ${key}/${id}`)
           }
+          const featureResult = isEnvironmentGroup(id)
+            ? { status: result.status, strength: null, conflictingProbes: [] }
+            : cell.featureResult
+          if (!featureResult) throw new Error(`Context ${key}/${id} lacks its computed feature result`)
           return [
             id,
             {
               ...result,
+              status: featureResult.status,
+              strength: featureResult.strength,
+              conflictingProbes: featureResult.conflictingProbes,
               origin: cell.origin,
               measuredAt: original.measuredAt,
               suiteId: original.suiteId,
@@ -293,12 +304,13 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
           ]
         }),
       )
+      const { cells: _cells, ...metadata } = context
       return [
         key,
         {
-          ...context,
+          ...metadata,
           contributingRunIds: context.contributingRunIds,
-          cells,
+          featureResults,
           sources,
           attempts: context.attempts.map((attempt) => ({
             runId: attempt.runId,
@@ -325,7 +337,9 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
         {
           contextKey: value.contextKey,
           selected: context,
-          states: Object.fromEntries(context.catalogIds.map((id) => [id, context.cells[id]?.status ?? "test-todo"])),
+          states: Object.fromEntries(
+            context.catalogIds.map((id) => [id, context.featureResults[id]?.status ?? "probe-todo"]),
+          ),
         },
       ]
     }),

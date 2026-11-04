@@ -79,7 +79,7 @@ function collectorRun(): CollectedProbeRun {
     results: [
       {
         featureId: "device.primary-da",
-        status: "test-todo",
+        status: "probe-todo",
         attempt: { scope: "none" },
         tests: [],
         reason: "Not implemented",
@@ -417,7 +417,7 @@ it("retains exact empty selection HTTP bytes as an unmeasured draft", async () =
   expect(retained.sha256).toBe(createHash("sha256").update(raw).digest("hex"))
   expect(retained.run).not.toHaveProperty("subject")
   expect(retained.run).not.toHaveProperty("measuredAt")
-  expect(retained.run.results.every((row) => row.status === "test-todo" && row.attempt.scope === "none")).toBe(true)
+  expect(retained.run.results.every((row) => row.status === "probe-todo" && row.attempt.scope === "none")).toBe(true)
 })
 
 it("retains exact daemon HTTP bytes and refuses invalid UTF-8 before parsing", async () => {
@@ -676,11 +676,11 @@ it("retains pending results without review snapshots", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const run = collectorRun()
   run.results[0]!.tests = [
-    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+    { id: "review", status: "probe-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
   ]
   const path = saveDaemonProbeRun(run, root)
   const saved = JSON.parse(readFileSync(path, "utf8")) as CollectedProbeRun
-  expect(saved.results[0]!.tests[0]!.status).toBe("test-todo")
+  expect(saved.results[0]!.tests[0]!.status).toBe("probe-todo")
   expect(
     Object.keys(saved.rawReplies).some(
       (key) => key.startsWith("collector.review.") || key.startsWith("collector.capture."),

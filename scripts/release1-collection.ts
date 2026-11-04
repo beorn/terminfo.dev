@@ -835,7 +835,7 @@ export async function collectPass(
       row.status = actualStart ? "failed" : "not-started"
       if (!actualStart) {
         for (const result of retained.results) {
-          if (result.status === "test-todo" && ids.includes(result.featureId)) result.reason = row.error
+          if (result.status === "probe-todo" && ids.includes(result.featureId)) result.reason = row.error
         }
       }
       writeFileSync(handed.path, `${JSON.stringify(retained, null, 2)}\n`)

@@ -140,7 +140,7 @@ for (const featureId of ["extensions.kitty-graphics.animation", "extensions.kitt
     expect(result.tests).toEqual([
       {
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         reason: expect.stringContaining("this arm supplied no cell-aligned region, so nothing could be compared"),
       },
     ])
@@ -154,7 +154,7 @@ for (const featureId of ["extensions.kitty-graphics.animation", "extensions.kitt
     const { context, captures } = surface({ region: ["unused"] })
     context.captureKind = "text-cells"
     const result = await term(featureId)(context)
-    expect(result.tests).toEqual([{ id: "review", status: "test-todo", reason: expect.stringContaining("pixels") }])
+    expect(result.tests).toEqual([{ id: "review", status: "probe-todo", reason: expect.stringContaining("pixels") }])
     expect(result.criterionBranch).toBe("headless-observable-review")
     expect(captures).toHaveLength(0)
     expect(result.assertions).toBeUndefined()
@@ -297,6 +297,6 @@ test("a text snapshot never decides either row", async () => {
     const result = await term(id)(textOnly)
     // A text-only arm is an execution limit with no observable at all, never a verdict.
     expect(result.observation, id).toBeUndefined()
-    expect(result.tests, id).toMatchObject([expect.objectContaining({ status: "test-todo" })])
+    expect(result.tests, id).toMatchObject([expect.objectContaining({ status: "probe-todo" })])
   }
 })

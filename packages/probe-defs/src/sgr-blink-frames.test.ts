@@ -144,7 +144,7 @@ test("a first sample caught before the fixture finished painting (A,B,B,B) is no
 })
 
 test("an undecided blink is recorded as review pending, never a test failure; a return is recorded Supported", async () => {
-  // @dev/10's fold proof (#31812 r2): a rowless inconclusive result persisted as TEST FAILURE.
+  // @dev/10's fold proof (#31812 r2): a rowless inconclusive result persisted as PROBE INVALID.
   const record = (result: Awaited<ReturnType<NonNullable<ReturnType<typeof blink>["term"]>>>) =>
     recordExecutedProbe({
       featureId: "sgr.blink",
@@ -160,9 +160,9 @@ test("an undecided blink is recorded as review pending, never a test failure; a 
     const result = await term(context)
     expect(result.tests).toMatchObject([
       { id: "capture", status: "supported" },
-      { id: "review", status: "test-todo" },
+      { id: "review", status: "probe-todo" },
     ])
-    expect(record(result).status).not.toBe("test-failure")
+    expect(record(result).status).not.toBe("probe-invalid")
   }
   const { context } = app({ styled: ALTERNATING, plain: STEADY_PLAIN, geometry: true })
   expect(record(await term(context)).status).toBe("supported")
@@ -223,7 +223,7 @@ test("without a measured raster the control and nine blink samples go to review 
   expect(result.observation?.frames).toHaveLength(SAMPLES + 1)
   expect(result.tests).toMatchObject([
     { id: "capture", status: "supported" },
-    { id: "review", status: "test-todo" },
+    { id: "review", status: "probe-todo" },
   ])
 })
 

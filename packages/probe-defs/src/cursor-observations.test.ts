@@ -15,7 +15,7 @@ function byId(id: string) {
   return probe
 }
 
-function expectExecutionOnly(result: ProbeCallbackResult, status: "test-todo" | "test-failure") {
+function expectExecutionOnly(result: ProbeCallbackResult, status: "probe-todo" | "probe-invalid") {
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([expect.objectContaining({ status, reason: expect.any(String) })])
 }
@@ -208,7 +208,7 @@ test("cursor shape without style readback and reverse-wrap CPR remain ungraded",
   expect(shape.assertions).toBeUndefined()
 
   const appShape = await byId("cursor.shape").term!(app({ row: 1, col: 1 }))
-  expectExecutionOnly(appShape, "test-failure")
+  expectExecutionOnly(appShape, "probe-invalid")
   expect(appShape.assertions).toBeUndefined()
 
   const reverse = await byId("cursor.reverse-wrap").term!(app({ row: 1, col: 80 }))
@@ -369,7 +369,7 @@ test("cursor save/restore records the mismatched position and a missing app repl
     displaced: { row: 10, col: 15 },
     final: { row: 10, col: 15 },
   })
-  expectExecutionOnly(await probe.term!(app(null)), "test-failure")
+  expectExecutionOnly(await probe.term!(app(null)), "probe-invalid")
 })
 
 test("bottom-row cursor result uses measured headless height and does not guess an app height", async () => {
@@ -434,7 +434,7 @@ test("DSR position report distinguishes a valid wrong coordinate from malformed 
     outcome: "supported",
     assertionType: "query_reply",
   })
-  expectExecutionOnly(probe.lib!(headless(0, 0)), "test-failure")
+  expectExecutionOnly(probe.lib!(headless(0, 0)), "probe-invalid")
 })
 
 test("cup-scroll-region records the DECOM relative samples and never grades placement", async () => {
@@ -457,7 +457,7 @@ test("cup-scroll-region records the DECOM relative samples and never grades plac
   expect(result.observation?.note).toContain("region top is 1, bottom is 11")
   expect(result.observation?.note).toContain("1;1, 2;1, 11;1")
   expect(result.tests).toContainEqual(
-    expect.objectContaining({ id: "review", status: "test-todo", reason: expect.stringContaining("physical row 5") }),
+    expect.objectContaining({ id: "review", status: "probe-todo", reason: expect.stringContaining("physical row 5") }),
   )
   expect(writes).toEqual(["\x1b[5;15r", "\x1b[?6h", "\x1b[1;1H", "\x1b[2;1H", "\x1b[999B", "\x1b[?6l", "\x1b[r"])
 })
@@ -585,7 +585,7 @@ test("missing CPR at origin, setup, or final cannot grade movement", async () =>
     const ctx = app({ row: 1, col: 1 })
     ctx.queryCursorPosition = async () => (++calls === missingAt ? null : { row: 1, col: calls === 1 ? 1 : 4 })
     const result = await byId("cursor.move.back").term!(ctx)
-    expectExecutionOnly(result, "test-failure")
+    expectExecutionOnly(result, "probe-invalid")
     const raw: unknown = JSON.parse(result.response ?? "")
     expect(raw, String(missingAt)).toHaveProperty("origin")
     expect(raw, String(missingAt)).toHaveProperty("setup")
@@ -713,7 +713,7 @@ test("CUP declines a too-small grid or an unqualified edge", async () => {
   small.rows = 1
   small.cols = 1
   small.write = (sequence) => writes.push(sequence)
-  expectExecutionOnly(await probe.term!(small), "test-todo")
+  expectExecutionOnly(await probe.term!(small), "probe-todo")
   expect(writes).toEqual([])
   const ignoredEdge = app({ row: 1, col: 1 })
   ignoredEdge.cols = 61
@@ -730,7 +730,7 @@ test("cursor factory declines an undersized setup before the origin write", asyn
   context.cols = 9
   context.write = (sequence) => writes.push(sequence)
   const result = await byId("cursor.move.absolute").term!(context)
-  expectExecutionOnly(result, "test-todo")
+  expectExecutionOnly(result, "probe-todo")
   expect(writes).toEqual([])
 })
 
@@ -772,7 +772,7 @@ test("headless CUP does not grade missing geometry or an ignored edge control", 
   const missing = headless(0, 0, 0)
   const feeds: string[] = []
   missing.feed = (sequence) => feeds.push(sequence)
-  expectExecutionOnly(probe.lib!(missing), "test-todo")
+  expectExecutionOnly(probe.lib!(missing), "probe-todo")
   expect(feeds).toEqual([])
   const ignored = { ...headless(0, 0, 37), cols: 61 }
   ignored.feed = (sequence) => feeds.push(sequence)
@@ -799,7 +799,7 @@ test("position report grades a text-induced cursor advance, not just a CUP echo"
   narrow.cols = 5
   const writes: string[] = []
   narrow.write = (sequence) => writes.push(sequence)
-  expectExecutionOnly(await byId("cursor.position-report").term!(narrow), "test-todo")
+  expectExecutionOnly(await byId("cursor.position-report").term!(narrow), "probe-todo")
   expect(writes).toEqual([])
 })
 
@@ -826,7 +826,7 @@ test("remaining app cursor fixtures refuse undersized geometry without writing",
     context.write = (sequence) => writes.push(sequence)
     const definition = byId(id)
     expect(definition.termNeedsGeometry, id).toBe(true)
-    expectExecutionOnly(await definition.term!(context), "test-todo")
+    expectExecutionOnly(await definition.term!(context), "probe-todo")
     expect(writes, id).toEqual([])
   }
 })
@@ -910,7 +910,7 @@ test("app CUD grades against a newline-measured bottom and refuses an unqualifie
     context.queryCursorPosition = async () => replies.shift() ?? null
     context.write = (sequence) => writes.push(sequence)
     const result = await probe.term!(context)
-    if (home === null) expectExecutionOnly(result, "test-failure")
+    if (home === null) expectExecutionOnly(result, "probe-invalid")
     else expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     expect(writes).toEqual(["\x1b[1;1H", "\r\n".repeat(23), "\x1b[1;1H"])
   }
@@ -937,7 +937,7 @@ test("app CUP refuses nonfinite geometry before a feature write", async () => {
     context.rows = rows
     context.write = (sequence) => writes.push(sequence)
     const result = await probe.term!(context)
-    expectExecutionOnly(result, "test-todo")
+    expectExecutionOnly(result, "probe-todo")
     expect(writes).toEqual([])
   }
 })
@@ -963,7 +963,7 @@ test("app cursor hide seeds a shown steady fixed-cell control and records geomet
   // Stored-review re-admission is gone (#32246), so no wording may promise an independent review (@cto e9af174e).
   expect(result.tests).toContainEqual({
     id: "review",
-    status: "test-todo",
+    status: "probe-todo",
     reason: "no measured raster or DECRQM reply; captured frames are evidence only",
   })
   expect(result.observation?.note).toBe(
@@ -1101,7 +1101,7 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
     }
     const result = await byId("cursor.hide").term!(context)
     expect(result.observation).toBeUndefined()
-    expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
+    expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-todo", reason: expect.any(String) })])
     expect(writes).toEqual([])
   }
   expect(byId("cursor.hide").termNeedsGeometry).toBe(true)
@@ -1111,7 +1111,7 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
   }
   const refused = await byId("cursor.hide").term!(context)
   expect(refused.observation).toBeUndefined()
-  expect(refused.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
+  expect(refused.tests).toMatchObject([expect.objectContaining({ status: "probe-todo", reason: expect.any(String) })])
 })
 
 test("cup-scroll-region capture refuses before painting when the grid or the pixel report cannot decide", async () => {
@@ -1131,7 +1131,7 @@ test("cup-scroll-region capture refuses before painting when the grid or the pix
       ref: "never",
     }),
   } as TermProbeSource
-  expectExecutionOnly(await probe.term!(tiny), "test-todo")
+  expectExecutionOnly(await probe.term!(tiny), "probe-todo")
   expect(short).toEqual([])
   // At the floor with a capture adapter but no pixel report the verdict has already queried and
   // cannot map cells onto the window: a named "query" refusal, still no paint.
@@ -1151,7 +1151,7 @@ test("cup-scroll-region capture refuses before painting when the grid or the pix
   const result = await probe.term!(noReport)
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("CSI 16 t") }),
+    expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("CSI 16 t") }),
   ])
   expect(result.tests?.[0]?.reason).toContain("CSI 16 t")
   expect(unpainted).toEqual([])
@@ -1172,6 +1172,6 @@ test("cup-scroll-region capture refuses a narrow terminal before any bytes", asy
       ref: "never",
     }),
   } as TermProbeSource
-  expectExecutionOnly(await probe.term!(context), "test-todo")
+  expectExecutionOnly(await probe.term!(context), "probe-todo")
   expect(writes).toEqual([])
 })

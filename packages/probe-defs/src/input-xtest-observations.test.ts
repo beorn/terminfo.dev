@@ -25,7 +25,7 @@ test.each(["input.xtest-key", "extensions.clipboard-paste"])(
     expect(result.tests).toEqual([
       {
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         reason:
           "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
       },
@@ -1406,9 +1406,9 @@ test.each([
     "not-tested",
     "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554 into prompt_start.click_events (:74), while the WASM binding does not forward click_events (termless 2719cfd ghostty-wasm-api.patch:624-627) and a headless library run has no pointer surface; #30936",
   ],
-  // A former source-negative site: TEST TODO with no same-path control, never a source citation (#32246).
+  // A former source-negative site: PROBE TODO with no same-path control, never a source citation (#32246).
   ["alacritty", "not-tested", "observation not decided: no same-path control in this run"],
-  // A former source-negative site: TEST TODO with no same-path control, never a source citation (#32246).
+  // A former source-negative site: PROBE TODO with no same-path control, never a source citation (#32246).
   ["vt100-rust", "not-tested", "observation not decided: no same-path control in this run"],
   ["xtermjs", "unsupported", null],
 ] as const)(
@@ -1443,7 +1443,7 @@ test.each([
 )
 
 // #32246 (operator 2026-11-03): the auditedOscEngine qualification is gone. An identity that once qualified a review
-// branch (@cto bbf6f77f) now reads the same TEST TODO record as a stale one; no source review is pended.
+// branch (@cto bbf6f77f) now reads the same PROBE TODO record as a stale one; no source review is pended.
 const qualifiedSharedEncoderIdentities = [
   [
     "ghostty",
@@ -1538,7 +1538,7 @@ const qualifiedSharedEncoderIdentities = [
 ] as const
 
 test.each(qualifiedSharedEncoderIdentities)(
-  "input.kitty-click-events library arm on %s: a formerly qualified identity (%s) and a stale one read the same TEST TODO",
+  "input.kitty-click-events library arm on %s: a formerly qualified identity (%s) and a stale one read the same PROBE TODO",
   (backendName, citationMarker, identity, stale) => {
     let modesOn = false
     const source = (runtimeIdentity: unknown): LibProbeSource => {
@@ -1655,7 +1655,7 @@ test("input.kitty-click-events library arm records supported when control passes
 
 // @failure A vterm input cell is graded from a source audit, or its outcome depends on source provenance (#32246).
 // @consumer The four registered library callbacks; existing app and foreign mouse paths stay covered above.
-// Every vterm identity, exact or drifted, reads the same TEST TODO record: no same-path control in this run.
+// Every vterm identity, exact or drifted, reads the same PROBE TODO record: no same-path control in this run.
 test.each(
   ["input.modify-other-keys", "input.modify-other-keys-3", "input.xtest-key", "input.kitty-click-events"].flatMap(
     (id) =>
@@ -1663,7 +1663,7 @@ test.each(
         (identityCase) => [id, identityCase] as const,
       ),
   ),
-)("%s keeps the %s vterm identity TEST TODO, never source-graded", (id, identityCase) => {
+)("%s keeps the %s vterm identity PROBE TODO, never source-graded", (id, identityCase) => {
   const runtimeIdentity = {
     kind: "js",
     ...(identityCase === "other-format"

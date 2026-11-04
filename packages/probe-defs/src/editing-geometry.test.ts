@@ -55,7 +55,7 @@ test("every converted row refuses by name and writes nothing without an owned ca
       expect(result.observation, `${row.id} at ${rows}x${cols}`).toBeUndefined()
       expect(result.tests, `${row.id} at ${rows}x${cols}`).toMatchObject([
         expect.objectContaining({
-          status: "test-todo",
+          status: "probe-todo",
           reason: expect.stringContaining("no owned capture adapter"),
         }),
       ])
@@ -95,7 +95,7 @@ test("a converted attribute row refuses an undersized grid before any byte or qu
       expect(events, `${id} at ${rows}x${cols}`).toEqual([])
       expect(result.observation, `${id} at ${rows}x${cols}`).toBeUndefined()
       expect(result.tests, `${id} at ${rows}x${cols}`).toMatchObject([
-        expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("at least") }),
+        expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining("at least") }),
       ])
     }
     // The other side of the boundary: 5x8 is the floor, so the arm must reach its own work instead

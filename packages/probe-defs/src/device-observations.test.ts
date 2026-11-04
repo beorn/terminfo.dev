@@ -78,7 +78,7 @@ test.each([false, true])("title push restores its checkpoint when CPR rejects=%s
     const callbackResult = await result
     expect(callbackResult.observation).toBeUndefined()
     expect(callbackResult.tests).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+      expect.objectContaining({ status: "probe-todo", reason: expect.any(String) }),
     ])
   }
   expect(writes.filter((bytes) => bytes === "\x1b[22;0t")).toHaveLength(1)
@@ -110,7 +110,7 @@ test.each([
   },
   { replies: [DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_REFUSAL], outcome: "inconclusive" },
   { replies: [DECRQSS_REFUSAL, "\x1bP1$r"], outcome: "inconclusive" },
-  { replies: [DECRQSS_REFUSAL, ""], outcome: "test-failure" },
+  { replies: [DECRQSS_REFUSAL, ""], outcome: "probe-invalid" },
 ])(
   "plain library DECRQSS samples only after complete selector refusal: $replies",
   ({ replies, outcome, observed, response }) => {
@@ -126,9 +126,9 @@ test.each([
       },
     } as unknown as LibProbeSource)
     expect(queries).toEqual(selectors.slice(0, replies.length))
-    if (outcome === "test-failure") {
+    if (outcome === "probe-invalid") {
       expect(result.observation).toBeUndefined()
-      expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure" })])
+      expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-invalid" })])
       return
     }
     expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
@@ -343,12 +343,12 @@ describe("device query observations", () => {
       const missing = probe.headless(headless(""))
       expect(missing.observation).toBeUndefined()
       expect(missing.tests).toMatchObject([
-        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+        expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) }),
       ])
       const timedOut = await probe.terminal(terminal("", "timeout"))
       expect(timedOut.observation).toBeUndefined()
       expect(timedOut.tests).toMatchObject([
-        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+        expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) }),
       ])
     }
   })
@@ -499,7 +499,7 @@ describe("device query observations", () => {
         assertions: [],
         tests: empty.tests,
       })
-      expect(recorded.status).toBe("test-failure")
+      expect(recorded.status).toBe("probe-invalid")
       expect(recorded.assertionType).toBeUndefined()
       expect(recorded.reason).toContain("SGR refused; DECSTBM unanswered; DECRQSS facility still speaks")
       expect(recorded.reason).toContain("complete DECRQSS status 1 DECSTBM margins ending r and ST")
@@ -573,7 +573,7 @@ describe("device query observations", () => {
           assertions: [],
           tests: result.tests,
         }).status,
-      ).toBe("test-failure")
+      ).toBe("probe-invalid")
       expect(JSON.stringify(result)).not.toContain(process.env.TERM_FEATURES)
       expect(result.assertions).toBeUndefined()
     } finally {
@@ -694,7 +694,7 @@ describe("window-operation qualification", () => {
     tests: [
       {
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         reason: "Title setup was not observable, so this run cannot decide it",
       },
     ],
@@ -734,7 +734,7 @@ describe("window-operation qualification", () => {
         continue
       }
       if (outcome === "todo") {
-        // Push and pop share one observation, so an un-restored title is TEST TODO, never graded (#32246).
+        // Push and pop share one observation, so an un-restored title is PROBE TODO, never graded (#32246).
         expect(result).toMatchObject(UNDECIDED_TITLE_STACK)
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
@@ -747,7 +747,7 @@ describe("window-operation qualification", () => {
   })
 
   // #32246 (operator 2026-11-03): the former source-audited title-stack artifacts and JS source trees no longer grade
-  // Unsupported; an observed setup with an un-restored title stays TEST TODO whatever the runtime identity, while real
+  // Unsupported; an observed setup with an un-restored title stays PROBE TODO whatever the runtime identity, while real
   // restoration still reads Supported and an unobservable setup still says this run cannot decide it.
   test.each([
     [
@@ -1032,7 +1032,7 @@ describe("device contracts without prior coverage", () => {
 })
 
 // Actual run388fa7b54f74bfe5d9bfbecef7e4d924, vterm source53a9eb9/tree617ae60: no font/window geometry.
-// It stays TEST TODO, never automatic Untestable and never graded from source (#32246).
+// It stays PROBE TODO, never automatic Untestable and never graded from source (#32246).
 const geometryRuntime = {
   kind: "js",
   adapterVersion: "0.10.2",
@@ -1062,9 +1062,9 @@ const geometryReplies = [
 ] as const
 
 // #32246 (operator 2026-11-03): the vterm source-tree geometry audit is gone. A complete zero geometry reply has no
-// same-path control in this run, so it is TEST TODO on every identity; it is never graded from source.
+// same-path control in this run, so it is PROBE TODO on every identity; it is never graded from source.
 test.each(geometryReplies)(
-  "$id keeps a complete zero geometry reply TEST TODO on any identity",
+  "$id keeps a complete zero geometry reply PROBE TODO on any identity",
   ({ id, raw, positive }) => {
     const identities = [
       undefined,
@@ -1105,7 +1105,7 @@ test.each(geometryReplies)(
       }
     }
     // Only the complete zero frame takes this record; a partial or foreign reply keeps its measured reading.
-    // Silence is TEST TODO for lack of a control (@cto batch7 A-F4); a partial or foreign reply keeps its reading.
+    // Silence is PROBE TODO for lack of a control (@cto batch7 A-F4); a partial or foreign reply keeps its reading.
     const silent = { feedCapture: () => "", runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
     expect(callback(id).headless(silent).notTested?.noObservable).toBe(
       "observation not decided: no same-path control in this run",

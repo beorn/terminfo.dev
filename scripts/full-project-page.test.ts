@@ -42,7 +42,7 @@ describe("the full-273 preview", () => {
       // states the same rule (docs/release/full-273.md: "Supported / all <gradedRows> graded features").
       expect(result.denominator).toBe(data.gradedRows)
       expect(result.fraction).toBe(`${result.supported}/${data.gradedRows}`)
-      expect(result.complete).toBe(result.counts["test-todo"] === 0 && result.counts["test-failure"] === 0)
+      expect(result.complete).toBe(result.counts["probe-todo"] === 0 && result.counts["probe-invalid"] === 0)
       expect(result.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(273)
     }
   })
@@ -83,7 +83,7 @@ describe("the full-273 preview", () => {
           .sort(),
       )
       for (const observation of row.observations) {
-        const cell = context?.cells[observation.id]
+        const cell = context?.featureResults[observation.id]
         expect(cell, `${row.context} ${observation.id}`).toBeDefined()
         expect(cell?.origin).toEqual(observation.origin)
         expect(cell?.status).toBe(observation.state)
@@ -135,7 +135,7 @@ describe("stored results without membership eligibility", () => {
       const contextKey = "lib:" + engine
       const results: ProbeResult[] = ids.map((featureId, n) => ({
         featureId,
-        status: n === 2 ? "untestable" : "test-todo",
+        status: n === 2 ? "untestable" : "probe-todo",
         attempt: { scope: "none" },
         tests: [],
         reason: "recorded-" + n,
@@ -173,13 +173,13 @@ describe("stored results without membership eligibility", () => {
         catalogIds: ids,
         attempts: [],
         missingIds: [],
-        counts: aggregate.counts,
+        counts: { ...aggregate.counts, "probe-conflict": 0 },
         score: { supported: 0, all: 3 },
         complete: false,
       }
       history[contextKey] = [run as unknown as CurrentSelectedVersion]
       published[contextKey] = {
-        cells: Object.fromEntries(results.map((result) => [result.featureId, result])),
+        featureResults: Object.fromEntries(results.map((result) => [result.featureId, result])),
       } as unknown as publicResults.PublicContextSummary
       rows.push({
         context: engine + "/headless",
@@ -236,7 +236,7 @@ describe("stored results without membership eligibility", () => {
     expect(
       output.contexts.every(
         (row) =>
-          row.collected && row.observations[0]?.state === "test-todo" && row.observations[2]?.state === "untestable",
+          row.collected && row.observations[0]?.state === "probe-todo" && row.observations[2]?.state === "untestable",
       ),
     ).toBe(true)
     expect(output.complete).toBe(false)

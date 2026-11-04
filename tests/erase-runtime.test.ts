@@ -78,8 +78,8 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
           : mode === "deciding"
             ? { supported: 10, unsupported: 1 }
             : mode === "precondition" || mode === "painted-seed"
-              ? { supported: 10, "test-failure": 1 }
-              : { "test-failure": 11 }
+              ? { supported: 10, "probe-invalid": 1 }
+              : { "probe-invalid": 11 }
       expect(report, record.error).toMatchObject({ counts })
       // Automatic trace evaluation is diagnostic too; old outcome checks missed its implicit seal.
       const rawPath = record.files[0]
@@ -107,7 +107,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
             .every(({ status }) => status === "supported"),
         ).toBe(true)
         expect(record.failureResults).toHaveLength(11)
-        expect(record.failureResults?.every(({ status }) => status === "test-failure")).toBe(true)
+        expect(record.failureResults?.every(({ status }) => status === "probe-invalid")).toBe(true)
         expect(record.failureResults?.every(({ attempt }) => attempt.scope === "collection")).toBe(true)
         return
       }
@@ -183,7 +183,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
           mode === "deciding"
             ? "unsupported"
             : mode === "precondition" || mode === "painted-seed"
-              ? "test-failure"
+              ? "probe-invalid"
               : "supported",
         )
         if (mode === "painted-seed") {

@@ -376,6 +376,8 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
       throw new Error("trace failed its receipt")
     }
   }
+  const current = expectation.schemaVersion === 3 || expectation.schemaVersion === 4
+  const featureResults = isRecord(parsed) ? (current ? parsed.featureResults : parsed.cells) : undefined
   if (
     !isRecord(parsed) ||
     parsed.version !== 1 ||
@@ -385,11 +387,11 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
     (parsed.sourceRevision !== null && typeof parsed.sourceRevision !== "string") ||
     !isRecord(parsed.identity) ||
     typeof parsed.identity.recorded !== "string" ||
-    !isRecord(parsed.cells)
+    !isRecord(featureResults)
   ) {
     throw new Error("Trace document identity or structure does not match this result")
   }
-  const cellEntry = parsed.cells[expectation.featureId]
+  const cellEntry = featureResults[expectation.featureId]
   if (cellEntry === undefined) {
     throw new Error("no trace stored for this cell")
   }

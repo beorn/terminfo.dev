@@ -51,7 +51,7 @@ test("ALL_PROBES silent no-capture callbacks retain execution tests without inve
       if (result.notTested) continue
       expect(result.tests?.length, label).toBeGreaterThan(0)
       for (const execution of result.tests ?? []) {
-        expect(["test-todo", "test-failure"], label).toContain(execution.status)
+        expect(["probe-todo", "probe-invalid"], label).toContain(execution.status)
         expect(execution.reason?.trim().length, label).toBeGreaterThan(0)
       }
     }

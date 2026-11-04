@@ -77,7 +77,7 @@ it.each([true, false])(
       if (pendingReview) {
         const result = run.results.find((row) => row.featureId === "device.primary-da")!
         result.tests = [
-          { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Context review pending" },
+          { id: "review", status: "probe-todo", attempt: { scope: "none" }, reason: "Context review pending" },
         ]
         result.reason = "Context review pending"
       }
@@ -108,7 +108,7 @@ it.each([true, false])(
     expect(path).toMatch(/\.draft\.json$/)
     expect(saved).not.toHaveProperty("sealedAt")
     if (pendingReview) {
-      expect(saved.results.find((row) => row.featureId === "device.primary-da")?.tests[0]?.status).toBe("test-todo")
+      expect(saved.results.find((row) => row.featureId === "device.primary-da")?.tests[0]?.status).toBe("probe-todo")
       expect(saved.rawReplies["collector.capture.device.primary-da"]).toBeUndefined()
     }
   },
@@ -143,7 +143,7 @@ it("initializes all 273 before worker launch and retains explicit missing prereq
     const draft = retainedDraft(dir)
     expect(draft.runId).toBe(captureRunId)
     expect(draft.results).toHaveLength(273)
-    expect(draft.results.every((result) => result.status === "test-todo")).toBe(true)
+    expect(draft.results.every((result) => result.status === "probe-todo")).toBe(true)
     draft.rawReplies["collector.prerequisite"] = "Pinned engine package is not installed"
     writeFileSync(options.env.TERMINFO_DRAFT_PATH!, JSON.stringify(draft))
     return {
@@ -158,7 +158,7 @@ it("initializes all 273 before worker launch and retains explicit missing prereq
   expect(collection.runs).toEqual([])
   expect(collection.failures).toHaveLength(1)
   expect(draft.runId).toBe(captureRunId)
-  expect(draft.results.every((result) => result.status === "test-todo" && result.attempt.scope === "none")).toBe(true)
+  expect(draft.results.every((result) => result.status === "probe-todo" && result.attempt.scope === "none")).toBe(true)
   expect(draft).not.toHaveProperty("target")
   expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: probeSuiteSnapshot().probes.lib })
   const attempt = readCollectorAttempt(draft.rawReplies)
@@ -239,12 +239,12 @@ it.each([false, true])(
     expect(
       draft.results
         .filter((result) => delegated.has(result.featureId))
-        .every((result) => result.status === "test-failure" && result.attempt.scope === "collection"),
+        .every((result) => result.status === "probe-invalid" && result.attempt.scope === "collection"),
     ).toBe(true)
     expect(
       draft.results
         .filter((result) => !delegated.has(result.featureId))
-        .every((result) => result.status === "test-todo" && result.attempt.scope === "none"),
+        .every((result) => result.status === "probe-todo" && result.attempt.scope === "none"),
     ).toBe(true)
     expect(draft.rawReplies["collector.failure"]).toContain(refused ? "original worker failure" : "exceeded")
     expect(draft).not.toHaveProperty("target")
@@ -263,7 +263,7 @@ it("scrubs absolute host folder prefixes from recorded draft failures while keep
       const draft = JSON.parse(readFileSync(options.env.TERMINFO_DRAFT_PATH!, "utf8")) as RunDraft
       const prereq = `Termless adapter @termless/xtermjs resolved to ${prereqPath} (win=${winPath}, upstream=${sshUrl}, docs=${httpsUrl}), which is not inside a Git checkout`
       draft.rawReplies["collector.prerequisite"] = prereq
-      for (const result of draft.results) if (result.status === "test-todo") result.reason = prereq
+      for (const result of draft.results) if (result.status === "probe-todo") result.reason = prereq
       writeFileSync(options.env.TERMINFO_DRAFT_PATH!, `${JSON.stringify(draft, null, 2)}\n`)
       return {
         stdout: new Blob([]).stream(),
@@ -350,7 +350,7 @@ it("retains explicit empty probe selection without starting a worker or inventin
   expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: [] })
   expect(JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)).toEqual({ ids: [], result: "empty" })
   expect(draft.results).toHaveLength(273)
-  expect(draft.results.every((row) => row.status === "test-todo" && row.attempt.scope === "none")).toBe(true)
+  expect(draft.results.every((row) => row.status === "probe-todo" && row.attempt.scope === "none")).toBe(true)
   expect(draft.probeHash).toBe(probeSuiteSnapshot().probeHash)
 })
 it("rejects unknown exact probe IDs before any worker starts", async () => {
@@ -399,6 +399,6 @@ it.each([
   expect(
     draft.results
       .filter((row) => !ids.includes(row.featureId))
-      .every((row) => row.status === "test-todo" && row.attempt.scope === "none"),
+      .every((row) => row.status === "probe-todo" && row.attempt.scope === "none"),
   ).toBe(true)
 })

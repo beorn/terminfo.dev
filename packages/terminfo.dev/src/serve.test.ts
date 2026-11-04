@@ -221,7 +221,7 @@ it.each(["empty", "prerequisite", "completed", "cancelled", "failed", "unknown"]
       if (["prerequisite", "cancelled", "failed"].includes(mode)) assert.equal(attempt.error, original.message)
       assert.equal(draft.results.length, 273)
       for (const row of draft.results.filter(row=>!ids.includes(row.featureId))) {
-        assert.equal(row.status,"test-todo"); assert.equal(row.attempt.scope,"none")
+        assert.equal(row.status,"probe-todo"); assert.equal(row.attempt.scope,"none")
 
       }
       if (unselectedRows) assert.deepEqual(draft.results.filter(row=>!ids.includes(row.featureId)), unselectedRows)
@@ -355,10 +355,10 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       assert.deepEqual(capturedCheckpoints, checkpoints)
       assert.equal(calibrations, 1, "later checkpoints must reuse the batch measurement")
       const results = options.draft.results.map(row => row.featureId !== visualId ? row : {
-        ...row, status: "test-todo", assertionType: "screenshot", criterionBranch: "visual-review",
+        ...row, status: "probe-todo", assertionType: "screenshot", criterionBranch: "visual-review",
         rawReplyRef: visualId, frames: visualFrames,
         tests: [{ id: "capture", status: "supported", attempt: { scope: "probe", startedAt: new Date().toISOString() } },
-          { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Valid fixture control and target capture; required visual review pending" }]
+          { id: "review", status: "probe-todo", attempt: { scope: "none" }, reason: "Valid fixture control and target capture; required visual review pending" }]
       })
       // The mock supplies visual capture output only. Production must retain provenance.font itself.
       const batch = { results, rawReplies: { [visualId]: JSON.stringify({ captures: visualFrames }), "collector.captureCalibration.trace": JSON.stringify({ captures: retained }) },
@@ -383,7 +383,7 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
     assert.equal(persisted.rawReplies[fontKey], fontReceipt, "final checkpoint retains identical receipt bytes")
     for (const captured of [run, persisted]) {
       const row = captured.results.find(row => row.featureId === visualId)
-      assert.equal(row.status, "test-todo", "fixture source receipt does not grade the visual result")
+      assert.equal(row.status, "probe-todo", "fixture source receipt does not grade the visual result")
       assert.ok(row.reason.includes("#32062 font control") && row.reason.includes(proofState),
         "cell TODO names its control gap and actual proof state")
       assert.equal(row.tests.find(test => test.id === "review").reason, row.reason,
@@ -858,7 +858,7 @@ describe("private finite daemon startup", () => {
         const run = await collectProbeRun({ ids })
         const selected = run.results.filter(o => ids.includes(o.featureId))
         assert.deepEqual(selected.map(o => o.featureId).sort(), [...ids].sort())
-        assert.ok(selected.every(o => o.status === "test-todo"))
+        assert.ok(selected.every(o => o.status === "probe-todo"))
         assert.ok(selected.every(o => /Capture calibration fixture: non-solid difference/.test(o.reason ?? "")))
         assert.equal("ungradedDiagnostics" in run, false)
         assert.equal(calibrationCalls, 1)
@@ -1312,7 +1312,7 @@ describe("private finite daemon startup", () => {
       assert.deepEqual(run.origin,{kind:"collector",appLaunch:launch})
       assert.equal(run.subject.version,"0.49.2")
       assert.deepEqual(JSON.parse(run.rawReplies["fixture.selected"]),ids)
-      assert.ok(run.results.every(row=>row.status==="test-todo"))
+      assert.ok(run.results.every(row=>row.status==="probe-todo"))
       assert.equal(run.rawReplies["device.xtversion"],undefined)
       assert.equal(run.rawReplies["collector.xtversion"],raw)
       assert.deepEqual(calls,["\\x1b[18t","\\x1b[>0q"])
@@ -1724,7 +1724,7 @@ describe("private finite daemon startup", () => {
           assert.equal(reads, 0, "an unacknowledged capture must not read console cells")
           assert.equal(queryWrites, 1, JSON.stringify({ results: run.results }))
           const row = run.results.find(row => row.featureId === "erase.character")
-          assert.equal(row.status, "test-failure")
+          assert.equal(row.status, "probe-invalid")
           assert.equal(row.assertionType, "buffer_state")
           assert.ok(row.tests.some(check => /timeout.*7 bytes/u.test(check.reason ?? "")), "retain the original acknowledgement timeout on its check")
           assert.match(row.reason, /capture stability 1: console read refused: cursor query timeout, 7 bytes/u)
@@ -1950,7 +1950,7 @@ describe("private finite daemon startup", () => {
       } else expect(run.rawReplies.selected).toEqual(selection ? JSON.parse(selection) : null)
       expect(run.results).toHaveLength(273)
       expect(new Set(run.results.map((result) => result.featureId)).size).toBe(273)
-      expect(run.results.every((result) => result.status === "test-todo")).toBe(true)
+      expect(run.results.every((result) => result.status === "probe-todo")).toBe(true)
       // AC1: explicit request selection overrides startup selection, including [] rather than full.
       for (const ids of [[], ["cursor.show"]]) {
         const selected = await fetch(`http://127.0.0.1:${registration.port}/probe`, {

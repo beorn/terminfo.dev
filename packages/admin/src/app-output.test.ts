@@ -101,7 +101,7 @@ beforeEach(() => {
   results = [
     {
       featureId: "sgr.bold",
-      status: "test-todo",
+      status: "probe-todo",
       attempt: { scope: "none" },
       tests: [],
       reason: "Required test missing",
@@ -178,7 +178,7 @@ describe("probe app --output", () => {
       log.mockRestore()
       const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
       expect(lines).toContain(
-        `  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause} (retained)`,
+        `  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT${clause} (retained)`,
       )
       expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
     },
@@ -192,7 +192,7 @@ describe("probe app --output", () => {
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
     expect(lines).toContain(
-      "  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (written)",
+      "  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT (written)",
     )
   })
 })

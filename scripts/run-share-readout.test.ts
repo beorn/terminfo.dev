@@ -1,6 +1,6 @@
 /**
- * @failure A whole-run summary prints "0/273 supported (0%)" for a run whose every cell is TEST TODO
- *   or TEST FAILURE, so an unmeasured run reads exactly like one that was measured and failed, and the
+ * @failure A whole-run summary prints "0/273 supported (0%)" for a run whose every cell is PROBE TODO
+ *   or PROBE INVALID, so an unmeasured run reads exactly like one that was measured and failed, and the
  *   terminal page's SEO description publishes the same false zero to search results.
  * @level l1
  * @consumer Terminal page run summary, home backend score, OS page score column, terminal SEO description
@@ -22,8 +22,8 @@ const counts = (entries: Partial<Record<ProbeStatus, number>>): Record<ProbeStat
   supported: 0,
   unsupported: 0,
   untestable: 0,
-  "test-todo": 0,
-  "test-failure": 0,
+  "probe-todo": 0,
+  "probe-invalid": 0,
   ...entries,
 })
 
@@ -46,8 +46,8 @@ const run = (entries: Partial<Record<ProbeStatus, number>>) => {
 
 describe("#30784 whole-run readout", () => {
   it("prints the not-measured words for a run that decided nothing, and the same numbers for one that did", () => {
-    // Windows Terminal's current run c4be39f3: 251 TEST TODO + 22 TEST FAILURE of 273, nothing decided.
-    const held = run({ "test-todo": 251, "test-failure": 22 })
+    // Windows Terminal's current run c4be39f3: 251 PROBE TODO + 22 PROBE INVALID of 273, nothing decided.
+    const held = run({ "probe-todo": 251, "probe-invalid": 22 })
     expect(held.denominator).toBe(273)
     expect(runDecidedNothing(held.counts)).toBe(true)
     expect(currentSupportedShare(held)).toBe(NOT_MEASURED_TEXT)
@@ -58,7 +58,7 @@ describe("#30784 whole-run readout", () => {
     expect(runDecidedNothing(measuredFail.counts)).toBe(false)
     expect(currentSupportedShare(measuredFail)).toBe("0/273 supported (0%)")
 
-    const mixed = run({ supported: 36, unsupported: 137, "test-todo": 100 })
+    const mixed = run({ supported: 36, unsupported: 137, "probe-todo": 100 })
     expect(currentSupportedShare(mixed)).toBe("36/273 supported (13%)")
   })
 

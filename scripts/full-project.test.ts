@@ -14,11 +14,11 @@ import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import type { ContextCandidate } from "../docs/data/run-selection.ts"
 import type { CensusContext } from "../docs/data/full-census.ts"
 
-const recorded = (ids: readonly string[], status: ProbeStatus = "test-todo"): ProbeResult[] =>
+const recorded = (ids: readonly string[], status: ProbeStatus = "probe-todo"): ProbeResult[] =>
   ids.map((featureId) => ({
     featureId,
     status,
-    attempt: status === "test-todo" ? { scope: "none" } : { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+    attempt: status === "probe-todo" ? { scope: "none" } : { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
     tests: [],
   }))
 
@@ -129,7 +129,7 @@ describe("full-scope rows", () => {
     expect(row.observations).toMatchObject([
       { id: "a.one", state: "supported", method: null, note: null, reason: null },
       { id: "a.two", state: "unsupported", method: null, note: null, reason: null },
-      { id: "b.one", state: "test-todo", method: null, note: null, reason: null },
+      { id: "b.one", state: "probe-todo", method: null, note: null, reason: null },
     ])
     expect(rows.collected).toBe(1)
     expect(rows.notCollected).toBe(0)
@@ -223,7 +223,7 @@ describe("full-scope rows", () => {
             result.featureId === "a.one"
               ? {
                   ...result,
-                  status: "test-failure",
+                  status: "probe-invalid",
                   assertionType: "buffer_state",
                   reason: "terminal never answered; timeout",
                 }
@@ -237,7 +237,7 @@ describe("full-scope rows", () => {
     if (!row?.collected) throw new Error("expected a collected row")
     expect(row.observations[0]).toMatchObject({
       id: "a.one",
-      state: "test-failure",
+      state: "probe-invalid",
       method: "buffer_state",
       note: null,
       reason: "terminal never answered; timeout",
@@ -266,11 +266,11 @@ describe("full-scope rows", () => {
     expect(finished.recordedPositions).toBe(9009)
     expect(finished.complete).toBe(true)
     expect(finished.contexts.every((row) => row.collected && row.result.fraction === "0/273")).toBe(true)
-    candidates[32]!.results![272]!.status = "test-todo"
+    candidates[32]!.results![272]!.status = "probe-todo"
     const pending = buildFullProjectRows({ census, catalogIds: ids, candidates, requiredSuiteId: suite })
     expect(pending.recordedPositions).toBe(9009)
     expect(pending.complete).toBe(false)
-    candidates[32]!.results![272]!.status = "test-failure"
+    candidates[32]!.results![272]!.status = "probe-invalid"
     expect(buildFullProjectRows({ census, catalogIds: ids, candidates, requiredSuiteId: suite }).complete).toBe(false)
   })
 

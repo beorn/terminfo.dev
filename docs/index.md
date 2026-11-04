@@ -146,11 +146,11 @@ function catLabel(cat) {
 function barSegmentItems(backendName, segment) {
   const selected = data.selectedByBackend[backendName]?.selected
   if (!selected) return []
-  return Object.values(selected.cells).filter(result => result.status === segment && !isEnvironmentGroup(result.featureId)).map(result => {
+  return Object.values(selected.featureResults).filter(result => result.status === segment && !isEnvironmentGroup(result.featureId)).map(result => {
     const feature = data.features.find(feature => feature.id === result.featureId)
     return { id: result.featureId, name: data.featureDescriptions[result.featureId]?.name ?? result.featureId,
       href: feature ? '/' + feature.category + '/' + featureSlug(result.featureId) : undefined,
-      symbol: {supported:'✓',unsupported:'✗',untestable:'?', 'test-todo':'–', 'test-failure':'!'}[segment],
+      symbol: {supported:'✓',unsupported:'✗',untestable:'?', 'probe-todo':'–', 'probe-invalid':'!', 'probe-conflict':'!'}[segment],
       note: result.reason }
   })
 }
@@ -159,8 +159,9 @@ const barSegments = [
   { id: 'supported', label: 'Supported', style: 'yes' },
   { id: 'unsupported', label: 'Unsupported', style: 'fail' },
   { id: 'untestable', label: 'Untestable', style: 'partial' },
-  { id: 'test-todo', label: 'TEST TODO', style: 'remainder' },
-  { id: 'test-failure', label: 'TEST FAILURE', style: 'remainder' },
+  { id: 'probe-todo', label: 'PROBE TODO', style: 'remainder' },
+  { id: 'probe-invalid', label: 'PROBE INVALID', style: 'remainder' },
+  { id: 'probe-conflict', label: 'PROBE CONFLICT', style: 'remainder' },
 ]
 
 function segmentWidth(name, segment) {
@@ -244,7 +245,7 @@ function backendTooltip(name, version) {
 
 <p class="section-subtitle">Real terminal measurements. Select a terminal for results and recorded evidence.</p>
 
-<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">TEST TODO / TEST FAILURE</span><span class="legend-manual">{{ environmentGroupCount }} environment groups: manual by design (catalogue), ungraded</span></div>
+<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">PROBE TODO / PROBE INVALID / PROBE CONFLICT</span><span class="legend-manual">{{ environmentGroupCount }} environment groups: manual by design (catalogue), ungraded</span></div>
 
 <div class="platform-filter">
   <label for="app-platform-filter">Platform:</label>
@@ -541,7 +542,7 @@ function backendTooltip(name, version) {
 Data comes from three complementary sources:
 
 **Terminal Applications** — measured in a particular app and environment. On an ordinary terminal,
-the community CLI runs reviewed queries; tests that change terminal state remain TEST TODO
+the community CLI runs reviewed queries; tests that change terminal state remain PROBE TODO
 until a verified disposable test environment is available. Rendering and interaction require
 their own evidence, such as screenshots and input tests; a reply alone proves neither.
 

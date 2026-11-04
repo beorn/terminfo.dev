@@ -61,14 +61,14 @@ test.each([
       expect(result.tests, `${id}: silence`).toEqual([
         {
           id: "review",
-          status: "test-todo",
+          status: "probe-todo",
           reason: "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
         },
       ])
       expect(result.assertions ?? []).toEqual([])
     } else if (ps === 3) {
       expect(result.observation?.outcome).toBe("inconclusive")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
       expect(result.assertions ?? []).toEqual([])
       expect(result.note).toContain(facet)
     } else {
@@ -253,11 +253,11 @@ test.each([
       expect(result.assertions).toBeUndefined()
       expect(result.response).toBe('{"snapshot":2,"afterSet":2}')
       expect(result.tests).toEqual([
-        { id: "criterion", status: "test-failure", reason: expect.stringContaining("set-state control unobservable") },
+        { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("set-state control unobservable") },
       ])
     } else if (outcome === null) {
       expect(result.observation).toBeUndefined()
-      expect(result.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "no DECRPM reply" }])
+      expect(result.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: "no DECRPM reply" }])
     } else {
       expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
       expect(result.note).toContain(facet)
@@ -412,7 +412,7 @@ test("DECCOLM names a no-wrap reading after the change as the 133rd X not wrappi
   const result = headlessDeccolm()(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", note: "133rd X did not wrap" })
   expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining('"x":133,"y":0') }),
+    expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining('"x":133,"y":0') }),
   ])
 })
 
@@ -473,7 +473,7 @@ test("DECCOLM names autowrap off rather than claiming a width", () => {
   const result = headlessDeccolm()(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", note: "autowrap off" })
   expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("autowrap off") }),
+    expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("autowrap off") }),
   ])
 })
 
@@ -483,7 +483,7 @@ test("DECCOLM refuses an initial width outside 80/132 instead of rounding it", (
   expect(result.observation).toMatchObject({ outcome: "inconclusive", note: "initial width outside 80/132" })
   expect(result.tests).toMatchObject([
     expect.objectContaining({
-      status: "test-failure",
+      status: "probe-invalid",
       reason: expect.stringContaining('initial width outside 80/132: {"kind":"unmeasured"'),
     }),
   ])
@@ -503,7 +503,7 @@ test.each([
     ])
     expect(JSON.parse(result.response!)).toMatchObject({ [phase]: { width: 132 } })
     expect(result.tests).toMatchObject([
-      expect.objectContaining({ status: "test-failure", reason: expect.stringContaining(`"${phase}"`) }),
+      expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining(`"${phase}"`) }),
     ])
   },
 )
@@ -513,7 +513,7 @@ test("DECCOLM treats an answering 18t that disagrees with the sweep as a failure
   const result = headlessDeccolm()(context)
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: "18t/sweep disagreement W=80 vs 100 (initial)" }),
+    expect.objectContaining({ status: "probe-invalid", reason: "18t/sweep disagreement W=80 vs 100 (initial)" }),
   ])
 })
 
@@ -522,7 +522,7 @@ test("DECCOLM compares the restored 18t with the restored sweep too", () => {
   const result = headlessDeccolm()(context)
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: "18t/sweep disagreement W=80 vs 132 (restored)" }),
+    expect.objectContaining({ status: "probe-invalid", reason: "18t/sweep disagreement W=80 vs 132 (restored)" }),
   ])
 })
 
@@ -537,7 +537,7 @@ test("DECCOLM keeps an adapter with no cell-width readback as a test todo", () =
   const result = headlessDeccolm()(context)
   expect(result.notTested).toMatchObject({ noObservable: "no cell-width readback" })
   expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("no cell-width readback") }),
+    expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining("no cell-width readback") }),
   ])
 })
 
@@ -673,12 +673,12 @@ test("unmeasured app modes leave prior state untouched instead of toggling it fo
         expect(result.observation, `${id}:${ps}`).toBeUndefined()
         expect(result.assertions, `${id}:${ps}`).toBeUndefined()
         expect(result.tests, `${id}:${ps}`).toMatchObject([
-          expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+          expect.objectContaining({ status: "probe-todo", reason: expect.any(String) }),
         ])
       } else if (ps === null) {
         expect(result.observation, `${id}:${ps}`).toBeUndefined()
         expect(result.tests, `${id}:${ps}`).toMatchObject([
-          expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("DECRPM") }),
+          expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("DECRPM") }),
         ])
       } else if (ps === 0) {
         expect(result.observation, `${id}:${ps}`).toMatchObject({
@@ -765,7 +765,7 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       expect(result.tests).toMatchObject([
-        expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("DECRPM") }),
+        expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("DECRPM") }),
       ])
     } else if (ps === 0) {
       expect(result.pass).toBe(false)
@@ -985,7 +985,7 @@ test("1049 exit concludes only the full roundtrip and keeps restoration defects 
   }
 })
 
-test("1049 exit after an unqualified entry is TEST TODO: the entry is a missing prerequisite (@cto 84e7b78b)", () => {
+test("1049 exit after an unqualified entry is PROBE TODO: the entry is a missing prerequisite (@cto 84e7b78b)", () => {
   const definition = alt1049Probe("exit")
   const { context } = alt1049Source("ignored-entry")
   const result = definition.lib!(context)
@@ -1018,8 +1018,8 @@ const VT100_SOURCE_IDENTITY = {
 const withRuntimeIdentity = (context: LibProbeSource, runtimeIdentity: unknown): LibProbeSource =>
   Object.assign(context, { runtimeIdentity }) as LibProbeSource
 
-// An unqualified entry is a missing prerequisite for the exit: TEST TODO, never TEST FAILURE (@cto 84e7b78b, #32246).
-test("1049 exit after an unqualified entry is TEST TODO, and source never decides it (#32246)", () => {
+// An unqualified entry is a missing prerequisite for the exit: PROBE TODO, never PROBE INVALID (@cto 84e7b78b, #32246).
+test("1049 exit after an unqualified entry is PROBE TODO, and source never decides it (#32246)", () => {
   const definition = alt1049Probe("exit")
   const audited = alt1049Source("ignored-entry")
   const result = definition.lib!(withRuntimeIdentity(audited.context, VT100_SOURCE_IDENTITY))
@@ -1032,7 +1032,7 @@ test("1049 exit after an unqualified entry is TEST TODO, and source never decide
   expect(JSON.parse(result.response!)).not.toHaveProperty("sourceCitation")
 })
 
-test("the same entry failure is TEST TODO on a moved, dirty or different source", () => {
+test("the same entry failure is PROBE TODO on a moved, dirty or different source", () => {
   const definition = alt1049Probe("exit")
   const unauditedIdentities = [
     { ...VT100_SOURCE_IDENTITY.integrity, revision: "0".repeat(40) },
@@ -1198,7 +1198,7 @@ test.each([
     expect.arrayContaining([
       expect.objectContaining({
         id: "entry-qualified",
-        status: "test-todo",
+        status: "probe-todo",
         reason: "alternate-screen entry not observed, so exit cannot be attributed",
       }),
     ]),
@@ -1217,7 +1217,7 @@ test("alt-screen exit capture frames the primary, alternate and restored buffers
   expect(result.tests).toMatchObject([
     { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
     { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
-    { id: "remaining-facets", status: "test-todo", reason: expect.stringMatching(/saved cursor.*scrollback/) },
+    { id: "remaining-facets", status: "probe-todo", reason: expect.stringMatching(/saved cursor.*scrollback/) },
   ])
   expect(result.assertions).toHaveLength(2)
   expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
@@ -1236,7 +1236,7 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
       { id: "alternate-marker-control", status: "supported" },
       {
         id: "remaining-facets",
-        status: "test-todo",
+        status: "probe-todo",
         reason: expect.stringMatching(id === "modes.altscreen-1047" ? /clear.*exit/i : /next entry/),
       },
     ])
@@ -1318,7 +1318,7 @@ test("modes capture refuses undersized geometry before any bytes or frames", asy
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: expect.stringContaining(need) }),
+      expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining(need) }),
     ])
   }
 })
@@ -1434,8 +1434,8 @@ test.each(
       if (outcome === "inconclusive") {
         expect(result.assertions, id).toBeUndefined()
         expect(result.observation?.note, id).toMatch(/no (push|pop)-only observation/)
-        // A null grade is a required review (TEST TODO), never a TEST FAILURE (@cto 19664c4c).
-        expect(result.tests, id).toEqual([{ id: "review", status: "test-todo", reason: result.observation?.note }])
+        // A null grade is a required review (PROBE TODO), never a PROBE INVALID (@cto 19664c4c).
+        expect(result.tests, id).toEqual([{ id: "review", status: "probe-todo", reason: result.observation?.note }])
       } else {
         expect(result.assertions, id).toMatchObject([
           { kind: outcome === "supported" ? "positive" : "negative", assertionType: "screenshot" },
@@ -1506,13 +1506,13 @@ test("xt stack capture refuses undersized geometry before any bytes or frames", 
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: expect.stringContaining(need) }),
+      expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining(need) }),
     ])
   }
 })
 
 // Q2: the old presentation-only tests never exercised the library's consumed/leaked controls.
-// #32246: a consumed control with no visible effect has no same-path control in this run, so it is TEST TODO.
+// #32246: a consumed control with no visible effect has no same-path control in this run, so it is PROBE TODO.
 test.each([
   ["Q", 1, 0, "todo"],
   ["9 pQ", 4, 0, "unsupported"],

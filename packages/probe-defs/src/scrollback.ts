@@ -555,7 +555,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (!validSize(rows, 1) || !validSize(ctx.cols, `line ${rows + 9}`.length)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "insufficient-evidence" }],
           }
         }
         for (let i = 0; i < rows + 10; i++) ctx.feed(`line ${i}\r\n`)
@@ -606,7 +606,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
               tests: [
                 {
                   id: "review",
-                  status: "test-todo",
+                  status: "probe-todo",
                   reason:
                     "A line numbering beyond the TOP control shows the viewport scrolled past one screen; whether the terminal retained those lines as scrollback history, and how many, is not readable from the screen",
                 },
@@ -642,7 +642,9 @@ export const scrollbackProbes: ProbeDefinition[] = [
           pass: false,
           response: JSON.stringify(pos),
           criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-          tests: [{ id: "review", status: "test-todo", reason: "Cursor position does not measure scrollback history" }],
+          tests: [
+            { id: "review", status: "probe-todo", reason: "Cursor position does not measure scrollback history" },
+          ],
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
@@ -666,7 +668,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (!validSize(rows, 1) || !validSize(ctx.cols, `line ${rows + 9}`.length)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "insufficient-evidence" }],
           }
         }
         const lineCount = rows + 10
@@ -717,7 +719,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
               tests: [
                 {
                   id: "review",
-                  status: "test-todo",
+                  status: "probe-todo",
                   reason:
                     "The TOP control leaving the top of the screen after more lines than a screen can hold shows the viewport scrolled past its height; retained-history existence and count are not readable from the screen",
                 },
@@ -751,7 +753,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
           response: JSON.stringify(pos),
           criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
           tests: [
-            { id: "review", status: "test-todo", reason: "Cursor position does not measure total scrollback lines" },
+            { id: "review", status: "probe-todo", reason: "Cursor position does not measure total scrollback lines" },
           ],
           observation: {
             outcome: "inconclusive",

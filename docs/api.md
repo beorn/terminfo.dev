@@ -21,9 +21,9 @@ outline: [2, 3]
 | `methodology`            | Status, score, completion and historical endpoint explanations                 |
 | `message`                | Explicit no-current explanation when `contextCount` is zero                    |
 
-A context includes its physical `subject` (without a version), `catalogIds`, `cells`, `sources`, `contributingRunIds`, `attempts`, counts, score and completion. Its subject may be absent for an unmeasured pre-start attempt. A context has no single run ID, version, suite or run hash.
+A context includes its physical `subject` (without a version), `catalogIds`, `featureResults`, `sources`, `contributingRunIds`, `attempts`, counts, score and completion. Its subject may be absent for an unmeasured pre-start attempt. A context has no single run ID, version, suite or run hash.
 
-Each `cells[featureId]` retains its original status, `origin: { runId, resultId }`, `measuredAt`, `suiteId` and `suiteRelation`. Resolve its original receipt as `context.sources[cell.origin.runId]`. Each source retains its own subject version, source revision, suite, run ID/hash, catalog IDs, counts, score, completion, trace receipt and verified run-document URL/hash. `versions` and `history` reference these original immutable run documents; they do not contain composed results.
+Each `featureResults[featureId]` retains `origin: { runId, resultId }`, `measuredAt`, `suiteId` and `suiteRelation`. Resolve its original receipt as `context.sources[cell.origin.runId]`. Each source retains its own subject version, source revision, suite, run ID/hash, catalog IDs, counts, score, completion, trace receipt and verified run-document URL/hash. `versions` and `history` reference these original immutable run documents; they do not contain composed results.
 
 Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutputIds`. Private selection, outcome and error objects remain in the canonical private projection. A later attempt without output does not replace an earlier measured cell.
 
@@ -34,18 +34,20 @@ Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutpu
 | `supported`    | Supported     | The recorded criterion was satisfied                            |
 | `unsupported`  | Unsupported   | The functioning test obtained the defined negative result       |
 | `untestable`   | Untestable    | No current route; no result reaches it                          |
-| `test-todo`    | TEST TODO     | Required work remains; this is not a terminal feature verdict   |
-| `test-failure` | TEST FAILURE  | An attempted test or collection failed to obtain a valid result |
+| `probe-todo`    | PROBE TODO     | Required work remains; this is not a terminal feature verdict   |
+| `probe-invalid` | PROBE INVALID  | An attempted test or collection failed to obtain a valid result |
 
-Each stored run has exactly one result per catalog ID. Its `results` array retains the recorded status and attempts/tests; readers never turn old observations into new current statuses.
+Each stored run has exactly one result per catalog ID. Original raw run documents are immutable and served verbatim. Older stored runs retain `test-todo` and `test-failure`; current readers map those words one to one to `probe-todo` and `probe-invalid`. Supported, Unsupported and Untestable retain their meanings. This is a vocabulary rename, not a re-grade or a rewrite of stored content.
+
+A composed `featureResults[featureId]` also carries `strength` and `conflictingProbes`. When supported and unsupported probes disagree, its feature-only status is `probe-conflict` (PROBE CONFLICT); individual probes and their tests still use only the five statuses above. Conflict prevents completion.
 
 `score.supported / score.all` is Supported divided by the **graded** catalog positions (264 for a current
-273-row run). Untestable, TEST TODO and TEST FAILURE remain in that denominator. The nine environment
+273-row run). Untestable, PROBE TODO and PROBE INVALID remain in that denominator. The nine environment
 groups (`device.env-*`) are recorded in `results` and in the catalogue membership check, but are
 ungraded: **manual by design (catalogue)** and excluded from the score. Stored results remain visible;
-only a stored TEST TODO is displayed as **NOT MEASURED**.
+only a stored PROBE TODO is displayed as **NOT MEASURED**.
 
-A context's `complete` is true only when its TEST TODO and TEST FAILURE counts among the graded
+A context's `complete` is true only when its PROBE TODO, PROBE INVALID and PROBE CONFLICT counts among the graded
 features are both zero. Completion does not imply full support.
 
 An absent current context cannot count as complete.
@@ -65,7 +67,7 @@ const data = await fetch("https://terminfo.dev/api/v3/data.json").then((r) => r.
 if (data.contextCount === 0) console.log(data.message)
 
 for (const [contextKey, context] of Object.entries(data.contexts)) {
-  const cell = context.cells["sgr.fg.truecolor"]
+  const cell = context.featureResults["sgr.fg.truecolor"]
   const source = cell && context.sources[cell.origin.runId]
   console.log(contextKey, cell?.status, context.score, context.complete)
   if (source) {
@@ -87,7 +89,7 @@ Each run's evidence document keys its approved cells under `cells[featureId]` an
 
 Free-form execution reasons and captured diagnostics pass the existing presentation review boundary. A summary without that approval does not expose the private collector note or capture.
 
-Each contributing original source carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity, and holds every result without a presentation decision, keyed by feature ID:
+Each contributing original source carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity, and holds every result without a presentation decision, keyed by feature ID under `featureResults[featureId]`:
 
 - the outcome or status, the assertion type and a reason code;
 - the bytes the probe wrote, and each query's sequence and reason;

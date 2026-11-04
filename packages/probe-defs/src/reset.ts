@@ -129,7 +129,7 @@ export const resetProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Reset fixture needs at least 1x2, measured ${ctx.rows}x${ctx.cols}`,
               },
             ],
@@ -151,7 +151,7 @@ export const resetProbes: ProbeDefinition[] = [
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: "probe-todo",
               reason: `Cursor advance does not measure SGR styling after reset${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
             },
           ],
@@ -185,7 +185,7 @@ export const resetProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Reset fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
               },
             ],
@@ -243,7 +243,7 @@ export const resetProbes: ProbeDefinition[] = [
         ctx.feed("\x1b[!p")
         const after = ctx.getMode("applicationCursor")
         // #30701, @cto ruling C: a getMode that reports no applicationCursor state is a field the backend
-        // does not expose (TEST TODO); an exposed mode that stayed off is still unmeasured.
+        // does not expose (PROBE TODO); an exposed mode that stayed off is still unmeasured.
         if (before === null || after === null) {
           const noObservable = "The headless getMode readback exposes no application-cursor mode (DECCKM) state"
           return reviewResult(
@@ -270,7 +270,7 @@ export const resetProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Reset fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
               },
             ],
@@ -286,7 +286,7 @@ export const resetProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-failure",
+                status: "probe-invalid",
                 reason: "Cannot restore prior application-cursor mode without its readback",
               },
             ],
@@ -362,7 +362,7 @@ export const resetProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            tests: [{ id: "criterion", status: "test-todo", reason: note }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: note }],
           }
         }
         const seed = "AB".repeat(Math.ceil(cols / 2)).slice(0, cols)
@@ -452,7 +452,7 @@ export const resetProbes: ProbeDefinition[] = [
         return Promise.resolve({
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         })
       },
     ),

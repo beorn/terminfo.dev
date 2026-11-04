@@ -237,7 +237,7 @@ export async function runEraseReplay(
           observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
           coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
           diagnostic:
-            precondition && !result.tests?.some((test) => test.id === "criterion" && test.status === "test-failure")
+            precondition && !result.tests?.some((test) => test.id === "criterion" && test.status === "probe-invalid")
               ? {
                   kind: "collector-error",
                   name: "PreconditionFailed",

@@ -103,15 +103,18 @@ export interface ExecutionOnlyProbeCallbackResult {
   assertions?: never
   notTested?: never
   tests: [
-    ProbeTestInput & { status: "test-todo" | "test-failure"; reason: string },
-    ...Array<ProbeTestInput & { status: "test-todo" | "test-failure"; reason: string }>,
+    ProbeTestInput & { status: "probe-todo" | "probe-invalid"; reason: string },
+    ...Array<ProbeTestInput & { status: "probe-todo" | "probe-invalid"; reason: string }>,
   ]
   criterionBranch?: string
 }
 
 /** Execution-owned disposition; historical ObservationOutcome is never a current result. */
-export const PROBE_STATUSES = ["supported", "unsupported", "untestable", "test-todo", "test-failure"] as const
+export const PROBE_STATUSES = ["supported", "unsupported", "untestable", "probe-todo", "probe-invalid"] as const
 export type ProbeStatus = (typeof PROBE_STATUSES)[number]
+/** A feature result can expose a disagreement that no individual probe result can carry. */
+export const FEATURE_RESULT_STATUSES = [...PROBE_STATUSES, "probe-conflict"] as const
+export type FeatureResultStatus = (typeof FEATURE_RESULT_STATUSES)[number]
 export type ProbeAttempt =
   | { scope: "none" }
   | { scope: "collection" | "probe"; startedAt: string; diagnosticRef?: string }

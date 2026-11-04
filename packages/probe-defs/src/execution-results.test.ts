@@ -57,7 +57,7 @@ it("requires visual evidence across the SGR registry while preserving parser-onl
     { target: { kind: "lib", id: "fixture" }, pending: true },
   ] as const
   for (const featureId of [...sgrProbes.map(({ id }) => id), "modes.bracketed-paste"]) {
-    for (const status of ["supported", "unsupported", "test-todo", "test-failure"] as const) {
+    for (const status of ["supported", "unsupported", "probe-todo", "probe-invalid"] as const) {
       const recorded: ProbeResult = {
         featureId,
         status,
@@ -70,7 +70,7 @@ it("requires visual evidence across the SGR registry while preserving parser-onl
         const result = finalizeSgrResult(recorded, target, [])
         const conclusive = status === "supported" || status === "unsupported"
         if (featureId !== "modes.bracketed-paste" && pending && conclusive) {
-          expect(result.status).toBe("test-todo")
+          expect(result.status).toBe("probe-todo")
           expect(result.reason).toBe(
             target.kind === "lib" && !("rendering" in target)
               ? "rendering declaration missing for library fixture in @termless/core/backends.json"
@@ -101,7 +101,7 @@ it("accepts only the recorded SGR screenshot in its own pixel captures without s
     frameDigest: "frame",
     cellRectangle: { top: 1, left: 1, bottom: 1, right: 1 },
   }
-  for (const status of ["supported", "unsupported", "test-todo", "test-failure"] as const) {
+  for (const status of ["supported", "unsupported", "probe-todo", "probe-invalid"] as const) {
     const recorded: ProbeResult = {
       featureId: "sgr.bold",
       status,
@@ -113,7 +113,7 @@ it("accepts only the recorded SGR screenshot in its own pixel captures without s
     expect(finalizeSgrResult(recorded, target, [frame])).toEqual(recorded)
     for (const captures of [[textFrame], [{ ...frame, ref: `sha256:${"b".repeat(64)}` }], []]) {
       expect(finalizeSgrResult(recorded, target, captures).status).toBe(
-        status === "supported" || status === "unsupported" ? "test-todo" : status,
+        status === "supported" || status === "unsupported" ? "probe-todo" : status,
       )
     }
   }
@@ -242,7 +242,7 @@ it.each([
         } as unknown as TermProbeSource)
   expect(captures.length).toBeGreaterThan(0)
   // #32246: a library highlight reset whose initial query answered zero bytes has no same-path control in this run,
-  // so it is a TEST TODO coverage record, not a reply failure.
+  // so it is a PROBE TODO coverage record, not a reply failure.
   const highlightZeroReply =
     kind === "lib" &&
     !rawOverride &&
@@ -269,7 +269,7 @@ it.each([
     expect(stored).toEqual(record(callback))
     return
   }
-  expect(stored.status).toBe("test-failure")
+  expect(stored.status).toBe("probe-invalid")
   for (const entry of captures) {
     expect(stored.reason).toContain(
       `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
@@ -394,7 +394,7 @@ it.each([
     )
   }
   const stored = record(withReplyFailureEvidence(id, callback, { producer: "TTY", attempts }))
-  expect(stored.status).toBe("test-failure")
+  expect(stored.status).toBe("probe-invalid")
   expect(stored.reason).toContain(
     "no parsable cursor position reply; the public projection returned null and retained no bytes",
   )
@@ -423,7 +423,7 @@ it("retains erased DECAWM evidence before wrap emits fixture bytes", async () =>
       attempts: [{ sequence: "\x1b[?7$p", received: "\x1b?", timeoutMs: 37, match: null, reason: "timeout" }],
     }),
   )
-  expect(stored.status).toBe("test-failure")
+  expect(stored.status).toBe("probe-invalid")
   expect(stored.reason).toContain("no usable DECRPM reply; the public projection returned null and retained no bytes")
   expect(stored.reason).toContain('query 1: sent "\\u001b[?7$p"; received "\\u001b?"')
   expect(stored).not.toHaveProperty("replyFailureTestIds")
@@ -466,7 +466,7 @@ it.each([
       ],
     }),
   )
-  expect(stored.status).toBe(id === "modes.color-scheme-reporting" ? "test-todo" : "test-failure")
+  expect(stored.status).toBe(id === "modes.color-scheme-reporting" ? "probe-todo" : "probe-invalid")
   if (id === "modes.color-scheme-reporting") {
     expect(stored.reason).toBe("no DECRPM reply")
   } else if (ps === 0) {
@@ -500,7 +500,7 @@ it("retains unusable cursor-style reply evidence without a pixel fallback", asyn
       attempts: [{ sequence, received, timeoutMs: 37, match: null, reason: "timeout" }],
     }),
   )
-  expect(stored.status).toBe("test-failure")
+  expect(stored.status).toBe("probe-invalid")
   expect(stored.reason).toContain("no usable DECRQSS cursor-style reply")
   expect(stored.reason).toContain(
     `sent ${JSON.stringify(sequence)}; received ${JSON.stringify(received)}; timeout 37 ms`,
@@ -517,7 +517,7 @@ it("retains each query's own state when a failed query is followed by a matching
       { sequence: "\x1b[6n", received: "\x1b[2;3R", timeoutMs: 53, match: ["\x1b[2;3R", "2", "3"], reason: "reply" },
     ],
   })
-  expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "test-failure" })
+  expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "probe-invalid" })
   expect(result.tests?.[0]?.reason).toBe(
     'no parsable cursor position reply; query 1: sent "\\u001b[6n"; received "\\u001b[1;1R"; matched | query 2: sent "\\u001b[6n"; received "garbage"; timeout 37 ms | query 3: sent "\\u001b[6n"; received "\\u001b[2;3R"; matched',
   )
@@ -533,7 +533,7 @@ it.each([
 ])("marks an erased $kind reading without asserting silence", ({ result, reason }) => {
   const callback = result()
   expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
-  expect(callback.tests?.[0]).toMatchObject({ status: "test-failure", reason: expect.stringContaining(reason) })
+  expect(callback.tests?.[0]).toMatchObject({ status: "probe-invalid", reason: expect.stringContaining(reason) })
   expect(callback.tests?.[0]?.reason).toContain("the public projection returned null and retained no bytes")
 })
 
@@ -560,10 +560,10 @@ it.each([
 ])("retains only explicitly marked $producer failure evidence", (evidence) => {
   const { expected } = evidence
   const callback = replyFailure("No cursor reply")
-  const unrelated = { id: "setup", status: "test-failure" as const, reason: "Fixture not established" }
+  const unrelated = { id: "setup", status: "probe-invalid" as const, reason: "Fixture not established" }
   callback.tests.push(unrelated)
   const result = withReplyFailureEvidence("cursor.position-report", callback, evidence)
-  expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "test-failure" })
+  expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "probe-invalid" })
   expect(result.tests?.[0]?.reason).toBe(`No cursor reply; ${expected}`)
   expect(result.tests?.[1]).toBe(unrelated)
   const unmarked: ProbeCallbackResult = { pass: false, tests: [unrelated] }
@@ -573,9 +573,9 @@ it.each([
 
 it("names a callback defect instead of ignoring an invalid reply marker", () => {
   const callback = replyFailure("No cursor reply")
-  callback.tests[0].status = "test-todo"
+  callback.tests[0].status = "probe-todo"
   expect(() => withReplyFailureEvidence("cursor.position-report", callback, { producer: "TTY", attempts: [] })).toThrow(
-    /cursor\.position-report.*criterion.*test-failure/,
+    /cursor\.position-report.*criterion.*probe-invalid/,
   )
   const measured = {
     pass: false,
@@ -583,7 +583,7 @@ it("names a callback defect instead of ignoring an invalid reply marker", () => 
     replyFailureTestIds: ["criterion"],
   }
   expect(() => withReplyFailureEvidence("device.geometry", measured, { producer: "TTY", attempts: [] })).toThrow(
-    /device\.geometry.*criterion.*test-failure/,
+    /device\.geometry.*criterion.*probe-invalid/,
   )
   const markedCoverage = {
     pass: false,
@@ -680,7 +680,12 @@ it("records collection failure only for delegated unfinished IDs", () => {
   }
   draft.results[3] = decided
   recordCollectionFailure(draft, attempt.startedAt, "transport broke", ["selected", "decided"])
-  expect(draft.results.map((result) => result.status)).toEqual(["test-failure", "test-todo", "test-todo", "supported"])
+  expect(draft.results.map((result) => result.status)).toEqual([
+    "probe-invalid",
+    "probe-todo",
+    "probe-todo",
+    "supported",
+  ])
   expect(draft.results[0]?.attempt).toEqual({
     scope: "collection",
     startedAt: attempt.startedAt,
@@ -772,7 +777,7 @@ it("preserves producer-specific native geometry refusal reasons without appendin
       expect(record(callback).reason, `${id}: ${String(refusal)}`).toBe(
         `${priorNote}${refusal ? `; Pixel capture unavailable: ${refusal}` : ""}`,
       )
-      expect(record(callback).status, id).toBe("test-todo")
+      expect(record(callback).status, id).toBe("probe-todo")
       expect(callback.observation, id).toBeUndefined()
     }
   }
@@ -785,7 +790,7 @@ it("preserves producer-specific native geometry refusal reasons without appendin
     queryCursorPosition: async () => ({ row: 1, col: 9 }),
     queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
   } as unknown as TermProbeSource)
-  expect(record(wrong)).toMatchObject({ status: "test-failure", reason: "Cursor advance does not verify SGR styling" })
+  expect(record(wrong)).toMatchObject({ status: "probe-invalid", reason: "Cursor advance does not verify SGR styling" })
   for (const [id, col, reason] of [
     ["sgr.underline-color-reset", 9, "Cursor advance does not verify the reset rendered"],
     ["sgr.selective-reset.bold", 9, "Cursor did not reach the expected position"],
@@ -824,7 +829,7 @@ it("preserves producer-specific native geometry refusal reasons without appendin
       queryCursorPosition: async () => (col === null ? null : { row: 1, col }),
       queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
     } as unknown as TermProbeSource)
-    expect(record(callback), id).toMatchObject({ status: "test-failure", reason })
+    expect(record(callback), id).toMatchObject({ status: "probe-invalid", reason })
   }
   const helperWrong = await rows[0]!.term!({
     rows: 24,
@@ -835,7 +840,7 @@ it("preserves producer-specific native geometry refusal reasons without appendin
   } as unknown as TermProbeSource)
   expect(helperWrong.pass).toBe(false)
   expect(record(helperWrong)).toMatchObject({
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Cursor advance does not verify SGR styling; Pixel capture unavailable: calibration G",
   })
 })
@@ -856,7 +861,7 @@ it("keeps native missing-observation note overrides and prompt consumption branc
           queryCursorPosition: async () => pos,
         } as unknown as TermProbeSource)
         expect(record(callback)).toMatchObject({
-          status: "test-todo",
+          status: "probe-todo",
           reason: refusal ? `Pixel capture unavailable: ${refusal}` : callback.note,
         })
       }
@@ -872,11 +877,11 @@ it("keeps native missing-observation note overrides and prompt consumption branc
     expect(record(callback)).toMatchObject(
       pos
         ? {
-            status: "test-todo",
+            status: "probe-todo",
             reason:
               "Marker consumption was not confirmed; shell prompt integration was not observed; Pixel capture unavailable: calibration G",
           }
-        : { status: "test-failure", reason: "No cursor reply after semantic prompt marker" },
+        : { status: "probe-invalid", reason: "No cursor reply after semantic prompt marker" },
     )
   }
   const libPrompt = extensionsProbes.find((row) => row.id === "extensions.osc133-a")!.lib!
@@ -888,7 +893,7 @@ it("keeps native missing-observation note overrides and prompt consumption branc
     captureGeometryRefusal: "calibration G",
   } as unknown as LibProbeSource)
   expect(record(libCallback)).toMatchObject({
-    status: "test-todo",
+    status: "probe-todo",
     reason: "Marker was consumed; shell prompt integration was not observed",
   })
 })
@@ -905,7 +910,7 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
     } as unknown as TermProbeSource)
     expect(missing).toHaveProperty("replyFailureTestIds", ["criterion"])
     expect(record(missing)).toMatchObject({
-      status: "test-failure",
+      status: "probe-invalid",
       reason: expect.stringMatching(
         /^no parsable cursor position reply after .*; the public projection returned null and retained no bytes$/,
       ),
@@ -919,7 +924,7 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
       measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     } as unknown as TermProbeSource)
     expect(record(callback)).toMatchObject({
-      status: "test-todo",
+      status: "probe-todo",
       reason: "sample width: no cursor-position readback at sample",
     })
   }
@@ -940,7 +945,7 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
         rawReplyRef: "device.term-features",
       },
     }),
-  ).toMatchObject({ status: "test-todo", reason: "terminal child environment" })
+  ).toMatchObject({ status: "probe-todo", reason: "terminal child environment" })
   for (const id of ["unicode.wrap-boundary", "unicode.tab-stops"]) {
     const term = unicodeProbes.find((row) => row.id === id)?.term
     if (!term) throw new Error(`Missing native callback ${id}`)
@@ -951,7 +956,7 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
       queryCursorPosition: async () => null,
     } as unknown as TermProbeSource)
     expect(record(missing)).toMatchObject({
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
     })
   }
@@ -974,7 +979,7 @@ it("preserves explicit tab and checksum reply failures", async () => {
     } as unknown as TermProbeSource)
     expect(reads).toBe(2)
     expect(record(callback)).toMatchObject({
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
     })
   }
@@ -984,15 +989,15 @@ it("preserves explicit tab and checksum reply failures", async () => {
     queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
   } as unknown as TermProbeSource)
   expect(record(native)).toMatchObject({
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "no usable checksum reply",
   })
   const lib = await checksum.lib!({ feed() {}, feedCapture: () => "" } as unknown as LibProbeSource)
-  expect(record(lib)).toMatchObject({ status: "test-failure", reason: "no usable checksum reply" })
+  expect(record(lib)).toMatchObject({ status: "probe-invalid", reason: "no usable checksum reply" })
 })
 // Prior tests only inspected the retained frames/inconclusive observation. These exercise both real
 // callback branches through the production result recorder and seal boundary, where the bug lived.
-it("records the actual unequal-crop comparison as TEST FAILURE despite two retained frames", () => {
+it("records the actual unequal-crop comparison as PROBE INVALID despite two retained frames", () => {
   const callback = cropPositionRefusal({
     id: "sgr.bold",
     compared: frames.map((frame) => ({ role: frame.role, rectangle: frame.regionRectangle })),
@@ -1002,9 +1007,9 @@ it("records the actual unequal-crop comparison as TEST FAILURE despite two retai
   })
   if (!callback) throw new Error("Expected actual crop-position refusal")
   const result = record(callback)
-  expect(result.status).toBe("test-failure")
+  expect(result.status).toBe("probe-invalid")
   expect(result.frames).toEqual(frames)
-  expect(result.tests).toContainEqual(expect.objectContaining({ id: "comparison", status: "test-failure", attempt }))
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "comparison", status: "probe-invalid", attempt }))
 })
 it("keeps an explicit unattempted visual review TODO when the capture seals", async () => {
   let next = 0
@@ -1017,9 +1022,9 @@ it("keeps an explicit unattempted visual review TODO when the capture seals", as
     undefined,
     "normal control",
   )
-  expect(callback.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-todo" }))
+  expect(callback.tests).toContainEqual(expect.objectContaining({ id: "review", status: "probe-todo" }))
   const result = record(callback)
-  expect(result.status).toBe("test-todo")
+  expect(result.status).toBe("probe-todo")
   expect(result.tests.find((check) => check.id === "review")?.attempt).toEqual({ scope: "none" })
   expect(callback.assertions?.[0]?.expected).toContain("bold target")
   expect(callback.assertions?.[0]?.observed).toContain(frames[1]!.ref)
@@ -1052,7 +1057,7 @@ it("keeps an explicit unattempted visual review TODO when the capture seals", as
   draft.origin = { kind: "collector" }
   draft.results = [result]
   expect(finalizeCollectedDraft(draft as Parameters<typeof finalizeCollectedDraft>[0]).results[0]!.status).toBe(
-    "test-todo",
+    "probe-todo",
   )
 })
 
@@ -1077,28 +1082,28 @@ it("keeps the writer's note, and names the writer default only without one, when
   if (!note) throw new Error("Expected the captured visual-review observation to carry its writer note")
   const result = record(rowless)
   expect(result).toMatchObject({
-    status: "test-failure",
+    status: "probe-invalid",
     reason: note,
-    tests: [{ id: "criterion", status: "test-failure", reason: note }],
+    tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
   })
   expect(result.frames).toEqual(aligned)
   const { note: _dropped, ...noteless } = callback.observation
   expect(record({ ...rowless, observation: noteless })).toMatchObject({
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "writer default: inconclusive observation without test rows; callback defect",
     tests: [
       {
         id: "criterion",
-        status: "test-failure",
+        status: "probe-invalid",
         reason: "writer default: inconclusive observation without test rows; callback defect",
       },
     ],
   })
 })
 
-// #32246: a former source-negative review site no longer grades or reviews from source; the record is the TEST TODO
+// #32246: a former source-negative review site no longer grades or reviews from source; the record is the PROBE TODO
 // coverage record with no observation and no review branch, whatever its stated reason.
-it("keeps a former source-review parser-state result as a TEST TODO coverage record with no observation", () => {
+it("keeps a former source-review parser-state result as a PROBE TODO coverage record with no observation", () => {
   const sentence = "DECCARA not honoured, extent unobservable"
   const callback = parserStateResult(false, "DECCARA applies bold", { cells: [] }, undefined, sentence)
   expect(callback.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
@@ -1115,10 +1120,10 @@ it("keeps measured 8-bit decoding as unmet UTF-8 prerequisite TODO without inven
   )
   if (!callback) throw new Error("Expected measured 8-bit prerequisite")
   const result = record(callback)
-  expect(result.status).toBe("test-todo")
+  expect(result.status).toBe("probe-todo")
   expect(result.criterionBranch).toBe("utf8-prerequisite")
   expect(result.tests).toEqual([
-    expect.objectContaining({ id: "utf8-context", status: "test-todo", attempt: { scope: "none" } }),
+    expect.objectContaining({ id: "utf8-context", status: "probe-todo", attempt: { scope: "none" } }),
   ])
   expect(result.tests.some((check) => check.id === "review")).toBe(false)
 })
@@ -1142,7 +1147,7 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
       assertions: [],
     })
 
-  // 1. Consumed-but-unqualified (home 1;1 -> target 1;2 -> control 1;2) stays TEST TODO, never Unsupported or Untestable.
+  // 1. Consumed-but-unqualified (home 1;1 -> target 1;2 -> control 1;2) stays PROBE TODO, never Unsupported or Untestable.
   const unqualifiedReads = [
     { row: 1, col: 1 },
     { row: 1, col: 2 },
@@ -1154,39 +1159,39 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
     queryCursorPosition: async () => unqualifiedReads[unqualifiedIndex++] ?? null,
   } as unknown as TermProbeSource)
   const unqualifiedRecorded = recordC154(unqualifiedCallback)
-  expect(unqualifiedRecorded.status).toBe("test-todo")
+  expect(unqualifiedRecorded.status).toBe("probe-todo")
   expect(unqualifiedRecorded.assertionType).toBeUndefined()
   expect(unqualifiedRecorded.rawReplyRef).toBe("extensions.osc133-a")
   expect(unqualifiedRecorded.tests).toEqual([
     expect.objectContaining({
       id: "criterion",
-      status: "test-todo",
+      status: "probe-todo",
       attempt: { scope: "none" },
       rawReplyRef: "extensions.osc133-a",
     }),
   ])
 
-  // 2. Null CPR reply records TEST FAILURE with query evidence and rawReplyRef, never Unsupported or Untestable.
+  // 2. Null CPR reply records PROBE INVALID with query evidence and rawReplyRef, never Unsupported or Untestable.
   const nullCallback = await osc133a.term({
     write() {},
     queryCursorPosition: async () => null,
   } as unknown as TermProbeSource)
   const nullRecorded = recordC154(nullCallback)
-  expect(nullRecorded.status).toBe("test-failure")
+  expect(nullRecorded.status).toBe("probe-invalid")
   expect(nullRecorded.assertionType).toBeUndefined()
   expect(nullRecorded.rawReplyRef).toBe("extensions.osc133-a")
   expect(nullRecorded.reason).toBe("No cursor reply after semantic prompt marker")
   expect(nullRecorded.tests).toEqual([
     expect.objectContaining({
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       attempt,
       rawReplyRef: "extensions.osc133-a",
       reason: "No cursor reply after semantic prompt marker",
     }),
   ])
 
-  // 3. Qualified home/target/control sequence emits no-semantic-observable coverage, which records as TEST TODO
+  // 3. Qualified home/target/control sequence emits no-semantic-observable coverage, which records as PROBE TODO
   // (never automatic Untestable without a downstream resolved reviewRef).
   const qualifiedReads = [
     { row: 1, col: 1 },
@@ -1203,13 +1208,13 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
     noObservable: "OSC 133;A prompt-start mark registration",
   })
   const qualifiedRecorded = recordC154(qualifiedCallback)
-  expect(qualifiedRecorded.status).toBe("test-todo")
+  expect(qualifiedRecorded.status).toBe("probe-todo")
   expect(qualifiedRecorded.rawReplyRef).toBe("extensions.osc133-a")
   expect(qualifiedRecorded.reason).toBe("OSC 133;A prompt-start mark registration")
   expect(qualifiedRecorded.tests).toEqual([
     expect.objectContaining({
       id: "criterion",
-      status: "test-todo",
+      status: "probe-todo",
       attempt: { scope: "none" },
       rawReplyRef: "extensions.osc133-a",
       reason: "OSC 133;A prompt-start mark registration",
@@ -1221,7 +1226,7 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
 // their criterion facts without manufacturing either. Forward legacy pass to the real recorder
 // so this case catches a future pass-based promotion instead of dropping the contradictory input.
 it("records execution-only TODO and FAILURE tests, ignoring legacy pass even when true", () => {
-  for (const status of ["test-todo", "test-failure"] as const) {
+  for (const status of ["probe-todo", "probe-invalid"] as const) {
     const callback = {
       pass: true,
       response: "retained callback state",
@@ -1240,7 +1245,7 @@ it("records execution-only TODO and FAILURE tests, ignoring legacy pass even whe
         id: "criterion",
         status,
         reason: "No deciding observable was retained",
-        attempt: status === "test-todo" ? { scope: "none" } : attempt,
+        attempt: status === "probe-todo" ? { scope: "none" } : attempt,
         assertionRefs: [],
         rawReplyRef: "sgr.bold",
       },

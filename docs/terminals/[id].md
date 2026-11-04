@@ -23,7 +23,7 @@ const sourceVersions = computed(() => [...new Set(sourceRuns.value.map(run => ru
 const measuredBar = computed(() => {
   const selection = selectedRun.value
   if (!selection) return undefined
-  return aggregateCurrentResults('cells' in selection ? Object.values(selection.cells) : selection.results, selection.catalogIds)
+  return aggregateCurrentResults('featureResults' in selection ? Object.values(selection.featureResults) : selection.results, selection.catalogIds)
 })
 const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
 function featureNote(id) {
@@ -165,8 +165,9 @@ const breadcrumbParent = (() => {
     <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.untestable" class="result-share-inconclusive" :style="{ width: `${measuredBar.counts.untestable / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts['test-todo']" class="result-share-not-tested" :style="{ width: `${measuredBar.counts['test-todo'] / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts['test-failure']" class="result-share-error" :style="{ width: `${measuredBar.counts['test-failure'] / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts['probe-todo']" class="result-share-not-tested" :style="{ width: `${measuredBar.counts['probe-todo'] / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts['probe-invalid']" class="result-share-error" :style="{ width: `${measuredBar.counts['probe-invalid'] / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts['probe-conflict']" class="result-share-error" title="PROBE CONFLICT" :style="{ width: `${measuredBar.counts['probe-conflict'] / measuredBar.denominator * 100}%` }"></span>
   </div>
   <p>Selection {{ selectedRun.complete ? 'complete' : 'incomplete' }}. Completion and feature support are separate.</p>
 </div>

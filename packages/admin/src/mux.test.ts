@@ -160,7 +160,7 @@ it.each([
     if (mode === "private") {
       const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
       expect(log).toHaveBeenCalledWith(
-        expect.stringContaining(`1 TEST TODO · 0 TEST FAILURE${clause} (retained privately)`),
+        expect.stringContaining(`1 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT${clause} (retained privately)`),
       )
       expect(readFileSync(join(output, "http-response.json"), "utf8")).toBe(bytes)
       const raw = readdirSync(output).find((name) => name.startsWith("tmux-3.6a-"))

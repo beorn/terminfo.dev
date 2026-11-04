@@ -263,11 +263,11 @@ describe("consumer selection", () => {
         results: [
           {
             featureId: "sgr.bold",
-            status: "test-failure",
+            status: "probe-invalid",
             reason: "Fixture oracle failed",
             attempt: libAttempt,
             rawReplyRef: "sgr.bold",
-            tests: [{ id: "criterion", status: "test-failure", attempt: libAttempt, reason: "Fixture oracle failed" }],
+            tests: [{ id: "criterion", status: "probe-invalid", attempt: libAttempt, reason: "Fixture oracle failed" }],
           },
         ],
       })
@@ -429,7 +429,7 @@ describe("consumer selection", () => {
       for (const [key, context] of Object.entries(expected.contexts)) {
         const actual = v3.contexts[key]
         expect(actual).toBeDefined()
-        expect(actual?.cells).toEqual(context.cells)
+        expect(actual?.featureResults).toEqual(context.featureResults)
         assertGroup(
           actual!.sources,
           Object.fromEntries(

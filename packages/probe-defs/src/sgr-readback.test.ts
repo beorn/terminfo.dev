@@ -136,7 +136,7 @@ const PLAIN_STYLE_REPLIES = DECIDED.filter(
 
 test.each([
   ...PLAIN_STYLE_REPLIES.map(([id, reply]) => [id, reply, "supported"] as const),
-  ["sgr.bold", "0", "test-todo"] as const,
+  ["sgr.bold", "0", "probe-todo"] as const,
 ])("%s retains DECRQSS %s without an owned pixel oracle (%s)", async (id, reply, status) => {
   const { ctx, queries } = sgrReadbackSource(reply)
   let captures = 0
@@ -160,21 +160,21 @@ test.each([
 // constant responder that ignored setup entirely; exercise every reset binding through its callback
 // and the production recorder, where those false positives became stored Supported results.
 test.each([
-  ["sgr.reset", "0", "test-todo"],
-  ["sgr.selective-reset.bold", "0;3", "test-failure"],
-  ["sgr.selective-reset.underline", "0;1", "test-failure"],
-  ["sgr.selective-reset.italic", "0;1", "test-failure"],
-  ["sgr.selective-reset.inverse", "0;1", "test-failure"],
-  ["sgr.fg.default", "0", "test-todo"],
-  ["sgr.bg.default", "0", "test-todo"],
-  ["sgr.underline-color-reset", "0;4", "test-failure"],
-  ["reset.sgr", "0", "test-todo"],
+  ["sgr.reset", "0", "probe-todo"],
+  ["sgr.selective-reset.bold", "0;3", "probe-invalid"],
+  ["sgr.selective-reset.underline", "0;1", "probe-invalid"],
+  ["sgr.selective-reset.italic", "0;1", "probe-invalid"],
+  ["sgr.selective-reset.inverse", "0;1", "probe-invalid"],
+  ["sgr.fg.default", "0", "probe-todo"],
+  ["sgr.bg.default", "0", "probe-todo"],
+  ["sgr.underline-color-reset", "0;4", "probe-invalid"],
+  ["reset.sgr", "0", "probe-todo"],
 ] as const)("%s cannot qualify a reset from constant final-state reply %s (%s)", async (id, reply, status) => {
   const { ctx } = sgrReadbackSource(reply)
   // This contract is query-only. Qualified capture has its own independently witnessed controls.
   ctx.capture = undefined
   const result = await sgrTerm(id)(ctx)
-  if (status === "test-todo") {
+  if (status === "probe-todo") {
     expect(result.notTested?.reason).toBe("no-semantic-observable")
     expect(result.observation).toBeUndefined()
   } else {
@@ -303,8 +303,8 @@ test.each([
       tests: result.tests,
       criterionBranch: result.criterionBranch,
     })
-    expect(recorded.status).toBe("test-failure")
-    expect(recorded.tests).toContainEqual(expect.objectContaining({ status: "test-failure", rawReplyRef: id }))
+    expect(recorded.status).toBe("probe-invalid")
+    expect(recorded.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid", rawReplyRef: id }))
   }
 })
 
@@ -359,7 +359,7 @@ test.each([
     assertions: [],
     tests: result.tests,
   })
-  expect(recorded.status).toBe("test-todo")
+  expect(recorded.status).toBe("probe-todo")
 })
 
 // A scripted response alone would miss sending reset before reading setup. Check the bytes that
@@ -439,7 +439,7 @@ test.each([
     assertions: [],
     tests: result.tests,
   })
-  expect(recorded.status).toBe("test-todo")
+  expect(recorded.status).toBe("probe-todo")
   expect(recorded.reason).toContain("setup prerequisite was not established")
   expect(result.notTested?.noObservable).toBe(result.note)
   expect(recorded.reason).toContain(result.note!)
@@ -484,7 +484,7 @@ test.each(["baseline", "setup", "final"] as const)(
       expect(result.pass, kind).toBe(false)
       expect(result.observation, kind).toBeUndefined()
       expect(result.tests, kind).toEqual([
-        { id: "criterion", status: "test-failure", reason: "Cursor did not reach the expected position" },
+        { id: "criterion", status: "probe-invalid", reason: "Cursor did not reach the expected position" },
       ])
       expect(result.response, kind).toBe("1;2")
       expect(result.assertions ?? [], kind).toHaveLength(0)

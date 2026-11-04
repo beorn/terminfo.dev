@@ -50,7 +50,7 @@ test("text.overwrite asks the terminal's pixel report before painting its overwr
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
     expect.objectContaining({
-      status: "test-failure",
+      status: "probe-invalid",
       reason: expect.stringContaining("CSI 16 t"),
     }),
   ])
@@ -64,5 +64,5 @@ test("text.cr never captures; it keeps the CR cursor-query decision", async () =
   const result = await find("text.cr")(context)
   expect(frames).toEqual([])
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) })])
 })

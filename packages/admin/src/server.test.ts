@@ -232,7 +232,7 @@ it.each([
       ]
       run.results[0] = {
         featureId: "sgr.bold",
-        status: "test-todo",
+        status: "probe-todo",
         reason: "Independent review pending",
         assertionType: "query_reply",
         rawReplyRef: "sgr.bold",
@@ -244,13 +244,13 @@ it.each([
             assertionRefs: [0],
             attempt: { scope: "probe", startedAt: run.measuredAt },
           },
-          { id: "review", status: "test-todo", reason: "Independent review pending", attempt: { scope: "none" } },
+          { id: "review", status: "probe-todo", reason: "Independent review pending", attempt: { scope: "none" } },
         ],
       }
     }
     const assertDraft = (saved: CapturedRunDraft) => {
       expect(saved).not.toHaveProperty("sealedAt")
-      if (pending) expect(saved.results[0]!.tests.find((test) => test.id === "review")?.status).toBe("test-todo")
+      if (pending) expect(saved.results[0]!.tests.find((test) => test.id === "review")?.status).toBe("probe-todo")
     }
     fixtures.receipt = { manifest, collectorRevision: manifest.sourceRevision }
     fixtures.raw = JSON.stringify(run)
@@ -410,8 +410,8 @@ it.each([
     const summary = vi
       .mocked(console.log)
       .mock.calls.map(([line]) => line)
-      .find((line) => line.includes("TEST FAILURE"))
-    const coverage = `0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause}`
+      .find((line) => line.includes("PROBE INVALID"))
+    const coverage = `0 Supported · 0 Unsupported · 0 Untestable · 1 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT${clause}`
     expect(summary).toBe(
       command === "server"
         ? `  ${"kitty 0.49.1".padEnd(25)} Not measured yet · ${coverage} (identity unverified)`

@@ -334,7 +334,7 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
       tests: [
         {
           id: "criterion",
-          status: "test-todo",
+          status: "probe-todo",
           reason: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
         },
       ],

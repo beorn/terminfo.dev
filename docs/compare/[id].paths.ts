@@ -4,7 +4,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
 import type { PublicContextSummary } from "../data/public-results"
 import { publicResultFor } from "../data/release-scope"
-import type { ProbeStatus } from "@terminfo/probe-defs"
+import type { FeatureResultStatus } from "@terminfo/probe-defs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -13,14 +13,14 @@ const contentDir = join(__dirname, "..", "..", "content")
  * The reader's ONE classification, said in the compare page's own words. This is presentation over the
  * state, never a second chain over the raw cell (28792 item 1).
  */
-function resultFor(state: ProbeStatus | undefined): "yes" | "no" | "unknown" {
+function resultFor(state: FeatureResultStatus | undefined): "yes" | "no" | "unknown" {
   if (state === "supported") return "yes"
   if (state === "unsupported") return "no"
   return "unknown"
 }
 
 /** The two states the reader calls decided; inconclusive, error and untested are all not decided. */
-function decided(state: ProbeStatus | undefined): boolean {
+function decided(state: FeatureResultStatus | undefined): boolean {
   return state === "supported" || state === "unsupported"
 }
 
@@ -123,7 +123,7 @@ export default {
             const resultB = resultFor(stateB)
             const comparable = Boolean(
               comparableScope &&
-              a.selected.cells[f.id]?.suiteId === b.selected.cells[f.id]?.suiteId &&
+              a.selected.featureResults[f.id]?.suiteId === b.selected.featureResults[f.id]?.suiteId &&
               decided(stateA) &&
               decided(stateB) &&
               cellA !== undefined &&

@@ -12,7 +12,7 @@ PROBE_BATCH_TIMEOUT_SECONDS=600
 prepare_font_control() {
   local output=$1 family=$2
   shift 2
-  local font='' font_sha='' matched='' pin='' config='' version='' reason='' status=test-todo proof_state=absent
+  local font='' font_sha='' matched='' pin='' config='' version='' reason='' status=probe-todo proof_state=absent
   local sample='!= -> => <= ==' args
   mkdir -p "$output/font-source"
   : > "$output/font-on.json"
@@ -62,7 +62,7 @@ prepare_font_control() {
       proof_state=source-capable
     fi
   fi
-  if [[ -n "$reason" ]]; then printf '%s; font remains TEST TODO, no typed review\n' "$reason" >&2; fi
+  if [[ -n "$reason" ]]; then printf '%s; font remains PROBE TODO, no typed review\n' "$reason" >&2; fi
   jq -n --arg status "$status" --arg reason "$reason" --arg proofState "$proof_state" --arg family "$family" --arg sample "$sample" \
     --arg path "$font" --arg sha "$font_sha" --arg pin "$pin" --arg config "$config" --arg matched "$matched" \
     --argjson args "$args" --rawfile configBytes "$output/fontconfig.xml" \

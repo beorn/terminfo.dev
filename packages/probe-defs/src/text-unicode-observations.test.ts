@@ -99,7 +99,7 @@ test.each(["text.basic", "text.tab", "text.hts", "text.wrap"])(
     )
     expect(result.tests).toContainEqual({
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "fixture not qualified: home 1;1, got 2;7",
     })
     expect(JSON.stringify(result)).not.toContain("provider is not position-sensitive")
@@ -130,7 +130,7 @@ test.each([
   )
   expect(result.tests).toContainEqual({
     id: "criterion",
-    status: "test-todo",
+    status: "probe-todo",
     reason: "no cursor-position readback",
   })
 })
@@ -143,7 +143,7 @@ test("the combined tab fixture names a received wrong comparison stop as FAILURE
   )
   expect(result.tests).toContainEqual({
     id: "criterion",
-    status: "test-failure",
+    status: "probe-invalid",
     reason: "fixture not qualified: expected 1;9, got 1;8",
   })
 })
@@ -188,9 +188,9 @@ test.each([
   "unicode.grapheme-cursor",
 ])("%s preserves the width reader's named causes", async (id) => {
   for (const [reading, status, evidence] of [
-    [{ kind: "no-reply", step: "sample" }, "test-todo", "sample"],
-    [{ kind: "control-mismatch", step: "ascii", observed: { row: 1, col: 3 } }, "test-failure", "1;3"],
-    [{ kind: "wrapped", observed: { row: 2, col: 4 } }, "test-failure", "2;4"],
+    [{ kind: "no-reply", step: "sample" }, "probe-todo", "sample"],
+    [{ kind: "control-mismatch", step: "ascii", observed: { row: 1, col: 3 } }, "probe-invalid", "1;3"],
+    [{ kind: "wrapped", observed: { row: 2, col: 4 } }, "probe-invalid", "2;4"],
   ] as const) {
     const result = await byId(id).term(
       app({
@@ -453,7 +453,7 @@ test("TBC leaves failed setup, narrow geometry and absent or malformed cursor ev
       assertions: [],
       tests: declined.tests,
     })
-    expect(recorded.status).toBe("test-failure")
+    expect(recorded.status).toBe("probe-invalid")
     expect(recorded.assertionType).toBeUndefined()
     expect(recorded.reason).toBe(`Tab fixture needs at least ${id === "text.tbc" ? 34 : 21} columns`)
   }
@@ -477,7 +477,7 @@ test("TBC leaves failed setup, narrow geometry and absent or malformed cursor ev
   expect(appResult.tests).toMatchObject([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
     },
   ])
@@ -531,7 +531,7 @@ test.each([
     expect(missing.tests).toEqual([
       {
         id: "criterion",
-        status: "test-failure",
+        status: "probe-invalid",
         reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
       },
     ])
@@ -541,7 +541,7 @@ test.each([
     const undersized = await probe.term(app({ cols: 12 }))
     expect(undersized.observation).toBeUndefined()
     expect(undersized.tests).toEqual([
-      { id: "criterion", status: "test-todo", reason: "Tab fixture needs at least 21 columns" },
+      { id: "criterion", status: "probe-todo", reason: "Tab fixture needs at least 21 columns" },
     ])
   }
 })
@@ -573,7 +573,7 @@ test("grapheme ID measures the ZWJ sample width, including headless cell state",
   const missing = await probe.term(app())
   expect(missing.observation).toBeUndefined()
   expect(missing.tests).toEqual([
-    { id: "criterion", status: "test-todo", reason: "sample width: no cursor-position readback at sample" },
+    { id: "criterion", status: "probe-todo", reason: "sample width: no cursor-position readback at sample" },
   ])
 
   const sample = "👨‍👩‍👧"
@@ -679,7 +679,9 @@ test("text.wrap qualifies DECAWM then writes control then target before grading"
   const result = await byId("text.wrap").term(app({ cols: 61, rows: 1, write: (s) => narrowWrites.push(s) }))
   expect(result.observation).toBeUndefined()
   expect(result).toMatchObject({
-    tests: [expect.objectContaining({ status: "test-todo", reason: "Wrap fixture needs at least 2x2, measured 1x61" })],
+    tests: [
+      expect.objectContaining({ status: "probe-todo", reason: "Wrap fixture needs at least 2x2, measured 1x61" }),
+    ],
   })
   expect(narrowWrites).toEqual([])
 })
@@ -716,7 +718,7 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue(null) }),
   )
   expect(missingHome.observation).toBeUndefined()
-  expect(missingHome.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }])
+  expect(missingHome.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: "no cursor-position readback" }])
 
   const missingControl = await byId("text.wrap").term(
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue({ row: 1, col: 1 }, null) }),
@@ -725,7 +727,7 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
   expect(missingControl.tests).toEqual([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
     },
   ])
@@ -741,7 +743,7 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
   expect(missingTarget.tests).toEqual([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
     },
   ])
@@ -767,7 +769,7 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
       expect(result.tests).toEqual([
         {
           id: "criterion",
-          status: "test-failure",
+          status: "probe-invalid",
           reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
         },
       ])
@@ -828,7 +830,9 @@ test("text.tab and text.hts grade the combined HT/HTS fixture from qualified seq
 
     const missing = await byId(id).term(app({ cols: 80, queryCursorPosition: cursorQueue(null) }))
     expect(missing.observation, id).toBeUndefined()
-    expect(missing.tests, id).toEqual([{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }])
+    expect(missing.tests, id).toEqual([
+      { id: "criterion", status: "probe-todo", reason: "no cursor-position readback" },
+    ])
   }
 })
 
@@ -850,7 +854,7 @@ test("tab combined fixture declines too-small geometry before any write or query
       expect(result, `${id} cols=${cols}`).toMatchObject({
         tests: [
           expect.objectContaining({
-            status: "test-todo",
+            status: "probe-todo",
             reason: `Text fixture needs at least 1x9; measured 24x${cols}`,
           }),
         ],
@@ -871,7 +875,9 @@ test("HTS restores stops only inside the measured 61-column fixture", async () =
   const result = await byId("text.hts").term(app({ cols: 5, write: (s) => small.push(s) }))
   expect(result.observation).toBeUndefined()
   expect(result).toMatchObject({
-    tests: [expect.objectContaining({ status: "test-todo", reason: "Text fixture needs at least 1x9; measured 24x5" })],
+    tests: [
+      expect.objectContaining({ status: "probe-todo", reason: "Text fixture needs at least 1x9; measured 24x5" }),
+    ],
   })
   expect(small).toEqual([])
 })
@@ -890,7 +896,7 @@ test("tab and Unicode size refusals record no feature measurement or writes", as
     const result = await byId(id).term(app({ cols: 1, rows: 1, write: (sequence) => writes.push(sequence) }))
     expect(result.observation, id).toBeUndefined()
     expect(result, id).toMatchObject({
-      tests: [expect.objectContaining({ status: "test-todo", reason })],
+      tests: [expect.objectContaining({ status: "probe-todo", reason })],
     })
     expect(writes, id).toEqual([])
   }
@@ -939,7 +945,7 @@ test("remaining text fixtures decline a 1x1 grid before any write or width query
     )
     expect(result.observation, id).toBeUndefined()
     expect(result, id).toMatchObject({
-      tests: [expect.objectContaining({ status: "test-todo", reason })],
+      tests: [expect.objectContaining({ status: "probe-todo", reason })],
     })
     expect(writes, id).toEqual([])
   }
@@ -984,7 +990,7 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
     }),
   )
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }])
+  expect(result.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: "insufficient-evidence" }])
   expect(tooShort).toEqual([])
   const unicodeTooShort: string[] = []
   const unicodeShortResult = byId("unicode.wrap-boundary").lib(
@@ -996,7 +1002,7 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
   )
   expect(unicodeShortResult.observation).toBeUndefined()
   expect(unicodeShortResult.tests).toEqual([
-    { id: "criterion", status: "test-todo", reason: "Need at least two columns and two screen rows" },
+    { id: "criterion", status: "probe-todo", reason: "Need at least two columns and two screen rows" },
   ])
   expect(unicodeTooShort).toEqual([])
 })
@@ -1137,7 +1143,7 @@ test("invalid headless geometry never feeds wrap or tab fixtures", () => {
       expect(result, `${id} cols=${cols}`).toMatchObject({
         tests: [
           expect.objectContaining({
-            status: "test-todo",
+            status: "probe-todo",
             reason:
               id === "unicode.wrap-boundary"
                 ? "Need at least two columns and two screen rows"
@@ -1306,7 +1312,7 @@ test("headless emoji width refuses narrow geometry before any write", () => {
     expect(result, id).toMatchObject({
       tests: [
         expect.objectContaining({
-          status: "test-todo",
+          status: "probe-todo",
           reason: `Emoji width fixture needs at least ${cols + 1} columns to place the sample and sentinel without wrapping; measured ${cols}`,
         }),
       ],

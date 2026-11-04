@@ -627,7 +627,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
   // is never a pass, and the pair says why (#30702): both frames on the stream pattern measure DECSACE
   // 2 ignored, both on the rectangle pattern measure the stream extent ignored, and either is a measured
   // negative, not an inconclusive. No inverse cell in either frame means DECCARA itself was not
-  // honoured, so the extent has no observable (TEST TODO); any other pair, agreeing or differing, is
+  // honoured, so the extent has no observable (PROBE TODO); any other pair, agreeing or differing, is
   // inconclusive by name.
   {
     ...probe(
@@ -715,7 +715,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: "editing.decsace: text-cells captures cannot establish this pixel-cell extent comparison",
               },
             ],

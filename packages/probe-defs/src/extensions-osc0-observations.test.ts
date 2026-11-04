@@ -168,7 +168,7 @@ test.each([
       expect(result!.observation?.outcome).not.toBe("unsupported")
       expect(result!.observation?.outcome).not.toBe("supported")
       expect(result!.assertions?.some(({ kind }) => kind === "negative")).not.toBe(true)
-      expect(result!.tests).toMatchObject([{ status: "test-failure", reason: expect.any(String) }])
+      expect(result!.tests).toMatchObject([{ status: "probe-invalid", reason: expect.any(String) }])
     } else {
       expect(result!.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
       expect(result!.assertions?.map(({ kind }) => kind)).toContain(outcome === "supported" ? "positive" : "negative")
@@ -213,7 +213,7 @@ test("the termless arm reads a complete wrong icon payload as unsupported", () =
 test("the termless arm names a missing title reply as a test failure, never unsupported", () => {
   const result = termlessCallback()(lib({ [ICON_QUERY]: `\x1b]L${PAYLOAD}\x07` }))
   expect(result.tests).toMatchObject([
-    { status: "test-failure", reason: expect.stringContaining("window title (CSI 21 t): feedCapture boundary") },
+    { status: "probe-invalid", reason: expect.stringContaining("window title (CSI 21 t): feedCapture boundary") },
   ])
   expect(result.replyFailureTestIds).toEqual(["criterion"])
   expect(result.observation).toBeUndefined()
@@ -224,8 +224,8 @@ test("the termless arm names a missing title reply as a test failure, never unsu
 test.each([
   { when: "exact reports", replies: exactReplies, outcome: "supported" },
   { when: "wrong icon", replies: { ...exactReplies, [ICON_QUERY]: "\x1b]Lother-icon\x07" }, outcome: "unsupported" },
-  { when: "missing title", replies: { [ICON_QUERY]: exactReplies[ICON_QUERY] }, outcome: "test-failure" },
-  { when: "sentinel silence", replies: {}, outcome: "test-failure" },
+  { when: "missing title", replies: { [ICON_QUERY]: exactReplies[ICON_QUERY] }, outcome: "probe-invalid" },
+  { when: "sentinel silence", replies: {}, outcome: "probe-invalid" },
 ])("the qualified termless arm retains both query traces for $when", ({ replies, outcome }) => {
   const queries: string[] = []
   const writes: string[] = []
@@ -249,7 +249,7 @@ test.each([
     }
   }
   const result = termlessCallback()(ctx)
-  if (outcome === "test-failure") expect(result.tests).toMatchObject([{ status: outcome }])
+  if (outcome === "probe-invalid") expect(result.tests).toMatchObject([{ status: outcome }])
   else expect(result.observation?.outcome).toBe(outcome)
   expect(queries).toEqual([ICON_QUERY, TITLE_QUERY])
   expect(writes).toEqual([`\x1b]0;${PAYLOAD}\x07`])
@@ -257,7 +257,7 @@ test.each([
     icon: ((replies as Record<string, string>)[ICON_QUERY] ?? "") + "\x1b[?1;2c",
     title: ((replies as Record<string, string>)[TITLE_QUERY] ?? "") + "\x1b[?1;2c",
   })
-  if (outcome === "test-failure") {
+  if (outcome === "probe-invalid") {
     expect(result.tests?.[0].reason).toContain("window title (CSI 21 t): sentinel")
     expect(result.replyFailureTestIds).toEqual(["criterion"])
     expect(result.observation).toBeUndefined()
@@ -279,7 +279,7 @@ test("the sentinel app arm reads a complete wrong title payload as unsupported",
 test("the sentinel app arm names a missing icon reply as a test failure", async () => {
   const result = await termCallback()(terminal({ [TITLE_QUERY]: `\x1b]l${PAYLOAD}\x07` }))
   expect(result.tests).toMatchObject([
-    { status: "test-failure", reason: expect.stringContaining("icon label (CSI 20 t): timeout") },
+    { status: "probe-invalid", reason: expect.stringContaining("icon label (CSI 20 t): timeout") },
   ])
   expect(result.replyFailureTestIds).toEqual(["criterion"])
   expect(result.observation).toBeUndefined()

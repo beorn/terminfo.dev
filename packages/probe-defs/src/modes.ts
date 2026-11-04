@@ -105,7 +105,7 @@ function captureRefusal(
     tests: [
       {
         id: "criterion",
-        status: "test-todo",
+        status: "probe-todo",
         reason: `${feature} capture needs at least ${minRows}x${minCols}, measured ${ctx.rows}x${ctx.cols}`,
       },
     ],
@@ -154,7 +154,7 @@ async function primaryRestoreCapture(
   }
   const remainingFacets = {
     id: "remaining-facets",
-    status: "test-todo" as const,
+    status: "probe-todo" as const,
     reason:
       mode === 1049
         ? "Primary-marker capture does not measure saved cursor or retained scrollback restoration"
@@ -182,7 +182,7 @@ async function primaryRestoreCapture(
       tests: [
         {
           id: "entry-qualified",
-          status: "test-todo",
+          status: "probe-todo",
           reason: "alternate-screen entry not observed, so exit cannot be attributed",
         },
         remainingFacets,
@@ -261,13 +261,13 @@ function captureStackResult(
   const observed = JSON.stringify({ ...readings, fixtures: reads.map((read) => read.result.response) })
   const evidence = { assertionType: "screenshot" as const, frames, ...(screenshotRef && { screenshotRef }) }
   if (decided.pass === null) {
-    // No operation was observed, so the row is a required review (TEST TODO), never a TEST FAILURE
+    // No operation was observed, so the row is a required review (PROBE TODO), never a PROBE INVALID
     // (@cto 19664c4c); every fixture's frames stay its evidence.
     const reason = decided.note ?? "no stack operation was observed"
     return {
       pass: false,
       criterionBranch: "visual-review",
-      tests: [{ id: "review", status: "test-todo", reason }],
+      tests: [{ id: "review", status: "probe-todo", reason }],
       response: observed,
       observation: { outcome: "inconclusive", reason: "insufficient-evidence", ...evidence, note: reason },
     }
@@ -536,7 +536,7 @@ function italicOnly(cell: StackCell): boolean {
  * so a pop that resets to the default never passes, and the PUSH fixture's pass value differs from
  * the POP fixture's, so a stack that keeps a stale snapshot never passes the push row. The control
  * writes bold, italic and bold+italic cells with no stack ops, so a backend that does not report bold
- * or italic has no observable for the claim (a coverage record, TEST TODO).
+ * or italic has no observable for the claim (a coverage record, PROBE TODO).
  */
 function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
   const id = operation === "push" ? "modes.xtpushsgr" : "modes.xtpopsgr"
@@ -600,7 +600,7 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
  * overflow fixture, read from cells. Every frame writes exactly `cols` Xs then one `!`: with
  * auto-wrap off the `!` overwrites the last column and row 2 stays empty; with wrap on it lands at
  * row 2, column 1. Two controls calibrate both wrap states, so a backend that cannot show either
- * state has no observable for the claim (a coverage record, TEST TODO) rather than a negative. Two
+ * state has no observable for the claim (a coverage record, PROBE TODO) rather than a negative. Two
  * fixtures follow, each graded by one overflow frame after the restore (@cto 6e4f7300, 009e40cd):
  * - Restore control (POP fixture): off, save, on, restore. Off is restored, on persisted.
  * - Overwrite test (PUSH fixture): on, save, off, save, on, restore. Off is restored; on is the
@@ -722,7 +722,7 @@ const COLOR_STACK_MAGENTA = { r: 255, g: 0, b: 255 }
  * Every pass value is a redefined, non-default color, so a pop that resets the palette never passes,
  * and the PUSH fixture's pass value differs from the POP fixture's, so a stack that keeps a stale
  * snapshot never passes the push row (@cto 6e4f7300). A readback whose colors do not follow OSC 4
- * has no observable for the claim (a coverage record, TEST TODO) rather than a negative.
+ * has no observable for the claim (a coverage record, PROBE TODO) rather than a negative.
  */
 function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
   const id = operation === "push" ? "modes.xtpushcolors" : "modes.xtpopcolors"
@@ -843,7 +843,7 @@ type AlternateReflowPhase = {
   from: 12 | 20
   to: 12 | 20
   outcome: "reflow" | "preserved-wraps" | "truncated" | "invalid" | "identity-unavailable" | "not-entered"
-  status: "supported" | "unsupported" | "test-todo" | "test-failure"
+  status: "supported" | "unsupported" | "probe-todo" | "probe-invalid"
   reason: string
 }
 
@@ -946,7 +946,7 @@ function altScreenRoundtrip(
     if (!entered) {
       const state = { seedA, seedB, blankA, blankB, ...(!screen.clearsOnEnter && { seedShown }) }
       if (phase === "exit") {
-        // An unqualified entry is a missing prerequisite for the exit: TEST TODO, and source never decides it
+        // An unqualified entry is a missing prerequisite for the exit: PROBE TODO, and source never decides it
         // (#32246, @cto batch7 A-F1 and 84e7b78b).
         return notTestedResult("alternate-screen entry not observed, so exit cannot be attributed", state)
       }
@@ -1134,7 +1134,7 @@ const LR_MARGIN_EXPECTED =
  * F drops at the right margin and G and H stay in columns 7-8; ignored margins shift the whole row
  * exactly as the control does. The control runs the same ICH with no margins first, so a backend
  * whose readback does not show ICH shifting the row has no observable for the claim (a coverage
- * record, TEST TODO) rather than a negative. Cleanup resets the margins while ?69 is still set,
+ * record, PROBE TODO) rather than a negative. Cleanup resets the margins while ?69 is still set,
  * where CSI s is DECSLRM rather than a cursor save, then leaves the mode.
  */
 function leftRightMarginHeadless(ctx: LibProbeSource): ProbeCallbackResult {
@@ -1602,7 +1602,7 @@ const modeDefinitions: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Alt-screen exit fixture needs at least 3x3, measured ${ctx.rows}x${ctx.cols}`,
               },
             ],
@@ -1632,7 +1632,7 @@ const modeDefinitions: ProbeDefinition[] = [
           tests: [
             {
               id: "review",
-              status: "test-todo",
+              status: "probe-todo",
               reason: "Cursor responsiveness after exit does not measure the restored buffer",
             },
           ],
@@ -1761,7 +1761,7 @@ const modeDefinitions: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Insert-replace fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
               },
             ],
@@ -1848,7 +1848,7 @@ const modeDefinitions: ProbeDefinition[] = [
           tests: [
             {
               id: "review",
-              status: "test-todo",
+              status: "probe-todo",
               reason: "Cursor advance does not measure whether X displaced the existing cells",
             },
           ],
@@ -1917,7 +1917,7 @@ const modeDefinitions: ProbeDefinition[] = [
             reason: "insufficient-evidence",
             note,
           },
-          tests: [{ id: "criterion", status: "test-todo", reason }],
+          tests: [{ id: "criterion", status: "probe-todo", reason }],
         }
       } finally {
         if (!resetSent) ctx.feed("\x1b>")
@@ -1959,7 +1959,7 @@ const modeDefinitions: ProbeDefinition[] = [
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: "probe-todo",
               reason: "Margin mode left unchanged; this probe does not measure left/right margin behavior",
             },
           ],
@@ -1983,7 +1983,7 @@ const modeDefinitions: ProbeDefinition[] = [
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: "probe-todo",
               reason: "Alternate buffer left unchanged; this probe does not measure its visible contents",
             },
           ],
@@ -2081,7 +2081,7 @@ const modeDefinitions: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Cursor-save fixture needs at least 15x20, measured ${ctx.rows}x${ctx.cols}`,
               },
             ],
@@ -2232,7 +2232,7 @@ const modeDefinitions: ProbeDefinition[] = [
             result.observation.note = [result.observation.note, ...replyNotes].filter(Boolean).join("; ")
           } else {
             for (const test of result.tests ?? []) {
-              if (test.status === "test-failure") {
+              if (test.status === "probe-invalid") {
                 test.reason = [test.reason, ...replyNotes].filter(Boolean).join("; ")
               }
             }
@@ -2286,7 +2286,7 @@ const modeDefinitions: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
               },
             ],
@@ -2321,7 +2321,7 @@ const modeDefinitions: ProbeDefinition[] = [
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: "probe-todo",
               reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
             },
           ],
@@ -2352,7 +2352,7 @@ const modeDefinitions: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
               },
             ],
@@ -2386,7 +2386,7 @@ const modeDefinitions: ProbeDefinition[] = [
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: "probe-todo",
               reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
             },
           ],
@@ -2417,7 +2417,7 @@ const modeDefinitions: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
               },
             ],
@@ -2451,7 +2451,7 @@ const modeDefinitions: ProbeDefinition[] = [
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: "probe-todo",
               reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
             },
           ],

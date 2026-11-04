@@ -347,7 +347,7 @@ it("records text qualification attempts before seal, distinguishing absent and b
     const unattempted = structuredClone(run)
     recordTextQualificationTests(unattempted, manifest, snapshots)
     const unattemptedResult = unattempted.results[0]!
-    expect(unattemptedResult.status, base).toBe("test-todo")
+    expect(unattemptedResult.status, base).toBe("probe-todo")
     expect(unattemptedResult.reason, base).toBe("Text qualification has not been attempted")
     expect(unattemptedResult.tests.find((check) => check.id === "text-qualification")?.attempt).toEqual({
       scope: "none",
@@ -355,7 +355,7 @@ it("records text qualification attempts before seal, distinguishing absent and b
     const corrupted = new Map(snapshots)
     corrupted.set(run.textQualification!.shapes[0]!.frames![0]!.ref, Buffer.from("wrong grid"))
     recordTextQualificationTests(run, manifest, corrupted, attempt)
-    expect(run.results[0]!.status, base).toBe("test-failure")
+    expect(run.results[0]!.status, base).toBe("probe-invalid")
     expect(run.results[0]!.tests.find((check) => check.id === "text-qualification")?.reason).toContain(
       "expected character grid",
     )
@@ -374,7 +374,7 @@ it("refuses a character verdict for each missing shape witness through the execu
       }
       recordTextQualificationTests(run, manifest, snapshots, attempt)
       const result = run.results[0]!
-      expect(result.status, `${base} ${shape}`).toBe("test-failure")
+      expect(result.status, `${base} ${shape}`).toBe("probe-invalid")
       expect(result.status, `${base} ${shape}`).not.toBe("unsupported")
       expect(result.tests.find((check) => check.id === "text-qualification")?.reason, `${base} ${shape}`).toContain(
         `missing text qualification shape ${shape}`,
@@ -392,26 +392,26 @@ it("refuses a character verdict for each missing shape witness through the execu
       }
       recordTextQualificationTests(run, manifest, snapshots, attempt)
       const result = run.results[0]!
-      expect(result.status, `${base} ${shape}`).toBe("test-failure")
+      expect(result.status, `${base} ${shape}`).toBe("probe-invalid")
       expect(result.status, `${base} ${shape}`).not.toBe("unsupported")
       expect(result.tests.find((check) => check.id === "text-qualification")?.reason, `${base} ${shape}`).toBe(
         `Run text-execution: text qualification shape ${shape}: the collector could not read this shape`,
       )
     }
   }
-  // An unattempted run with a missing witness stays TEST TODO rather than becoming TEST FAILURE.
+  // An unattempted run with a missing witness stays PROBE TODO rather than becoming PROBE INVALID.
   for (const base of BASES) {
     const { run, manifest, snapshots } = executionRun({ base })
     run.textQualification = { ...run.textQualification!, shapes: run.textQualification!.shapes.slice(1) }
     recordTextQualificationTests(run, manifest, snapshots)
-    expect(run.results[0]!.status, base).toBe("test-todo")
+    expect(run.results[0]!.status, base).toBe("probe-todo")
     expect(run.results[0]!.reason, base).toBe("Text qualification has not been attempted")
   }
 })
 
 // 30035 AC4 / T4: console-host and Windows text can never be graded as the terminal's verdict,
 // on either base.
-it("records Windows and console-host text as TEST TODO through the execution writer", () => {
+it("records Windows and console-host text as PROBE TODO through the execution writer", () => {
   for (const base of BASES) {
     const cases = [
       executionRun({ base, os: "windows" }),
@@ -437,14 +437,14 @@ it("records Windows and console-host text as TEST TODO through the execution wri
     for (const { run, manifest, snapshots, attempt } of cases) {
       recordTextQualificationTests(run, manifest, snapshots, attempt)
       const result = run.results[0]!
-      expect(result.status, base).toBe("test-todo")
+      expect(result.status, base).toBe("probe-todo")
       expect(result.status, base).not.toBe("supported")
       expect(result.status, base).not.toBe("unsupported")
       expect(result.reason, base).toBe(
         "Text criterion requires a declared claim and terminal-owned macOS cell observer",
       )
       const check = result.tests.find((entry) => entry.id === "text-qualification")
-      expect(check?.status).toBe("test-todo")
+      expect(check?.status).toBe("probe-todo")
       expect(check?.attempt).toEqual({ scope: "none" })
     }
   }

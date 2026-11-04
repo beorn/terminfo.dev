@@ -27,7 +27,7 @@ This page reads composed contexts with original stored sources on the required s
   <div v-for="context in data.working.contexts" :key="context.contextKey">
     <h3>{{ context.engine }} <small>raw, unreviewed &middot; {{ context.reviewedContextKey ? 'beside reviewed ' + context.reviewedContextKey : 'raw is the only answer' }}</small></h3>
     <p>Context <code>{{ context.contextKey }}</code> &middot; version {{ context.version }} &middot; raw run <code>{{ context.runId }}</code> &middot; suite <code>{{ context.suiteId }}</code> &middot; measured {{ context.measuredAt }}.</p>
-    <p>Raw, unreviewed, of {{ context.positions }} graded positions: {{ context.counts.supported }} Supported &middot; {{ context.counts.unsupported }} Unsupported &middot; {{ context.counts.untestable }} Untestable &middot; {{ context.counts['test-todo'] }} TEST TODO &middot; {{ context.counts['test-failure'] }} TEST FAILURE.</p>
+    <p>Raw, unreviewed, of {{ context.positions }} graded positions: {{ context.counts.supported }} Supported &middot; {{ context.counts.unsupported }} Unsupported &middot; {{ context.counts.untestable }} Untestable &middot; {{ context.counts['probe-todo'] }} PROBE TODO &middot; {{ context.counts['probe-invalid'] }} PROBE INVALID.</p>
     <details>
       <summary>All {{ context.cells.length }} features: reviewed headline, raw beside it</summary>
       <table>
@@ -48,7 +48,7 @@ This page reads composed contexts with original stored sources on the required s
 - Required suite: <code>{{ data.suiteId }}</code>.
 - **{{ data.collected }} contexts collected**, **{{ data.notCollected }} NOT COLLECTED**; {{ data.recordedPositions }} explicit feature positions.
 - Score is **Supported / all {{ data.gradedRows }} graded features**; the {{ data.environmentGroups }} environment groups are ungraded and never in the denominator. Unsupported and Untestable remain in the denominator.
-- Completion requires **zero TEST TODO and zero TEST FAILURE among the graded features in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
+- Completion requires **zero PROBE TODO and zero PROBE INVALID among the graded features in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
 - No stored current runs means no current score. [Historical results remain available](/api#historical-v1-and-v2).
 
 ## The contexts

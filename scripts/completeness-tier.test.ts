@@ -12,9 +12,9 @@ describe("completenessTierOf: one four-way rule over the graded positions (#3173
   it("reads each tier from the graded statuses alone", () => {
     expect(completenessTierOf({})).toEqual({ completenessTier: 0, todo: 0, failure: 0, positions: 0 })
     expect(
-      completenessTierOf({ "sgr.bold": "test-todo", "sgr.faint": "test-failure", "sgr.italic": "supported" }),
+      completenessTierOf({ "sgr.bold": "probe-todo", "sgr.faint": "probe-invalid", "sgr.italic": "supported" }),
     ).toEqual({ completenessTier: 1, todo: 1, failure: 1, positions: 3 })
-    expect(completenessTierOf({ "sgr.bold": "test-failure", "sgr.faint": "unsupported" })).toEqual({
+    expect(completenessTierOf({ "sgr.bold": "probe-invalid", "sgr.faint": "unsupported" })).toEqual({
       completenessTier: 2,
       todo: 0,
       failure: 1,
@@ -26,7 +26,7 @@ describe("completenessTierOf: one four-way rule over the graded positions (#3173
   })
 
   it("puts an engine that recorded only environment rows at tier 0: nothing graded was measured", () => {
-    const environmentOnly = { "device.env-term": "test-todo", "device.env-no-color": "test-failure" }
+    const environmentOnly = { "device.env-term": "probe-todo", "device.env-no-color": "probe-invalid" }
     expect(completenessTierOf(environmentOnly)).toEqual({ completenessTier: 0, todo: 0, failure: 0, positions: 0 })
     expect(completenessTierOf({ ...environmentOnly, "sgr.bold": "supported" })).toEqual({
       completenessTier: 3,

@@ -298,7 +298,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     else {
       draft.rawReplies["collector.prerequisite"] = diagnostic
       for (const result of draft.results) {
-        if (result.status === "test-todo" && ids.includes(result.featureId)) result.reason = diagnostic
+        if (result.status === "probe-todo" && ids.includes(result.featureId)) result.reason = diagnostic
       }
     }
     checkpoint()
@@ -391,7 +391,7 @@ export async function collectHeadlessRuns(
       if (!startedAt && result === "failed" && !retained.rawReplies["collector.prerequisite"]) {
         retained.rawReplies["collector.prerequisite"] = scrubbed
         for (const row of retained.results) {
-          if (row.status === "test-todo" && ids.includes(row.featureId)) row.reason = scrubbed
+          if (row.status === "probe-todo" && ids.includes(row.featureId)) row.reason = scrubbed
         }
       }
       try {
@@ -421,7 +421,7 @@ export async function collectHeadlessRuns(
           retained.rawReplies["collector.prerequisite"],
         )
         for (const result of retained.results) {
-          if (result.status === "test-todo" && result.reason) {
+          if (result.status === "probe-todo" && result.reason) {
             result.reason = scrubRecordedFailure(result.reason)
           }
         }

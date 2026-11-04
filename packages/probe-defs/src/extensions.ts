@@ -106,7 +106,7 @@ function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentine
   if (ps === null || unorderedLate) {
     const note = "OSC5522 detection has no complete matching reply in the deciding window"
     if (raw === "") return replyFailure(note)
-    return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+    return { pass: false, note, tests: [{ id: "criterion", status: "probe-invalid", reason: note }] }
   }
   // Only an on-time detector reply makes Ps0 negative; measured-late replies use the shared criterion.
   if (ps !== 0 || afterSentinel) {
@@ -169,7 +169,7 @@ function oscReplyResult(
       assertionType: "query_reply",
       note,
     },
-    tests: [{ id: "criterion", status: "test-failure", reason: note }],
+    tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
   }
 }
 
@@ -189,7 +189,7 @@ function unverifiedEffect(ctx: TermProbeSource, note: string, response?: string)
     tests: [
       {
         id: "criterion",
-        status: "test-todo",
+        status: "probe-todo",
         reason: `${note}${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
       },
     ],
@@ -201,7 +201,7 @@ function unmeasuredStateEffect(feature: string): ProbeCallbackResult {
   return {
     pass: false,
     note,
-    tests: [{ id: "criterion", status: "test-todo", reason: note }],
+    tests: [{ id: "criterion", status: "probe-todo", reason: note }],
   }
 }
 
@@ -223,7 +223,7 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
         assertionType: "query_reply",
         note,
       },
-      tests: [{ id: "criterion", status: "test-failure", reason: note }],
+      tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
     }
   }
   const advertised = (match[1]?.split(";") ?? []).includes("4")
@@ -284,7 +284,7 @@ function sixelGeometryResult(
         reason: "invalid-reply",
         note,
       },
-      tests: [{ id: "criterion", status: "test-failure", reason: note }],
+      tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
     }
   }
   const status = Number(reply[1])
@@ -499,8 +499,8 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     ...(reply?.raw === "" ? replyFailure(note) : {}),
     pass: false,
     note: undefined,
-    tests: [{ id: "criterion", status: "test-failure", reason: note }] as [
-      { id: string; status: "test-failure"; reason: string },
+    tests: [{ id: "criterion", status: "probe-invalid", reason: note }] as [
+      { id: string; status: "probe-invalid"; reason: string },
     ],
   })
   return {
@@ -518,7 +518,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
               tests: [
                 {
                   id: "criterion",
-                  status: "test-todo",
+                  status: "probe-todo",
                   reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
                 },
               ],
@@ -604,7 +604,7 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
             (id === "extensions.osc776-cell-size" &&
               /^\x1b\]776;0;0;0\x1b\\(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
           if (id === "extensions.osc1337-cellsize" || id === "extensions.osc776-cell-size") {
-            // #32246: a zero geometry reply has no same-path control in this run, so it stays TEST TODO.
+            // #32246: a zero geometry reply has no same-path control in this run, so it stays PROBE TODO.
             if (zeroGeometry && result.observation?.outcome === "inconclusive") {
               return notTestedResult(NO_SAME_PATH_CONTROL, { query: query, raw })
             }
@@ -726,8 +726,8 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         if (originalRaw === "" && !silence) {
           return notTestedResult(NO_SAME_PATH_CONTROL, { query, originalRaw, initialSentinel })
         }
-        // An unanswered initial colour query is a missing prerequisite reading: TEST TODO. Bytes that arrived but do
-        // not parse are data the probe cannot trust: TEST FAILURE (@cto 0db5ad54 refined rule 4, #32246).
+        // An unanswered initial colour query is a missing prerequisite reading: PROBE TODO. Bytes that arrived but do
+        // not parse are data the probe cannot trust: PROBE INVALID (@cto 0db5ad54 refined rule 4, #32246).
         const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`
         if (originalRaw === "" && initialSentinel?.reason === "sentinel") {
           return {
@@ -736,7 +736,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
               },
             ],
@@ -749,7 +749,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           tests: [
             {
               id: "criterion",
-              status: originalRaw === "" ? "test-todo" : "test-failure",
+              status: originalRaw === "" ? "probe-todo" : "probe-invalid",
               reason: note,
             },
           ],
@@ -1151,7 +1151,7 @@ function colorStackColors(before: string): { a: string; b: string; c: string } {
  * Per-operation colour-stack grade (#31904, @cto 6e4f7300). The POP fixture (set A, push, set B,
  * pop) and the PUSH fixture (set A, set B, push, set C, pop) both run; none of A, B or C is the
  * foreground the run started with. A set the reply does not show leaves the stack unobservable: a
- * coverage record (TEST TODO, null review), never a negative, as the palette arm treats a failed
+ * coverage record (PROBE TODO, null review), never a negative, as the palette arm treats a failed
  * OSC 4 calibration (#32242, @cto 4115d1bf).
  */
 function colorStackResult(
@@ -1188,7 +1188,7 @@ function colorStackResult(
 
 /**
  * A former source-negative site (#32246, @cto 9fad23d7): feed the sequence and an X sentinel at home and keep both, but
- * no control in this run shows the same path can report the effect, so the cell stays TEST TODO.
+ * no control in this run shows the same path can report the effect, so the cell stays PROBE TODO.
  */
 function noSamePathControl(sequence: string) {
   return (ctx: LibProbeSource): ProbeCallbackResult => {
@@ -1205,7 +1205,7 @@ type ToastStep = { write: string; before: number; added: ParsedToast[] | null }
  * Grade one OSC toast family through the engine's parsed-toast store (@cto 3cc4a3ae, #32272). The store does not say
  * which OSC made a toast, so each step feeds one sequence and reads only what it added: the graded family's no-toast
  * control must add nothing, the other family's toast (the cross control) must add exactly itself, and the graded feed
- * must add exactly one verbatim toast. Unsupported needs the cross control; without it the cell stays TEST TODO.
+ * must add exactly one verbatim toast. Unsupported needs the cross control; without it the cell stays PROBE TODO.
  */
 function parsedToastResult(
   ctx: LibProbeSource,
@@ -1283,7 +1283,7 @@ function observedHostCause(
 
 /**
  * A former native host-audit site (#32246): an empty clipboard reply on a native artifact has no same-path control in
- * this run, so it stays TEST TODO with its capture and its observed cause, never a source-cited cause.
+ * this run, so it stays PROBE TODO with its capture and its observed cause, never a source-cited cause.
  */
 function emptyNativeHostReply(
   ctx: LibProbeSource,
@@ -1315,7 +1315,7 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
   return {
     pass: false,
     note,
-    tests: [{ id: "criterion", status: consumed === null ? "test-failure" : "test-todo", reason: note }],
+    tests: [{ id: "criterion", status: consumed === null ? "probe-invalid" : "probe-todo", reason: note }],
   }
 }
 
@@ -1325,7 +1325,7 @@ function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
     const reason = "no property reader in this adapter"
     return {
       ...parserStateResult(null, "OSC633 P Cwd property readback", {}, reason),
-      tests: [{ id: "criterion", status: "test-todo", reason }],
+      tests: [{ id: "criterion", status: "probe-todo", reason }],
     }
   }
   const read = ctx.getCwd.bind(ctx)
@@ -1375,7 +1375,7 @@ function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
   )
   if (inert) {
     result.tests = [
-      { id: "criterion", status: "test-todo", reason: "Cwd reader is inert to two distinct OSC7 controls" },
+      { id: "criterion", status: "probe-todo", reason: "Cwd reader is inert to two distinct OSC7 controls" },
     ]
   }
   if (failed) {
@@ -1415,7 +1415,7 @@ function promptMarkResult(
     const reason = "no command-end reader in this adapter"
     return {
       ...parserStateResult(null, "OSC633 D command-end status readback", {}, reason),
-      tests: [{ id: "criterion", status: "test-todo", reason }],
+      tests: [{ id: "criterion", status: "probe-todo", reason }],
     }
   }
   const endControl =
@@ -1459,7 +1459,11 @@ function promptMarkResult(
       )
       if (inert) {
         result.tests = [
-          { id: "criterion", status: "test-todo", reason: "Command-end reader did not report the two OSC133 controls" },
+          {
+            id: "criterion",
+            status: "probe-todo",
+            reason: "Command-end reader did not report the two OSC133 controls",
+          },
         ]
       }
       if (!inert) {
@@ -1540,7 +1544,7 @@ function promptMarkResult(
         const reason = "Second command-end target consumption was not qualified"
         return {
           ...parserStateResult(null, "Both OSC633 D target feeds have qualified screen consumption", state, reason),
-          tests: [{ id: "criterion", status: "test-todo", reason }],
+          tests: [{ id: "criterion", status: "probe-todo", reason }],
         }
       }
       if (!supported && !unchanged) {
@@ -1659,7 +1663,7 @@ async function promptMarkAppResult(
       tests: [
         {
           id: "criterion",
-          status: "test-todo",
+          status: "probe-todo",
           reason: `${result.note}${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
         },
       ],
@@ -1671,7 +1675,7 @@ async function promptMarkAppResult(
 function colorStackError(actionKind: "query" | "behavior", action: string, error: unknown): ProbeCallbackResult {
   if (!(error instanceof Error)) throw error
   const note = `${action} (${actionKind}) failed: ${error.name}: ${error.message}`
-  return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+  return { pass: false, note, tests: [{ id: "criterion", status: "probe-invalid", reason: note }] }
 }
 
 function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): ProbeDefinition["lib"] {
@@ -1735,7 +1739,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         pass: false,
         response: JSON.stringify({ query: foregroundQuery, originalRaw }),
         note,
-        tests: [{ id: "criterion", status: "test-failure", reason: note }],
+        tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
       }
     }
     let pushed = false
@@ -1773,7 +1777,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
               )
           } else {
             const note = "Current-colour fixture setter or exact seeded readback was not established"
-            result = { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+            result = { pass: false, note, tests: [{ id: "criterion", status: "probe-invalid", reason: note }] }
           }
           readbackUnavailable = result !== silence
           return result
@@ -1812,7 +1816,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
           !changed && changedRaw !== "" ? changedRaw : !restored && restoredRaw !== "" ? restoredRaw : null
         if (malformed === null) return replyFailure("No OSC 10 reply after changing or popping color")
         const note = `Malformed OSC 10 reply: ${JSON.stringify(malformed)}`
-        return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+        return { pass: false, note, tests: [{ id: "criterion", status: "probe-invalid", reason: note }] }
       }
       const popFixture = fixture("POP fixture", [colors.a], colors.b)
       if ("pass" in popFixture) {
@@ -1871,14 +1875,14 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
           .join("; ")
         const primaryNote = unexpectedlyFailed
           ? `Color-stack callback threw unexpectedly: ${primaryError instanceof Error ? `${primaryError.name}: ${primaryError.message}` : String(primaryError)}`
-          : result?.tests?.some((test) => test.status === "test-failure")
+          : result?.tests?.some((test) => test.status === "probe-invalid")
             ? result.note
             : undefined
         const note = primaryNote ? `${primaryNote}; ${cleanupNote}` : cleanupNote
         if (unexpectedlyFailed || cleanupFailures.some(({ error }) => !(error instanceof Error))) {
           throw new AggregateError(
             [
-              ...(unexpectedlyFailed || result?.tests?.some((test) => test.status === "test-failure")
+              ...(unexpectedlyFailed || result?.tests?.some((test) => test.status === "probe-invalid")
                 ? [primaryError]
                 : []),
               ...cleanupFailures.map(({ error }) => error),
@@ -1892,7 +1896,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
           cancelReplyFailure(result)
           result.pass = false
           result.note = note
-          result.tests = [{ id: "criterion", status: "test-failure", reason: note }]
+          result.tests = [{ id: "criterion", status: "probe-invalid", reason: note }]
           delete result.observation
           delete result.response
           delete result.assertions
@@ -2509,7 +2513,7 @@ function kittyUnobservableResult(id: string, note: string): ProbeCallbackResult 
   return {
     pass: false,
     criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-    tests: [{ id: "review", status: "test-todo", reason: `${id}: ${note}` }],
+    tests: [{ id: "review", status: "probe-todo", reason: `${id}: ${note}` }],
     response: JSON.stringify({ id, note }),
     observation: {
       outcome: "inconclusive",
@@ -2762,7 +2766,7 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const reason =
     "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired."
   const result: ProbeCallbackResult = writeUnobservable
-    ? { pass: false, note: reason, tests: [{ id: "criterion", status: "test-todo", reason }] }
+    ? { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
     : headlessClipboardResult(empty ? "" : raw, nonce)
   return withClipboardControlNote(ctx, emptyNativeHostReply(ctx, { ...result, response: raw }, query, empty))
 }
@@ -2852,7 +2856,7 @@ function liveClipboardNotTested(): ProbeCallbackResult {
   return {
     pass: false,
     note,
-    tests: [{ id: "criterion", status: "test-todo", reason: note }],
+    tests: [{ id: "criterion", status: "probe-todo", reason: note }],
   }
 }
 
@@ -3117,7 +3121,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       tests: [
         {
           id: "criterion",
-          status: "test-failure",
+          status: "probe-invalid",
           reason: "Reflow fixture has invalid geometry or pre-existing history",
         },
       ],
@@ -3139,7 +3143,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   }
   type HistoryPhase = Omit<Phase, "outcome"> & {
     outcome: Phase["outcome"] | "not-retained"
-    status: "supported" | "unsupported" | "test-todo" | "test-failure"
+    status: "supported" | "unsupported" | "probe-todo" | "probe-invalid"
   }
   type AlternatePhase = NonNullable<ReturnType<typeof measureAlternateReflow>["measurement"]>
   const state = {
@@ -3319,9 +3323,9 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
           reason,
           status:
             outcome === "not-retained"
-              ? "test-todo"
+              ? "probe-todo"
               : outcome === "invalid"
-                ? "test-failure"
+                ? "probe-invalid"
                 : outcome === "reflow"
                   ? "supported"
                   : "unsupported",
@@ -3412,9 +3416,9 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         reason,
         status:
           outcome === "identity-unavailable" || outcome === "not-entered"
-            ? "test-todo"
+            ? "probe-todo"
             : outcome === "invalid"
-              ? "test-failure"
+              ? "probe-invalid"
               : outcome === "reflow"
                 ? "supported"
                 : "unsupported",
@@ -3596,7 +3600,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         id: phase.id,
         status:
           phase.outcome === "invalid"
-            ? ("test-failure" as const)
+            ? ("probe-invalid" as const)
             : phase.outcome === "reflow"
               ? ("supported" as const)
               : ("unsupported" as const),
@@ -3608,7 +3612,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         ? [
             {
               id: "criterion",
-              status: "test-failure" as const,
+              status: "probe-invalid" as const,
               reason:
                 "Growth and shrink have different reflow outcomes; the combined main-screen criterion is unresolved",
               assertionRefs: assertedPhases.flatMap((phase, index) =>
@@ -3810,7 +3814,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return {
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         }
       }
       if (ctx.captureKind === "text-cells") {
@@ -3951,7 +3955,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           ...(verdict.decidedBy === "a missing region digest"
             ? {
                 criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-                tests: [{ id: "review" as const, status: "test-todo" as const, reason: verdict.note }],
+                tests: [{ id: "review" as const, status: "probe-todo" as const, reason: verdict.note }],
               }
             : {}),
           ...(verdict.outcome === "inconclusive"
@@ -3994,7 +3998,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return {
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         }
       }
       if (ctx.captureKind === "text-cells") {
@@ -4135,7 +4139,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           ...(verdict.decidedBy === "a missing region digest"
             ? {
                 criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-                tests: [{ id: "review" as const, status: "test-todo" as const, reason: verdict.note }],
+                tests: [{ id: "review" as const, status: "probe-todo" as const, reason: verdict.note }],
               }
             : {}),
           ...(verdict.outcome === "inconclusive"
@@ -4211,7 +4215,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            tests: [{ id: "criterion", status: "test-todo", reason: note }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: note }],
           }
         }
         const refusal = sgrCaptureTooSmall(ctx, "extensions.sixel")
@@ -4346,7 +4350,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `OSC 8 fixture needs at least 1x7, measured ${ctx.rows}x${ctx.cols}`,
               },
             ],
@@ -4362,7 +4366,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: ctx.captureGeometryRefusal
                   ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}`
                   : "No cursor response",
@@ -4376,7 +4380,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: "probe-todo",
               reason: `Cursor movement cannot verify OSC 8 link metadata or click behavior${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
             },
           ],
@@ -4395,7 +4399,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        tests: [{ id: "criterion", status: "probe-todo", reason: note }],
       })
     }),
     libAssertionType: "buffer_state",
@@ -4410,7 +4414,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return {
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         }
       },
       () => {
@@ -4418,7 +4422,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return Promise.resolve<ProbeCallbackResult>({
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         })
       },
     ),
@@ -4631,7 +4635,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return Promise.resolve<ProbeCallbackResult>({
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         })
       },
     ),
@@ -4647,7 +4651,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return {
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         }
       },
       () => {
@@ -4655,7 +4659,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return Promise.resolve<ProbeCallbackResult>({
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         })
       },
     ),
@@ -4875,7 +4879,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return Promise.resolve<ProbeCallbackResult>({
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         })
       },
     ),
@@ -4914,7 +4918,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return {
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         }
       },
     ),
@@ -5022,7 +5026,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `OSC 66 fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
               },
             ],
@@ -5098,7 +5102,7 @@ export const extensionsProbes: ProbeDefinition[] = [
                   pass: false,
                   response,
                   note: reason,
-                  tests: [{ id: "criterion", status: "test-todo", reason }],
+                  tests: [{ id: "criterion", status: "probe-todo", reason }],
                 }
               }
             }
@@ -5165,7 +5169,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return Promise.resolve<ProbeCallbackResult>({
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
         })
       },
     ),

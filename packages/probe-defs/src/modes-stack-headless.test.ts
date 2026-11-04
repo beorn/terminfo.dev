@@ -2,7 +2,7 @@
  * @failure The six XT stack probes grade a headless engine on DA1 responsiveness instead of the
  *   saved/restored state, or grade a backend that reports no attributes, palette or wrap state as a
  *   negative; or the left/right margin probe grades mode metadata instead of an ICH its margins
- *   confine, or grades a backend whose ICH shows no shift as a negative (it stays TEST TODO without a
+ *   confine, or grades a backend whose ICH shows no shift as a negative (it stays PROBE TODO without a
  *   same-path control, #32246).
  * @level l1
  * @consumer Headless Modes observations for the six XT stack cells and the left/right margin cell on
@@ -269,7 +269,7 @@ test.each([
   [MODE[1], { wrapOff: false }, "auto-wrap"],
   [COLOR[0], { osc4: false }, "OSC 4"],
   [COLOR[1], { osc4: false }, "OSC 4"],
-] as const)("%s records a readback that cannot calibrate %o as no observable (TEST TODO)", (id, options, need) => {
+] as const)("%s records a readback that cannot calibrate %o as no observable (PROBE TODO)", (id, options, need) => {
   const screen = fakeScreen(options)
   const result = headless(id)(screen.context)
   expect(result.pass, id).toBe(false)
@@ -334,7 +334,7 @@ test.each([
   expect(screen.margins()).toEqual({ leftRightMode: false, leftMargin: 0, rightMargin: 7 })
 })
 
-test("modes.left-right-margin keeps a readback whose ICH shows no shift TEST TODO with no same-path control", () => {
+test("modes.left-right-margin keeps a readback whose ICH shows no shift PROBE TODO with no same-path control", () => {
   const screen = fakeScreen({ insertChars: false })
   const result = headless(MARGIN)(screen.context)
   expect(result.pass).toBe(false)

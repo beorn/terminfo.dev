@@ -6,6 +6,7 @@ import type {
   PublicProbeResult,
   PublicRunMetadata,
   PublicContextSummary,
+  PublicFeatureResult,
 } from "../../data/public-results"
 import {
   describeTracePanes,
@@ -33,7 +34,7 @@ const props = withDefaults(
     probeGuidance?: string
     subjectName: string
     version?: PublicRunMetadata | PublicContextSummary
-    cell?: PublicProbeResult
+    cell?: PublicProbeResult | PublicFeatureResult
     display?: "compact" | "text"
   }>(),
   { display: "compact" },
@@ -42,16 +43,16 @@ const props = withDefaults(
 // A composed context has no run identity: evidence belongs to this feature's original source.
 const sourceRun = computed<PublicRunMetadata | undefined>(() => {
   const selection = props.version
-  if (!selection || !("cells" in selection)) return selection
-  const cell = selection.cells[props.featureId]
+  if (!selection || !("featureResults" in selection)) return selection
+  const cell = selection.featureResults[props.featureId]
   if (!cell) return undefined
   const source = selection.sources[cell.origin.runId]
   if (!source) throw new Error(`Context feature ${props.featureId} lacks source ${cell.origin.runId}`)
   return source
 })
 const sourceFeatureId = computed(() =>
-  props.version && "cells" in props.version
-    ? (props.version.cells[props.featureId]?.origin.resultId ?? props.featureId)
+  props.version && "featureResults" in props.version
+    ? (props.version.featureResults[props.featureId]?.origin.resultId ?? props.featureId)
     : props.featureId,
 )
 const currentResult = computed(() => (props.cell && "status" in props.cell ? props.cell : undefined))
@@ -74,7 +75,7 @@ const tooltipId = `${id}-preview`
 const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
 
 // Composed and original-run views both retain the cell's recorded status.
-// The rule itself is evidence-status.ts, where it is testable; only a stored TEST TODO on an
+// The rule itself is evidence-status.ts, where it is testable; only a stored PROBE TODO on an
 // environment position becomes the manual-by-design words (@cto 98cd142b D1).
 const status = computed(() => evidenceStatus(props.featureId, currentResult.value?.status))
 const shortLabel = computed(() => status.value.text)
@@ -127,8 +128,9 @@ const STEP_STATUS: Record<string, string> = {
   Supported: "supported",
   Unsupported: "unsupported",
   Untestable: "untestable",
-  "TEST TODO": "test-todo",
-  "TEST FAILURE": "test-failure",
+  "PROBE TODO": "probe-todo",
+  "PROBE INVALID": "probe-invalid",
+  "PROBE CONFLICT": "probe-conflict",
 }
 const stepSource = computed<StepSource | undefined>(() => {
   const screen = sourceRun.value?.screen

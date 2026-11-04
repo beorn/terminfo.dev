@@ -136,20 +136,20 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
         const attempt = { scope: "probe", startedAt: "2026-09-28T12:00:00.000Z" }
         const status =
           index >= measuredFeatures.length
-            ? "test-todo"
+            ? "probe-todo"
             : index === 0
               ? "supported"
               : index === 1
                 ? "unsupported"
                 : index === 4
-                  ? "test-todo"
-                  : "test-failure"
+                  ? "probe-todo"
+                  : "probe-invalid"
         return {
           featureId,
           status,
-          attempt: status === "test-todo" ? { scope: "none" } : attempt,
+          attempt: status === "probe-todo" ? { scope: "none" } : attempt,
           tests:
-            status === "test-todo"
+            status === "probe-todo"
               ? []
               : [
                   {
@@ -178,7 +178,7 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
       assertions: [],
       results: run.results.map(({ featureId }) => ({
         featureId,
-        status: "test-todo",
+        status: "probe-todo",
         attempt: { scope: "none" },
         tests: [],
         reason: "Missing implementation",
@@ -219,7 +219,14 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     expect(Object.values(projection.contexts).flatMap((selected) => selected.contributingRunIds)).toContain(
       inconclusiveRun.runId,
     )
-    expect(reviewed?.counts).toEqual({ supported: 1, unsupported: 1, untestable: 0, "test-todo": 1, "test-failure": 2 })
+    expect(reviewed?.counts).toEqual({
+      supported: 1,
+      unsupported: 1,
+      untestable: 0,
+      "probe-todo": 1,
+      "probe-invalid": 2,
+      "probe-conflict": 0,
+    })
 
     const invoke = () =>
       spawnSync(process.execPath, [join(root, "run.ts")], { cwd: root, encoding: "utf8", timeout: 15_000 })
@@ -237,7 +244,9 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     expect(normal).not.toBe(allInconclusive)
     const matrix = plain.split("Feature comparison")[1]?.split("Observation reasons and notes")[0]
     expect(matrix).toBeDefined()
-    expect(matrix).toContain("YES Supported · NO Unsupported · UNTEST Untestable · TODO TEST TODO · FAIL TEST FAILURE")
+    expect(matrix).toContain(
+      "YES Supported · NO Unsupported · UNTEST Untestable · TODO PROBE TODO · FAIL PROBE INVALID",
+    )
     const labels = contexts.map((match) => match[1])
     const stateRow = (id: string) => {
       const line = matrix?.split("\n").find((row) => row.trimStart().startsWith(id))
@@ -321,19 +330,19 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
         featureId === "cursor.position"
           ? {
               featureId,
-              status: "test-failure",
+              status: "probe-invalid",
               attempt: { scope: "probe", startedAt },
               tests: [
                 {
                   id: "criterion",
-                  status: "test-failure",
+                  status: "probe-invalid",
                   attempt: { scope: "probe", startedAt },
                   reason: "selected callback failed",
                 },
               ],
               reason: "selected callback failed",
             }
-          : { featureId, status: "test-todo", attempt: { scope: "none" }, tests: [], reason: "not reached" },
+          : { featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [], reason: "not reached" },
       ),
     }
     writeFileSync(partialPath, JSON.stringify(partial))
@@ -652,7 +661,7 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     expect(mixedRow).toContain("reviewed-kitty-inconclusive")
     expect(mixedRow).toContain("supported=5")
     expect(mixedRow).toContain("supported=1")
-    expect(mixedRow).toContain("test-failure=2")
+    expect(mixedRow).toContain("probe-invalid=2")
     // The explicit pass must not hide a second selected configuration when it matches stored bytes.
     const mixedPass = passPath("mixed-stored", snapshot.probeHash, inconclusivePath)
     const mixedReport = spawnSync(process.execPath, [join(root, "run.ts"), mixedPass], {
@@ -663,7 +672,7 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     expect(mixedReport.status, mixedReport.stderr).toBe(0)
     const mixedPassRow = mixedReport.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
     expect(mixedPassRow).toContain("| measured-unpublished |")
-    expect(mixedPassRow).toContain("test-failure=2")
+    expect(mixedPassRow).toContain("probe-invalid=2")
     expect(mixedPassRow).toContain("supported=5")
 
     // The canonical reader owns suiteRelation; the view must retain an older selected configuration as stale.

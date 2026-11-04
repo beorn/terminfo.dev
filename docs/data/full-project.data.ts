@@ -92,7 +92,7 @@ export function loadFullProjectData(): FullProjectData {
     }
     evidenceContexts[row.context] = context
     for (const observation of row.observations) {
-      observation.reason = context.cells[observation.id]?.reason ?? null
+      observation.reason = context.featureResults[observation.id]?.reason ?? null
     }
   }
   const working = siteWorkingView(contentDir)

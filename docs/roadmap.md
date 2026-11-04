@@ -6,7 +6,7 @@ These are planned areas of work, not release dates or claims that unmeasured fea
 
 Correct overstated results and terminal attribution, review controlled Linux Kitty and headless-engine evidence, and make each reported result's scope, method and available evidence inspectable. Keep site, API and CLI results tied to the same reviewed runs and explain corrections publicly. This release remains under review; its remaining evidence and reproduction gaps are named in the changelog.
 
-R1 does not add Mac or Windows app measurements, multiplexer implementation, new protocol families or automatic refresh. Missing attempts remain TEST TODO; failed attempts remain TEST FAILURE; neither becomes a support claim.
+R1 does not add Mac or Windows app measurements, multiplexer implementation, new protocol families or automatic refresh. Missing attempts remain PROBE TODO; failed attempts remain PROBE INVALID; neither becomes a support claim.
 
 ## R2 — Everyday interactions
 

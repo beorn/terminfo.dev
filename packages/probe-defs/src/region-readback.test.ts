@@ -548,7 +548,7 @@ test("a region that leaves the measured grid refuses before any byte", async () 
   )
   expect(result?.observation).toBeUndefined()
   expect(result?.tests).toMatchObject([
-    { status: "test-todo", reason: expect.stringContaining("leaves the measured 24x80 grid") },
+    { status: "probe-todo", reason: expect.stringContaining("leaves the measured 24x80 grid") },
   ])
   expect(fake.writes).toEqual([])
 })
@@ -563,7 +563,7 @@ test("a witness cell inside the compared region refuses before any byte", async 
   )
   expect(result?.observation).toBeUndefined()
   expect(result?.tests).toMatchObject([
-    { status: "test-todo", reason: expect.stringContaining("lies inside compared region") },
+    { status: "probe-todo", reason: expect.stringContaining("lies inside compared region") },
   ])
   expect(fake.writes).toEqual([])
 })
@@ -578,7 +578,7 @@ test("a compared region covering the cursor row refuses before any byte", async 
   )
   expect(result?.observation).toBeUndefined()
   expect(result?.tests).toMatchObject([
-    { status: "test-todo", reason: expect.stringContaining("includes the cursor row 1") },
+    { status: "probe-todo", reason: expect.stringContaining("includes the cursor row 1") },
   ])
   expect(fake.writes).toEqual([])
 })
@@ -588,7 +588,7 @@ test("an undersized measured grid refuses before any byte", async () => {
   const result = await captureRegionReadbackDecision(fake.ctx, "editing.delete-chars", spec(), fake.read)
   expect(result?.observation).toBeUndefined()
   expect(result?.tests).toMatchObject([
-    { status: "test-todo", reason: expect.stringContaining("needs a measured grid of at least 2x9") },
+    { status: "probe-todo", reason: expect.stringContaining("needs a measured grid of at least 2x9") },
   ])
   expect(fake.writes).toEqual([])
 })
@@ -605,7 +605,7 @@ test("a terminal that answered neither pixel report refuses before any byte", as
   )
   expect(result?.observation).toBeUndefined()
   expect(result?.tests).toMatchObject([
-    { status: "test-todo", reason: expect.stringContaining("positive pixel report") },
+    { status: "probe-todo", reason: expect.stringContaining("positive pixel report") },
   ])
   expect(fake.writes).toEqual([])
 })
@@ -659,7 +659,7 @@ test("a pixel query answered with a sentinel reports query evidence, not a zero-
   expect(result.tests).toMatchObject([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: expect.stringContaining("this run cannot map cells onto the captured window"),
     },
   ])
@@ -769,7 +769,7 @@ test("a terminal that answers neither CSI 16 t nor CSI 14 t names both replies i
   if (!("pass" in declined)) throw new Error("Empty geometry replies must decline the capture")
   expect(declined.observation).toBeUndefined()
   expect(declined.tests).toMatchObject([
-    { id: "criterion", status: "test-failure", reason: expect.stringContaining("CSI 16 t") },
+    { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("CSI 16 t") },
   ])
   const raw = JSON.stringify(queries)
   const result = recordExecutedProbe({
@@ -779,7 +779,7 @@ test("a terminal that answers neither CSI 16 t nor CSI 14 t names both replies i
     assertions: [],
     tests: declined.tests,
   })
-  expect(result.status).toBe("test-failure")
+  expect(result.status).toBe("probe-invalid")
   expect(result.assertionType).toBeUndefined()
   expect(result.reason).toContain("CSI 14 t")
   expect(result.reason).toContain("timeout")
@@ -836,7 +836,7 @@ test.each([
     assertions: [],
     tests: formatted.tests,
   })
-  expect(stored.status).toBe("test-failure")
+  expect(stored.status).toBe("probe-invalid")
   expect(stored).not.toHaveProperty("replyFailureTestIds")
   if (observed) expect(stored.reason).toBe(observation?.note)
   if (marked) {
@@ -979,7 +979,7 @@ test("region rows refuse a calibrated footprint that no longer covers the curren
   expect(result).toMatchObject({
     tests: [
       expect.objectContaining({
-        status: "test-todo",
+        status: "probe-todo",
         reason: expect.stringMatching(/calibrated.*grid|grid.*calibrated/),
       }),
     ],
@@ -1220,7 +1220,7 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
     expect(result.observation, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
       {
-        status: "test-failure",
+        status: "probe-invalid",
         reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
       },
     ])
@@ -1243,7 +1243,7 @@ test("a silent DECRQSS readback retains a named failure, and an answering one st
     expect(result.observation, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
       {
-        status: "test-failure",
+        status: "probe-invalid",
         reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
       },
     ])
@@ -1588,7 +1588,7 @@ test("an unqualified setup retains an independent measurement refusal and propag
   const result = await probe.term(refused.ctx)
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
-    { status: "test-failure", reason: expect.stringContaining("needs a measured grid") },
+    { status: "probe-invalid", reason: expect.stringContaining("needs a measured grid") },
   ])
   expect(JSON.parse(result.response!)).toMatchObject({ baseline: "0", setup: "0" })
   expect(refused.queries).toHaveLength(2)
@@ -1624,7 +1624,7 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
     expect(result?.observation, entry.id).toBeUndefined()
     expect(result?.tests, entry.id).toMatchObject([
       {
-        status: "test-todo",
+        status: "probe-todo",
         reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
       },
     ])
@@ -1638,7 +1638,7 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
     expect(result?.observation, id).toBeUndefined()
     expect(result?.tests, id).toMatchObject([
       {
-        status: "test-todo",
+        status: "probe-todo",
         reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
       },
     ])
@@ -1674,7 +1674,7 @@ test("the refused rows are exactly the rows whose reset clears two or more attri
     expect(refused?.observation, `${entry.id}: with the refusal`).toBeUndefined()
     expect(refused?.tests, entry.id).toMatchObject([
       {
-        status: "test-todo",
+        status: "probe-todo",
         reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
       },
     ])
@@ -1696,7 +1696,7 @@ test("the bold row's faint case is the third no-reference row", async () => {
   expect(result?.observation).toBeUndefined()
   expect(result?.tests).toMatchObject([
     {
-      status: "test-todo",
+      status: "probe-todo",
       reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
     },
   ])
@@ -1803,7 +1803,7 @@ test("declared visual missing witness keeps review evidence execution-only", asy
   const response = JSON.parse(result?.response ?? "{}") as {
     review?: { note?: string; screenshotRef?: string }
   }
-  expect(result?.tests?.[0]).toMatchObject({ id: "review", status: "test-todo", reason: "no freshness witness" })
+  expect(result?.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo", reason: "no freshness witness" })
   expect(result?.observation).toBeUndefined()
   expect(result?.assertions).toBeUndefined()
   expect(response.review?.note).toContain("no paint witness")
@@ -1847,7 +1847,7 @@ test.each([
     spec({ ...PLANE_SPEC, discriminator: CHANGE_SIGNAL, timeoutMs: 5 }),
     fake.read,
   )
-  expect(result?.tests).toEqual([{ id: "review", status: "test-todo", reason: "no freshness witness" }])
+  expect(result?.tests).toEqual([{ id: "review", status: "probe-todo", reason: "no freshness witness" }])
   expect(result?.assertions).toBeUndefined()
   expect(result?.observation).toBeUndefined()
   const response = JSON.parse(result?.response ?? "{}") as { review?: { frames?: PixelObservationFrame[] } }
@@ -1880,7 +1880,7 @@ test("declared visual instability before a target frame keeps review evidence ex
   )
 
   expect(result?.criterionBranch).toBe("visual-review")
-  expect(result?.tests?.[0]?.status).toBe("test-todo")
+  expect(result?.tests?.[0]?.status).toBe("probe-todo")
   expect(result?.observation).toBeUndefined()
   expect(result?.assertions).toBeUndefined()
   const response = JSON.parse(result?.response ?? "{}") as {
@@ -1899,7 +1899,7 @@ test.each(["change", "no-change"] as const)(
       ...PLANE_SPEC,
       discriminator: { signal: "fixture.signal", expected },
     })
-    expect(result.tests?.[0]?.status).toBe("test-todo")
+    expect(result.tests?.[0]?.status).toBe("probe-todo")
     expect(result.tests?.[0]?.reason).toContain("third distinct frame")
     expect(result.assertions).toBeUndefined()
   },
@@ -1911,7 +1911,7 @@ test("declared visual no-change requires a distinct ignored contrast", async () 
     ignored: undefined,
     discriminator: NO_CHANGE_SIGNAL,
   })
-  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.status).toBe("probe-todo")
   expect(result.tests?.[0]?.reason).toContain("distinct ignored contrast")
 })
 
@@ -1927,7 +1927,7 @@ test("declared visual collapsed references stay explicit review", async () => {
     return captured
   }
   const result = await decide(fake, { ...PLANE_SPEC, discriminator: CHANGE_SIGNAL })
-  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.status).toBe("probe-todo")
   expect(result.tests?.[0]?.reason).toContain("cannot separate")
 })
 
@@ -1952,7 +1952,7 @@ test("declared visual rejects text capture before terminal writes", async () => 
     }),
     fake.read,
   )
-  expect(result?.tests?.[0]?.status).toBe("test-todo")
+  expect(result?.tests?.[0]?.status).toBe("probe-todo")
   expect(result?.tests?.[0]?.reason).toContain("pixel")
   expect(fake.writes).toHaveLength(0)
 })
@@ -1960,7 +1960,7 @@ test("declared visual rejects text capture before terminal writes", async () => 
 test("declared visual missing reader is explicit review without writes", async () => {
   const fake = declaredWindow("expected")
   const result = await captureRegionReadbackDecision(fake.ctx, "visual", spec({ discriminator: CHANGE_SIGNAL }), null)
-  expect(result?.tests).toEqual([{ id: "review", status: "test-todo", reason: "no freshness witness" }])
+  expect(result?.tests).toEqual([{ id: "review", status: "probe-todo", reason: "no freshness witness" }])
   expect(fake.writes).toHaveLength(0)
 })
 
@@ -2002,7 +2002,7 @@ test.each(["change", "no-change"] as const)(
         discriminator: { signal: "fixture.setup", expected },
       },
     )
-    expect(result.tests?.[0]?.status).toBe("test-todo")
+    expect(result.tests?.[0]?.status).toBe("probe-todo")
     expect(result.tests?.[0]?.reason).toContain("required setup was not established")
     expect(result.assertions).toBeUndefined()
   },
@@ -2014,7 +2014,7 @@ test("declared visual no-change collapsed contrast cannot support or oppose the 
     ignored: PLANES.expected,
     discriminator: NO_CHANGE_SIGNAL,
   })
-  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.status).toBe("probe-todo")
   expect(result.tests?.[0]?.reason).toContain("cannot separate")
   expect(result.assertions).toBeUndefined()
 })
@@ -2061,7 +2061,7 @@ test("declared visual crop movement alone cannot witness target freshness", asyn
   const response = JSON.parse(result?.response ?? "{}") as {
     review?: { note?: string; screenshotRef?: string; frames?: ObservationFrame[] }
   }
-  expect(result?.tests?.[0]?.status).toBe("test-todo")
+  expect(result?.tests?.[0]?.status).toBe("probe-todo")
   expect(result?.tests?.[0]?.reason).toContain("witness crop")
   expect(result?.observation).toBeUndefined()
   expect(result?.assertions).toBeUndefined()

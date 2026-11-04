@@ -1,6 +1,6 @@
 /**
  * @failure A stored reply-path or source-negative cell carrying a kept source answer is read as Unsupported (or
- *   refused) instead of TEST TODO, so a Terminfo result is again graded from source (operator 2026-11-03, #32246).
+ *   refused) instead of PROBE TODO, so a Terminfo result is again graded from source (operator 2026-11-03, #32246).
  * @level l1
  * @consumer parseProbeResults for every stored reply-path-audit / source-negative cell in a retained lib run
  * @testonly none
@@ -100,22 +100,22 @@ const read = (status: "unsupported" | "supported", assertionType?: string, branc
     new Map([[SUITE, manifest]]),
   )
 
-it("reads a stored reply-path cell its kept answer used to decide as TEST TODO, refs stripped", () => {
+it("reads a stored reply-path cell its kept answer used to decide as PROBE TODO, refs stripped", () => {
   const parsed = read("unsupported")
-  expect(parsed.results?.[0]).toMatchObject({ status: "test-todo", reason: SOURCE_ANSWER_RETIRED_REASON })
+  expect(parsed.results?.[0]).toMatchObject({ status: "probe-todo", reason: SOURCE_ANSWER_RETIRED_REASON })
   expect(parsed.results?.[0]?.reviewRef).toBeUndefined()
-  expect(parsed.results?.[0]?.tests[0]).toMatchObject({ status: "test-todo", reason: SOURCE_ANSWER_RETIRED_REASON })
+  expect(parsed.results?.[0]?.tests[0]).toMatchObject({ status: "probe-todo", reason: SOURCE_ANSWER_RETIRED_REASON })
   expect(parsed.results?.[0]?.tests[0]?.reviewRef).toBeUndefined()
   expect(parsed.assertions).toEqual([])
 })
 
 it("never grades a stored source-answer cell, whatever status or assertion type it claims", () => {
-  expect(read("supported").results?.[0]?.status).toBe("test-todo")
-  expect(read("unsupported", "buffer_state").results?.[0]?.status).toBe("test-todo")
+  expect(read("supported").results?.[0]?.status).toBe("probe-todo")
+  expect(read("unsupported", "buffer_state").results?.[0]?.status).toBe("probe-todo")
 })
 
 // Every row is the SAME status with the SAME kept-answer marker: the stored source answer no longer decides any
-// branch, so each reads TEST TODO with the retired reason (operator 2026-11-03, @cto 153143ff). The
+// branch, so each reads PROBE TODO with the retired reason (operator 2026-11-03, @cto 153143ff). The
 // headless-observable branch keeps its own shape rule (untestable only), which fires before any answer is read.
 const BRANCH_ROWS: ReadonlyArray<{ branch: string; refusal?: string }> = [
   {
@@ -127,13 +127,13 @@ const BRANCH_ROWS: ReadonlyArray<{ branch: string; refusal?: string }> = [
   { branch: "color-readback-review" },
 ]
 
-it("reads a stored kept-answer negative as TEST TODO on every branch that admits the shape", () => {
+it("reads a stored kept-answer negative as PROBE TODO on every branch that admits the shape", () => {
   for (const row of BRANCH_ROWS) {
     if (row.refusal !== undefined) {
       expect(() => read("unsupported", undefined, row.branch), row.branch).toThrow(row.refusal)
     } else {
       expect(read("unsupported", undefined, row.branch).results?.[0], row.branch).toMatchObject({
-        status: "test-todo",
+        status: "probe-todo",
         reason: SOURCE_ANSWER_RETIRED_REASON,
       })
     }

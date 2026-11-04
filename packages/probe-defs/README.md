@@ -16,36 +16,38 @@ This describes the implemented system. Callbacks still perform live I/O and eval
 
 The five assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard. Probe setup and feed writes retain their existing order and bytes; they are not a sixth assertion type.
 
-The five display labels are Supported, Unsupported, Untestable, Test to-do and Test failure. Their stored code values remain `supported`, `unsupported`, `untestable`, `test-todo` and `test-failure`; this vocabulary change does not change status or publication behavior. A missing same-run check is a reason under Test to-do, not an additional status.
+The five probe-result labels are Supported, Unsupported, Untestable, PROBE TODO and PROBE INVALID. Their code values are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`. Immutable stored runs retain their original `test-todo` and `test-failure` words; the run reader decodes those as `probe-todo` and `probe-invalid` without rewriting the stored bytes. A missing same-run control is a reason under PROBE TODO, not an additional status.
+
+A feature result answers one feature on one subject from its current probes. Source never decides it. Supported/Unsupported disagreement between any valid non-source probes is PROBE CONFLICT (`probe-conflict`), naming those probes, regardless of strength. Otherwise the strongest decided probe wins; Untestable alone cannot conflict with a decided answer. With no decided probe, invalid takes precedence over todo, then all-untestable. A conflict counts as open and tier 2 when there is no todo. The [feature-result calculator](../../docs/data/release-scope.ts) replaces the old report-only minimum-method findings.
 
 Callback observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`, not five result statuses.
 The [writer and finalizer](src/helpers.ts) fold explicit tests and diagnostics into the result:
 a supported observation can still have a failed or pending required test; an inconclusive observation alone
 does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named
-missing-observable coverage defaults to Test to-do; rowless inconclusive without that coverage defaults
-to Test failure. There is no route to Untestable.
+missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
+to PROBE INVALID. There is no route to Untestable.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
-OSC 17 or 19 supplies no initial colour, the callback records a named Test to-do; broken or untrustworthy
-measurement remains Test failure. Silence alone does not establish Unsupported.
+OSC 17 or 19 supplies no initial colour, the callback records a named PROBE TODO; broken or untrustworthy
+measurement remains PROBE INVALID. Silence alone does not establish Unsupported.
 The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
-The `CellState` value `inconclusive` denotes Untestable (no current route reaches it), `error` denotes Test failure and `untested` denotes
-Test to-do; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
+The `CellState` value `inconclusive` denotes Untestable (no current route reaches it), `error` denotes PROBE INVALID and `untested` denotes
+PROBE TODO; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
 
-No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A grade comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is Test to-do with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. Test failure means the probe or harness broke or got data it cannot trust. There is no route to Untestable: a probe whose setup has no observable for every subject of a kind reads Test to-do, and source never sets it per engine. A probe never implements the feature itself.
+No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A grade comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is PROBE TODO with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. PROBE INVALID means the probe or harness broke or got data it cannot trust. There is no route to Untestable: a probe whose setup has no observable for every subject of a kind reads PROBE TODO, and source never sets it per engine. A probe never implements the feature itself.
 
-Every former source-review or source-negative site now returns Test to-do with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as Test to-do with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
+Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
 External release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 Terminal tiers describe progress: 0 missing, 1 incomplete, 2 broken and 3 done. These are distinct from the former Release 1 query/reply group and from color depth. This terminology defines no thresholds and changes no status computation.
 
 The existing [completeness helper](../../docs/data/release-scope.ts) uses the supplied graded positions:
-empty means tier 0; any Test to-do means tier 1, even alongside failures; otherwise a Test failure means
+empty means tier 0; any PROBE TODO means tier 1, even alongside failures; otherwise a PROBE INVALID means
 tier 2; otherwise tier 3. The helper itself does not verify full catalogue membership.
 The numerical support share is Supported divided by all graded positions, not results done divided by total.
 The [nine exact environment IDs](src/environment-groups.ts) remain visible but excluded from grading,
 the denominator and completeness tiers. The [admin report's](../admin/report.tsx) literal `N/M` means
-manual-by-design, NOT MEASURED for their Test to-do rows; it is not a numerical fraction or a sixth stored status.
+manual-by-design, NOT MEASURED for their PROBE TODO rows; it is not a numerical fraction or a sixth stored status.
 An [OS row's inherited or reference source](../../docs/os/%5Bid%5D.paths.ts) can supply its displayed counts;
 those are the source's results, not an independent measurement of that app and OS.
 
@@ -105,13 +107,13 @@ capability declaration. The setting does not decide the measured resize phases.
 
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
-Library `cell.hidden: null` means conceal is not reported; missing cell observables retain their named Test to-do cause without deciding terminal support.
+Library `cell.hidden: null` means conceal is not reported; missing cell observables retain their named PROBE TODO cause without deciding terminal support.
 
-OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named Test to-do
+OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO
 when no clipboard-state witness is wired; a read negative cannot measure the write.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
-silence. Qualified silence from every control names an unmet detection prerequisite as Test to-do,
-retaining each raw window. Any control reply leaves target silence as Test failure; complete,
+silence. Qualified silence from every control names an unmet detection prerequisite as PROBE TODO,
+retaining each raw window. Any control reply leaves target silence as PROBE INVALID; complete,
 on-time target Ps0 remains Unsupported. Unqualified, malformed and late target replies keep
 their existing criteria. Historical captures and selected results are unchanged.
 
@@ -136,12 +138,12 @@ The library alternate-scroll, reverse-video, synchronized-output,
 colour-scheme-reporting and DECSCLM cells use the existing DECRPM helper's opt-in
 `requireReadback` criterion. Supported requires Ps1 after set, Ps2 after reset and
 agreeing `getMode` readings. Ps0/2/4 after set is an engine negative. A null or
-mismatched adapter reading retains a criterion Test to-do named
+mismatched adapter reading retains a criterion PROBE TODO named
 `adapter binding <backend.name> <mode>`; the name is display-only and never selects
 a status or route. Existing other DECRPM criteria retain their prior readings.
 Application-keypad instead measures `ESC =` / `ESC >` (DECKPAM/DECKPNM) with
 `applicationKeypad` true then false, without DECRQM. Null readings stay named
-adapter-binding Test to-do; other non-null pairs stay criterion Test to-do naming both states.
+adapter-binding PROBE TODO; other non-null pairs stay criterion PROBE TODO naming both states.
 Keypad encoding remains unmeasured. The application `modes.alt-scroll-1007` arm measures
 wheel-to-cursor-key translation from either CSI A or SS3 A and records the observed form;
 the library arm leaves that translation unmeasured.
@@ -151,7 +153,7 @@ flip is engine conflation, independently of its reply (the existing private4 iss
 Presentation remains unmeasured for reverse-video/synchronized-output, the actual
 scheme-change report remains unmeasured for2031, and smooth-scroll presentation
 remains unmeasured in the library arm. DECSSCLS feeds `CSI 9 SP p` plus a marker and
-retains screen text and cursor state. Consumption without visible effect is Test to-do; leaked sequence text is a measured
+retains screen text and cursor state. Consumption without visible effect is PROBE TODO; leaked sequence text is a measured
 negative, and a changed grid or misplaced marker stays inconclusive. Consumption does
 not prove handling or scroll-speed presentation. Application criteria are unchanged.
 
@@ -163,35 +165,35 @@ The library declaration also accepts an inline `{ when, then, otherwise }` descr
 
 `ALL_PROBES` collects the category definitions. A current `ProbeSuiteManifest` explicitly carries schema version 4 and separates complete `catalogIds` membership from the callback schedules in `probes.term`, `probes.lib` and `probes.mux`. Historical declarations normalize their schedules on read while retaining their original absent schema marker.
 
-The [shared execution helpers](src/helpers.ts) initialize every catalog member as `test-todo` with no attempt, then record only the work actually performed.
+The [shared execution helpers](src/helpers.ts) initialize every catalog member as `probe-todo` with no attempt, then record only the work actually performed.
 
 Library SGR 39/49/59 resets without a distinct colored setup retain their actual cell state on a
-named `headless-observable-review` Test to-do row. That missing prerequisite cannot establish a
-reset negative. Compound attribute resets with unshown setup attributes are Test to-do; a partial reset
+named `headless-observable-review` PROBE TODO row. That missing prerequisite cannot establish a
+reset negative. Compound attribute resets with unshown setup attributes are PROBE TODO; a partial reset
 does not decide the whole claim.
 
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
-no I/O and records Test to-do: a library context spawns no application child to receive the environment export.
-It creates no observation or assertion. The application arm remains Test to-do until terminal-owned child readback exists.
+no I/O and records PROBE TODO: a library context spawns no application child to receive the environment export.
+It creates no observation or assertion. The application arm remains PROBE TODO until terminal-owned child readback exists.
 
 Raw replies and observed payloads do not embed
 runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
 uses the loaded binary digest, while wrapper repository/tree metadata remains provenance.
 
 Headless collection checks declared-versus-loaded native SHA before probes and collects observed
-buffers and replies. A silence-dependent cell with no same-path control is Test to-do with the
+buffers and replies. A silence-dependent cell with no same-path control is PROBE TODO with the
 no-control reason and its raw response. Hourly measurement calls the existing `collectHeadlessRuns`
 entry point and reads its `collection.json` through the canonical run parser, without importing review selection.
 App/hosted collection keeps its existing driver.
 
 Several OSC callbacks in [extensions.ts](src/extensions.ts) feed their exact commands
 and a rendered-X consumption control, retaining fed/cell state. The control proves parser
-consumption, not a target effect; target state remains unexposed, so the cell is Test to-do
+consumption, not a target effect; target state remains unexposed, so the cell is PROBE TODO
 with the no-control reason.
 
 The two highlight resets (OSC 17/117 and 19/119) query the initial colour first.
 A real colour reply follows the measured reset criterion. An empty initial reply is
-Test to-do with the no-control reason. The measured reply route remains
+PROBE TODO with the no-control reason. The measured reply route remains
 query-reply evidence; these two lib arms stay temporarily undeclared under #28801
 because a single assertion-type declaration cannot state both routes.
 
@@ -213,7 +215,7 @@ control, ordinary and synchronized keys. The exact DECSET 2026 bytes exercise ou
 block without claiming painting support. The app arm uses existing owned wheel input and whole-window
 pixel capture in one fresh Linux Ghostty job. Its optional input-fixture wheel bound carries pinned
 configuration/application provenance; until that bound is justified from the pinned application, the job
-omits it and the callback returns named Test to-do before I/O. The configuration sets only wheel movement,
+omits it and the callback returns named PROBE TODO before I/O. The configuration sets only wheel movement,
 never output-scroll policy. Separate ordinary/synchronized phases require key delivery, unique anchors,
 a same-run DA1 inertness check at the anchor and parse witness before two equal output frames,
 constructed-tail bottom equality after all downward inputs, and a second verified restore after the
@@ -241,13 +243,13 @@ Other identities keep their existing criteria.
 
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 
-- `ProbeCallbackResult` has three arms: a measured `observation`; `notTested` coverage naming a missing semantic observable; or execution-only, nonempty Test to-do/Test failure `tests`, each with a mandatory reason. Execution-only callbacks have no observation, assertions or coverage. Callbacks can select a criterion branch.
+- `ProbeCallbackResult` has three arms: a measured `observation`; `notTested` coverage naming a missing semantic observable; or execution-only, nonempty PROBE TODO/PROBE INVALID `tests`, each with a mandatory reason. Execution-only callbacks have no observation, assertions or coverage. Callbacks can select a criterion branch.
 - `Observation` records an outcome and required `assertionType`. `ProbeAssertion` records the independently positive/negative predicate, required `assertionType`, expected state and retained observed evidence.
 - `ProbeResult` stores the feature's execution status, attempt, required tests, selected criterion branch and evidence references. Its optional primary `assertionType` names only a retained observation; absence is not a sixth type. Legacy `pass` never grades it.
 - `RunDraft` is a private schema-4 envelope: explicit source, run/suite identity, `intendedSubject`, measured `subject` when available, raw replies, assertions, artifact references and probe results. Subject kinds are `term`, `lib` and `mux`.
 - `CapturedRunDraft` and `CurrentProbeRun` require measured subject, identity, time and origin; `ProbeRun` aliases the current shape. Historical stored bytes are immutable. A historical `sealedAt` field is ignored for current parsing and selection.
 
-The legacy callback `pass` still exists for the [diagnostic Vitest runner](../probes/run-unified.probe.ts), including the execution-only arm. Current collectors record observations/tests through `recordExecutedProbe`; even `pass: true` with an explicit Test failure test stays failure. Cleanup #30929 removes `pass` from every arm.
+The legacy callback `pass` still exists for the [diagnostic Vitest runner](../probes/run-unified.probe.ts), including the execution-only arm. Current collectors record observations/tests through `recordExecutedProbe`; even `pass: true` with an explicit PROBE INVALID test stays failure. Cleanup #30929 removes `pass` from every arm.
 
 A callback can mark explicit failure tests that need actual request evidence. An execution-only callback uses
 `replyFailure`; a measured callback can retain a partial observation while marking its required-reply failure.
@@ -257,11 +259,11 @@ actual timeout or synchronous capture boundary to only those marked failure-test
 attempts in the stored criterion test's reason; the observation note and top-level summary stay unchanged. Grades, test IDs,
 criterion branches, observations and assertions remain callback-owned. Missing request records remain
 named failures; they do not prove that a producer is absent. Proved missing required capabilities or
-identity-bound declarations retain named Test to-do results without markers. Malformed replies, sentinel negatives
+identity-bound declarations retain named PROBE TODO results without markers. Malformed replies, sentinel negatives
 and artifact-review branches keep their separate criteria and remain unmarked.
 
 A region seed whose characters arrive without their painted background or inverse attribute fails the
-claim's precondition. Live and replay retain the same `criterion` Test failure and `PreconditionFailed`
+claim's precondition. Live and replay retain the same `criterion` PROBE INVALID and `PreconditionFailed`
 cause with expected cells and observed values; this is no negative assertion about the feature itself. Replay preserves that callback-provided cause alongside its native checks.
 
 The OSC 1 library criterion requires separate icon readback and a verified OSC 2 window-title control; an icon update must preserve that title. Missing icon readback remains coverage, while a failed title control is an execution failure. Both labels are restored after the attempt. Library OSC 117/119 resets reuse the color-reset helper's initial-query, distinct verified seed and reset-query sequence. Missing initial highlight readback or an unverified seed cannot establish reset support or absence; the original highlight color is restored after the attempt.
@@ -281,7 +283,7 @@ or OSC 9;4 progress measurement. Missing readers keep the existing
 
 The library reflow callback uses the optional `LibProbeSource.resize` control; every production
 source forwards it directly to the existing required backend operation, regardless of the declared
-reflow capability. A hand-built source without the member keeps the named no-I/O Test to-do. Initialized
+reflow capability. A hand-built source without the member keeps the named no-I/O PROBE TODO. Initialized
 `cols` retains its original meaning; it is not post-resize geometry. Fresh ASCII wrap controls qualify
 the actual width effects through cells, because adapter dimensions can merely mirror a request.
 The main-screen fixture seeds an 18-character line and distinct CRLF lines before each resize,
@@ -290,7 +292,7 @@ The line starts soft-wrapped for growth and unwrapped for shrink. Ordered feeds,
 and actual cell/cursor/scrollback reads remain in the existing response JSON. Exact reflowed layouts
 supply positive main-phase buffer-state assertions. Preserved physical rows on growth and the same
 rows clipped to 12 columns on shrink supply negative assertions. Failed controls, unexpected cells or
-boundaries, and conflicting positive/negative phases retain required Test failure tests. Finally restores
+boundaries, and conflicting positive/negative phases retain required PROBE INVALID tests. Finally restores
 the initial dimensions and resets the source, attempting both operations and preserving all causes.
 
 The same callback measures retained-history growth and shrink in independently reset buffers.
@@ -298,7 +300,7 @@ The soft line and explicit CRLF rows are followed by twice the screen height in 
 hard witnesses, without a final newline. Coherent counts bound every absolute-buffer read by the
 fed rows plus screen height; invalid extents retain their counts without allocating from them.
 Before resize, all target rows must remain in history and the complete seeded layout must match.
-No retained history and an evicted or incompletely retained target have distinct named Test to-do reasons
+No retained history and an evicted or incompletely retained target have distinct named PROBE TODO reasons
 without assertions, after the surviving rows match the expected fed tail. A corrupt short buffer
 is invalid evidence, not unavailable coverage. After resize, complete reflow supplies a positive assertion; exact physical-row
 preservation/clipping supplies a negative only with every hard witness and blank tail conserved.
@@ -310,20 +312,20 @@ Alternate-screen growth and shrink reuse the seeded 1049 roundtrip used by the m
 The sparse target and its post-resize width control stay in the same alternate buffer; target cells
 are read before the destructive control. A reflow assertion requires complete target cells, hard
 boundaries and blank tails, actual buffer identity, and primary restoration in that same roundtrip.
-Unknown identity and a measured entry that leaves the primary active have distinct named Test to-do results:
+Unknown identity and a measured entry that leaves the primary active have distinct named PROBE TODO results:
 `alternate buffer identity unavailable` and `alternate buffer not entered`. Neither is a reflow
 negative. Corrupt setup, inconsistent identity, failed controls/restoration and unmatched layouts
 retain invalid phase evidence. A failed marker or readback before the measurement slot stays invalid,
 even when buffer identity is false or unavailable. Before the slot, only a clean failed-entry observation
-can yield an identity or no-entry Test to-do.
+can yield an identity or no-entry PROBE TODO.
 Slot errors retain their cause while measured/final leaves run;
 outer cleanup independently attempts alternate exit, initial-width restoration and reset.
 
 The library criterion requires main-screen growth/shrink and retained-history growth/shrink.
 Each required row cites only its own phase's assertions; the existing mixed-main criterion cites
-only main assertions. The shared finalizer gives required failures precedence over Test to-do results, then
+only main assertions. The shared finalizer gives required failures precedence over PROBE TODO results, then
 measured negatives, then support. Main reflow with retained physical history is Unsupported;
-missing qualified history remains Test to-do, and corrupt tails or unmatched layouts remain failures.
+missing qualified history remains PROBE TODO, and corrupt tails or unmatched layouts remain failures.
 The reason names the graded phases and their results.
 
 Alternate-screen phases retain their statuses, positive/negative assertions and raw response but
@@ -333,7 +335,7 @@ Invalid alternate evidence stays visible without vetoing the graded phases; clea
 
 Supported reasons state: "ASCII reflow measured on main screen and retained history; wide characters,
 cursor on a wrapped line and terminal-app resize unmeasured". No broader coverage is inferred, and
-the separate terminal-app arm remains Test to-do. Private apparatus results grant no exact-run decision,
+the separate terminal-app arm remains PROBE TODO. Private apparatus results grant no exact-run decision,
 corpus placement; the native absolute-row consumer hold remains with independent batch review.
 
 The libvterm adapter retains native history, enables `vterm_screen_enable_reflow` and records that
@@ -347,7 +349,7 @@ sequences for `!= -> => <= ==` with liga/calt on and off. A glyph-ID difference 
 capability independently of the renderer; position differences alone do not. The collector retains
 the validated `fixture.font` bytes as `collector.fontSource` for every non-mux Linux run selecting the
 font review, including plain receipts from other launchers. The retained receipt and spaced-control and
-target frames are kept with the result, but no same-run check grades them. Missing or inconclusive proof leaves Test to-do naming
+target frames are kept with the result, but no same-run check grades them. Missing or inconclusive proof leaves PROBE TODO naming
 `#32062 font control` and its proof state; it does not establish Untestable on a pixel arm.
 This does not change earlier captures or xterm's rendering pin.
 
@@ -359,25 +361,25 @@ The XTEST key criterion requires the ctrl+a modified-key encoding after its plai
 control; a bare control byte or another modified key does not meet it. Pixel mouse reporting
 uses the existing terminal-reported cell geometry to predict the pixel box of the control
 click's cell and retains that geometry with the target report. Missing cell geometry stays
-named Test to-do. The two scroll-region recipes seed and preserve a nonblank marker immediately
+named PROBE TODO. The two scroll-region recipes seed and preserve a nonblank marker immediately
 above the requested top row. The insert/replace query criterion requires set then reset
 (Ps 1 then 2); permanent-state replies retain their numeric readings and fail that toggle claim.
 
 The twelve real-surface input term criteria retain genuine input measurements. Only an absent
-`input` or `readInput` facility selects the named Test to-do `real-surface input injection (XTEST/CGEvent)`.
+`input` or `readInput` facility selects the named PROBE TODO `real-surface input injection (XTEST/CGEvent)`.
 The seven host-input library rows (`input.xtest-key`, `input.xtest-click`, `input.xtest-wheel`,
 `input.button-event-mouse`, `input.pixel-mouse`, `input.urxvt-mouse`, `input.x10-mouse`) and
 `extensions.clipboard-paste` retain `os-input-review`, with reason
 "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
-This remains a review Test to-do; there is no standing class rule, callback grade or change to earlier captures.
+This remains a review PROBE TODO; there is no standing class rule, callback grade or change to earlier captures.
 
 Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video 5, synchronized output 2026,
 DECSCLM 4 and color-scheme reporting 2031. Snapshot Ps 1/3 is Supported without mutation; Ps 0/4 is
 Unsupported without mutation. Snapshot Ps 2 sends DECSET, queries again and restores DECRST:
-Ps 1/3 is Supported. For synchronized output 2026, a retained Ps 2 is Test failure:
+Ps 1/3 is Supported. For synchronized output 2026, a retained Ps 2 is PROBE INVALID:
 the reset reply cannot establish an enabled update, and rendered effect remains unmeasured.
 For the other three modes, a retained Ps 2 is Unsupported with "recognized but DECSET refused (mode kept reset)".
-No reply is Test to-do "no DECRPM reply"; an attempted set still restores the reset snapshot.
+No reply is PROBE TODO "no DECRPM reply"; an attempted set still restores the reset snapshot.
 These callbacks require the existing disposable-terminal authority. Their limitation is
 "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured".
 Every other mode keeps the default recognition-only path.
@@ -385,7 +387,7 @@ Every other mode keeps the default recognition-only path.
 DECSSCLS is CSI Ps SP p, not a DEC mode: its term criterion still requires timed screenshots.
 Its library arm stays `headless-observable-review` with null assertion type and reason
 "presentation speed: headless engines paint no frames and expose no scroll-speed state".
-The missing presentation-speed observable remains Test to-do.
+The missing presentation-speed observable remains PROBE TODO.
 
 Reset-family capture recipes can supply an optional `RegionReadback.setupReference`: an independently
 authored full setup, painted behind the existing witness. The seed must match it before any verdict.
@@ -395,7 +397,7 @@ A qualified baseline followed by a complete but unqualified SGR setup report may
 independent capture path for the six eligible reset rows. The response retains both query phases and
 the capture response, and the note names the deciding instrument. Malformed setup, failed baseline
 and the three multi-attribute reference refusals keep their existing behavior.
-Without a deciding independent capture, an omitted setup attribute retains named Test to-do coverage
+Without a deciding independent capture, an omitted setup attribute retains named PROBE TODO coverage
 and both raw query phases, just as an omitted final attribute does; it is not a broken measurement.
 With an owned colour, reset-family or blink oracle, valid final SGR state replies and named
 missing-observable results use its same-run pixel controls; the unchanged DECRQSS reply stays in
@@ -413,7 +415,7 @@ Without a qualified sentinel path, an empty initial reply runs a disposable set/
 retaining every write and reply, including setter/reset acknowledgements. Only an exact seeded-colour
 reply, empty acknowledgements and an empty reset query select `color-readback-review`: the initial value
 is embedder-owned and still missing. A seeded reply never proves initial/default-colour support.
-Other control outcomes retain criterion Test failure. The retained run identifies its suite and raw evidence; this callback grants neither automatic Untestable nor support.
+Other control outcomes retain criterion PROBE INVALID. The retained run identifies its suite and raw evidence; this callback grants neither automatic Untestable nor support.
 
 For the OSC 104 library reset with an unanswered initial OSC 4 index-0 query, indexed cells provide
 an independent reset witness. The callback retains a default D before setting, seeded S before and
@@ -421,9 +423,9 @@ after reset, and fresh F painted after reset, alongside the existing query contr
 Exact glyphs and valid RGB must establish a default distinct from the verified aa/bb/cc seed.
 Fresh F matching D proves reset; F remaining seeded is a controlled negative when S also remains seeded.
 S records cell storage (resolved at read or at paint), so S remaining seeded with F restored still proves reset.
-S restored with F seeded, a third fresh colour or missing post-reset readings are TEST TODO with that cause named.
-An answered post-reset query still reporting the seed contradicts a fresh cell restored to default and is also TEST TODO.
-Missing S-after stays TEST TODO even when F matches D; no storage reading is invented.
+S restored with F seeded, a third fresh colour or missing post-reset readings are PROBE TODO with that cause named.
+An answered post-reset query still reporting the seed contradicts a fresh cell restored to default and is also PROBE TODO.
+Missing S-after stays PROBE TODO even when F matches D; no storage reading is invented.
 Sentinel negatives keep their original DA1 response, with optional indexed-cell controls retained in the assertion note.
 Cell-decided results retain the original sentinel outcome and timing alongside their controls.
 Missing default or seed controls retain the existing query and sentinel rules, never a reset negative.
@@ -440,20 +442,20 @@ color retain `color-readback-review` with the cause. Without the getter these
 three callbacks keep their existing query path. When the `default-colors` getter
 is exposed and the initial OSC 13 or 14 pointer-color query answers nothing, OSC
 113 and 114 retain the query, empty reply and measured `fg`/`bg`/`cursor`
-default-color state as Test to-do with the no-control reason, without inventing pointer slots
+default-color state as PROBE TODO with the no-control reason, without inventing pointer slots
 or executing reset writes. Other color features are unchanged.
 
-Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state as Test to-do with the no-control reason; an unreported value never becomes a measured negative. Positive booleans retain their supported observation path. A missing X retains an inconclusive result without a deciding assertion. A rowless, unnamed inconclusive result keeps the writer default Test failure (callback defect); only an explicit named test or review row classifies its cause. It is not reclassified as missing-observable coverage. Stored captures remain unchanged.
+Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state as PROBE TODO with the no-control reason; an unreported value never becomes a measured negative. Positive booleans retain their supported observation path. A missing X retains an inconclusive result without a deciding assertion. A rowless, unnamed inconclusive result keeps the writer default PROBE INVALID (callback defect); only an explicit named test or review row classifies its cause. It is not reclassified as missing-observable coverage. Stored captures remain unchanged.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
-An absent `hyperlinks` observer with valid fixture text retains named coverage (Test to-do) and raw cell/link state,
+An absent `hyperlinks` observer with valid fixture text retains named coverage (PROBE TODO) and raw cell/link state,
 identifying the loaded adapter path and Termless revision when measured runtime identity is available.
 Declared getters returning null report unlinked cells, so URI mismatches remain measured negatives; invalid declared getters still throw.
 
 The declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
 semantic prompts, OSC 633 and iTerm2 images), OSC 7 and notifications without their metadata readers, an absent OSC 8 URI observer,
 and checks lacking timing, host-event or rendering facilities retain their existing coverage and raw
-state on `headless-observable-review`. Each is TEST TODO naming its missing observable.
+state on `headless-observable-review`. Each is PROBE TODO naming its missing observable.
 Measured mode state is separate from unmeasured presentation, including scroll cadence, inverted frames
 and tearing. App callbacks and real-observable
 paths keep their criteria. Existing captures acquire no new branch or review.
@@ -463,7 +465,7 @@ It identifies the loaded adapter source, engine integrity and any loaded binary;
 cannot substitute for it.
 
 For the four headless geometry queries (XTWINOPS 14/16, OSC 1337 ReportCellSize and OSC 776),
-a complete zero-dimension reply has no same-path control in the run, so it is Test to-do with the
+a complete zero-dimension reply has no same-path control in the run, so it is PROBE TODO with the
 no-control reason: zero is an unknown, not a measured size. The callback retains query, raw reply and
 measured runtime identity. Malformed replies and positive dimensions retain their query criteria.
 
@@ -489,7 +491,7 @@ Conclusive library observations need nonempty raw evidence and matching positive
 
 The `semantic-prompt-source-review` library branch for OSC 133/633 marks does not invent mark observations
 or assertions. [Its callback](src/extensions.ts) distinguishes declared metadata with no reader from the
-former source-review fallback, which is Test to-do with the no-control reason.
+former source-review fallback, which is PROBE TODO with the no-control reason.
 
 **Native evidence** comes through [probes/unified.ts](../terminfo.dev/src/probes/unified.ts). It retains writes, queries, ordered events and available capture/clipboard records separately from callback responses.
 
@@ -506,7 +508,7 @@ roundtrip with exact repeatable digests; an intermediate clear alone cannot qual
 This relies on faithful current captures and ordered terminal paint, not arbitrary adapter replay
 or compositor completion. Missing roundtrip returns retain `no freshness witness` review. Both initial stability captures remain in the result frames because response-backed assertions cite their cell and whole-image digests. A missing pixel geometry emits a required failure row naming the missing report, retaining attempted query evidence without a feature verdict.
 Expected-change and expected-no-change claims have separate controls; an unchanged frame
-without freshness evidence remains review Test to-do. Each decided signal retains its own
+without freshness evidence remains review PROBE TODO. Each decided signal retains its own
 assertion. Missing discriminators and unmeasured feature facets remain named review rows;
 cursor-shape cell and blink-phase sampling belongs to #31812. Historical frames acquire no
 new comparison or grade.
@@ -516,7 +518,7 @@ new comparison or grade.
 The app exit/1047/insert-mode rows declare character readback and use that same region oracle.
 Exit and 1047 paint primary then alternate markers; leaving the alternate is compared with a plainly
 painted primary reference. Text reads use the existing character change criterion; pixel reads retain
-their declared freshness checks. An unqualified entry leaves any failed exit roundtrip as named Test to-do,
+their declared freshness checks. An unqualified entry leaves any failed exit roundtrip as named PROBE TODO,
 never an exit negative. A restored primary marker still leaves exact 1047 clear-on-exit and 1049 saved
 cursor/scrollback unmeasured. Same-1047 re-entry does not prove clearing. IRM keeps its query-first
 positives and recognized negatives; only an undecided query reaches the existing insertion fixture.
@@ -538,22 +540,22 @@ pixel-identical to the ordinary placement of the same opaque image over the same
 expose a cells adapter, unequal readbacks still veto to inconclusive before the table, and a text-only run
 refuses by name before it.
 
-The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support; only a same-run pixel check decides it, and a capture without one stays TEST TODO, never Unsupported.
+The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support; only a same-run pixel check decides it, and a capture without one stays PROBE TODO, never Unsupported.
 
 ## How execution becomes status
 
-Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded probe statuses are `supported`, `unsupported`, `untestable`, `test-todo` and `test-failure`.
+Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded probe statuses are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`.
 
 [recordExecutedProbe](src/helpers.ts) uses explicit callback tests when valid. Diagnostics and errors retain precedence. Otherwise its default criterion preserves supported/unsupported observations and maps the other cases:
 
-- Missing capture reported as `FrameUnavailable` becomes `test-todo`.
-- Diagnostics and error observations become `test-failure`.
-- Coverage becomes `test-todo`. Refusal and consumption without a deciding observation explicitly supply Test to-do tests; unanswered queries and errors explicitly supply Test failure tests. No reply, clipboard value or frame is invented to satisfy a type.
-- A measured inconclusive observation stays typed and defaults to `test-failure` unless an existing explicit criterion test selects a different status.
+- Missing capture reported as `FrameUnavailable` becomes `probe-todo`.
+- Diagnostics and error observations become `probe-invalid`.
+- Coverage becomes `probe-todo`. Refusal and consumption without a deciding observation explicitly supply PROBE TODO tests; unanswered queries and errors explicitly supply PROBE INVALID tests. No reply, clipboard value or frame is invented to satisfy a type.
+- A measured inconclusive observation stays typed and defaults to `probe-invalid` unless an existing explicit criterion test selects a different status.
 
-`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, unsupported, then supported. There is no route to `untestable`: a test marked untestable folds to Test to-do. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as Test to-do (see above); content validation uses that same reader.
+`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, unsupported, then supported. There is no route to `untestable`: a test marked untestable folds to PROBE TODO. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as PROBE TODO (see above); content validation uses that same reader.
 
-That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only Test to-do can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
+That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only PROBE TODO can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 
 For new app, mux and declared render-capable library results, every member of the existing `sgrProbes`
 registry (including colors and resets) requires a screenshot for that feature in the same run. The shared
@@ -564,7 +566,7 @@ reason `visual effect not observed in this run` when a Supported or Unsupported 
 Existing pending and failure results retain their causes; a screenshot never supplies a verdict by presence alone.
 The Termless backend registry owns the optional `rendering` product declaration: `render-capable` or
 `parser-only`, with cited sources beside its values. Parser-only libraries keep their parser decisions.
-An undeclared library retains a named missing-declaration Test to-do identifying its selector and
+An undeclared library retains a named missing-declaration PROBE TODO identifying its selector and
 `@termless/core/backends.json`; absence never means parser-only. Kitty remains undeclared because its
 internal Screen bridge has no separate public library contract establishing this boundary.
 The current synchronous library route captures no pixels, so render-capable libraries retain the visual gap.
@@ -606,7 +608,7 @@ These run statuses are separate from the catalog's [probe-coverage labels](../..
 The existing registry exports `resolveProbeIds`; collectors share its typed resolution rather than duplicate ID lookup.
 Selection changes the callback schedule, while initialized drafts retain the full catalogue and the original suite hash.
 The existing `collector.selection` and `collector.collectionAttempt` records retain intent, actual start and outcome.
-`recordCollectorSelection` also labels untouched Test to-do rows outside that schedule as not selected; selected rows retain
+`recordCollectorSelection` also labels untouched PROBE TODO rows outside that schedule as not selected; selected rows retain
 their not-started reason. Repeated selection updates preserve attempted results and restore still-unstarted selected rows.
 The canonical draft decoder distinguishes captured runs from explicitly empty initialized drafts; empty drafts contain no measured identity or emitted result.
 It accepts the original initialized empty draft or that same draft annotated by the selection writer, without normalizing
@@ -643,13 +645,13 @@ The writer checks intended id/version against known measured values without repl
 
 The capture writer retains measured identity and recorded result statuses. Private diagnostic collection preserves its response and normalized snapshot outside the source repository.
 
-A missing instrument remains Test to-do with its reason; it does not establish a support grade. The cited suite manifest retains catalogue entry hashes in `catalogEntrySha256`.
+A missing instrument remains PROBE TODO with its reason; it does not establish a support grade. The cited suite manifest retains catalogue entry hashes in `catalogEntrySha256`.
 
 Every library backend declares the `adapter-sources` extension from its one adapter registry.
 Reply-delivery declarations, when present, share that registry's same source array; identity alone grants no reply capability.
 The collector verifies declared blobs against tracked imported source bytes once per runtime, then compares per-instance declarations.
 Missing identity or stale declarations are named collector errors. Historical captures may omit this field.
-Source engines bind repository and tree OID with `cleanTree: true`; dirty source stays Test to-do with a named reason.
+Source engines bind repository and tree OID with `cleanTree: true`; dirty source stays PROBE TODO with a named reason.
 
 [collected-run.ts](../admin/src/collected-run.ts) retains the private response and normalized run first. Explicit app and mux `--output` stops there. Default app, mux and server collection also calls [corpus-placement.ts](../admin/corpus-placement.ts), which checks the run, trusted suite and cited artifacts before placing them under `content/`. Release collection remains private. Collection does not authorize external release or publication; those remain held until the actual full Phase 1.4 merge and their existing authorization.
 
@@ -660,14 +662,14 @@ The remeasure instrument reads `collection.json` from the headless collector, pa
 `measureRenderedWidth` returns a number or a named readback cause: `no-reply` with its step,
 `control-mismatch` with its step and observed cursor, or `wrapped` with its observed cursor.
 All width callbacks distinguish these before applying their numeric feature criterion: missing
-readback is named Test to-do; wrong controls and wrapping are named Test failure. A wrong numeric
+readback is named PROBE TODO; wrong controls and wrapping are named PROBE INVALID. A wrong numeric
 ASCII control is also a fixture failure. Unknown transport kinds throw with the probe and kind
 named. `/query` retains the same result in its `width` field. JSON preserves the cause fields.
 
 The mode-family source wrapper in [helpers.ts](src/helpers.ts) never infers mode absence from rejected
 DECRQM. Qualified set/reset or stack commands run between rendered-X controls; consumed commands and
 leaked text retain different reasons, line and cursor state. Missing X, moved lines and unqualified source
-remain named Test to-do; actual DECRPM replies retain their result. Held instrumentation and mixed query-reply /
+remain named PROBE TODO; actual DECRPM replies retain their result. Held instrumentation and mixed query-reply /
 buffer-state declaration limits remain callback-specific, not claims about every engine.
 
 The library mouse source wrappers in [input.ts](src/input.ts) likewise retain command/control state,
@@ -676,6 +678,6 @@ rendered X is not a measured reset negative. A qualified source route for a miss
 retains the actual stimulus and before/after title state; title behavior alone is not icon support.
 Other missing observers keep their existing coverage result.
 
-The Vterm input source wrapper retains raw state as Test to-do, without a deciding
+The Vterm input source wrapper retains raw state as PROBE TODO, without a deciding
 input observation or assertion: the callback performs no input event and supplies no measured input negative.
 Terminal criteria are unchanged.

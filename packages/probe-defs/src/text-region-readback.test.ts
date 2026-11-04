@@ -111,7 +111,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
     // The same run, now declaring pixels, must refuse for the missing pixel report by name.
     expect(result?.observation).toBeUndefined()
     expect(result?.tests).toMatchObject([
-      { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+      { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("cell size in pixels") },
     ])
   })
 

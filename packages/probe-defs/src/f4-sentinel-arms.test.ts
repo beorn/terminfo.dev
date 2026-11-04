@@ -1,6 +1,6 @@
 /**
  * @failure A hand-written probe's headless arm reads a bare capture on a proven engine, so a query the
- *   terminal ignores grades as inconclusive/TEST TODO instead of the measured negative F4 asks for.
+ *   terminal ignores grades as inconclusive/PROBE TODO instead of the measured negative F4 asks for.
  * @level l2
  * @consumer #30699 F4 remainder: DSR 996, DECRQCRA and the OSC 104/110-114/30001/30101 reset and
  *   colour-stack queries on the five proven parser engines.

@@ -32,7 +32,7 @@ test.each([
       await definition.term!({ queryOutcome: query, queryWithSentinelOutcome: query } as unknown as TermProbeSource),
     ]
     for (const result of results) {
-      expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure" }])
+      expect(result.tests).toMatchObject([{ id: "criterion", status: "probe-invalid" }])
       expect(result.assertions).toBeUndefined()
       if (raw === "") {
         expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
@@ -120,7 +120,7 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
 ]
 
 // #32246 (@cto 9fad23d7): a former source-negative OSC site feeds its stimulus and an X sentinel and keeps both, but
-// no control in this run shows the same path can report the effect, so the cell is TEST TODO for every identity. No
+// no control in this run shows the same path can report the effect, so the cell is PROBE TODO for every identity. No
 // audit table, source citation or negative assertion may turn the rendered sentinel into a verdict.
 const formerSourceNegativeOsc = [
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07"],
@@ -135,7 +135,7 @@ const formerSourceNegativeOsc = [
 ] as const
 
 test.each(formerSourceNegativeOsc)(
-  "%s records TEST TODO with its stimulus and sentinel for every identity",
+  "%s records PROBE TODO with its stimulus and sentinel for every identity",
   (id, sequence) => {
     const fed = `\x1b[1;1H\x1b[2K${sequence}X`
     for (const runtimeIdentity of [undefined, xtermOscIdentity, ...auditedArtifacts]) {
@@ -174,7 +174,7 @@ test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2
           getCell: () => ({ char: "X" }),
         } as unknown as LibProbeSource)
         expect(result.criterionBranch).toBe("headless-observable-review")
-        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+        expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
         expect(result.assertions).toBeUndefined()
         expect(result.observation).toBeUndefined()
         expect(fed).toEqual([])
@@ -377,7 +377,7 @@ test.each([10, 11, 12] as const)("OSC %i reset reviews a verified control instea
     source,
   )
   expect(result.observation?.note).not.toBe("negative by sentinel")
-  expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+  expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
   expect(JSON.stringify(result)).toContain("reset produced neither the baseline nor the verified seed")
 })
 
@@ -436,7 +436,7 @@ test.each([
   expect(result.assertions).toBeUndefined()
   expect(result.response).toContain('"cells"')
   expect(result.criterionBranch).toBe("color-readback-review")
-  expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+  expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
 })
 
 test.each(["setter", "getter", "cleanup", "getter+cleanup"] as const)(
@@ -498,7 +498,7 @@ test("a truecolor declaration without two calibrated RGB cell samples is inconcl
 
 // #30701 (@cto ruling C): a framed fixture whose RGB targets read no color is a measured ignore while
 // the SGR 31/34 controls are distinct. When the controls show no color either there is no same-path control, so the
-// cell is TEST TODO (#32246), never a source-negative review.
+// cell is PROBE TODO (#32246), never a source-negative review.
 test("extensions.truecolor grades unexposed RGB targets against the independent controls", () => {
   const definition = callback("extensions.truecolor")
   const run = (controls: readonly ({ r: number; g: number; b: number } | null)[]) =>
@@ -544,7 +544,7 @@ test("extensions.truecolor keeps its DECRQSS state criterion when capture is ava
   // This callback's legacy consumed response maps to TODO when its owned CPR is unavailable.
   const silent = await definition.term!(replayTermProbeSource(new Map()))
   expect(silent.observation).toBeUndefined()
-  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
+  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "probe-todo", reason: expect.any(String) })])
 })
 
 test("a later DA1 reply does not establish an OSC 104 palette reset", () => {
@@ -621,7 +621,7 @@ test.each(directReplies)("%s requires a complete, bound reply", async (id, frame
     expect(result.assertions, id).toBeUndefined()
   }
   if (id === "extensions.osc776-cell-size") {
-    // #32246: the library arm keeps a complete all-zero reply TEST TODO (no same-path control); the app arm and
+    // #32246: the library arm keeps a complete all-zero reply PROBE TODO (no same-path control); the app arm and
     // partially zero replies stay invalid-reply.
     const zero = "\x1b]776;0;0;0\x1b\\"
     const [zeroHeadless] = await run(zero)
@@ -680,7 +680,7 @@ test.each(directReplies)("%s requires a complete, bound reply", async (id, frame
       runtimeIdentity: xtermOscIdentity,
       feedCapture: () => "",
     } as unknown as LibProbeSource)
-    // Total silence with no same-path control is TEST TODO on every library engine (@cto batch7 A-F4).
+    // Total silence with no same-path control is PROBE TODO on every library engine (@cto batch7 A-F4).
     expect(silent.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
     expect(silent.tests).toBeUndefined()
   }
@@ -816,7 +816,7 @@ test.each(["extensions.osc710-font-normal", "extensions.osc2-title", "extensions
     expect(writes, id).toEqual([])
     expect(result.observation, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+      expect.objectContaining({ status: "probe-todo", reason: expect.any(String) }),
     ])
     expect(result.assertions, id).toBeUndefined()
   },
@@ -910,7 +910,7 @@ test.each([
     expect(reviewed.result.tests).toEqual([
       {
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         reason: `${reviewed.result.notTested!.noObservable}, so this run cannot decide it`,
       },
     ])
@@ -929,7 +929,7 @@ test.each([
   ["extensions.osc113-reset-pointer-fg", 13, 113],
   ["extensions.osc114-reset-pointer-bg", 14, 114],
 ] as const)(
-  "%s keeps empty initial pointer-color readback with getDefaultColors TEST TODO without inventing slots or writes",
+  "%s keeps empty initial pointer-color readback with getDefaultColors PROBE TODO without inventing slots or writes",
   (id, setCode, resetCode) => {
     const query = `\x1b]${setCode};?\x07`
     const defaultColors = { fg: null, bg: { r: 1, g: 2, b: 3 }, cursor: { r: 4, g: 5, b: 6 } }
@@ -947,7 +947,7 @@ test.each([
     } as unknown as LibProbeSource)
     expect(queries).toEqual([query])
     expect(writes).toEqual([])
-    // #32246: default-color readback has no pointer slot, so the reset is TEST TODO with its own cause (@cto batch8 5).
+    // #32246: default-color readback has no pointer slot, so the reset is PROBE TODO with its own cause (@cto batch8 5).
     expect(result.criterionBranch).toBeUndefined()
     expect(result.notTested).toEqual({
       reason: "no-semantic-observable",
@@ -1031,7 +1031,7 @@ test.each(appResetProbes)(
     expect(noReply.writes, id).toEqual([])
     expect(noReply.result.observation, id).toBeUndefined()
     expect(noReply.result.tests, id).toMatchObject([
-      expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+      expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) }),
     ])
   },
 )
@@ -1066,7 +1066,7 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
   expect(answered.tests, id).toContainEqual(
     expect.objectContaining({
       id: "review",
-      status: "test-todo",
+      status: "probe-todo",
       reason: expect.stringMatching(/^Cursor response does not measure /),
     }),
   )
@@ -1077,7 +1077,7 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
   expect(silent.response, id).toBeUndefined()
   expect(silent.observation, id).toBeUndefined()
   expect(silent.tests, id).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+    expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) }),
   ])
   expect(silent.assertions, id).toBeUndefined()
 })
@@ -1155,7 +1155,7 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
   const timedOut = await context({ match: null, reason: "timeout", raw: "", rawBase64: "" })
   expect(timedOut.observation).toBeUndefined()
   expect(timedOut.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: "No OSC 21 reply; color rendering was not tested" }),
+    expect.objectContaining({ status: "probe-invalid", reason: "No OSC 21 reply; color rendering was not tested" }),
   ])
   expect(timedOut.assertions).toBeUndefined()
 })
@@ -1424,7 +1424,7 @@ test.each([
   // No initial reading means nothing to compare a reset against: inconclusive, never a verdict.
   const silent = await definition.term!(replayTermProbeSource(new Map()))
   expect(silent.observation).toBeUndefined()
-  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
+  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) })])
 
   // Preserve the actual read outcome at all three stages: nullable parsing alone
   // cannot distinguish silence from malformed or sentinel bytes, including after a set.
@@ -1449,7 +1449,7 @@ test.each([
       // A completed DA1 control with no initial colour is missing observation,
       // while timeout or malformed data still cannot establish a working apparatus.
       const missingBaseline = stage === 0 && raw === "\x1b[?1;2c"
-      expect(result.tests?.[0]?.status).toBe(missingBaseline ? "test-todo" : "test-failure")
+      expect(result.tests?.[0]?.status).toBe(missingBaseline ? "probe-todo" : "probe-invalid")
       expect(result.tests?.[0]?.reason).toContain(
         missingBaseline
           ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
@@ -1514,89 +1514,92 @@ test.each([
   expect(result.tests).toMatchObject([
     {
       id: "criterion",
-      status: "test-todo",
+      status: "probe-todo",
       reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
     },
   ])
 })
 
 // #32246: a silent or sentinel-bounded initial highlight query is an unanswered prerequisite reading, so it is TEST
-// TODO for every engine identity (@cto 0db5ad54); a malformed reply stays TEST FAILURE, and a measured colour decides.
+// TODO for every engine identity (@cto 0db5ad54); a malformed reply stays PROBE INVALID, and a measured colour decides.
 test.each([
   ["extensions.osc117-reset-highlight-bg", 17, 117],
   ["extensions.osc119-reset-highlight-fg", 19, 119],
-] as const)("%s keeps a silent highlight query TEST TODO without overriding real replies", (id, setCode, resetCode) => {
-  const definition = callback(id)
-  const query = `\x1b]${setCode};?\x07`
-  for (const runtimeIdentity of [undefined, xtermOscIdentity, geometryRuntime, ...auditedArtifacts]) {
-    for (const mode of ["silent", "sentinel", "malformed"] as const) {
-      const calls: string[] = []
-      const result = definition.lib!({
-        runtimeIdentity,
-        feedCapture: (bytes: string) => {
-          calls.push(bytes)
-          return mode === "malformed" ? "unparsed colour reply" : ""
-        },
-        ...(mode === "sentinel" && {
-          queryWithSentinelOutcome: (bytes: string) => {
+] as const)(
+  "%s keeps a silent highlight query PROBE TODO without overriding real replies",
+  (id, setCode, resetCode) => {
+    const definition = callback(id)
+    const query = `\x1b]${setCode};?\x07`
+    for (const runtimeIdentity of [undefined, xtermOscIdentity, geometryRuntime, ...auditedArtifacts]) {
+      for (const mode of ["silent", "sentinel", "malformed"] as const) {
+        const calls: string[] = []
+        const result = definition.lib!({
+          runtimeIdentity,
+          feedCapture: (bytes: string) => {
             calls.push(bytes)
-            return {
-              match: null,
-              reason: "sentinel",
-              raw: "\x1b[?1;2c",
-              rawBase64: btoa("\x1b[?1;2c"),
-              sentinel: { atMs: 0, graceMs: 250 },
-            }
+            return mode === "malformed" ? "unparsed colour reply" : ""
           },
-        }),
-        feed: (bytes: string) => calls.push(bytes),
-        getCell: () => ({ char: "X" }),
-      } as unknown as LibProbeSource)
-      expect(calls).toEqual([query])
-      expect(result.observation).toBeUndefined()
-      expect(result.assertions).toBeUndefined()
-      expect(result.criterionBranch).toBeUndefined()
-      if (mode === "silent") {
-        expect(result).toEqual({
-          pass: false,
-          response: JSON.stringify({ query, originalRaw: "" }),
-          note: NO_SAME_PATH_CONTROL,
-          notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
-        })
-        continue
+          ...(mode === "sentinel" && {
+            queryWithSentinelOutcome: (bytes: string) => {
+              calls.push(bytes)
+              return {
+                match: null,
+                reason: "sentinel",
+                raw: "\x1b[?1;2c",
+                rawBase64: btoa("\x1b[?1;2c"),
+                sentinel: { atMs: 0, graceMs: 250 },
+              }
+            },
+          }),
+          feed: (bytes: string) => calls.push(bytes),
+          getCell: () => ({ char: "X" }),
+        } as unknown as LibProbeSource)
+        expect(calls).toEqual([query])
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.criterionBranch).toBeUndefined()
+        if (mode === "silent") {
+          expect(result).toEqual({
+            pass: false,
+            response: JSON.stringify({ query, originalRaw: "" }),
+            note: NO_SAME_PATH_CONTROL,
+            notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
+          })
+          continue
+        }
+        expect(result.notTested).toBeUndefined()
+        expect(result.tests).toEqual([
+          {
+            id: "criterion",
+            status: mode === "malformed" ? "probe-invalid" : "probe-todo",
+            // #31398 names the sentinel-bounded silence by its passed DA1 control; the grade is PROBE TODO either way.
+            reason:
+              mode === "sentinel"
+                ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
+                : `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
+          },
+        ])
+        if (mode === "sentinel") {
+          expect(JSON.parse(result.response!)).toMatchObject({
+            initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" },
+          })
+        }
       }
-      expect(result.notTested).toBeUndefined()
-      expect(result.tests).toEqual([
-        {
-          id: "criterion",
-          status: mode === "malformed" ? "test-failure" : "test-todo",
-          // #31398 names the sentinel-bounded silence by its passed DA1 control; the grade is TEST TODO either way.
-          reason:
-            mode === "sentinel"
-              ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
-              : `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
-        },
-      ])
-      if (mode === "sentinel") {
-        expect(JSON.parse(result.response!)).toMatchObject({
-          initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" },
+      // A measured colour decides, including a genuine reset negative.
+      for (const ignoresReset of [false, true]) {
+        const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
+        const result = definition.lib!({ ...fixture.lib, runtimeIdentity } as unknown as LibProbeSource)
+        expect(result.criterionBranch).toBeUndefined()
+        expect(result.observation).toMatchObject({
+          outcome: ignoresReset ? "unsupported" : "supported",
+          assertionType: "query_reply",
         })
+        expect(fixture.queries[0]).toBe(query)
+        expect(fixture.writes.some((bytes) => bytes.includes("\x1b[2K"))).toBe(false)
       }
     }
-    // A measured colour decides, including a genuine reset negative.
-    for (const ignoresReset of [false, true]) {
-      const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
-      const result = definition.lib!({ ...fixture.lib, runtimeIdentity } as unknown as LibProbeSource)
-      expect(result.criterionBranch).toBeUndefined()
-      expect(result.observation).toMatchObject({
-        outcome: ignoresReset ? "unsupported" : "supported",
-        assertionType: "query_reply",
-      })
-      expect(fixture.queries[0]).toBe(query)
-      expect(fixture.writes.some((bytes) => bytes.includes("\x1b[2K"))).toBe(false)
-    }
-  }
-})
+  },
+)
 
 // A vterm-shaped identity: #32246 makes the zero-geometry outcome independent of it.
 const geometryRuntime = {
@@ -1629,9 +1632,9 @@ const geometryReplies = [
   },
 ] as const
 
-// #32246: a complete zero geometry reply has no same-path control in this run, so it is TEST TODO with its query and
+// #32246: a complete zero geometry reply has no same-path control in this run, so it is PROBE TODO with its query and
 // raw bytes for every identity (no source tree audit or citation decides it); any other reply keeps its reply grading.
-test.each(geometryReplies)("$id keeps a complete zero geometry reply TEST TODO for every identity", (row) => {
+test.each(geometryReplies)("$id keeps a complete zero geometry reply PROBE TODO for every identity", (row) => {
   const { id, query, raw, positive } = row
   const identities = [
     undefined,
@@ -1649,7 +1652,7 @@ test.each(geometryReplies)("$id keeps a complete zero geometry reply TEST TODO f
       notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
     })
   }
-  // Silence is TEST TODO for lack of a control (@cto batch7 A-F4); a partial or foreign reply keeps its reading.
+  // Silence is PROBE TODO for lack of a control (@cto batch7 A-F4); a partial or foreign reply keeps its reading.
   const silent = callback(id).lib!({
     feedCapture: () => "",
     runtimeIdentity: geometryRuntime,
@@ -1665,9 +1668,9 @@ test.each(geometryReplies)("$id keeps a complete zero geometry reply TEST TODO f
   expect(callback(id).lib!(ctx).observation?.outcome).toBe("supported")
 })
 
-// #31398/#32246: without an icon-label reader, OSC 1 keeps the original stimulus and title state as TEST TODO for every
+// #31398/#32246: without an icon-label reader, OSC 1 keeps the original stimulus and title state as PROBE TODO for every
 // identity; no source citation reads the title change as a negative.
-test("OSC 1 without an icon-label reader keeps the stimulus and title state as TEST TODO for every identity", () => {
+test("OSC 1 without an icon-label reader keeps the stimulus and title state as PROBE TODO for every identity", () => {
   for (const runtimeIdentity of [undefined, xtermOscIdentity, ...auditedArtifacts]) {
     const writes: string[] = []
     let title = "original"
@@ -1690,8 +1693,8 @@ test("OSC 1 without an icon-label reader keeps the stimulus and title state as T
 })
 
 // The native engines retain legacy encoding for unhandled 1015/1016. Shared encoder bytes cannot grade either
-// feature, so the cell is TEST TODO with the observed report for every identity (#32246); it never reads Unsupported.
-test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings stay TEST TODO for every identity", (engine) => {
+// feature, so the cell is PROBE TODO with the observed report for every identity (#32246); it never reads Unsupported.
+test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings stay PROBE TODO for every identity", (engine) => {
   for (const id of ["input.pixel-mouse", "input.urxvt-mouse"]) {
     const definition = inputProbes.find((entry) => entry.id === id)!
     for (const runtimeIdentity of [undefined, ...auditedArtifacts]) {

@@ -1,20 +1,21 @@
 import {
-  PROBE_STATUSES,
+  FEATURE_RESULT_STATUSES,
+  type FeatureResultStatus,
   type AssertionType,
   type ProbeResult,
   type ProbeStatus,
   type ProbeSubject,
 } from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
-import type { PublicVersion, PublicProbeResult, PublicContextSummary } from "./public-results.ts"
+import type { PublicVersion, PublicProbeResult, PublicFeatureResult, PublicContextSummary } from "./public-results.ts"
 
 /** Read a current (schema 3 or 4) published result without manufacturing any legacy observation. */
 export function publicResultFor(
   version: PublicVersion | PublicContextSummary | undefined,
   featureId: string,
-): PublicProbeResult | undefined {
+): PublicProbeResult | PublicFeatureResult | undefined {
   if (!version) return undefined
-  if ("cells" in version) return version.cells[featureId]
+  if ("featureResults" in version) return version.featureResults[featureId]
   return version.results.find((result) => result.featureId === featureId)
 }
 
@@ -31,7 +32,7 @@ export function visibleCategoryIds(
  * values directly; these names survive for the archived legacy evidence the v1 API still renders.
  *
  * Presentation states retain their existing keys: inconclusive is reserved for reviewed Untestable
- * claims, error is TEST FAILURE, and untested is TEST TODO. A missing cell or evidence "none" means
+ * claims, error is PROBE INVALID, and untested is PROBE TODO. A missing cell or evidence "none" means
  * no feature measurement started; an undecided attempt is a failed test, not terminal non-support.
  */
 export type CellState = "supported" | "unsupported" | "inconclusive" | "error" | "untested"
@@ -65,8 +66,8 @@ export function hasCurrentSource(sources: readonly { suiteRelation: SuiteRelatio
 /** Current score and completion fold recorded statuses over exactly the recorded catalogue. */
 export interface CurrentAggregate {
   denominator: number
-  counts: Record<ProbeStatus, number>
-  idsByState: Record<ProbeStatus, string[]>
+  counts: Record<FeatureResultStatus, number>
+  idsByState: Record<FeatureResultStatus, string[]>
   supported: number
   complete: boolean
 }
@@ -75,7 +76,7 @@ export interface FamilyRollup {
   readonly family: string
   readonly positions: number
   readonly environmentPositions: number
-  readonly counts: Record<ProbeStatus, number>
+  readonly counts: Record<FeatureResultStatus, number>
   readonly decided: number
   readonly open: number
   readonly donePct: number
@@ -84,7 +85,7 @@ export interface FamilyRollup {
 export interface TerminalStatusRollup {
   readonly positions: number
   readonly environmentPositions: number
-  readonly counts: Record<ProbeStatus, number>
+  readonly counts: Record<FeatureResultStatus, number>
   readonly decisive: number
   readonly decided: number
   readonly open: number
@@ -111,16 +112,17 @@ export function rollupTerminalStatuses(
   statuses: Readonly<Record<string, string>>,
   catalogIds: readonly string[] = Object.keys(statuses),
 ): TerminalStatusRollup {
-  const counts: Record<ProbeStatus, number> = {
+  const counts: Record<FeatureResultStatus, number> = {
     supported: 0,
     unsupported: 0,
     untestable: 0,
-    "test-todo": 0,
-    "test-failure": 0,
+    "probe-todo": 0,
+    "probe-invalid": 0,
+    "probe-conflict": 0,
   }
   const familyAcc = new Map<
     string,
-    { positions: number; environmentPositions: number; counts: Record<ProbeStatus, number> }
+    { positions: number; environmentPositions: number; counts: Record<FeatureResultStatus, number> }
   >()
   const ensureFamily = (family: string) => {
     let entry = familyAcc.get(family)
@@ -128,7 +130,14 @@ export function rollupTerminalStatuses(
       entry = {
         positions: 0,
         environmentPositions: 0,
-        counts: { supported: 0, unsupported: 0, untestable: 0, "test-todo": 0, "test-failure": 0 },
+        counts: {
+          supported: 0,
+          unsupported: 0,
+          untestable: 0,
+          "probe-todo": 0,
+          "probe-invalid": 0,
+          "probe-conflict": 0,
+        },
       }
       familyAcc.set(family, entry)
     }
@@ -137,7 +146,7 @@ export function rollupTerminalStatuses(
 
   // D132 B (#30917): grading covers the graded ids only. The nine environment groups stay in the
   // catalogue, but they are not features and a run cannot grade them, so they are tracked as
-  // ungraded environmentPositions, never as TEST TODO.
+  // ungraded environmentPositions, never as PROBE TODO.
   const envIds = environmentGroupIds(catalogIds)
   for (const id of envIds) {
     ensureFamily(id.split(".")[0] ?? id).environmentPositions++
@@ -145,10 +154,10 @@ export function rollupTerminalStatuses(
   const gradedIds = gradedFeatureIds(catalogIds)
   for (const id of gradedIds) {
     const status = Object.hasOwn(statuses, id) ? statuses[id] : undefined
-    if (!status || !PROBE_STATUSES.includes(status as ProbeStatus)) {
+    if (!status || !FEATURE_RESULT_STATUSES.includes(status as FeatureResultStatus)) {
       throw new Error(`Invalid stored current status for ${id}`)
     }
-    const probeStatus = status as ProbeStatus
+    const probeStatus = status as FeatureResultStatus
     counts[probeStatus]++
     const familyEntry = ensureFamily(id.split(".")[0] ?? id)
     familyEntry.positions++
@@ -159,16 +168,16 @@ export function rollupTerminalStatuses(
   const environmentPositions = envIds.length
   const decisive = decisiveCells(counts)
   const decided = decisive + counts.untestable
-  const open = counts["test-todo"] + counts["test-failure"]
+  const open = counts["probe-todo"] + counts["probe-invalid"] + counts["probe-conflict"]
   const donePct = positions === 0 ? 0 : Math.round((100 * decided) / positions)
   const supportedPct = decisive === 0 || positions === 0 ? null : Math.round((100 * counts.supported) / positions)
   const completenessTier: 0 | 1 | 2 | 3 =
-    positions === 0 ? 0 : counts["test-todo"] > 0 ? 1 : counts["test-failure"] > 0 ? 2 : 3
+    positions === 0 ? 0 : counts["probe-todo"] > 0 ? 1 : counts["probe-invalid"] + counts["probe-conflict"] > 0 ? 2 : 3
 
   const families: Record<string, FamilyRollup> = {}
   for (const [family, entry] of familyAcc) {
     const famDecided = entry.counts.supported + entry.counts.unsupported + entry.counts.untestable
-    const famOpen = entry.counts["test-todo"] + entry.counts["test-failure"]
+    const famOpen = entry.counts["probe-todo"] + entry.counts["probe-invalid"] + entry.counts["probe-conflict"]
     families[family] = {
       family,
       positions: entry.positions,
@@ -213,11 +222,11 @@ export function rankOpenProbes(
     let libTodo = 0
     for (const statuses of libMaps) {
       const status = Object.hasOwn(statuses, featureId) ? statuses[featureId] : undefined
-      if (!status || !PROBE_STATUSES.includes(status as ProbeStatus)) {
+      if (!status || !FEATURE_RESULT_STATUSES.includes(status as FeatureResultStatus)) {
         throw new Error(`Invalid stored current status for ${featureId}`)
       }
-      if (status === "test-failure") libFailure++
-      else if (status === "test-todo") libTodo++
+      if (status === "probe-invalid" || status === "probe-conflict") libFailure++
+      else if (status === "probe-todo") libTodo++
     }
     const libOpen = libFailure + libTodo
     rows.push({
@@ -239,19 +248,20 @@ export function rankOpenProbes(
 }
 
 export function aggregateCurrentResults(
-  results: readonly Pick<ProbeResult, "featureId" | "status">[],
+  results: readonly Pick<FeatureResult, "featureId" | "status">[],
   catalogIds: readonly string[],
 ): CurrentAggregate {
   if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {
     throw new Error("Current aggregate requires a nonempty unique recorded catalogue")
   }
   const statuses: Record<string, string> = {}
-  const idsByState: Record<ProbeStatus, string[]> = {
+  const idsByState: Record<FeatureResultStatus, string[]> = {
     supported: [],
     unsupported: [],
     untestable: [],
-    "test-todo": [],
-    "test-failure": [],
+    "probe-todo": [],
+    "probe-invalid": [],
+    "probe-conflict": [],
   }
   for (const result of results) {
     statuses[result.featureId] = result.status
@@ -265,7 +275,7 @@ export function aggregateCurrentResults(
   }
   const rollup = rollupTerminalStatuses(statuses, catalogIds)
   for (const id of gradedFeatureIds(catalogIds)) {
-    idsByState[statuses[id] as ProbeStatus].push(id)
+    idsByState[statuses[id] as FeatureResultStatus].push(id)
   }
   return {
     denominator: rollup.positions,
@@ -278,7 +288,7 @@ export function aggregateCurrentResults(
 
 /**
  * A library's completeness tier over its graded positions (the environment groups excluded): 0 nothing graded was
- * measured, 1 incomplete (any TEST TODO), 2 broken (TEST FAILURE and no TEST TODO), 3 every graded position decided.
+ * measured, 1 incomplete (any PROBE TODO), 2 broken (PROBE INVALID and no PROBE TODO), 3 every graded position decided.
  * This is the rule's one home: the hourly re-measure imports it from the pinned checkout and the site
  * renders from it (#31733 A2, #31747).
  */
@@ -294,18 +304,19 @@ export function completenessTierOf(statuses: Readonly<Record<string, string>>): 
   const rollup = rollupTerminalStatuses(statuses)
   return {
     completenessTier: rollup.completenessTier,
-    todo: rollup.counts["test-todo"],
-    failure: rollup.counts["test-failure"],
+    todo: rollup.counts["probe-todo"],
+    failure: rollup.counts["probe-invalid"] + rollup.counts["probe-conflict"],
     positions: rollup.positions,
   }
 }
 
 export function currentCoverageSentence(
-  aggregate: Pick<CurrentAggregate, "counts">,
+  aggregate: { readonly counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>> },
   catalogIds?: readonly string[],
 ): string {
   const counts = aggregate.counts
-  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported · ${counts.untestable} Untestable · ${counts["test-todo"]} TEST TODO · ${counts["test-failure"]} TEST FAILURE`
+  const conflict = counts["probe-conflict"] === undefined ? "" : ` · ${counts["probe-conflict"]} PROBE CONFLICT`
+  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported · ${counts.untestable} Untestable · ${counts["probe-todo"]} PROBE TODO · ${counts["probe-invalid"]} PROBE INVALID${conflict}`
   // D132 B (#30917): an exclusion the site cannot explain reads as a terminal verdict, so a caller
   // that knows the run's catalogue names the environment groups it recorded as ungraded.
   const environmentGroups = catalogIds ? environmentGroupIds(catalogIds).length : 0
@@ -315,27 +326,29 @@ export function currentCoverageSentence(
 }
 
 export function currentSupportedShare(aggregate: CurrentAggregate): string {
-  // #30784: the same rule as a baseline row, one level up. A run whose every cell is TEST TODO or
-  // TEST FAILURE decided nothing, so "0/264 supported (0%)" would read as a measured fail.
+  // #30784: the same rule as a baseline row, one level up. A run whose every cell is PROBE TODO or
+  // PROBE INVALID decided nothing, so "0/264 supported (0%)" would read as a measured fail.
   if (runDecidedNothing(aggregate.counts)) return NOT_MEASURED_TEXT
   return `${aggregate.supported}/${aggregate.denominator} supported (${Math.round((100 * aggregate.supported) / aggregate.denominator)}%)`
 }
 
 /**
  * The cells of a bar that carry a verdict about the terminal: Supported and Unsupported. A reviewed
- * Untestable claim says the row cannot be probed, not that the terminal was judged, and TEST TODO /
- * TEST FAILURE decide nothing. This is the ONE owner of that sum for the baseline row readout.
+ * Untestable claim says the row cannot be probed, not that the terminal was judged, and PROBE TODO /
+ * PROBE INVALID decide nothing. This is the ONE owner of that sum for the baseline row readout.
  */
 export function decisiveCells(counts: { readonly supported: number; readonly unsupported: number }): number {
   return counts.supported + counts.unsupported
 }
 
 /**
- * Whether a run judged nothing at all (#30784): every cell is TEST TODO, TEST FAILURE or a reviewed
+ * Whether a run judged nothing at all (#30784): every cell is PROBE TODO, PROBE INVALID or a reviewed
  * Untestable claim. This is the run-level twin of `notMeasuredReadout`, and the ONE predicate every
  * whole-run readout asks, so a page cannot print a measured-looking zero for it.
  */
-export function runDecidedNothing(counts: Readonly<Record<ProbeStatus, number>>): boolean {
+export function runDecidedNothing(
+  counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>>,
+): boolean {
   return decisiveCells(counts) === 0
 }
 
@@ -356,98 +369,83 @@ export const NOT_MEASURED_TEXT = "Not measured yet"
  * defect is the false "0%", and nothing beside it may move.
  */
 export function notMeasuredReadout(
-  counts: Readonly<Record<ProbeStatus, number>>,
+  counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>>,
 ): { text: string; title: string } | undefined {
   if (decisiveCells(counts) > 0) return undefined
   return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts }) }
 }
 
-/**
- * Operator-approved Probe Method rank table (GLOSSARY.md ec065acbdb22, @cto 3bfdb550):
- * one fixed confidence order, weakest (1) to strongest (5).
- */
-export const PROBE_METHODS = ["source-reading", "library", "app-text", "app-screenshot", "real-os-device"] as const
-
+/** Canonical probe methods, ordered from weakest to strongest. */
+export const PROBE_METHODS = ["source", "internal", "output", "visual", "end-to-end"] as const
 export type ProbeMethod = (typeof PROBE_METHODS)[number]
-
-export const PROBE_METHOD_RANK: Readonly<Record<ProbeMethod, 1 | 2 | 3 | 4 | 5>> = {
-  "source-reading": 1,
-  library: 2,
-  "app-text": 3,
-  "app-screenshot": 4,
-  "real-os-device": 5,
-}
-
-export type MinimumMethodMap = Readonly<Record<string, Partial<Record<ProbeSubject["kind"], ProbeMethod | null>>>>
+export const PROBE_METHOD_RANK = { source: 1, internal: 2, output: 3, visual: 4, "end-to-end": 5 } as const
 
 export type ResultMethodClassification =
   | {
       readonly kind: "method"
       readonly method: ProbeMethod
-      readonly confidenceRank: 1 | 2 | 3 | 4 | 5
+      readonly strength: 1 | 2 | 3 | 4 | 5
       readonly source: "assertion"
       readonly assertionType?: AssertionType
     }
-  | {
-      readonly kind: "unobserved-open"
-    }
-  | {
-      readonly kind: "mixed"
-      readonly assertionTypes: readonly AssertionType[]
-    }
-  | {
-      readonly kind: "unmapped"
-      readonly reason: string
-    }
+  | { readonly kind: "unobserved-open" }
+  | { readonly kind: "mixed"; readonly assertionTypes: readonly AssertionType[] }
+  | { readonly kind: "unmapped"; readonly reason: string }
 
-/**
- * Report-only finding status for one subject and feature (Phase 2.4 extension, @cto 3bfdb550).
- * Nothing in `generate-api`, the site, or `rollupTerminalStatuses` reads `findingStatus` in this batch.
- */
-export type FindingStatus = ProbeStatus | "test-conflict" | "no-minimum-declared"
-
-/**
- * Report-only feature finding over one subject's run(s) and declared minimum method (@cto 3bfdb550).
- * Nothing in `generate-api`, the site, or `rollupTerminalStatuses` reads `findingStatus` in this batch.
- */
-export interface FeatureFinding {
+export interface FeatureResult {
   readonly featureId: string
-  readonly runStatuses: readonly ProbeStatus[]
-  readonly observedMethods: readonly ProbeMethod[]
-  readonly highestObservedMethod: ProbeMethod | null
-  readonly minimumMethod: ProbeMethod | null
-  readonly findingStatus: FindingStatus
-  readonly winningMethod: ProbeMethod | null
-  readonly neededMethod: ProbeMethod | null
+  readonly status: FeatureResultStatus
+  readonly strength: 1 | 2 | 3 | 4 | 5 | null
+  /** Original current probe supplying this result's representative evidence; conflicts have none. */
+  readonly probeId: string | null
+  readonly conflictingProbes: readonly string[]
 }
 
-/**
- * Report-only method-and-findings rollup for one subject (@cto 3bfdb550).
- * Nothing in `generate-api`, the site, or `rollupTerminalStatuses` reads `findingStatus` in this batch.
- */
-export interface SubjectMethodFindingsReport {
-  readonly subject: Pick<ProbeSubject, "kind" | "id" | "version" | "os">
-  readonly positions: number
-  readonly environmentPositions: number
-  readonly findingCounts: Readonly<Record<FindingStatus, number>>
-  readonly findings: Readonly<Record<string, FeatureFinding>>
-  readonly needsByMethod: Readonly<Record<ProbeMethod, readonly string[]>>
-  readonly buckets: {
-    readonly noMinimum: readonly string[]
-    readonly mixed: readonly { readonly featureId: string; readonly assertionTypes: readonly AssertionType[] }[]
-    readonly unmapped: readonly { readonly featureId: string; readonly status: ProbeStatus; readonly reason: string }[]
+/** Fold the current probes for one subject; historical reruns must be selected before this boundary. */
+export function computeFeatureResults(
+  probes: readonly {
+    readonly featureId: string
+    readonly probeId: string
+    readonly method: ProbeMethod | null
+    readonly status: ProbeStatus
+  }[],
+  catalogIds: readonly string[],
+): Record<string, FeatureResult> {
+  const results: Record<string, FeatureResult> = {}
+  for (const featureId of gradedFeatureIds(catalogIds)) {
+    const observed = probes.filter((probe) => probe.featureId === featureId && probe.method !== "source")
+    const decided = observed.filter((probe) => probe.status === "supported" || probe.status === "unsupported")
+    const first = decided[0]
+    const conflict = first !== undefined && decided.some((probe) => probe.status !== first.status)
+    const strongest = decided.reduce<typeof first>(
+      (best, probe) =>
+        !best ||
+        (probe.method === null ? 0 : PROBE_METHOD_RANK[probe.method]) >
+          (best.method === null ? 0 : PROBE_METHOD_RANK[best.method])
+          ? probe
+          : best,
+      undefined,
+    )
+    const status: FeatureResultStatus = conflict
+      ? "probe-conflict"
+      : strongest
+        ? strongest.status
+        : observed.some((probe) => probe.status === "probe-invalid")
+          ? "probe-invalid"
+          : observed.length === 0 || observed.some((probe) => probe.status === "probe-todo")
+            ? "probe-todo"
+            : "untestable"
+    results[featureId] = {
+      featureId,
+      status,
+      strength: !conflict && strongest?.method ? PROBE_METHOD_RANK[strongest.method] : null,
+      probeId: conflict ? null : ((strongest ?? observed.find((probe) => probe.status === status))?.probeId ?? null),
+      conflictingProbes: conflict ? decided.map((probe) => probe.probeId) : [],
+    }
   }
+  return results
 }
 
-export interface MethodFindingsRunInput {
-  readonly subject: Pick<ProbeSubject, "kind" | "id" | "version" | "os">
-  readonly results?: readonly ProbeResult[]
-  readonly assertions: readonly { readonly assertionType?: AssertionType }[]
-}
-
-/**
- * Total and loud field-to-method mapping for one graded ProbeResult (@cto 3bfdb550 Adjustments 1, 2, 4, 7; 197f0f84 C1).
- */
 export function classifyResultMethod(
   result: ProbeResult,
   subject: Pick<ProbeSubject, "kind" | "version">,
@@ -487,8 +485,8 @@ export function classifyResultMethod(
       ) {
         return {
           kind: "method",
-          method: "library",
-          confidenceRank: 2,
+          method: "internal",
+          strength: 2,
           source: "assertion",
           assertionType: onlyType,
         }
@@ -501,8 +499,8 @@ export function classifyResultMethod(
     if (onlyType === "buffer_state" || onlyType === "query_reply") {
       return {
         kind: "method",
-        method: "app-text",
-        confidenceRank: 3,
+        method: "output",
+        strength: 3,
         source: "assertion",
         assertionType: onlyType,
       }
@@ -510,8 +508,8 @@ export function classifyResultMethod(
     if (onlyType === "screenshot") {
       return {
         kind: "method",
-        method: "app-screenshot",
-        confidenceRank: 4,
+        method: "visual",
+        strength: 4,
         source: "assertion",
         assertionType: onlyType,
       }
@@ -519,8 +517,8 @@ export function classifyResultMethod(
     if (onlyType === "input_bytes" || onlyType === "clipboard") {
       return {
         kind: "method",
-        method: "real-os-device",
-        confidenceRank: 5,
+        method: "end-to-end",
+        strength: 5,
         source: "assertion",
         assertionType: onlyType,
       }
@@ -536,179 +534,5 @@ export function classifyResultMethod(
 
   return {
     kind: "unobserved-open",
-  }
-}
-
-/**
- * Fold one subject's run(s) and declared minimum methods into a report-only SubjectMethodFindingsReport
- * over the graded catalogue positions (@cto 3bfdb550, 197f0f84).
- */
-export function rollupSubjectMethodFindings(
-  runs: readonly MethodFindingsRunInput[],
-  minimumMethods: MinimumMethodMap,
-  catalogIds: readonly string[],
-): SubjectMethodFindingsReport {
-  const firstRun = runs[0]
-  if (!firstRun) {
-    throw new Error("Method findings require at least one run")
-  }
-  const subject = firstRun.subject
-  if (catalogIds.length === 0) {
-    throw new Error("Method findings require a nonempty catalogue")
-  }
-
-  const envIds = environmentGroupIds(catalogIds)
-  const gradedIds = gradedFeatureIds(catalogIds)
-
-  const runResultMaps = runs.map((run) => {
-    if (
-      run.subject.kind !== subject.kind ||
-      run.subject.id !== subject.id ||
-      run.subject.version !== subject.version ||
-      run.subject.os !== subject.os
-    ) {
-      throw new Error(
-        `Method findings require runs for one subject; got ${subject.kind}:${subject.id}@${subject.version}:${subject.os} and ${run.subject.kind}:${run.subject.id}@${run.subject.version}:${run.subject.os}`,
-      )
-    }
-    if (!run.results) {
-      throw new Error(`Method findings require current-schema run results for ${subject.kind}:${subject.id}`)
-    }
-    const map = new Map<string, ProbeResult>()
-    for (const res of run.results) {
-      map.set(res.featureId, res)
-    }
-    return { run, map }
-  })
-
-  const findingCounts: Record<FindingStatus, number> = {
-    supported: 0,
-    unsupported: 0,
-    untestable: 0,
-    "test-todo": 0,
-    "test-failure": 0,
-    "test-conflict": 0,
-    "no-minimum-declared": 0,
-  }
-  const findings: Record<string, FeatureFinding> = {}
-  const needsByMethod: Record<ProbeMethod, string[]> = {
-    "source-reading": [],
-    library: [],
-    "app-text": [],
-    "app-screenshot": [],
-    "real-os-device": [],
-  }
-  const noMinimum: string[] = []
-  const mixed: Array<{ readonly featureId: string; readonly assertionTypes: readonly AssertionType[] }> = []
-  const unmapped: Array<{ readonly featureId: string; readonly status: ProbeStatus; readonly reason: string }> = []
-
-  for (const featureId of gradedIds) {
-    const cells: Array<{
-      readonly result: ProbeResult
-      readonly classification: ResultMethodClassification
-    }> = []
-
-    for (const { run, map } of runResultMaps) {
-      const result = map.get(featureId)
-      if (!result) {
-        throw new Error(`Missing result for ${featureId}`)
-      }
-      if (!PROBE_STATUSES.includes(result.status)) {
-        throw new Error(`Invalid stored current status for ${featureId}`)
-      }
-      const classification = classifyResultMethod(result, subject, run.assertions)
-      cells.push({ result, classification })
-
-      if (classification.kind === "mixed") {
-        mixed.push({ featureId, assertionTypes: classification.assertionTypes })
-      } else if (classification.kind === "unmapped") {
-        unmapped.push({ featureId, status: result.status, reason: classification.reason })
-      }
-    }
-
-    const runStatuses = cells.map((cell) => cell.result.status)
-    const observedMethodSet = new Set<ProbeMethod>()
-    for (const { classification } of cells) {
-      if (classification.kind === "method") {
-        observedMethodSet.add(classification.method)
-      }
-    }
-    const observedMethods = [...observedMethodSet].sort((a, b) => PROBE_METHOD_RANK[a] - PROBE_METHOD_RANK[b])
-    const highestObservedMethod = observedMethods.at(-1) ?? null
-
-    const minimumMethod = minimumMethods[featureId]?.[subject.kind] ?? null
-
-    let findingStatus: FindingStatus
-    let winningMethod: ProbeMethod | null = null
-    let neededMethod: ProbeMethod | null = null
-
-    if (minimumMethod === null) {
-      findingStatus = "no-minimum-declared"
-      noMinimum.push(featureId)
-    } else {
-      const minRank = PROBE_METHOD_RANK[minimumMethod]
-      const qualifyingDecided = cells.filter(
-        (
-          cell,
-        ): cell is {
-          readonly result: ProbeResult & { readonly status: "supported" | "unsupported" | "untestable" }
-          readonly classification: Extract<ResultMethodClassification, { readonly kind: "method" }>
-        } =>
-          (cell.result.status === "supported" ||
-            cell.result.status === "unsupported" ||
-            cell.result.status === "untestable") &&
-          cell.classification.kind === "method" &&
-          cell.classification.confidenceRank >= minRank,
-      )
-
-      const distinctDecidedStatuses = new Set(qualifyingDecided.map((cell) => cell.result.status))
-      const firstQualifying = qualifyingDecided[0]
-
-      if (distinctDecidedStatuses.size > 1) {
-        findingStatus = "test-conflict"
-      } else if (distinctDecidedStatuses.size === 1 && firstQualifying) {
-        findingStatus = firstQualifying.result.status
-        const best = qualifyingDecided.reduce((acc, cur) =>
-          cur.classification.confidenceRank > acc.classification.confidenceRank ? cur : acc,
-        )
-        winningMethod = best.classification.method
-      } else {
-        const hasInvalid = cells.some((cell) => cell.result.status === "test-failure")
-        findingStatus = hasInvalid ? "test-failure" : "test-todo"
-        neededMethod = minimumMethod
-        needsByMethod[minimumMethod].push(featureId)
-      }
-    }
-
-    findingCounts[findingStatus]++
-    findings[featureId] = {
-      featureId,
-      runStatuses,
-      observedMethods,
-      highestObservedMethod,
-      minimumMethod,
-      findingStatus,
-      winningMethod,
-      neededMethod,
-    }
-  }
-
-  return {
-    subject: {
-      kind: subject.kind,
-      id: subject.id,
-      version: subject.version,
-      os: subject.os,
-    },
-    positions: gradedIds.length,
-    environmentPositions: envIds.length,
-    findingCounts,
-    findings,
-    needsByMethod,
-    buckets: {
-      noMinimum,
-      mixed,
-      unmapped,
-    },
   }
 }

@@ -5,10 +5,10 @@
 Private preparation; final corrected-suite data and publication tests remain pending.
 
 - **Recorded runtime identity.** Results are checked against recorded terminal or emulator identities and environments. Missing required data stops processing; unavailable historical provenance is not invented.
-- **Claims bounded by evidence.** Recognition, query replies and engine state establish limited claims, not full feature behavior or app pixels. A probe that was not run is TEST TODO; an attempted probe without a Supported or Unsupported finding is TEST FAILURE. Untestable has no current route; screenshots decide only through a same-run pixel check.
+- **Claims bounded by evidence.** Recognition, query replies and engine state establish limited claims, not full feature behavior or app pixels. A probe that was not run is PROBE TODO; an attempted probe without a Supported or Unsupported finding is PROBE INVALID. Untestable has no current route; screenshots decide only through a same-run pixel check.
 - **Measurements decide results.** Raw observations stay unchanged; each result comes from the same-run checks in its run, not from a reviewer's assessment.
 - **Inspectable evidence and explanations.** Result details expose available raw traces, assertions and original frames. The explanation guide connects how we measure, how to read a result and how to contribute a run.
-- **Coverage, support and build freshness.** Coverage and support have separate denominators. TEST TODO is one of five reader labels. Source and build metadata identify the site build; rebuilding is not a new terminal measurement.
+- **Coverage, support and build freshness.** Coverage and support have separate denominators. PROBE TODO is one of five reader labels. Source and build metadata identify the site build; rebuilding is not a new terminal measurement.
 
 The retained selected snapshot covers three Kitty 0.49.2 Linux permission/configuration contexts and eleven headless targets. Its frames were reviewed under the earlier rule; without a same-run pixel check they establish no colored-underline support. This adds no macOS or Windows app measurements; earlier excluded runs remain history.
 

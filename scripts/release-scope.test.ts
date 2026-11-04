@@ -18,18 +18,14 @@ import { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, type ProbeResult, type ProbeSt
 import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import { loadCategories, orderedCategoryIds } from "../docs/data/categories.ts"
 import {
-  PROBE_METHODS,
-  PROBE_METHOD_RANK,
   aggregateCurrentResults,
   classifyResultMethod,
   completenessTierOf,
+  computeFeatureResults,
   isStaleRelation,
   rankOpenProbes,
-  rollupSubjectMethodFindings,
   rollupTerminalStatuses,
   staleCaption,
-  type MinimumMethodMap,
-  type ProbeMethod,
 } from "../docs/data/release-scope.ts"
 import { generateApi } from "./generate-api.ts"
 
@@ -38,6 +34,98 @@ const root = join(import.meta.dirname, "..")
 const contentDir = join(root, "content")
 const catalog = loadFeatures(contentDir)
 const categories = loadCategories(contentDir)
+
+// The old report considered only probes above a minimum and could discard a weaker disagreement.
+// Gate 1 instead excludes source and compares every valid decided probe, independent of strength.
+describe("feature results", () => {
+  it.each([
+    {
+      name: "source cannot decide",
+      probes: [{ probeId: "source", method: "source", status: "supported" }],
+      status: "probe-todo",
+      strength: null,
+      probeId: null,
+    },
+    {
+      name: "weaker disagreement conflicts",
+      probes: [
+        { probeId: "internal", method: "internal", status: "unsupported" },
+        { probeId: "visual", method: "visual", status: "supported" },
+      ],
+      status: "probe-conflict",
+      strength: null,
+      probeId: null,
+    },
+    {
+      name: "decided beats untestable",
+      probes: [
+        { probeId: "output", method: "output", status: "untestable" },
+        { probeId: "internal", method: "internal", status: "supported" },
+      ],
+      status: "supported",
+      strength: 2,
+      probeId: "internal",
+    },
+    {
+      name: "invalid beats todo",
+      probes: [
+        { probeId: "output", method: "output", status: "probe-todo" },
+        { probeId: "visual", method: "visual", status: "probe-invalid" },
+      ],
+      status: "probe-invalid",
+      strength: null,
+      probeId: "visual",
+    },
+    {
+      name: "todo beats untestable",
+      probes: [
+        { probeId: "output", method: "output", status: "probe-todo" },
+        { probeId: "visual", method: "visual", status: "untestable" },
+      ],
+      status: "probe-todo",
+      strength: null,
+      probeId: "output",
+    },
+    {
+      name: "all untestable",
+      probes: [
+        { probeId: "output", method: "output", status: "untestable" },
+        { probeId: "visual", method: "visual", status: "untestable" },
+      ],
+      status: "untestable",
+      strength: null,
+      probeId: "output",
+    },
+  ] as const)("$name", ({ probes, status, strength, probeId }) => {
+    const result = computeFeatureResults(
+      probes.map((probe) => ({ ...probe, featureId: "sgr.bold" })),
+      ["sgr.bold"],
+    )["sgr.bold"]
+    expect(result).toMatchObject({ featureId: "sgr.bold", status, strength, probeId })
+    expect(result?.conflictingProbes).toEqual(status === "probe-conflict" ? ["internal", "visual"] : [])
+  })
+
+  it("uses the strongest agreeing decided probe and keeps conflicts open at tier 2", () => {
+    const result = computeFeatureResults(
+      [
+        { featureId: "sgr.bold", probeId: "output", method: "output", status: "supported" },
+        { featureId: "sgr.bold", probeId: "visual", method: "visual", status: "supported" },
+      ],
+      ["sgr.bold"],
+    )
+    expect(result["sgr.bold"]).toMatchObject({ status: "supported", strength: 4 })
+    const rollup = rollupTerminalStatuses({ "sgr.bold": "probe-conflict", "sgr.italic": "supported" })
+    expect(rollup).toMatchObject({
+      counts: { "probe-conflict": 1 },
+      completenessTier: 2,
+      positions: 2,
+      decided: 1,
+      open: 1,
+      supportedPct: 50,
+    })
+    expect(rollup.families.sgr).toMatchObject({ open: 1, decided: 1 })
+  })
+})
 
 // CTO ruling 2026-11-03: the retired projection was the last production reader; keep slice behaviour
 // with the cohort contract instead of retaining an unused package API (#31824).
@@ -295,7 +383,7 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
     const statuses: Record<string, ProbeStatus> = {}
     for (const id of allCatalogIds) {
       statuses[id] = ENVIRONMENT_GROUP_IDS.includes(id as (typeof ENVIRONMENT_GROUP_IDS)[number])
-        ? "test-todo"
+        ? "probe-todo"
         : id.startsWith("sgr.")
           ? "supported"
           : id.startsWith("cursor.")
@@ -303,8 +391,8 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
             : id.startsWith("modes.")
               ? "untestable"
               : id === "input.kitty-click-events"
-                ? "test-failure"
-                : "test-todo"
+                ? "probe-invalid"
+                : "probe-todo"
     }
     const rollup = rollupTerminalStatuses(statuses, allCatalogIds)
     expect(rollup.positions).toBe(264)
@@ -320,7 +408,7 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
     expect(Object.values(rollup.families).reduce((sum, fam) => sum + fam.decided, 0)).toBe(rollup.decided)
     expect(rollup.decisive).toBe(rollup.counts.supported + rollup.counts.unsupported)
     expect(rollup.decided).toBe(rollup.decisive + rollup.counts.untestable)
-    expect(rollup.open).toBe(rollup.counts["test-todo"] + rollup.counts["test-failure"])
+    expect(rollup.open).toBe(rollup.counts["probe-todo"] + rollup.counts["probe-invalid"])
     expect(rollup.decided + rollup.open).toBe(264)
     expect(rollup.completenessTier).toBe(1)
 
@@ -360,7 +448,7 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
 
     // Lossless JSON serialization round-trip (including supportedPct: null when decisive === 0).
     expect(JSON.parse(JSON.stringify(rollup))).toEqual(rollup)
-    const allTodoStatuses = Object.fromEntries(allCatalogIds.map((id) => [id, "test-todo" as const]))
+    const allTodoStatuses = Object.fromEntries(allCatalogIds.map((id) => [id, "probe-todo" as const]))
     const undecidedRollup = rollupTerminalStatuses(allTodoStatuses, allCatalogIds)
     expect(undecidedRollup.decisive).toBe(0)
     expect(undecidedRollup.supportedPct).toBeNull()
@@ -370,7 +458,7 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
   it("projects aggregateCurrentResults and completenessTierOf from rollupTerminalStatuses with identical outputs", () => {
     const results = allCatalogIds.map((featureId, index) => ({
       featureId,
-      status: (["supported", "unsupported", "untestable", "test-todo", "test-failure"] as const)[index % 5]!,
+      status: (["supported", "unsupported", "untestable", "probe-todo", "probe-invalid"] as const)[index % 5]!,
     }))
     const statuses = Object.fromEntries(results.map((r) => [r.featureId, r.status]))
     const rollup = rollupTerminalStatuses(statuses, allCatalogIds)
@@ -383,8 +471,8 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
     expect(aggregate.complete).toBe(rollup.completenessTier === 3)
     expect(tier).toEqual({
       completenessTier: rollup.completenessTier,
-      todo: rollup.counts["test-todo"],
-      failure: rollup.counts["test-failure"],
+      todo: rollup.counts["probe-todo"],
+      failure: rollup.counts["probe-invalid"],
       positions: rollup.positions,
     })
   })
@@ -392,17 +480,17 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
   it("ranks open graded probes by (-libOpen, -libFailure, featureId), excludes environment groups, and refuses missing or invalid cells (A5)", () => {
     const libCells = {
       vterm: {
-        "device.env-term": "test-todo",
-        "sgr.bold": "test-failure",
-        "sgr.faint": "test-todo",
+        "device.env-term": "probe-todo",
+        "sgr.bold": "probe-invalid",
+        "sgr.faint": "probe-todo",
         "cursor.up": "supported",
-        "erase.line": "test-todo",
+        "erase.line": "probe-todo",
       },
       xtermjs: {
-        "device.env-term": "test-failure",
-        "sgr.bold": "test-todo",
-        "sgr.faint": "test-todo",
-        "cursor.up": "test-failure",
+        "device.env-term": "probe-invalid",
+        "sgr.bold": "probe-todo",
+        "sgr.faint": "probe-todo",
+        "cursor.up": "probe-invalid",
         "erase.line": "supported",
       },
     }
@@ -449,88 +537,31 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
     )
     expect(() =>
       rankOpenProbes({
-        vterm: { "sgr.bold": "supported", "sgr.faint": "test-todo" },
+        vterm: { "sgr.bold": "supported", "sgr.faint": "probe-todo" },
         xtermjs: { "sgr.bold": "supported" },
       }),
     ).toThrow(/Invalid stored current status for sgr\.faint/)
   })
 })
 
-describe("Phase 2.4 report-only method, confidence & feature findings (rollupSubjectMethodFindings)", () => {
-  const allCatalogIds = Object.keys(catalog).sort()
-  const gradedIds = gradedFeatureIds(allCatalogIds)
-  const storedRuns = loadStoredRuns(contentDir, allCatalogIds)
-  // Four byte-exact Linux captures accepted for storage on 2026-11-03; the original corpus stays intact.
-  const addedRunIds = [
-    "633c90aa4d9d9915dbfa8bbb0e1bc68e",
-    "8a04af6f8377b1c3ddd66746caa30cbf",
-    "38fe936ce745c9906840a50b8ea25138",
-    "984b034da17ca52406e50e60a3b88bc4",
-  ]
-
-  // No result is graded from source (operator 2026-11-03, #32246): the reader reads every stored source-answer cell
-  // as TEST TODO, so no corpus cell classifies as source-reading and no kept-answer bucket exists.
-  it("maps every graded cell across all 17 corpus runs (loadStoredRuns) with 0 unmapped, 0 mixed and 0 source-reading", () => {
-    expect(PROBE_METHODS).toEqual(["source-reading", "library", "app-text", "app-screenshot", "real-os-device"])
-    expect(PROBE_METHOD_RANK).toEqual({
-      "source-reading": 1,
-      library: 2,
-      "app-text": 3,
-      "app-screenshot": 4,
-      "real-os-device": 5,
-    })
-
-    const minSourceReading: MinimumMethodMap = Object.fromEntries(
-      gradedIds.map((id) => [id, { lib: "source-reading", term: "source-reading", mux: "source-reading" }]),
-    )
-
-    let totalPositions = 0
-    let totalSourceReading = 0
-    let totalLibrary = 0
-    let totalAppText = 0
-    let totalAppScreenshot = 0
-    let totalRealOsDevice = 0
-    let totalUnmapped = 0
-    let totalMixed = 0
-
-    for (const run of storedRuns) {
-      const report = rollupSubjectMethodFindings([run], minSourceReading, run.catalogIds ?? allCatalogIds)
-      expect(report.positions).toBe(264)
-      expect(report.environmentPositions).toBe(9)
-      expect(report.buckets.unmapped).toEqual([])
-      expect(report.buckets.mixed).toEqual([])
-      expect(report.buckets.noMinimum).toEqual([])
-      expect(Object.keys(report.buckets).sort()).toEqual(["mixed", "noMinimum", "unmapped"])
-
-      totalPositions += report.positions
-      totalUnmapped += report.buckets.unmapped.length
-      totalMixed += report.buckets.mixed.length
-
-      for (const finding of Object.values(report.findings)) {
-        for (const obs of finding.observedMethods) {
-          if (obs === "source-reading") totalSourceReading++
-          else if (obs === "library") totalLibrary++
-          else if (obs === "app-text") totalAppText++
-          else if (obs === "app-screenshot") totalAppScreenshot++
-          else if (obs === "real-os-device") totalRealOsDevice++
-        }
+describe("probe method classification", () => {
+  it("maps retained corpus probes without promoting a source answer", () => {
+    const runs = loadStoredRuns(contentDir, Object.keys(catalog).sort())
+    const counts = { internal: 0, output: 0, visual: 0, "end-to-end": 0, source: 0 }
+    for (const run of runs) {
+      for (const result of run.results ?? []) {
+        if (!gradedFeatureIds([result.featureId]).length) continue
+        const classified = classifyResultMethod(result, run.subject, run.assertions)
+        expect(classified.kind).not.toBe("mixed")
+        expect(classified.kind).not.toBe("unmapped")
+        if (classified.kind === "method") counts[classified.method]++
       }
     }
-
-    // f6136e4d retained the approved VTerm lifecycle run: 17 runs and 233 additional typed library rows.
-    expect(storedRuns).toHaveLength(17)
-    expect(totalPositions).toBe(4488)
-    expect(totalUnmapped).toBe(0)
-    expect(totalMixed).toBe(0)
-    expect(totalSourceReading).toBe(0)
-    // A retired source-answer cell keeps its stored assertion type, so it now classifies by that method.
-    expect(totalLibrary).toBe(1067)
-    expect(totalAppText).toBe(1712)
-    expect(totalAppScreenshot).toBe(477)
-    expect(totalRealOsDevice).toBe(100)
+    expect(runs).toHaveLength(17)
+    expect(counts).toEqual({ internal: 1067, output: 1712, visual: 477, "end-to-end": 100, source: 0 })
   })
 
-  it("routes multiple assertion types on one result to mixed", () => {
+  it("retains mixed assertion types instead of claiming one method", () => {
     expect(
       classifyResultMethod(
         {
@@ -547,262 +578,5 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       kind: "mixed",
       assertionTypes: ["buffer_state", "screenshot"],
     })
-  })
-
-  it("emits test-conflict when two qualifying results disagree (including untestable vs supported or across different ranks), settles winningMethod by highest rank only when all qualifying results agree, never makes a conflict from a stored kept-answer dispute, and rejects subject version/os mismatches or missing results", () => {
-    const fAgree = "sgr.bold"
-    const fConflictDiffRank = "sgr.faint"
-    const fConflictUntestable = "sgr.italic"
-    const fC1Disagree = "sgr.underline"
-    const miniCatalog = [fAgree, fConflictDiffRank, fConflictUntestable, fC1Disagree]
-
-    const makeRun = (results: ProbeResult[], assertions: Array<{ assertionType: "buffer_state" | "screenshot" }>) => ({
-      subject: { kind: "term" as const, id: "wezterm", version: "20240203", os: "linux" as const },
-      assertions,
-      results,
-    })
-
-    // Run 1: app-text (rank 3)
-    const run1 = makeRun(
-      [
-        {
-          featureId: fAgree,
-          status: "supported",
-          attempt: { scope: "none" },
-          assertionType: "buffer_state",
-          tests: [],
-        },
-        {
-          featureId: fConflictDiffRank,
-          status: "supported",
-          attempt: { scope: "none" },
-          assertionType: "buffer_state",
-          tests: [],
-        },
-        {
-          featureId: fConflictUntestable,
-          status: "untestable",
-          attempt: { scope: "none" },
-          assertionType: "buffer_state",
-          tests: [],
-        },
-        {
-          featureId: fC1Disagree,
-          status: "test-todo",
-          attempt: { scope: "none" },
-          tests: [],
-          reason: 'kept answers disagree: ["term","wezterm","20240203","linux","sgr.underline"]',
-        },
-      ],
-      [],
-    )
-
-    // Run 2: app-screenshot (rank 4)
-    const run2 = makeRun(
-      [
-        {
-          featureId: fAgree,
-          status: "supported",
-          attempt: { scope: "none" },
-          assertionType: "screenshot",
-          tests: [],
-        },
-        {
-          featureId: fConflictDiffRank,
-          status: "unsupported",
-          attempt: { scope: "none" },
-          assertionType: "screenshot",
-          tests: [],
-        },
-        {
-          featureId: fConflictUntestable,
-          status: "supported",
-          attempt: { scope: "none" },
-          assertionType: "screenshot",
-          tests: [],
-        },
-        {
-          featureId: fC1Disagree,
-          status: "test-todo",
-          attempt: { scope: "none" },
-          tests: [],
-          reason: 'kept answers disagree: ["term","wezterm","20240203","linux","sgr.underline"]',
-        },
-      ],
-      [],
-    )
-
-    const minMap: MinimumMethodMap = {
-      [fAgree]: { term: "app-text" },
-      [fConflictDiffRank]: { term: "app-text" },
-      [fConflictUntestable]: { term: "app-text" },
-      [fC1Disagree]: { term: "source-reading" },
-    }
-
-    const report = rollupSubjectMethodFindings([run1, run2], minMap, miniCatalog)
-
-    // Both qualify (rank 3 and rank 4 >= rank 3) and agree on "supported" -> highest rank ("app-screenshot") wins
-    expect(report.findings[fAgree]).toMatchObject({
-      runStatuses: ["supported", "supported"],
-      findingStatus: "supported",
-      winningMethod: "app-screenshot",
-      neededMethod: null,
-    })
-
-    // Both qualify (rank 3 and rank 4 >= rank 3) and disagree ("supported" vs "unsupported") -> test-conflict (higher rank does NOT settle disagreement)
-    expect(report.findings[fConflictDiffRank]).toMatchObject({
-      runStatuses: ["supported", "unsupported"],
-      findingStatus: "test-conflict",
-      winningMethod: null,
-      neededMethod: null,
-    })
-
-    // Both qualify and disagree ("untestable" vs "supported") -> test-conflict
-    expect(report.findings[fConflictUntestable]).toMatchObject({
-      runStatuses: ["untestable", "supported"],
-      findingStatus: "test-conflict",
-      winningMethod: null,
-      neededMethod: null,
-    })
-
-    // A stored "kept answers disagree" reason is a source answer, which no longer counts (operator 2026-11-03,
-    // #32246): two TEST TODO cells stay TEST TODO, never a conflict.
-    expect(report.findings[fC1Disagree]).toMatchObject({
-      runStatuses: ["test-todo", "test-todo"],
-      findingStatus: "test-todo",
-      winningMethod: null,
-    })
-
-    // Subject version or OS mismatch throws
-    expect(() =>
-      rollupSubjectMethodFindings(
-        [run1, { ...run2, subject: { ...run2.subject, version: "20240101" } }],
-        minMap,
-        miniCatalog,
-      ),
-    ).toThrow(/Method findings require runs for one subject/)
-    expect(() =>
-      rollupSubjectMethodFindings([run1, { ...run2, subject: { ...run2.subject, os: "macos" } }], minMap, miniCatalog),
-    ).toThrow(/Method findings require runs for one subject/)
-
-    // Missing graded result throws "Missing result for <featureId>"
-    expect(() =>
-      rollupSubjectMethodFindings([{ ...run1, results: run1.results.slice(1) }], minMap, miniCatalog),
-    ).toThrow(/Missing result for sgr\.bold/)
-  })
-
-  it("emits no-minimum-declared when minimumMethod is null/absent, and places both test-todo and test-failure findings that lack a qualifying result into neededMethod and needsByMethod", () => {
-    const fNoMin = "sgr.bold"
-    const fTodo = "sgr.faint"
-    const fFailure = "sgr.italic"
-    const fBelowMin = "sgr.underline"
-    const miniCatalog = [fNoMin, fTodo, fFailure, fBelowMin]
-
-    const run = {
-      subject: { kind: "term" as const, id: "kitty", version: "0.40.0", os: "linux" as const },
-      assertions: [],
-      results: [
-        {
-          featureId: fNoMin,
-          status: "supported" as const,
-          attempt: { scope: "none" as const },
-          assertionType: "buffer_state" as const,
-          tests: [],
-        },
-        { featureId: fTodo, status: "test-todo" as const, attempt: { scope: "none" as const }, tests: [] },
-        {
-          featureId: fFailure,
-          status: "test-failure" as const,
-          attempt: { scope: "none" as const },
-          assertionType: "screenshot" as const,
-          tests: [],
-        },
-        {
-          featureId: fBelowMin,
-          status: "supported" as const,
-          attempt: { scope: "none" as const },
-          assertionType: "buffer_state" as const,
-          tests: [],
-        },
-      ],
-    }
-
-    const minMap: MinimumMethodMap = {
-      [fNoMin]: { term: null },
-      [fTodo]: { term: "app-text" },
-      [fFailure]: { term: "app-screenshot" },
-      [fBelowMin]: { term: "app-screenshot" },
-    }
-
-    const report = rollupSubjectMethodFindings([run], minMap, miniCatalog)
-
-    // 1. minimumMethod: null -> findingStatus: "no-minimum-declared" and buckets.noMinimum
-    expect(report.findings[fNoMin]).toMatchObject({
-      runStatuses: ["supported"],
-      minimumMethod: null,
-      findingStatus: "no-minimum-declared",
-      winningMethod: null,
-      neededMethod: null,
-    })
-    expect(report.buckets.noMinimum).toEqual([fNoMin])
-
-    // 2. test-todo with minimumMethod "app-text" -> findingStatus "test-todo", neededMethod "app-text", in needsByMethod["app-text"]
-    expect(report.findings[fTodo]).toMatchObject({
-      runStatuses: ["test-todo"],
-      minimumMethod: "app-text",
-      findingStatus: "test-todo",
-      winningMethod: null,
-      neededMethod: "app-text",
-    })
-    expect(report.needsByMethod["app-text"]).toEqual([fTodo])
-
-    // 3. Adjustment 6: test-failure (even with a screenshot assertion) never counts as valid; findingStatus is "test-failure", neededMethod is "app-screenshot", and it enters needsByMethod["app-screenshot"]
-    expect(report.findings[fFailure]).toMatchObject({
-      runStatuses: ["test-failure"],
-      minimumMethod: "app-screenshot",
-      findingStatus: "test-failure",
-      winningMethod: null,
-      neededMethod: "app-screenshot",
-    })
-
-    // 4. Decided "app-text" (rank 3) below minimumMethod "app-screenshot" (rank 4) -> findingStatus "test-todo", neededMethod "app-screenshot", enters needsByMethod["app-screenshot"]
-    expect(report.findings[fBelowMin]).toMatchObject({
-      runStatuses: ["supported"],
-      minimumMethod: "app-screenshot",
-      findingStatus: "test-todo",
-      winningMethod: null,
-      neededMethod: "app-screenshot",
-    })
-    expect(report.needsByMethod["app-screenshot"]).toEqual([fFailure, fBelowMin])
-  })
-
-  // Pinned after #32246's source-answer retirement and the approved VTerm lifecycle run f6136e4d;
-  // all 17 retained runs are read without changing their stored bytes.
-  it("keeps rollupTerminalStatuses and generateApi outputs byte-identical on the 17 corpus runs (Adjustment 5)", () => {
-    const rollups = storedRuns.map((loaded) => ({
-      path: loaded.path.slice(contentDir.length + 1),
-      sha256: loaded.sha256,
-      rollup: rollupTerminalStatuses(
-        Object.fromEntries((loaded.results ?? []).map((r) => [r.featureId, r.status])),
-        loaded.catalogIds ?? allCatalogIds,
-      ),
-    }))
-    const rollupsSha256 = createHash("sha256").update(JSON.stringify(rollups)).digest("hex")
-    expect(rollupsSha256).toBe("15b42e8764f426dc7e29bbee099a32566311df58921e826077c1a58353c6f1e3")
-
-    const outDir = mkdtempSync(join(tmpdir(), "terminfo-api-verify-"))
-    try {
-      const { dataPath } = generateApi(outDir, { contentDir, working: null })
-      const apiDataSha256 = createHash("sha256").update(readFileSync(dataPath)).digest("hex")
-      const apiEvidenceInventorySha256 = createHash("sha256")
-        .update(readFileSync(join(outDir, "api", "v3", "evidence-files.json")))
-        .digest("hex")
-      expect(apiDataSha256).toBe("4e7d000c28798a14e45137a09a94e074b63230a409a963e2b1e858c00b62da56")
-      expect(apiEvidenceInventorySha256).toBe("c9ce746c3ab03a74a52523f161216f07a8034fdcb178d4aa2dec79b3e427aa75")
-    } finally {
-      // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
-      // unavailable; `outDir` is this test's own mkdtempSync scratch root.
-      rmSync(outDir, { recursive: true, force: true })
-    }
   })
 })

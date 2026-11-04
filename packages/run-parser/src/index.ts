@@ -700,7 +700,7 @@ export const STORED_VISUAL_REVIEW_RETIRED_REASON = "stored visual review not re-
 /** The stored screenshot-review branches: 54 retained cells use the first, Screen 5.0.2 cursor.hide the second. */
 const STORED_VISUAL_REVIEW_BRANCHES: ReadonlySet<string> = new Set(["visual-review", "cursor-visibility-visual-review"])
 
-/** Map one stored source-answer cell to TEST TODO; its references and branch stay in the stored file only. */
+/** Map one stored source-answer cell to Probe to-do; its references and branch stay in the stored file only. */
 function retiredSourceAnswer(result: ProbeResult): ProbeResult {
   const { reviewRef: _reviewRef, ...rest } = result
   const reason =
@@ -709,14 +709,19 @@ function retiredSourceAnswer(result: ProbeResult): ProbeResult {
       : SOURCE_ANSWER_RETIRED_REASON
   return {
     ...rest,
-    status: "test-todo",
+    status: "probe-todo",
     reason,
     tests: result.tests.map((test) => {
       if (test.id !== "review" && test.reviewRef === undefined) return test
       const { reviewRef: _testRef, ...kept } = test
-      return { ...kept, status: "test-todo", reason }
+      return { ...kept, status: "probe-todo", reason }
     }),
   }
+}
+
+/** Decode historical wire words without rewriting the retained run document. */
+function storedProbeStatus(value: unknown): unknown {
+  return value === "test-todo" ? "probe-todo" : value === "test-failure" ? "probe-invalid" : value
 }
 
 export function parseProbeResults(
@@ -736,15 +741,16 @@ export function parseProbeResults(
     if (seen.has(featureId)) fail(path, `duplicate feature ${featureId}`)
     seen.add(featureId)
     if (!expected.has(featureId)) fail(path, `${featureId} is outside frozen catalogue membership`)
-    if (!PROBE_STATUSES.includes(item.status as ProbeResult["status"])) {
+    const decodedStatus = storedProbeStatus(item.status)
+    if (!PROBE_STATUSES.includes(decodedStatus as ProbeResult["status"])) {
       fail(path, `invalid probe status for ${featureId}`)
     }
-    const status = item.status as ProbeResult["status"]
+    const status = decodedStatus as ProbeResult["status"]
     const attempt = probeAttempt(item.attempt, `${path}: ${featureId}`, rawReplies)
-    if (["test-todo", "test-failure", "untestable"].includes(status) && !nonempty(item.reason)) {
+    if (["probe-todo", "probe-invalid", "untestable"].includes(status) && !nonempty(item.reason)) {
       fail(path, `${featureId} ${status} requires reason`)
     }
-    if (status === "test-failure" && attempt.scope === "none") {
+    if (status === "probe-invalid" && attempt.scope === "none") {
       fail(path, `${featureId} failure requires a retained attempt`)
     }
     const displaced = ["checks", "evidence"]
@@ -786,11 +792,12 @@ export function parseProbeResults(
         `${featureId}/${entry.id} test`,
       )
       testIds.add(entry.id)
-      if (!PROBE_STATUSES.includes(entry.status as ProbeTestResult["status"])) {
+      const testStatus = storedProbeStatus(entry.status)
+      if (!PROBE_STATUSES.includes(testStatus as ProbeTestResult["status"])) {
         fail(path, `invalid test status for ${featureId}/${entry.id}`)
       }
       const checkAttempt = probeAttempt(entry.attempt, `${path}: ${featureId}/${entry.id}`, rawReplies)
-      if (entry.status !== "test-todo" && checkAttempt.scope === "none") {
+      if (testStatus !== "probe-todo" && checkAttempt.scope === "none") {
         fail(path, `decided test ${featureId}/${entry.id} has no attempt`)
       }
       if (
@@ -809,7 +816,7 @@ export function parseProbeResults(
       ) {
         fail(path, `missing raw test evidence for ${featureId}`)
       }
-      return { ...entry, attempt: checkAttempt } as unknown as ProbeTestResult
+      return { ...entry, status: testStatus, attempt: checkAttempt } as unknown as ProbeTestResult
     })
     const result = { ...item, featureId, status, attempt, tests: tests } as unknown as ProbeResult
     // Missing-observable reviews cannot establish support or a measured negative.
@@ -843,7 +850,7 @@ export function parseProbeResults(
             capture.callbacks.length > 0 &&
             capture.callbacks.every(nonempty),
         )
-      if (!recorded || harnessRow?.status !== "test-failure" || status !== "test-failure") {
+      if (!recorded || harnessRow?.status !== "probe-invalid" || status !== "probe-invalid") {
         fail(path, `${featureId} unreproduced-callback record requires its failed harness row, and the row its record`)
       }
     }
@@ -858,7 +865,7 @@ export function parseProbeResults(
       }
     }
     // No result is answered from source (operator 2026-11-03, @cto 153143ff): a cell recognised by its stored
-    // source-answer marker reads TEST TODO, and the stored run stays byte-unchanged (#32246).
+    // source-answer marker reads Probe to-do, and the stored run stays byte-unchanged (#32246).
     if (sourceRefs.length > 0 || SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES.has(result.criterionBranch ?? "")) {
       return retiredSourceAnswer(result)
     }
@@ -1421,15 +1428,23 @@ export function decodeCollectorDraft(
         intendedSubject: intended as Partial<ProbeSubject>,
         manifest: manifest as ProbeSuiteManifest & { schemaVersion: 4 },
       })
-      let difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+      const decoded = {
+        ...value,
+        results: Array.isArray(value.results)
+          ? value.results.map((result) =>
+              object(result) ? { ...result, status: storedProbeStatus(result.status) } : result,
+            )
+          : value.results,
+      }
+      let difference = initializedDraftDifference(decoded, { ...initialized, rawReplies: records })
       if (difference) {
         recordCollectorSelection(initialized, selection.ids)
-        difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+        difference = initializedDraftDifference(decoded, { ...initialized, rawReplies: records })
       }
       if (difference) refuse(difference)
       return {
         kind: "empty-selection",
-        run: value as unknown as RunDraft,
+        run: decoded as unknown as RunDraft,
         raw,
         sha256: createHash("sha256").update(raw).digest("hex"),
       }
@@ -1446,5 +1461,10 @@ export function decodeCollectorDraft(
   if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
     fail(path, "collector draft requires unverified measured identity and collector origin")
   }
-  return { kind: "captured", run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
+  return {
+    kind: "captured",
+    run: { ...value, results: measured.results } as unknown as CapturedRunDraft,
+    raw,
+    sha256: measured.sha256,
+  }
 }

@@ -54,7 +54,7 @@ it.each([false, true])("attaches completed TTY evidence only to marked failure r
       await ctx.queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 37)
       return marked
         ? replyFailure("No probe reply")
-        : { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "No probe reply" }] }
+        : { pass: false, tests: [{ id: "criterion", status: "probe-invalid", reason: "No probe reply" }] }
     }
     const batch = await runProbeBatch({
       ids: [probe.id],
@@ -65,7 +65,7 @@ it.each([false, true])("attaches completed TTY evidence only to marked failure r
       } as unknown as NodeJS.WriteStream,
     })
     const result = batch.results.find((entry) => entry.featureId === probe.id)!
-    expect(result.status).toBe("test-failure")
+    expect(result.status).toBe("probe-invalid")
     expect(result.reason).toBe(
       marked ? 'No probe reply; query 1: sent "\\u001b[6n"; received ""; timeout 37 ms' : "No probe reply",
     )
@@ -110,7 +110,7 @@ it("checkpoints the native attempt before invoking its callback", async () => {
       seen = active
       return {
         pass: false,
-        tests: [{ id: "criterion", status: "test-todo", reason: "Fixture callback completed" }],
+        tests: [{ id: "criterion", status: "probe-todo", reason: "Fixture callback completed" }],
       }
     }
     await runProbeBatch({
@@ -124,7 +124,7 @@ it("checkpoints the native attempt before invoking its callback", async () => {
   }
   expect(seen).toMatchObject({
     featureId: probe.id,
-    status: "test-todo",
+    status: "probe-todo",
     attempt: { scope: "probe", startedAt: expect.any(String) },
   })
 })
@@ -193,7 +193,7 @@ it.each([
       definition.term = async () => ({
         pass: false,
         ...responseFields,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        tests: [{ id: "criterion", status: "probe-todo", reason: note }],
       })
       const explicit = await runProbeBatch({ ids: [id] })
       definition.term = (async () => ({ pass: false, ...responseFields, note })) as unknown as typeof definition.term
@@ -213,13 +213,13 @@ it.each([
       expect(explicit.observations).toEqual([])
       expect(decodedExplicit.results).toEqual(explicit.results)
       expect(explicit.ungradedDiagnostics).toEqual({})
-      expect(decodedExplicit.results.find((result) => result.featureId === id)?.status).toBe("test-todo")
+      expect(decodedExplicit.results.find((result) => result.featureId === id)?.status).toBe("probe-todo")
       expect(explicit.assertions).toEqual([])
       expect(decodedExplicit.assertions).toEqual([])
       expect(explicit.screenshotRefs).toEqual([])
       expect(decodedExplicit.screenshotRefs).toEqual([])
       expect(explicit.suiteComplete).toBe(false)
-      expect(decodedExplicit.results.some((result) => result.status === "test-todo")).toBe(true)
+      expect(decodedExplicit.results.some((result) => result.status === "probe-todo")).toBe(true)
       expect(decodedExplicit.identity).toBe("unverified")
       expect(explicit.rawReplies[id]).toBe(trace)
       expect(decodedExplicit.rawReplies[id]).toBe(trace)
@@ -235,7 +235,7 @@ it.each([
       expect(decodedLegacy.results).toEqual(legacy.results)
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
       expect(decodedLegacy.results.find((result) => result.featureId === id)).toMatchObject({
-        status: "test-failure",
+        status: "probe-invalid",
         reason: refusal.message,
       })
       expect(legacyReplies(legacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
@@ -245,7 +245,7 @@ it.each([
       expect(legacy.screenshotRefs).toEqual([])
       expect(decodedLegacy.screenshotRefs).toEqual([])
       expect(legacy.suiteComplete).toBe(false)
-      expect(decodedLegacy.results.some((result) => result.status === "test-failure")).toBe(true)
+      expect(decodedLegacy.results.some((result) => result.status === "probe-invalid")).toBe(true)
       expect(decodedLegacy.identity).toBe("unverified")
 
       const expectedReplies = {
@@ -296,7 +296,7 @@ it.each([
       definition.term = async () => ({
         pass: false,
         ...resultNoteFields,
-        tests: [{ id: "criterion", status: "test-todo", reason: expectedNote! }],
+        tests: [{ id: "criterion", status: "probe-todo", reason: expectedNote! }],
       })
       const explicit = await runProbeBatch({ ids: [id] })
       definition.term = (async () => ({ pass: false, ...resultNoteFields })) as unknown as typeof definition.term
@@ -316,13 +316,13 @@ it.each([
       expect(explicit.observations).toEqual([])
       expect(decodedExplicit.results).toEqual(explicit.results)
       expect(explicit.ungradedDiagnostics).toEqual({})
-      expect(decodedExplicit.results.find((result) => result.featureId === id)?.status).toBe("test-todo")
+      expect(decodedExplicit.results.find((result) => result.featureId === id)?.status).toBe("probe-todo")
       expect(explicit.assertions).toEqual([])
       expect(decodedExplicit.assertions).toEqual([])
       expect(legacyReplies(explicit.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacyReplies(decodedExplicit.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(explicit.suiteComplete).toBe(false)
-      expect(decodedExplicit.results.some((result) => result.status === "test-todo")).toBe(true)
+      expect(decodedExplicit.results.some((result) => result.status === "probe-todo")).toBe(true)
       expect(decodedExplicit.identity).toBe("unverified")
 
       // The one-path refactor deleted the legacy-callback record; the untyped refusal replaces it.
@@ -335,14 +335,14 @@ it.each([
       expect(decodedLegacy.results).toEqual(legacy.results)
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
       expect(decodedLegacy.results.find((result) => result.featureId === id)).toMatchObject({
-        status: "test-failure",
+        status: "probe-invalid",
         reason: refusal.message,
       })
       expect(legacyReplies(legacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacyReplies(decodedLegacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacy.assertions).toEqual([])
       expect(decodedLegacy.assertions).toEqual([])
-      expect(decodedLegacy.results.some((result) => result.status === "test-failure")).toBe(true)
+      expect(decodedLegacy.results.some((result) => result.status === "probe-invalid")).toBe(true)
       expect(decodedLegacy.identity).toBe("unverified")
     } finally {
       definition.term = original
@@ -361,7 +361,7 @@ it("refuses an unowned mutating callback without sending terminal bytes", async 
   expect(writes).toEqual([])
   expect(batch.observations).toEqual([])
   expect(batch.results.find((result) => result.featureId === "reset.ris")).toMatchObject({
-    status: "test-todo",
+    status: "probe-todo",
     attempt: { scope: "none" },
   })
   expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
@@ -377,7 +377,7 @@ it("records an owned default-profile OSC 52 refusal as unmeasured with an empty 
   const batch = await runProbeBatch({ ids: ["extensions.osc52-write"], captureRunId: "a".repeat(32) })
   expect(writes).toEqual([])
   expect(batch.results.filter((result) => ["extensions.osc52-write"].includes(result.featureId))).toMatchObject([
-    { status: "test-todo", featureId: "extensions.osc52-write", rawReplyRef: "extensions.osc52-write" },
+    { status: "probe-todo", featureId: "extensions.osc52-write", rawReplyRef: "extensions.osc52-write" },
   ])
   expect(batch.assertions).toEqual([])
   expect(JSON.parse(batch.rawReplies["extensions.osc52-write"]!)).toEqual({ writes: [], queries: [], events: [] })
@@ -397,7 +397,7 @@ it("refuses a structural terminal owner even with the same claimed capture ID", 
   })
   expect(writes).toEqual([])
   expect(batch.results.filter((result) => ["reset.ris"].includes(result.featureId))).toMatchObject([
-    { status: "test-todo", featureId: "reset.ris" },
+    { status: "probe-todo", featureId: "reset.ris" },
   ])
 })
 
@@ -420,7 +420,7 @@ it("allows query-only DECRPM and refuses callbacks requiring disposable ownershi
     assertionType: "query_reply",
   })
   for (const id of ["modes.color-scheme-reporting", "cursor.move.absolute", "device.xtwinops-20"]) {
-    expect(batch.results.find((item) => item.featureId === id)).toMatchObject({ status: "test-todo" })
+    expect(batch.results.find((item) => item.featureId === id)).toMatchObject({ status: "probe-todo" })
     expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ writes: [], queries: [], events: [] })
   }
 })
@@ -501,9 +501,9 @@ function verifiedBatchFixture() {
 it.each([
   { id: "sgr.bold", outcome: "supported", evidence: "captured", kind: "term", expected: "supported" },
   { id: "sgr.bold", outcome: "unsupported", evidence: "captured", kind: "mux", expected: "unsupported" },
-  { id: "sgr.bold", outcome: "supported", evidence: "assertion", kind: "term", expected: "test-todo" },
-  { id: "sgr.bold", outcome: "supported", evidence: "foreign-captured", kind: "term", expected: "test-todo" },
-  { id: "sgr.fg.truecolor", outcome: "unsupported", evidence: "none", kind: "mux", expected: "test-todo" },
+  { id: "sgr.bold", outcome: "supported", evidence: "assertion", kind: "term", expected: "probe-todo" },
+  { id: "sgr.bold", outcome: "supported", evidence: "foreign-captured", kind: "term", expected: "probe-todo" },
+  { id: "sgr.fg.truecolor", outcome: "unsupported", evidence: "none", kind: "mux", expected: "probe-todo" },
   { id: "sgr.bold", outcome: "supported", evidence: "none", kind: "lib", expected: "supported" },
 ] as const)("records $id/$outcome with $evidence visual evidence as $expected", async (testCase) => {
   const { id, outcome, evidence, expected, kind } = testCase
@@ -561,9 +561,9 @@ it.each([
     })
     const row = batch.results.find((result) => result.featureId === id)!
     expect(row.status).toBe(expected)
-    if (expected === "test-todo") {
+    if (expected === "probe-todo") {
       expect(row.reason).toBe("visual effect not observed in this run")
-      expect(row.tests).toContainEqual(expect.objectContaining({ status: "test-todo", reason: row.reason }))
+      expect(row.tests).toContainEqual(expect.objectContaining({ status: "probe-todo", reason: row.reason }))
       expect(batch.observations.find((observation) => observation.featureId === id)?.outcome).toBe(outcome)
     }
     expect(batch.results.find((result) => result.featureId === "device.primary-da")?.status).toBe("supported")
@@ -662,7 +662,7 @@ it("refuses a mutating reset probe with no disposable receipt and writes nothing
   expect(writes).toEqual([])
   expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
   expect(batch.results.filter((result) => ["extensions.osc110-reset-fg"].includes(result.featureId))).toMatchObject([
-    { status: "test-todo", featureId: "extensions.osc110-reset-fg" },
+    { status: "probe-todo", featureId: "extensions.osc110-reset-fg" },
   ])
   expect(batch.assertions).toEqual([])
   expect(JSON.parse(batch.rawReplies["extensions.osc110-reset-fg"]!)).toEqual({ writes: [], queries: [], events: [] })
@@ -797,7 +797,7 @@ it("refuses a mutating probe when neither owned terminal nor disposable receipt 
   expect(writes).toEqual([])
   expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
   expect(batch.results.filter((result) => ["extensions.osc110-reset-fg"].includes(result.featureId))).toMatchObject([
-    { status: "test-todo", featureId: "extensions.osc110-reset-fg" },
+    { status: "probe-todo", featureId: "extensions.osc110-reset-fg" },
   ])
   expect(batch.assertions).toEqual([])
 })
@@ -873,7 +873,7 @@ it("gives the named geometry error for a geometry probe on disposable-only termi
   const batch = await runProbeBatch({ ids: ["cursor.shape"], subject: { kind: "term", id: "kitty", os: "linux" } })
   expect(writes).toEqual([])
   expect(batch.results.filter((result) => ["cursor.shape"].includes(result.featureId))).toMatchObject([
-    { status: "test-todo", featureId: "cursor.shape", reason: "No verified owned terminal for geometry read" },
+    { status: "probe-todo", featureId: "cursor.shape", reason: "No verified owned terminal for geometry read" },
   ])
 })
 
@@ -940,7 +940,7 @@ it.each([false, true])("carries viewport wheel placement through the native batc
   })
   const row = batch.results.find((result) => result.featureId === id)!
   expect(row).toMatchObject({
-    status: "test-todo",
+    status: "probe-todo",
     reason: present ? "viewport seed not observed" : "wheel placement bound not established",
   })
   expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({
@@ -967,7 +967,7 @@ it("declines a declared callback with missing or conflicting owned geometry befo
     ids: ["reset.ris"],
     ownedTerminal: geometryOwner(noGeometry, async () => measured(24, 61)),
   })
-  expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "test-todo" })
+  expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "probe-todo" })
   expect(
     decodeCollectorDraft(
       "missing-geometry.json",
@@ -975,7 +975,7 @@ it("declines a declared callback with missing or conflicting owned geometry befo
       manifest,
       sourceRevision,
     ).run.results.find((result) => result.featureId === "reset.ris"),
-  ).toMatchObject({ status: "test-todo" })
+  ).toMatchObject({ status: "probe-todo" })
   expect(JSON.parse(missing.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
   expect(writes).toEqual([])
   const conflict = await runProbeBatch({
@@ -996,7 +996,7 @@ it("declines a declared callback with missing or conflicting owned geometry befo
       },
     },
   })
-  expect(conflict.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "test-failure" })
+  expect(conflict.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "probe-invalid" })
   expect(writes).toEqual([])
   expect(JSON.parse(conflict.rawReplies["collector.geometry"]!)).toMatchObject({
     source: darwinGeometrySource,
@@ -1042,7 +1042,7 @@ it("prepares capture once before the first eligible callback and retains its cal
         return {
           pass: false,
           tests: [
-            { id: "criterion", status: "test-todo", reason: "Lifecycle fixture does not measure terminal support" },
+            { id: "criterion", status: "probe-todo", reason: "Lifecycle fixture does not measure terminal support" },
           ],
         }
       }
@@ -1106,7 +1106,7 @@ it("keeps query-only and nongeometry callbacks runnable when owned size is unava
     outcome: "supported",
     assertionType: "query_reply",
   })
-  expect(batch.results.find((item) => item.featureId === "reset.decaln")).toMatchObject({ status: "test-todo" })
+  expect(batch.results.find((item) => item.featureId === "reset.decaln")).toMatchObject({ status: "probe-todo" })
   expect(batch.ungradedDiagnostics["reset.decaln"]).toBeUndefined()
   expect(writes).not.toContain("\x1b#8")
   expect(writes).toContain("\x1b[?2004$p\x1b[c")
@@ -1187,9 +1187,9 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
       assertionType: "query_reply",
     })
     expect(batch.results.find((result) => result.featureId === "device.primary-da")).toMatchObject({
-      status: "test-failure",
+      status: "probe-invalid",
       criterionBranch: "resized-capture",
-      tests: [{ id: "geometry", status: "test-failure", assertionRefs: [0] }],
+      tests: [{ id: "geometry", status: "probe-invalid", assertionRefs: [0] }],
     })
     expect(batch.rawReplies["device.primary-da"]).toBe("\x1b[?62;4c")
     expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
@@ -1236,7 +1236,7 @@ it("binds an app named coverage record to its own retained raw trace", async () 
       sourceRevision,
     ).run
     expect(decoded.results.find((result) => result.featureId === definition.id)).toMatchObject({
-      status: "test-todo",
+      status: "probe-todo",
       reason: "device attributes",
       rawReplyRef: definition.id,
     })
@@ -1283,7 +1283,7 @@ it("refuses app named coverage that arrives beside its returned error observatio
       sourceRevision,
     ).run
     expect(decoded.results.find((result) => result.featureId === definition.id)).toMatchObject({
-      status: "test-failure",
+      status: "probe-invalid",
       reason: expect.stringContaining("TTY write failed"),
     })
     expect(batch.suiteComplete).toBe(false)
@@ -1324,7 +1324,7 @@ it("refuses app named coverage that arrives beside supported observation and ass
       sourceRevision,
     ).run
     expect(decoded.results.find((result) => result.featureId === definition.id)).toMatchObject({
-      status: "test-failure",
+      status: "probe-invalid",
       reason: expect.stringContaining("assertion(kind=positive"),
     })
     expect(batch.suiteComplete).toBe(false)
@@ -1649,7 +1649,7 @@ it("hands no adapter to a non-cell-readback probe on a text run", async () => {
   expect(reads).toBe(0)
   expect(batch.screenshotRefs).toEqual([])
   expect(batch.textSnapshotRefs ?? []).toEqual([])
-  expect(batch.results.find((item) => item.featureId === "cursor.shape")).toMatchObject({ status: "test-failure" })
+  expect(batch.results.find((item) => item.featureId === "cursor.shape")).toMatchObject({ status: "probe-invalid" })
   expect(batch.observations.find((item) => item.featureId === "cursor.shape")?.assertionType).not.toBe("pixels")
 })
 
@@ -1682,7 +1682,7 @@ it("records a text run's collector throw as text evidence", async () => {
     ownedTerminal: geometryOwner(measured(24, 80)),
   })
   expect(batch.results.find((item) => item.featureId === "erase.el-with-attrs")).toMatchObject({
-    status: "test-failure",
+    status: "probe-invalid",
   })
 })
 
@@ -1815,7 +1815,7 @@ it("records an opted-in query callback exception as collector error, never suppo
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: ["device.primary-da"] })
   expect(batch.results.filter((result) => ["device.primary-da"].includes(result.featureId))).toMatchObject([
-    { status: "test-failure", featureId: "device.primary-da", reason: "TTY write failed" },
+    { status: "probe-invalid", featureId: "device.primary-da", reason: "TTY write failed" },
   ])
   expect(batch.ungradedDiagnostics["device.primary-da"]).toMatchObject({
     kind: "collector-error",
@@ -1838,7 +1838,7 @@ it("retains a generated region callback's early write failure as a collector err
     },
   })
   expect(batch.results.filter((result) => [definition.id].includes(result.featureId))).toMatchObject([
-    { status: "test-failure", featureId: definition.id, reason: "Region TTY write failed" },
+    { status: "probe-invalid", featureId: definition.id, reason: "Region TTY write failed" },
   ])
   expect(batch.ungradedDiagnostics[definition.id]).toMatchObject({ kind: "collector-error" })
   expect(batch.suiteComplete).toBe(false)
@@ -2058,7 +2058,7 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
   } else {
     const batch = await collected
     expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(
-      scenario.eligible ? "supported" : "test-todo",
+      scenario.eligible ? "supported" : "probe-todo",
     )
     if (scenario.eligible) {
       expect(batch.observations).toContainEqual(
@@ -2161,7 +2161,7 @@ it("records failed clipboard restoration as collector error rather than retainin
     },
   })
   expect(batch.results.filter((result) => ["extensions.osc52-write"].includes(result.featureId))).toMatchObject([
-    { status: "test-failure", featureId: "extensions.osc52-write", rawReplyRef: "extensions.osc52-write" },
+    { status: "probe-invalid", featureId: "extensions.osc52-write", rawReplyRef: "extensions.osc52-write" },
   ])
   expect(batch.suiteComplete).toBe(false)
 })
@@ -2189,7 +2189,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     capture,
   })
   expect(batch.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({
-    status: "test-todo",
+    status: "probe-todo",
     reason: "visual effect not observed in this run",
   })
   // The persistence boundary must accept a terminal query-reply capture without
@@ -2250,7 +2250,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       expect(assertion.source).toEqual(source)
       expect(assertion.subject).toEqual(draft.subject)
       expect(assertion.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({
-        status: "test-todo",
+        status: "probe-todo",
         reason: "visual effect not observed in this run",
         assertionType: "query_reply",
       })
@@ -2330,7 +2330,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         fault,
       ).rejects.toThrow(fault === "tty-root" ? /SGR source shape does not match its live capture/ : /SGR replay:/)
       expect(context.task.meta.terminfoErase?.failureResults, fault).toMatchObject([
-        { featureId: "sgr.bold", status: "test-failure" },
+        { featureId: "sgr.bold", status: "probe-invalid" },
       ])
     }
     await expect(
@@ -2409,7 +2409,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     expect(boundRecord.files).toContain(join(directory, blobRef))
     expect(
       boundRecord.assertions.map(({ results }) => results.find(({ featureId }) => featureId === "sgr.bold")?.status),
-    ).toEqual(["test-todo", "test-todo"])
+    ).toEqual(["probe-todo", "probe-todo"])
     expect(nativeIdentity).not.toHaveBeenCalled()
     expect(writes).toHaveLength(beforeReplay)
     expect(capture).not.toHaveBeenCalled()
@@ -2616,12 +2616,12 @@ it("records a FrameUnavailable capture as a named collector error, never invente
     message: expect.stringContaining("no capture directory"),
   })
   expect(batch.results.find((result) => result.featureId === "sgr.underline.curly")).toMatchObject({
-    status: "test-todo",
+    status: "probe-todo",
     reason: "This run has no capture directory, so no frame is available for a probe that needs one",
     tests: [
       expect.objectContaining({
         id: "criterion",
-        status: "test-todo",
+        status: "probe-todo",
         reason: "This run has no capture directory, so no frame is available for a probe that needs one",
       }),
     ],
@@ -2643,7 +2643,7 @@ it("keeps today's graceful absence row when no capture callback is installed", a
   })
   expect(batch.results.filter((result) => ["cursor.shape"].includes(result.featureId))).toMatchObject([
     {
-      status: "test-failure",
+      status: "probe-invalid",
       featureId: "cursor.shape",
       reason: expect.stringMatching(/no usable DECRQSS cursor-style reply;.*no pixel readback for shape/),
     },
@@ -2663,7 +2663,7 @@ it("records an installed capture adapter failure as an error rather than quietly
     capture: () => Promise.reject(new Error("Owned window disappeared")),
   })
   expect(batch.results.filter((result) => ["sgr.underline.curly"].includes(result.featureId))).toMatchObject([
-    { status: "test-failure", featureId: "sgr.underline.curly", reason: "Owned window disappeared" },
+    { status: "probe-invalid", featureId: "sgr.underline.curly", reason: "Owned window disappeared" },
   ])
   expect(batch.screenshotRefs).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
@@ -2880,7 +2880,7 @@ it.each(["CaptureRestoreFailed", "QueryTimeout", "QueryIOError", "CapturePermiss
       callbacks++
       return {
         pass: false,
-        tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
+        tests: [{ id: "criterion", status: "probe-todo", reason: "insufficient-evidence" }],
       }
     }
     const failure = Object.assign(new Error("Witnessed restore did not match the pre-paint frame"), {
@@ -3053,7 +3053,7 @@ it.each(["unknown reply", "sentinel diagnostic reply", "sentinel diagnostic time
       expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", assertionType: "query_reply" }),
     )
     expect(batch.results.find((result) => result.featureId === "erase.line.all")).toMatchObject({
-      status: "test-todo",
+      status: "probe-todo",
       reason: expect.stringMatching(/cursor visibility/),
     })
     const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
@@ -3185,11 +3185,11 @@ it("records actual native callback failure and leaves an unscheduled frozen capa
     }
     const batch = await runProbeBatch({ ids: [id], draft })
     expect(batch.results.find((result) => result.featureId === id)).toMatchObject({
-      status: "test-failure",
+      status: "probe-invalid",
       attempt: { scope: "probe" },
     })
     expect(batch.results.find((result) => result.featureId === "unimplemented.capability")).toMatchObject({
-      status: "test-todo",
+      status: "probe-todo",
       attempt: { scope: "none" },
       tests: [],
     })
@@ -3233,9 +3233,9 @@ it("forwards explicit callback tests through the actual native batch attempt wit
       })!
     const failed = await runProbeBatch({ ids: [id] })
     expect(failed.results.find((result) => result.featureId === id)).toMatchObject({
-      status: "test-failure",
+      status: "probe-invalid",
       criterionBranch: "same-crop-comparison",
-      tests: [{ id: "comparison", status: "test-failure", attempt: { scope: "probe" } }],
+      tests: [{ id: "comparison", status: "probe-invalid", attempt: { scope: "probe" } }],
     })
     let next = 0
     definition.term = async () =>
@@ -3250,10 +3250,10 @@ it("forwards explicit callback tests through the actual native batch attempt wit
       )
     const pending = await runProbeBatch({ ids: [id] })
     const recorded = pending.results.find((result) => result.featureId === id)!
-    expect(recorded.status).toBe("test-todo")
+    expect(recorded.status).toBe("probe-todo")
     expect(recorded.criterionBranch).toBe("visual-review")
     expect(recorded.tests.find((check) => check.id === "review")).toMatchObject({
-      status: "test-todo",
+      status: "probe-todo",
       attempt: { scope: "none" },
     })
     expect(pending.assertions.find((assertion) => assertion.featureId === id)?.expected).toContain("visual target")
@@ -3398,7 +3398,7 @@ it.each([
         expect(result.tests).toMatchObject([
           { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
           { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
-          { id: "remaining-facets", status: "test-todo" },
+          { id: "remaining-facets", status: "probe-todo" },
         ])
         expect(batch.assertions).toHaveLength(2)
         Object.assign(draft.rawReplies, batch.rawReplies)
@@ -3411,14 +3411,14 @@ it.each([
           [id],
           new Map([[probeHash, ownManifest]]),
         )
-        expect(read.results?.[0]).toMatchObject({ status: "test-todo", frames: result.frames })
+        expect(read.results?.[0]).toMatchObject({ status: "probe-todo", frames: result.frames })
         expect(read.results?.[0]?.frames?.filter((frame) => frame.label.includes("capture stability"))).toHaveLength(2)
         expect(read.assertions).toHaveLength(2)
         return
       }
       if (batch.assertions.length === 0) {
-        expect(result).toMatchObject({ status: "test-todo" })
-        expect(result.tests.some((check) => check.status === "test-todo")).toBe(true)
+        expect(result).toMatchObject({ status: "probe-todo" })
+        expect(result.tests.some((check) => check.status === "probe-todo")).toBe(true)
         expect(result.frames!.length).toBeGreaterThanOrEqual(8)
         expect(
           result.frames!.every((frame) => Boolean(frame.regionDigest && frame.pixelsDigest && frame.regionRectangle)),
@@ -3430,7 +3430,7 @@ it.each([
         if (!result.tests.some((check) => check.id === "review")) {
           expect(
             result.tests.every(
-              (check) => check.status === "test-todo" && check.reason?.includes("a third distinct frame"),
+              (check) => check.status === "probe-todo" && check.reason?.includes("a third distinct frame"),
             ),
           ).toBe(true)
           const decoded = decodeCollectorDraft(
@@ -3448,7 +3448,7 @@ it.each([
           [id],
           new Map([[probeHash, ownManifest]]),
         )
-        expect(read.results?.[0]).toMatchObject({ status: "test-todo", frames: result.frames })
+        expect(read.results?.[0]).toMatchObject({ status: "probe-todo", frames: result.frames })
         expect(read.assertions).toEqual([])
         if (id === "modes.insert-replace") {
           const noFreshDraft = initializeRunDraft({
@@ -3484,11 +3484,11 @@ it.each([
             unchanged.results.find((entry) => entry.featureId === id),
           )
           expect(unchanged.results.find((entry) => entry.featureId === id)).toMatchObject({
-            status: "test-todo",
+            status: "probe-todo",
             tests: [
               expect.objectContaining({
                 id: "review",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: expect.stringContaining("no freshness witness"),
               }),
             ],
@@ -3497,11 +3497,11 @@ it.each([
         return
       }
       expect(result).toMatchObject({
-        status: "test-todo",
+        status: "probe-todo",
         criterionBranch: "visual-review",
         tests: [
           { id: "capture", status: "supported", assertionRefs: [0] },
-          { id: "review", status: "test-todo", attempt: { scope: "none" } },
+          { id: "review", status: "probe-todo", attempt: { scope: "none" } },
         ],
       })
       expect(result.frames).toHaveLength(count)
@@ -3535,7 +3535,7 @@ it.each([
         [id],
         new Map([[probeHash, ownManifest]]),
       )
-      expect(read.results?.[0]).toMatchObject({ status: "test-todo", frames: before })
+      expect(read.results?.[0]).toMatchObject({ status: "probe-todo", frames: before })
       expect(read.assertions[0]?.expected).toMatch(expected)
     } finally {
       vi.useRealTimers()

@@ -376,7 +376,7 @@ test("every converted row refuses by name and writes nothing without an owned ca
       expect(result, `${row.id} at ${rows}x${cols}`).toMatchObject({
         tests: [
           expect.objectContaining({
-            status: "test-todo",
+            status: "probe-todo",
             reason: `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`,
           }),
         ],
@@ -403,7 +403,7 @@ test("every converted row refuses by name when the terminal answers no pixel geo
     })
     expect(result.observation, row.id).toBeUndefined()
     expect(result.tests, row.id).toMatchObject([
-      { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+      { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("cell size in pixels") },
     ])
     expect(String(result.tests?.[0]?.reason), row.id).toContain("CSI 16 t")
     expect(result.observation?.outcome, row.id).not.toBe("supported")
@@ -867,7 +867,7 @@ test("background erase measures a blank target that carries the seeded backgroun
   expect(unseeded.tests).toEqual([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason: expect.stringContaining(
         "PreconditionFailed: precondition failed: seed cells not painted (expected bg at",
       ),

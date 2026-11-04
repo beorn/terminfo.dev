@@ -223,7 +223,7 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            tests: [{ id: "criterion", status: "test-todo", reason: note }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: note }],
           }
         }
         // The pixel arm is the strongest witness: when this run has a measured raster, hide the
@@ -416,7 +416,7 @@ export const cursorProbes: ProbeDefinition[] = [
                 { id: "capture", status: "supported", assertionRefs: [0] },
                 {
                   id: "review",
-                  status: "test-todo",
+                  status: "probe-todo",
                   reason: "no measured raster or DECRQM reply; captured frames are evidence only",
                 },
               ],
@@ -451,7 +451,7 @@ export const cursorProbes: ProbeDefinition[] = [
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: "probe-todo",
               reason: "DECRQM mode 25 is silent or unusable, no measured raster, and no capture adapter",
             },
           ],
@@ -521,7 +521,7 @@ export const cursorProbes: ProbeDefinition[] = [
               { id: "capture", status: "supported", assertionRefs: [0] },
               {
                 id: "review",
-                status: "test-todo",
+                status: "probe-todo",
                 reason:
                   "Cursor shape frames captured; cursor discriminator #31812 is undeclared (cursor cell and blink phase unmeasured), so this run cannot decide it",
               },
@@ -606,7 +606,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: "cursor.position-report fixture needs at least 3x6 measured cells",
               },
             ],
@@ -677,7 +677,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: "cursor.ansi-save fixture needs at least 10x15 measured cells",
               },
             ],
@@ -702,7 +702,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: "cursor.ansi-restore fixture needs at least 12x18 measured cells",
               },
             ],
@@ -728,7 +728,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: "cursor.save-restore fixture needs at least 10x10 measured cells",
               },
             ],
@@ -794,7 +794,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: "reverse-wrap fixture needs two measured rows and at least two columns",
               },
             ],
@@ -880,7 +880,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `CUP edge fixture needs an initialized grid of at least 2x2, measured ${rows}x${cols}`,
               },
             ],
@@ -971,7 +971,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `CUP edge fixture needs at least 2x2, measured ${rows}x${cols}`,
               },
             ],
@@ -1088,7 +1088,7 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(rows) || rows < 1) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Initialized screen row count is unavailable" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Initialized screen row count is unavailable" }],
           }
         }
         ctx.feed("\x1b[1;1H") // position at row 0
@@ -1123,7 +1123,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: "cursor.cud-past-bottom fixture needs at least 2x1 measured cells",
               },
             ],
@@ -1237,7 +1237,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: "cursor.cup-scroll-region fixture needs at least 15x1 measured cells",
               },
             ],
@@ -1250,7 +1250,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `cursor.cup-scroll-region capture needs at least 15x6, measured ${ctx.rows}x${ctx.cols}`,
               },
             ],
@@ -1343,7 +1343,7 @@ export const cursorProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "review",
-                status: "test-todo",
+                status: "probe-todo",
                 reason:
                   "DECOM CPR is region-relative; the physical row 5 and the margins still need an independent observable",
               },

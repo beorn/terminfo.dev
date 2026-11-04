@@ -7,7 +7,7 @@
  * @consumer terminfo.dev result pages (docs/.vitepress/theme/ResultEvidenceCell.vue)
  * @source-grep the reason is computed by ungraded-explanation.ts and only rendered by the component,
  *   so the sentence itself is the contract and this pins it for both arms.
- * @failure A retained source-answer cell reaches the site as a graded or source-captioned result instead of TEST TODO
+ * @failure A retained source-answer cell reaches the site as a graded or source-captioned result instead of PROBE TODO
  *   (operator 2026-11-03, #32246).
  * @testonly none
  */
@@ -27,7 +27,7 @@ import { textEvidenceExplanation } from "../docs/.vitepress/theme/ungraded-expla
 const SAMPLE_SHA256 = "a".repeat(64)
 
 // No result is graded from source (operator 2026-11-03, #32246): a retained cell its kept source answer used to
-// decide must reach the site/API readers as TEST TODO, with no source caption, while the stored capture, its
+// decide must reach the site/API readers as PROBE TODO, with no source caption, while the stored capture, its
 // status in the file and its measuredAt stay byte-unchanged. Pure reader tests cannot prove this handoff.
 it.each([
   {
@@ -47,7 +47,7 @@ it.each([
     reason: SOURCE_ANSWER_RETIRED_REASON,
   },
 ])(
-  "reads $name as TEST TODO and publishes no source caption or private detail",
+  "reads $name as PROBE TODO and publishes no source caption or private detail",
   ({ file, suite, context, featureId, reason }) => {
     const path = new URL(file, import.meta.url)
     const bytes = readFileSync(path, "utf8")
@@ -57,14 +57,14 @@ it.each([
     const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
     const original = structuredClone(run)
     const retained = run.results?.find((result) => result.featureId === featureId)
-    expect(retained?.status).toBe("test-todo")
+    expect(retained?.status).toBe("probe-todo")
     expect(retained?.reason).toBe(reason)
     expect(retained?.reviewRef).toBeUndefined()
     const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
     const selected = projection.history[context]?.[0]
     expect(selected?.measuredAt).toBe(run.measuredAt)
-    const published = publicResults(projection, new Map()).projection.contexts[context]?.cells[featureId]
-    expect(published?.status).toBe("test-todo")
+    const published = publicResults(projection, new Map()).projection.contexts[context]?.featureResults[featureId]
+    expect(published?.status).toBe("probe-todo")
     expect(published?.reason).toBeUndefined()
     const publicBytes = JSON.stringify(published)
     expect(publicBytes).not.toContain("not re-verified")

@@ -116,7 +116,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     criterionBranch: "visual-review",
     tests: [
       { id: "capture", status: "supported", assertionRefs: [0] },
-      { id: "review", status: "test-todo", reason: note },
+      { id: "review", status: "probe-todo", reason: note },
     ],
     observation: {
       outcome: "inconclusive",
@@ -144,7 +144,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
         { id: "capture", status: "supported", assertionRefs: [0] },
         {
           id: "review",
-          status: "test-todo",
+          status: "probe-todo",
           reason: "Valid control and nine blink samples; no same-run pixel check decides it",
         },
       ],
@@ -245,7 +245,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
 /**
  * An adapter that does not populate `underlineColor` reports null on every cell, so a cell fed an
  * explicit SGR 58 color that reads back none has no observable for the claim (a coverage record,
- * TEST TODO), never a negative (#30701, @cto ruling C: TEST TODO only where the cell field is missing).
+ * PROBE TODO), never a negative (#30701, @cto ruling C: PROBE TODO only where the cell field is missing).
  */
 const UNDERLINE_COLOR_UNEXPOSED =
   "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
@@ -334,7 +334,7 @@ async function consumedSgr(
       tests: [
         {
           id: "criterion",
-          status: pos.row === 1 && pos.col === 2 ? "test-todo" : "test-failure",
+          status: pos.row === 1 && pos.col === 2 ? "probe-todo" : "probe-invalid",
           reason: `Cursor advance does not verify SGR styling${pos.row === 1 && pos.col === 2 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
         },
       ],
@@ -391,7 +391,7 @@ async function consumedSgrReset(
       tests: [
         {
           id: "criterion",
-          status: pos.row === 1 && pos.col === 3 ? "test-todo" : "test-failure",
+          status: pos.row === 1 && pos.col === 3 ? "probe-todo" : "probe-invalid",
           reason: `Cursor advance does not verify the reset rendered${pos.row === 1 && pos.col === 3 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
         },
       ],
@@ -499,7 +499,7 @@ function measuredReset(
   // The claim is over the MEASURED setup attributes (#30701, @cto ruling C): an attribute the styled
   // setup does not show (a field the adapter never populates, or an intensity the backend keeps
   // exclusive) is left out of the grade. A measured miss is a negative; with no shown set attribute or
-  // an unshown preserved one, the claim has no observable (a coverage record, TEST TODO).
+  // an unshown preserved one, the claim has no observable (a coverage record, PROBE TODO).
   const shown = (attribute: ResetAttribute) => measuredAttribute(before, attribute) === true
   const graded = attributes.filter(shown)
   if (
@@ -567,7 +567,7 @@ async function consumedResetSgr(
       tests: [
         {
           id: "criterion",
-          status: advanced ? "test-todo" : "test-failure",
+          status: advanced ? "probe-todo" : "probe-invalid",
           reason: advanced
             ? `Cursor advance does not verify SGR reset${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`
             : "Cursor did not reach the expected position",
@@ -704,7 +704,7 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         const x = indexedFirst[channel]
         const y = indexedSecond[channel]
         // #30701, @cto ruling C: direct RGB that does not read back its fed value is a reference that
-        // cannot be calibrated (TEST TODO). A calibrated reference the indices miss is a custom indexed
+        // cannot be calibrated (PROBE TODO). A calibrated reference the indices miss is a custom indexed
         // palette OR an adapter that does not resolve indices to RGB (wezterm reports an index as
         // {r: index, g: 0, b: 0}; #30703), so it stays inconclusive until an in-probe control shows the
         // adapter resolves indices (@cto cd391424).
@@ -1166,7 +1166,7 @@ export function finalizeSgrResult(
     reason,
     tests: [
       ...recorded.tests,
-      { id: "visual", status: "test-todo", attempt: { scope: "none" }, assertionRefs: [], reason },
+      { id: "visual", status: "probe-todo", attempt: { scope: "none" }, assertionRefs: [], reason },
     ],
   })
 }

@@ -105,7 +105,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       join(root, "content/probes-libs/vterm-0.10.1-linux-a22f06ca-2505-4c0d-a518-b0b01f8bbe76.json"),
       rawPath,
     )
-    // The committed payload predates #32246: its stored source-answer cells read TEST TODO (operator 2026-11-03),
+    // The committed payload predates #32246: its stored source-answer cells read PROBE TODO (operator 2026-11-03),
     // so the hourly rollup this envelope carries is over the statuses the reader reads, not the stored ones.
     const payload = loadRawCapture(rawPath, { root, catalogIds }) as {
       results: Array<{ featureId: string; status: string }>
@@ -237,8 +237,8 @@ describe("workingCell: reviewed stays the headline, raw sits beside it (requirem
   // No cell waits on a source review any more (#32246, @cto batch7 A-F6): a retired source-negative cell shows its
   // own status, never "pending review".
   it("shows a retired source-negative raw cell by its status, never as pending review", () => {
-    const cell = workingCell(raw("test-todo", "source-negative-review"), undefined)
-    expect(cell.raw.display).toBe("test-todo")
+    const cell = workingCell(raw("probe-todo", "source-negative-review"), undefined)
+    expect(cell.raw.display).toBe("probe-todo")
     expect(cell.raw).not.toHaveProperty("pendingReview")
   })
 
@@ -301,7 +301,7 @@ describe("raw cells never enter an accepted rollup (requirement 3)", () => {
       },
       results: [
         { featureId: "sgr.bold", status: "supported", attempt: { scope: "none" }, tests: [] },
-        { featureId: "sgr.faint", status: "test-todo", attempt: { scope: "none" }, tests: [] },
+        { featureId: "sgr.faint", status: "probe-todo", attempt: { scope: "none" }, tests: [] },
         { featureId: "device.env-term", status: "supported", attempt: { scope: "none" }, tests: [] },
       ],
     } as unknown as LoadedRun
@@ -343,8 +343,8 @@ describe("raw cells never enter an accepted rollup (requirement 3)", () => {
         supported: 1,
         unsupported: 0,
         untestable: 0,
-        "test-todo": 1,
-        "test-failure": 0,
+        "probe-todo": 1,
+        "probe-invalid": 0,
       },
     })
     rawOnly.results![0]!.status = "unsupported"
@@ -355,8 +355,8 @@ describe("raw cells never enter an accepted rollup (requirement 3)", () => {
         supported: 0,
         unsupported: 1,
         untestable: 0,
-        "test-todo": 1,
-        "test-failure": 0,
+        "probe-todo": 1,
+        "probe-invalid": 0,
       },
     })
     expect(rollups()).toBe(before)

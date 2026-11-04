@@ -195,7 +195,7 @@ function buildRow(
     result: scopeAggregate({
       scope: context.context,
       catalogIds: args.catalogIds,
-      results: results.map((result) => (held.has(result.featureId) ? { ...result, status: "test-todo" } : result)),
+      results: results.map((result) => (held.has(result.featureId) ? { ...result, status: "probe-todo" } : result)),
     }),
     observations,
   }

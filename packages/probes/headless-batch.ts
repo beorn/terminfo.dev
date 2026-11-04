@@ -516,7 +516,7 @@ function harnessIncompleteResult(
     tests: [
       {
         id: HARNESS_INCOMPLETE_TEST,
-        status: "test-failure",
+        status: "probe-invalid",
         reason: `Harness incomplete: ${backendName} did not reproduce ${callbacks}; silence is not evidence`,
       },
     ],
@@ -546,7 +546,7 @@ function recordResult(
     result.tests?.length &&
     result.tests.every(
       (test) =>
-        (test.status === "test-todo" || test.status === "test-failure") &&
+        (test.status === "probe-todo" || test.status === "probe-invalid") &&
         typeof test.reason === "string" &&
         test.reason.trim().length > 0,
     ) &&
@@ -692,7 +692,7 @@ export async function collectBatch(
       draft?.results ??
       definitions.map((probe) => ({
         featureId: probe.id,
-        status: "test-todo",
+        status: "probe-todo",
         attempt: { scope: "none" },
         tests: [],
         reason: "Required callback has not started",
@@ -909,9 +909,9 @@ export async function collectBatch(
         const reason = `headless ${backendName} probe ${probe.id}: backend cleanup failed`
         batch.results[index] = {
           ...result,
-          status: "test-failure",
+          status: "probe-invalid",
           reason,
-          tests: [...result.tests, { id: "cleanup", status: "test-failure", attempt, reason }],
+          tests: [...result.tests, { id: "cleanup", status: "probe-invalid", attempt, reason }],
         }
         onCheckpoint?.(batch)
         throw new Error(reason, { cause })

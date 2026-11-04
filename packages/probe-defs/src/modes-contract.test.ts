@@ -149,7 +149,7 @@ test.each([
   )
   expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
   expect(result.tests?.[0]).toMatchObject({
-    status: "test-failure",
+    status: "probe-invalid",
     reason: expect.stringContaining("no parsable cursor position reply"),
   })
 })
@@ -298,7 +298,7 @@ test("the harness replays every Modes feature deterministically through DECRPM r
     if (row.id === "modes.decsclm") {
       const result = probe.lib!(headless)
       expect(result.criterionBranch, row.id).toBe("os-input-review")
-      expect(result.tests, row.id).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(result.tests, row.id).toMatchObject([{ id: "review", status: "probe-todo" }])
       expect((await regradeRow(probe, row, { headless })).after, row.id).toBeUndefined()
     }
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
@@ -322,7 +322,7 @@ test("each Modes row retains its measured grade or named execution disposition u
       expect(result?.assertions).toBeUndefined()
       expect(result?.tests).toMatchObject([
         expect.objectContaining({
-          status: "test-failure",
+          status: "probe-invalid",
           reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
         }),
       ])
@@ -334,7 +334,7 @@ test("each Modes row retains its measured grade or named execution disposition u
       expect(result?.assertions).toBeUndefined()
       expect(result?.tests).toMatchObject([
         expect.objectContaining({
-          status: "test-todo",
+          status: "probe-todo",
           reason:
             row.id === "modes.origin"
               ? "modes.origin: no owned capture adapter is installed in this run, so the region fixture cannot be read back"
@@ -349,7 +349,7 @@ test("each Modes row retains its measured grade or named execution disposition u
       expect(result?.assertions).toBeUndefined()
       expect(result?.tests).toMatchObject([
         expect.objectContaining({
-          status: "test-failure",
+          status: "probe-invalid",
           reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
         }),
       ])
@@ -363,7 +363,7 @@ test("each Modes row retains its measured grade or named execution disposition u
       expect(result.tests).toEqual([
         {
           id: "criterion",
-          status: row.id === "modes.altscreen-47" ? "test-todo" : "test-failure",
+          status: row.id === "modes.altscreen-47" ? "probe-todo" : "probe-invalid",
           reason:
             row.id === "modes.altscreen-47"
               ? "Alternate buffer left unchanged; this probe does not measure its visible contents"
@@ -389,7 +389,7 @@ test("each Modes row retains its measured grade or named execution disposition u
       expect(result.tests).toEqual([
         {
           id: "criterion",
-          status: "test-failure",
+          status: "probe-invalid",
           reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
         },
       ])
@@ -414,7 +414,7 @@ test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
   expect(result?.assertions).toBeUndefined()
   expect(result?.tests).toMatchObject([
     expect.objectContaining({
-      status: "test-failure",
+      status: "probe-invalid",
       reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
     }),
   ])
@@ -423,7 +423,7 @@ test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
 const MODES_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   id: string,
   mutation: string,
-  positiveOutcome: "supported" | "test-todo",
+  positiveOutcome: "supported" | "probe-todo",
   negativeOutcome: "unsupported" | "inconclusive",
 ])[] = [
   ["modes.alt-screen.enter", "altscreen-noop", "supported", "unsupported"],
@@ -455,8 +455,8 @@ const MODES_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   ["modes.xtpushcolors", "xtpushcolors-noop", "supported", "unsupported"],
   ["modes.xtpopcolors", "xtpopcolors-noop", "supported", "unsupported"],
   ["modes.color-scheme-reporting", "color-scheme-2031-noop", "supported", "unsupported"],
-  // #32246: a consumed CSI 9 SP p with no visible effect has no same-path control, so it is TEST TODO.
-  ["modes.decsscls", "decsscls-noop", "test-todo", "unsupported"],
+  // #32246: a consumed CSI 9 SP p with no visible effect has no same-path control, so it is PROBE TODO.
+  ["modes.decsscls", "decsscls-noop", "probe-todo", "unsupported"],
 ]
 
 test("MODES_SEMANTIC_SURFACE_CONTROLS covers all 30 Modes contract rows with distinct mutations", () => {
@@ -507,7 +507,7 @@ test.each(MODES_SEMANTIC_SURFACE_CONTROLS)(
       expect(positiveResult.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
     }
     const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
-    expect(positiveGraded.after).toBe(positiveOutcome === "test-todo" ? undefined : positiveOutcome)
+    expect(positiveGraded.after).toBe(positiveOutcome === "probe-todo" ? undefined : positiveOutcome)
 
     const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
     expect(negativeResult.pass).toBe(false)
@@ -529,16 +529,16 @@ test.each(MODES_SEMANTIC_SURFACE_CONTROLS)(
 test.each([
   ["xtpushsgr-stale", "modes.xtpushsgr", "unsupported", "push saved no current snapshot"],
   ["xtpushsgr-stale", "modes.xtpopsgr", "supported", undefined],
-  ["xtpopsgr-reset-default", "modes.xtpushsgr", "test-todo", "no push-only observation"],
-  ["xtpopsgr-reset-default", "modes.xtpopsgr", "test-todo", "no pop-only observation"],
+  ["xtpopsgr-reset-default", "modes.xtpushsgr", "probe-todo", "no push-only observation"],
+  ["xtpopsgr-reset-default", "modes.xtpopsgr", "probe-todo", "no pop-only observation"],
 ] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
   const probe = modesProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
-  if (outcome === "test-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  if (outcome === "probe-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
   else expect(result.observation?.outcome).toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
-  if (outcome === "test-todo") expect(result.assertions).toBeUndefined()
+  if (outcome === "probe-todo") expect(result.assertions).toBeUndefined()
   else {
     expect(result.assertions?.[0]?.expected).toContain(id === "modes.xtpushsgr" ? "push time" : "restores the pushed")
   }
@@ -565,16 +565,16 @@ test.each([
   ["xtrestore-reset-default", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
   ["xtrestore-noop", "modes.xtsave", "unsupported", "save then restore restored no earlier state"],
   ["xtrestore-noop", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
-  ["xtrestore-always-off", "modes.xtsave", "test-todo", "restore returned DECAWM off whatever was saved"],
+  ["xtrestore-always-off", "modes.xtsave", "probe-todo", "restore returned DECAWM off whatever was saved"],
   ["xtrestore-always-off", "modes.xtrestore", "unsupported", "restore returned DECAWM off after on was saved"],
 ] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
   const probe = modesProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
-  if (outcome === "test-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  if (outcome === "probe-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
   else expect(result.observation?.outcome).toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
-  if (outcome === "test-todo") expect(result.assertions).toBeUndefined()
+  if (outcome === "probe-todo") expect(result.assertions).toBeUndefined()
   else {
     expect(result.assertions?.[0]?.expected).toContain(
       id === "modes.xtsave" ? "current at save time" : "restores the saved",
@@ -586,18 +586,18 @@ test.each([
 test.each([
   ["xtpushcolors-stale", "modes.xtpushcolors", "unsupported", "push saved no current snapshot"],
   ["xtpushcolors-stale", "modes.xtpopcolors", "supported", undefined],
-  ["xtpopcolors-reset-default", "modes.xtpushcolors", "test-todo", "no push-only observation"],
-  ["xtpopcolors-reset-default", "modes.xtpopcolors", "test-todo", "no pop-only observation"],
+  ["xtpopcolors-reset-default", "modes.xtpushcolors", "probe-todo", "no push-only observation"],
+  ["xtpopcolors-reset-default", "modes.xtpopcolors", "probe-todo", "no pop-only observation"],
   ["xtpopcolors-noop", "modes.xtpushcolors", "unsupported", "push then pop restored no earlier state"],
   ["xtpopcolors-noop", "modes.xtpopcolors", "unsupported", "push then pop restored no earlier state"],
 ] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
   const probe = modesProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
-  if (outcome === "test-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  if (outcome === "probe-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
   else expect(result.observation?.outcome).toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
-  if (outcome === "test-todo") expect(result.assertions).toBeUndefined()
+  if (outcome === "probe-todo") expect(result.assertions).toBeUndefined()
   else {
     expect(result.assertions?.[0]?.expected).toContain(
       id === "modes.xtpushcolors" ? "push time" : "restores the pushed",

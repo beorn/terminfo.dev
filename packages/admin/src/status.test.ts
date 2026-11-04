@@ -94,12 +94,12 @@ test("status reports reviewed current runs and refuses malformed archives", () =
       results: [
         {
           featureId: "extensions.query",
-          status: "test-failure",
+          status: "probe-invalid",
           attempt: { scope: "probe", startedAt: "2026-09-28T12:00:00.000Z" },
           tests: [
             {
               id: "criterion",
-              status: "test-failure",
+              status: "probe-invalid",
               attempt: { scope: "probe", startedAt: "2026-09-28T12:00:00.000Z" },
               reason: "Query timed out",
             },
@@ -108,7 +108,7 @@ test("status reports reviewed current runs and refuses malformed archives", () =
         },
         {
           featureId: "cursor.position",
-          status: "test-todo",
+          status: "probe-todo",
           attempt: { scope: "none" },
           tests: [],
           reason: "Missing implementation",
@@ -145,8 +145,9 @@ test("status reports reviewed current runs and refuses malformed archives", () =
       supported: 0,
       unsupported: 0,
       untestable: 0,
-      "test-todo": 1,
-      "test-failure": 1,
+      "probe-todo": 1,
+      "probe-invalid": 1,
+      "probe-conflict": 0,
     })
 
     const invoke = () =>
@@ -155,8 +156,8 @@ test("status reports reviewed current runs and refuses malformed archives", () =
     expect(selected.error).toBeUndefined()
     expect(selected.status, selected.stdout + selected.stderr).toBe(0)
     expect(selected.stdout).toContain("reviewed-kitty")
-    expect(selected.stdout).toContain("1 TEST TODO")
-    expect(selected.stdout).toContain("1 TEST FAILURE")
+    expect(selected.stdout).toContain("1 PROBE TODO")
+    expect(selected.stdout).toContain("1 PROBE INVALID")
     expect(selected.stdout).toContain("0/2 Supported / all")
     expect(selected.stdout).toContain("Archive apps: 1")
 

@@ -13,29 +13,29 @@ const counts = (entries: Partial<Record<ProbeStatus, number>>): Record<ProbeStat
   supported: 0,
   unsupported: 0,
   untestable: 0,
-  "test-todo": 0,
-  "test-failure": 0,
+  "probe-todo": 0,
+  "probe-invalid": 0,
   ...entries,
 })
 
 describe("#30763 baseline row readout", () => {
   it("owns only the not-measured branch; a decided row is the page's own text", () => {
-    // Windows Terminal's rich row: 88 TEST TODO + 11 TEST FAILURE, nothing decided.
-    const held = counts({ "test-todo": 88, "test-failure": 11 })
+    // Windows Terminal's rich row: 88 PROBE TODO + 11 PROBE INVALID, nothing decided.
+    const held = counts({ "probe-todo": 88, "probe-invalid": 11 })
     expect(decisiveCells(held)).toBe(0)
     expect(notMeasuredReadout(held)).toEqual({
       text: NOT_MEASURED_TEXT,
-      title: "0 Supported · 0 Unsupported · 0 Untestable · 88 TEST TODO · 11 TEST FAILURE",
+      title: "0 Supported · 0 Unsupported · 0 Untestable · 88 PROBE TODO · 11 PROBE INVALID",
     })
     expect(NOT_MEASURED_TEXT).not.toMatch(/%/)
 
     // vt220.js rich: 36 judged unsupported, so its zero is a measured zero.
-    const judged = counts({ unsupported: 36, untestable: 12, "test-todo": 33, "test-failure": 18 })
+    const judged = counts({ unsupported: 36, untestable: 12, "probe-todo": 33, "probe-invalid": 18 })
     expect(decisiveCells(judged)).toBe(36)
     expect(notMeasuredReadout(judged)).toBeUndefined()
 
     // Alacritty on Windows rich: the one rich cell it genuinely supports.
-    const oneSupported = counts({ supported: 1, "test-todo": 81, "test-failure": 17 })
+    const oneSupported = counts({ supported: 1, "probe-todo": 81, "probe-invalid": 17 })
     expect(notMeasuredReadout(oneSupported)).toBeUndefined()
   })
 

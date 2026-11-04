@@ -121,7 +121,7 @@ function tabCombinedResult(
     return {
       pass: false,
       response,
-      tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+      tests: [{ id: "criterion", status: "probe-todo", reason: "no cursor-position readback" }],
     }
   }
   if (home.row !== 1 || home.col !== 1) {
@@ -131,7 +131,7 @@ function tabCombinedResult(
       tests: [
         {
           id: "criterion",
-          status: "test-failure",
+          status: "probe-invalid",
           reason: `fixture not qualified: home 1;1, got ${home.row};${home.col}`,
         },
       ],
@@ -147,7 +147,7 @@ function tabCombinedResult(
     return {
       pass: false,
       response,
-      tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+      tests: [{ id: "criterion", status: "probe-todo", reason: "no cursor-position readback" }],
     }
   }
   if (comparison.row !== 1 || comparison.col !== 9) {
@@ -157,7 +157,7 @@ function tabCombinedResult(
       tests: [
         {
           id: "criterion",
-          status: "test-failure",
+          status: "probe-invalid",
           reason: `fixture not qualified: expected 1;9, got ${comparison.row};${comparison.col}`,
         },
       ],
@@ -173,7 +173,7 @@ function tabCombinedResult(
     return {
       pass: false,
       response,
-      tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+      tests: [{ id: "criterion", status: "probe-todo", reason: "no cursor-position readback" }],
     }
   }
   const expected = "combined HT/HTS fixture advances to the nearest owned stop at row 1, column 6"
@@ -339,7 +339,7 @@ function emojiWidthResult(ctx: LibProbeSource, { sample, maxColumns }: DeclaredW
       tests: [
         {
           id: "criterion",
-          status: "test-todo",
+          status: "probe-todo",
           reason: `Emoji width fixture needs at least ${required} columns to place the sample and sentinel without wrapping; measured ${ctx.cols}`,
         },
       ],
@@ -482,7 +482,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!before) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "no cursor-position readback" }],
           }
         }
         if (before.row !== 1 || before.col !== 1) {
@@ -492,7 +492,7 @@ export const textProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-failure",
+                status: "probe-invalid",
                 reason: `fixture not qualified: home 1;1, got ${before.row};${before.col}`,
               },
             ],
@@ -509,7 +509,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!pos) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "no cursor-position readback" }],
           }
         }
         const pass = pos.row === 1 && pos.col === 6
@@ -606,7 +606,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 2) || !validSize(ctx.getScrollback().screenLines, 2)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "insufficient-evidence" }],
           }
         }
         ctx.feed("\x1b[2J\x1b[H")
@@ -630,7 +630,7 @@ export const textProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-todo",
+                status: "probe-todo",
                 reason: `Wrap fixture needs at least 2x2, measured ${ctx.rows}x${cols}`,
               },
             ],
@@ -661,7 +661,7 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ cols, decawm }),
-            tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "no cursor-position readback" }],
           }
         }
         if (home.row !== 1 || home.col !== 1) {
@@ -671,7 +671,7 @@ export const textProbes: ProbeDefinition[] = [
             tests: [
               {
                 id: "criterion",
-                status: "test-failure",
+                status: "probe-invalid",
                 reason: `fixture not qualified: home 1;1, got ${home.row};${home.col}`,
               },
             ],
@@ -743,7 +743,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 9)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "insufficient-evidence" }],
           }
         }
         try {
@@ -807,7 +807,7 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            tests: [{ id: "criterion", status: "test-failure", reason }],
+            tests: [{ id: "criterion", status: "probe-invalid", reason }],
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
@@ -870,7 +870,7 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            tests: [{ id: "criterion", status: "test-failure", reason }],
+            tests: [{ id: "criterion", status: "probe-invalid", reason }],
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
@@ -1175,7 +1175,7 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            tests: [{ id: "criterion", status: "test-failure", reason }],
+            tests: [{ id: "criterion", status: "probe-invalid", reason }],
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
@@ -1251,7 +1251,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(cols, 34)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-failure", reason: "Tab fixture needs at least 34 columns" }],
+            tests: [{ id: "criterion", status: "probe-invalid", reason: "Tab fixture needs at least 34 columns" }],
           }
         }
         try {
@@ -1284,7 +1284,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 34)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Tab fixture needs at least 34 columns" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Tab fixture needs at least 34 columns" }],
           }
         }
         try {
@@ -1319,7 +1319,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(cols, 21)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-failure", reason: "Tab fixture needs at least 21 columns" }],
+            tests: [{ id: "criterion", status: "probe-invalid", reason: "Tab fixture needs at least 21 columns" }],
           }
         }
         try {
@@ -1348,7 +1348,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 21)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Tab fixture needs at least 21 columns" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Tab fixture needs at least 21 columns" }],
           }
         }
         try {
@@ -1402,7 +1402,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(cols, 21)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-failure", reason: "Tab fixture needs at least 21 columns" }],
+            tests: [{ id: "criterion", status: "probe-invalid", reason: "Tab fixture needs at least 21 columns" }],
           }
         }
         try {
@@ -1432,7 +1432,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 21)) {
           return {
             pass: false,
-            tests: [{ id: "criterion", status: "test-todo", reason: "Tab fixture needs at least 21 columns" }],
+            tests: [{ id: "criterion", status: "probe-todo", reason: "Tab fixture needs at least 21 columns" }],
           }
         }
         try {
@@ -1497,7 +1497,7 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            tests: [{ id: "criterion", status: "test-failure", reason }],
+            tests: [{ id: "criterion", status: "probe-invalid", reason }],
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
@@ -1547,7 +1547,7 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            tests: [{ id: "criterion", status: "test-failure", reason }],
+            tests: [{ id: "criterion", status: "probe-invalid", reason }],
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
@@ -1597,7 +1597,7 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            tests: [{ id: "criterion", status: "test-failure", reason }],
+            tests: [{ id: "criterion", status: "probe-invalid", reason }],
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",

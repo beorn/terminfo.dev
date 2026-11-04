@@ -4,7 +4,7 @@
  *   post-edit target a reviewer could judge. A missing capture branch must not silently change
  *   the cursor-only fallback, and an undersized terminal must refuse before writing. The DECSACE
  *   parser arm must classify its recorded frame pair: a measured ignore of either extent is a
- *   negative, and a DECCARA that inverts nothing leaves the extent TEST TODO (#30702, #32246).
+ *   negative, and a DECCARA that inverts nothing leaves the extent PROBE TODO (#30702, #32246).
  * @level l1
  * @consumer App probe pixel frames for editing operations.
  * @testonly none
@@ -87,7 +87,7 @@ test("every editing capture row asks the terminal's pixel report before painting
     const result = await find(id).term!(context)
     expect(result.observation, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
-      { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+      { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("cell size in pixels") },
     ])
     expect(String(result.tests?.[0]?.reason), id).toContain("CSI 16 t")
     expect(frames, id).toEqual([])
@@ -174,7 +174,7 @@ test("the readback-governed row refuses by name when the terminal cannot report 
   const result = await find("editing.delete-chars").term!(context)
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
-    { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+    { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("cell size in pixels") },
   ])
   expect(String(result.tests?.[0]?.reason)).toContain("CSI 16 t")
   expect(frames).toEqual([])
@@ -188,7 +188,7 @@ test("an undersized terminal refuses an editing capture before writing", async (
     expect(result, id).toMatchObject({
       tests: [
         expect.objectContaining({
-          status: "test-todo",
+          status: "probe-todo",
           reason: expect.stringMatching(
             new RegExp(
               `^${id}: capture-region readback needs a measured grid of at least [0-9]+x[0-9]+; measured 1x1$`,
@@ -211,7 +211,7 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
   expect(tightResult).toMatchObject({
     tests: [
       expect.objectContaining({
-        status: "test-todo",
+        status: "probe-todo",
         reason: "editing.insert-chars: capture-region readback needs a measured grid of at least 3x11; measured 1x8",
       }),
     ],
@@ -223,7 +223,7 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
   expect(refused).toMatchObject({
     tests: [
       expect.objectContaining({
-        status: "test-todo",
+        status: "probe-todo",
         reason: "editing.insert-chars: capture-region readback needs a measured grid of at least 3x11; measured 2x11",
       }),
     ],
@@ -237,7 +237,7 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
   expect(narrowResult).toMatchObject({
     tests: [
       expect.objectContaining({
-        status: "test-todo",
+        status: "probe-todo",
         reason: "editing.insert-chars: capture-region readback needs a measured grid of at least 3x11; measured 3x10",
       }),
     ],
@@ -249,7 +249,7 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
   const fitting = await find("editing.insert-chars").term!(fit.context)
   expect(fitting.observation).toBeUndefined()
   expect(fitting.tests).toMatchObject([
-    { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+    { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("cell size in pixels") },
   ])
   expect(fit.frames).toEqual([])
 })
@@ -274,7 +274,7 @@ test("without a capture adapter a converted row refuses by name and writes nothi
   expect(result).toMatchObject({
     tests: [
       expect.objectContaining({
-        status: "test-todo",
+        status: "probe-todo",
         reason:
           "editing.insert-chars: no owned capture adapter is installed in this run, so the region fixture cannot be read back",
       }),
@@ -480,9 +480,9 @@ test.each([
   expect(JSON.parse(result.response ?? "{}")).toEqual({ rect, stream })
 })
 
-// #32246: a DECCARA that inverts nothing in either frame has no same-path control, so the extent is TEST TODO with
+// #32246: a DECCARA that inverts nothing in either frame has no same-path control, so the extent is PROBE TODO with
 // the recorded frames, never a source-negative review or a negative assertion.
-test("editing.decsace with no inverse cell in either frame stays TEST TODO", () => {
+test("editing.decsace with no inverse cell in either frame stays PROBE TODO", () => {
   const none = "........|........"
   const result = find("editing.decsace").lib!(decsacePairSource(none, none))
   expect(result.pass).toBe(false)
@@ -553,7 +553,7 @@ test("editing.decsace without a capture adapter still clears its DECSACE extent"
   expect(result.tests).toEqual([
     {
       id: "criterion",
-      status: "test-failure",
+      status: "probe-invalid",
       reason:
         "no parsable cursor position reply after attributes set by DECCARA under a DECSACE extent; the public projection returned null and retained no bytes",
     },

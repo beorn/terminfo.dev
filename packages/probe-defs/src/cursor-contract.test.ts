@@ -241,7 +241,7 @@ test("cursor.shape's app arm decides from the terminal's DECRQSS cursor-style re
   expect(block.satisfies).toBe(true)
   const silent = await probe.term!(replayTermProbeSource(new Map()))
   expect(silent.observation).toBeUndefined()
-  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
+  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) })])
 })
 
 test("a decided Cursor row is unsatisfied when the origin control does not hold", async () => {

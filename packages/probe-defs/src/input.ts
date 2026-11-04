@@ -115,7 +115,7 @@ function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResul
 
 /**
  * The former vterm source-negative input sites (@cto 9fad23d7, #32246): no control in this run shows the same input
- * path can report the state, so the cell stays TEST TODO; source code never decides it.
+ * path can report the state, so the cell stays PROBE TODO; source code never decides it.
  */
 function vtermNoSamePathControl(ctx: LibProbeSource, state: object): ProbeCallbackResult | undefined {
   return ctx.backendName === "vterm" ? notTestedResult(NO_SAME_PATH_CONTROL, state) : undefined
@@ -693,7 +693,7 @@ function mouseEncodingLib(
  * and review branch rather than inheriting another engine's classification:
  * - ghostty core parses OSC 133;A;click_events=1, while its WASM binding does not forward click_events
  *   and a headless library run has no pointer surface -> HEADLESS_OBSERVABLE_REVIEW (Untestable-only).
- * alacritty and vt100-rust, the former source-negative sites, return TEST TODO with no same-path control (#32246).
+ * alacritty and vt100-rust, the former source-negative sites, return PROBE TODO with no same-path control (#32246).
  */
 const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
   string,
@@ -724,7 +724,7 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   if (ctx.backendName === "alacritty" || ctx.backendName === "vt100-rust") {
     return notTestedResult(NO_SAME_PATH_CONTROL, { storedClickEvents: false })
   }
-  // Adapters whose termless mouse path uses the shared encodeMouseReport return before encodeMouse: TEST TODO,
+  // Adapters whose termless mouse path uses the shared encodeMouseReport return before encodeMouse: PROBE TODO,
   // never a source-qualified review (#32246).
   const sharedEncoderClickEventsLimit = SHARED_ENCODER_CLICK_EVENTS_LIMITS.get(ctx.backendName)
   if (sharedEncoderClickEventsLimit) {

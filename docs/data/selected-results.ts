@@ -1,13 +1,21 @@
 /** Stored selection and projection for terminal observations. */
 import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
-import { aggregateCurrentResults, type SuiteRelation } from "./release-scope.ts"
+import {
+  aggregateCurrentResults,
+  classifyResultMethod,
+  computeFeatureResults,
+  type FeatureResult,
+  type ProbeMethod,
+  type SuiteRelation,
+} from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
 import {
   type Interpretation,
   type ProbeResult,
   type ProbeStatus,
+  type FeatureResultStatus,
   type HistoricalProbeRun,
   type ObservationFrame,
   type ProbeSubject,
@@ -151,6 +159,8 @@ export interface SelectedContextCell {
   origin: { runId: string; resultId: string }
   run: LoadedRun
   result: ProbeResult
+  /** Environment groups are retained run metadata, outside the feature-result catalogue. */
+  featureResult?: FeatureResult
 }
 
 /** An initialized draft can retain intent even when no measured subject or result exists. */
@@ -179,7 +189,7 @@ export interface SelectedContextSummary {
   missingIds: string[]
   contributingRunIds: string[]
   attempts: SelectedContextAttempt[]
-  counts: Record<ProbeStatus, number>
+  counts: Record<FeatureResultStatus, number>
   score: { supported: number; all: number }
   /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
   complete: boolean
@@ -488,12 +498,65 @@ function composeContextSummaries(
     // No measured run exists for a pre-start refusal: the explicit catalogue remains visible as
     // missingIds/TODO counts, without manufacturing ProbeResult or subject records.
     const viewIds = ids.length ? ids : [...catalogIds]
+    const chosenBaselines = candidates.filter((run) => baselineIds.has(run.runId))
     const baselines = [
-      ...candidates.filter((run) => baselineIds.has(run.runId)),
+      // Keep independent methods from the chosen subject version, with its preferred baseline last.
+      ...candidates
+        .filter(
+          (run) =>
+            !baselineIds.has(run.runId) &&
+            !workingIds.has(run.runId) &&
+            readCollectorSelection(run.rawReplies) === undefined &&
+            chosenBaselines.some((baseline) => baseline.subject.version === run.subject.version),
+        )
+        .sort((a, b) => Date.parse(a.measuredAt) - Date.parse(b.measuredAt) || a.runId.localeCompare(b.runId)),
+      ...chosenBaselines,
       ...candidates.filter((run) => workingIds.has(run.runId) && readCollectorSelection(run.rawReplies) === undefined),
     ]
+    const currentMethods = new Map<
+      string,
+      {
+        version: string
+        probes: Map<ProbeMethod | null, { run: LoadedRun; result: ProbeResult }>
+      }
+    >()
     const remember = (run: LoadedRun, result: ProbeResult): void => {
-      cells[result.featureId] = { origin: { runId: run.runId, resultId: result.featureId }, run, result }
+      const classification = classifyResultMethod(result, run.subject, run.assertions)
+      const method = classification.kind === "method" ? classification.method : null
+      const prior = currentMethods.get(result.featureId)
+      // Unmapped/open attempts and subject-version changes retain the previous latest-rerun semantics.
+      const probes =
+        prior?.version === run.subject.version && method !== null && !prior.probes.has(null)
+          ? prior.probes
+          : new Map<ProbeMethod | null, { run: LoadedRun; result: ProbeResult }>()
+      probes.set(method, { run, result })
+      currentMethods.set(result.featureId, { version: run.subject.version, probes })
+      const currentProbes = [...probes].map(([probeMethod, probe]) => ({
+        ...probe,
+        probeId: `${result.featureId}:${probeMethod ?? "unobserved"}`,
+        method: probeMethod,
+      }))
+      const featureResult = computeFeatureResults(
+        currentProbes.map((probe) => ({
+          featureId: result.featureId,
+          probeId: probe.probeId,
+          method: probe.method,
+          status: probe.result.status,
+        })),
+        [result.featureId],
+      )[result.featureId]
+      const representative = featureResult?.probeId
+        ? currentProbes.find((probe) => probe.probeId === featureResult.probeId)
+        : { run, result }
+      if (!representative) {
+        throw new Error(`Feature ${result.featureId} selects missing current probe ${featureResult?.probeId}`)
+      }
+      cells[result.featureId] = {
+        origin: { runId: representative.run.runId, resultId: result.featureId },
+        run: representative.run,
+        result: representative.result,
+        ...(featureResult && { featureResult }),
+      }
     }
     for (const run of baselines) {
       if (!run.results) throw new Error(`Run ${run.runId} has no stored current results`)
@@ -536,12 +599,18 @@ function composeContextSummaries(
       }
     }
     attempts.sort(compareContextAttempts)
-    const contributing = new Set(Object.values(cells).map((cell) => cell.origin.runId))
+    const contributing = new Set(
+      [...currentMethods.values()].flatMap(({ probes }) => [...probes.values()].map(({ run }) => run.runId)),
+    )
     const sourceOrder = [...baselines, ...selected.map((entry) => entry.run), ...candidates]
     const contributingRunIds = [...new Set(sourceOrder.map((run) => run.runId))].filter((id) => contributing.has(id))
     const missingIds = viewIds.filter((id) => !cells[id])
     const aggregate = aggregateCurrentResults(
-      viewIds.map((featureId) => ({ featureId, status: cells[featureId]?.result.status ?? "test-todo" })),
+      // Environment groups have retained run metadata but no computed feature result.
+      viewIds.map((featureId) => ({
+        featureId,
+        status: cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo",
+      })),
       viewIds,
     )
     summaries[contextKey] = {
@@ -571,10 +640,18 @@ function composeContextSummaries(
   return summaries
 }
 
-export function statesFor(projection: SelectedProjection, contextKey: string): Readonly<Record<string, ProbeStatus>> {
+export function statesFor(
+  projection: SelectedProjection,
+  contextKey: string,
+): Readonly<Record<string, FeatureResultStatus>> {
   const context = projection.contexts[contextKey]
   if (!context) throw new Error(`The projection classified no context ${contextKey}`)
-  return Object.fromEntries(context.catalogIds.map((id) => [id, context.cells[id]?.result.status ?? "test-todo"]))
+  return Object.fromEntries(
+    context.catalogIds.map((id) => [
+      id,
+      context.cells[id]?.featureResult?.status ?? context.cells[id]?.result.status ?? "probe-todo",
+    ]),
+  )
 }
 
 /**

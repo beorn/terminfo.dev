@@ -128,7 +128,7 @@ test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
       expect(result.tests).toEqual([
         {
           id: "criterion",
-          status: "test-failure",
+          status: "probe-invalid",
           reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
         },
       ])
@@ -254,5 +254,5 @@ test("reset.sgr records FAILURE and no observation when the terminal never answe
   const result = await termProbe("reset.sgr")(kittySource(false))
   expect(result.pass).toBe(false)
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) })])
 })

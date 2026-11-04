@@ -148,7 +148,7 @@ describe("live OSC 52 write ordering", () => {
       expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
       expect(result.tests).toMatchObject([
         expect.objectContaining({
-          status: "test-failure",
+          status: "probe-invalid",
           reason: expect.stringContaining(
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           ),
@@ -164,7 +164,7 @@ describe("live OSC 52 write ordering", () => {
         assertions: [],
         attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
       })
-      expect(stored.status).toBe("test-failure")
+      expect(stored.status).toBe("probe-invalid")
       expect(stored.reason).toContain('sent "\\u001b[6n"; received "\\u001b?"; timeout 37 ms')
       expect(stored).not.toHaveProperty("replyFailureTestIds")
       expect(clipboard).toBe("baseline")

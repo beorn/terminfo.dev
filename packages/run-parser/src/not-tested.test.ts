@@ -7,9 +7,17 @@
  */
 import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
-import { initializeRunDraft, type CapturedRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { createHash } from "node:crypto"
+import {
+  initializeRunDraft,
+  recordCollectorSelection,
+  recordCollectorAttempt,
+  type CapturedRunDraft,
+  type ProbeSuiteManifest,
+} from "@terminfo/probe-defs"
 import {
   parseProbeResults,
+  decodeCollectorDraft,
   parseRun,
   parseSuiteManifest,
   SOURCE_ANSWER_RETIRED_REASON,
@@ -27,6 +35,42 @@ const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
   probes: { term: catalog, lib: catalog, mux: catalog },
 }
 describe("execution-owned five statuses", () => {
+  // Gate 2: stored wire words must decode at both row levels; live writer tests cannot catch this seam.
+  it.each([
+    ["test-todo", "probe-todo", "none"],
+    ["probe-todo", "probe-todo", "none"],
+    ["test-failure", "probe-invalid", "probe"],
+    ["probe-invalid", "probe-invalid", "probe"],
+  ])("decodes stored %s to %s in result and test rows without mutating input", (stored, canonical, scope) => {
+    const attempt = scope === "none" ? { scope } : { scope, startedAt: "2026-10-21T05:00:00.000Z" }
+    const row = {
+      featureId: "alpha",
+      status: stored,
+      reason: "retained cause",
+      attempt,
+      tests: [{ id: "criterion", status: stored, reason: "retained cause", attempt }],
+    }
+    const original = JSON.stringify(row)
+    const [result] = parseProbeResults([row], "stored.json", new Set(["alpha"]), {}, [])
+    expect(result?.status).toBe(canonical)
+    expect(result?.tests[0]?.status).toBe(canonical)
+    expect(JSON.stringify(row)).toBe(original)
+  })
+
+  it.each(["result", "test"])("rejects unknown stored status in a %s row", (where) => {
+    const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
+    const row = {
+      featureId: "alpha",
+      status: where === "result" ? "unknown-status" : "probe-invalid",
+      reason: "retained cause",
+      attempt,
+      tests: [{ id: "criterion", status: where === "test" ? "unknown-status" : "probe-invalid", attempt }],
+    }
+    expect(() => parseProbeResults([row], "stored.json", new Set(["alpha"]), {}, [])).toThrow(
+      where === "result" ? "invalid probe status for alpha" : "invalid test status for alpha/criterion",
+    )
+  })
+
   it("initializes every frozen catalogue member without inventing measured identity or a criterion", async () => {
     const { initializeRunDraft } = await import("@terminfo/probe-defs")
     const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
@@ -39,7 +83,7 @@ describe("execution-owned five statuses", () => {
     })
     expect(draft.schemaVersion).toBe(4)
     expect(draft.results.map((result) => result.featureId)).toEqual(ids)
-    expect(draft.results.every((result) => result.status === "test-todo")).toBe(true)
+    expect(draft.results.every((result) => result.status === "probe-todo")).toBe(true)
     expect(draft.results.every((result) => result.attempt.scope === "none" && result.tests.length === 0)).toBe(true)
     expect(draft).not.toHaveProperty("subject")
     expect(draft).not.toHaveProperty("provenance")
@@ -47,9 +91,9 @@ describe("execution-owned five statuses", () => {
   })
 
   it.each([
-    ["supported", "test-todo", "test-todo"],
-    ["supported", "test-failure", "test-failure"],
-    ["test-failure", "test-todo", "test-failure"],
+    ["supported", "probe-todo", "probe-todo"],
+    ["supported", "probe-invalid", "probe-invalid"],
+    ["probe-invalid", "probe-todo", "probe-invalid"],
     ["supported", "unsupported", "unsupported"],
     ["supported", "supported", "supported"],
   ] as const)("retains required-check precedence for %s plus %s", async (first, second, expected) => {
@@ -58,10 +102,10 @@ describe("execution-owned five statuses", () => {
       id: `check-${index}`,
       status,
       attempt:
-        status === "test-todo"
+        status === "probe-todo"
           ? { scope: "none" as const }
           : { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" },
-      ...(status === "test-todo" || status === "test-failure" ? { reason: "required check incomplete" } : {}),
+      ...(status === "probe-todo" || status === "probe-invalid" ? { reason: "required check incomplete" } : {}),
     }))
     const result = finalizeProbeResult({
       featureId: "sgr.bold",
@@ -101,6 +145,41 @@ describe("collected current runs", () => {
     draft.origin = { kind: "collector" }
     return { ...draft, subject }
   }
+  it.each(["captured", "empty-selection"])(
+    "decodes stored statuses while retaining the exact %s document and its digest",
+    (kind) => {
+      const currentRun =
+        kind === "captured"
+          ? current()
+          : initializeRunDraft({
+              runId: "empty-run",
+              sourceRevision: "2".repeat(40),
+              source: { kind: "live" },
+              manifest: currentSuite,
+              intendedSubject: { kind: "term", id: "kitty" },
+            })
+      if (kind === "empty-selection") {
+        recordCollectorSelection(currentRun, [])
+        recordCollectorAttempt(currentRun, { ids: [], result: "empty" })
+      }
+      const raw = { ...currentRun, results: currentRun.results.map((result) => ({ ...result, status: "test-todo" })) }
+      const source = JSON.stringify(raw, null, 2) + "\n"
+      const digest = createHash("sha256").update(source).digest("hex")
+      if (kind === "captured") {
+        const loaded = parseRun("stored.json", source, catalog, new Map([[suite.probeHash, currentSuite]]))
+        expect(loaded.results?.map((result) => result.status)).toEqual(catalog.map(() => "probe-todo"))
+        expect(loaded.sha256).toBe(digest)
+      }
+      const decoded = decodeCollectorDraft("stored.json", source, currentSuite, raw.sourceRevision)
+      expect(decoded.kind).toBe(kind)
+      expect(decoded.run.results.map((result) => result.status)).toEqual(catalog.map(() => "probe-todo"))
+      expect(decoded.raw).toBe(source)
+      expect(decoded.sha256).toBe(digest)
+      expect(JSON.parse(decoded.raw)).toMatchObject({
+        results: catalog.map((featureId) => ({ featureId, status: "test-todo" })),
+      })
+    },
+  )
   // v1-v3 fixtures cannot detect a current reader/writer retaining the displaced wire names.
   // This pending-only run claims no successful measurement or native qualification.
   // Phase0: historical/live-only fixtures cannot detect lost capture identity in a replay result.
@@ -380,15 +459,15 @@ it.each([
   )
 })
 
-// Requirement: a stored source-negative or reply-path cell is recognised by its branch marker and reads TEST TODO,
+// Requirement: a stored source-negative or reply-path cell is recognised by its branch marker and reads Probe to-do,
 // never Unsupported (operator 2026-11-03, #32246).
 it.each(["source-negative-review", "reply-path-audit-review"] as const)(
-  "reads a stored %s unsupported cell as TEST TODO",
+  "reads a stored %s unsupported cell as Probe to-do",
   (criterionBranch) => {
     const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
     const row = { featureId: "alpha", status: "unsupported", criterionBranch, reason: "fixture", attempt, tests: [] }
     expect(parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])[0]).toMatchObject({
-      status: "test-todo",
+      status: "probe-todo",
       reason: SOURCE_ANSWER_RETIRED_REASON,
     })
   },
@@ -399,7 +478,7 @@ it.each(["source-negative-review", "reply-path-audit-review"] as const)(
 // Both stored screenshot-review branches are covered: 54 retained cells use visual-review and Screen 5.0.2
 // cursor.hide uses cursor-visibility-visual-review (peer af27-peer-1519).
 it.each(["visual-review", "cursor-visibility-visual-review"])(
-  "reads a stored %s screenshot review as TEST TODO with the visual-review reason",
+  "reads a stored %s screenshot review as Probe to-do with the visual-review reason",
   (criterionBranch) => {
     const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
     const reviewRef = JSON.stringify(["term", "alacritty", "0.16.1", "linux", "alpha"])
@@ -414,8 +493,8 @@ it.each(["visual-review", "cursor-visibility-visual-review"])(
     }
     const [read] = parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])
     const reason = "stored visual review not re-admitted: needs a same-run pixel check"
-    expect(read).toMatchObject({ status: "test-todo", reason })
-    expect(read?.tests[0]).toMatchObject({ status: "test-todo", reason })
+    expect(read).toMatchObject({ status: "probe-todo", reason })
+    expect(read?.tests[0]).toMatchObject({ status: "probe-todo", reason })
     expect(STORED_VISUAL_REVIEW_RETIRED_REASON).toBe(reason)
   },
 )
@@ -430,11 +509,11 @@ it.each([
   const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
   const row = {
     featureId: "alpha",
-    status: "test-todo",
+    status: "probe-todo",
     reason: "fixture",
     attempt,
     ...(where === "result" ? { reviewRef: ref } : {}),
-    tests: [{ id: "review", status: "test-todo", attempt, ...(where === "test" ? { reviewRef: ref } : {}) }],
+    tests: [{ id: "review", status: "probe-todo", attempt, ...(where === "test" ? { reviewRef: ref } : {}) }],
   }
   expect(() => parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])).toThrow(/review.*reference/i)
 })
@@ -468,7 +547,9 @@ it.each([
 ])("reads retained native custody in %s", (name) => {
   const { run, read } = nativeCapture(name)
   expect(read().results?.map((result) => result.status)).toEqual(
-    run.results.map((result: { status: string }) => result.status),
+    run.results.map((result: { status: string }) =>
+      result.status === "test-failure" ? "probe-invalid" : result.status,
+    ),
   )
 })
 
@@ -516,7 +597,7 @@ it.each(["record-only", "row-only", "todo-row"] as const)("rejects unmatched har
     if (!result.rawReplyRef) throw new Error("Fixture requires a raw reply reference")
     run.rawReplies[result.rawReplyRef] = ""
   }
-  if (mode === "todo-row") test.status = "test-todo"
+  if (mode === "todo-row") test.status = "probe-todo"
   expect(() => read(run)).toThrow(/unreproduced-callback record/)
 })
 

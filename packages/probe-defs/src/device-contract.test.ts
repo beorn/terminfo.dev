@@ -128,7 +128,7 @@ const DEVICE_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   ["device.xtwinops-18", "xtwinops-18-noop", "unsupported"],
   ["device.xtwinops-20", "xtwinops-20-noop", "unsupported"],
   ["device.xtwinops-21", "xtwinops-21-noop", "unsupported"],
-  // A title that never restores leaves push and pop undecided in one observation: TEST TODO, never source-graded (#32246).
+  // A title that never restores leaves push and pop undecided in one observation: PROBE TODO, never source-graded (#32246).
   ["device.xtwinops-22", "xtwinops-22-noop", "not-tested"],
   ["device.xtwinops-23", "xtwinops-23-noop", "not-tested"],
   ["device.xtreportcolors", "xtreportcolors-noop", "unsupported"],

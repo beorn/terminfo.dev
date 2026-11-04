@@ -65,7 +65,7 @@ test.each(fixtures)("$id declines invalid or undersized geometry before bytes or
     expect(events, `${id} at ${measuredRows}x${measuredCols}`).toEqual([])
     expect(result.observation, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+      expect.objectContaining({ status: "probe-todo", reason: expect.any(String) }),
     ])
   }
   expect(definition.termNeedsGeometry, id).toBe(true)
@@ -76,7 +76,7 @@ test.each(fixtures)("$id declines invalid or undersized geometry before bytes or
     expect(result.observation, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
       expect.objectContaining({
-        status: "test-todo",
+        status: "probe-todo",
         reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
       }),
     ])

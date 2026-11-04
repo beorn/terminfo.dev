@@ -89,7 +89,7 @@ test.each([
     NonNullable<(typeof modesProbes)[number]["lib"]>
   >
   expect(result.tests).toEqual([
-    { id: "criterion", status: "test-todo", reason: "adapter binding scripted-engine applicationKeypad" },
+    { id: "criterion", status: "probe-todo", reason: "adapter binding scripted-engine applicationKeypad" },
   ])
   expect(result.assertions ?? []).toEqual([])
 })
@@ -101,7 +101,7 @@ test("application keypad inconsistent non-null pair stays criterion TODO", () =>
     NonNullable<(typeof modesProbes)[number]["lib"]>
   >
   expect(result.tests).toEqual([
-    { id: "criterion", status: "test-todo", reason: "DECKPAM state pair: set false, reset true" },
+    { id: "criterion", status: "probe-todo", reason: "DECKPAM state pair: set false, reset true" },
   ])
   expect(result.assertions ?? []).toEqual([])
 })
@@ -111,7 +111,7 @@ test.each([{ insertBefore: null }, { insertAfter: null }])("private4 requires bo
   const { source } = readbackContext(4, options)
   const result = headless("modes.decsclm")(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
   expect(result.tests).toEqual([
-    { id: "criterion", status: "test-todo", reason: "adapter binding scripted-engine insertMode" },
+    { id: "criterion", status: "probe-todo", reason: "adapter binding scripted-engine insertMode" },
   ])
   expect(result.assertions ?? []).toEqual([])
 })
@@ -139,7 +139,7 @@ test.each([
     NonNullable<(typeof modesProbes)[number]["lib"]>
   >
   expect(result.tests).toMatchObject([
-    { id: "criterion", status: "test-todo", reason: "adapter binding scripted-engine syncOutput" },
+    { id: "criterion", status: "probe-todo", reason: "adapter binding scripted-engine syncOutput" },
   ])
   expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.assertions ?? []).toEqual([])
@@ -162,7 +162,7 @@ test("strict support needs Ps2 after reset, not a permanently-set reply", () => 
     NonNullable<(typeof modesProbes)[number]["lib"]>
   >
   expect(result.observation?.outcome).toBe("inconclusive")
-  expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+  expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
 })
 
 // @failure DEC-private4 mutates ANSI insertMode yet a positive DECRPM reply still establishes smooth-scroll support.
@@ -274,7 +274,7 @@ test.each(features)(
         noObservable: expect.stringContaining(`CSI ? ${number} $ p`),
       })
       expect(result.tests, label).toMatchObject([
-        { id: "review", status: "test-todo", reason: expect.stringMatching(/no DECRPM reply/) },
+        { id: "review", status: "probe-todo", reason: expect.stringMatching(/no DECRPM reply/) },
       ])
       expect(result.observation, label).toBeUndefined()
       expect(result.assertions, label).toBeUndefined()
@@ -449,7 +449,7 @@ function capturedModeContext(identity: LibProbeSource["runtimeIdentity"], behavi
 
 // CTO45a/M5: input observer absence cannot hide these pinned engines own absent mouse modes.
 // Existing mode rows never execute the six input callbacks; existing source/adapter fallback tests stay unchanged.
-// #32246: a consumed mode with no visible effect has no same-path control, so it is TEST TODO, never source-graded.
+// #32246: a consumed mode with no visible effect has no same-path control, so it is PROBE TODO, never source-graded.
 const mouseSourceCases = [
   ["input.pixel-mouse", 1016],
   ["input.urxvt-mouse", 1015],
@@ -463,7 +463,7 @@ test.each(
   capturedModeEngines.flatMap(({ engine, identity }) =>
     mouseSourceCases.map(([id, mode]) => ({ engine, identity, id, mode })),
   ),
-)("$engine $id keeps its consumed own mouse mode TEST TODO without a same-path control", ({ identity, id, mode }) => {
+)("$engine $id keeps its consumed own mouse mode PROBE TODO without a same-path control", ({ identity, id, mode }) => {
   const fixture = capturedModeContext(identity)
   const source = { ...fixture.source, capabilities: { ...fixture.source.capabilities, extensions: new Set<string>() } }
   const result = inputProbes.find((entry) => entry.id === id)!.lib!(source)
@@ -484,7 +484,7 @@ test.each(capturedModeEngines)("$engine held modes retain named TODOs", ({ engin
     ...(engine === "vt100" ? [["modes.reverse-video", "5"]] : []),
   ]) {
     const result = headless(id!)(capturedModeContext(identity).source) as ModeResult
-    expect.soft(result.tests, id).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+    expect.soft(result.tests, id).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     expect.soft(result.observation, id).toBeUndefined()
     expect.soft(result.assertions, id).toBeUndefined()
     expect.soft(JSON.stringify(result), id).toMatch(new RegExp(`held.*${held}|${held}.*held`, "i"))
@@ -507,7 +507,7 @@ const absentCommands = [
 ]
 
 test.each(capturedModeEngines)(
-  "$engine absent commands keep consumed and leaked controls TEST TODO without a same-path control",
+  "$engine absent commands keep consumed and leaked controls PROBE TODO without a same-path control",
   ({ identity }) => {
     for (const { id, commands } of absentCommands) {
       for (const behavior of ["consume", "leak"]) {
@@ -555,7 +555,7 @@ test.each(capturedModeEngines)(
         expect.soft(result.assertions, id).toBeUndefined()
         expect
           .soft(result.tests, id)
-          .toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+          .toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
         expect
           .soft(JSON.stringify(result), id)
           .toMatch(behavior.startsWith("missing") ? /X|control|marker/i : /line|row|cursor|position/i)
@@ -586,7 +586,7 @@ test.each(capturedModeEngines)(
     for (const { id } of absentCommands) {
       for (const { value, reason } of changes) {
         const result = headless(id)(capturedModeContext(value).source) as ModeResult
-        expect.soft(result.tests, id).toMatchObject([{ status: "test-todo", reason: expect.stringMatching(reason) }])
+        expect.soft(result.tests, id).toMatchObject([{ status: "probe-todo", reason: expect.stringMatching(reason) }])
         expect.soft(result.assertions, id).toBeUndefined()
         expect.soft(result.criterionBranch, id).not.toBe("source-negative-review")
       }

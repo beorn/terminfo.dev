@@ -147,7 +147,7 @@ test.each(["erase.character", "modes.alt-screen.exit", "modes.altscreen-1047", "
           expect.arrayContaining([
             expect.objectContaining({
               id: "remaining-facets",
-              status: "test-todo",
+              status: "probe-todo",
               reason: expect.stringMatching(
                 id === "modes.altscreen-1047" ? /clear.*exit/i : /saved cursor.*scrollback/,
               ),

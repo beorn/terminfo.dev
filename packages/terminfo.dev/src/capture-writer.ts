@@ -109,7 +109,7 @@ export function finalizeCollectedDraft(
       reason,
       tests: [
         ...result.tests.filter((test) => test.id !== "console-host"),
-        { id: "console-host", status: "test-todo" as const, attempt: { scope: "none" as const }, reason },
+        { id: "console-host", status: "probe-todo" as const, attempt: { scope: "none" as const }, reason },
       ],
     }
   })

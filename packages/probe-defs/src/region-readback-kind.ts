@@ -688,7 +688,7 @@ export function regionReadbackProbe(
             return {
               pass: false,
               response: JSON.stringify({ before: responseGrid(before, row.before) }),
-              tests: [{ id: "criterion", status: "test-failure", reason }],
+              tests: [{ id: "criterion", status: "probe-invalid", reason }],
             }
           }
           return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, row.seedNote)
@@ -762,7 +762,7 @@ export function regionReadbackProbe(
         tests: [
           {
             id: "criterion",
-            status: "test-todo",
+            status: "probe-todo",
             reason:
               ctx.captureGeometryRefusal === undefined
                 ? `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`

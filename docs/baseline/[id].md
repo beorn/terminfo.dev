@@ -13,7 +13,7 @@ const { params } = useData()
 const p = params.value
 
 const features = JSON.parse(p.features)
-// D132 B (#30917): the environment groups in this baseline are ungraded, never TEST TODO.
+// D132 B (#30917): the environment groups in this baseline are ungraded, never PROBE TODO.
 const environmentGroupCount = features.filter((feature) => isEnvironmentGroup(feature.id)).length
 const backends = JSON.parse(p.backends)
 const scores = JSON.parse(p.scores)
@@ -25,8 +25,9 @@ const barSegments = [
   { id: 'supported', label: 'Supported', symbol: '✓' },
   { id: 'unsupported', label: 'Unsupported', symbol: '✗' },
   { id: 'untestable', label: 'Untestable', symbol: '?' },
-  { id: 'test-todo', label: 'TEST TODO', symbol: '–' },
-  { id: 'test-failure', label: 'TEST FAILURE', symbol: '!' },
+  { id: 'probe-todo', label: 'PROBE TODO', symbol: '–' },
+  { id: 'probe-invalid', label: 'PROBE INVALID', symbol: '!' },
+  { id: 'probe-conflict', label: 'PROBE CONFLICT', symbol: '!' },
 ]
 
 function featureTooltip(f) {
@@ -138,7 +139,7 @@ function platformIcons(b) {
     <span class="summary-version" tabindex="0" :aria-label="'Source versions: ' + s.version" :title="s.version" :data-tooltip="'Source versions: ' + s.version"><span class="summary-version-text">{{ s.version }}</span></span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + ({ untestable: 'inconclusive', 'test-todo': 'untested', 'test-failure': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
+        :class="'bar-' + ({ untestable: 'inconclusive', 'probe-todo': 'untested', 'probe-invalid': 'errors', 'probe-conflict': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
@@ -163,7 +164,7 @@ function platformIcons(b) {
     <span class="summary-version">{{ s.version }}</span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + ({ untestable: 'inconclusive', 'test-todo': 'untested', 'test-failure': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
+        :class="'bar-' + ({ untestable: 'inconclusive', 'probe-todo': 'untested', 'probe-invalid': 'errors', 'probe-conflict': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>

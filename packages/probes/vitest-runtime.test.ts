@@ -161,11 +161,11 @@ test("actual erase entry persists domain results: capture-failure", async () => 
     const reportFiles = (await readdir(directory)).filter((path) => path.endsWith(".report.json"))
     expect(reportFiles).toHaveLength(1)
     const report = JSON.parse(await readFile(join(directory, reportFiles[0]!), "utf8"))
-    expect(report).toMatchObject({ counts: { "test-failure": 11 } })
+    expect(report).toMatchObject({ counts: { "probe-invalid": 11 } })
     expect(record.error).toMatch(/ENOTDIR/)
     expect(record.assertions).toEqual([])
     expect(record.failureResults).toHaveLength(11)
-    expect(record.failureResults?.every(({ status }) => status === "test-failure")).toBe(true)
+    expect(record.failureResults?.every(({ status }) => status === "probe-invalid")).toBe(true)
     expect(record.failureResults?.every(({ attempt }) => attempt.scope === "collection")).toBe(true)
   } finally {
     await runtime.close()

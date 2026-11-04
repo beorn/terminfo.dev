@@ -338,7 +338,7 @@ reason.
 For `"manual"` and `"unprobed"` features, set the `probe` field to
 `"Manual verification required — no automated probe available."`
 Viewport hold's library arm measures ordinary and synchronized output with qualified viewport controls.
-Its app arm names the missing actuator/readback and stays Test to-do; registration supplies no app support measurement.
+Its app arm names the missing actuator/readback and stays PROBE TODO; registration supplies no app support measurement.
 See the canonical declaration contract above.
 
 For UI-owned viewport behavior, prefer `"manual"` plus an exact reproduction
@@ -377,7 +377,7 @@ Support claims require retained observations and deciding assertions; legacy `pa
 | `ctx.capabilities.*` | Declared term features      | Check `capabilities.kittyKeyboard`            |
 | `ctx.getTitle()`     | OSC title sequences         | Check title changed                           |
 
-Execution-only refusals retain Test to-do or Test failure tests with reasons, without inventing a measured observation.
+Execution-only refusals retain PROBE TODO or PROBE INVALID tests with reasons, without inventing a measured observation.
 
 ## Content Enrichment
 

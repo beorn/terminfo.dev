@@ -24,7 +24,7 @@ import {
   type HeadlessModel,
 } from "./testing/group-harness.ts"
 
-/** #32246: a former source-review site returns the TEST TODO coverage record, never a source-decided result. */
+/** #32246: a former source-review site returns the PROBE TODO coverage record, never a source-decided result. */
 function expectNoSamePathTodo(result: ProbeCallbackResult, noObservable = NO_SAME_PATH_CONTROL) {
   expect(result.pass).toBe(false)
   expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
@@ -314,37 +314,37 @@ test("a row reading overline is notTested when the bit is null, bound when prese
 
 /**
  * A cell without the selected attribute or colour retains its named missing-observable or no-control
- * TEST TODO cause, never a source-decided negative (#32246).
+ * PROBE TODO cause, never a source-decided negative (#32246).
  */
 const underlineColorUnexposed =
   "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
 const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   id: string,
   mutation: string,
-  negativeOutcome: "inconclusive" | "unsupported" | "test-todo",
+  negativeOutcome: "inconclusive" | "unsupported" | "probe-todo",
   noObservable?: string,
 ])[] = [
   ["sgr.bold", "bold-noop", "inconclusive"],
-  ["sgr.faint", "faint-noop", "test-todo"],
-  ["sgr.italic", "italic-noop", "test-todo"],
+  ["sgr.faint", "faint-noop", "probe-todo"],
+  ["sgr.italic", "italic-noop", "probe-todo"],
   ["sgr.underline.single", "underline-single-noop", "inconclusive"],
-  ["sgr.underline.double", "underline-double-noop", "test-todo"],
-  ["sgr.underline.curly", "underline-curly-noop", "test-todo"],
-  ["sgr.underline.dotted", "underline-dotted-noop", "test-todo"],
-  ["sgr.underline.dashed", "underline-dashed-noop", "test-todo"],
-  ["sgr.blink", "blink-noop", "test-todo"],
+  ["sgr.underline.double", "underline-double-noop", "probe-todo"],
+  ["sgr.underline.curly", "underline-curly-noop", "probe-todo"],
+  ["sgr.underline.dotted", "underline-dotted-noop", "probe-todo"],
+  ["sgr.underline.dashed", "underline-dashed-noop", "probe-todo"],
+  ["sgr.blink", "blink-noop", "probe-todo"],
   ["sgr.inverse", "inverse-noop", "inconclusive"],
-  ["sgr.hidden", "hidden-noop", "test-todo"],
-  ["sgr.strikethrough", "strikethrough-noop", "test-todo"],
+  ["sgr.hidden", "hidden-noop", "probe-todo"],
+  ["sgr.strikethrough", "strikethrough-noop", "probe-todo"],
   ["sgr.overline", "overline-noop", "inconclusive"],
-  ["sgr.underline.color", "underline-color-noop", "test-todo", underlineColorUnexposed],
-  ["sgr.underline-color-indexed", "underline-color-indexed-noop", "test-todo", underlineColorUnexposed],
-  ["sgr.underline-color-rgb", "underline-color-rgb-noop", "test-todo", underlineColorUnexposed],
+  ["sgr.underline.color", "underline-color-noop", "probe-todo", underlineColorUnexposed],
+  ["sgr.underline-color-indexed", "underline-color-indexed-noop", "probe-todo", underlineColorUnexposed],
+  ["sgr.underline-color-rgb", "underline-color-rgb-noop", "probe-todo", underlineColorUnexposed],
   ["sgr.underline-color-reset", "sgr59-noop", "unsupported"],
-  ["sgr.fg.standard", "fg-standard-noop", "test-todo"],
-  ["sgr.bg.standard", "bg-standard-noop", "test-todo"],
-  ["sgr.fg.bright", "fg-bright-noop", "test-todo"],
-  ["sgr.bg.bright", "bg-bright-noop", "test-todo"],
+  ["sgr.fg.standard", "fg-standard-noop", "probe-todo"],
+  ["sgr.bg.standard", "bg-standard-noop", "probe-todo"],
+  ["sgr.fg.bright", "fg-bright-noop", "probe-todo"],
+  ["sgr.bg.bright", "bg-bright-noop", "probe-todo"],
   ["sgr.fg.default", "fg-default-noop", "unsupported"],
   ["sgr.bg.default", "bg-default-noop", "unsupported"],
   ["sgr.fg.256", "fg-256-noop", "inconclusive"],
@@ -393,12 +393,12 @@ test.each(
     const negativeSurface = createSemanticSurface({ mutations: [mutation] })
     const negativeResult = probe.lib(libProbeSource(negativeSurface))
     expect(negativeResult.pass).toBe(false)
-    if (negativeOutcome === "test-todo") expectNoSamePathTodo(negativeResult, noObservable)
+    if (negativeOutcome === "probe-todo") expectNoSamePathTodo(negativeResult, noObservable)
     else expect(negativeResult.observation?.outcome).toBe(negativeOutcome)
     const negativeGraded = await regradeRow(probe, row, {
       headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
     })
-    expect(negativeGraded.after).toBe(negativeOutcome === "test-todo" ? undefined : negativeOutcome)
+    expect(negativeGraded.after).toBe(negativeOutcome === "probe-todo" ? undefined : negativeOutcome)
     expect(negativeGraded.satisfies).toBe(negativeOutcome === "unsupported")
   },
 )
@@ -417,13 +417,13 @@ test("a decided SGR row reads unsatisfied from an inert cell", async () => {
 })
 
 // Existing satisfaction rows cover true only; preserve false and missing-X failures separately.
-// #32246: an unreported or false attribute has no same-path control, so it is TEST TODO with its retained state.
+// #32246: an unreported or false attribute has no same-path control, so it is PROBE TODO with its retained state.
 test.each([
   ["sgr.faint", "dim"],
   ["sgr.italic", "italic"],
   ["sgr.strikethrough", "strikethrough"],
   ["sgr.blink", "blink"],
-] as const)("%s retains unreported %s as TEST TODO without a same-path control", (id, field) => {
+] as const)("%s retains unreported %s as PROBE TODO without a same-path control", (id, field) => {
   const probe = sgrProbes.find((probe) => probe.id === id)!
   const run = (value: boolean | null, char = "X") =>
     probe.lib!(libProbeSource(inertModel(40, { [field]: value, char })))
@@ -463,7 +463,7 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
       expect(result.tests).toContainEqual(
         expect.objectContaining({
           id: "review",
-          status: "test-todo",
+          status: "probe-todo",
           reason: expect.stringContaining("distinct colored seed"),
         }),
       )
@@ -476,12 +476,12 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
 
     // A missing fixture cell is a different cause; it must not inherit the seed TODO.
     const missing = probe.lib!(libProbeSource(cellsModel([{ char: " " }, ...cells.slice(1)])))
-    expect(missing.tests?.some((row) => row.status === "test-todo")).not.toBe(true)
+    expect(missing.tests?.some((row) => row.status === "probe-todo")).not.toBe(true)
   },
 )
 
 test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
-  "%s names the unobserved setup facets while retaining TEST TODO",
+  "%s names the unobserved setup facets while retaining PROBE TODO",
   (id) => {
     const probe = sgrProbes.find((entry) => entry.id === id)!
     const result = probe.lib!(
@@ -507,7 +507,7 @@ test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
 )
 
 test.each(["fg", "bg"] as const)(
-  "a distinct %s seed names its unexposed reset field while retaining TEST TODO",
+  "a distinct %s seed names its unexposed reset field while retaining PROBE TODO",
   (channel) => {
     const source = libProbeSource(
       cellsModel([{ char: "C" }, { char: "X", [channel]: { r: 205, g: 0, b: 0 } }, { char: "R" }]),
@@ -553,7 +553,7 @@ test.each(["wrong requested color", "baseline already requested color"])(
     expect(result.tests).toContainEqual(
       expect.objectContaining({
         id: "review",
-        status: "test-todo",
+        status: "probe-todo",
         reason: expect.stringContaining("requested rgb(255,0,128)"),
       }),
     )

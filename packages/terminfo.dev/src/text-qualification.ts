@@ -126,7 +126,7 @@ export function recordTextQualificationTests(
       run.subject.os?.toLowerCase() === "macos" &&
       result.host === undefined &&
       manifest.textClaims?.includes(result.featureId) === true
-    const status = !admittedContext || !attempt ? "test-todo" : assessment.qualified ? "supported" : "test-failure"
+    const status = !admittedContext || !attempt ? "probe-todo" : assessment.qualified ? "supported" : "probe-invalid"
     const reason = !admittedContext
       ? "Text criterion requires a declared claim and terminal-owned macOS cell observer"
       : !attempt
@@ -139,7 +139,7 @@ export function recordTextQualificationTests(
         {
           id: "text-qualification",
           status,
-          attempt: status === "test-todo" ? { scope: "none" } : qualificationAttempt,
+          attempt: status === "probe-todo" ? { scope: "none" } : qualificationAttempt,
           ...(reason && { reason }),
         },
       ],

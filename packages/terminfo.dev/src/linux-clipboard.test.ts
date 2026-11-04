@@ -521,13 +521,13 @@ try {
     assert.deepEqual(JSON.parse(owned.rawReplies["reset.ris"]).queries.map(query => query.raw),
       ["\x1b[5;5R", "\x1b[1;1R"])
     assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write"), undefined)
-    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").status, "test-todo")
+    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").status, "probe-todo")
     assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent")
     assert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
     for (const [run, out] of [["c".repeat(32), process.stdout], [capture, foreign], [capture, fake]]) {
       const refused = await runProbeBatch({ ids: ["reset.ris"], captureRunId: run, ownedTerminal: adapter, out })
       assert.deepEqual(refused.observations, [])
-      assert.equal(refused.results.find(item => item.featureId === "reset.ris").status, "test-todo")
+      assert.equal(refused.results.find(item => item.featureId === "reset.ris").status, "probe-todo")
       assert.match(refused.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
       assert.deepEqual(JSON.parse(refused.rawReplies["reset.ris"]).writes, [])
     }
@@ -553,7 +553,7 @@ try {
     const disposed = await runProbeBatch({ ids: ["reset.ris"], captureRunId: capture,
       ownedTerminal: adapter, out: process.stdout })
     assert.deepEqual(disposed.observations, [])
-    assert.equal(disposed.results.find(item => item.featureId === "reset.ris").status, "test-todo")
+    assert.equal(disposed.results.find(item => item.featureId === "reset.ris").status, "probe-todo")
     assert.match(disposed.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
     assert.deepEqual(JSON.parse(disposed.rawReplies["reset.ris"]).writes, [])
     await new Promise((resolve) => foreign.end(resolve))
@@ -653,7 +653,7 @@ test("a nested transaction refuses and callback failure restores and verifies th
           transaction(
             async () => ({
               pass: true,
-              tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
+              tests: [{ id: "criterion", status: "probe-todo", reason: "insufficient-evidence" }],
             }),
             (event) => events.push(event),
             async () => {},

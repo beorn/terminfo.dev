@@ -1,7 +1,7 @@
 /**
  * @failure A stored source-answer key no longer round-trips, so the run reader cannot recognise a retired cell.
  * @level l0
- * @consumer Canonical run reader (run-parser) recognising stored source-answer cells as TEST TODO
+ * @consumer Canonical run reader (run-parser) recognising stored source-answer cells as PROBE TODO
  * @testonly none
  */
 import { expect, it } from "vitest"

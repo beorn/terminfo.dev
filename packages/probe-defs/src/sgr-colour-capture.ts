@@ -157,7 +157,7 @@ export function colourCaptureVerdict(id: string, verdict: ProbeCallbackResult): 
       tests: [
         {
           id: "review",
-          status: "test-todo",
+          status: "probe-todo",
           reason: "colour oracle cannot distinguish ignored from identical paint against the current reference",
         },
       ],

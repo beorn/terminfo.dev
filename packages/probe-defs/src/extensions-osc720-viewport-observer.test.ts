@@ -149,7 +149,7 @@ test.each([
     expect(result).toMatchObject({
       criterionBranch: "headless-observable-review",
       notTested: { noObservable: "scrollback viewport scroll control" },
-      tests: [{ id: "review", status: "test-todo", reason: productViewport.reason }],
+      tests: [{ id: "review", status: "probe-todo", reason: productViewport.reason }],
     })
     expect(result.observation).toBeUndefined()
   }

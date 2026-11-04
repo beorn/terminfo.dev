@@ -27,7 +27,7 @@ const HOST_DA1 = "\u001b[?61;6;7;14;21;22;23;24;28;32;42c"
 const HOST_ANSWERED = "answered by the Windows console host OpenConsole.exe, not measured on the terminal"
 const NO_REPLY = "no reply after the console host's DA1; the host may have swallowed the query"
 /** Each decided cell retains its query assertion type and the raw reply its verdict rests on. */
-const decided: Array<[string, "supported" | "unsupported" | "test-failure", "query_reply", string]> = [
+const decided: Array<[string, "supported" | "unsupported" | "probe-invalid", "query_reply", string]> = [
   // The host answers DECRQM itself, before its DA1.
   [ids[0]!, "supported", "query_reply", exchange("\u001b[?2026$p\u001b[c", `\u001b[?2026;2$y${HOST_DA1}`)],
   // XTWINOPS 14 passes through: the terminal's reply follows the host's DA1.
@@ -39,7 +39,7 @@ const decided: Array<[string, "supported" | "unsupported" | "test-failure", "que
   // A plain reply string carries no sentinel: the host's DA, held like any unsentinelled reply.
   [ids[4]!, "supported", "query_reply", HOST_DA1],
   // A failed attempt stays visible as a failure: it is a repair item, not a capability claim.
-  [ids[5]!, "test-failure", "query_reply", exchange("\u001b[?u\u001b[c", `\u001b[?0u${HOST_DA1}`)],
+  [ids[5]!, "probe-invalid", "query_reply", exchange("\u001b[?u\u001b[c", `\u001b[?0u${HOST_DA1}`)],
 ]
 function exchange(sequence: string, raw: string): string {
   return JSON.stringify({ writes: [], queries: [{ sequence, raw }] })
@@ -73,14 +73,14 @@ const assertions = () =>
 const current = (os: string) => {
   const results: ProbeResult[] = ids.map((featureId) => ({
     featureId,
-    status: "test-todo",
+    status: "probe-todo",
     attempt: { scope: "none" },
     tests: [],
     reason: "No implementation",
   }))
   decided.forEach(([featureId, status, assertionType], index) => {
     results[ids.indexOf(featureId)] =
-      status === "test-failure"
+      status === "probe-invalid"
         ? {
             featureId,
             status,
@@ -133,12 +133,12 @@ describe("Windows console-host rule", () => {
     const selected = projection.history["term:windows-terminal"]![0]!
     const byId = new Map(selected.results.map((result) => [result.featureId, result]))
     expect([0, 1, 2, 3, 4, 5].map((index) => byId.get(ids[index]!)?.status)).toEqual([
-      "test-todo",
+      "probe-todo",
       "supported",
-      "test-todo",
-      "test-todo",
-      "test-todo",
-      "test-failure",
+      "probe-todo",
+      "probe-todo",
+      "probe-todo",
+      "probe-invalid",
     ])
     expect(byId.get(ids[0]!)?.reason).toBe(HOST_ANSWERED)
     expect(byId.get(ids[2]!)?.reason).toBe(NO_REPLY)
@@ -148,13 +148,14 @@ describe("Windows console-host rule", () => {
       supported: 1,
       unsupported: 0,
       untestable: 0,
-      "test-todo": 271,
-      "test-failure": 1,
+      "probe-todo": 271,
+      "probe-invalid": 1,
+      "probe-conflict": 0,
     })
-    expect(projection.table[run.runId]?.[ids[0]!]).toBe("test-todo")
-    expect(classifyDevelopmentRun(run).states[ids[0]!]).toBe("test-todo")
+    expect(projection.table[run.runId]?.[ids[0]!]).toBe("probe-todo")
+    expect(classifyDevelopmentRun(run).states[ids[0]!]).toBe("probe-todo")
     // The writer retains the host prerequisite; readers use that recorded grade.
-    expect(run.results?.find((result) => result.featureId === ids[0])?.status).toBe("test-todo")
+    expect(run.results?.find((result) => result.featureId === ids[0])?.status).toBe("probe-todo")
   })
   it("never touches a run outside Windows", () => {
     const states = statusOf(current("macos"))
