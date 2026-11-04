@@ -85,7 +85,18 @@ export async function runEraseReplay(
     if (dirt) throw new Error("Erase capture requires committed source inputs:\n" + dirt)
     const manifest = derivedSuiteManifest(snapshot)
     const sourceRevision = sourceSuiteEnvironment().TERMINFO_SOURCE_REVISION
-    let capture: Pick<CapturedRunDraft, "runId" | "suiteId" | "subject" | "runtimeIdentity" | "identity" | "measuredAt" | "origin" | "provenance" | "outerApp">
+    let capture: Pick<
+      CapturedRunDraft,
+      | "runId"
+      | "suiteId"
+      | "subject"
+      | "runtimeIdentity"
+      | "identity"
+      | "measuredAt"
+      | "origin"
+      | "provenance"
+      | "outerApp"
+    >
     let source: Parameters<typeof readProbeCapture>[1]
     let replay: () => EraseRecords | Promise<EraseRecords>
     if (retained) {
@@ -112,55 +123,55 @@ export async function runEraseReplay(
       }
       finalRecord.files.push(join(directory, source.trace.path))
     } else {
-    const runtimeIdentity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
-    const subject = {
-      kind: "lib" as const,
-      id: "xtermjs",
-      version: runtimeIdentity.engineVersion,
-      os: platform(),
-      osVersion: release(),
-      outerTerminal: null,
-      mux: null,
-      config: "default",
-      permissions: null,
-    }
-    const measuredAt = new Date().toISOString()
-    const liveCapture: CapturedRunDraft = {
-      ...initializeRunDraft({
-        runId: randomUUID(),
-        manifest,
-        sourceRevision,
-        source: { kind: "live" },
-        intendedSubject: subject,
-      }),
-      subject,
-      runtimeIdentity,
-      identity: "verified",
-      measuredAt,
-      origin: { kind: "collector" },
-    }
-    const recorded = captureEraseCalls(context, runtimeIdentity)
-    liveCapture.rawReplies["collector.callLog"] = JSON.stringify(recorded.log)
-    liveCapture.rawReplies["collector.captureChecks"] = JSON.stringify(recorded.results)
-    liveCapture.rawReplies["collector.traceManifest"] = JSON.stringify({
-      captureKind: "buffer_state",
-      geometry: HEADLESS_TERMINAL,
-      blobs: [],
-    })
-    const capturePath = saveDaemonProbeRun(liveCapture, directory)
-    capture = liveCapture
-    finalRecord.files.push(capturePath)
-    source = {
-      kind: "trace" as const,
-      trace: {
-        path: basename(capturePath),
-        sha256: createHash("sha256").update(readFileSync(capturePath)).digest("hex"),
-      },
-      captureRunId: capture.runId,
-      captureSuiteId: capture.suiteId,
-      captureSourceRevision: sourceRevision,
-    }
-    const expected = { manifest, sourceRevision, subject, runtimeIdentity, geometry: HEADLESS_TERMINAL }
+      const runtimeIdentity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
+      const subject = {
+        kind: "lib" as const,
+        id: "xtermjs",
+        version: runtimeIdentity.engineVersion,
+        os: platform(),
+        osVersion: release(),
+        outerTerminal: null,
+        mux: null,
+        config: "default",
+        permissions: null,
+      }
+      const measuredAt = new Date().toISOString()
+      const liveCapture: CapturedRunDraft = {
+        ...initializeRunDraft({
+          runId: randomUUID(),
+          manifest,
+          sourceRevision,
+          source: { kind: "live" },
+          intendedSubject: subject,
+        }),
+        subject,
+        runtimeIdentity,
+        identity: "verified",
+        measuredAt,
+        origin: { kind: "collector" },
+      }
+      const recorded = captureEraseCalls(context, runtimeIdentity)
+      liveCapture.rawReplies["collector.callLog"] = JSON.stringify(recorded.log)
+      liveCapture.rawReplies["collector.captureChecks"] = JSON.stringify(recorded.results)
+      liveCapture.rawReplies["collector.traceManifest"] = JSON.stringify({
+        captureKind: "buffer_state",
+        geometry: HEADLESS_TERMINAL,
+        blobs: [],
+      })
+      const capturePath = saveDaemonProbeRun(liveCapture, directory)
+      capture = liveCapture
+      finalRecord.files.push(capturePath)
+      source = {
+        kind: "trace" as const,
+        trace: {
+          path: basename(capturePath),
+          sha256: createHash("sha256").update(readFileSync(capturePath)).digest("hex"),
+        },
+        captureRunId: capture.runId,
+        captureSuiteId: capture.suiteId,
+        captureSourceRevision: sourceRevision,
+      }
+      const expected = { manifest, sourceRevision, subject, runtimeIdentity, geometry: HEADLESS_TERMINAL }
       replay = () => replayEraseCalls(readEraseCapture(directory, source, expected).log, context)
     }
     finalRecord.captureRunId = capture.runId

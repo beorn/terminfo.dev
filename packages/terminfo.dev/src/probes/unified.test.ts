@@ -2113,7 +2113,10 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
   receiptDirectories.push(directory)
   const draft = asRun(batch)
   if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) throw new Error("Incomplete fixture")
-  const path = saveDaemonProbeRun({ ...draft, subject: draft.subject, identity: draft.identity, measuredAt: draft.measuredAt, origin: draft.origin }, directory)
+  const path = saveDaemonProbeRun(
+    { ...draft, subject: draft.subject, identity: draft.identity, measuredAt: draft.measuredAt, origin: draft.origin },
+    directory,
+  )
   const bytes = readFileSync(path)
   const source = {
     kind: "trace" as const,
@@ -2131,8 +2134,11 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     { ...source, captureSourceRevision: "other-source" },
     { ...source, trace: { ...source.trace, sha256: "0".repeat(64) } },
     { ...source, trace: { ...source.trace, path: "../outside.json" } },
-  ]) expect(() => readProbeCapture(directory, invalid, expected)).toThrow()
-  expect(() => readProbeCapture(directory, source, { ...expected, subject: { ...expected.subject, version: "other" } })).toThrow()
+  ])
+    expect(() => readProbeCapture(directory, invalid, expected)).toThrow()
+  expect(() =>
+    readProbeCapture(directory, source, { ...expected, subject: { ...expected.subject, version: "other" } }),
+  ).toThrow()
   const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
   expect(typeof replay.context.capture).toBe("function")
   const callback = ALL_PROBES.find(({ id }) => id === "sgr.bold")?.term
@@ -2154,11 +2160,21 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       expect(assertion.runId).not.toBe(draft.runId)
       expect(assertion.source).toEqual(source)
       expect(assertion.subject).toEqual(draft.subject)
-      expect(assertion.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({ status: "supported", assertionType: "query_reply" })
+      expect(assertion.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({
+        status: "supported",
+        assertionType: "query_reply",
+      })
       const assertionPath = record.files.find((file) => file.endsWith(assertion.runId + ".assertion.draft.json"))
       if (!assertionPath) throw new Error("Missing persisted assertion")
       const executingManifest = derivedSuiteManifest()
-      expect(parseRun(assertionPath, readFileSync(assertionPath, "utf8"), executingManifest.catalogIds!, new Map([[executingManifest.probeHash, executingManifest]])).source).toEqual(source)
+      expect(
+        parseRun(
+          assertionPath,
+          readFileSync(assertionPath, "utf8"),
+          executingManifest.catalogIds!,
+          new Map([[executingManifest.probeHash, executingManifest]]),
+        ).source,
+      ).toEqual(source)
     }
     expect(nativeIdentity).not.toHaveBeenCalled()
     expect(writes).toHaveLength(beforeReplay)
