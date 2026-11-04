@@ -115,6 +115,14 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   const inert = await regradeRow(probe, row, { headless: inertLibProbeSource() })
   expect(inert.after, `${id}: no-op source cannot establish support`).not.toBe("supported")
   const workingSource = semanticSurfaceSource()
+  const cwdUri = "file://localhost/e4-original-cwd"
+  const cwdControl =
+    id === "extensions.osc7-cwd"
+      ? `\x1b]633;P;Cwd=${cwdUri}\x07`
+      : id === "extensions.osc633-p"
+        ? `\x1b]7;${cwdUri}\x07`
+        : null
+  if (cwdControl) workingSource.feed(cwdControl)
   const beforeTitle = workingSource.getTitle()
   const beforeIcon = workingSource.getIconLabel?.()
   const beforeCwd = workingSource.getCwd?.()
@@ -124,7 +132,11 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   expect(workingSource.getIconLabel?.(), `${id}: restores the icon`).toBe(beforeIcon)
   expect(workingSource.getCwd?.(), `${id}: restores the working directory`).toBe(beforeCwd)
   const disabledSource = semanticSurfaceSource([mutation])
+  if (cwdControl) disabledSource.feed(cwdControl)
+  const disabledCwd = disabledSource.getCwd?.()
+  if (cwdControl) expect(disabledCwd, `${id}: the other protocol qualifies the Cwd reader`).toBe(cwdUri)
   const disabled = await regradeRow(probe, row, { headless: disabledSource })
+  expect(disabledSource.getCwd?.(), `${id}: negative control restores the working directory`).toBe(disabledCwd)
   // A roundtrip mismatch leaves the write/read combination undecided; it is not an engine negative.
   expect(disabled.after, `${id}: only ${mutation} is disabled`).toBe(
     id === "extensions.osc52-clipboard" ? "inconclusive" : "unsupported",
@@ -149,7 +161,11 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
     expect(marks.at(-1), `${id}: the other namespace remains observable`).toEqual(
       selector === "d"
         ? { type: "command-end", rawStatus: "23" }
-        : { type: selector === "a" ? "prompt" : selector === "b" ? "command" : "output", startRow: cursor.y, startCol: cursor.x },
+        : {
+            type: selector === "a" ? "prompt" : selector === "b" ? "command" : "output",
+            startRow: cursor.y,
+            startCol: cursor.x,
+          },
     )
   }
 
