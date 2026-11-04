@@ -432,12 +432,7 @@ export function osInputReviewResult(
  * graded from a source read (C7); the caller names the missing observable.
  */
 export function colorReadbackReviewResult(noObservable: string, state: object): ProbeCallbackResult {
-  return reviewResult(
-    "color-readback-review",
-    `${noObservable}, so this run cannot decide it`,
-    noObservable,
-    state,
-  )
+  return reviewResult("color-readback-review", `${noObservable}, so this run cannot decide it`, noObservable, state)
 }
 
 /**
@@ -1017,7 +1012,11 @@ export async function sgrCaptureFrames(
     criterionBranch: "visual-review",
     tests: [
       { id: "capture", status: "supported", assertionRefs: [0] },
-      { id: "review", status: "test-todo", reason: "Valid control and target capture; no same-run pixel check decides it" },
+      {
+        id: "review",
+        status: "test-todo",
+        reason: "Valid control and target capture; no same-run pixel check decides it",
+      },
     ],
     assertions: [
       {

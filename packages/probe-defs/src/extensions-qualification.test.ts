@@ -908,7 +908,11 @@ test.each([
     const reviewed = run(readings)
     expect(reviewed.result.criterionBranch).toBe("color-readback-review")
     expect(reviewed.result.tests).toEqual([
-      { id: "review", status: "test-todo", reason: `${reviewed.result.notTested!.noObservable}, so this run cannot decide it` },
+      {
+        id: "review",
+        status: "test-todo",
+        reason: `${reviewed.result.notTested!.noObservable}, so this run cannot decide it`,
+      },
     ])
     expect(reviewed.result.observation).toBeUndefined()
     expect(reviewed.result.assertions).toBeUndefined()
