@@ -71,7 +71,7 @@ test.each([
     })
     expect(result.status, result.stderr).toBe(0)
     const actual = JSON.parse(readFileSync(launched, "utf8"))
-    expect(actual.length).toBeGreaterThan(0)
+    expect(actual).toEqual(expect.arrayContaining([expect.any(String)]))
     expect(JSON.parse(readFileSync(join(out, "app-argv.json"), "utf8"))).toEqual(actual)
   } finally {
     rmSync(directory, { recursive: true, force: true })

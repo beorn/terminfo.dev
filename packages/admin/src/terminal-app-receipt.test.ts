@@ -252,7 +252,7 @@ test.each([
     return
   }
   const result = capture()
-  const commands = JSON.parse(String(result.trace.codesignCommandsRaw))
+  const commands = JSON.parse(String(result.trace.codesignCommandsRaw)) as { argv: string[] }[]
   expect(commands[0]).toMatchObject({
     command: "codesign",
     argv: ["--verify", "--strict", "/Applications/Ghostty.app"],
@@ -269,8 +269,8 @@ test.each([
       stdout: expect.any(String),
       stderr: expect.any(String),
     })
-    expect(commands[1].argv[2]).toBe("-R")
-    expect(commands[1].argv[3]).toMatch(/^=anchor apple generic/)
+    expect(commands[1]?.argv[2]).toBe("-R")
+    expect(commands[1]?.argv[3]).toMatch(/^=anchor apple generic/)
   }
   if (scenario === "not-developer-id" || scenario === "unsigned") {
     expect(result.receipt).toBeUndefined()

@@ -758,7 +758,10 @@ it.each([false, true])(
     const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "iterm2", os: "macos" } })
     expect(batch.appLaunch).toEqual(receipt.appLaunch)
     if (withArgv) expect(batch.rawReplies["collector.appLaunchTrace"]).toBeUndefined()
-    else expect(JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!).argvAbsentReason).toMatch(/iterm2.*wrapper/i)
+    else {
+      const trace = JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!) as { argvAbsentReason: string }
+      expect(trace.argvAbsentReason).toMatch(/iterm2.*wrapper/i)
+    }
   },
 )
 
@@ -774,7 +777,8 @@ it("names the absent app receipt on a hosted Linux collection", async () => {
   process.stdout.write = (() => true) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "xterm", os: "linux" } })
   expect(batch.appLaunch).toBeUndefined()
-  expect(JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!).argvAbsentReason).toMatch(/no app launch receipt/)
+  const trace = JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!) as { argvAbsentReason: string }
+  expect(trace.argvAbsentReason).toMatch(/no app launch receipt/)
 })
 
 it("refuses a mutating probe when neither owned terminal nor disposable receipt is presented", async () => {
