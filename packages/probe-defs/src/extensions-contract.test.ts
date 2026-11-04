@@ -71,7 +71,30 @@ const EXTENSIONS_SEMANTIC_SURFACE_CONTROLS = [
   ["osc52-write", "osc52-write-noop"],
   ["osc52-read", "osc52-read-noop"],
   ["osc5522-clipboard", "osc5522-unsupported"],
+  ["osc133-a", "osc133-a-noop"],
+  ["osc133-b", "osc133-b-noop"],
+  ["osc133-c", "osc133-c-noop"],
+  ["osc133-d", "osc133-d-noop"],
+  ["osc633-a", "osc633-a-noop"],
+  ["osc633-b", "osc633-b-noop"],
+  ["osc633-c", "osc633-c-noop"],
+  ["osc633-d", "osc633-d-noop"],
+  ["osc633-p", "osc633-p-noop"],
+  ["osc7-cwd", "osc7-noop"],
+  ["osc8", "osc8-noop"],
+  ["osc720-scroll-up", "osc720-noop"],
 ] as const
+
+function semanticSurfaceSource(mutations: readonly string[] = []) {
+  const source = libProbeSource(createSemanticSurface({ mutations }))
+  return {
+    ...source,
+    capabilities: {
+      ...source.capabilities,
+      extensions: new Set([...source.capabilities.extensions, "semantic-marks", "semantic-command-end", "hyperlinks"]),
+    },
+  }
+}
 
 const KITTY_DISABLED_BITS = new Map<string, number>([
   ["kitty-disambiguate-noop", 1],
@@ -91,14 +114,16 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
 
   const inert = await regradeRow(probe, row, { headless: inertLibProbeSource() })
   expect(inert.after, `${id}: no-op source cannot establish support`).not.toBe("supported")
-  const workingSource = libProbeSource(createSemanticSurface())
+  const workingSource = semanticSurfaceSource()
   const beforeTitle = workingSource.getTitle()
   const beforeIcon = workingSource.getIconLabel?.()
+  const beforeCwd = workingSource.getCwd?.()
   const working = await regradeRow(probe, row, { headless: workingSource })
   expect(working.after, `${id}: working feature must establish support`).toBe("supported")
   expect(workingSource.getTitle(), `${id}: restores the title`).toBe(beforeTitle)
   expect(workingSource.getIconLabel?.(), `${id}: restores the icon`).toBe(beforeIcon)
-  const disabledSource = libProbeSource(createSemanticSurface({ mutations: [mutation] }))
+  expect(workingSource.getCwd?.(), `${id}: restores the working directory`).toBe(beforeCwd)
+  const disabledSource = semanticSurfaceSource([mutation])
   const disabled = await regradeRow(probe, row, { headless: disabledSource })
   // A roundtrip mismatch leaves the write/read combination undecided; it is not an engine negative.
   expect(disabled.after, `${id}: only ${mutation} is disabled`).toBe(
@@ -112,6 +137,22 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   }
   expect(disabledSource.feedCapture("\x1b[c"), `${id}: unrelated DA1 still answers`).toMatch(/^\x1b\[\?[0-9;]+c$/u)
 
+  const semantic = /^extensions\.osc(133|633)-([abcd])$/u.exec(id)
+  if (semantic) {
+    const otherNamespace = semantic[1] === "133" ? "633" : "133"
+    const selector = semantic[2]!
+    const beforeMarks = disabledSource.getSemanticMarks!()
+    const cursor = disabledSource.getCursor()
+    disabledSource.feed(`\x1b]${otherNamespace};${selector.toUpperCase()}${selector === "d" ? ";23" : ""}\x07`)
+    const marks = disabledSource.getSemanticMarks!()
+    expect(marks.slice(0, -1), `${id}: preserves existing mark history`).toEqual(beforeMarks)
+    expect(marks.at(-1), `${id}: the other namespace remains observable`).toEqual(
+      selector === "d"
+        ? { type: "command-end", rawStatus: "23" }
+        : { type: selector === "a" ? "prompt" : selector === "b" ? "command" : "output", startRow: cursor.y, startCol: cursor.x },
+    )
+  }
+
   const disabledBit = KITTY_DISABLED_BITS.get(mutation)
   if (disabledBit !== undefined) {
     expect(disabledSource.feedCapture("\x1b[?u"), "the probe popped its own flags").toBe("\x1b[?0u")
@@ -123,6 +164,20 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
     expect(disabledSource.feedCapture("\x1b[?u"), "pop restores the prior flag state").toBe("\x1b[?0u")
   }
 })
+
+// These readers cannot observe the whole claim; a richer shared fixture cannot promote them.
+// Reflow's real positive/negative/fault controls remain owned by packages/probes/headless-batch.test.ts.
+test.each(["semantic-prompts", "osc-633-vscode", "osc133-p", "osc633-e"])(
+  "extensions.%s retains its explicit TODO with available shared readers",
+  (name) => {
+    const probe = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!
+    for (const source of [inertLibProbeSource(), semanticSurfaceSource()]) {
+      const result = probe.lib!(source)
+      expect(result.tests, name).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+      expect(result.observation?.outcome, name).not.toBe("supported")
+    }
+  },
+)
 
 /**
  * The 79 extension features (78 defined in extensions.ts + 1 catalog-only in features.json).
