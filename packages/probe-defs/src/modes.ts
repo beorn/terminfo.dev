@@ -180,7 +180,7 @@ async function primaryRestoreCapture(
       },
       assertions: [],
       tests: [
-        { id: "entry-qualified", status: "test-todo", reason: "entry not qualified before the failed exit roundtrip" },
+        { id: "entry-qualified", status: "test-todo", reason: "alternate-screen entry not observed, so exit cannot be attributed" },
         remainingFacets,
       ],
     }

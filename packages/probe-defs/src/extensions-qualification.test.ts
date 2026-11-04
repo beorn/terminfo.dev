@@ -940,9 +940,12 @@ test.each([
     } as unknown as LibProbeSource)
     expect(queries).toEqual([query])
     expect(writes).toEqual([])
-    // #32246: default-color readback has no pointer slot, so no same-path control decides the reset: TEST TODO.
+    // #32246: default-color readback has no pointer slot, so the reset is TEST TODO with its own cause (@cto batch8 5).
     expect(result.criterionBranch).toBeUndefined()
-    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.notTested).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support is not observable on this reader`,
+    })
     expect(result.tests).toBeUndefined()
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()

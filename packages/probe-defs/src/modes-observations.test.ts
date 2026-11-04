@@ -1197,7 +1197,7 @@ test.each([
   expect(result.tests?.some((row) => row.status === "unsupported")).not.toBe(true)
   expect(result.tests).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("entry not qualified") }),
+      expect.objectContaining({ id: "entry-qualified", status: "test-todo", reason: "alternate-screen entry not observed, so exit cannot be attributed" }),
     ]),
   )
 })
