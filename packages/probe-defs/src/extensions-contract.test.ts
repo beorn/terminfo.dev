@@ -260,11 +260,13 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   if (id === "extensions.osc2-title") disabledSource.feed("\x1b]2;batch9-original-title\x07")
   if (id === "extensions.osc52-write") disabledSource.feed(`\x1b]52;c;${btoa("batch9-prior-write")}\x07`)
   const disabledTitle = disabledSource.getTitle()
+  const disabledIcon = disabledSource.getIconLabel?.()
   const priorWrites = disabledSource.getClipboardState?.().writes ?? []
   if (cwdControl) disabledSource.feed(cwdControl)
   const disabledCwd = disabledSource.getCwd?.()
   if (cwdControl) expect(disabledCwd, `${id}: the other protocol qualifies the Cwd reader`).toBe(cwdUri)
   const disabled = await regradeRow(probe, row, { headless: disabledSource })
+  if (id === "extensions.osc1-icon") expect(disabledSource.getIconLabel?.()).toBe(disabledIcon)
   if (id === "extensions.osc2-title") expect(disabledSource.getTitle()).toBe(disabledTitle)
   if (id === "extensions.osc52-write") {
     expect(disabledSource.getClipboardState!().writes.slice(0, priorWrites.length)).toEqual(priorWrites)

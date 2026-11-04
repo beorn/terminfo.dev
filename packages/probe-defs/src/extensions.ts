@@ -5040,7 +5040,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             { before, iconControl, controlledIcon, requested, control, after },
           )
         } finally {
-          ctx.feed(`\x1b]1;${before.icon}\x07`)
+          ctx.feed(`\x1b]0;${before.icon}\x07`)
           ctx.feed(`\x1b]2;${before.title}\x07`)
         }
       },
