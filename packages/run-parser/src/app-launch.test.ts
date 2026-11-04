@@ -9,6 +9,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
+import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import { parseAppLaunchReceipt, transformInvocation } from "./app-launch.ts"
 
 // Retain only the measured receipt verbatim; this parser does not decode a capture run.
@@ -24,7 +25,7 @@ const MEASURED = {
     path: "/Users/runner/work/_temp/Alacritty.dmg",
     sha256: "ad8d7de35fb38e43184776cac6dfee05ca325caa0b6639a06a55e54e4b026620",
   },
-}
+} satisfies AppLaunchReceipt
 
 /**
  * The two documents 28240 retired, carrying their own receipt blocks verbatim (@cto 2026-10-08: the
@@ -136,9 +137,16 @@ describe("a measured Windows launch uses the same parser", () => {
     productVersion: "1.21.2361.0",
     executableSha256: "c3".repeat(32),
     sourceArtifact: { kind: "portable-zip", path: String.raw`C:\runner\wt.zip`, sha256: "d4".repeat(32) },
-  }
+  } satisfies AppLaunchReceipt
   it("preserves transformed invocation argv in the Windows receipt arm", () => {
-    const receipt = { ...windows, argv: ["C:\\launch\\wt.exe", "--token=[redacted]", "--", "verbatim value"] }
+    const receipt = {
+      ...windows,
+      argv: ["C:\\launch\\wt.exe", "--token=[redacted]", "--", "verbatim value"],
+    } satisfies AppLaunchReceipt
+    // Typecheck must reject non-string elements in this arm, independently of runtime parsing.
+    // @ts-expect-error invocation elements are strings
+    const invalid: AppLaunchReceipt = { ...windows, argv: [42] }
+    void invalid
     expect(parse(receipt)).toEqual(receipt)
   })
   it("preserves the measured Windows executable, version and ZIP without bundle fields", () => {
@@ -255,14 +263,17 @@ describe("a measured Windows launch uses the same parser", () => {
 // The bundle parser previously silently dropped argv; the Windows arm rejected it as an extra field.
 it("preserves transformed invocation argv without substituting the measured executable", () => {
   const receipt = {
-    ...appLaunchOf(),
+    ...MEASURED,
     argv: [
       "/invoked/wezterm",
       "--token=[redacted]",
       "--",
       ...Array.from({ length: 128 }, (_, index) => `verbatim value ${index}`),
     ],
-  }
+  } satisfies AppLaunchReceipt
+  // @ts-expect-error invocation elements are strings in the bundle arm too
+  const invalid: AppLaunchReceipt = { ...MEASURED, argv: [42] }
+  void invalid
   expect(parse(receipt)).toEqual(receipt)
 })
 

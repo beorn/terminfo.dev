@@ -758,9 +758,24 @@ it.each([false, true])(
     const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "iterm2", os: "macos" } })
     expect(batch.appLaunch).toEqual(receipt.appLaunch)
     if (withArgv) expect(batch.rawReplies["collector.appLaunchTrace"]).toBeUndefined()
-    else expect(JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!).argvAbsentReason).toMatch(/iterm2.*wrapper/)
+    else expect(JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!).argvAbsentReason).toMatch(/iterm2.*wrapper/i)
   },
 )
+
+it("names the absent app receipt on a hosted Linux collection", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const { appLaunch: omitted, ...receipt } = hostedLaunchReceipt()
+  void omitted
+  receipt.runner.os = "Linux"
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, JSON.stringify(receipt))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "xterm", os: "linux" } })
+  expect(batch.appLaunch).toBeUndefined()
+  expect(JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!).argvAbsentReason).toMatch(/no app launch receipt/)
+})
 
 it("refuses a mutating probe when neither owned terminal nor disposable receipt is presented", async () => {
   const writes: string[] = []

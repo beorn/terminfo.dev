@@ -178,6 +178,7 @@ describe("owned Terminal.app receipt", () => {
 test.each([
   "developer-id",
   "bundle-version-differs",
+  "sensitive-marker",
   "not-developer-id",
   "unsigned",
   "missing-tool",
@@ -236,7 +237,7 @@ test.each([
     captureTerminalAppReceipt(owner, 555, scenario === "bundle-version-differs" ? "cli-build-tag" : "2.15", [
       "/invoked/ghostty",
       "--token=private",
-      "--config-file=/private/public-config",
+      scenario === "sensitive-marker" ? "--session=public-run-marker" : "--config-file=/private/public-config",
     ])
   const failure = {
     "missing-tool": /strict verification failed/,
@@ -278,11 +279,19 @@ test.each([
   expect(result.receipt).toMatchObject({
     bundlePath: "/Applications/Ghostty.app",
     executablePath: owner.executablePath,
-    argv: ["/invoked/ghostty", "--token=[redacted]", "--config-file=/private/public-config"],
+    argv: [
+      "/invoked/ghostty",
+      "--token=[redacted]",
+      scenario === "sensitive-marker" ? "--session=[redacted]" : "--config-file=/private/public-config",
+    ],
     sourceArtifact: {
       kind: "developer-id-signed-bundle",
       codeSignature: { identifier: "org.ghostty", cdHash: "12".repeat(20), strictVerified: true },
     },
   })
   expect(JSON.stringify(result)).not.toContain('private"')
+  if (scenario === "sensitive-marker") {
+    expect(JSON.parse(String(result.trace.argvRedactedIndexes))).toEqual([1, 2])
+    expect(JSON.stringify(result)).not.toContain("public-run-marker")
+  }
 })
