@@ -13,7 +13,7 @@ function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-function readReference(directory: string, reference: unknown): Buffer {
+export function readReference(directory: string, reference: unknown): Buffer {
   if (
     !object(reference) ||
     Object.keys(reference).sort().join(",") !== "path,sha256" ||
@@ -75,6 +75,55 @@ export function readProbeCapture(
   }
   const files = [join(directory, source.trace.path)]
   const references = [...capture.screenshotRefs, ...capture.textSnapshotRefs]
+  // These are dependency slots, not a second observation/grading parser. Parsed frames
+  // already have semantic validation; raw traces need only their binding checked here.
+  const frameReference = (frame: unknown) => {
+    if (!object(frame)) throw new IncompleteReplay("Capture frame binding is not an object")
+    for (const key of ["ref", "sourceRef"] as const) {
+      const ref = frame[key]
+      if (key === "sourceRef" && ref === undefined) continue
+      if (typeof ref !== "string" || !/^sha256:[0-9a-f]{64}$/.test(ref)) {
+        throw new IncompleteReplay("Capture frame requires a canonical " + key)
+      }
+      references.push(ref)
+    }
+  }
+  for (const result of [...(capture.results ?? []), ...capture.observations]) {
+    for (const frame of result.frames ?? []) frameReference(frame)
+  }
+  for (const shape of capture.textQualification?.shapes ?? []) {
+    for (const frame of shape.frames ?? []) frameReference(frame)
+  }
+  const traceReferences = (label: string, raw: string) => {
+    const trace = parseJsonStrict(label, raw)
+    if (!object(trace)) throw new IncompleteReplay("Capture trace is not an object: " + label)
+    if (trace.captures === undefined) return
+    if (!Array.isArray(trace.captures)) throw new IncompleteReplay("Capture trace frames are not an array: " + label)
+    for (const capture of trace.captures) {
+      if (!object(capture)) throw new IncompleteReplay("Capture trace entry is not an object: " + label)
+      frameReference(capture.frame)
+    }
+  }
+  for (const result of capture.results ?? []) {
+    if (!result.rawReplyRef) continue
+    const raw = capture.rawReplies[result.rawReplyRef]
+    // Query-only and headless records also use rawReplyRef; their plain replies are not native traces.
+    if (typeof raw === "string" && raw.trimStart().startsWith("{")) traceReferences(result.rawReplyRef, raw)
+  }
+  const calibration = capture.rawReplies["collector.captureCalibration.trace"]
+  if (calibration !== undefined) traceReferences("collector.captureCalibration.trace", calibration)
+  for (const result of capture.results ?? []) {
+    const key = result.featureId + ".callLog"
+    const raw = capture.rawReplies[key]
+    if (raw === undefined) continue
+    readCallLog(parseJsonStrict(key, raw), {
+      onOperation(operation) {
+        if (operation.path === "context.capture" && "value" in operation.outcome) {
+          frameReference(operation.outcome.value)
+        }
+      },
+    })
+  }
   const manifestRaw = capture.rawReplies["collector.traceManifest"]
   if (manifestRaw !== undefined || references.length) {
     if (typeof manifestRaw !== "string") throw new IncompleteReplay("Capture dependencies lack collector.traceManifest")
@@ -83,16 +132,18 @@ export function readProbeCapture(
       throw new IncompleteReplay("Capture dependencies lack their blob manifest")
     }
     const blobPaths = new Set<string>()
+    const blobDigests = new Set<string>()
     for (const blob of manifest.blobs) {
       readReference(directory, blob)
       if (!object(blob) || typeof blob.path !== "string" || blobPaths.has(blob.path)) {
         throw new IncompleteReplay("Capture contains duplicate blob references")
       }
       blobPaths.add(blob.path)
+      blobDigests.add("sha256:" + blob.sha256)
       files.push(join(directory, blob.path))
     }
     for (const path of references) {
-      if (!blobPaths.has(path)) throw new IncompleteReplay("Capture has an unbound blob: " + path)
+      if (!blobDigests.has(path)) throw new IncompleteReplay("Capture has an unbound blob: " + path)
     }
   }
   return { capture, files }

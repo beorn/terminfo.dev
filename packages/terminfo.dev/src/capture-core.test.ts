@@ -29,8 +29,8 @@ test("an identical repeat is the same artifact: same ref, one file, bytes untouc
   const dir = directory()
   const bytes = Buffer.from("\u0089PNG\r\n\u001a\n same screen, same bytes")
 
-  const first = retain(dir, bytes, "png")
-  const second = retain(dir, bytes, "png")
+  const first = retain(dir, bytes, "png", () => {})
+  const second = retain(dir, bytes, "png", () => {})
 
   expect(first).toBe(`sha256:${digest(bytes)}`)
   expect(second).toBe(first)
@@ -45,7 +45,7 @@ test("different bytes behind an existing name are named, never overwritten (#307
   const path = join(dir, `${digest(bytes)}.bin`)
   writeFileSync(path, impostor)
 
-  expect(() => retain(dir, bytes, "bin")).toThrow(/digest collision/)
+  expect(() => retain(dir, bytes, "bin", () => {})).toThrow(/digest collision/)
   expect(readFileSync(path).equals(impostor)).toBe(true)
 })
 
@@ -53,8 +53,8 @@ test("the extension is part of the name: one digest may hold two encodings witho
   const dir = directory()
   const bytes = Buffer.from("one capture, two extensions")
 
-  const png = retain(dir, bytes, "png")
-  const xwd = retain(dir, bytes, "xwd")
+  const png = retain(dir, bytes, "png", () => {})
+  const xwd = retain(dir, bytes, "xwd", () => {})
 
   expect(png).toBe(xwd)
   expect(readdirSync(dir).sort()).toEqual([`${digest(bytes)}.png`, `${digest(bytes)}.xwd`])

@@ -8,7 +8,7 @@ import { createHash } from "node:crypto"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { createServer, type Server } from "node:http"
 import { once } from "node:events"
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, symlinkSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -269,6 +269,85 @@ it.each([
         const saved = collection.retainCollectedRun(run, response, undefined, join(fixtures.home!, "private"))
         assertDraft(JSON.parse(readFileSync(saved, "utf8")) as CapturedRunDraft)
         expect(readFileSync(join(fixtures.home!, "private", "response"), "utf8")).toBe(fixtures.raw)
+        // Acceptance: dependency custody must finish before the immutable writer runs.
+        // The existing no-blob journey cannot detect missing roots, bad copies or escapes.
+        if (!pending) {
+          for (const fault of [
+            "empty",
+            "missing-root",
+            "missing-file",
+            "changed",
+            "equal",
+            "different",
+            "alias",
+            "duplicate",
+            "source-escape",
+            "destination-escape",
+            "path-escape",
+            "copy-error",
+          ] as const) {
+            const root = join(fixtures.home!, fault),
+              launch = join(root, "launch"),
+              output = join(root, "final")
+            const artifacts = join(launch, "artifacts"),
+              outside = join(root, "outside")
+            mkdirSync(artifacts, { recursive: true })
+            mkdirSync(output)
+            mkdirSync(outside)
+            const bytes = Buffer.from("original retained dependency")
+            const sha256 = createHash("sha256").update(bytes).digest("hex")
+            const path = "artifacts/" + sha256 + ".bin"
+            const blob = { path, sha256 }
+            writeFileSync(join(launch, path), bytes)
+            const candidate = structuredClone(run)
+            candidate.runId = createHash("sha256").update(fault).digest("hex").slice(0, 32)
+            const blobs = fault === "empty" ? [] : [blob]
+            if (fault === "alias") {
+              blobs.push({ path: "artifacts/" + sha256 + ".png", sha256 })
+              writeFileSync(join(launch, blobs[1]!.path), bytes)
+            }
+            if (fault === "duplicate") blobs.push({ ...blob })
+            if (fault === "missing-file") blob.path = "artifacts/missing.bin"
+            if (fault === "changed") writeFileSync(join(launch, path), "changed source")
+            if (fault === "source-escape") {
+              writeFileSync(join(outside, "dependency"), bytes)
+              symlinkSync(outside, join(launch, "outside-link"))
+              blob.path = "outside-link/dependency"
+            }
+            if (fault === "path-escape") blob.path = "../outside/dependency"
+            if (["equal", "different", "copy-error"].includes(fault)) {
+              mkdirSync(join(output, "artifacts"))
+              if (fault === "copy-error") mkdirSync(join(output, path))
+              else writeFileSync(join(output, path), fault === "equal" ? bytes : Buffer.from("wrong destination"))
+            }
+            if (fault === "destination-escape") symlinkSync(outside, join(output, "artifacts"))
+            candidate.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs })
+            const writer = vi.mocked(saveDaemonProbeRun)
+            writer.mockClear()
+            const persist = () =>
+              collection.retainCollectedRun(
+                candidate,
+                response,
+                undefined,
+                output,
+                fault === "missing-root" || fault === "empty" ? undefined : launch,
+              )
+            if (["empty", "equal", "alias"].includes(fault)) {
+              const saved = persist()
+              assertDraft(JSON.parse(readFileSync(saved, "utf8")) as CapturedRunDraft)
+              expect(writer, fault).toHaveBeenCalledOnce()
+              for (const blob of blobs) expect(readFileSync(join(output, blob.path)), fault).toEqual(bytes)
+            } else {
+              expect(persist, fault).toThrow(
+                fault === "missing-root" ? /requires sourceRoot/ : /Capture persistence failed for/,
+              )
+              expect(writer, fault).not.toHaveBeenCalled()
+              expect(readFileSync(join(output, "response"), "utf8"), fault).toBe(fixtures.raw)
+              expect(existsSync(join(launch, path)), fault).toBe(true)
+              if (fault === "destination-escape") expect(existsSync(join(outside, sha256 + ".bin"))).toBe(false)
+            }
+          }
+        }
       } else {
         // Exercise the default writer from an actual authoring branch, independent of the CI checkout.
         const checkout = join(fixtures.home!, "checkout")

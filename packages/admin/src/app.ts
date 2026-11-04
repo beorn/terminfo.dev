@@ -611,6 +611,7 @@ export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLau
 // ── Probe a daemon ──
 
 interface ProbeOptions {
+  captureBundleRoot?: string
   appId: string
   version: string
   /** The window this run launched and must still own. An app the probe launched never runs without one. */
@@ -681,10 +682,16 @@ async function probeDaemon(
   }
   const mode = outputDirectory === undefined ? "written" : "retained"
   if (outputDirectory !== undefined) {
-    const source = retainCollectedRun(run, retained.path, { kind: "term", id: appId, version }, outputDirectory)
+    const source = retainCollectedRun(
+      run,
+      retained.path,
+      { kind: "term", id: appId, version },
+      outputDirectory,
+      options.captureBundleRoot,
+    )
     console.log(`  Retained private development run ${source}`)
   } else {
-    writeCollectedRun(run, retained.path, { kind: "term", id: appId, version })
+    writeCollectedRun(run, retained.path, { kind: "term", id: appId, version }, options.captureBundleRoot)
   }
   const catalogIds = run.results.map((result) => result.featureId)
   const aggregate = aggregateCurrentResults(run.results, catalogIds)
@@ -868,6 +875,7 @@ async function runApp(
         : undefined
     console.log(`  Probing on port ${daemon.registration.port}...`)
     const result = await probeDaemon(daemon.registration, {
+      captureBundleRoot: run.directory,
       appId: app.id,
       version,
       ownedWindow,

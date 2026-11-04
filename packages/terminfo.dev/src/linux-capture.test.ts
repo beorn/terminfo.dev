@@ -251,7 +251,7 @@ test.runIf(process.platform === "linux")(
   "a delayed capture keeps the original window and leaves the daemon event loop available",
   async () => {
     const { directory, started, finished, release, stdin } = fixture()
-    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
     // A new search would now select a different window; capture must keep its original target.
     process.env.TEST_CAPTURE_WINDOWS = "99"
     const pending = captureRaw({ featureId: "fixture", role: "control", label: "fixture frame" })
@@ -277,7 +277,7 @@ test.runIf(process.platform === "linux").each(["before", "during"] as const)(
   async (when) => {
     const { directory, started, release } = fixture()
     const frames = join(directory, "frames")
-    const { captureRaw } = await createLinuxCapture(frames, liveExecutable())
+    const { captureRaw } = await createLinuxCapture(frames, liveExecutable(), () => {})
     if (when === "before") process.env.TEST_CAPTURE_OWNER_PID = "1"
     const pending = captureRaw({ featureId: "fixture", role: "target", label: "owned frame" })
     const rejected = expect(pending).rejects.toThrow("no longer belongs to Kitty")
@@ -299,7 +299,7 @@ test.runIf(process.platform === "linux").each(["before", "during"] as const)(
     const { directory, started, release } = fixture()
     const frames = join(directory, "frames")
     if (when === "before") process.env.TEST_CAPTURE_VISIBLE_WINDOWS = "543 42 99"
-    const create = createLinuxCapture(frames, liveExecutable())
+    const create = createLinuxCapture(frames, liveExecutable(), () => {})
     if (when === "before") {
       await expect(create).rejects.toThrow("visible top-level")
     } else {
@@ -321,7 +321,7 @@ test.runIf(process.platform === "linux")(
   async () => {
     const { directory } = fixture()
     process.env.TEST_CAPTURE_FAIL = "owner"
-    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable())).rejects.toMatchObject({
+    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})).rejects.toMatchObject({
       code: 17,
       message: expect.stringContaining("owner lookup failed"),
     })
@@ -332,9 +332,9 @@ test.runIf(process.platform === "linux")(
   "a matching process path with the wrong executable digest cannot authorize capture",
   async () => {
     const { directory } = fixture()
-    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable("0".repeat(64)))).rejects.toThrow(
-      "executable digest mismatch",
-    )
+    await expect(
+      createLinuxCapture(join(directory, "frames"), liveExecutable("0".repeat(64)), () => {}),
+    ).rejects.toThrow("executable digest mismatch")
   },
 )
 
@@ -346,7 +346,7 @@ test.runIf(process.platform === "linux")(
     process.env.TEST_CAPTURE_MAGICK_ARGS = argsPath
     // The fixture xwd waits for this file before it hands over the frame, as a real capture does.
     writeFileSync(release, "continue")
-    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
     await captureRaw({ featureId: "fixture", role: "control", label: "fixture frame" })
     // Later magick calls decode the frame for pixels; the conversion is the first one.
     // The literal pin, not the constant: a dropped flag has to fail here even where magick is absent.
@@ -552,7 +552,7 @@ test.runIf(process.platform === "linux")(
     process.env.TEST_CAPTURE_WIDTH = "1304"
     process.env.TEST_CAPTURE_HEIGHT = "814"
     writeFileSync(release, "continue")
-    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
     const { result } = await captureRaw({
       featureId: "editing.delete-chars",
       role: "target",
@@ -574,7 +574,7 @@ test.runIf(process.platform === "linux")("window 1304x814 on a 1024x768 screen n
   process.env.TEST_CAPTURE_HEIGHT = "814"
   process.env.TEST_CAPTURE_SCREEN_WIDTH = "1024"
   process.env.TEST_CAPTURE_SCREEN_HEIGHT = "768"
-  await expect(createLinuxCapture(join(directory, "frames"), liveExecutable())).rejects.toThrow(
+  await expect(createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})).rejects.toThrow(
     "window 1304x814 exceeds the 1024x768 screen",
   )
 })
@@ -591,7 +591,7 @@ test.runIf(process.platform === "linux")(
     process.env.TEST_CAPTURE_CHROME_ROWS = "56"
     process.env.TEST_CAPTURE_HEIGHT = "595"
     writeFileSync(release, "continue")
-    const { capture } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    const { capture } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
     const registration = { origin: { x: 10, y: 56 }, basis: "collector complete witnessed raster" }
     const result = await capture(
       {
@@ -644,7 +644,7 @@ test.runIf(process.platform === "linux")("capture 1306x816 vs window 1304x814 na
   process.env.TEST_CAPTURE_HEIGHT = "814"
   process.env.TEST_CAPTURE_FORCE_CAPTURE = "1306x816"
   writeFileSync(release, "continue")
-  const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+  const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
   await expect(
     captureRaw({
       featureId: "editing.delete-chars",
@@ -674,6 +674,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
     pixelGeometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 480 },
   }
   const result = await finishCapture({
+    onRetained: () => {},
     directory,
     checkpoint,
     source,
@@ -697,6 +698,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   expect(readFileSync(join(directory, retained[format]!))).toEqual(source.bytes)
   await expect(
     finishCapture({
+      onRetained: () => {},
       directory,
       checkpoint,
       source,
@@ -707,6 +709,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   ).rejects.toThrow(/named text-area origin/)
   await expect(
     finishCapture({
+      onRetained: () => {},
       directory,
       checkpoint,
       source,
@@ -718,6 +721,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   const unpaired = { ...checkpoint, pixelGeometry: undefined }
   await expect(
     finishCapture({
+      onRetained: () => {},
       directory,
       checkpoint: unpaired,
       source,
@@ -729,6 +733,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   process.env.TEST_CAPTURE_FORCE_CAPTURE = "639x480"
   await expect(
     finishCapture({
+      onRetained: () => {},
       directory,
       checkpoint,
       source,
@@ -741,6 +746,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   // decode now runs for every pixel frame, so a conversion failure is no longer survivable here.
   delete process.env.TEST_CAPTURE_FORCE_CAPTURE
   const plain = await finishCapture({
+    onRetained: () => {},
     directory,
     checkpoint: { featureId: "fixture.plain", role: "control", label: "plain" },
     source,
@@ -765,6 +771,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   process.env.TEST_CAPTURE_FAIL = "conversion"
   await expect(
     finishCapture({
+      onRetained: () => {},
       directory,
       checkpoint: { featureId: "fixture.plain", role: "control", label: "plain" },
       source,
@@ -789,6 +796,7 @@ test.each(["xwd", "png"] as const)(
       capturedAt: 123,
     }
     const result = await finishCapture({
+      onRetained: () => {},
       directory,
       checkpoint: {
         featureId: "erase.screen.scrollback",

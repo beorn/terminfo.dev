@@ -100,7 +100,11 @@ export function kittyAncestor(executable: LiveExecutable): number {
 }
 
 /** Optional Linux adapter. Once configured, every ownership/capture failure is loud. */
-export async function createLinuxCapture(directory: string, executable: LiveExecutable) {
+export async function createLinuxCapture(
+  directory: string,
+  executable: LiveExecutable,
+  onRetained: Parameters<typeof finishCapture>[0]["onRetained"],
+) {
   if (process.platform !== "linux" || !process.env.DISPLAY) {
     throw new Error("Linux capture requires Linux and the owned DISPLAY")
   }
@@ -188,13 +192,14 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
   }
   const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin) => {
     const acquired = await acquire(checkpoint.featureId)
-    return finishCapture({ directory, checkpoint, ...acquired, origin })
+    return finishCapture({ directory, onRetained, checkpoint, ...acquired, origin })
   }
   const captureRaw = async (checkpoint: Parameters<ProbeCapture>[0], deadline?: number) => {
     const acquired = await acquire(checkpoint.featureId, deadline)
     const decoded = await decodeCapture({ source: acquired.source, featureId: checkpoint.featureId, deadline })
     const result = await finishCapture({
       directory,
+      onRetained,
       checkpoint: { ...checkpoint, cells: undefined, pixelGeometry: undefined },
       ...acquired,
       decoded,

@@ -172,7 +172,10 @@ interface ScreencaptureAttempt {
 }
 
 /** One screenshot per request. Paint currency belongs to the collector's witness, not this adapter. */
-export async function createDarwinCapture(directory: string, { appPid }: { appPid: number }) {
+export async function createDarwinCapture(
+  directory: string,
+  { appPid, onRetained }: { appPid: number; onRetained: Parameters<typeof finishCapture>[0]["onRetained"] },
+) {
   const census = async (deadline?: number) => {
     const rows: unknown = JSON.parse(
       (await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", CENSUS], undefined, deadline)).toString(),
@@ -304,13 +307,14 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
   }
   const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin) => {
     const { source, trace } = await acquire()
-    return finishCapture({ directory, checkpoint, source, png: source.bytes, origin, trace })
+    return finishCapture({ directory, onRetained, checkpoint, source, png: source.bytes, origin, trace })
   }
   const captureRaw = async (checkpoint: Parameters<ProbeCapture>[0], deadline?: number) => {
     const { source, trace } = await acquire(deadline)
     const decoded = await decodeCapture({ source, featureId: checkpoint.featureId, deadline })
     const result = await finishCapture({
       directory,
+      onRetained,
       checkpoint: { ...checkpoint, cells: undefined, pixelGeometry: undefined },
       source,
       png: source.bytes,

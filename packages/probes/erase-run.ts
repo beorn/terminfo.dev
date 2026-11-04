@@ -147,7 +147,10 @@ export async function runEraseReplay(
         }
         const result = await callback(session.context)
         session.finish()
-        return [{ featureId: definition.id, startedAt, result, checks: [] }]
+        // Replay decorators must not escape into the persisted domain record or
+        // Vitest metadata. Keep the same JSON data this owner writes to disk.
+        const retainedResult = JSON.parse(JSON.stringify(result)) as typeof result
+        return [{ featureId: definition.id, startedAt, result: retainedResult, checks: [] }]
       }
       finalRecord.files.push(...bound.files)
     } else {

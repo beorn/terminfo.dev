@@ -978,6 +978,7 @@ export function ownedTerminalProcessBasisFor(
 /** The only path that registers a grant: platform validation, optional Linux fixture, then geometry. */
 export async function createOwnedTerminal(options: {
   captureRunId: string
+  onRetained?: Parameters<typeof retain>[3]
   out: NodeJS.WriteStream
   expectedLaunchRunId: string
   linux?: { receiptPath: string; executable: LiveExecutable }
@@ -1308,7 +1309,8 @@ export async function createOwnedTerminal(options: {
                   reason: `Kitty window ${windowId} text read through ${socket} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
                 } satisfies TerminalTextRead
               }
-              const ref = retain(captureDirectory, stdout, "bin")
+              if (!options.onRetained) throw new Error("Kitty text retention requires its artifact observer")
+              const ref = retain(captureDirectory, stdout, "bin", options.onRetained)
               const snapshot = stdout.toString("utf8")
               const lines = snapshot === "" ? [] : snapshot.replace(/\n$/u, "").split("\n")
               // The shared macOS mapper does not witness DECDWL/DECDHL; unknown character widths remain unmeasurable.

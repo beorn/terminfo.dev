@@ -319,6 +319,7 @@ function runDarwinArm(scenario: {
     }
     try {
       const owner = await createOwnedTerminal({
+        onRetained: () => {},
         captureRunId: ${JSON.stringify(captureRunId)},
         expectedLaunchRunId: launchRunId,
         out: process.stdout,

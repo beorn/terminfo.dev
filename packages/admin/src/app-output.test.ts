@@ -171,6 +171,7 @@ describe("probe app --output", () => {
         "/private/http-responses/digest",
         expect.anything(),
         "/private/out",
+        "/private/run",
       )
       expect(writeCollectedRun).not.toHaveBeenCalled()
       const lines = log.mock.calls.map((call) => String(call[0]))
