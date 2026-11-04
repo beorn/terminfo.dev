@@ -37,7 +37,9 @@ test.each([
   ["tmux", "wrong-pane-tty"],
   ["screen", "preflight"],
 ])("%s owner produces measured mux attachment: %s", (mux, fault) => {
-  const specimen = JSON.parse(readFileSync(join(import.meta.dirname, `fixtures/darwin-${mux}-process.json`), "utf8"))
+  const specimen = JSON.parse(
+    readFileSync(join(import.meta.dirname, `fixtures/darwin-${mux}-process.json`), "utf8"),
+  ) as { rows: [{ tty: string }, ...unknown[]] }
   const result = spawnSync(
     process.execPath,
     [
@@ -162,6 +164,10 @@ test.each([
     expect(result.stdout).toContain("ERROR Darwin tmux listed client TTY differs from the measured client")
   } else if (fault === "wrong-pane-tty") {
     expect(result.stdout).toContain("ERROR Darwin tmux listed pane TTY differs from the measured collector")
+  } else if (fault === "missing-tty") {
+    expect(result.stdout.trim()).toBe(
+      `ERROR Darwin pid ${result.pid} TTY /dev/${specimen.rows[0].tty} could not be measured: fixture TTY measurement unavailable`,
+    )
   } else expect(result.stdout).toMatch(fault === "changed-birth" ? /birth|changed|identity/i : /TTY/)
 })
 

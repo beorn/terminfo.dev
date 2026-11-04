@@ -469,11 +469,19 @@ function readProcessAncestry(startPid: number, stopPid?: number): AncestryRow[] 
       if (tty === "??") row.ttyRdev = null
       else {
         if (!tty || !/^tty[a-zA-Z0-9._-]+$/.test(tty)) throw new Error(`Darwin pid ${pid} has no measured TTY name`)
-        const raw = execFileSync("/usr/bin/stat", ["-f", "%r", `/dev/${tty}`], {
-          encoding: "utf8",
-          timeout: 1000,
-          maxBuffer: 256,
-        })
+        let raw: string
+        try {
+          raw = execFileSync("/usr/bin/stat", ["-f", "%r", `/dev/${tty}`], {
+            encoding: "utf8",
+            timeout: 1000,
+            maxBuffer: 256,
+          })
+        } catch (error) {
+          throw new Error(
+            `Darwin pid ${pid} TTY /dev/${tty} could not be measured: ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
+          )
+        }
         if (!/^[0-9]+\n?$/.test(raw)) {
           throw new Error(`Darwin pid ${pid} TTY rdev is not decimal: ${JSON.stringify(raw)}`)
         }
