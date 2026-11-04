@@ -102,16 +102,14 @@ export async function runEraseReplay(
     if (retained) {
       const definition = ALL_PROBES.find(({ id }) => id === retained.featureId && id.startsWith("sgr."))
       if (!definition?.term) throw new IncompleteReplay("Missing selected SGR term callback: " + retained.featureId)
-      capture = readProbeCapture(directory, retained.source, retained.expected)
+      const bound = readProbeCapture(directory, retained.source, retained.expected)
+      capture = bound.capture
       source = retained.source
       const callback = definition.term
       replay = async () => {
-        const validated = readProbeCapture(directory, retained.source, retained.expected)
+        const { capture: validated } = readProbeCapture(directory, retained.source, retained.expected)
         const raw = validated.rawReplies[definition.id + ".callLog"]
         if (typeof raw !== "string") throw new IncompleteReplay("Missing full-source call log: " + definition.id)
-        if (validated.screenshotRefs.length || validated.textSnapshotRefs.length) {
-          throw new IncompleteReplay("SGR query-reply replay has unresolved capture dependencies")
-        }
         const log = readCallLog(parseJsonStrict(definition.id + " call log", raw))
         const session = withCallLog<TermProbeSource>(null, { mode: "replay", log })
         const startedAt = new Date().toISOString()
@@ -124,7 +122,7 @@ export async function runEraseReplay(
           session.finish()
         }
       }
-      finalRecord.files.push(join(directory, source.trace.path))
+      finalRecord.files.push(...bound.files)
     } else {
       const runtimeIdentity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
       const subject = {

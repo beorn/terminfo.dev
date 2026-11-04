@@ -2126,7 +2126,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     captureSourceRevision: draft.sourceRevision,
   }
   const expected = { manifest, sourceRevision, subject: draft.subject }
-  const validated = readProbeCapture(directory, source, expected)
+  const { capture: validated } = readProbeCapture(directory, source, expected)
   const log = readCallLog(JSON.parse(validated.rawReplies["sgr.bold.callLog"]!))
   for (const invalid of [
     { ...source, captureRunId: "other-capture" },
