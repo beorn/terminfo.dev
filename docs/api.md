@@ -33,7 +33,7 @@ Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutpu
 | -------------- | ------------- | --------------------------------------------------------------- |
 | `supported`    | Supported     | The recorded criterion was satisfied                            |
 | `unsupported`  | Unsupported   | The functioning test obtained the defined negative result       |
-| `untestable`   | Untestable    | A reviewed context impossibility prevents this criterion        |
+| `untestable`   | Untestable    | No current route; no result reaches it                          |
 | `test-todo`    | TEST TODO     | Required work remains; this is not a terminal feature verdict   |
 | `test-failure` | TEST FAILURE  | An attempted test or collection failed to obtain a valid result |
 

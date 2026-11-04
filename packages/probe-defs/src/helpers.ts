@@ -420,7 +420,7 @@ export function reviewResult(branch: string, reason: string, noObservable: strin
 export function osInputReviewResult(
   noObservable: string,
   state: object,
-  reason = "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+  reason = "Library probe source injects no OS-level input, so this run cannot decide it",
 ): ProbeCallbackResult {
   return reviewResult("os-input-review", reason, noObservable, state)
 }
@@ -429,12 +429,12 @@ export function osInputReviewResult(
  * A headless colour criterion missing its initial readback. Reset/stack probes send no mutation
  * when that prerequisite is absent (#30547, @cto D-B). Initial-query probes require a disposable
  * set/query/reset control before selecting this branch. Never a sentinel negative (C10) and never
- * graded from a source read (C7); the reviewer names the missing observable from its source audit.
+ * graded from a source read (C7); the caller names the missing observable.
  */
 export function colorReadbackReviewResult(noObservable: string, state: object): ProbeCallbackResult {
   return reviewResult(
     "color-readback-review",
-    "Library probe source offers no colour readback; required independent review of the retained raw state pending",
+    "Library probe source offers no colour readback, so this run cannot decide it",
     noObservable,
     state,
   )
@@ -1458,7 +1458,7 @@ export function headlessDecrpmArm(
           return osInputReviewResult(
             `DECRPM reply to CSI ? ${modeNum} $ p`,
             state,
-            "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
+            "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
           )
         }
         const insertBindingGap = modeNum === 4 && (insertBefore === null || insertAfter === null)
@@ -1515,7 +1515,7 @@ export function headlessDecrpmArm(
       return osInputReviewResult(
         `DECRPM reply to CSI ? ${modeNum} $ p`,
         state,
-        "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
+        "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
       )
     }
     return { ...decrpmResult(ps, modeNum), response: JSON.stringify(state) }

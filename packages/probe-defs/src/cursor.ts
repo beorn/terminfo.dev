@@ -466,7 +466,7 @@ export const cursorProbes: ProbeDefinition[] = [
   // DECSCUSR — cursor shape
   // The setting is reportable through DECRQSS `$ q SP q` (the DECSCUSR selector), the same readback
   // class as device.decrqss's SGR (`$ q m`) and DECSTBM (`$ q r`) replies. A pixel pair of the
-  // default and bar cursors cannot decide the shape without independent review, so the app arm asks
+  // default and bar cursors cannot decide the shape without a same-run pixel check, so the app arm asks
   // the terminal for its own report first and falls back to the pixel pair when that report is unusable.
   {
     ...probe(

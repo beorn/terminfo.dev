@@ -190,57 +190,46 @@ const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "
   ["missing identity", undefined, false],
 ]
 const historyCases = ["erase.screen.scrollback", "scrollback.accumulate", "scrollback.total-lines"].flatMap((id) =>
-  historyIdentities.map(([name, runtimeIdentity, eligible, expectedBinary = historyRuntime.loadedBinary.sha256]) => ({
-    id,
-    name,
-    runtimeIdentity,
-    eligible,
-    expectedBinary,
-  })),
+  historyIdentities.map(([name, runtimeIdentity, eligible]) => ({ id, name, runtimeIdentity, eligible })),
 )
-test.each(historyCases)(
-  "history count review qualifies $id: $name",
-  ({ id, runtimeIdentity, eligible, expectedBinary }) => {
-    const definition = [...eraseProbes, ...scrollbackProbes].find((entry) => entry.id === id)
-    if (!definition?.lib) throw new Error(`Missing ${id} library callback`)
-    let calls = 0
-    const result = definition.lib(
-      headless({
-        runtimeIdentity,
-        feed: () => {
-          calls++
-        },
-        getScrollback: () => {
-          calls++
-          return { totalLines: 24, screenLines: 24, viewportOffset: 0 }
-        },
-      }),
-    )
-    // A drifted binary no longer takes a TEST FAILURE gate: the cell is TEST TODO either way (@cto batch7 A-F6).
-    if (eligible === "drift") void expectedBinary
-    if (!eligible) {
-      expect(result.notTested?.noObservable ?? "", id).not.toContain(
-        "adapter exposes no retained scrollback history count",
-      )
-      expect(calls, id).toBeGreaterThan(0)
-      return
-    }
-    // No source review grades this cell (#32246): the qualified adapter has no history reader, so it stays TEST TODO.
-    expect(result, id).toMatchObject({
-      notTested: {
-        reason: "no-semantic-observable",
-        noObservable: "libvterm v0.3.3 adapter exposes no retained scrollback history count",
+test.each(historyCases)("history count review qualifies $id: $name", ({ id, runtimeIdentity, eligible }) => {
+  const definition = [...eraseProbes, ...scrollbackProbes].find((entry) => entry.id === id)
+  if (!definition?.lib) throw new Error(`Missing ${id} library callback`)
+  let calls = 0
+  const result = definition.lib(
+    headless({
+      runtimeIdentity,
+      feed: () => {
+        calls++
       },
-    })
-    expect(result.criterionBranch, id).toBeUndefined()
-    expect(result.tests, id).toBeUndefined()
-    expect(result.observation, id).toBeUndefined()
-    expect(result.assertions, id).toBeUndefined()
-    expect(result.response, id).not.toContain("sourceCitation")
-    expect(result.response, id).not.toContain("runtimeIdentity")
-    expect(calls, id).toBe(0)
-  },
-)
+      getScrollback: () => {
+        calls++
+        return { totalLines: 24, screenLines: 24, viewportOffset: 0 }
+      },
+    }),
+  )
+  if (!eligible) {
+    expect(result.notTested?.noObservable ?? "", id).not.toContain(
+      "adapter exposes no retained scrollback history count",
+    )
+    expect(calls, id).toBeGreaterThan(0)
+    return
+  }
+  // No source review grades this cell (#32246): the qualified adapter has no history reader, so it stays TEST TODO.
+  expect(result, id).toMatchObject({
+    notTested: {
+      reason: "no-semantic-observable",
+      noObservable: "libvterm v0.3.3 adapter exposes no retained scrollback history count",
+    },
+  })
+  expect(result.criterionBranch, id).toBeUndefined()
+  expect(result.tests, id).toBeUndefined()
+  expect(result.observation, id).toBeUndefined()
+  expect(result.assertions, id).toBeUndefined()
+  expect(result.response, id).not.toContain("sourceCitation")
+  expect(result.response, id).not.toContain("runtimeIdentity")
+  expect(calls, id).toBe(0)
+})
 
 // These controls decide whether a viewport reading can grade support. Older scrollback
 // tests cover parser regions/history, but never exercise viewport motion or output anchoring.
