@@ -741,16 +741,44 @@ it("a verified disposable receipt runs the reset exchange and records its kind a
 
 // 28216: the apparatus measures the launch receipt and the collector only CARRIES it, so the block
 // reaches origin.appLaunch with nothing rebuilt, added or edited on the measured side.
-it("copies the apparatus-measured launch block the receipt carries onto the batch", async () => {
+it.each([false, true])(
+  "copies the apparatus-measured launch block and names only absent invocation (argv=%s)",
+  async (withArgv) => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+    receiptDirectories.push(directory)
+    const receipt = hostedLaunchReceipt()
+    receipt.appLaunch = {
+      ...receipt.appLaunch,
+      ...(withArgv ? { argv: ["/invoked/iterm", "--token=[redacted]"] } : {}),
+    }
+    const path = join(directory, "host-measured.json")
+    writeFileSync(path, JSON.stringify(receipt))
+    process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "iterm2", os: "macos" } })
+    expect(batch.appLaunch).toEqual(receipt.appLaunch)
+    if (withArgv) expect(batch.rawReplies["collector.appLaunchTrace"]).toBeUndefined()
+    else {
+      const trace = JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!) as { argvAbsentReason: string }
+      expect(trace.argvAbsentReason).toMatch(/iterm2.*wrapper/i)
+    }
+  },
+)
+
+it("names the absent app receipt on a hosted Linux collection", async () => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
   receiptDirectories.push(directory)
-  const receipt = hostedLaunchReceipt()
+  const { appLaunch: omitted, ...receipt } = hostedLaunchReceipt()
+  void omitted
+  receipt.runner.os = "Linux"
   const path = join(directory, "host-measured.json")
   writeFileSync(path, JSON.stringify(receipt))
   process.env.TERMINFO_DISPOSABLE_RECEIPT = path
   process.stdout.write = (() => true) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "iterm2", os: "macos" } })
-  expect(batch.appLaunch).toEqual(receipt.appLaunch)
+  const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "xterm", os: "linux" } })
+  expect(batch.appLaunch).toBeUndefined()
+  const trace = JSON.parse(batch.rawReplies["collector.appLaunchTrace"]!) as { argvAbsentReason: string }
+  expect(trace.argvAbsentReason).toMatch(/no app launch receipt/)
 })
 
 it("refuses a mutating probe when neither owned terminal nor disposable receipt is presented", async () => {

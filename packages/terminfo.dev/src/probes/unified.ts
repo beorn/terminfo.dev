@@ -360,7 +360,18 @@ export async function runProbeBatch(
     bindReceiptToRun(disposable, options.subject, "collector.disposableOwnership")
   }
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
-  if (disposable?.appLaunch) batch.appLaunch = disposable.appLaunch
+  if (disposable?.appLaunch) {
+    batch.appLaunch = disposable.appLaunch
+    if (disposable.appLaunch.argv === undefined) {
+      batch.rawReplies["collector.appLaunchTrace"] = JSON.stringify({
+        argvAbsentReason: `${disposable.appLaunch.executablePath}: hosted wrapper or unpromoted route did not observe an app invocation array`,
+      })
+    }
+  } else if (disposable?.kind === "github-hosted-runner") {
+    batch.rawReplies["collector.appLaunchTrace"] = JSON.stringify({
+      argvAbsentReason: "Hosted platform measured no app launch receipt; invocation array was not recorded",
+    })
+  }
   batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(
     disposable
       ? {

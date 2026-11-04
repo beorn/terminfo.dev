@@ -113,10 +113,11 @@ function fixture(alacritty = false) {
   const decoded = decodeCollectorDraft(specimenPath, bytes, historical, parsed.sourceRevision)
   if (decoded.kind !== "captured") throw new Error("Windows fixture is not captured")
   const launch = structuredClone(alacritty ? alacrittyLaunch : windowsLaunch)
-  const launchWithMesa: typeof windowsLaunch & { mesaRenderer?: typeof alacrittyLaunch.mesaRenderer } = {
-    ...launch,
-    ...(alacritty ? { mesaRenderer: structuredClone(alacrittyLaunch.mesaRenderer) } : {}),
-  }
+  const launchWithMesa: typeof windowsLaunch & { mesaRenderer?: typeof alacrittyLaunch.mesaRenderer; argv?: string[] } =
+    {
+      ...launch,
+      ...(alacritty ? { mesaRenderer: structuredClone(alacrittyLaunch.mesaRenderer) } : {}),
+    }
   const run = {
     ...decoded.run,
     probeHash: manifest.probeHash,
@@ -164,6 +165,8 @@ test.each(["Plan9", "constructor", "toString"])("rejects hosted runner OS %s", (
 // Old assessor tests never exercised the actual writer or proved refusal leaves no corpus record.
 test.each([
   "valid",
+  "valid-argv",
+  "argv-mismatch",
   "version",
   "version-and-launch",
   "digest",
@@ -175,6 +178,10 @@ test.each([
   "unknown",
 ] as const)("Windows hosted placement: %s", (fault) => {
   const f = fixture()
+  if (fault === "valid-argv" || fault === "argv-mismatch") {
+    f.run.origin.appLaunch.argv = ["C:\\invoked\\wt.exe", "--token=[redacted]", "value with spaces"]
+    f.cite({ ...f.launch, argv: fault === "valid-argv" ? f.run.origin.appLaunch.argv : ["C:\\different\\wt.exe"] })
+  }
   if (fault === "version" || fault === "version-and-launch") f.run.subject.version = "9.99.1"
   if (fault === "version-and-launch") f.run.origin.appLaunch.productVersion = "9.99.1"
   if (fault === "digest") f.run.origin.appLaunch.executableSha256 = "b7".repeat(32)
@@ -192,11 +199,12 @@ test.each([
     f.cite(f.run.origin.appLaunch)
   }
   writeFileSync(f.source, JSON.stringify(f.run))
-  if (fault === "valid") {
+  if (fault === "valid" || fault === "valid-argv") {
     expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
   } else {
     const errors = {
       version: /identity-replies-mismatch/,
+      "argv-mismatch": /appLaunch/,
       "version-and-launch": /origin\.appLaunch\.productVersion differs/,
       digest: /origin\.appLaunch\.executableSha256 differs/,
       path: /origin\.appLaunch\.executablePath differs/,

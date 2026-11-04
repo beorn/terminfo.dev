@@ -9,7 +9,8 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { parseAppLaunchReceipt } from "./app-launch.ts"
+import type { AppLaunchReceipt } from "@terminfo/probe-defs"
+import { parseAppLaunchReceipt, transformInvocation } from "./app-launch.ts"
 
 // Retain only the measured receipt verbatim; this parser does not decode a capture run.
 const ZEROS = "0".repeat(64)
@@ -24,7 +25,7 @@ const MEASURED = {
     path: "/Users/runner/work/_temp/Alacritty.dmg",
     sha256: "ad8d7de35fb38e43184776cac6dfee05ca325caa0b6639a06a55e54e4b026620",
   },
-}
+} satisfies AppLaunchReceipt
 
 /**
  * The two documents 28240 retired, carrying their own receipt blocks verbatim (@cto 2026-10-08: the
@@ -136,7 +137,18 @@ describe("a measured Windows launch uses the same parser", () => {
     productVersion: "1.21.2361.0",
     executableSha256: "c3".repeat(32),
     sourceArtifact: { kind: "portable-zip", path: String.raw`C:\runner\wt.zip`, sha256: "d4".repeat(32) },
-  }
+  } satisfies AppLaunchReceipt
+  it("preserves transformed invocation argv in the Windows receipt arm", () => {
+    const receipt = {
+      ...windows,
+      argv: ["C:\\launch\\wt.exe", "--token=[redacted]", "--", "verbatim value"],
+    } satisfies AppLaunchReceipt
+    // Typecheck must reject non-string elements in this arm, independently of runtime parsing.
+    // @ts-expect-error invocation elements are strings
+    const invalid: AppLaunchReceipt = { ...windows, argv: [42] }
+    void invalid
+    expect(parse(receipt)).toEqual(receipt)
+  })
   it("preserves the measured Windows executable, version and ZIP without bundle fields", () => {
     expect(parse(windows)).toEqual(windows)
   })
@@ -170,6 +182,16 @@ describe("a measured Windows launch uses the same parser", () => {
   it.each([
     [{ ...windows, platform: "darwin" }, /unknown appLaunch.platform/],
     [{ ...windows, bundlePath: "/Applications/Terminal.app" }, /fields/],
+    [
+      {
+        ...windows,
+        sourceArtifact: {
+          kind: "developer-id-signed-bundle",
+          codeSignature: { identifier: "org.alacritty", cdHash: "12".repeat(20), strictVerified: true },
+        },
+      },
+      /must be portable-zip or portable-exe/,
+    ],
     [{ ...windows, productVersion: "" }, /productVersion/],
     [{ ...windows, productVersion: " " }, /productVersion/],
     [{ ...windows, productVersion: " 1.21.240823001" }, /productVersion/],
@@ -234,3 +256,109 @@ describe("a measured Windows launch uses the same parser", () => {
     expect(() => parse({ ...appLaunchOf(), productVersion: windows.productVersion })).toThrow(/mixed/)
   })
 })
+
+// Reviewed r6 admits one new macOS source alternative; existing flat/derived/Windows
+// cases cannot catch a valid signed-bundle receipt being refused as an unknown kind.
+// This is parser contract data, not a measured codesign classification or Mac capture.
+// The bundle parser previously silently dropped argv; the Windows arm rejected it as an extra field.
+it("preserves transformed invocation argv without substituting the measured executable", () => {
+  const receipt = {
+    ...MEASURED,
+    argv: [
+      "/invoked/wezterm",
+      "--token=[redacted]",
+      "--",
+      ...Array.from({ length: 128 }, (_, index) => `verbatim value ${index}`),
+    ],
+  } satisfies AppLaunchReceipt
+  // @ts-expect-error invocation elements are strings in the bundle arm too
+  const invalid: AppLaunchReceipt = { ...MEASURED, argv: [42] }
+  void invalid
+  expect(parse(receipt)).toEqual(receipt)
+})
+
+describe("Developer ID signed bundle source contract", () => {
+  const codeSignature = { identifier: "org.alacritty", cdHash: "12".repeat(20), strictVerified: true }
+  const sourceArtifact = { kind: "developer-id-signed-bundle", codeSignature }
+  it("preserves the signed source beside the existing measured executable identity", () => {
+    const receipt = { ...appLaunchOf(), sourceArtifact }
+    expect(parse(receipt)).toEqual(receipt)
+  })
+  // The new kind's exact signature keys must not tighten the pre-existing sealed receipt parser.
+  it("keeps the sealed source key set and legacy signature normalization unchanged", () => {
+    const sealedSource = {
+      kind: "sealed-macos-system-volume",
+      macOSBuild: "25G83",
+      snapshotUUID: "C1602FFF-7F1F-48FE-B3AC-3A74675B4416",
+      snapshotName: "com.apple.os.update-contract",
+      sealed: true,
+      codeSignature: { ...codeSignature, legacyExtra: "unchanged parser behavior" },
+    }
+    const receipt = { ...appLaunchOf(), sourceArtifact: sealedSource }
+    expect(parse(receipt)).toEqual({ ...receipt, sourceArtifact: { ...sealedSource, codeSignature } })
+    expect(() => parse({ ...receipt, sourceArtifact: { ...sealedSource, unexpected: true } })).toThrow(
+      /invalid sealed.*fields/,
+    )
+  })
+  it.each([
+    ["extra source field", { ...sourceArtifact, unexpected: true }, /sourceArtifact fields/],
+    ["missing signature", { kind: sourceArtifact.kind }, /sourceArtifact fields/],
+    ["non-object signature", { ...sourceArtifact, codeSignature: null }, /missing.*codeSignature/],
+    [
+      "extra signature field",
+      { ...sourceArtifact, codeSignature: { ...codeSignature, extra: true } },
+      /codeSignature fields/,
+    ],
+    [
+      "struck team identifier",
+      { ...sourceArtifact, codeSignature: { ...codeSignature, teamIdentifier: "ABCDEFGHIJ" } },
+      /codeSignature fields/,
+    ],
+    [
+      "missing identifier",
+      { ...sourceArtifact, codeSignature: { cdHash: codeSignature.cdHash, strictVerified: true } },
+      /codeSignature fields/,
+    ],
+    ["empty identifier", { ...sourceArtifact, codeSignature: { ...codeSignature, identifier: "" } }, /identifier/],
+    ["uppercase hash", { ...sourceArtifact, codeSignature: { ...codeSignature, cdHash: "AB".repeat(20) } }, /cdHash/],
+    ["short hash", { ...sourceArtifact, codeSignature: { ...codeSignature, cdHash: "1234" } }, /cdHash/],
+    [
+      "string verification",
+      { ...sourceArtifact, codeSignature: { ...codeSignature, strictVerified: "true" } },
+      /strictVerified must be true/,
+    ],
+    [
+      "false verification",
+      { ...sourceArtifact, codeSignature: { ...codeSignature, strictVerified: false } },
+      /strictVerified must be true/,
+    ],
+  ])("refuses %s by name", (_label, sourceArtifact, diagnostic) => {
+    expect(() => parse({ ...appLaunchOf(), sourceArtifact })).toThrow(diagnostic)
+  })
+})
+
+// The CLI cannot supply the launch owner's explicit sensitivity declarations; this pins that separate caller contract.
+it("explicit sensitivity wins after option termination and over otherwise public config paths", () => {
+  expect(
+    transformInvocation(
+      [
+        "/app",
+        "--config-file",
+        "/private/public-marker",
+        "--session",
+        "run-marker",
+        "--",
+        "declared secret",
+        "public positional",
+      ],
+      [2, "declared secret"],
+    ),
+  ).toEqual(["/app", "--config-file", "[redacted]", "--session", "[redacted]", "--", "[redacted]", "public positional"])
+})
+
+it.each([[], [""], [123], ["/app", null], "/app", null])(
+  "refuses malformed optional invocation arrays by name: %#",
+  (argv) => {
+    expect(() => parse({ ...appLaunchOf(), argv })).toThrow(/appLaunch.argv/)
+  },
+)

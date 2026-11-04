@@ -211,7 +211,7 @@ export interface DisposableReceipt {
   sha256: string
   /** The launch receipt the apparatus measured, validated by the ONE parser run-parser validates
    * with, for the collector to copy into origin.appLaunch without adding or editing a field. A kind
-   * whose production flow measures no launch (Linux, Windows) carries none, and says so by absence. */
+   * whose production flow measures no launch (Linux) carries none, and says so by absence. */
   appLaunch?: AppLaunchReceipt
 }
 
