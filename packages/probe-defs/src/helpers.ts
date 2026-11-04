@@ -840,9 +840,9 @@ function evaluateSgrReadback(
 }
 
 /**
- * Decide an SGR claim from the terminal's own DECRQSS report when it answers, and return null when
- * it stays silent so the caller keeps its existing (capture or cursor) evidence path. A missing
- * readback is never a negative.
+ * Read the terminal's SGR report, using the supplied owned visual oracle for valid nonvisual
+ * results. Malformed replies and failed prerequisites retain failure. Silence returns null for
+ * the caller's existing evidence path; missing readback is never a negative.
  */
 export async function sgrReadbackDecision(
   ctx: TermProbeSource,

@@ -252,8 +252,8 @@ const UNDERLINE_COLOR_UNEXPOSED =
   "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
 
 /**
- * Prefer the terminal's own DECRQSS SGR report over the pixel/cursor fallback path. A terminal that
- * answers decides the claim structurally; one that stays silent keeps the probe's existing evidence.
+ * Keep DECRQSS for state-only claims. Registered colour/reset visual claims use their owned pixel
+ * oracle when available, retaining the valid state report in the note. Silence keeps the fallback.
  */
 export function sgrTermReadback(
   id: string,
@@ -285,7 +285,9 @@ export function sgrTermReadback(
     }
     // The setup branch keeps its existing independent-reference eligibility.
     const independentCapture =
-      ctx.capture && (!setup || (region && !region.noIndependentReference)) ? captureResult : undefined
+      ctx.capture && (region || colour) && (!setup || (region && !region.noIndependentReference))
+        ? captureResult
+        : undefined
     const decided = await sgrReadbackDecision(ctx, id, sequence, readback, setup, independentCapture)
     if (decided) return decided
     return captureResult()
