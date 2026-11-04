@@ -2909,7 +2909,7 @@ async function liveClipboardProbe(
           assertionType: "screenshot",
           screenshotRef: frame.ref,
           frames: [frame],
-          note: "No OSC 52 reply; retained the visible window for prompt/no-prompt review without automatic interaction",
+          note: "No OSC 52 reply; the run does not interact with a possible prompt, so nothing it observes decides whether one appeared",
         },
       }
     }
@@ -3650,8 +3650,9 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // Font ligatures — a renderer glyph-shaping decision with no protocol query. The app callback
   // captures a spaced-operator control and a contiguous-operator target from the same font and
-  // geometry; a ligature paints as one shaped glyph in the target run. The frames are retained
-  // for review, so no automatic pass or fail is claimed. The headless parser shapes no glyphs.
+  // geometry; a ligature paints as one shaped glyph in the target run. The frames are retained,
+  // but no same-run check compares them, so no automatic pass or fail is claimed. The headless
+  // parser shapes no glyphs.
   {
     ...probe(
       "extensions.font-ligatures",

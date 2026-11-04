@@ -1085,7 +1085,7 @@ export function sgrProbe(
           ? "No rendered X cell to evaluate"
           : measured || sourceReviewReason !== undefined
             ? undefined
-            : "Cell readback cannot distinguish unsupported styling from unreported attributes or collapsed styles; a negative needs rendering review",
+            : "Cell readback cannot distinguish unsupported styling from unreported attributes or collapsed styles, so it cannot decide a negative",
         cell.char === "X" && !measured ? sourceReviewReason : undefined,
       )
     },

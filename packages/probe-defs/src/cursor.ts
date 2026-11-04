@@ -485,7 +485,7 @@ export const cursorProbes: ProbeDefinition[] = [
         const decided = await cursorStyleReadbackDecision(ctx, "\x1b[6 q", 6)
         if (decided) return decided
         // No usable cursor-style report survived the projection: keep the pixel control/target
-        // pair as fallback evidence, which a reviewer resolves by eye.
+        // pair as evidence, though no same-run check compares their shapes.
         if (!ctx.capture) {
           const note =
             "no usable DECRQSS cursor-style reply; the public projection returned null and retained no bytes; no pixel readback for shape"
@@ -1301,7 +1301,7 @@ export const cursorProbes: ProbeDefinition[] = [
                 assertionType: "screenshot",
                 screenshotRef: target.ref,
                 frames: [control, target],
-                note: "Control marks physical rows 1, 5 and 15; the target places a marker at DECOM region-relative rows 1 and 11. Whether those markers land on physical rows 5 and 15 requires independent pixel review, and CPR stays region-relative so it cannot prove the physical row",
+                note: "Control marks physical rows 1, 5 and 15; the target places a marker at DECOM region-relative rows 1 and 11. No same-run check decides whether those markers land on physical rows 5 and 15, and CPR stays region-relative so it cannot prove the physical row",
               },
             }
           } finally {
