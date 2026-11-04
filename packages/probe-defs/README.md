@@ -377,10 +377,18 @@ Companion rows also compare a neutral ignored frame against the expected preserv
 setup or an inseparable reference stays inconclusive. Recipes without the member keep four frames.
 A qualified baseline followed by a complete but unqualified SGR setup report may use this existing
 independent capture path for the six eligible reset rows. The response retains both query phases and
-the capture response, and the note names the deciding instrument. Malformed setup, failed baseline,
-final-phase results and the three multi-attribute reference refusals keep their existing behavior.
+the capture response, and the note names the deciding instrument. Malformed setup, failed baseline
+and the three multi-attribute reference refusals keep their existing behavior.
 Without a deciding independent capture, an omitted setup attribute retains named Test to-do coverage
 and both raw query phases, just as an omitted final attribute does; it is not a broken measurement.
+With an owned capture, valid final SGR state replies and named missing-observable results use the
+existing visual oracle; its same-run controls decide the visual claim, and the unchanged DECRQSS
+reply stays in the note. The existing sixth callback supplies that capture without a new API.
+Malformed replies and failed baseline/setup controls keep their failures; independent setup
+capture keeps its existing eligibility. A valid state reply and different pixel result measure
+different properties, not a conflict.
+State-only `extensions.truecolor` has no registered visual oracle and keeps its DECRQSS criterion
+even when the context also supplies capture.
 
 **Headless evidence** comes through [headless-batch.ts](../probes/headless-batch.ts). It retains callback `response` values as raw replies, not every probe-source call or every engine-state read.
 

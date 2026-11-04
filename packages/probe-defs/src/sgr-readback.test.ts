@@ -16,22 +16,24 @@ function timeout(): TerminalQueryOutcome {
 
 /**
  * A terminal that answers DECRQSS `$ q m` with `reply` (the SGR parameter list it reports active),
- * or stays silent when `reply` is null. Capture is installed, so a probe that did not query would
- * land on the ungraded pixel path and could not decide.
+ * or stays silent when `reply` is null. Query-only cases have no capture; capture routing is
+ * checked separately against the same callback and the owning pixel fixtures.
  */
-function sgrReadbackSource(reply: string | null | readonly (string | null)[]) {
+function sgrReadbackSource(reply: string | null | readonly (string | null)[], capture = false) {
   const queries: string[] = []
   const writes: string[] = []
   const writesAtQuery: string[] = []
   const ctx = {
     rows: 24,
     cols: 80,
-    capture: async ({ role, label }: { role: string; label: string }) => ({
-      role,
-      label,
-      capturedAt: 1,
-      ref: `frame-${role}`,
-    }),
+    capture: capture
+      ? async ({ role, label }: { role: string; label: string }) => ({
+          role,
+          label,
+          capturedAt: 1,
+          ref: `frame-${role}`,
+        })
+      : undefined,
     write: (bytes: string) => writes.push(bytes),
     queryCursorPosition: async () => ({ row: 1, col: 2 }),
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
@@ -125,6 +127,17 @@ test("every sgr probe decides from the terminal's own DECRQSS report", async () 
   }
 })
 
+test.each(["0", "1"])("a bold DECRQSS reply %s retains owned capture evidence when available", async (reply) => {
+  const { ctx } = sgrReadbackSource(reply, true)
+  const result = await sgrTerm("sgr.bold")(ctx)
+  expect(result.observation?.assertionType).toBe("screenshot")
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.frames).toHaveLength(2)
+  expect(result.observation?.note).toContain("DECRQSS")
+  expect(result.observation?.note).toContain(reply)
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-todo" }))
+})
+
 // Reset support requires a measured transition. The existing final-state cases above accepted a
 // constant responder that ignored setup entirely; exercise every reset binding through its callback
 // and the production recorder, where those false positives became stored Supported results.
@@ -201,7 +214,7 @@ test.each([
 })
 
 test.each(DECIDED.map(([id]) => id))("%s stays inconclusive, never negative, when DECRQSS is silent", async (id) => {
-  const { ctx } = sgrReadbackSource(null)
+  const { ctx } = sgrReadbackSource(null, true)
   const result = await sgrTerm(id)(ctx)
   expect(result.pass).toBe(false)
   expect(result.observation?.outcome).not.toBe("unsupported")
@@ -395,9 +408,7 @@ test.each([
   [["1"], "inconclusive", 1],
   [["0", "1;4:6"], "inconclusive", 2],
   [["0", "1;4", "1;4:6"], "inconclusive", 3],
-  [["0", "1;4", "1;4"], "unsupported", 3],
-  [["0", "1;4", "1"], "supported", 3],
-] as const)("reset query boundaries keep capture closed for %s", async (replies, outcome, queryCount) => {
+] as const)("invalid reset query boundaries keep capture closed for %s", async (replies, outcome, queryCount) => {
   const { ctx, queries, writes } = sgrReadbackSource(replies)
   let captures = 0
   ctx.capture = async () => {

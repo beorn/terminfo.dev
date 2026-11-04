@@ -523,11 +523,15 @@ test("extensions.truecolor grades unexposed RGB targets against the independent 
   expect(monochrome.assertions).toBeUndefined()
 })
 
-test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle as sgr.fg.truecolor", async () => {
+test("extensions.truecolor keeps its DECRQSS state criterion when capture is available", async () => {
   const definition = callback("extensions.truecolor")
   const sgrQuery = "\x1bP$qm\x1b\\"
   const answering = (raw: string) =>
-    replayTermProbeSource(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]))
+    replayTermProbeSource(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]), {
+      capture: async () => {
+        throw new Error("This state-only criterion has no visual oracle")
+      },
+    })
   const supported = await definition.term!(answering("\x1bP1$r0;38;2;255;128;0m\x1b\\"))
   expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   // A reported RGB selector with a different value is an observed negative; an absent selector

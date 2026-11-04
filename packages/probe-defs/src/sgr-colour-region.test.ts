@@ -533,6 +533,29 @@ async function run(id: string, ctx: TermProbeSource) {
   return definition.term(ctx)
 }
 
+// A protocol reply cannot replace these same-run neutral/sibling pixel controls. Existing cases
+// only exercised silent DECRQSS, so they missed the early return that bypassed the colour oracle.
+test.each(["0", "0;38;2;255;128;0", "0;38;2;255;128;1"])(
+  "DECRQSS %s does not bypass the truecolour pixel oracle",
+  async (reply) => {
+    for (const mode of ["render", "ignore"] as const) {
+      const { ctx } = colourTerminal(mode, PALETTES[0] as Palette)
+      const previous = ctx.queryWithSentinelOutcome
+      ctx.queryWithSentinelOutcome = async (sequence, pattern) => {
+        if (sequence !== "\x1bP$qm\x1b\\") return previous(sequence, pattern)
+        const raw = `\x1bP1$r${reply}m\x1b\\`
+        return { match: [raw, reply], reason: "reply", raw, rawBase64: Buffer.from(raw).toString("base64") }
+      }
+      const result = await run("sgr.fg.truecolor", ctx)
+      expect(result.observation?.assertionType, mode).toBe("screenshot")
+      expect(result.observation?.outcome, mode).toBe(mode === "render" ? "supported" : "inconclusive")
+      expect(result.observation?.frames?.length ?? 0, mode).toBeGreaterThanOrEqual(2)
+      expect(result.observation?.note, mode).toContain("DECRQSS")
+      expect(result.observation?.note, mode).toContain(reply)
+    }
+  },
+)
+
 for (const id of COLOUR_IDS) {
   for (const palette of PALETTES) {
     test(`${id} is decided from pixels on ${palette.name}`, async () => {
