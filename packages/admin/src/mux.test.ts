@@ -51,7 +51,7 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", async (importOriginal) => ({
 }))
 
 // App/server suites cover placement. This mux boundary must independently prove that an output
-// directory chooses raw retention and still cleans up its own daemon/session, without grading it.
+// directory chooses raw retention and still cleans up its own daemon/session, without deciding probe results.
 it.each([
   ["private", false],
   ["private", true],

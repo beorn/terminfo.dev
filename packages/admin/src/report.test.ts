@@ -736,7 +736,7 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     const published = scoreboard()
     expect(published.status, published.stderr).toBe(0)
     expect(published.stdout).toContain("kitty/macos | published")
-    expect(published.stdout).toContain("graded 5: supported=5")
+    expect(published.stdout).toContain("feature results 5: supported=5")
     // A pass can point directly to stored bytes; matching provenance still identifies the selected run.
     const storedPass = passPath("stored-pass", snapshot.probeHash, runPath)
     const storedReport = spawnSync(process.execPath, [join(root, "run.ts"), storedPass], {

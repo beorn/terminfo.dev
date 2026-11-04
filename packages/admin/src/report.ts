@@ -180,7 +180,7 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
       for (const result of run.results) totals[result.status] = (totals[result.status] ?? 0) + 1
       counts = `raw catalog ${run.results.length}: ${PROBE_STATUSES.map((status) => `${status}=${totals[status] ?? 0}`).join(" ")}`
     } catch (error) {
-      // Retain the named evidence row when its declaration is absent or invalid; it proves no verdict.
+      // Retain the named evidence row when its declaration is absent or invalid; it proves no probe result.
       detail += `; ${error instanceof Error ? error.message : String(error)}`
     }
     return append(pass?.context?.context ?? context.context, {
@@ -268,7 +268,7 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
           source: `loadCurrentResults(${contentDir}).projection.contexts[${summary.contextKey}] contributor`,
           sha256: selected.sha256,
           detail: `${detail}; ${selected.suiteFreshness}`,
-          counts: `graded ${selected.score.all}: ${Object.entries(selected.counts)
+          counts: `feature results ${selected.score.all}: ${Object.entries(selected.counts)
             .map(([status, count]) => `${status}=${count}`)
             .join(" ")}`,
         })

@@ -23,7 +23,7 @@ function stateToken(cell: SelectedContextCell | undefined): StateToken {
     return "—"
   }
   // D132 B (#30917): the nine environment positions are recorded PROBE TODO by the catalogue but are
-  // manual by design, not graded, and were never measured. They must never read as TODO.
+  // manual by design, unscored, and were never measured. They must never read as TODO.
   const environment = isEnvironmentGroup(cell.result.featureId)
   const status = environment ? cell.result.status : cell.featureResult?.status
   if (status === undefined) {
