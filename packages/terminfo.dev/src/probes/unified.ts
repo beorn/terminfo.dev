@@ -531,6 +531,7 @@ export async function runProbeBatch(
       const input = options.input
       const injectDrag = input.injectDrag?.bind(input)
       probeSource.input = {
+        ...(input.wheelPlacement && { wheelPlacement: input.wheelPlacement }),
         injectKey: (keys) => withTTYOperation(() => input.injectKey(keys), out, verify),
         injectClick: (button) => withTTYOperation(() => input.injectClick(button), out, verify),
         ...(injectDrag && { injectDrag: (button: 1) => withTTYOperation(() => injectDrag(button), out, verify) }),
