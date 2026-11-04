@@ -234,3 +234,22 @@ describe("a measured Windows launch uses the same parser", () => {
     expect(() => parse({ ...appLaunchOf(), productVersion: windows.productVersion })).toThrow(/mixed/)
   })
 })
+
+
+// Reviewed r6 admits one new macOS source alternative; existing flat/derived/Windows
+// cases cannot catch a valid signed-bundle receipt being refused as an unknown kind.
+// This is parser contract data, not a measured codesign classification or Mac capture.
+describe("Developer ID signed bundle source contract", () => {
+  it("preserves the signed source beside the existing measured executable identity", () => {
+    const sourceArtifact = {
+      kind: "developer-id-signed-bundle",
+      codeSignature: {
+        identifier: "org.alacritty",
+        cdHash: "12".repeat(20),
+        strictVerified: true,
+      },
+    }
+    const receipt = { ...appLaunchOf(), sourceArtifact }
+    expect(parse(receipt)).toEqual(receipt)
+  })
+})
