@@ -213,24 +213,34 @@ describe("kitty owned launch", () => {
   test("launches detached, sends the shared process claim instead of a Terminal.app one, and records the owned pid", async () => {
     const spawn = vi.mocked(await import("node:child_process")).spawnSync
     spawn.mockReturnValueOnce({ status: 0, stdout: "", stderr: "" } as never)
-    await handleApp("kitty", { output: "/private/out" })
-    expect(spawn).toHaveBeenCalledWith(
+    const argv: [string, ...string[]] = [
       "/Applications/kitty.app/Contents/MacOS/kitty",
-      [
-        "--detach",
-        "--instance-group",
-        "terminfo-private-run",
-        "-1",
-        "-o",
-        "allow_remote_control=socket-only",
-        "--listen-on",
-        "unix:/private/run/kitty-private-run.sock",
-        "--",
-        "/bin/bash",
-        "/private/run/serve-private-run.sh",
-      ],
-      expect.anything(),
-    )
+      "--detach",
+      "--instance-group",
+      "terminfo-private-run",
+      "-1",
+      "-o",
+      "allow_remote_control=socket-only",
+      "--listen-on",
+      "unix:/private/run/kitty-private-run.sock",
+      "--",
+      "/bin/bash",
+      "/private/run/serve-private-run.sh",
+    ]
+    // This collector transport fixture is a contract model, not a measured Mac signature.
+    const kittyReceipt: AppLaunchReceipt = {
+      ...receipt,
+      bundlePath: "/Applications/kitty.app",
+      executablePath: argv[0],
+      argv,
+      sourceArtifact: {
+        kind: "developer-id-signed-bundle",
+        codeSignature: { identifier: "net.kovidgoyal.kitty", cdHash: "12".repeat(20), strictVerified: true },
+      },
+    }
+    vi.mocked(captureTerminalAppReceipt).mockReturnValueOnce({ receipt: kittyReceipt, trace: { ownerPid: 900 } })
+    await handleApp("kitty", { output: "/private/out" })
+    expect(spawn).toHaveBeenCalledWith("/Applications/kitty.app/Contents/MacOS/kitty", argv.slice(1), expect.anything())
     const request = vi.mocked(requestDaemonProbe).mock.calls[0]?.[1]
     expect(request).toEqual({
       process: expect.objectContaining({
@@ -260,7 +270,13 @@ describe("kitty owned launch", () => {
       rawReplies: Record<string, string>
       origin: Record<string, unknown>
     }
-    expect(saved.origin.appLaunch).toBeUndefined()
+    expect(saved.origin.appLaunch).toEqual(kittyReceipt)
+    expect(captureTerminalAppReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "kitty", kittyPid: 900 }),
+      555,
+      "2.15",
+      argv,
+    )
     expect(JSON.parse(saved.rawReplies["collector.kittyOwner"]!)).toEqual({
       windowId: 1,
       kittyPid: 900,
