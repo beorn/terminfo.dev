@@ -489,6 +489,7 @@ it.each([
   { id: "sgr.bold", outcome: "unsupported", evidence: "captured", kind: "mux", expected: "unsupported" },
   { id: "sgr.bold", outcome: "supported", evidence: "assertion", kind: "term", expected: "test-todo" },
   { id: "sgr.bold", outcome: "supported", evidence: "foreign-captured", kind: "term", expected: "test-todo" },
+  { id: "sgr.fg.truecolor", outcome: "unsupported", evidence: "none", kind: "mux", expected: "test-todo" },
   { id: "sgr.bold", outcome: "supported", evidence: "none", kind: "lib", expected: "supported" },
 ] as const)("records $id/$outcome with $evidence visual evidence as $expected", async (testCase) => {
   const { id, outcome, evidence, expected, kind } = testCase
