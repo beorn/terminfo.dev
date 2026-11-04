@@ -2266,7 +2266,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         rawReplies["sgr.bold.callLog"] = JSON.stringify(stored)
       }
       if (fault === "resized") {
-        const geometry = JSON.parse(rawReplies["collector.geometry"]!)
+        const geometry = JSON.parse(rawReplies["collector.geometry"]!) as { checks: Array<{ post: { cols: number } }> }
         geometry.checks[0].post.cols = 79
         rawReplies["collector.geometry"] = JSON.stringify(geometry)
       }
@@ -2282,7 +2282,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       }
       const invalidPath = saveDaemonProbeRun(invalid, directory)
       if (fault === "non-live") {
-        const nonLive = JSON.parse(readFileSync(invalidPath, "utf8"))
+        const nonLive = JSON.parse(readFileSync(invalidPath, "utf8")) as { source: typeof source }
         nonLive.source = source
         writeFileSync(invalidPath, JSON.stringify(nonLive))
       }
