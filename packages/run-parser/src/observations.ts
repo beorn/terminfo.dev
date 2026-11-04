@@ -11,15 +11,15 @@ import {
   type ProbeAssertion,
   type ProbeResult,
   type ConsoleBufferOwner,
-  type HistoricalProbeRun,
+  type HistoricalRun,
   type TextQualificationAssessment,
   type TextQualification,
 } from "@terminfo/probe-defs"
 import type { LoadedRun } from "./index.ts"
 import { parseJsonStrict } from "./json.ts"
 
-type ReadObservation = HistoricalProbeRun["observations"][number]
-type ReadAssertion = HistoricalProbeRun["assertions"][number]
+type ReadObservation = HistoricalRun["observations"][number]
+type ReadAssertion = HistoricalRun["assertions"][number]
 // Only strict historical inputs use these values. They never leave this reader.
 const HISTORICAL_EVIDENCE = [
   "query",

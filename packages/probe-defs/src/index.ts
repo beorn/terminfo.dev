@@ -52,8 +52,8 @@ export type {
   UngradedDiagnostic,
   NotTestedCoverage,
   HeadlessRuntimeIdentity,
-  ProbeRun,
-  HistoricalProbeRun,
+  Run,
+  HistoricalRun,
   CapturedRunDraft,
   OuterAppProof,
   MuxAttachmentProof,
@@ -217,7 +217,7 @@ export type {
   ProbeTestResult,
   ProbeTestInput,
   RunDraft,
-  CurrentProbeRun,
+  CurrentRun,
   HistoricalInterpretation,
 } from "./types.ts"
 export { initializeRunDraft, finalizeProbeResult } from "./helpers.ts"

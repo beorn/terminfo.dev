@@ -203,7 +203,7 @@ export interface RunDraft {
 export type CapturedRunDraft = RunDraft & Required<Pick<RunDraft, "subject" | "identity" | "measuredAt" | "origin">>
 
 /** Final status bytes are immutable after all legitimate enrichment and required review. */
-export interface CurrentProbeRun extends Omit<RunDraft, "subject" | "identity" | "measuredAt" | "origin"> {
+export interface CurrentRun extends Omit<RunDraft, "subject" | "identity" | "measuredAt" | "origin"> {
   subject: ProbeSubject
   identity: "verified" | "unverified" | "disputed"
   measuredAt: string
@@ -677,7 +677,7 @@ export interface DarwinMuxAttachmentProof {
 export type MuxAttachmentProof = LinuxMuxAttachmentProof | DarwinMuxAttachmentProof
 
 /** Raw run records are immutable; review decisions live in Interpretation. */
-export interface HistoricalProbeRun {
+export interface HistoricalRun {
   schemaVersion: 2
   runId: string
   subject: ProbeSubject
@@ -1065,4 +1065,4 @@ export interface ProbeDefinition {
 }
 
 /** The only live run contract; v1/v2 are historical reader inputs. */
-export type ProbeRun = CurrentProbeRun
+export type Run = CurrentRun
