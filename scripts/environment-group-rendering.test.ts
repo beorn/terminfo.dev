@@ -394,13 +394,13 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
     const home = source("docs/index.md")
     expect(home).toContain("!isEnvironmentGroup(result.featureId)")
     expect(home).toContain("currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)")
-    expect(home).toContain(PHRASE)
+    expect(home).toContain("manual by design (catalogue)")
   })
 
   it("wires the baseline bar and its meta line to the one predicate", () => {
     const baseline = source("docs/baseline/[id].md")
     expect(baseline).toContain("if (isEnvironmentGroup(f.id)) continue")
-    expect(baseline).toContain(PHRASE)
+    expect(baseline).toContain("manual by design (catalogue)")
     // The bar width and the printed share read the projection's single denominator.
     expect(baseline).toContain("s.counts[segment] / s.score.all")
     expect(baseline).toContain("${s.score.supported}/${s.score.all} supported")
@@ -437,16 +437,16 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
     expect(evidenceStatus("sgr.bold", undefined)).toEqual({ text: "", icon: "–", tone: "unknown" })
   })
 
-  it("publishes the graded denominator and the ungraded nine as contract text", () => {
+  it("publishes the term-feature denominator and manual environment groups as contract text", () => {
     const api = source("docs/api.md")
-    expect(api).toContain("graded** catalog positions")
-    expect(api).toContain("ungraded: **manual by design (catalogue)**")
+    expect(api).toContain("**term features** (264")
+    expect(api).toContain("**manual by design (catalogue)** and excluded from the score")
     expect(api).toContain("only a stored PROBE TODO")
     const full = source("docs/release/full-273.md")
     expect(full).toContain("data.gradedRows")
     expect(full).toContain("data.environmentGroups")
-    expect(full).toContain("(manual by design, ungraded)")
-    expect(full).toContain("zero PROBE TODO and zero PROBE INVALID among the graded features")
+    expect(full).toContain("(manual by design)")
+    expect(full).toContain("zero PROBE TODO, zero PROBE INVALID and zero PROBE CONFLICT among the term features")
   })
 
   it("names the nine on the OS page tooltip too (D2)", () => {
