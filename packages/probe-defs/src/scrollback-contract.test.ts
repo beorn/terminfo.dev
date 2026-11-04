@@ -62,7 +62,7 @@ const SCROLLBACK_SEMANTIC_SURFACE_CONTROLS: readonly {
 
 /**
  * All ten library Scrollback features decide from measured state. The app viewport arm
- * remains coverage because the terminal UI has no live scroll actuator.
+ * uses its owned wheel/pixel controls only when its job supplies a justified movement bound.
  */
 const SCROLLBACK_CONTRACT: GroupContract = [
   {
@@ -197,10 +197,13 @@ test("every fixture-backed Scrollback row reads the outcome its contract require
   expect(SCROLLBACK_CONTRACT.filter((row) => row.expected !== "decided")).toEqual([])
 })
 
-test("viewport hold has a measured library arm and keeps its app coverage callback", () => {
+test("viewport hold declares its measured library and disposable app pixel routes", () => {
   const viewport = scrollbackProbes.find((entry) => entry.id === "scrollback.viewport-hold-output")
   expect(viewport?.term).toBeTypeOf("function")
   expect(viewport?.lib).toBeTypeOf("function")
+  expect(viewport?.termAssertionType).toBe("screenshot")
+  expect(viewport?.termNeedsGeometry).toBe(true)
+  expect(viewport?.termNeedsDisposable).toBe(true)
   expect(contractGaps(scrollbackProbes, SCROLLBACK_CONTRACT).unknown).toEqual([])
 })
 

@@ -15,6 +15,7 @@ import type {
 } from "./types.ts"
 import type {
   AssertionType,
+  ObservationFrame,
   ProbeDefinition,
   HeadlessRuntimeIdentity,
   ProbeCallbackResult,
@@ -370,6 +371,18 @@ export function parserStateResult(
     },
     ...(assertions && { assertions }),
   }
+}
+
+/**
+ * Two captures of the same screen can carry different `ref`s — that id names the encoded container,
+ * whose text chunks differ between identical frames — while their pixels agree. `pixelsDigest` is the
+ * pixel truth (29580); `ref` stays the fallback for frames that name no digest.
+ */
+export function sameFrame(left: ObservationFrame, right: ObservationFrame): boolean {
+  if (left.pixelsDigest !== undefined && right.pixelsDigest !== undefined) {
+    return left.pixelsDigest === right.pixelsDigest
+  }
+  return left.ref === right.ref
 }
 
 /** Channel-exact equality of two reported cell colors. */

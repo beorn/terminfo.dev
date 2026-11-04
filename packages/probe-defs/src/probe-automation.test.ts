@@ -3159,19 +3159,23 @@ describe("Kitty protocol detection", () => {
     }
   })
 
-  test("viewport hold coverage names our missing actuator and readback without I/O", async () => {
+  test("viewport hold names the missing app input route before writing or capturing", async () => {
     const p = probe("scrollback.viewport-hold-output")
-    expect(p.lib).toBeTypeOf("function")
     expect(p.libAssertionType).toBe("buffer_state")
-    if (!p.term) throw new Error("missing viewport coverage callback")
-    const source = new Proxy(terminalSource({}), {
-      get: () => {
-        throw new Error("Viewport coverage must not perform I/O or inspect source state")
+    expect(p.termAssertionType).toBe("screenshot")
+    expect(p.termNeedsGeometry).toBe(true)
+    expect(p.termNeedsDisposable).toBe(true)
+    if (!p.term) throw new Error("missing viewport application callback")
+    const source = terminalSource({
+      write: () => {
+        throw new Error("viewport wrote without an input route")
+      },
+      capture: async () => {
+        throw new Error("viewport captured without an input route")
       },
     })
     const result = await p.term(source)
-    expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
-    expect(result.notTested?.noObservable).toMatch(/actuator.*readback/i)
+    expect(result.notTested?.noObservable).toBe("viewport input and pixel capture unavailable")
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
   })

@@ -8,7 +8,7 @@ import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { scrollbackProbes, scrollbackReadbackRows } from "./scrollback.ts"
 import { eraseProbes } from "./erase.ts"
-import type { ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
+import type { ObservationFrame, TermProbeSource, LibProbeSource, ProbeCallbackResult } from "./types.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
@@ -1487,4 +1487,282 @@ test("scrollback DECSTBM rows judge the app path from the region readback", asyn
     expect(result.pass, label).toBe(outcome === "supported")
     expect(result.assertions ?? [], label).not.toEqual([])
   }
+})
+
+/**
+ * @failure The app viewport row leaves observable hold/snap/relative motion undecided, or grades a
+ *   frame without delivery, arrival and restoration controls. Existing LIB cases cannot see UI policy.
+ * @level l1
+ * @consumer scrollback.viewport-hold-output application callback, through the production registry.
+ * @testonly none
+ */
+type AppViewportPolicy = "hold" | "snap" | "relative" | "drift"
+function viewportApplication(
+  policies: readonly [AppViewportPolicy, AppViewportPolicy] = ["hold", "hold"],
+  options: {
+    delivery?: boolean
+    upRows?: number
+    down?: "ignored" | "early" | "second-restore"
+    dropOutput?: boolean
+    changingChrome?: boolean
+    opaqueHistory?: boolean
+    digest?: "missing" | "empty"
+    captureError?: boolean
+    inputError?: boolean
+    cleanupError?: boolean
+  } = {},
+) {
+  const rows = 5
+  const cols = 80
+  const lines = [""]
+  const writes: string[] = []
+  const frames: { frame: ObservationFrame; grid: string[]; top: number; down: number }[] = []
+  const events: string[] = []
+  let row = 0
+  let col = 0
+  let top = 0
+  let synchronized = false
+  let delivered = ""
+  let downs = 0
+  let ups = 0
+  let downsSinceUp = 0
+  let targetWrites = 0
+  let synchronizedWrites = 0
+  const bottom = () => Math.max(0, lines.length - rows)
+  const input = {
+    wheelPlacement: {
+      maxRowsPerNotch: 1,
+      configurationHash: "a".repeat(64),
+      applicationVersion: "fixture-1",
+      applicationHash: "b".repeat(64),
+    },
+    injectKey: async (key: string) => {
+      if (options.inputError) throw new Error("viewport input failed")
+      if (options.delivery !== false) delivered += key
+      events.push("key")
+    },
+    injectClick: async (button: 1 | 4 | 5) => {
+      if (button === 4) {
+        top = Math.max(0, top - (options.upRows ?? 1))
+        ups++
+        downsSinceUp = 0
+      }
+      if (button === 5) {
+        const blocked =
+          options.down === "ignored" ||
+          (options.down === "early" && downsSinceUp >= 1) ||
+          (options.down === "second-restore" && ups === 2)
+        if (!blocked) top = Math.min(bottom(), top + 1)
+        downs++
+        downsSinceUp++
+      }
+      events.push(`wheel:${button}`)
+    },
+  }
+  const { context } = silentAppSource(rows, cols)
+  context.input = input
+  context.readInput = async (pattern, _timeout, inject) => {
+    delivered = ""
+    await inject?.()
+    return pattern.exec(delivered)
+  }
+  context.write = (bytes) => {
+    if (options.cleanupError && bytes.includes("\x1b[?25h")) throw new Error("viewport cleanup failed")
+    writes.push(bytes)
+    const oldBottom = bottom()
+    const wasBottom = top === oldBottom
+    const outputSynchronized = synchronized || bytes.includes("\x1b[?2026h")
+    const text = bytes.replace(/\x1b\[([?\d;:]*)([A-Za-z])/g, (_sequence, parameters: string, command: string) => {
+      if (parameters === "?2026") synchronized = command === "h"
+      if (command === "J" && parameters === "2") {
+        lines.splice(0, lines.length, "")
+        row = col = top = 0
+      }
+      if (command === "H") {
+        row = bottom()
+        col = 0
+      }
+      return ""
+    })
+    if (text && !wasBottom) {
+      targetWrites++
+      if (outputSynchronized) synchronizedWrites++
+      if (options.dropOutput) return
+    }
+    for (const char of text) {
+      if (char === "\r") col = 0
+      else if (char === "\n") {
+        row++
+        while (lines.length <= row) lines.push("")
+      } else if (char >= " ") {
+        const line = lines[row] ?? ""
+        lines[row] = line.padEnd(col, " ").slice(0, col) + char + line.slice(col + 1)
+        col++
+      }
+    }
+    if (text) {
+      if (wasBottom) top = bottom()
+      else {
+        const policy = policies[outputSynchronized ? 1 : 0]
+        if (policy === "snap") top = bottom()
+        if (policy === "relative") top += bottom() - oldBottom
+        if (policy === "drift") top += 2
+      }
+      events.push(`output:${outputSynchronized ? "sync" : "ordinary"}`)
+    }
+  }
+  context.capture = async (request) => {
+    if (options.captureError) throw new Error("viewport capture failed")
+    const grid = Array.from({ length: rows }, (_, index) =>
+      options.opaqueHistory && top < bottom()
+        ? "Opaque history overlay".padEnd(cols, " ")
+        : (lines[top + index] ?? "").padEnd(cols, " ").slice(0, cols),
+    )
+    // Only rendered pixels decide equality: offsets and capture labels do not enter the digest.
+    const pixelsDigest = createHash("sha256")
+      .update(JSON.stringify({ grid, chrome: options.changingChrome ? frames.length : 0 }))
+      .digest("hex")
+    const frame: ObservationFrame = {
+      ...request,
+      capturedAt: frames.length + 1,
+      ref: `viewport-frame:${frames.length + 1}`,
+      pixelsDigest,
+    }
+    if (options.digest === "missing") Reflect.deleteProperty(frame, "pixelsDigest")
+    if (options.digest === "empty") frame.pixelsDigest = ""
+    frames.push({ frame, grid, top, down: downs })
+    events.push("capture")
+    return frame
+  }
+  return { context, input, writes, frames, events, activity: () => ({ targetWrites, synchronizedWrites }) }
+}
+
+// Accepted requirement: only two qualified holds pass; either qualified motion is a negative.
+// Prior app coverage never exercises wheel/UI state, so its unconditional TODO misses all three.
+test.each([
+  ["both phases hold", ["hold", "hold"], "supported"],
+  ["ordinary snap and synchronized hold", ["snap", "hold"], "unsupported"],
+  ["ordinary hold and synchronized bottom-relative motion", ["hold", "relative"], "unsupported"],
+] as const)("app viewport decides %s from actual rendered frames", async (_name, policies, outcome) => {
+  const app = viewportApplication(policies)
+  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(result.pass).toBe(outcome === "supported")
+  expect(result.assertions).toContainEqual(
+    expect.objectContaining({ assertionType: "screenshot", kind: outcome === "supported" ? "positive" : "negative" }),
+  )
+  // CTO's capture contract is one reference plus six captures per independent phase.
+  expect(app.frames).toHaveLength(13)
+  expect(app.frames.map(({ down }) => down)).toEqual([0, 0, 0, 0, 22, 22, 44, 44, 44, 44, 66, 66, 88])
+  const reference = app.frames[0]!.frame.pixelsDigest
+  for (const index of [4, 6, 10, 12]) expect(app.frames[index]!.frame.pixelsDigest).toBe(reference)
+})
+
+function expectViewportTodo(result: ProbeCallbackResult) {
+  expect(result).toMatchObject({ pass: false })
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+  expect(result.notTested?.noObservable).toBeTruthy()
+  expect(result.assertions ?? []).toEqual([])
+  expect(result.observation).toBeUndefined()
+}
+
+// Accepted ambiguity contract: neither zero nor multiple equalities decides a viewport policy.
+// Existing model-region and LIB tests cannot observe a whole-window overlay or unexplained drift.
+test.each([
+  ["unexplained drift gives zero matching frames", ["drift", "hold"], {}],
+  ["an opaque history overlay gives multiple matching frames", ["hold", "hold"], { opaqueHistory: true }],
+] as const)("app viewport withholds ambiguous output: %s", async (_name, policies, options) => {
+  const app = viewportApplication(policies, options)
+  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  expectViewportTodo(result)
+  expect(result.notTested?.noObservable).toContain("ambiguous frame")
+})
+
+// Accepted prerequisite contract: no generic wheel emission proves the required trusted bound or delivery.
+// The old zero-I/O app callback never inspected these actual caller resources or named their causes.
+test.each(["no input", "no capture", "no delivery", "no bound", "empty provenance", "invalid bound"] as const)(
+  "app viewport refuses %s without writing target output",
+  async (cause) => {
+    const app = viewportApplication(undefined, { delivery: cause !== "no delivery" })
+    if (cause === "no input") app.context.input = undefined
+    if (cause === "no capture") app.context.capture = undefined
+    if (cause === "no bound") Reflect.deleteProperty(app.input, "wheelPlacement")
+    if (cause === "empty provenance") app.input.wheelPlacement.configurationHash = ""
+    if (cause === "invalid bound") app.input.wheelPlacement.maxRowsPerNotch = 0
+    const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+    expectViewportTodo(result)
+    expect(app.activity().targetWrites).toBe(0)
+    if (["no bound", "empty provenance", "invalid bound"].includes(cause)) {
+      expect(result.notTested?.noObservable).toBe("wheel placement bound not established")
+      expect(app.writes).toEqual([])
+    }
+  },
+)
+
+// Accepted bottom construction: ignored/short movement and absent output must never make an old tail a fresh bottom.
+// Existing ED3 fixtures lack distinct anchors and cannot expose these hold-specific false-restoration paths.
+test.each([
+  ["wheel down ignored", { down: "ignored" }],
+  ["wheel down stops early", { down: "early" }],
+  ["output never arrives", { dropOutput: true }],
+] as const)("app viewport does not invent a bottom when %s", async (_cause, options) => {
+  const app = viewportApplication(undefined, options)
+  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  expectViewportTodo(result)
+  expect(result.notTested?.noObservable).toContain("restoration to bottom not proven")
+})
+
+// Accepted bound limitation: this observable contradiction reaches the old T (U == Bref).
+// This does not assert that whole frames detect every lying producer's unobservable bound violation.
+test("app viewport refuses an advertised one-row notch that jumps back to the old tail", async () => {
+  const app = viewportApplication(undefined, { upRows: 1000 })
+  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  expectViewportTodo(result)
+  expect(app.frames).toHaveLength(3)
+  expect(app.frames[2]!.frame.pixelsDigest).toBe(app.frames[0]!.frame.pixelsDigest)
+  expect(app.activity().targetWrites).toBe(0)
+})
+
+// Accepted lifecycle: R leaves the verified bottom; a failed second restore forbids phase-two setup.
+// A single restoration test would pass if production reused B1 after R had scrolled away.
+test("app viewport restores again after R before any synchronized setup", async () => {
+  const app = viewportApplication(undefined, { down: "second-restore" })
+  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  expectViewportTodo(result)
+  expect(result.notTested?.noObservable).toContain("restoration to bottom not proven")
+  expect(app.frames).toHaveLength(7)
+  expect(app.activity().synchronizedWrites).toBe(0)
+  expect(app.writes.join("")).not.toContain("\x1b[?2026h")
+})
+
+// Accepted error boundary: promised malformed pixels and operational errors must propagate, never grade unsupported.
+// Existing region fixtures exercise different adapters/cleanup and cannot witness this new cursor restoration.
+test.each([
+  ["missing pixels", { digest: "missing" }],
+  ["empty pixels", { digest: "empty" }],
+  ["capture failure", { captureError: true }],
+  ["input failure", { inputError: true }],
+  ["cleanup failure", { cleanupError: true }],
+] as const)("app viewport propagates %s", async (_cause, options) => {
+  const app = viewportApplication(undefined, options)
+  await expect(findScrollback("scrollback.viewport-hold-output").term!(app.context)).rejects.toThrow()
+})
+
+test("app viewport preserves capture and cleanup failures together", async () => {
+  const app = viewportApplication(undefined, { captureError: true, cleanupError: true })
+  const result = findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  await expect(result).rejects.toBeInstanceOf(AggregateError)
+  await expect(result).rejects.toMatchObject({
+    errors: [
+      expect.objectContaining({ message: "viewport capture failed" }),
+      expect.objectContaining({ message: "viewport cleanup failed" }),
+    ],
+  })
+})
+
+// Accepted full-pixel comparison: changing window decorations withholds a verdict, without a pixel mask.
+// This risk is absent from existing cell-cropped region and headless fixtures.
+test("app viewport keeps changing whole-window chrome as TODO", async () => {
+  const app = viewportApplication(undefined, { changingChrome: true })
+  expectViewportTodo(await findScrollback("scrollback.viewport-hold-output").term!(app.context))
 })

@@ -1,4 +1,10 @@
-import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource } from "./types.ts"
+import type {
+  ProbeDefinition,
+  ProbeCallbackResult,
+  LibProbeSource,
+  TermProbeSource,
+  ObservationFrame,
+} from "./types.ts"
 import {
   probe,
   parserStateResult,
@@ -9,6 +15,7 @@ import {
   validSize,
   HEADLESS_OBSERVABLE_REVIEW,
   libvtermHistoryReview,
+  sameFrame,
 } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -367,6 +374,149 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
   }
 }
 
+/** One reviewed app context; the existing job omits its bound until pinned-code evidence justifies it. */
+async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const capture = ctx.capture
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!capture || !input || !readInput) {
+    return notTestedResult("viewport input and pixel capture unavailable", {
+      capture: Boolean(capture),
+      input: Boolean(input),
+      readInput: Boolean(readInput),
+    })
+  }
+  const bound = input.wheelPlacement
+  if (
+    !bound ||
+    !Number.isSafeInteger(bound.maxRowsPerNotch) ||
+    bound.maxRowsPerNotch <= 0 ||
+    !bound.configurationHash ||
+    !bound.applicationVersion ||
+    !bound.applicationHash
+  ) {
+    return notTestedResult("wheel placement bound not established", { wheelPlacement: bound ?? null })
+  }
+  const geometry = tooSmall(ctx, 5, 8, "Viewport hold fixture")
+  if (geometry) return geometry
+  const anchors = Math.max(3 * ctx.rows, bound.maxRowsPerNotch + ctx.rows)
+  const down = 4 * ctx.rows + 2
+  if (!Number.isSafeInteger(anchors) || !Number.isSafeInteger(down)) {
+    return notTestedResult("wheel placement bound not established", { wheelPlacement: bound, rows: ctx.rows })
+  }
+  const width = tooSmall(
+    ctx,
+    5,
+    Math.max(`vh-tail-${ctx.rows - 1}`.length, `vh-s-${anchors - 1}`.length),
+    "Viewport hold fixture",
+  )
+  if (width) return width
+  const frames: ObservationFrame[] = []
+  const evidence = {
+    wheelPlacement: bound,
+    notches: { up: 1, down },
+    frames,
+    Bref: undefined as ObservationFrame | undefined,
+    ordinary: {} as Record<string, unknown>,
+    synchronized: {} as Record<string, unknown>,
+  }
+  const todo = (reason: string) => notTestedResult(reason, evidence)
+  const frame = async (label: string, role: "control" | "target" = "control") => {
+    const result = await capture({ role, label })
+    if (result.kind === "text-cells" || !result.pixelsDigest?.trim()) {
+      throw new Error(`Viewport capture ${label} has no complete pixel digest`)
+    }
+    frames.push(result)
+    return result
+  }
+  const moveDown = async () => {
+    for (let notch = 0; notch < down; notch++) await input.injectClick(5)
+  }
+  const tail = Array.from({ length: ctx.rows }, (_, row) => `vh-tail-${row}`).join("\r\n")
+  let failed = false
+  let primary: unknown
+  try {
+    ctx.write("\x1b[?25l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[2J\x1b[H")
+    ctx.write(tail)
+    const reference = await frame("Viewport constructed bottom reference")
+    evidence.Bref = reference
+    let screenshot = reference
+    let held = true
+    for (const phase of ["ordinary", "synchronized"] as const) {
+      const state = evidence[phase]
+      const prefix = phase === "ordinary" ? "o" : "s"
+      ctx.write("\r\n" + Array.from({ length: anchors }, (_, row) => `vh-${prefix}-${row}`).join("\r\n"))
+      const bottom = await frame(`${phase} B0`)
+      state.B0 = bottom
+      if (sameFrame(bottom, reference)) return todo("viewport seed not observed")
+      const control = await readInput(/^a/, 1000, () => input.injectKey("a"))
+      state.delivery = control
+      if (!control) return todo("viewport input delivery not observed")
+      await input.injectClick(4)
+      const anchor = await frame(`${phase} U`)
+      state.U = anchor
+      if (sameFrame(anchor, bottom) || sameFrame(anchor, reference))
+        return todo("viewport anchor placement not established")
+      const output = `\r\nvh-${prefix}-out\r\n${tail}`
+      ctx.write(phase === "ordinary" ? output : `\x1b[?2026h${output}\x1b[?2026l`)
+      const after = await frame(`${phase} A`, "target")
+      state.A = after
+      await moveDown()
+      const arrived = await frame(`${phase} B1`)
+      state.B1 = arrived
+      if (!sameFrame(arrived, reference)) return todo("restoration to bottom not proven")
+      await input.injectClick(4)
+      const relative = await frame(`${phase} R`)
+      state.R = relative
+      const candidates = { held: anchor, snapped: arrived, "bottom-relative": relative }
+      const matches = Object.entries(candidates)
+        .filter(([, candidate]) => sameFrame(after, candidate))
+        .map(([name]) => name)
+      state.matches = matches
+      // R moved away from bottom: a second witnessed restore precedes every subsequent seed.
+      await moveDown()
+      const restored = await frame(`${phase} final restoration`)
+      state.restored = restored
+      if (!sameFrame(restored, reference)) return todo("restoration to bottom not proven")
+      if (matches.length !== 1) return todo("ambiguous frame")
+      state.outcome = matches[0]
+      if (held || matches[0] !== "held") screenshot = after
+      held &&= matches[0] === "held"
+    }
+    const response = JSON.stringify(evidence)
+    return {
+      pass: held,
+      response,
+      observation: {
+        outcome: held ? "supported" : "unsupported",
+        assertionType: "screenshot",
+        frames,
+        screenshotRef: screenshot.ref,
+      },
+      assertions: [
+        {
+          assertionType: "screenshot",
+          kind: held ? "positive" : "negative",
+          expected: "Both qualified viewport phases retain their earlier history anchor after output",
+          observed: response,
+          action: "scrollback.viewport-hold-output",
+        },
+      ],
+    }
+  } catch (error) {
+    failed = true
+    primary = error
+    throw error
+  } finally {
+    try {
+      ctx.write("\x1b[?2026l\x1b[?25h")
+    } catch (cleanup) {
+      if (failed) throw new AggregateError([primary, cleanup], "Viewport hold and cursor cleanup both failed")
+      throw cleanup
+    }
+  }
+}
+
 export const scrollbackProbes: ProbeDefinition[] = [
   {
     ...probe(
@@ -591,14 +741,9 @@ export const scrollbackProbes: ProbeDefinition[] = [
 
   ...regionReadbackProbes(scrollbackReadbackRows),
   {
-    ...probe("scrollback.viewport-hold-output", viewportHold, () =>
-      Promise.resolve(
-        notTestedResult(
-          "Our probe source lacks viewport actuator forwarding and viewport-position readback; hold on output remains TEST TODO",
-          { missing: ["viewport actuator forwarding", "viewport-position readback"], writesPerformed: 0 },
-        ),
-      ),
-    ),
+    ...probe("scrollback.viewport-hold-output", viewportHold, viewportHoldApp, "screenshot"),
     libAssertionType: "buffer_state",
+    termNeedsGeometry: true,
+    termNeedsDisposable: true,
   },
 ]

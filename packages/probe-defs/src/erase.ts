@@ -1,6 +1,6 @@
 import type { ObservationFrame, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { regionReadbackProbe, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { probe, parserStateResult, notTestedResult, libvtermHistoryReview } from "./helpers.ts"
+import { probe, parserStateResult, notTestedResult, libvtermHistoryReview, sameFrame } from "./helpers.ts"
 
 /**
  * The nine measured Erase rows, as one region-readback kind table (28450; @cto 218ec7fe's rule
@@ -314,18 +314,6 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
 
 const SCROLLBACK_ED3_EXPECTED =
   "ED3 removes captured history: wheel-up after ED3 no longer shows the pre-ED3 history frame"
-
-/**
- * Two captures of the same screen can carry different `ref`s — that id names the encoded container,
- * whose text chunks differ between identical frames — while their pixels agree. `pixelsDigest` is the
- * pixel truth (29580); `ref` stays the fallback for frames that name no digest.
- */
-function sameFrame(left: ObservationFrame, right: ObservationFrame): boolean {
-  if (left.pixelsDigest !== undefined && right.pixelsDigest !== undefined) {
-    return left.pixelsDigest === right.pixelsDigest
-  }
-  return left.ref === right.ref
-}
 
 /** Why two frames disagree, in the terms the next run needs to tell the causes apart. Both frames
  * carrying equal digests would have read as the same frame, so only two causes reach here. */
