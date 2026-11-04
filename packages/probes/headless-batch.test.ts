@@ -1148,6 +1148,12 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
 // must stay TEST TODO with no reader, never Unsupported (@cto 94631c52, 91f6fd75).
 // @level l1
 // @consumer extensions.notifications and extensions.osc777-notify through the actual LibProbeSource
+// Standalone component CI checks out terminfo.dev alone and resolves the published @termless packages, whose Kitty and
+// Ghostty native backends predate osc-metadata getProgress (#32271). These rows describe the owned Termless sibling,
+// so they run only where that layout exists and skip by name elsewhere (CI run 41794400168 failed both rows there).
+const OWNED_TERMLESS = existsSync(fileURLToPath(new URL("../../../termless", import.meta.url)))
+const NOT_OWNED_TERMLESS = "standalone layout resolves the published @termless packages, not the owned Termless"
+
 function weztermNativeAvailable(): boolean {
   try {
     loadWeztermNative()
@@ -1165,6 +1171,7 @@ test.for([
   "%s parsed-toast engine keeps OSC 9 and OSC 777 TEST TODO with no reader",
   async ([name, available, oscMetadata, create], context) => {
     if (!available) context.skip(`${name} native addon unavailable (NOT MEASURED)`)
+    if (oscMetadata && !OWNED_TERMLESS) context.skip(`${name}: ${NOT_OWNED_TERMLESS} (NOT MEASURED)`)
     const value = await create()
     value.init({ cols: 80, rows: 24 })
     try {
@@ -1204,6 +1211,7 @@ test.for([
   "%s OSC 9;4 progress grades through the stored-report reader only where the engine stores one",
   async ([name, available, reader, create], context) => {
     if (!available) context.skip(`${name} engine unavailable (NOT MEASURED)`)
+    if (reader && !OWNED_TERMLESS) context.skip(`${name}: ${NOT_OWNED_TERMLESS} (NOT MEASURED)`)
     const configDirectory = name === "kitty" ? mkdtempSync(join(tmpdir(), "terminfo-kitty-config-")) : undefined
     if (configDirectory) vi.stubEnv("KITTY_CONFIG_DIRECTORY", configDirectory)
     const value = await create()
