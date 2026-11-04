@@ -31,8 +31,8 @@ test.each([
 ])("%s %s launches the exact array retained by the argv apparatus", (os, app) => {
   const workflow = parse(readFileSync(join(root, `.github/workflows/${os}-measurement.yml`), "utf8"))
   const collect = workflow.jobs[`measure-${os}`].steps.find((step: { id?: string }) => step.id === "collect").run
-  const arm = collect.match(new RegExp(`\\n\\s+${app}\\)\\n([\\s\\S]*?)\\n\\s+;;`))
-  expect(arm, "the production direct-launch case exists").not.toBeNull()
+  const arm = [...collect.matchAll(new RegExp(`\\n\\s+${app}\\)\\n([\\s\\S]*?)\\n\\s+;;`, "g"))].at(-1)
+  expect(arm, "the production direct-launch case exists").toBeDefined()
   const directory = mkdtempSync(join(tmpdir(), "launch-array-"))
   const out = join(directory, "artifacts")
   const bundle = join(directory, "Fixture.app")
@@ -48,7 +48,11 @@ test.each([
       join(directory, "wezterm/wezterm-gui.exe"),
     ]) {
       mkdirSync(dirname(binary), { recursive: true })
-      writeFileSync(binary, `#!/usr/bin/env node\nif (process.argv[2] === '--version') console.log('fixture 1.0'); else require('node:fs').writeFileSync(process.env.INVOKED, JSON.stringify(process.argv.slice(1)));\n`, { mode: 0o755 })
+      writeFileSync(
+        binary,
+        `#!/usr/bin/env node\nif (process.argv[2] === '--version') console.log('fixture 1.0'); else require('node:fs').writeFileSync(process.env.INVOKED, JSON.stringify(process.argv.slice(1)));\n`,
+        { mode: 0o755 },
+      )
     }
     const result = spawnSync("/bin/bash", ["-e", "-c", `cygpath() { printf '%s' "$2"; };\n${arm![1]}\nwait`], {
       encoding: "utf8",

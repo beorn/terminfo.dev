@@ -365,7 +365,9 @@ jobs:
             ghostty)
               mkdir -p "$HOME/.config/ghostty"
               printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
-              nohup "$APP_BUNDLE/Contents/MacOS/ghostty" </dev/null >> "$OUT/launcher.log" 2>&1 &
+              APP_ARGV=("$APP_BUNDLE/Contents/MacOS/ghostty")
+              printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
+              nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             wezterm)
               # start --always-new-process keeps this run on its own GUI process instead of joining the mux,
@@ -384,10 +386,14 @@ jobs:
               # --config evaluates its value as Lua: an unquoted value is nil (run 39272494843), so the value
               # carries its own quotes. Software still builds an NSOpenGLPixelFormat on macOS (39273672349),
               # so the front end named here is WebGpu, which uses Metal instead of the deprecated GL path.
-              nohup "$APP_BUNDLE/Contents/MacOS/wezterm" --config 'front_end="WebGpu"' start --always-new-process -- /bin/bash "$COMMAND_PATH" </dev/null >> "$OUT/launcher.log" 2>&1 &
+              APP_ARGV=("$APP_BUNDLE/Contents/MacOS/wezterm" --config 'front_end="WebGpu"' start --always-new-process -- /bin/bash "$COMMAND_PATH")
+              printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
+              nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             alacritty)
-              "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
+              APP_ARGV=("$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH")
+              printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
+              "${APP_ARGV[@]}" > "$OUT/launcher.log" 2>&1 &
               ;;
             warp)
               COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_WARP_START'
