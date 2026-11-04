@@ -178,6 +178,23 @@ test.each(["osc133-a", "osc133-b", "osc133-c", "osc133-d", "osc633-a", "osc633-b
   },
 )
 
+test("OSC 7 restores its baseline when the control reader throws", () => {
+  const working = semanticSurfaceSource()
+  working.feed("\x1b]7;file://localhost/original\x07")
+  let reads = 0
+  const source = {
+    ...working,
+    getCwd() {
+      if (++reads === 2) throw new Error("control reader failed")
+      return working.getCwd!()
+    },
+  }
+  expect(() => extensionsProbes.find((entry) => entry.id === "extensions.osc7-cwd")!.lib!(source)).toThrow(
+    "control reader failed",
+  )
+  expect(working.getCwd!()).toBe("file://localhost/original")
+})
+
 test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with %s", async (name, mutation) => {
   const id = `extensions.${name}`
   const probe = extensionsProbes.find((entry) => entry.id === id)!

@@ -4524,14 +4524,15 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
         const before = ctx.getCwd()
         const controlUri = "file://localhost/terminfo-cwd-control"
-        ctx.feed(`\x1b]633;P;Cwd=${controlUri}\x07`)
-        const controlled = ctx.getCwd()
         const firstUri = "file://localhost/terminfo-cwd-A"
         const secondUri = "file://localhost/terminfo-cwd-B"
         const writes = [`\x1b]7;${firstUri}\x07`, `\x1b]7;${secondUri}\x07`, `\x1b]7;${before ?? ""}\x07`] as const
         let first: string | null
         let second: string | null
+        let controlled: string | null
         try {
+          ctx.feed(`\x1b]633;P;Cwd=${controlUri}\x07`)
+          controlled = ctx.getCwd()
           ctx.feed(writes[0])
           first = ctx.getCwd()
           ctx.feed(writes[1])
