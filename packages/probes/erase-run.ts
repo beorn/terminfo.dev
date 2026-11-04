@@ -8,11 +8,13 @@ import {
   ALL_PROBES,
   initializeRunDraft,
   recordExecutedProbe,
+  finalizeSgrResult,
   type CapturedRunDraft,
+  type ObservationFrame,
   type ProbeResult,
   type TermProbeSource,
 } from "@terminfo/probe-defs"
-import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
+import { parseJsonStrict } from "@terminfo/run-parser"
 import { readCallLog, withCallLog, IncompleteReplay } from "viprobe"
 import {
   derivedSuiteManifest,
@@ -99,6 +101,7 @@ export async function runEraseReplay(
     >
     let source: Parameters<typeof readProbeCapture>[1]
     let replay: () => EraseRecords | Promise<EraseRecords>
+    let replayFrames: ObservationFrame[] = []
     if (retained) {
       const definition = ALL_PROBES.find(({ id }) => id === retained.featureId && id.startsWith("sgr."))
       if (!definition?.term) throw new IncompleteReplay("Missing selected SGR term callback: " + retained.featureId)
@@ -108,19 +111,43 @@ export async function runEraseReplay(
       const callback = definition.term
       replay = async () => {
         const { capture: validated } = readProbeCapture(directory, retained.source, retained.expected)
+        const geometryRaw = validated.rawReplies["collector.geometry"]
+        if (typeof geometryRaw === "string") {
+          const geometry = parseJsonStrict("SGR replay geometry", geometryRaw) as {
+            checks?: Array<{
+              featureId: string
+              pre?: { status: string; rows?: number; cols?: number }
+              post?: { status: string; rows?: number; cols?: number }
+            }>
+          }
+          const measured = geometry.checks?.find(({ featureId }) => featureId === definition.id)
+          if (
+            measured?.pre?.status === "measured" &&
+            (measured.post?.status !== "measured" ||
+              measured.pre.rows !== measured.post.rows ||
+              measured.pre.cols !== measured.post.cols)
+          ) {
+            throw new IncompleteReplay("SGR replay geometry changed or became unavailable: " + definition.id)
+          }
+        }
         const raw = validated.rawReplies[definition.id + ".callLog"]
         if (typeof raw !== "string") throw new IncompleteReplay("Missing full-source call log: " + definition.id)
-        const log = readCallLog(parseJsonStrict(definition.id + " call log", raw))
+        replayFrames = []
+        const log = readCallLog(parseJsonStrict(definition.id + " call log", raw), {
+          onOperation(operation) {
+            if (operation.path === "context.capture" && "value" in operation.outcome) {
+              replayFrames.push(operation.outcome.value as ObservationFrame)
+            }
+          },
+        })
         const session = withCallLog<TermProbeSource>(null, { mode: "replay", log })
         const startedAt = new Date().toISOString()
-        try {
-          if (session.context.kind !== validated.source.kind) {
-            throw new IncompleteReplay("SGR source shape does not match its live capture")
-          }
-          return [{ featureId: definition.id, startedAt, result: await callback(session.context), checks: [] }]
-        } finally {
-          session.finish()
+        if (session.context.kind !== validated.source.kind) {
+          throw new IncompleteReplay("SGR source shape does not match its live capture")
         }
+        const result = await callback(session.context)
+        session.finish()
+        return [{ featureId: definition.id, startedAt, result, checks: [] }]
       }
       finalRecord.files.push(...bound.files)
     } else {
@@ -218,18 +245,18 @@ export async function runEraseReplay(
         })
         const index = assertion.results.findIndex((entry) => entry.featureId === featureId)
         if (index < 0) throw new Error("Erase result missing from declared catalogue: " + featureId)
-        assertion.results[index] = domain
+        assertion.results[index] = retained ? finalizeSgrResult(domain, capture.subject, replayFrames) : domain
       }
       const path = join(directory, assertion.runId + ".assertion.draft.json")
       const checksPath = join(directory, assertion.runId + ".checks.json")
       writeFileSync(path, JSON.stringify(assertion, null, 2), { flag: "wx" })
-      parseRun(path, readFileSync(path, "utf8"), manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]))
       writeFileSync(checksPath, JSON.stringify(records, null, 2), { flag: "wx" })
       finalRecord.assertions.push(assertion)
       finalRecord.checks.push(records)
       finalRecord.files.push(path, checksPath)
     }
   } catch (error) {
+    if (retained && error instanceof Error) error.message = "SGR replay: " + error.message
     fail(error)
   } finally {
     try {

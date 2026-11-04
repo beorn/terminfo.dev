@@ -2194,6 +2194,9 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
   expect(() =>
     readProbeCapture(directory, source, { ...expected, subject: { ...expected.subject, version: "other" } }),
   ).toThrow()
+  expect(() => readProbeCapture(directory, source, { ...expected, sourceRevision: "other-source" })).toThrow(
+    /binding differs/,
+  )
   const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
   expect(typeof replay.context.capture).toBe("function")
   const callback = ALL_PROBES.find(({ id }) => id === "sgr.bold")?.term
@@ -2237,7 +2240,9 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     }
     // A syntactically valid recording can still be incomplete for this callback.
     // These reach the persisted runner, which the core recorder tests cannot cover.
-    for (const fault of ["missing-log", "tty-root", "missing-call", "unconsumed-call", "missing-dependency"] as const) {
+    for (const fault of [
+      "missing-log", "tty-root", "missing-call", "unconsumed-call", "missing-dependency", "resized", "non-live",
+    ] as const) {
       const rawReplies = { ...draft.rawReplies }
       const stored = JSON.parse(rawReplies["sgr.bold.callLog"]!) as {
         root: { entries: Array<[string, unknown]> }
@@ -2254,8 +2259,14 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         }
         rawReplies["sgr.bold.callLog"] = JSON.stringify(stored)
       }
+      if (fault === "resized") {
+        const geometry = JSON.parse(rawReplies["collector.geometry"]!)
+        geometry.checks[0].post.cols = 79
+        rawReplies["collector.geometry"] = JSON.stringify(geometry)
+      }
       const invalid = {
         ...draft,
+        ...(fault === "non-live" && { source }),
         subject: draft.subject,
         identity: draft.identity,
         measuredAt: draft.measuredAt,
@@ -2276,11 +2287,17 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       await expect(
         runEraseReplay(context, { directory, source: invalidSource, expected, featureId: "sgr.bold" }),
         fault,
-      ).rejects.toThrow(fault === "tty-root" ? /SGR source shape does not match its live capture/ : /Incomplete:/)
+      ).rejects.toThrow(fault === "tty-root" ? /SGR source shape does not match its live capture/ : /SGR replay:/)
       expect(context.task.meta.terminfoErase?.failureResults, fault).toMatchObject([
         { featureId: "sgr.bold", status: "test-failure" },
       ])
     }
+    await expect(runEraseReplay(context, { directory, source, expected, featureId: "extensions.osc52-write" }))
+      .rejects.toThrow(/SGR replay:.*Missing selected SGR/)
+    await expect(runEraseReplay(context, {
+      directory, source: { ...source, trace: { ...source.trace, path: "missing-trace.json" } }, expected,
+      featureId: "sgr.bold",
+    })).rejects.toThrow(/SGR replay:.*ENOENT/)
     // A batch may retain another probe's blob beside this query-only log. Its
     // existing manifest binds the bytes; no pixel observation is fabricated here.
     const blob = Buffer.from("unrelated retained capture dependency")
@@ -2310,6 +2327,18 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       captureRunId: bound.runId,
       trace: { path: basename(boundPath), sha256: createHash("sha256").update(readFileSync(boundPath)).digest("hex") },
     }
+    // A bound blob must exist; a digest/path in the manifest alone is not retained evidence.
+    const missingBlob = { ...bound, runId: randomUUID(), screenshotRefs: ["missing-blob"], rawReplies: {
+      ...bound.rawReplies,
+      "collector.traceManifest": JSON.stringify({ blobs: [{ path: "missing-blob", sha256: digest }] }),
+    } }
+    const missingBlobPath = saveDaemonProbeRun(missingBlob, directory)
+    await expect(runEraseReplay(context, {
+      directory, source: { ...source, captureRunId: missingBlob.runId, trace: {
+        path: basename(missingBlobPath),
+        sha256: createHash("sha256").update(readFileSync(missingBlobPath)).digest("hex"),
+      } }, expected, featureId: "sgr.bold",
+    })).rejects.toThrow(/SGR replay:.*ENOENT/)
     const boundRecord = await runEraseReplay(context, {
       directory,
       source: boundSource,

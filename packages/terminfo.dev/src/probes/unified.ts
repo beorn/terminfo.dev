@@ -779,6 +779,8 @@ export async function runProbeBatch(
         batch.observations.push({
           featureId: probe.id,
           ...result.observation,
+          // The recorder's callback sees proxy frames; persistence owns the original captured values.
+          ...(result.observation.frames && { frames: captures.map(({ frame }) => frame) }),
           ...(host === undefined ? {} : { host }),
           ...(result.note && !result.observation.note ? { note: result.note } : {}),
           ...(resized

@@ -27,17 +27,17 @@ function readReference(directory: string, reference: unknown): Buffer {
     typeof reference.sha256 !== "string" ||
     !/^[0-9a-f]{64}$/.test(reference.sha256)
   ) {
-    throw new IncompleteReplay("Erase artifact requires a relative path and SHA256")
+    throw new IncompleteReplay("Replay artifact requires a relative path and SHA256")
   }
   const root = realpathSync(directory)
   const path = realpathSync(join(root, reference.path))
   const contained = relative(root, path)
   if (contained === ".." || contained.startsWith("../") || isAbsolute(contained)) {
-    throw new IncompleteReplay("Erase artifact resolves outside its store: " + reference.path)
+    throw new IncompleteReplay("Replay artifact resolves outside its store: " + reference.path)
   }
   const bytes = readFileSync(path)
   if (createHash("sha256").update(bytes).digest("hex") !== reference.sha256) {
-    throw new IncompleteReplay("Erase artifact SHA256 differs: " + reference.path)
+    throw new IncompleteReplay("Replay artifact SHA256 differs: " + reference.path)
   }
   return bytes
 }
