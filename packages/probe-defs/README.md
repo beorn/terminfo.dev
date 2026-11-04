@@ -604,6 +604,17 @@ The five admin routes share definitions, but do not all execute or persist throu
 - **Inline:** [admin/src/here.ts](../admin/src/here.ts) calls that same `collectProbeRun`, finalizes the draft and prints it or its summary. Printing a result does not place it in the corpus.
 - **Mux:** [admin/src/mux.ts](../admin/src/mux.ts) runs a daemon through the multiplexer, collects its response and supplies the intended mux configuration to the shared writer.
 
+Controlled mux collection consumes the single `OwnedTerminal.muxAttachmentProof` in
+[owned-terminal.ts](../terminfo.dev/src/owned-terminal.ts); the clipboard adapter is Linux-only.
+The Darwin process-owner route extends the existing ancestry reader with C-locale/UTC birth seconds,
+UID, controlling TTY and kernel executable observations, then parses the complete attachment through
+the existing proof parser. Ownership is asserted against the proved attached client while the collector
+binds its own pane PTY. The outer process collector retains `collector.preflightIdentity` before mux
+attachment; the inner collector joins that retained identity and hashes the exact `collector.outerLaunch`
+bytes. Darwin Screen retains its full measured version line; the parser's one admitted version supplies
+both normalized subject joins. These source paths do not establish native qualification or authorize a
+capture, corpus placement or publication.
+
 Multiplexer expectation declarations describe routing, not terminal support:
 
 - **`pass-through`**: the bytes reach the outer terminal and its reply returns to the pane.

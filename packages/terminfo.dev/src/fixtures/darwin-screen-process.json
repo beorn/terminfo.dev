@@ -1,0 +1,956 @@
+{
+  "provenance": {
+    "kind": "historical private topology observation, not native qualification",
+    "source": "/hh/var/@dev2/30518/r14/run-screen/transport/raw/inner.observation.json",
+    "sha256": "716344ee0bbb1b1c5f07ffc3f63130bb9b5b71f1f0a1e0dd4b1b1e70aeba741d"
+  },
+  "launchRunId": "5d2ab6a2ec8e4d7af47bcc4854372db8",
+  "preflightPid": 40677,
+  "boot": {
+    "raw": {
+      "binary": "/usr/sbin/sysctl",
+      "args": [
+        "-n",
+        "kern.bootsessionuuid"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null,
+      "stdout": "A2E43A44-DE9B-4685-A158-78A5D251F2ED\n",
+      "stderr": ""
+    },
+    "value": "A2E43A44-DE9B-4685-A158-78A5D251F2ED",
+    "bootIdSha256": "89475252914138e446e06fb1547f73cbef7d6a3747fe44687208684c7510b1a0",
+    "reader": "disposable-receipt.ts bootIdSha256: sysctl -n kern.bootsessionuuid, pattern ^(\\S+)\\s*$"
+  },
+  "binary": {
+    "path": "/usr/bin/screen",
+    "sha256": "07b706b76c0e7374eb524f9e2e738437f208b4b123d7d9b7b2666019c8881add",
+    "version": {
+      "binary": "/usr/bin/screen",
+      "args": [
+        "-v"
+      ],
+      "status": 1,
+      "signal": null,
+      "stdout": "Screen version 4.00.03 (FAU) 23-Oct-06\r\n",
+      "stderr": "",
+      "error": null,
+      "line": "Screen version 4.00.03 (FAU) 23-Oct-06",
+      "accepted": true
+    },
+    "meaning": "R5: the measured binary's own identity; an unreadable binary refuses by name at prelaunch"
+  },
+  "topology": {
+    "sessionList": {
+      "binary": "/usr/bin/screen",
+      "args": [
+        "-ls",
+        "terminfo-5d2ab6a2ec8e4d7af47bcc4854372db8"
+      ],
+      "status": 1,
+      "stdout": "There is a screen on:\r\n\t40704.terminfo-5d2ab6a2ec8e4d7af47bcc4854372db8\t(Attached)\n1 Socket in /var/folders/_m/x5qbzmq555g4v2l211zg5z940000gn/T/.screen.\n\r\n",
+      "stderr": "",
+      "error": null
+    },
+    "screenQueryBoundary": "No -Q/-X assertion or guessed STY parsing"
+  },
+  "rows": [
+    {
+      "pid": 40706,
+      "ppid": 40705,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792698257,
+      "tty": "ttys003",
+      "ttyRdev": 268435459,
+      "comm": "/Users/codi/.bun/bin/bun",
+      "kernelExecutable": "/Users/codi/.bun/bin/bun",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 24,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40706",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40706",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "40706 40705   501   501 ttys003 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40706",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Users/codi/.bun/bin/bun\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "40706",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Users/codi/.bun/bin/bun /private/tmp/terminfo-30518-observe-20261022-r14b/runs/18193f2764c8-30518-screen-observe-r14/private-mux-observe.ts inner /private/tmp/terminfo-30518-observe-20261022-r14b/source/vendor/terminfo.dev screen /tmp/terminfo-run-kIN8uT\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40706",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys003"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435459\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys003"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 3\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 40705,
+      "ppid": 40704,
+      "uid": 0,
+      "startedAtEpochSeconds": 1792698257,
+      "tty": "ttys003",
+      "ttyRdev": 268435459,
+      "comm": "login",
+      "kernelExecutable": "/usr/bin/login",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 14,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40705",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40705",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "40705 40704     0   501 ttys003 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40705",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "login\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "40705",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "login -pflq codi /bin/bash /tmp/terminfo-run-kIN8uT/inner.sh\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40705",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys003"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435459\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys003"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 3\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 40704,
+      "ppid": 40703,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792698257,
+      "tty": null,
+      "ttyRdev": null,
+      "comm": "/usr/bin/SCREEN",
+      "kernelExecutable": "/usr/bin/screen",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 15,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40704",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40704",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "40704 40703   501   501 ??      \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40704",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/bin/SCREEN\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "40704",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/bin/SCREEN -S terminfo-5d2ab6a2ec8e4d7af47bcc4854372db8 -c /tmp/terminfo-run-kIN8uT/mux-empty.conf /bin/bash /tmp/terminfo-run-kIN8uT/inner.sh\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40704",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "rdev": null,
+        "rdevParts": null
+      }
+    },
+    {
+      "pid": 40703,
+      "ppid": 40675,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792698257,
+      "tty": "ttys000",
+      "ttyRdev": 268435456,
+      "comm": "/usr/bin/screen",
+      "kernelExecutable": "/usr/bin/screen",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 15,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40703",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40703",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "40703 40675   501   501 ttys000 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40703",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/bin/screen\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "40703",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/bin/screen -S terminfo-5d2ab6a2ec8e4d7af47bcc4854372db8 -c /tmp/terminfo-run-kIN8uT/mux-empty.conf /bin/bash /tmp/terminfo-run-kIN8uT/inner.sh\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40703",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435456\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 0\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 40675,
+      "ppid": 40674,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792698256,
+      "tty": "ttys000",
+      "ttyRdev": 268435456,
+      "comm": "/bin/bash",
+      "kernelExecutable": "/bin/bash",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 9,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40675",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:16 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40675",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "40675 40674   501   501 ttys000 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40675",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/bin/bash\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "40675",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/bin/bash /tmp/terminfo-run-kIN8uT/serve-5d2ab6a2ec8e4d7af47bcc4854372db8.sh\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40675",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:16 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435456\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 0\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 40674,
+      "ppid": 40673,
+      "uid": 0,
+      "startedAtEpochSeconds": 1792698256,
+      "tty": "ttys000",
+      "ttyRdev": 268435456,
+      "comm": "/usr/bin/login",
+      "kernelExecutable": "/usr/bin/login",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 14,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40674",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:16 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40674",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "40674 40673     0   501 ttys000 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40674",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/bin/login\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "40674",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/bin/login -flp codi /bin/bash --noprofile --norc -c exec -l /tmp/terminfo-run-kIN8uT/serve-5d2ab6a2ec8e4d7af47bcc4854372db8.sh\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40674",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:16 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435456\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 0\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 40673,
+      "ppid": 40660,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792698256,
+      "tty": null,
+      "ttyRdev": null,
+      "comm": "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      "kernelExecutable": "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 48,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40673",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:16 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40673",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "40673 40660   501   501 ??      \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40673",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Applications/Ghostty.app/Contents/MacOS/ghostty\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "40673",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Applications/Ghostty.app/Contents/MacOS/ghostty --config-default-files=false --config-file=/tmp/terminfo-run-kIN8uT/ghostty-5d2ab6a2ec8e4d7af47bcc4854372db8\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40673",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:16 2026    \n",
+          "stderr": ""
+        },
+        "rdev": null,
+        "rdevParts": null
+      }
+    },
+    {
+      "pid": 40677,
+      "ppid": 40675,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792698257,
+      "tty": "ttys000",
+      "ttyRdev": 268435456,
+      "comm": "/Users/codi/.bun/bin/bun",
+      "kernelExecutable": "/Users/codi/.bun/bin/bun",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 24,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40677",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40677",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "40677 40675   501   501 ttys000 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40677",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Users/codi/.bun/bin/bun\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "40677",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Users/codi/.bun/bin/bun /private/tmp/terminfo-30518-observe-20261022-r14b/runs/18193f2764c8-30518-screen-observe-r14/private-mux-observe.ts outer /private/tmp/terminfo-30518-observe-20261022-r14b/source/vendor/terminfo.dev screen /tmp/terminfo-run-kIN8uT\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "40677",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 19:44:17 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435456\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 0\n",
+          "stderr": ""
+        }
+      }
+    }
+  ]
+}

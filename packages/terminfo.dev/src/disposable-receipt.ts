@@ -689,7 +689,21 @@ function assertMuxChain<Identity extends { pid: number }>(
 /** The one version line Screen's arm admits (#30518 A4): Apple's 4.00.03 build measured on r14. Any
  * other build refuses by name - an unqualified version is not a smaller claim, it is a different
  * program whose chain shape nothing here measured. */
-const SCREEN_VERSION = /(?:^|\n)Screen version 4\.00\.03(?=[\s(]|$)/
+export const SCREEN_ADMITTED_VERSION = "4.00.03"
+const SCREEN_VERSION = new RegExp(
+  `(?:^|\\n)Screen version ${SCREEN_ADMITTED_VERSION.replaceAll(".", "\\.")}(?=[\\s(]|$)`,
+)
+
+/** Compare an already parsed attachment's binary version with the normalized subject. Darwin
+ * Screen's parser proves its one admitted build and retains the complete measured version line. */
+export function muxAttachmentVersionMatches(attachment: MuxAttachmentProof, subjectVersion: string): boolean {
+  return (
+    subjectVersion ===
+    (attachment.platform === "darwin" && attachment.mux === "screen"
+      ? SCREEN_ADMITTED_VERSION
+      : attachment.executable.version)
+  )
+}
 
 /** The pane login's kernel path (R1/R2). argv0 is bare `login` on Darwin, so this path is the only
  * evidence that the uid-0 hop below the mux is the login program and not something renamed to it. */

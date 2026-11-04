@@ -1,0 +1,904 @@
+{
+  "mux": "tmux",
+  "provenance": {
+    "kind": "historical private topology observation, not native qualification",
+    "source": "/hh/var/@dev2/30518/r13b/run-tmux/transport/raw/inner.observation.json",
+    "sha256": "1ab45359784571ad95de7331ea22f5191398ab0cbf987da2922203bb10806b5c",
+    "kernelFixture": "r13b predates kernel reader. Kernel answers below are explicit OS mock values using its absolute comm paths; they are not retained native kernel measurements."
+  },
+  "launchRunId": "a9a216681751190b3fec612ebe781468",
+  "preflightPid": 37605,
+  "boot": {
+    "raw": {
+      "binary": "/usr/sbin/sysctl",
+      "args": [
+        "-n",
+        "kern.bootsessionuuid"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null,
+      "stdout": "A2E43A44-DE9B-4685-A158-78A5D251F2ED\n",
+      "stderr": ""
+    },
+    "value": "A2E43A44-DE9B-4685-A158-78A5D251F2ED",
+    "bootIdSha256": "89475252914138e446e06fb1547f73cbef7d6a3747fe44687208684c7510b1a0",
+    "reader": "disposable-receipt.ts bootIdSha256: sysctl -n kern.bootsessionuuid, pattern ^(\\S+)\\s*$"
+  },
+  "binary": {
+    "path": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+    "sha256": "5ae28d66d7582252503f09df36e97abd24cafa3474395dd991cdcf14a44d58f2",
+    "version": {
+      "binary": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+      "args": [
+        "-V"
+      ],
+      "status": 0,
+      "stdout": "tmux 3.7\n",
+      "stderr": "",
+      "error": null
+    }
+  },
+  "topology": {
+    "clients": {
+      "binary": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+      "args": [
+        "-S",
+        "/tmp/terminfo-run-UlElSv/tmux.sock",
+        "list-clients",
+        "-F",
+        "#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}"
+      ],
+      "status": 0,
+      "stdout": "37634\t/dev/ttys000\t$0\tterminfo-a9a216681751190b3fec612ebe781468\n",
+      "stderr": "",
+      "error": null
+    },
+    "panes": {
+      "binary": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+      "args": [
+        "-S",
+        "/tmp/terminfo-run-UlElSv/tmux.sock",
+        "list-panes",
+        "-a",
+        "-F",
+        "#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}"
+      ],
+      "status": 0,
+      "stdout": "$0\t%0\t37635\t/dev/ttys003\t/tmp/terminfo-run-UlElSv/tmux.sock\n",
+      "stderr": "",
+      "error": null
+    },
+    "options": {
+      "binary": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+      "args": [
+        "-S",
+        "/tmp/terminfo-run-UlElSv/tmux.sock",
+        "show-options",
+        "-g"
+      ],
+      "status": 0,
+      "stdout": "activity-action other\nassume-paste-time 1\nbase-index 0\nbell-action any\ndefault-command ''\ndefault-shell /bin/zsh\ndefault-size 80x24\ndestroy-unattached off\ndetach-on-destroy on\ndisplay-panes-active-colour red\ndisplay-panes-colour blue\ndisplay-panes-time 1000\ndisplay-time 750\nfocus-follows-mouse off\nhistory-limit 2000\ninitial-repeat-time 0\nkey-table root\nlock-after-time 0\nlock-command \"lock -np\"\nmessage-command-style bg=black,fg=yellow,fill=black\nmessage-format \"#[#{?#{command_prompt},#{E:message-command-style},#{E:message-style}}]#{message}\"\nmessage-line 0\nmessage-style bg=yellow,fg=black,fill=yellow\nmouse off\nprefix C-b\nprefix2 None\nrenumber-windows off\nrepeat-time 500\nset-titles off\nset-titles-string \"#S:#I:#W - \\\"#T\\\" #{session_alerts}\"\nsilence-action other\nstatus on\nstatus-bg default\nstatus-fg default\nstatus-format[0] \"#[align=left range=left #{E:status-left-style}]#[push-default]#{T;=/#{status-left-length}:status-left}#[pop-default]#[norange default]#[list=on align=#{status-justify}]#[list=left-marker]<#[list=right-marker]>#[list=on]#{W:#[range=window|#{window_index} #{E:window-status-style}#{?#{&&:#{window_last_flag},#{!=:#{E:window-status-last-style},default}}, #{E:window-status-last-style},}#{?#{&&:#{window_bell_flag},#{!=:#{E:window-status-bell-style},default}}, #{E:window-status-bell-style},#{?#{&&:#{||:#{window_activity_flag},#{window_silence_flag}},#{!=:#{E:window-status-activity-style},default}}, #{E:window-status-activity-style},}}]#[push-default]#{T:window-status-format}#[pop-default]#[norange default]#{?loop_last_flag,,#{E:window-status-separator}},#[range=window|#{window_index} list=focus #{?#{!=:#{E:window-status-current-style},default},#{E:window-status-current-style},#{E:window-status-style}}#{?#{&&:#{window_last_flag},#{!=:#{E:window-status-last-style},default}}, #{E:window-status-last-style},}#{?#{&&:#{window_bell_flag},#{!=:#{E:window-status-bell-style},default}}, #{E:window-status-bell-style},#{?#{&&:#{||:#{window_activity_flag},#{window_silence_flag}},#{!=:#{E:window-status-activity-style},default}}, #{E:window-status-activity-style},}}]#[push-default]#{T:window-status-current-format}#[pop-default]#[norange list=on default]#{?loop_last_flag,,#{E:window-status-separator}}}#[nolist align=right range=right #{E:status-right-style}]#[push-default]#{T;=/#{status-right-length}:status-right}#[pop-default]#[norange default]\"\nstatus-format[1] \"#[align=left]#{R: ,#{n:#{session_name}}}P: #[norange default]#[list=on align=#{status-justify}]#[list=left-marker]<#[list=right-marker]>#[list=on]#{P:#[range=pane|#{pane_id} #{E:pane-status-style}]#[push-default]#{T:window-pane-status-format}#[pop-default]#[norange list=on default]  ,#[range=pane|#{pane_id} list=focus #{?#{!=:#{E:pane-status-current-style},default},#{E:pane-status-current-style},#{E:pane-status-style}}]#[push-default]#{T:window-pane-current-status-format}#[pop-default]#[norange list=on default] }\"\nstatus-format[2] \"#[align=left]#{R: ,#{n:#{session_name}}}S: #[norange default]#[list=on align=#{status-justify}]#[list=left-marker]<#[list=right-marker]>#[list=on]#{S:#[range=session|#{session_id} #{E:session-status-style}]#[push-default]#S#{session_alert}#[pop-default]#[norange list=on default]  ,#[range=session|#{session_id} list=focus #{?#{!=:#{E:session-status-current-style},default},#{E:session-status-current-style},#{E:session-status-style}}]#[push-default]#S*#{session_alert}#[pop-default]#[norange list=on default] }\"\nstatus-interval 15\nstatus-justify left\nstatus-keys emacs\nstatus-left \"[#{session_name}] \"\nstatus-left-length 10\nstatus-left-style default\nstatus-position bottom\nstatus-right \"#{?window_bigger,[#{window_offset_x}#,#{window_offset_y}] ,}\\\"#{=21:pane_title}\\\" %H:%M %d-%b-%y\"\nstatus-right-length 40\nstatus-right-style default\nstatus-style bg=green,fg=black\nprompt-cursor-colour none\nprompt-cursor-style default\nprompt-command-cursor-style default\nupdate-environment[0] DISPLAY\nupdate-environment[1] KRB5CCNAME\nupdate-environment[2] MSYSTEM\nupdate-environment[3] SSH_ASKPASS\nupdate-environment[4] SSH_AUTH_SOCK\nupdate-environment[5] SSH_AGENT_PID\nupdate-environment[6] SSH_CONNECTION\nupdate-environment[7] WAYLAND_DISPLAY\nupdate-environment[8] WINDOWID\nupdate-environment[9] XAUTHORITY\nupdate-environment[10] XDG_CURRENT_DESKTOP\nupdate-environment[11] XDG_SESSION_DESKTOP\nupdate-environment[12] XDG_SESSION_TYPE\nvisual-activity off\nvisual-bell off\nvisual-silence off\nword-separators \"!\\\"#$%&'()*+,-./:;<=>?@[\\\\]^`{|}~\"\n",
+      "stderr": "",
+      "error": null
+    },
+    "serverPid": {
+      "binary": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+      "args": [
+        "-S",
+        "/tmp/terminfo-run-UlElSv/tmux.sock",
+        "display-message",
+        "-p",
+        "#{pid}"
+      ],
+      "status": 0,
+      "stdout": "37632\n",
+      "stderr": "",
+      "error": null
+    }
+  },
+  "rows": [
+    {
+      "pid": 37635,
+      "ppid": 37632,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792692310,
+      "tty": "ttys003",
+      "ttyRdev": 268435459,
+      "comm": "/Users/codi/.bun/bin/bun",
+      "kernelExecutable": "/Users/codi/.bun/bin/bun",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 24,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37635",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:10 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37635",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "37635 37632   501   501 ttys003 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37635",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Users/codi/.bun/bin/bun\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "37635",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Users/codi/.bun/bin/bun /private/tmp/terminfo-30518-observe-20261022-r13b/runs/40e26ba87346-30518-tmux-observe-r13b/private-mux-observe.ts inner /private/tmp/terminfo-30518-observe-20261022-r13b/source/vendor/terminfo.dev tmux /tmp/terminfo-run-UlElSv\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37635",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:10 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys003"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435459\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys003"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 3\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 37632,
+      "ppid": 37603,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792692310,
+      "tty": "ttys000",
+      "ttyRdev": 268435456,
+      "comm": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+      "kernelExecutable": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 35,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37632",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:10 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37632",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "37632 37603   501   501 ttys000 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37632",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/local/Cellar/tmux/3.7/bin/tmux\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "37632",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/local/Cellar/tmux/3.7/bin/tmux -D -S /tmp/terminfo-run-UlElSv/tmux.sock -f /tmp/terminfo-run-UlElSv/mux-empty.conf\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37632",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:10 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435456\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 0\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 37603,
+      "ppid": 37602,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792692309,
+      "tty": "ttys000",
+      "ttyRdev": 268435456,
+      "comm": "/bin/bash",
+      "kernelExecutable": "/bin/bash",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 9,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37603",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:09 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37603",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "37603 37602   501   501 ttys000 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37603",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/bin/bash\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "37603",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/bin/bash /tmp/terminfo-run-UlElSv/serve-a9a216681751190b3fec612ebe781468.sh\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37603",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:09 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435456\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 0\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 37602,
+      "ppid": 37601,
+      "uid": 0,
+      "startedAtEpochSeconds": 1792692309,
+      "tty": "ttys000",
+      "ttyRdev": 268435456,
+      "comm": "/usr/bin/login",
+      "kernelExecutable": "/usr/bin/login",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 14,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37602",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:09 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37602",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "37602 37601     0   501 ttys000 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37602",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/bin/login\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "37602",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/bin/login -flp codi /bin/bash --noprofile --norc -c exec -l /tmp/terminfo-run-UlElSv/serve-a9a216681751190b3fec612ebe781468.sh\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37602",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:09 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435456\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 0\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 37601,
+      "ppid": 37588,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792692309,
+      "tty": null,
+      "ttyRdev": null,
+      "comm": "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      "kernelExecutable": "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 48,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37601",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:09 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37601",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "37601 37588   501   501 ??      \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37601",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Applications/Ghostty.app/Contents/MacOS/ghostty\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "37601",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Applications/Ghostty.app/Contents/MacOS/ghostty --config-default-files=false --config-file=/tmp/terminfo-run-UlElSv/ghostty-a9a216681751190b3fec612ebe781468\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37601",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:09 2026    \n",
+          "stderr": ""
+        },
+        "rdev": null,
+        "rdevParts": null
+      }
+    },
+    {
+      "pid": 37634,
+      "ppid": 37603,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792692310,
+      "tty": "ttys000",
+      "ttyRdev": 268435456,
+      "comm": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+      "kernelExecutable": "/usr/local/Cellar/tmux/3.7/bin/tmux",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 35,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37634",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:10 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37634",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "37634 37603   501   501 ttys000 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37634",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/local/Cellar/tmux/3.7/bin/tmux\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "37634",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/usr/local/Cellar/tmux/3.7/bin/tmux -S /tmp/terminfo-run-UlElSv/tmux.sock new-session -s terminfo-a9a216681751190b3fec612ebe781468 /bin/bash /tmp/terminfo-run-UlElSv/inner.sh\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37634",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:10 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435456\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 0\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "pid": 37605,
+      "ppid": 37603,
+      "uid": 501,
+      "startedAtEpochSeconds": 1792692310,
+      "tty": "ttys000",
+      "ttyRdev": 268435456,
+      "comm": "/Users/codi/.bun/bin/bun",
+      "kernelExecutable": "/Users/codi/.bun/bin/bun",
+      "kernelExecutableReader": "proc_pidpath",
+      "kernelExecutableError": null,
+      "kernelExecutableAttempts": [
+        {
+          "reader": "proc_pidpath",
+          "result": 24,
+          "error": null
+        }
+      ],
+      "raw": {
+        "lstartBefore": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37605",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:10 2026    \n",
+          "stderr": ""
+        },
+        "ids": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37605",
+            "-o",
+            "pid=,ppid=,uid=,ruid=,tty="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "37605 37603   501   501 ttys000 \n",
+          "stderr": ""
+        },
+        "comm": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37605",
+            "-o",
+            "comm="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Users/codi/.bun/bin/bun\n",
+          "stderr": ""
+        },
+        "command": {
+          "binary": "/bin/ps",
+          "args": [
+            "-ww",
+            "-p",
+            "37605",
+            "-o",
+            "command="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "/Users/codi/.bun/bin/bun /private/tmp/terminfo-30518-observe-20261022-r13b/runs/40e26ba87346-30518-tmux-observe-r13b/private-mux-observe.ts outer /private/tmp/terminfo-30518-observe-20261022-r13b/source/vendor/terminfo.dev tmux /tmp/terminfo-run-UlElSv\n",
+          "stderr": ""
+        },
+        "lstartAfter": {
+          "binary": "/bin/ps",
+          "args": [
+            "-p",
+            "37605",
+            "-o",
+            "lstart="
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "Thu Oct 22 18:05:10 2026    \n",
+          "stderr": ""
+        },
+        "rdev": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%r",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "268435456\n",
+          "stderr": ""
+        },
+        "rdevParts": {
+          "binary": "/usr/bin/stat",
+          "args": [
+            "-f",
+            "%Hr %Lr",
+            "/dev/ttys000"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "16 0\n",
+          "stderr": ""
+        }
+      }
+    }
+  ]
+}
