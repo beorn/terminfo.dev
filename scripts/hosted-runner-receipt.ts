@@ -10,6 +10,7 @@ import {
   ALACRITTY_VERSION_PATTERN,
   WINDOWS_MESA_RENDERER_DLLS,
   parseAppLaunchReceipt,
+  transformInvocation,
 } from "../packages/run-parser/src/app-launch.ts"
 
 function required(key: string): string {
@@ -471,6 +472,16 @@ async function context(mode: "start" | "emit") {
 
 async function main(): Promise<void> {
   const [mode, startPath, receiptPath, extra] = process.argv.slice(2)
+  if (mode === "--app-argv") {
+    if (startPath !== undefined) {
+      throw new Error("Usage: hosted-runner-receipt.ts --app-argv < NUL-separated invocation")
+    }
+    const input = readFileSync(0, "utf8")
+    const argv = input.length === 0 ? [] : input.split("\0")
+    if (argv.at(-1) === "") argv.pop()
+    process.stdout.write(JSON.stringify(transformInvocation(argv)) + "\n")
+    return
+  }
   if ((mode !== "start" && mode !== "emit") || !startPath || (mode === "emit" ? !receiptPath : receiptPath) || extra) {
     throw new Error(
       "Usage: hosted-runner-receipt.ts start <absolute-start.json> | emit <absolute-start.json> <absolute-host-measured.json>",
@@ -526,7 +537,30 @@ async function main(): Promise<void> {
     .slice(0, 32)
   // Both hosted app routes measure their launch; a declared installation version is never evidence.
   const os = required("RUNNER_OS")
-  const appLaunch = os === "macOS" ? measureAppLaunch() : os === "Windows" ? measureWindowsAppLaunch() : undefined
+  let appLaunch = os === "macOS" ? measureAppLaunch() : os === "Windows" ? measureWindowsAppLaunch() : undefined
+  const appId = os === "Linux" ? undefined : required("APP_ID")
+  if (!receiptPath) throw new Error("Hosted receipt emit requires its explicit receipt path")
+  const direct =
+    appId !== undefined &&
+    ((os === "macOS" && ["ghostty", "wezterm", "alacritty"].includes(appId)) ||
+      (os === "Windows" && ["windows-terminal", "wezterm", "alacritty"].includes(appId)))
+  if (direct) {
+    // The workflow has already transformed this exact launch array before its first disk write.
+    // Read only this handoff; never reconstruct argv from a process command line or another recipe.
+    const handoff = join(dirname(receiptPath), "app-argv.json")
+    let argv: unknown
+    try {
+      argv = JSON.parse(readFileSync(handoff, "utf8"))
+    } catch (cause) {
+      throw new Error(`Hosted receipt cannot read transformed invocation handoff ${handoff}`, { cause })
+    }
+    if (!Array.isArray(argv)) throw new Error(`Hosted receipt invocation handoff ${handoff} must contain an array`)
+    appLaunch = parseAppLaunchReceipt({ ...appLaunch, argv }, "collector", "term", handoff)
+  } else {
+    process.stderr.write(
+      `appLaunch argv absent: ${os === "Linux" ? "Linux has no app launch receipt" : `${appId} is a wrapper or an unpromoted hosted launch route`}\n`,
+    )
+  }
   const bytes =
     JSON.stringify(
       {
@@ -541,7 +575,6 @@ async function main(): Promise<void> {
       null,
       2,
     ) + "\n"
-  if (!receiptPath) throw new Error("Hosted receipt emit requires its explicit receipt path")
   mkdirSync(dirname(receiptPath), { recursive: true })
   writeFileSync(receiptPath, bytes, { flag: "wx", mode: 0o444 })
   // Write THEN parse the exact persisted bytes. Shell callers must stop on any parser failure.

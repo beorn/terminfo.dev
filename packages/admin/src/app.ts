@@ -379,6 +379,8 @@ function getAppVersion(app: AppDef): string {
 
 export interface AppLaunch {
   proc: ChildProcess | null
+  /** Actual spawn input, in memory only until the receipt owner transforms it. */
+  invocation?: readonly string[]
   windowId?: number
   terminalWindow?: OwnedTerminalWindow
   identityPath?: string
@@ -488,6 +490,7 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
   if (stderrFd !== undefined) closeParentFd(stderrFd)
   return {
     proc: child,
+    invocation: [prepared.spawnPath, ...prepared.args],
     identityPath: prepared.identityPath,
     executablePath: prepared.executablePath,
     marker: prepared.marker,
@@ -526,29 +529,32 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
     // A run-unique instance group, no single-instance reuse, and a detached launch: measured 0-byte
     // stderr and a window that outlives the launcher, which the recorded kitty pid closes.
     const instanceGroup = `terminfo-${run.id}`
-    const launched = spawnSync(
-      app.binaryPath,
-      [
-        "--detach",
-        "--instance-group",
-        instanceGroup,
-        "-1",
-        "-o",
-        "allow_remote_control=socket-only",
-        "--listen-on",
-        `unix:${join(run.directory, `kitty-${run.id}.sock`)}`,
-        "--",
-        "/bin/bash",
-        run.scriptPath,
-      ],
-      { encoding: "utf8", timeout: 15_000 },
-    )
+    const args = [
+      "--detach",
+      "--instance-group",
+      instanceGroup,
+      "-1",
+      "-o",
+      "allow_remote_control=socket-only",
+      "--listen-on",
+      `unix:${join(run.directory, `kitty-${run.id}.sock`)}`,
+      "--",
+      "/bin/bash",
+      run.scriptPath,
+    ]
+    const launched = spawnSync(app.binaryPath, args, { encoding: "utf8", timeout: 15_000 })
     if (launched.error || launched.status !== 0) {
       throw new Error(
         `kitty launch failed: ${launched.error?.message ?? launched.stderr?.trim() ?? `exit ${String(launched.status)}`}`,
       )
     }
-    return { proc: null, identityPath, instanceGroup, launcherStderr: String(launched.stderr ?? "") }
+    return {
+      proc: null,
+      invocation: [app.binaryPath, ...args],
+      identityPath,
+      instanceGroup,
+      launcherStderr: String(launched.stderr ?? ""),
+    }
   }
 
   if (app.id === "iterm2") {
@@ -609,6 +615,7 @@ interface ProbeOptions {
   version: string
   /** The window this run launched and must still own. An app the probe launched never runs without one. */
   ownedWindow: OwnedTerminalWindow
+  invocation?: readonly string[]
   outputDirectory?: string
   /** The detached kitty launcher's stderr, retained with the run whether or not it is empty. */
   launcherStderr?: string
@@ -620,9 +627,11 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
 ): Promise<{ summary: string; mode: "retained" | "written" }> {
-  const { appId, version, ownedWindow, outputDirectory, launcherStderr, outerLaunch } = options
+  const { appId, version, ownedWindow, invocation, outputDirectory, launcherStderr, outerLaunch } = options
   const appLaunch =
-    ownedWindow.provider === "terminal-app" ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version) : null
+    invocation === undefined
+      ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version)
+      : captureTerminalAppReceipt(ownedWindow, daemon.pid, version, invocation)
   assertOwnedTerminalWindow(ownedWindow, daemon.pid)
   // One owner claim per request, never two: Terminal.app sends its window assertion, while kitty and
   // cli-process send the shared process proof's own observables so the worker can re-verify them.
@@ -650,12 +659,12 @@ async function probeDaemon(
   const identityCheck = verifyTerminalIdentity(appId, data.rawReplies)
   const run = {
     ...data,
-    ...(appLaunch && { origin: { ...data.origin, appLaunch: appLaunch.receipt } }),
+    ...(appLaunch.receipt && { origin: { ...data.origin, appLaunch: appLaunch.receipt } }),
     rawReplies: {
       ...data.rawReplies,
       ...(outerLaunch !== undefined && { "collector.outerLaunch": outerLaunch }),
       "collector.identityCheck": JSON.stringify(identityCheck),
-      ...(appLaunch && { "collector.appLaunchTrace": JSON.stringify(appLaunch.trace) }),
+      "collector.appLaunchTrace": JSON.stringify(appLaunch.trace),
       ...(launcherStderr !== undefined && {
         "collector.kittyLauncher": JSON.stringify({ exitStatus: 0, stderr: launcherStderr }),
       }),
@@ -862,6 +871,7 @@ async function runApp(
       appId: app.id,
       version,
       ownedWindow,
+      invocation: launch.invocation,
       outputDirectory: opts.output,
       launcherStderr: launch.launcherStderr,
       outerLaunch,

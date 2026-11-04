@@ -353,6 +353,9 @@ export function createLibProbeSource(
   const readCwd = typeof metadata?.getCwd === "function" ? metadata.getCwd.bind(metadata) : undefined
   const readNotifications =
     typeof metadata?.getNotifications === "function" ? metadata.getNotifications.bind(metadata) : undefined
+  const readOsc777Payloads =
+    typeof metadata?.getOsc777Payloads === "function" ? metadata.getOsc777Payloads.bind(metadata) : undefined
+  const readProgress = typeof metadata?.getProgress === "function" ? metadata.getProgress.bind(metadata) : undefined
   const readSemanticMarks =
     (hasExtension<SemanticMarkExtension>(backend, "semantic-marks") ||
       hasExtension<SemanticMarkExtension>(backend, "semantic-command-end")) &&
@@ -386,6 +389,8 @@ export function createLibProbeSource(
     getReflowState: typeof backend.getReflowState === "function" ? backend.getReflowState.bind(backend) : undefined,
     getCwd: readCwd,
     getNotifications: readNotifications,
+    getOsc777Payloads: readOsc777Payloads,
+    getProgress: readProgress,
     getSemanticMarks: readSemanticMarks,
     getSixelImages: readSixelImages,
     getClipboardState: readClipboardState,

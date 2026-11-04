@@ -435,12 +435,34 @@ export type AppLaunchReceipt =
       bundlePath: string
       cfBundleShortVersionString: string
       cfBundleVersion: string
+      /**
+       * The defined transformed invocation array this process received, argv[0] first. The invoked
+       * binary may differ from executablePath (WezTerm, Cursor and VS Code). Absent, never empty,
+       * when the route used a wrapper or did not observe the array; the trace names why.
+       *
+       * Guarantee boundary, not an entropy detector: only a value following a secret-shaped flag
+       * name or an argument the launcher declares sensitive is redacted. A secret in an unflagged
+       * positional argument, URL or config path may appear verbatim. The fixed [redacted] sentinel
+       * reveals neither the value nor its reuse. Redaction precedes persistence; environment is never captured.
+       */
+      argv?: string[]
       executablePath: string
       executableSha256: string
       sourceArtifact: AppSourceArtifact
     }
   | {
       platform: "win32"
+      /**
+       * The defined transformed invocation array this process received, argv[0] first. The invoked
+       * binary may differ from executablePath (WezTerm, Cursor and VS Code). Absent, never empty,
+       * when the route used a wrapper or did not observe the array; the trace names why.
+       *
+       * Guarantee boundary, not an entropy detector: only a value following a secret-shaped flag
+       * name or an argument the launcher declares sensitive is redacted. A secret in an unflagged
+       * positional argument, URL or config path may appear verbatim. The fixed [redacted] sentinel
+       * reveals neither the value nor its reuse. Redaction precedes persistence; environment is never captured.
+       */
+      argv?: string[]
       executablePath: string
       productVersion: string
       executableSha256: string
@@ -464,7 +486,9 @@ export interface DerivedSourceTreeArtifact {
 
 /**
  * An installed app may come from a retained file, a measured sealed macOS system volume, or a source
- * tree this repo derived a flat artifact from.
+ * tree this repo derived a flat artifact from, or an installed Developer ID signed bundle.
+ * The signed-bundle alternative records the measured signature and separate executable digest;
+ * it does not establish installer/upstream provenance, notarization or running-image identity.
  */
 export type AppSourceArtifact =
   | { path: string; sha256: string }
@@ -474,6 +498,10 @@ export type AppSourceArtifact =
       snapshotUUID: string
       snapshotName: string
       sealed: true
+      codeSignature: { identifier: string; cdHash: string; strictVerified: true }
+    }
+  | {
+      kind: "developer-id-signed-bundle"
       codeSignature: { identifier: string; cdHash: string; strictVerified: true }
     }
   | DerivedSourceTreeArtifact
@@ -750,6 +778,10 @@ export interface LibProbeSource {
   getCwd?(): string | null
   /** Copied parser notification payloads; this does not observe OS notification delivery. */
   getNotifications?(): readonly string[]
+  /** Copied OSC 777 payloads after "777;", verbatim and in order, notify or not; absent means no reader. */
+  getOsc777Payloads?(): readonly string[]
+  /** The engine's stored last OSC 9;4 report (raw state code, stored value); null means never reported. */
+  getProgress?(): { state: number; value: number | null } | null
   /** Copied entries selected by semantic-marks (starts) or semantic-command-end (raw completion); absent means no reader. */
   getSemanticMarks?(): readonly (
     | {

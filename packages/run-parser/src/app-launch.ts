@@ -82,6 +82,61 @@ export function parseDerivedSourceTree(
   return { kind: "derived-source-tree", url, revision, narSri, sha256 }
 }
 
+/** The one pre-persistence invocation transform; explicit sensitive indexes/values always win. */
+export function transformInvocation(
+  argv: readonly string[],
+  declaredSensitive: readonly (number | string)[] = [],
+): string[] {
+  if (argv.length === 0 || !argv[0]) throw new Error("Invocation argv requires an invoked binary")
+  const redacted = argv.map((value, index) =>
+    declaredSensitive.includes(index) || declaredSensitive.includes(value) ? "[redacted]" : value,
+  )
+  const sensitiveName = /(token|secret|password|passwd|api-?key|credential|auth|bearer|session)/i
+  for (const [index, argument] of argv.entries()) {
+    if (index === 0) continue
+    if (argument === "--") break
+    if (argument === "-" || !argument.startsWith("-")) continue
+    const equals = argument.indexOf("=")
+    const name = (equals < 0 ? argument : argument.slice(0, equals)).replace(/^-+/, "")
+    if (!sensitiveName.test(name)) continue
+    if (equals >= 0) {
+      if (redacted[index] !== "[redacted]") redacted[index] = argument.slice(0, equals + 1) + "[redacted]"
+    } else {
+      const next = argv[index + 1]
+      if (next !== undefined && !next.startsWith("-")) redacted[index + 1] = "[redacted]"
+    }
+  }
+  return redacted
+}
+
+function parseInvocation(value: unknown, path: string): string[] {
+  if (!Array.isArray(value) || value.length === 0 || typeof value[0] !== "string" || value[0].length === 0) {
+    fail(path, "appLaunch.argv must be a non-empty invocation array")
+  }
+  if (!value.every((argument): argument is string => typeof argument === "string")) {
+    fail(path, "appLaunch.argv entries must be strings")
+  }
+  return [...value]
+}
+
+function parseCodeSignature(
+  value: unknown,
+  path: string,
+): {
+  identifier: string
+  cdHash: string
+  strictVerified: true
+} {
+  if (!object(value)) fail(path, "missing appLaunch.sourceArtifact.codeSignature")
+  const identifier = asString(value.identifier, path, "appLaunch.codeSignature.identifier")
+  const cdHash = asString(value.cdHash, path, "appLaunch.codeSignature.cdHash")
+  if (!/^[a-f0-9]{40}$/.test(cdHash)) fail(path, "invalid appLaunch.sourceArtifact.codeSignature.cdHash")
+  if (value.strictVerified !== true) {
+    fail(path, "appLaunch.sourceArtifact.codeSignature.strictVerified must be true")
+  }
+  return { identifier, cdHash, strictVerified: true }
+}
+
 export function parseAppLaunchReceipt(
   value: unknown,
   originKind: RunOrigin["kind"],
@@ -92,11 +147,15 @@ export function parseAppLaunchReceipt(
   if (originKind !== "collector" || subjectKind !== "term" || !object(value)) {
     fail(path, "appLaunch requires an app collector run")
   }
+  const argv = value.argv === undefined ? undefined : parseInvocation(value.argv, path)
   if (Object.hasOwn(value, "platform") && value.platform !== "win32") {
     fail(path, "unknown appLaunch.platform")
   }
   if (value.platform === "win32") {
-    const keys = Object.keys(value).sort().join(",")
+    const keys = Object.keys(value)
+      .filter((key) => key !== "argv")
+      .sort()
+      .join(",")
     if (
       keys !== "executablePath,executableSha256,platform,productVersion,sourceArtifact" &&
       keys !== "executablePath,executableSha256,mesaRenderer,platform,productVersion,sourceArtifact"
@@ -183,6 +242,7 @@ export function parseAppLaunchReceipt(
     }
     return {
       platform: "win32",
+      ...(argv !== undefined && { argv }),
       executablePath,
       productVersion,
       executableSha256,
@@ -219,24 +279,27 @@ export function parseAppLaunchReceipt(
       fail(path, "invalid appLaunch.sourceArtifact.snapshotUUID")
     }
     if (value.sourceArtifact.sealed !== true) fail(path, "appLaunch.sourceArtifact.sealed must be true")
-    if (!object(value.sourceArtifact.codeSignature)) fail(path, "missing appLaunch.sourceArtifact.codeSignature")
-    const identifier = asString(
-      value.sourceArtifact.codeSignature.identifier,
-      path,
-      "appLaunch.codeSignature.identifier",
-    )
-    const cdHash = asString(value.sourceArtifact.codeSignature.cdHash, path, "appLaunch.codeSignature.cdHash")
-    if (!/^[a-f0-9]{40}$/.test(cdHash)) fail(path, "invalid appLaunch.sourceArtifact.codeSignature.cdHash")
-    if (value.sourceArtifact.codeSignature.strictVerified !== true) {
-      fail(path, "appLaunch.sourceArtifact.codeSignature.strictVerified must be true")
-    }
+    const codeSignature = parseCodeSignature(value.sourceArtifact.codeSignature, path)
     sourceArtifact = {
       kind: "sealed-macos-system-volume",
       macOSBuild,
       snapshotUUID,
       snapshotName,
       sealed: true,
-      codeSignature: { identifier, cdHash, strictVerified: true },
+      codeSignature,
+    }
+  } else if (value.sourceArtifact.kind === "developer-id-signed-bundle") {
+    if (Object.keys(value.sourceArtifact).sort().join(",") !== "codeSignature,kind") {
+      fail(path, "invalid developer-id-signed-bundle appLaunch.sourceArtifact fields")
+    }
+    const signature = value.sourceArtifact.codeSignature
+    if (!object(signature)) fail(path, "missing appLaunch.sourceArtifact.codeSignature")
+    if (Object.keys(signature).sort().join(",") !== "cdHash,identifier,strictVerified") {
+      fail(path, "invalid developer-id-signed-bundle appLaunch.sourceArtifact.codeSignature fields")
+    }
+    sourceArtifact = {
+      kind: "developer-id-signed-bundle",
+      codeSignature: parseCodeSignature(signature, path),
     }
   } else if (value.sourceArtifact.kind === "derived-source-tree") {
     sourceArtifact = parseDerivedSourceTree(value.sourceArtifact, path, "appLaunch.sourceArtifact")
@@ -249,6 +312,7 @@ export function parseAppLaunchReceipt(
     fail(path, "unknown appLaunch.sourceArtifact kind")
   }
   return {
+    ...(argv !== undefined && { argv }),
     bundlePath,
     cfBundleShortVersionString,
     cfBundleVersion,

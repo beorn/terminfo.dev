@@ -4666,3 +4666,114 @@ describe("partial probe automation candidates", () => {
     }
   })
 })
+
+// @failure #32053: a present OSC 777 reader graded Unsupported with no same-run control, so a stale or inert reader
+// read as an engine that drops notify (@cto cd6b67d9, grading rule 2). These rows run without a Kitty binary.
+// @level l1
+// @consumer extensions.osc777-notify library callback
+describe("OSC 777 raw reader grading", () => {
+  /** A scripted engine: records each OSC 777 payload, optionally dropping the notify subcommand. */
+  function osc777Source(record: "all" | "non-notify"): LibProbeSource {
+    const payloads: string[] = []
+    return context({
+      feed(text) {
+        for (const [, payload] of text.matchAll(/\x1b\]777;([^\x07]*)\x07/g)) {
+          if (record === "all" || !payload!.startsWith("notify;")) payloads.push(payload!)
+        }
+      },
+      getOsc777Payloads: () => [...payloads],
+    })
+  }
+  const controlReason = `${NO_SAME_PATH_CONTROL}: OSC 777 control payload not recorded; this reader is not shown to observe the OSC 777 path`
+
+  test("a correct reader grades Supported", () => {
+    const result = probe("extensions.osc777-notify").lib!(osc777Source("all"))
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  })
+
+  test("a reader that records the control but drops notify grades Unsupported", () => {
+    const result = probe("extensions.osc777-notify").lib!(osc777Source("non-notify"))
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+  })
+
+  test.each([
+    ["a stale fixed list", context({ getOsc777Payloads: () => ["notify;stale;notice"] })],
+    ["an inert feed", { ...osc777Source("all"), feed() {} }],
+  ])("%s stays TEST TODO without a recorded control", (_label, source) => {
+    const result = probe("extensions.osc777-notify").lib!(source)
+    // The rendered not-tested reason is notTested.noObservable, so the specific reason must be on it.
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: controlReason })
+    expect(result.note).toBe(controlReason)
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+  })
+
+  test("an absent reader keeps the grid-only TEST TODO route", () => {
+    const result = probe("extensions.osc777-notify").lib!(context({}))
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.note).toBe(NO_SAME_PATH_CONTROL)
+    expect(result.observation).toBeUndefined()
+  })
+})
+
+// @failure #32271: a present OSC 9;4 reader must show a same-run set control before any Unsupported, and a state-0 report
+// is never "never reported" (@cto 3636f1ee). These rows run without any native engine.
+// @level l1
+// @consumer extensions.osc9-progress library callback
+describe("OSC 9;4 progress reader grading", () => {
+  type Report = { state: number; value: number | null } | null
+  /** A scripted engine storing the last 9;4 report; `drop` names a state it never stores, `clear` how it stores 0. */
+  function progressSource(options: { drop?: number; clearAs?: "zero" | "null" } = {}): LibProbeSource {
+    let report: Report = null
+    return context({
+      feed(text) {
+        for (const [, state, value] of text.matchAll(/\x1b\]9;4;(\d)(?:;(\d+))?\x07/g)) {
+          const code = Number(state)
+          if (code === options.drop) continue
+          report =
+            code === 0 && options.clearAs === "null"
+              ? null
+              : { state: code, value: value === undefined ? null : Number(value) }
+        }
+      },
+      getProgress: () => report && { ...report },
+    })
+  }
+  const controlReason = `${NO_SAME_PATH_CONTROL}: OSC 9;4;1;37 control did not read back as state 1, value 37; this reader is not shown to observe the OSC 9;4 path`
+
+  test("a correct reader grades Supported", () => {
+    const result = probe("extensions.osc9-progress").lib!(progressSource())
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  })
+
+  test.each([
+    ["state 3 is never stored", progressSource({ drop: 3 })],
+    ["a cleared report reads as never reported", progressSource({ clearAs: "null" })],
+  ])("a reader whose control passes but %s grades Unsupported", (_label, source) => {
+    const result = probe("extensions.osc9-progress").lib!(source)
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+  })
+
+  test.each([
+    ["a stale fixed report", context({ getProgress: () => ({ state: 0, value: null }) })],
+    ["a stale report fixed at state 1, value 37", context({ getProgress: () => ({ state: 1, value: 37 }) })],
+    ["an inert feed", { ...progressSource(), feed() {} }],
+    ["a reader that drops the set control", progressSource({ drop: 1 })],
+  ])("%s stays TEST TODO without a recorded control", (_label, source) => {
+    const result = probe("extensions.osc9-progress").lib!(source)
+    // The rendered not-tested reason is notTested.noObservable, so the specific reason must be on it.
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: controlReason })
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+  })
+
+  test("an absent reader keeps the grid-only TEST TODO route", () => {
+    const result = probe("extensions.osc9-progress").lib!(context({}))
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.observation).toBeUndefined()
+  })
+})

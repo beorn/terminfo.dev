@@ -2125,7 +2125,7 @@
     "url": "https://conemu.github.io/en/AnsiEscapeCodes.html#ConEmu_specific_OSC",
     "tags": ["osc", "conemu"],
     "body": "OSC 9;4 is a ConEmu-originated protocol for reporting task progress to the terminal. The sequence <code>ESC ] 9 ; 4 ; st ; pr BEL</code> sets progress state (st: 0=remove, 1=normal, 2=error, 3=indeterminate, 4=paused) and percentage (pr: 0-100). Terminals render this as a native progress indicator — typically in the tab bar, title bar, or taskbar.\n\nOriginally a ConEmu extension, it has been widely adopted: Ghostty (1.2+), iTerm2 (3.6.6+), Windows Terminal, Konsole, mintty, and WezTerm all support it. This makes it one of the most cross-terminal ways to display progress. CLI tools like curl, wget, and build systems can emit these sequences to provide native progress feedback.",
-    "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>.",
+    "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>. Library engines with a stored OSC 9;4 report reader are measured at the engine's stored state, never progress display: a control <code>OSC 9;4;1;37</code> must read back as state 1 with value 37 before any Unsupported, then <code>OSC 9;4;3</code> must store state 3 and a final <code>OSC 9;4;0</code> must store state 0, never no report. The error state 2, the paused state 4, 100%, and the stored values for states 0 and 3 are not graded.",
     "baseline": "rich"
   },
   "extensions.osc66-text-sizing": {
@@ -2521,7 +2521,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc"],
     "body": "OSC 777 is the rxvt-unicode (urxvt) notification extension, providing structured desktop notifications with separate title and body fields. The sequence <code>ESC ] 777 ; notify ; title ; body BEL</code> triggers a system notification. Unlike OSC 9 which sends a single message string, OSC 777 separates the title and body, giving notification managers more control over presentation. Originally from rxvt-unicode, it has been adopted by foot, Ghostty, WezTerm, and other modern terminals as a simple cross-terminal notification mechanism.",
-    "probe": "Send <code>OSC 777 ; notify ; test ; body BEL</code>, then ask for the cursor position. No reply is defined for this sequence, so notification delivery is not observable from the cell grid: an ignored sequence and a delivered one leave the same screen. The attempted cursor query is TEST FAILURE for notification delivery; the cell grid provides no evidence of that external effect.",
+    "probe": "Send <code>OSC 777 ; notify ; test ; body BEL</code>, then ask for the cursor position. No reply is defined for this sequence, so notification delivery is not observable from the cell grid: an ignored sequence and a delivered one leave the same screen. The attempted cursor query is TEST FAILURE for notification delivery; the cell grid provides no evidence of that external effect. Library engines with a raw OSC 777 reader are measured at the parser sink, never OS delivery: a non-notify OSC 777 control payload must read back verbatim through the same reader before any Unsupported, then both notify payloads must be appended in order.",
     "baseline": "rich",
     "sequence": "ESC ] 777 ; notify ; title ; body BEL"
   },
