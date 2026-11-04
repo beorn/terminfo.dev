@@ -104,6 +104,22 @@ const KITTY_DISABLED_BITS = new Map<string, number>([
   ["kitty-report-text-noop", 16],
 ])
 
+// #32262: a live parser with an inert state reader is not a controlled negative.
+test.each(["osc2-title", "osc52-write"])("extensions.%s retains TODO when its reader is inert", (name) => {
+  const probe = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!
+  const working = semanticSurfaceSource()
+  const source = name === "osc2-title"
+    ? { ...working, getTitle: () => "" }
+    : { ...working, getClipboardState: () => ({ writes: [] }) }
+  const result = probe.lib!(source)
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "observation not decided: no same-path control in this run",
+  })
+  expect(source.feedCapture("\x1b[c")).toMatch(/^\x1b\[\?[0-9;]+c$/u)
+})
+
 test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with %s", async (name, mutation) => {
   const id = `extensions.${name}`
   const probe = extensionsProbes.find((entry) => entry.id === id)!
