@@ -64,11 +64,11 @@ const EXTENSIONS_SEMANTIC_SURFACE_CONTROLS = [
   ["sixel-geometry-report", "sixel-geometry-noop"],
   ["osc66-text-sizing", "osc66-noop"],
   ["osc99-kitty-notify", "osc99-noop"],
-  ["osc2-title", "osc2-noop"],
+  ["osc2-title", "osc2-target-noop"],
   ["osc0-icon-title", "osc0-noop"],
   ["osc1-icon", "osc1-noop"],
   ["osc52-clipboard", "osc52-write-noop"],
-  ["osc52-write", "osc52-write-noop"],
+  ["osc52-write", "osc52-target-write-noop"],
   ["osc52-read", "osc52-read-noop"],
   ["osc5522-clipboard", "osc5522-unsupported"],
   ["osc133-a", "osc133-a-noop"],
@@ -105,12 +105,20 @@ const KITTY_DISABLED_BITS = new Map<string, number>([
 ])
 
 // #32262: a live parser with an inert state reader is not a controlled negative.
-test.each(["osc2-title", "osc52-write"])("extensions.%s retains TODO when its reader is inert", (name) => {
+test.each([
+  ["osc2-title", "reader"],
+  ["osc52-write", "reader"],
+  ["osc2-title", "osc2-noop"],
+  ["osc52-write", "osc52-write-noop"],
+])("extensions.%s retains TODO with unqualified %s", (name, fault) => {
   const probe = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!
-  const working = semanticSurfaceSource()
-  const source = name === "osc2-title"
-    ? { ...working, getTitle: () => "" }
-    : { ...working, getClipboardState: () => ({ writes: [] }) }
+  const working = semanticSurfaceSource(fault === "reader" ? [] : [fault])
+  const source =
+    fault !== "reader"
+      ? working
+      : name === "osc2-title"
+        ? { ...working, getTitle: () => "" }
+        : { ...working, getClipboardState: () => ({ writes: [] }) }
   const result = probe.lib!(source)
   expect(result.observation?.outcome).not.toBe("unsupported")
   expect(result.notTested).toEqual({
@@ -131,6 +139,7 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   const inert = await regradeRow(probe, row, { headless: inertLibProbeSource() })
   expect(inert.after, `${id}: no-op source cannot establish support`).not.toBe("supported")
   const workingSource = semanticSurfaceSource()
+  if (id === "extensions.osc2-title") workingSource.feed("\x1b]2;batch9-original-title\x07")
   const cwdUri = "file://localhost/e4-original-cwd"
   const cwdControl =
     id === "extensions.osc7-cwd"
@@ -148,10 +157,18 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   expect(workingSource.getIconLabel?.(), `${id}: restores the icon`).toBe(beforeIcon)
   expect(workingSource.getCwd?.(), `${id}: restores the working directory`).toBe(beforeCwd)
   const disabledSource = semanticSurfaceSource([mutation])
+  if (id === "extensions.osc2-title") disabledSource.feed("\x1b]2;batch9-original-title\x07")
+  if (id === "extensions.osc52-write") disabledSource.feed(`\x1b]52;c;${btoa("batch9-prior-write")}\x07`)
+  const disabledTitle = disabledSource.getTitle()
+  const priorWrites = disabledSource.getClipboardState?.().writes ?? []
   if (cwdControl) disabledSource.feed(cwdControl)
   const disabledCwd = disabledSource.getCwd?.()
   if (cwdControl) expect(disabledCwd, `${id}: the other protocol qualifies the Cwd reader`).toBe(cwdUri)
   const disabled = await regradeRow(probe, row, { headless: disabledSource })
+  if (id === "extensions.osc2-title") expect(disabledSource.getTitle()).toBe(disabledTitle)
+  if (id === "extensions.osc52-write") {
+    expect(disabledSource.getClipboardState!().writes.slice(0, priorWrites.length)).toEqual(priorWrites)
+  }
   expect(disabledSource.getCwd?.(), `${id}: negative control restores the working directory`).toBe(disabledCwd)
   // A roundtrip mismatch leaves the write/read combination undecided; it is not an engine negative.
   expect(disabled.after, `${id}: only ${mutation} is disabled`).toBe(

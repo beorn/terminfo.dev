@@ -2584,6 +2584,11 @@ const ENGINE_CLIPBOARD_NOTE = "engine copy_to_clipboard callback read via getCli
 
 function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   if (typeof ctx.getClipboardState !== "function") return headlessOsc52WriteWithoutWitness(ctx)
+  const control = btoa(`terminfo-osc52-control-${randomUUID()}`)
+  ctx.feed(`\x1b]52;c;${control}\x07`)
+  const controlled = ctx.getClipboardState().writes
+  const controlVerified = controlled.some((write) => write.selector === "c" && write.payload === control)
+  const priorWrites = new Set(controlled.map((write) => JSON.stringify([write.selector, write.payload])))
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
@@ -2598,8 +2603,11 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
     ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null || raw === ""
     : raw === ""
   const explain = (result: ProbeCallbackResult) => emptyNativeHostReply(ctx, result, query, readEmpty)
-  const writes = retained.writes.map((write) => ({ selector: write.selector, payload: write.payload }))
-  const match = retained.writes.find((write) => write.selector === "c" && write.payload === encoded)
+  const targetWrites = retained.writes.filter(
+    (write) => !priorWrites.has(JSON.stringify([write.selector, write.payload])),
+  )
+  const writes = targetWrites.map((write) => ({ selector: write.selector, payload: write.payload }))
+  const match = targetWrites.find((write) => write.selector === "c" && write.payload === encoded)
   const note = [
     ENGINE_CLIPBOARD_NOTE,
     match?.text !== undefined ? `text ${match.text}` : undefined,
@@ -2625,6 +2633,7 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
     )
   }
   const state = { writes }
+  if (!controlVerified) return explain(notTestedResult(NO_SAME_PATH_CONTROL, { control, controlled, ...state }))
   if (writes.length === 0) return explain(parserStateResult(false, expected, state, note, undefined, "query_reply"))
   return explain(parserStateResult(null, expected, state, note, undefined, "query_reply"))
 }
@@ -4333,11 +4342,17 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => {
         const before = ctx.getTitle()
         const requested = before === "Test Title" ? "Test Title 2" : "Test Title"
+        const control = before === "terminfo-title-control" ? "terminfo-title-control-2" : "terminfo-title-control"
         try {
+          ctx.feed(`\x1b]2;${control}\x07`)
+          const controlled = ctx.getTitle()
+          if (controlled !== control) return notTestedResult(NO_SAME_PATH_CONTROL, { before, control, controlled })
           ctx.feed(`\x1b]2;${requested}\x07`)
           const title = ctx.getTitle()
           return parserStateResult(title === requested, "OSC 2 sets the exact requested window title", {
             before,
+            control,
+            controlled,
             requested,
             title,
           })

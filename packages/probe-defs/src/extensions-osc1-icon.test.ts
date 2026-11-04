@@ -112,13 +112,18 @@ test.each(["original-icon", "test-icon"])("headless osc1 rejects an ignored writ
 // The title criterion must witness a change, including when the old title already equals the
 // usual payload. Existing OSC 1 controls exercise title setup but never the OSC 2 probe itself.
 test.each(["unchanged-title", "Test Title"])(
-  "headless osc2 distinguishes an ignored write from initial title %s",
+  "headless osc2 keeps an unqualified write undecided from initial title %s",
   (initialTitle) => {
     const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc2-title")!
     for (const ignoresTitleSetup of [true, false]) {
       const ctx = source(null, { initialTitle, ignoresTitleSetup })
       const result = probe.lib!(ctx)
-      expect(result.observation).toMatchObject({ outcome: ignoresTitleSetup ? "unsupported" : "supported" })
+      if (ignoresTitleSetup) {
+        expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
+        expect(result.observation).toBeUndefined()
+      } else {
+        expect(result.observation).toMatchObject({ outcome: "supported" })
+      }
       expect(ctx.getTitle()).toBe(initialTitle)
     }
   },

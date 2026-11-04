@@ -1733,7 +1733,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       if (encoded === "?") {
         // An unset clipboard is a complete empty payload, not a missing reply.
         if (!mutations.has("osc52-read-noop")) replies += `\x1b]52;${selector};${clipboard.get(selector) ?? ""}\x07`
-      } else if (!mutations.has("osc52-write-noop")) {
+      } else if (
+        !mutations.has("osc52-write-noop") &&
+        (!mutations.has("osc52-target-write-noop") || atob(encoded).startsWith("terminfo-osc52-control-"))
+      ) {
         clipboard.set(selector, encoded)
         clipboardWrites.push({ selector, payload: encoded, text: atob(encoded) })
       }
@@ -1744,8 +1747,13 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       title = payload
     } else if (code === "1" && !mutations.has("xtwinops-20-noop") && !mutations.has("osc1-noop")) {
       iconLabel = payload
-    } else if (code === "2" && !mutations.has("osc2-noop")) title = payload
-    else if (code === "4" || code === "5") {
+    } else if (
+      code === "2" &&
+      !mutations.has("osc2-noop") &&
+      (!mutations.has("osc2-target-noop") || !/^Test Title(?: 2)?$/u.test(payload))
+    ) {
+      title = payload
+    } else if (code === "4" || code === "5") {
       const query = /^(\d+);\?$/u.exec(payload)
       const colors = code === "4" ? palette : specialColors
       if (query) {
