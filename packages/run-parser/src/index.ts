@@ -720,7 +720,7 @@ function retiredSourceAnswer(result: ProbeResult): ProbeResult {
 }
 
 /** Decode historical wire words without rewriting the retained run document. */
-function storedProbeStatus(value: unknown): unknown {
+export function storedProbeStatus(value: unknown): unknown {
   return value === "test-todo" ? "probe-todo" : value === "test-failure" ? "probe-invalid" : value
 }
 

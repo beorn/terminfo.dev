@@ -22,8 +22,14 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { join, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
-import { PROBE_STATUSES, isEnvironmentGroup, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
-import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
+import {
+  PROBE_STATUSES,
+  FEATURE_RESULT_STATUSES,
+  isEnvironmentGroup,
+  type ProbeStatus,
+  type FeatureResultStatus,
+} from "@terminfo/probe-defs"
+import { parseJsonStrict, storedProbeStatus, type LoadedRun } from "@terminfo/run-parser"
 import { loadRawCapture, UntrustedSuiteError } from "../../packages/admin/raw-capture.ts"
 import { compatibilitySubjects, loadCurrentResults, type CurrentResult } from "./current-results.ts"
 import { admittedContextKeys, originalRunFor, workingSubjectKey, type SelectedProjection } from "./selected-results.ts"
@@ -151,18 +157,32 @@ export function loadWorkingRun(
   }
   const rollups = summary.rollups
   if (!record(rollups)) throw new Error(`${summaryPath}: complete run requires per-engine rollups`)
+  const decodedCounts = new Map<string, Map<FeatureResultStatus, number>>()
   for (const engine of expected) {
     const rollup = rollups[engine]
     const counts = record(rollup) ? rollup.counts : undefined
-    if (
-      !record(counts) ||
-      !PROBE_STATUSES.every(
-        (status) =>
-          typeof counts[status] === "number" && Number.isInteger(counts[status]) && Number(counts[status]) >= 0,
-      )
-    ) {
+    if (!record(counts)) {
       throw new Error(`${summaryPath}: missing or invalid rollup for ${engine}`)
     }
+    const normalized = new Map<FeatureResultStatus, number>()
+    for (const [key, count] of Object.entries(counts)) {
+      const decoded = storedProbeStatus(key)
+      const status = FEATURE_RESULT_STATUSES.find((status) => status === decoded)
+      if (status === undefined) {
+        throw new Error(`${summaryPath}: rollup for ${engine} has unknown status key ${key}`)
+      }
+      if (normalized.has(status)) {
+        throw new Error(`${summaryPath}: rollup for ${engine} contains both legacy and canonical keys for ${status}`)
+      }
+      if (typeof count !== "number" || !Number.isInteger(count) || count < 0) {
+        throw new Error(`${summaryPath}: missing or invalid rollup for ${engine}`)
+      }
+      normalized.set(status, count)
+    }
+    if (!PROBE_STATUSES.every((status) => normalized.has(status))) {
+      throw new Error(`${summaryPath}: missing or invalid rollup for ${engine}`)
+    }
+    decodedCounts.set(engine, normalized)
   }
   const runRoot = realpathSync(selection.dir) + sep
   // Check every expected resource before an older-suite warning can return early.
@@ -201,16 +221,18 @@ export function loadWorkingRun(
     }
     seen.add(engine)
     const rollup = rollups[engine]
+    const counts = decodedCounts.get(engine)
     const actual = rollupTerminalStatuses(
       Object.fromEntries((run.results ?? []).map((result) => [result.featureId, result.status])),
       options.catalogIds,
     )
     if (
       !record(rollup) ||
-      !record(rollup.counts) ||
+      !counts ||
       rollup.positions !== actual.positions ||
       rollup.environmentPositions !== actual.environmentPositions ||
-      PROBE_STATUSES.some((status) => record(rollup.counts) && rollup.counts[status] !== actual.counts[status])
+      // The feature-only conflict counter was absent in retained five-status hourly summaries.
+      FEATURE_RESULT_STATUSES.some((status) => (counts.get(status) ?? 0) !== actual.counts[status])
     ) {
       throw new Error(`${summaryPath}: rollup for ${engine} disagrees with recorded capture ${rawPath}`)
     }

@@ -787,3 +787,67 @@ it("retains the recorded live source on selected current metadata", () => {
   expect(selected?.schemaVersion).toBe(4)
   expect(selected?.source).toEqual({ kind: "live" })
 })
+
+// Gate 2: a newer suite replaces historical methods; independent methods within one suite still combine.
+it.each([true, false])("reselects current methods at the suite boundary (differentSuite=%s)", (differentSuite) => {
+  const featureId = ids[0]
+  if (!featureId) {
+    throw new Error("The current-status fixture requires a catalogue feature")
+  }
+  const measured = (
+    runId: string,
+    probeHash: string,
+    method: "screenshot" | "query_reply",
+    status: "probe-invalid" | "probe-todo",
+    startedAt: string,
+  ) => {
+    const manifest = { ...suite, probeHash }
+    const attempt = { scope: "probe" as const, startedAt }
+    const results = todos()
+    results[0] = {
+      featureId,
+      status,
+      assertionType: method,
+      attempt,
+      reason: "The current probe has no deciding observation",
+      tests: [{ id: "criterion", status, attempt, reason: "The current probe has no deciding observation" }],
+    }
+    const value = raw(results, manifest)
+    return parseRun(
+      `${runId}.json`,
+      JSON.stringify({
+        ...value,
+        runId,
+        measuredAt: startedAt,
+        rawReplies: {
+          ...value.rawReplies,
+          "collector.selection": JSON.stringify({ ids: [featureId] }),
+          "collector.collectionAttempt": JSON.stringify({ ids: [featureId], startedAt, result: "completed" }),
+        },
+      }),
+      ids,
+      new Map([[probeHash, manifest]]),
+    )
+  }
+  const older = measured("historical-visual", "old-suite", "screenshot", "probe-invalid", "2026-10-21T05:00:00.000Z")
+  const newer = measured(
+    "current-output",
+    differentSuite ? "new-suite" : "old-suite",
+    "query_reply",
+    "probe-todo",
+    "2026-10-21T06:00:00.000Z",
+  )
+  const original = JSON.stringify([older, newer])
+  const projection = projectResults(
+    [older, newer],
+    ids,
+    { currentProbeHash: differentSuite ? "new-suite" : "old-suite" },
+    [],
+  )
+  const current = projection.contexts["term:kitty"]?.cells[featureId]
+  expect(current?.featureResult?.status).toBe(differentSuite ? "probe-todo" : "probe-invalid")
+  expect(current?.origin.runId).toBe(differentSuite ? newer.runId : older.runId)
+  expect(current?.run.probeHash).toBe(differentSuite ? "new-suite" : "old-suite")
+  expect(current?.result).toBe(differentSuite ? newer.results?.[0] : older.results?.[0])
+  expect(JSON.stringify([older, newer])).toBe(original)
+})

@@ -1,5 +1,6 @@
 /**
  * @failure Release 1 pages would read as measuring the whole catalog, so an unmeasured feature looks like a pass.
+ * @failure Vocabulary refactoring changes published corpus verdicts, evidence origins or immutable stored bytes.
  * @level l2
  * @consumer terminfo.dev front page and every terminal page
  * @reach fs-walk vendor/terminfo.dev/docs/** vendor/terminfo.dev/scripts/**
@@ -545,6 +546,51 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
 })
 
 describe("probe method classification", () => {
+  // Pre-refactor baseline: component 2ee594d33, after source-answer retirement and the retained VTerm run.
+  // Old test-todo/test-failure words normalize 1:1 to probe-todo/probe-invalid; no corpus verdict may move.
+  // Synthetic same-suite cases miss a historical probe leaking across suite boundaries.
+  it("preserves the 17 stored run bytes and all 13 published corpus feature statuses and origins", () => {
+    const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
+    const runs = loadStoredRuns(contentDir, Object.keys(catalog).sort())
+    expect(runs).toHaveLength(17)
+    const inventory = runs
+      .map((run): [string, string] => [
+        run.path.slice(contentDir.length + 1),
+        createHash("sha256").update(readFileSync(run.path)).digest("hex"),
+      ])
+      .sort(([left], [right]) => left.localeCompare(right))
+    expect(digest(inventory)).toBe("6c085c4d7a9b520b83327b2146fd8f355f8ada5638e913330d4763f0b1987690")
+    const out = mkdtempSync(join(tmpdir(), "terminfo-corpus-status-"))
+    try {
+      const { dataPath } = generateApi(out, { contentDir, working: null })
+      const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
+        contexts: Record<
+          string,
+          { catalogIds: string[]; featureResults: Record<string, { status: string; origin: { runId: string } }> }
+        >
+      }
+      expect(Object.keys(api.contexts)).toHaveLength(13)
+      const pins = Object.entries(api.contexts)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, context]) => [
+          key,
+          digest(
+            [...context.catalogIds]
+              .sort((left, right) => left.localeCompare(right))
+              .map((id) => [
+                id,
+                context.featureResults[id]?.status ?? "probe-todo",
+                context.featureResults[id]?.origin.runId ?? null,
+              ]),
+          ),
+        ])
+      expect(digest(pins)).toBe("c228b11dab50616727f15958420173202746b715543cdf668be15cb5f4ae2daf")
+    } finally {
+      // raw-delete-allow: this test owns the temporary API output directory.
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
   it("maps retained corpus probes without promoting a source answer", () => {
     const runs = loadStoredRuns(contentDir, Object.keys(catalog).sort())
     const counts = { internal: 0, output: 0, visual: 0, "end-to-end": 0, source: 0 }

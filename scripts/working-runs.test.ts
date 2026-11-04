@@ -143,6 +143,40 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(loaded.runs[0]?.runId).toBe("a22f06ca-2505-4c0d-a518-b0b01f8bbe76")
   })
 
+  // Retained hourly summaries predate the vocabulary rename; canonical-only envelopes miss this boundary.
+  it("reads legacy count keys identically without rewriting the envelope and still detects mismatched counts", () => {
+    const fixture = collection()
+    const canonical = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })
+    const counts = fixture.summary.rollups.vterm.counts
+    for (const [legacy, status] of [
+      ["test-todo", "probe-todo"],
+      ["test-failure", "probe-invalid"],
+    ] as const) {
+      Reflect.set(counts, legacy, counts[status])
+      Reflect.deleteProperty(counts, status)
+    }
+    fixture.save()
+    const summaryPath = join(fixture.dir, "summary.json")
+    const retained = readFileSync(summaryPath, "utf8")
+    expect(loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })).toEqual(canonical)
+    expect(readFileSync(summaryPath, "utf8")).toBe(retained)
+    Reflect.set(counts, "test-todo", Number(Reflect.get(counts, "test-todo")) + 1)
+    fixture.save()
+    expect(() => loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })).toThrow("disagrees")
+  })
+
+  it.each(["test-todo", "test-failure", "unknown-status"])(
+    "rejects an ambiguous or unknown hourly count key %s",
+    (key) => {
+      const fixture = collection()
+      Reflect.set(fixture.summary.rollups.vterm.counts, key, 0)
+      fixture.save()
+      expect(() => loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds })).toThrow(
+        key === "unknown-status" ? "unknown status key unknown-status" : "both legacy and canonical keys",
+      )
+    },
+  )
+
   it("names a missing current collection", () => {
     const parent = runsDir()
     const dir = run(parent, OLD, { complete: true })
