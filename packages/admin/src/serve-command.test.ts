@@ -7,14 +7,14 @@
  * @reach none <fixture-only: no process, no filesystem>
  */
 import { expect, test, vi } from "vitest"
-import type { ProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
+import type { Run } from "../../terminfo.dev/src/daemon-client.ts"
 import { serveCommand } from "./serve-command.ts"
 
 vi.mock("../versions.ts", () => ({
   sourceSuiteEnvironment: () => ({ TERMINFO_PROBE_HASH: "suite", TERMINFO_SOURCE_REVISION: "source" }),
 }))
 
-const run: ProbeRun = { id: "run-1", directory: "/private/run", scriptPath: "/private/run/serve.sh" }
+const run: Run = { id: "run-1", directory: "/private/run", scriptPath: "/private/run/serve.sh" }
 
 test("the serve command carries run and suite identity, and a capture directory only when one is handed in", () => {
   // No recipe declares a capture route here, so nothing is retained and no arm is asked for a frame.

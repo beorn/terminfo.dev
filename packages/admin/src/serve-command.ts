@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { shellQuote, type ProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
+import { shellQuote, type Run } from "../../terminfo.dev/src/daemon-client.ts"
 import { sourceSuiteEnvironment } from "../versions.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -18,7 +18,7 @@ const CLI_ENTRY = join(ROOT, "packages", "admin", "src", "index.ts")
  * TERMINFO_CAPTURE_DIRECTORY). Passing nothing keeps today's behaviour exactly: the arm names the
  * absent adapter rather than retaining a frame it cannot keep.
  */
-export function serveCommand(run: ProbeRun, captureDirectory?: string): string {
+export function serveCommand(run: Run, captureDirectory?: string): string {
   const suite = sourceSuiteEnvironment()
   return [
     `TERMINFO_RUN_ID=${run.id}`,

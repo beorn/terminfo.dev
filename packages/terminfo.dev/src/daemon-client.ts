@@ -43,13 +43,13 @@ export interface OwnedDaemon {
   registration: DaemonRegistration
 }
 
-export interface ProbeRun {
+export interface Run {
   id: string
   directory: string
   scriptPath: string
 }
 
-export function createProbeRun(): ProbeRun {
+export function createProbeRun(): Run {
   // Darwin's per-user tmpdir can exceed an editor's Unix-socket budget once its run marker is appended.
   const directory = mkdtempSync(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "terminfo-run-"))
   const id = randomBytes(16).toString("hex")
@@ -57,7 +57,7 @@ export function createProbeRun(): ProbeRun {
   return { id, directory, scriptPath: join(directory, `serve-${id}.sh`) }
 }
 
-export function removeProbeRun(run: ProbeRun): void {
+export function removeProbeRun(run: Run): void {
   rmSync(run.directory, { recursive: true })
 }
 

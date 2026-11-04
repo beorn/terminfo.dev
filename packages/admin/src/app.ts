@@ -27,7 +27,7 @@ import {
   stopOwnedDaemon,
   type DaemonRegistration,
   type OwnedDaemon,
-  type ProbeRun,
+  type Run,
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
@@ -74,14 +74,14 @@ interface AppDef {
     markerFlag: string
     /** The marker value, derived from the run. It must contain the run id and no whitespace; both are
      * refused at launch rather than surfacing later as a misleading "no live process". */
-    markerValue: (run: ProbeRun) => string
+    markerValue: (run: Run) => string
     /** The launch arguments, given the serve script and the run-scoped marker value. */
     args: (script: string, markerValue: string) => string[]
     /** App CLI configuration scoped to this launch, never the operator's profile. */
     env?: Record<string, string>
     /** Run-scoped files the marker refers to, written once the marker is validated and before the
      * launch. A marker that names a config file needs that file to exist; no other app needs this. */
-    prepare?: (run: ProbeRun, markerValue: string) => void
+    prepare?: (run: Run, markerValue: string) => void
     /** The capture route this recipe is ruled for (#30518 D5). Declared only where a frame route is
      * ruled — today Ghostty's owned process arm. It hands the collector
      * TERMINFO_CAPTURE_DIRECTORY=<run>/artifacts; an app that declares nothing keeps no capture. */
@@ -90,7 +90,7 @@ interface AppDef {
 }
 
 /** Ghostty's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
-const ghosttyConfigPath = (run: ProbeRun): string => join(run.directory, `ghostty-${run.id}`)
+const ghosttyConfigPath = (run: Run): string => join(run.directory, `ghostty-${run.id}`)
 
 /**
  * The ONE argv every owned Ghostty launch uses (@cto D2, #30518). Ghostty's args.zig reads only
@@ -101,7 +101,7 @@ const ghosttyLaunchArgv = (runFile: string): string[] => ["--config-default-file
 
 /** D2: the run file is exactly four lines. Its `command` line is unquoted, so the script path must be
  * absolute, carry this run's id and hold only [A-Za-z0-9/._-]; anything else refuses by name. */
-function ghosttyRunFile(run: ProbeRun): string {
+function ghosttyRunFile(run: Run): string {
   const script = run.scriptPath
   const outside = [...new Set([...script].filter((char) => !/[A-Za-z0-9/._-]/.test(char)))]
   if (!isAbsolute(script) || !script.includes(run.id) || outside.length > 0) {
@@ -119,9 +119,9 @@ function ghosttyRunFile(run: ProbeRun): string {
 }
 
 /** WezTerm's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
-const weztermConfigPath = (run: ProbeRun): string => join(run.directory, `wezterm-${run.id}.lua`)
+const weztermConfigPath = (run: Run): string => join(run.directory, `wezterm-${run.id}.lua`)
 
-function prepareEditorFixture(run: ProbeRun, markerValue: string, prefix: "cursor" | "vscode"): void {
+function prepareEditorFixture(run: Run, markerValue: string, prefix: "cursor" | "vscode"): void {
   const fixture = join(run.directory, `${prefix}-fixture`)
   for (const directory of [markerValue, join(run.directory, `${prefix}-extensions`), fixture]) {
     mkdirSync(directory, { mode: 0o700 })
@@ -409,7 +409,7 @@ export interface PreparedCliLaunch {
 }
 
 /** Prepare the existing CLI recipe without writing the caller's command or starting a daemon. */
-export function prepareCliLaunch(appId: string, run: ProbeRun): PreparedCliLaunch {
+export function prepareCliLaunch(appId: string, run: Run): PreparedCliLaunch {
   const app = APPS.find((candidate) => candidate.id === appId)
   if (!app?.cliLaunch) {
     throw new Error(
@@ -500,7 +500,7 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
   }
 }
 
-function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
+function launchWithServe(app: AppDef, run: Run): AppLaunch {
   const captureDirectory =
     app.id === "kitty" || app.cliLaunch?.capture === "artifact-directory" ? join(run.directory, "artifacts") : undefined
   const serveCmd = serveCommand(run, captureDirectory)
@@ -814,7 +814,7 @@ function ghosttyAutoUpdate(): {
  * and wrote the run file, then serialised once as strict JSON. It is retained as
  * `collector.outerLaunch` and its source text is what a mux proof cites as receiptSha256.
  */
-function measureOuterLaunchRecord(run: ProbeRun, launch: AppLaunch, ownerPid: number): string {
+function measureOuterLaunchRecord(run: Run, launch: AppLaunch, ownerPid: number): string {
   if (launch.identityPath === undefined || launch.marker === undefined || launch.executablePath === undefined) {
     throw new Error("Darwin capture launch has no cli-process launch record (identity path, marker or owner binary)")
   }

@@ -26,7 +26,7 @@ import {
   stopOwnedDaemon,
   type DaemonRegistration,
   type OwnedDaemon,
-  type ProbeRun,
+  type Run,
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
@@ -128,7 +128,7 @@ function whichBinary(name: string): string | null {
  * Write a wrapper script that clears outer terminal identity env vars
  * so the daemon inside the mux detects the mux as the terminal.
  */
-function writeServeScript(run: ProbeRun): void {
+function writeServeScript(run: Run): void {
   const serveCmd = serveCommand(run)
   writeFileSync(
     run.scriptPath,
