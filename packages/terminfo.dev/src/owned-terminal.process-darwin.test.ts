@@ -84,9 +84,14 @@ test.each([
       throw Error("Unmeasured ps request "+args.join(" "))
     }
     const realFs=await import("node:fs"),realCp=await import("node:child_process"),realTty=await import("node:tty")
+    const realOpenSync=realFs.openSync,realCloseSync=realFs.closeSync
     const dev=(r,big)=>({dev:big?7n:7,rdev:big?BigInt(r):r,ino:big?11n:11,isCharacterDevice:()=>true,isSocket:()=>true})
     mock.module("node:fs",()=>({...realFs,realpathSync:p=>p,
+      openSync:(p,...a)=>p==="/dev/fd/1"?900:realOpenSync(p,...a),
+      closeSync:fd=>fd===900?undefined:realCloseSync(fd),
       fstatSync:()=>dev(pane.ttyRdev,true),statSync:(p,o)=>{
+        // The wrong query TTY is measured as a different device, not an absent fixture answer.
+        if(p==="/dev/ttys999"&&(fault==="wrong-client-tty"||fault==="wrong-pane-tty"))return dev(Math.max(...rows.map(r=>r.ttyRdev??0))+1,o?.bigint)
         if(String(p).startsWith("/dev/")){const r=rows.find(r=>"/dev/"+r.tty===p);if(!r)throw Error("Unmeasured TTY device "+p);return dev(r.ttyRdev,o?.bigint)}
         return dev(pane.ttyRdev,o?.bigint)
       },
@@ -142,6 +147,8 @@ test.each([
       if(mux==="screen"){assert.equal(proof.chain[1].executablePath,"login");assert.equal(proof.chain[1].kernelExecutable,"/usr/bin/login")}
       assert.equal(proof.receiptSha256,digest(launch));assert.equal(proof.executable.sha256,digest("screen-fixture-binary"))
       assert.deepEqual(JSON.parse(grant.summary).muxAttachment,proof);assert.equal(grant.clipboard,undefined)
+      const geometry=await grant.readGeometry()
+      assert.equal(geometry.status,"measured",JSON.stringify(geometry))
       assert.ok(reads.filter(r=>r.args.includes("lstart=")).every(r=>r.env?.LC_ALL==="C"&&r.env?.TZ==="UTC"))
       await grant.dispose();console.log("PROOF")
     }catch(e){console.log("ERROR "+e.message)}
@@ -151,7 +158,11 @@ test.each([
   )
   expect(result.status, result.stderr).toBe(0)
   if (fault === "valid" || fault === "preflight") expect(result.stdout.trim(), result.stderr).toBe("PROOF")
-  else expect(result.stdout).toMatch(fault === "changed-birth" ? /birth|changed|identity/i : /TTY/)
+  else if (fault === "wrong-client-tty") {
+    expect(result.stdout).toContain("ERROR Darwin tmux listed client TTY differs from the measured client")
+  } else if (fault === "wrong-pane-tty") {
+    expect(result.stdout).toContain("ERROR Darwin tmux listed pane TTY differs from the measured collector")
+  } else expect(result.stdout).toMatch(fault === "changed-birth" ? /birth|changed|identity/i : /TTY/)
 })
 
 afterEach(() => {
