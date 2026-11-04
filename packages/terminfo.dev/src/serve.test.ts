@@ -16,9 +16,9 @@ let child: ChildProcess | undefined
 let home: string | undefined
 const packageRoot = join(import.meta.dirname, "../../..")
 
-// The owner factory has its own live-custody tests. This consumer case tests that the collector
-// carries its verified subject rather than treating an untrusted envelope as an app or a grant.
-it.each(["tmux", "screen"])(
+// The owner factory has its own live-custody tests. The collector consumes the owner-level proof:
+// Darwin has no clipboard adapter, and a second clipboard home could hide a missing owner proof.
+it.each(["tmux", "screen", "darwin-screen"])(
   "collects a %s envelope only when its target agrees with the verified attachment",
   (mux) => {
     home = mkdtempSync(join(tmpdir(), "terminfo-serve-mux-"))
@@ -36,36 +36,47 @@ it.each(["tmux", "screen"])(
     const owned=await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const hash="a".repeat(12),revision="b".repeat(40)
     globalThis.__TERMINFO_BUNDLED_SUITE__={manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:hash,probes: { term:unified.ALL_PROBES.map(p=>p.id).sort(),mux:unified.ALL_PROBES.map(p=>p.id).sort(),lib:[]}},collectorRevision:revision}
-    const mux=process.env.TERMINFO_TEST_MUX, version=mux==="screen"?"4.09.01":"3.6"
-    const target={kind:"mux",id:mux,version,os:"linux",osVersion:"fixture",outerTerminal:"kitty",mux,config:"/out/mux.conf",permissions:null}
+    const darwin=process.env.TERMINFO_TEST_MUX==="darwin-screen"
+    const mux=darwin?"screen":process.env.TERMINFO_TEST_MUX, version=mux==="screen"?(darwin?"4.00.03":"4.09.01"):"3.6"
+    if(darwin)Object.defineProperty(process,"platform",{value:"darwin"})
+    const preflight=darwin?{pid:95,startedAtEpochSeconds:1792678700}:{pid:95,startTicks:"115"}
+    const target={kind:"mux",id:mux,version,os:darwin?"macos":"linux",osVersion:"fixture",outerTerminal:"kitty",mux,config:"/out/mux.conf",permissions:null}
     const outerApp={subject:{...target,kind:"term",id:"kitty",version:"0.49.2",outerTerminal:null,mux:null,config:"--config NONE"},
-      rawReplies:{"device.primary-da":"\x1b[?62;52;c","device.xtversion":"kitty(0.49.2)","collector.preflightIdentity":JSON.stringify({pid:95,startTicks:"115",launchRunId:"a".repeat(32)})},
+      rawReplies:{"device.primary-da":"\x1b[?62;52;c","device.xtversion":"kitty(0.49.2)","collector.preflightIdentity":JSON.stringify({...preflight,launchRunId:"a".repeat(32)})},
       provenance:{executable:{path:"/fixture/kitty",sha256:"cd".repeat(32),version:"kitty 0.49.2"},
         sourceArtifact:{url:"https://example.invalid/kitty.tar",sha256:"de".repeat(32)},
         runtime:{imageId:"sha256:"+"ef".repeat(32),imageTarSha256:"12".repeat(32),arch:"amd64",nixLockRevision:"c".repeat(40),sourceRevision:revision,cleanTree:true,suiteHash:hash},
         fixture:{definition:"callbacks",config:"--config NONE",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}}
     const path=join(process.env.HOME,"runtime.json")
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
-    let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt
+    let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
-    mock.module("./packages/terminfo.dev/src/detect.ts",()=>({detectTerminal:()=>({name:mux,version,os:"linux",osVersion:"fixture"})}))
+    mock.module("./packages/terminfo.dev/src/detect.ts",()=>({detectTerminal:()=>({name:preflightOnly?"kitty":mux,version:preflightOnly?"0.49.2":version,os:target.os,osVersion:"fixture"})}))
     mock.module("./packages/terminfo.dev/src/tty.ts",()=>({...tty,withRawMode:async fn=>fn(),drainStdin:async()=>{},
-      queryWithSentinelOutcome:async(sequence,pattern)=>{const raw=sequence.includes("[18t")?"\x1b[8;24;80t":sequence==="\x1b[>c"?"\x1b[>83;40901;0c\x1b[?1;2c":mux==="screen"?"\x1b[?1;2c":"\x1bP>|tmux 3.6\x1b\\\x1b[?1;2;4c";return {raw,rawBase64:Buffer.from(raw).toString("base64"),match:pattern.exec(raw),reason:"reply"}}}))
+      queryWithSentinelOutcome:async(sequence,pattern)=>{const raw=sequence.includes("[18t")?"\x1b[8;24;80t":preflightOnly?"\x1bP>|kitty(0.49.2)\x1b\\\x1b[?62;52;c":sequence==="\x1b[>c"?"\x1b[>83;"+(darwin?"40003":"40901")+";0c\x1b[?1;2c":mux==="screen"?"\x1b[?1;2c":"\x1bP>|tmux 3.6\x1b\\\x1b[?1;2;4c";return {raw,rawBase64:Buffer.from(raw).toString("base64"),match:pattern.exec(raw),reason:"reply"}}}))
     mock.module("./packages/terminfo.dev/src/owned-terminal.ts",()=>({...owned,createOwnedTerminal:async options=>{
-      assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
-      const attachment={mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:{pid:95,startTicks:"115"},executable:{version},config:{path:"/out/mux.conf"}}
+      if(preflightOnly){
+        assert.equal(options.darwinPreflight,true)
+        return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({preflightIdentity:{...preflight,launchRunId:"a".repeat(32)}}),readCells:async()=>{throw new Error("No frame requested")},dispose:async()=>{}}
+      }
+      if(darwin)assert.equal(options.process.asserter,"terminfo-admin")
+      else assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
+      const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
       return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({muxAttachment:attachment}),
-        clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(hasAttachment?{muxAttachmentProof:attachment}:{})},dispose:async()=>{}}
+        ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
+        ...(darwin?{readCells:async()=>{throw new Error("This subject-join test does not request a text frame")}}:{}),
+        ...(!darwin?{clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(!hasAttachment?{muxAttachmentProof:attachment}:{})}}:{}),dispose:async()=>{}}
     }}))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
-      assert.equal(options.subject.kind,"mux");assert.equal(options.subject.id,mux)
-      assert.equal(options.ownedTerminal.clipboard.assertOwned,verify)
+      assert.equal(options.subject.kind,preflightOnly?"term":"mux");assert.equal(options.subject.id,preflightOnly?"kitty":mux)
+      if(!darwin)assert.equal(options.ownedTerminal.clipboard.assertOwned,verify)
+      else assert.equal(options.ownedTerminal.clipboard,undefined)
       inBatch=true
-      try{await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
+      try{if(!darwin)await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
       // Batch-only coverage cannot see the producer overwrite its persisted collection custody.
-      const readDraft=()=>JSON.parse(readFileSync(join(process.env.HOME,".terminfo-dev","http-responses",options.captureRunId+".draft.json"),"utf8"))
+      const readDraft=()=>JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY||join(process.env.HOME,".terminfo-dev","http-responses"),options.captureRunId+".draft.json"),"utf8"))
       collectionAttempt=readDraft().rawReplies["collector.collectionAttempt"]
       const attempt=JSON.parse(collectionAttempt)
       assert.deepEqual(attempt.ids,["device.xtversion"])
@@ -78,25 +89,37 @@ it.each(["tmux", "screen"])(
       return batch
     }}))
     const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
-    const run=await collectProbeRun({ids:["device.xtversion"]})
+    if(darwin)process.env.TERMINFO_CAPTURE_DIRECTORY=join(process.env.HOME,"capture")
+    const collect=()=>collectProbeRun({ids:["device.xtversion"],...(darwin?{processOwner:{asserter:"terminfo-admin",launchRunId:"a".repeat(32),workerPid:process.pid,provider:"cli-process",ownerPid:123,executablePath:"/fixture/kitty",marker:{flag:"--run",value:"a".repeat(32)},tty:"/dev/ttys000",intendedVersion:"0.49.2"}}:{})})
+    const run=await collect()
     assert.deepEqual(JSON.parse(run.rawReplies["collector.collectionAttempt"]),{...JSON.parse(collectionAttempt),result:"completed"})
     assert.equal(run.rawReplies["fixture.reply"],"batch-reply")
+    if(!darwin){
     assert.equal(verifierCalls,1)
     custodyFailure=new Error("fixture mux custody revoked at batch")
-    await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),error=>error===custodyFailure)
+    await assert.rejects(collect(),error=>error===custodyFailure)
     assert.equal(verifierCalls,2)
     custodyFailure=undefined
+    }
     assert.deepEqual(run.subject,target)
     assert.deepEqual(run.outerApp,outerApp)
     assert.equal(run.provenance,undefined)
     assert.equal(JSON.parse(run.rawReplies["collector.terminalOwnership"]).muxAttachment.captureRunId,run.runId)
     suppliedTarget={...target,config:"/foreign.conf"};write()
-    await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),/mux.*attachment|attachment.*mux/i)
+    await assert.rejects(collect(),/mux.*attachment|attachment.*mux/i)
     suppliedTarget=target;hasAttachment=false;write()
-    await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),/mux.*attachment|attachment.*mux/i)
+    await assert.rejects(collect(),/mux.*attachment|attachment.*mux/i)
     hasAttachment=true
-    outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({pid:96,startTicks:"115",launchRunId:"a".repeat(32)});write()
-    await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),/preflight.*attachment/i)
+    suppliedTarget={...target,version:"foreign"};write()
+    await assert.rejects(collect(),/mux.*attachment|attachment.*mux/i)
+    suppliedTarget=target
+    outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({...preflight,pid:96,launchRunId:"a".repeat(32)});write()
+    await assert.rejects(collect(),/preflight.*attachment/i)
+    if(darwin){
+      preflightOnly=true;writeFileSync(path,JSON.stringify(outerApp.provenance))
+      const outer=await collect()
+      assert.deepEqual(JSON.parse(outer.rawReplies["collector.preflightIdentity"]),{...preflight,launchRunId:"a".repeat(32)})
+    }
   `,
       ],
       {
@@ -108,7 +131,7 @@ it.each(["tmux", "screen"])(
           HOME: home,
           TERMINFO_TEST_MUX: mux,
           TERMINFO_CAPTURE_DIRECTORY: "",
-          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "fixture-receipt",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: mux === "darwin-screen" ? "" : "fixture-receipt",
           TERMINFO_DISPOSABLE_RECEIPT: "",
         },
       },
@@ -697,7 +720,7 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
     mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
       ownedTerminalVerifiedFor: () => true,
       createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", ${ownerPidField}
-        summary: "owned process fixture", readGeometry: async () => geometry, dispose: async () => {} })
+        summary: JSON.stringify({preflightIdentity:{pid:process.pid,startedAtEpochSeconds:1792698257,launchRunId:"a".repeat(32)}}), readGeometry: async () => geometry, dispose: async () => {} })
     }))
     mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
       withRawMode: async callback => callback(), drainStdin: async () => {},

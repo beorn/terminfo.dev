@@ -36,6 +36,7 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const app = ${JSON.stringify(app)}
     const executable = app === "iterm2" ? "/Applications/iTerm.app/Contents/MacOS/iTerm2"
       : "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"
@@ -55,6 +56,7 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
       spawn: () => { throw new Error("geometry unavailable in this adapter-selection fixture") }
     }))
     mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({
+      ...receipt,
       readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
     }))
     const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")

@@ -22,9 +22,9 @@ import type { TermProbeSource, LibProbeSource, ProbeCallbackResult } from "./typ
  * #32246: a former source-review site no longer grades from source; it returns the TEST TODO coverage record with
  * no observation, no negative assertion and no review branch.
  */
-function expectNoSamePathTodo(result: ProbeCallbackResult, id?: string) {
+function expectNoSamePathTodo(result: ProbeCallbackResult, id?: string, noObservable = NO_SAME_PATH_CONTROL) {
   expect(result.pass, id).toBe(false)
-  expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable })
   expect(result.criterionBranch, id).toBeUndefined()
   expect(result.tests, id).toBeUndefined()
   expect(result.observation, id).toBeUndefined()
@@ -770,33 +770,38 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
       before: { bold: true, dim: true, italic: true },
       after: { bold: false, dim: false, italic: true },
       erasedSentinel: { bold: false, dim: false, italic: false },
+      unshown: "bold and dim and italic",
     },
     {
       id: "sgr.selective-reset.underline",
       before: { underline: true, bold: true },
       after: { underline: false, bold: true },
       erasedSentinel: { underline: false, bold: false },
+      unshown: "underline and bold",
     },
     {
       id: "sgr.selective-reset.italic",
       before: { italic: true, bold: true },
       after: { italic: false, bold: true },
       erasedSentinel: { italic: false, bold: false },
+      unshown: "italic and bold",
     },
     {
       id: "sgr.selective-reset.inverse",
       before: { inverse: true, bold: true },
       after: { inverse: false, bold: true },
       erasedSentinel: { inverse: false, bold: false },
+      unshown: "inverse and bold",
     },
     {
       id: "sgr.reset",
       before: { bold: true, italic: true, underline: true },
       after: { bold: false, italic: false, underline: false },
       erasedSentinel: null,
+      unshown: "bold and italic and underline",
     },
   ] as const
-  for (const { id, before, after, erasedSentinel } of cases) {
+  for (const { id, before, after, erasedSentinel, unshown } of cases) {
     const probe = sgrProbes.find((item) => item.id === id)
     if (!probe?.lib) throw new Error(`missing ${id} callback`)
     const lib = probe.lib
@@ -820,8 +825,12 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
     const unobservedSetup = probe.lib(
       headless({ getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "Y"][col] ?? "" }) }),
     )
-    // #31379, #32246: a styled setup that shows none of the attributes has no same-path control: TEST TODO.
-    expectNoSamePathTodo(unobservedSetup, id)
+    // #30590: incomplete compound setup stays TODO and names every unobserved facet.
+    expectNoSamePathTodo(
+      unobservedSetup,
+      id,
+      `compound reset not decided: ${unshown} not shown at setup; every claimed facet must be seeded and read`,
+    )
     if (erasedSentinel) {
       const lost = read(erasedSentinel)
       expect(lost.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
@@ -850,7 +859,11 @@ test.each([
     }),
   )
   if (outcome === "todo") {
-    expectNoSamePathTodo(result)
+    expectNoSamePathTodo(
+      result,
+      id,
+      `compound reset not decided: ${unshown} not shown at setup; every claimed facet must be seeded and read`,
+    )
   } else {
     expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
     expect(result.observation?.note).toContain(unshown)

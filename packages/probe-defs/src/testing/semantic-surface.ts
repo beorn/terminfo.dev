@@ -118,6 +118,7 @@ const NO_ATTRIBUTES: Attributes = {
 interface SurfaceCell extends Attributes {
   char: string
   decscaProtected: boolean
+  hyperlink?: string | null
   /** A two-column lead cell (CJK, emoji, ZWJ sequence or regional-indicator pair). */
   wide?: boolean
 }
@@ -550,6 +551,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let titleStack: string[] = []
   const clipboard = new Map<string, string>()
   const clipboardWrites: ReturnType<NonNullable<LibProbeSource["getClipboardState"]>>["writes"] = []
+  const semanticMarks: Array<ReturnType<NonNullable<LibProbeSource["getSemanticMarks"]>>[number]> = []
+  let cwd: string | null = null
+  let hyperlink: string | null = null
   /** Bytes the surface owes a caller in reply to a query (DECRQCRA, DSR, DA, DECRQSS, XTWINOPS), read back by feedCapture. */
   let replies = ""
 
@@ -610,6 +614,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     titleStack = []
     clipboard.clear()
     clipboardWrites.length = 0
+    semanticMarks.length = 0
+    cwd = null
+    hyperlink = null
     replies = ""
   }
   clear()
@@ -722,9 +729,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       }
       const existing = target[cursorX]
       if (!mutations.has("overwrite-noop") || !existing || existing.char === " " || existing.char === "") {
-        target[cursorX] = { char: cluster, decscaProtected: protecting, wide: width > 1, ...attributes }
+        target[cursorX] = { char: cluster, decscaProtected: protecting, wide: width > 1, hyperlink, ...attributes }
         if (width > 1 && cursorX + 1 < cols) {
-          target[cursorX + 1] = { char: "", decscaProtected: protecting, wide: false, ...attributes }
+          target[cursorX + 1] = { char: "", decscaProtected: protecting, wide: false, hyperlink, ...attributes }
         }
       }
     }
@@ -1687,6 +1694,39 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       if (!mutations.has(`osc${code}-noop`)) dynamicColors.set(resetCode, initialColors.get(resetCode)!)
       return
     }
+    if (code === "133" || code === "633") {
+      const [selector, status] = payload.split(";")
+      if (selector === undefined || mutations.has(`osc${code}-${selector.toLowerCase()}-noop`)) return
+      if (selector === "A" || selector === "B" || selector === "C") {
+        semanticMarks.push({
+          type: selector === "A" ? "prompt" : selector === "B" ? "command" : "output",
+          startRow: cursorY,
+          startCol: cursorX,
+        })
+      } else if (selector === "D") {
+        // A marker may omit its status; retain the empty raw field without inventing an exit code.
+        semanticMarks.push({ type: "command-end", rawStatus: status ?? "" })
+      } else if (code === "633" && payload.startsWith("P;Cwd=")) {
+        cwd = payload.slice("P;Cwd=".length)
+      }
+      return
+    }
+    if (code === "7") {
+      if (!mutations.has("osc7-noop")) cwd = payload || null
+      return
+    }
+    if (code === "8") {
+      const separator = payload.indexOf(";")
+      if (separator >= 0 && !mutations.has("osc8-noop")) hyperlink = payload.slice(separator + 1) || null
+      return
+    }
+    if (code === "720") {
+      if (!mutations.has("osc720-noop")) {
+        viewportOffset = Math.max(0, viewportOffset - 1)
+        viewportAnchored = viewportOffset < scrolled
+      }
+      return
+    }
     if (code === "52") {
       const [selector, encoded] = payload.split(";")
       if (selector === undefined || encoded === undefined) return
@@ -1896,6 +1936,15 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     },
     getClipboardState() {
       return { writes: clipboardWrites.map((write) => ({ ...write })) }
+    },
+    getSemanticMarks() {
+      return semanticMarks.map((mark) => ({ ...mark }))
+    },
+    getCwd() {
+      return cwd
+    },
+    getHyperlinkAt(row: number, col: number) {
+      return cellAt(row, col).hyperlink ?? null
     },
     getCell(row: number, col: number): SurfaceCellState {
       const cell = cellAt(row, col)

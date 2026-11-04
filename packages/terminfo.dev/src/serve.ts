@@ -52,6 +52,7 @@ import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.
 import { calibrateCaptureOrigin } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
+import { muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
   createOwnedTerminal,
@@ -762,6 +763,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         out,
         expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
         process: options.processOwner,
+        ...(muxSubject && outerApp && { darwinMux: { subject: muxSubject, outerApp } }),
+        darwinPreflight: !muxSubject,
       })
       await installDarwinCapture(ownedTerminal)
     } else if (kind === "darwinHosted") {
@@ -790,16 +793,33 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       installTextCapture(ownedTerminal)
     }
     const clipboard = ownedTerminal?.clipboard
-    const attachment = clipboard?.muxAttachmentProof
+    const attachment = ownedTerminal?.muxAttachmentProof
     let batch: Awaited<ReturnType<typeof runProbeBatch>>
     try {
+      if (kind === "process" && !muxSubject) {
+        if (!ownedTerminal) throw new Error("Darwin outer collector has no verified owner")
+        const ownership = parseJsonStrict("Darwin outer collector ownership", ownedTerminal.summary)
+        if (
+          !ownership ||
+          typeof ownership !== "object" ||
+          Array.isArray(ownership) ||
+          !("preflightIdentity" in ownership)
+        ) {
+          throw new Error("Darwin outer collector ownership lacks measured preflight identity")
+        }
+        const identity = ownership.preflightIdentity
+        if (!identity || typeof identity !== "object" || Array.isArray(identity)) {
+          throw new Error("Darwin outer collector preflight identity is not an object")
+        }
+        draft.rawReplies["collector.preflightIdentity"] = JSON.stringify(identity)
+      }
       if (
         muxSubject &&
         (!attachment ||
           attachment.captureRunId !== captureRunId ||
           attachment.mux !== muxSubject.id ||
           attachment.mux !== muxSubject.mux ||
-          attachment.executable.version !== muxSubject.version ||
+          !muxAttachmentVersionMatches(attachment, muxSubject.version) ||
           attachment.config.path !== muxSubject.config)
       ) {
         throw new Error("Mux target differs from the verified mux attachment")
