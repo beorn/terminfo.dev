@@ -46,8 +46,6 @@ export interface SelectedCell extends ReadObservation {
   conclusive: boolean
   /** Same-run mapping failure, computed from retained evidence; absent when no assessment failed. */
   textQualificationReason?: string
-  /** Why the Windows console-host rule holds this cell (#30720); the cell's note says the same. */
-  consoleHostHold?: string
   record: {
     rawReply?: string
     assertions: ReadAssertion[]

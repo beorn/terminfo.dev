@@ -1865,7 +1865,6 @@ export function probe(
 
 export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
 export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
-/** A reply-path gate carries no verdict, so it is not in this set: its kept answer decides (@cto de41833e). */
 export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([HEADLESS_OBSERVABLE_REVIEW])
 
 /**

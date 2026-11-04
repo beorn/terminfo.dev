@@ -528,7 +528,7 @@ export function classifyResultMethod(
   if (isDecided) {
     return {
       kind: "unmapped",
-      reason: `decided status ${result.status} without assertionType or reviewRef`,
+      reason: `decided status ${result.status} without assertionType`,
     }
   }
 

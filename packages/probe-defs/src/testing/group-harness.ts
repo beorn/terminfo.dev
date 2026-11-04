@@ -45,7 +45,7 @@ export interface GroupContractSpec {
   readonly tests: readonly string[]
   /**
    * Named features the group declares but cannot bind here — a catalog id with no probe definition
-   * in the frozen suite. They are carried so the contract NAMES them instead of silently dropping them
+   * in the current probe suite. They are carried so the contract NAMES them instead of silently dropping them
    * (the NotTestedCoverageResult reason at contract scope; @cto 27832: every contract row binds).
    */
   readonly namedUnavailable?: readonly NamedUnavailable[]
@@ -55,7 +55,7 @@ export interface GroupContractSpec {
 export interface NamedUnavailable {
   readonly id: string
   readonly reason: "no-semantic-observable"
-  /** The specific observable the frozen suite cannot expose for this id. */
+  /** The specific observable the current probe suite cannot expose for this id. */
   readonly noObservable: string
 }
 

@@ -2,7 +2,7 @@ name: input-spike
 
 # Spike only (29814): prove whether each hosted host can deliver an OS-level key into an owned
 # terminal window, with no permission actuation and no runner configuration change. Workflow-only;
-# it writes no run document, admits nothing and never touches a frozen suite.
+# it writes no run document and never changes the probe suite.
 on:
   workflow_dispatch:
 
