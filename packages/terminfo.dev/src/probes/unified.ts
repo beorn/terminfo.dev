@@ -45,6 +45,7 @@ import {
   type TTYTraceEvent,
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
+import { createCallLog, withCallLog } from "viprobe"
 import {
   ownedTerminalVerifiedFor,
   ownedTerminalProcessBasisFor,
@@ -689,6 +690,11 @@ export async function runProbeBatch(
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
+      // The SGR callback branches on its source's available methods. Retain that
+      // context with the existing recorder; the inner TTY log still projects all
+      // legacy transport events, while this artifact can replay the callback itself.
+      const sourceLog = probe.id.startsWith("sgr.") ? createCallLog() : undefined
+      const sourceSession = sourceLog ? withCallLog(probeSource, { mode: "record", log: sourceLog }) : undefined
       let result
       try {
         result = await withTTYOperation(
@@ -697,11 +703,11 @@ export async function runProbeBatch(
               queries,
               events,
               async () => {
-                return callback(probeSource)
+                return callback(sourceSession?.context ?? probeSource)
               },
               {
                 onLog(log) {
-                  batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
+                  if (!sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
                 },
               },
             ),
@@ -709,6 +715,8 @@ export async function runProbeBatch(
           verify,
         )
       } finally {
+        sourceSession?.finish()
+        if (sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(sourceLog)
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }
       result = withReplyFailureEvidence(probe.id, result, {

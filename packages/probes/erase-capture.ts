@@ -42,15 +42,15 @@ function readReference(directory: string, reference: unknown): Buffer {
   return bytes
 }
 
-export function readEraseCapture(
+/** Shared private schema-4 artifact binding; family-specific checks follow this read. */
+export function readProbeCapture(
   directory: string,
   source: Extract<RunDraft["source"], { kind: "trace" }>,
   expected: {
     manifest: ProbeSuiteManifest & { schemaVersion: 4 }
     sourceRevision: string
     subject: ProbeSubject
-    runtimeIdentity: HeadlessRuntimeIdentity
-    geometry: typeof HEADLESS_TERMINAL
+    runtimeIdentity?: HeadlessRuntimeIdentity
   },
 ) {
   const bytes = readReference(directory, source.trace).toString("utf8")
@@ -71,8 +71,45 @@ export function readEraseCapture(
     !isDeepStrictEqual(capture.subject, expected.subject) ||
     !isDeepStrictEqual(capture.runtimeIdentity, expected.runtimeIdentity)
   ) {
-    throw new IncompleteReplay("Erase capture run, suite, source, subject or loaded runtime binding differs")
+    throw new IncompleteReplay("Capture run, suite, source, subject or loaded runtime binding differs")
   }
+  const files = [join(directory, source.trace.path)]
+  const references = [...capture.screenshotRefs, ...capture.textSnapshotRefs]
+  const manifestRaw = capture.rawReplies["collector.traceManifest"]
+  if (manifestRaw !== undefined || references.length) {
+    if (typeof manifestRaw !== "string") throw new IncompleteReplay("Capture dependencies lack collector.traceManifest")
+    const manifest = parseJsonStrict("capture trace manifest", manifestRaw)
+    if (!object(manifest) || !Array.isArray(manifest.blobs)) {
+      throw new IncompleteReplay("Capture dependencies lack their blob manifest")
+    }
+    const blobPaths = new Set<string>()
+    for (const blob of manifest.blobs) {
+      readReference(directory, blob)
+      if (!object(blob) || typeof blob.path !== "string" || blobPaths.has(blob.path)) {
+        throw new IncompleteReplay("Capture contains duplicate blob references")
+      }
+      blobPaths.add(blob.path)
+      files.push(join(directory, blob.path))
+    }
+    for (const path of references) {
+      if (!blobPaths.has(path)) throw new IncompleteReplay("Capture has an unbound blob: " + path)
+    }
+  }
+  return { capture, files }
+}
+
+export function readEraseCapture(
+  directory: string,
+  source: Extract<RunDraft["source"], { kind: "trace" }>,
+  expected: {
+    manifest: ProbeSuiteManifest & { schemaVersion: 4 }
+    sourceRevision: string
+    subject: ProbeSubject
+    runtimeIdentity: HeadlessRuntimeIdentity
+    geometry: typeof HEADLESS_TERMINAL
+  },
+) {
+  const { capture } = readProbeCapture(directory, source, expected)
   const manifestRaw = capture.rawReplies["collector.traceManifest"]
   if (typeof manifestRaw !== "string") throw new IncompleteReplay("Erase capture is missing collector.traceManifest")
   const manifest = parseJsonStrict("erase trace manifest", manifestRaw)
@@ -84,17 +121,6 @@ export function readEraseCapture(
     !Array.isArray(manifest.blobs)
   ) {
     throw new IncompleteReplay("Erase capture kind, geometry or blob manifest differs")
-  }
-  const blobPaths = new Set<string>()
-  for (const blob of manifest.blobs) {
-    readReference(directory, blob)
-    if (!object(blob) || typeof blob.path !== "string" || blobPaths.has(blob.path)) {
-      throw new IncompleteReplay("Erase capture contains duplicate blob references")
-    }
-    blobPaths.add(blob.path)
-  }
-  for (const path of [...capture.screenshotRefs, ...(capture.textSnapshotRefs ?? [])]) {
-    if (!blobPaths.has(path)) throw new IncompleteReplay("Erase capture has an unbound blob: " + path)
   }
   const raw = capture.rawReplies["collector.callLog"]
   if (typeof raw !== "string") throw new IncompleteReplay("Erase capture is missing collector.callLog")
