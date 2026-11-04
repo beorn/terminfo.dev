@@ -176,7 +176,7 @@ async function primaryRestoreCapture(
         ...result.observation,
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        note: "entry not qualified; failed primary restoration cannot establish an exit negative",
+        note: "alternate-screen entry not observed, so exit cannot be attributed",
       },
       assertions: [],
       tests: [
@@ -2178,7 +2178,7 @@ const modeDefinitions: ProbeDefinition[] = [
       if (typeof (ctx as { getCursor?: unknown }).getCursor !== "function") {
         return reviewResult(
           "no-cell-width-readback",
-          "Library probe source exposes no cell-width readback; required independent review of the retained raw state pending",
+          "Library probe source exposes no cell-width readback, so this run cannot decide it",
           "no cell-width readback",
           { cols: ctx.cols },
         )

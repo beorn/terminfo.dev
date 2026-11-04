@@ -190,17 +190,11 @@ const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "
   ["missing identity", undefined, false],
 ]
 const historyCases = ["erase.screen.scrollback", "scrollback.accumulate", "scrollback.total-lines"].flatMap((id) =>
-  historyIdentities.map(([name, runtimeIdentity, eligible, expectedBinary = historyRuntime.loadedBinary.sha256]) => ({
-    id,
-    name,
-    runtimeIdentity,
-    eligible,
-    expectedBinary,
-  })),
+  historyIdentities.map(([name, runtimeIdentity, eligible]) => ({ id, name, runtimeIdentity, eligible })),
 )
 test.each(historyCases)(
   "history count review qualifies $id: $name",
-  ({ id, runtimeIdentity, eligible, expectedBinary }) => {
+  ({ id, runtimeIdentity, eligible }) => {
     const definition = [...eraseProbes, ...scrollbackProbes].find((entry) => entry.id === id)
     if (!definition?.lib) throw new Error(`Missing ${id} library callback`)
     let calls = 0
@@ -216,8 +210,6 @@ test.each(historyCases)(
         },
       }),
     )
-    // A drifted binary no longer takes a TEST FAILURE gate: the cell is TEST TODO either way (@cto batch7 A-F6).
-    if (eligible === "drift") void expectedBinary
     if (!eligible) {
       expect(result.notTested?.noObservable ?? "", id).not.toContain(
         "adapter exposes no retained scrollback history count",

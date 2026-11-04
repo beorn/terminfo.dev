@@ -63,7 +63,7 @@ test.each([
           id: "review",
           status: "test-todo",
           reason:
-            "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
+            "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
         },
       ])
       expect(result.assertions ?? []).toEqual([])
@@ -1204,6 +1204,7 @@ test.each([
       }),
     ]),
   )
+  expect(result.observation?.note).toBe("alternate-screen entry not observed, so exit cannot be attributed")
 })
 
 test("alt-screen exit capture frames the primary, alternate and restored buffers", async () => {

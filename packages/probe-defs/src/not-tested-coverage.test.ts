@@ -131,7 +131,7 @@ test("modes.decsclm retains missing DECRPM coverage and measured state for requi
       id: "review",
       status: "test-todo",
       reason:
-        "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
+        "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
     },
   ])
   expect(result.observation).toBeUndefined()
