@@ -5,7 +5,7 @@
  * @testonly none
  * @reach fs-walk <fixture-only: mkdtempSync hosted receipt commands and output files>
  */
-import { execFile } from "node:child_process"
+import { execFile, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { realpathSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
@@ -999,6 +999,64 @@ test("two matching job ids on the first page refuse immediately, without asking 
     expect(queried).toEqual(["1"])
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+// r5 requires redaction before the handoff file and Node bootstrap without a checkout;
+// existing receipt tests neither send raw argv through this command nor exclude workspace imports.
+test("argv handoff transforms before persistence from the empty three-file apparatus", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "app-argv-apparatus-"))
+  const source = fileURLToPath(new URL("../", import.meta.url))
+  try {
+    for (const path of [
+      "scripts/hosted-runner-receipt.ts",
+      "packages/terminfo.dev/src/disposable-receipt.ts",
+      "packages/run-parser/src/app-launch.ts",
+    ]) {
+      const target = join(dir, path)
+      await mkdir(join(target, ".."), { recursive: true })
+      await writeFile(target, await readFile(join(source, path)))
+    }
+    const argv = [
+      "/invoked/wezterm",
+      "--config-file=/private/public config",
+      "--token",
+      "private-token-value",
+      "--Password=private=with=equals",
+      "--session=",
+      "--AUTH",
+      "--next",
+      "--",
+      "--password",
+      "positional value",
+    ]
+    const child = spawnSync("node", [join(dir, "scripts/hosted-runner-receipt.ts"), "--app-argv"], {
+      cwd: dir,
+      encoding: "utf8",
+      input: argv.join("\0") + "\0",
+    })
+    expect(child.error).toBeUndefined()
+    expect(child.status, child.stderr).toBe(0)
+    const expected = [
+      "/invoked/wezterm",
+      "--config-file=/private/public config",
+      "--token",
+      "[redacted]",
+      "--Password=[redacted]",
+      "--session=[redacted]",
+      "--AUTH",
+      "--next",
+      "--",
+      "--password",
+      "positional value",
+    ]
+    const handoff = join(dir, "app-argv.json")
+    await writeFile(handoff, child.stdout)
+    expect(JSON.parse(await readFile(handoff, "utf8"))).toEqual(expected)
+    expect(child.stdout + child.stderr).not.toContain("private-token-value")
+    expect(child.stdout + child.stderr).not.toContain("private=with=equals")
+  } finally {
     await rm(dir, { recursive: true, force: true })
   }
 })

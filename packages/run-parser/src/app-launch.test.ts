@@ -137,6 +137,10 @@ describe("a measured Windows launch uses the same parser", () => {
     executableSha256: "c3".repeat(32),
     sourceArtifact: { kind: "portable-zip", path: String.raw`C:\runner\wt.zip`, sha256: "d4".repeat(32) },
   }
+  it("preserves transformed invocation argv in the Windows receipt arm", () => {
+    const receipt = { ...windows, argv: ["C:\\launch\\wt.exe", "--token=[redacted]", "--", "verbatim value"] }
+    expect(parse(receipt)).toEqual(receipt)
+  })
   it("preserves the measured Windows executable, version and ZIP without bundle fields", () => {
     expect(parse(windows)).toEqual(windows)
   })
@@ -248,6 +252,12 @@ describe("a measured Windows launch uses the same parser", () => {
 // Reviewed r6 admits one new macOS source alternative; existing flat/derived/Windows
 // cases cannot catch a valid signed-bundle receipt being refused as an unknown kind.
 // This is parser contract data, not a measured codesign classification or Mac capture.
+// The bundle parser previously silently dropped argv; the Windows arm rejected it as an extra field.
+it("preserves transformed invocation argv without substituting the measured executable", () => {
+  const receipt = { ...appLaunchOf(), argv: ["/invoked/wezterm", "--token=[redacted]", "--", "verbatim value"] }
+  expect(parse(receipt)).toEqual(receipt)
+})
+
 describe("Developer ID signed bundle source contract", () => {
   const codeSignature = { identifier: "org.alacritty", cdHash: "12".repeat(20), strictVerified: true }
   const sourceArtifact = { kind: "developer-id-signed-bundle", codeSignature }
