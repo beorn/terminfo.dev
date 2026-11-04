@@ -1,5 +1,5 @@
 /**
- * @failure A text snapshot is admitted as a pixel frame, or a text verdict cannot be recomputed
+ * @failure A text snapshot is admitted as a pixel frame, or a text probe result cannot be recomputed
  *   from the run it was admitted with, so a published decision rests on evidence nobody can
  *   re-check.
  * @level l1
@@ -105,7 +105,7 @@ const textRun = (overrides: Record<string, unknown> = {}) => {
 const parse = (run: Record<string, unknown>) => parseRun("text-frames.json", JSON.stringify(run), [FEATURE], suites)
 
 describe("text frames — admitted only as what they are", () => {
-  it("admits a text verdict that cites its frame's cell digest, recomputable from the run alone", () => {
+  it("admits a text probe result that cites its frame's cell digest, recomputable from the run alone", () => {
     const loaded = parse(textRun())
     expect(loaded.results![0]).toMatchObject({ status: "supported", assertionType: "buffer_state" })
     expect(loaded.textSnapshotRefs).toEqual([SNAPSHOT])
@@ -235,11 +235,11 @@ describe("text frames — admitted only as what they are", () => {
     )
   })
 
-  it("refuses a verdict that cites only the whole-frame digest, which decided no cells", () => {
+  it("refuses a probe result that cites only the whole-frame digest, which decided no cells", () => {
     const run = textRun()
     const assertions = [{ ...(run.assertions as object[])[0], observed: WHOLE }]
     expect(() => parse({ ...run, assertions })).toThrow(
-      "cites only source or whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared",
+      "cites only source or whole-frame digests; a probe result must cite a frame's ref or the digest of the cells it compared",
     )
   })
 
@@ -275,7 +275,7 @@ describe("text frames — admitted only as what they are", () => {
     ).toThrow(/absent from the run's screenshotRefs/u)
   })
 
-  it("refuses a text verdict whose assertion does not cite a frame digest", () => {
+  it("refuses a text probe result whose assertion does not cite a frame digest", () => {
     const run = textRun()
     const assertions = [{ ...(run.assertions as object[])[0], observed: digest("elsewhere") }]
     expect(() => parse({ ...run, assertions })).toThrow(/not the ref or a digest of a frame/u)

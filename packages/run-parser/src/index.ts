@@ -943,7 +943,7 @@ function capturedHostQueries(text: string): Array<{ recipe: HostRecipeName; quer
   return queries
 }
 
-/** One custody validator shared by collection and immutable-run reading. It never assigns a grade. */
+/** One custody validator shared by collection and immutable-run reading. It never decides a probe result. */
 export function validateHostRecipeCauses(
   path: string,
   runId: string,

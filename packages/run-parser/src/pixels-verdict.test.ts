@@ -1,5 +1,5 @@
 /**
- * @failure A collector run is admitted carrying a pixels verdict that cannot be recomputed from its own frames, or a tampered frame set passes the same rules.
+ * @failure A collector run is admitted carrying a pixel probe result that cannot be recomputed from its own frames, or a tampered frame set passes the same rules.
  * @level l2
  * @consumer Every consumer of parseRun: the site matrix, generated analysis, status, admission and the reviewed census.
  * @reach fs-walk vendor/terminfo.dev/content/suites/*.json
@@ -102,7 +102,7 @@ const kittyFrames = (): ObservationFrame[] => [
 /**
  * The shape wezterm linux emitted for erase.screen.scrollback: five frames with no region digest
  * at all, and an assertion whose observed JSON cites four of the frames by ref — the equality of
- * capture refs is the entire verdict.
+ * capture refs is the entire probe result.
  */
 const scrollbackFrames = (): ObservationFrame[] => [
   frame("control", "Bottom of seeded buffer", 1, digest("bottom")),
@@ -310,8 +310,8 @@ function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnT
   return parseRun(`${id}.json`, JSON.stringify(run), [id], new Map([[SUITE, callbackManifest]]))
 }
 
-describe("in-run pixels verdicts", () => {
-  it("parses a decided DECSSCLS verdict whose assertion cites the region digests it compared", async () => {
+describe("in-run pixel probe results", () => {
+  it("parses a decided DECSSCLS probe result whose assertion cites the region digests it compared", async () => {
     const id = "modes.decsscls"
     const probe = modesProbes.find((entry) => entry.id === id)
     if (!probe?.term) throw new Error(`Missing ${id} terminal callback`)
@@ -324,7 +324,7 @@ describe("in-run pixels verdicts", () => {
     expect(loaded.assertions[0]?.kind).toBe("positive")
   })
 
-  it("refuses that same DECSSCLS verdict when its assertion cites no region digest", async () => {
+  it("refuses that same DECSSCLS probe result when its assertion cites no region digest", async () => {
     const id = "modes.decsscls"
     const probe = modesProbes.find((entry) => entry.id === id)
     if (!probe?.term) throw new Error(`Missing ${id} terminal callback`)
@@ -337,7 +337,7 @@ describe("in-run pixels verdicts", () => {
   })
 
   it.each(["cursor.hide", "editing.decsace"])(
-    "parses the real %s verdict when PNG, whole-frame and cell digests differ",
+    "parses the real %s probe result when PNG, whole-frame and cell digests differ",
     async (id) => {
       const probe = [...cursorProbes, ...editingProbes].find((entry) => entry.id === id)
       if (!probe?.term) throw new Error(`Missing ${id} terminal callback`)
@@ -365,7 +365,7 @@ describe("in-run pixels verdicts", () => {
       }
       assertion.observed = pixel.pixelsDigest
       expect(() => parseCallback(id, result, fixture)).toThrow(
-        `${id}.json: screenshot verdict for ${id} cites only source or whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared`,
+        `${id}.json: screenshot probe result for ${id} cites only source or whole-frame digests; a probe result must cite a frame's ref or the digest of the cells it compared`,
       )
     },
   )
@@ -481,23 +481,23 @@ describe("in-run pixels verdicts", () => {
     expect(control.sourceRef).not.toBe(control.ref)
     assertion.observed = control.sourceRef
     expect(() => parseCallback(id, result, fixture)).toThrow(
-      `${id}.json: screenshot verdict for ${id} cites only source or whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared`,
+      `${id}.json: screenshot probe result for ${id} cites only source or whole-frame digests; a probe result must cite a frame's ref or the digest of the cells it compared`,
     )
     assertion.observed = JSON.stringify({ ref: control.ref, sourceRef: digest("foreign-source") })
     expect(() => parseCallback(id, result, fixture)).toThrow(/is not the ref or a digest of a frame/)
   })
 
-  it("admits a digest-equality verdict whose assertion cites a frame's regionDigest", () => {
+  it("admits a digest-equality probe result whose assertion cites a frame's regionDigest", () => {
     const loaded = parse(kittyRun())
     const observation = loaded.results![0]!
     expect(observation.status).toBe("supported")
     expect(observation.frames).toHaveLength(6)
-    // The digests survive the parse, which is what keeps the verdict recomputable.
+    // The digests survive the parse, which is what keeps the probe result recomputable.
     expect(observation.frames?.[3]?.regionDigest).toBe(digest("after-region"))
     expect(observation.frames?.[3]?.pixelsDigest).toBe(digest("after-px"))
   })
 
-  it("admits a frame-ref verdict accompanied by its retained whole-frame digest", () => {
+  it("admits a frame-ref probe result accompanied by its retained whole-frame digest", () => {
     const run = kittyRun()
     const target = run.results[0]!.frames[3]!
     run.assertions[0]!.observed = JSON.stringify({ ref: target.ref, whole: frameDigests(target).whole })
@@ -510,7 +510,7 @@ describe("in-run pixels verdicts", () => {
     const frames = observations[0]!.frames as Array<Record<string, unknown>>
     frames[3]!.regionRectangle = { x: 10, y: 36, width: 104, height: 24 }
     const loaded = parse(run)
-    // The rectangle `regionDigest` was taken over survives with it, so a verdict recomputed from
+    // The rectangle `regionDigest` was taken over survives with it, so a probe result recomputed from
     // this parsed frame can still tell two screen positions apart (29580).
     expect(loaded.results![0]?.frames?.[3]?.regionRectangle).toEqual({ x: 10, y: 36, width: 104, height: 24 })
 
@@ -521,7 +521,7 @@ describe("in-run pixels verdicts", () => {
     expect(() => parse(broken)).toThrow(/invalid frame regionRectangle/)
   })
 
-  it("admits a verdict whose assertion cites the frame refs it compared", () => {
+  it("admits a probe result whose assertion cites the frame refs it compared", () => {
     const loaded = parse(scrollbackRun())
     expect(loaded.results![0]?.status).toBe("supported")
     expect(loaded.results![0]?.frames).toHaveLength(5)
@@ -536,15 +536,15 @@ describe("in-run pixels verdicts", () => {
     expect(() => parse(run)).toThrow(/lacks bound negative assertion/)
   })
 
-  it("refuses a verdict that cites a digest no frame carries", () => {
+  it("refuses a probe result that cites a digest no frame carries", () => {
     const run = kittyRun()
     const assertions = run.assertions as Array<Record<string, unknown>>
     assertions[0]!.observed = digest("not-in-any-frame")
-    // The same check now serves text verdicts, whose digests are cell-sized.
+    // The same check now serves text probe results, whose digests are cell-sized.
     expect(() => parse(run)).toThrow(/is not the ref or a digest of a frame/)
   })
 
-  it("refuses a verdict whose observed cites no digest at all", () => {
+  it("refuses a probe result whose observed cites no digest at all", () => {
     const run = kittyRun()
     const assertions = run.assertions as Array<Record<string, unknown>>
     assertions[0]!.observed = "the two frames looked the same"

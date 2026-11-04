@@ -1,6 +1,6 @@
 /**
  * @failure A stored reply-path or source-negative cell carrying a kept source answer is read as Unsupported (or
- *   refused) instead of PROBE TODO, so a Terminfo result is again graded from source (operator 2026-11-03, #32246).
+ *   refused) instead of PROBE TODO, so a Terminfo probe result is again decided from source (operator 2026-11-03, #32246).
  * @level l1
  * @consumer parseProbeResults for every stored reply-path-audit / source-negative cell in a retained lib run
  * @testonly none
@@ -109,7 +109,7 @@ it("reads a stored reply-path cell its kept answer used to decide as PROBE TODO,
   expect(parsed.assertions).toEqual([])
 })
 
-it("never grades a stored source-answer cell, whatever status or assertion type it claims", () => {
+it("never uses a stored source answer to decide a probe result, whatever status or assertion type it claims", () => {
   expect(read("supported").results?.[0]?.status).toBe("probe-todo")
   expect(read("unsupported", "buffer_state").results?.[0]?.status).toBe("probe-todo")
 })

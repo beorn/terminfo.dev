@@ -233,7 +233,7 @@ export function parseObservationFrames(
       fail(path, `invalid frame kind ${String(entry.kind)} ${index} for ${featureId}`)
     }
     // Evidence and frame kind must agree: a text row is decided from the terminal's own cells and a
-    // pixels row from a raster, so a run cannot grade one from the other's frame.
+    // pixels row from a raster, so a run cannot decide one probe result from the other's frame.
     if (assertionType === "buffer_state" && kind !== "text-cells") {
       fail(path, `text observation for ${featureId} cites a ${kind} frame ${index}`)
     }
@@ -267,7 +267,7 @@ export function parseObservationFrames(
     if (sourceRef !== undefined && !screenshotDigest(sourceRef)) {
       fail(path, `invalid frame sourceRef ${index} for ${featureId}`)
     }
-    // The raw-pixel and cell-aligned digests are the frame's own measurement: an in-run verdict on
+    // The raw-pixel and cell-aligned digests are the frame's own measurement: an in-run probe result on
     // pixels is recomputable only while they survive the parse, so they are carried, not dropped.
     const regionDigest = entry.regionDigest
     if (regionDigest !== undefined && !screenshotDigest(regionDigest)) {
@@ -304,7 +304,7 @@ export function parseObservationFrames(
   if (!frames.some((frame) => frame.role === "control") || targets.length === 0) {
     fail(path, `frames for ${featureId} require control and target`)
   }
-  // A text verdict has no screenshot: its frames' own refs are the retained artifacts it cites.
+  // A text probe result has no screenshot: its frames' own refs are the retained artifacts it cites.
   if (assertionType === "screenshot" && (!primaryRef || !targets.some((frame) => frame.ref === primaryRef))) {
     fail(path, `primary screenshotRef for ${featureId} must be a target frame`)
   }
@@ -361,7 +361,7 @@ export function parseObservation(
   if (value.evidence === "none" && value.frames !== undefined) {
     fail(path, `none evidence for ${featureId} cannot carry frames`)
   }
-  // A pixels verdict is allowed only as a decided frame pair. Equality of retained digests is a
+  // A pixel probe result is allowed only as a decided frame pair. Equality of retained digests is a
   // measurement, so it belongs in the raw run; a lone screenshotRef is still a pixel the collector
   // cannot decide, and it keeps the old refusal. Bounds, roles and capturedAt are enforced below.
   if (
@@ -371,7 +371,7 @@ export function parseObservation(
   ) {
     fail(
       path,
-      `${methodName(input)} verdict for ${featureId} requires control and target frames; a lone screenshotRef stays inconclusive`,
+      `${methodName(input)} probe result for ${featureId} requires control and target frames; a lone screenshotRef stays inconclusive`,
     )
   }
   const rawReplyRef =
@@ -417,7 +417,7 @@ export function parseObservation(
   if (value.host !== undefined) observation.host = consoleBufferOwner(value.host, path, featureId)
   if (value.note !== undefined) observation.note = asString(value.note, path, `note for ${featureId}`)
   validateInput(observation, path, rawReplies, assertions)
-  // A pixels verdict the collector decided in-run is a measurement, so the run alone must be able
+  // A pixel probe result the collector decided in-run is a measurement, so the run alone must be able
   // to recompute it: its own assertion, bound like every other measuring evidence, and every digest
   // that assertion cites belongs to a retained frame, including a ref or cells citation. A reviewed Interpretation is
   // exempt — its evidence is the frame pair itself, checked by its own validator.
@@ -458,7 +458,7 @@ function requireCitedFrameDigests(observation: ObservationInput, assertion: Read
   const frames = observation.frames ?? []
   const cited = assertion.observed.match(/sha256:[0-9a-f]{64}/g) ?? []
   if (cited.length === 0) {
-    fail(path, `${methodName(observation)} verdict for ${featureId} must cite the frame digest it decided on`)
+    fail(path, `${methodName(observation)} probe result for ${featureId} must cite the frame digest it decided on`)
   }
   const citesRefOrCells = cited.some((digest) =>
     frames.some((frame) => frame.ref === digest || frameDigests(frame).cells === digest),
@@ -474,14 +474,14 @@ function requireCitedFrameDigests(observation: ObservationInput, assertion: Read
     ) {
       fail(
         path,
-        `${methodName(observation)} verdict for ${featureId} cites ${digest}, which is not the ref or a digest of a frame in this observation`,
+        `${methodName(observation)} probe result for ${featureId} cites ${digest}, which is not the ref or a digest of a frame in this observation`,
       )
     }
   }
   if (!citesRefOrCells) {
     fail(
       path,
-      `${methodName(observation)} verdict for ${featureId} cites only source or whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared`,
+      `${methodName(observation)} probe result for ${featureId} cites only source or whole-frame digests; a probe result must cite a frame's ref or the digest of the cells it compared`,
     )
   }
 }
@@ -532,7 +532,7 @@ function validateInput(
   if (outcome !== "supported" && outcome !== "unsupported") return
   // A pixels observation reaching this validator is a reviewed Interpretation: its evidence is the
   // frame pair, not an assertion in the run, and selected-results checks those frames itself. The
-  // raw-run path enforces the recomputability of the collector's own pixels verdicts in parseObservation.
+  // raw-run path enforces the recomputability of the collector's own pixel probe results in parseObservation.
   if (pixelRead(observation) || textRead(observation)) return
   const assertion = boundAssertion(observation, path, assertions)
   if (

@@ -444,7 +444,7 @@ describe("collected current runs", () => {
   })
 })
 
-// Requirement: no result is graded from source (operator 2026-11-03, #32246). A source-only conclusion or
+// Requirement: no probe result is decided from source (operator 2026-11-03, #32246). A source-only conclusion or
 // Untestable result with no stored source-answer marker is refused as lacking an observation; normal catalogue and
 // raw-evidence tests do not cover conclusions with no deciding observation.
 it.each([
