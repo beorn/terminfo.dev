@@ -196,7 +196,11 @@ await import(${JSON.stringify(join(root, "packages/terminfo.dev/src/index.tsx"))
 
 // A successful display-capture command proves no app window. Exercise the existing evidence
 // block with platform command responses, keeping real subprocess capture and artifact writes.
+// Terminal acquisition can refuse with collector exit0; the older app cases supply iTerm timestamps
+// and cannot catch skipped diagnostics or a lost collection interval/identity in that success path.
 test.each([
+  { appId: "terminal-app", missingLaunch: false },
+  { appId: "terminal-app", missingLaunch: true },
   { appId: "warp", missingLaunch: false },
   { appId: "iterm2", missingLaunch: false },
   { appId: "cmux", missingLaunch: false },
@@ -213,7 +217,7 @@ test.each([
     expect(step, "existing failure owner includes Warp").toBeDefined()
     expect(step.if).toContain("matrix.id == 'warp'")
     const editor = appId === "cursor" || appId === "com.microsoft.VSCode"
-    if (appId !== "iterm2") expect(step.if).toContain(`matrix.id == '${appId}'`)
+    const terminal = appId === "terminal-app"
     if (editor) {
       const close = workflow.jobs["measure-macos"].steps.find(
         (row: { name?: string }) => row.name === "Retain editor launch files and close only its owned GUI",
@@ -245,16 +249,26 @@ test.each([
       },
     }
     if (!missingLaunch) writeFileSync(join(out, "editor-launch.json"), JSON.stringify(editorLaunch))
-    writeFileSync(
-      join(out, "host-measured.json"),
-      JSON.stringify({
-        runId: "b".repeat(32),
-        appLaunch: {
-          bundlePath: "/Applications/cmux.app",
-          executablePath: "/Applications/cmux.app/Contents/MacOS/cmux",
-        },
-      }),
-    )
+    const collectorAncestry =
+      "Hosted Darwin measured process ancestry: 4244:bun </fixture/bun> <- 4242:/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal </System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal> <- 1:/sbin/launchd </sbin/launchd>"
+    if (terminal) {
+      writeFileSync(join(out, "collector-exit"), "0\n")
+      writeFileSync(join(out, "collector.log"), collectorAncestry + "\n")
+    }
+    if (!terminal || !missingLaunch) {
+      writeFileSync(
+        join(out, "host-measured.json"),
+        JSON.stringify({
+          runId: "b".repeat(32),
+          appLaunch: {
+            bundlePath: terminal ? "/System/Applications/Utilities/Terminal.app" : "/Applications/cmux.app",
+            executablePath: terminal
+              ? "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"
+              : "/Applications/cmux.app/Contents/MacOS/cmux",
+          },
+        }),
+      )
+    }
     const windows = [
       {
         id: 37,
@@ -283,11 +297,11 @@ test.each([
           RUNNER_TEMP: directory,
           GITHUB_WORKSPACE: root,
           COLLECT_STARTED_AT: "2026-10-20T02:00:00Z",
-          ITERM_LAUNCH_START: "2026-10-20T02:00:00Z",
-          ITERM_LAUNCH_END: "2026-10-20T02:00:01Z",
+          ITERM_LAUNCH_START: terminal ? "" : "2026-10-20T02:00:00Z",
+          ITERM_LAUNCH_END: terminal ? "" : "2026-10-20T02:00:01Z",
         },
       })
-      expect(result.status, result.stderr).toBe(missingLaunch || appId === "iterm2" ? 1 : 0)
+      expect(result.status, result.stderr).toBe(!terminal && (missingLaunch || appId === "iterm2") ? 1 : 0)
       const prefix = appId === "iterm2" ? "iterm" : appId === "com.microsoft.VSCode" ? "vscode" : appId
       const summary = JSON.parse(readFileSync(join(out, `${prefix}-failure-evidence.json`), "utf8"))
       expect(summary).toMatchObject({
@@ -309,12 +323,38 @@ test.each([
       expect(log).toHaveProperty("stdout.text", "[]")
       if (editor && !missingLaunch) expect(summary).toHaveProperty("editorLaunch", editorLaunch)
       if (appId === "cmux") expect(summary).toHaveProperty("receiptRunId", "b".repeat(32))
+      if (terminal) {
+        // Existing artifact transport retains ancestry and collector status; narrowing diagnostics
+        // must neither duplicate its parser nor turn missing context into a failed collection.
+        expect(readFileSync(join(out, "collector.log"), "utf8")).toBe(collectorAncestry + "\n")
+        expect(readFileSync(join(out, "collector-exit"), "utf8")).toBe("0\n")
+        expect(summary).toHaveProperty("intervalSource", "collect-step-start-through-failure-evidence")
+        expect(log.argv).toEqual(expect.arrayContaining([expect.stringContaining('process == "WindowServer"')]))
+        if (!missingLaunch) {
+          expect(summary).toHaveProperty("receiptRunId", "b".repeat(32))
+          expect(summary).toHaveProperty(
+            "appLaunch.executablePath",
+            "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+          )
+        }
+      }
       if (missingLaunch) {
         expect(summary).toHaveProperty("failures", [expect.objectContaining({ label: "launch-record" })])
+        expect(result.stderr).toContain("launch identity unmeasured")
       } else if (appId === "iterm2") {
         // This fixture deliberately has no collector ancestry; keep older diagnostics despite it.
         expect(summary).toHaveProperty("failures", [expect.objectContaining({ label: "native-state" })])
       } else expect(summary).toHaveProperty("failures", [])
+      // Evaluate the workflow's existing boolean expression with a successful collect step;
+      // executing the body alone would miss a GitHub condition that skips all this evidence.
+      expect(
+        runInNewContext(step.if, {
+          always: () => true,
+          failure: () => false,
+          matrix: { id: appId },
+          steps: { collect: { outputs: { iterm_failure: "" } } },
+        }),
+      ).toBe(terminal)
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }

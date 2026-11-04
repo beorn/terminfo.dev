@@ -573,7 +573,7 @@ jobs:
           exit 1
 
       - name: Preserve terminal launch failure evidence
-        if: failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')
+        if: always() && (matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')))
         env:
           APP_ID: ${{ matrix.id }}
           ITERM_LAUNCH_START: ${{ steps.collect.outputs.iterm_launch_start }}
@@ -589,7 +589,8 @@ jobs:
           const { CENSUS } = await import(join(workspace, "packages/terminfo.dev/src/darwin-capture.ts"));
           const warp = process.env.APP_ID === "warp";
           const editor = process.env.APP_ID === "cursor" || process.env.APP_ID === "com.microsoft.VSCode";
-          const additional = editor || process.env.APP_ID === "cmux";
+          const terminal = process.env.APP_ID === "terminal-app";
+          const additional = editor || process.env.APP_ID === "cmux" || terminal;
           const prefix = warp ? "warp" : process.env.APP_ID === "iterm2" ? "iterm" : process.env.APP_ID === "com.microsoft.VSCode" ? "vscode" : process.env.APP_ID;
           // Bounded capture and CoreGraphics bridge from diagnostic59f65a57.
           async function capture(stream) {
@@ -634,16 +635,16 @@ jobs:
               failures.push({ label: "launch-record", error: String(error) });
               console.error(`${prefix} launch identity unmeasured; see failure evidence`, error);
             }
-          } else if (process.env.APP_ID === "cmux") {
+          } else if (process.env.APP_ID === "cmux" || terminal) {
             try {
               const receipt = JSON.parse(await readFile(join(out, "host-measured.json"), "utf8"));
               if (!/^[0-9a-f]{32}$/.test(receipt.runId ?? "") || typeof receipt.appLaunch?.executablePath !== "string" || !receipt.appLaunch.executablePath)
-                throw new Error("cmux measured receipt lacks its launch ID or executable");
+                throw new Error(`${prefix} measured receipt lacks its launch ID or executable`);
               receiptRunId = receipt.runId;
               appLaunch = receipt.appLaunch;
             } catch (error) {
               failures.push({ label: "launch-record", error: String(error) });
-              console.error("cmux launch identity unmeasured; see failure evidence", error);
+              console.error(`${prefix} launch identity unmeasured; see failure evidence`, error);
             }
           }
           if (warp) {
@@ -702,7 +703,7 @@ jobs:
             } catch (error) { failures.push({ label, error: String(error) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
           }
           await writeFile(join(out, `${prefix}-failure-evidence.json`), JSON.stringify({ appId: process.env.APP_ID, childPid, launchStart, launchEnd, ...(additional ? { intervalSource: "collect-step-start-through-failure-evidence", editorLaunch, receiptRunId, appLaunch } : {}), screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof", failures }, null, 2));
-          if (failures.length) process.exitCode = 1;
+          if (failures.length && !terminal) process.exitCode = 1;
           '
 
       - name: Retain editor launch files and close only its owned GUI
