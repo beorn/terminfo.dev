@@ -62,8 +62,7 @@ test.each([
         {
           id: "review",
           status: "test-todo",
-          reason:
-            "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
+          reason: "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
         },
       ])
       expect(result.assertions ?? []).toEqual([])

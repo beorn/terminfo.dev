@@ -892,8 +892,7 @@ describe("zero-byte replies on a loaded artifact", () => {
         {
           id: "review",
           status: "test-todo",
-          reason:
-            "Library probe source offers no colour readback, so this run cannot decide it",
+          reason: "Library probe source offers no colour readback, so this run cannot decide it",
         },
       ],
     }
