@@ -1150,8 +1150,8 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
 // @failure #32053, #32272: engine stores parsed toasts only; OSC 9 and 777;notify;X arrive identical. WezTerm
 // (performer.rs:904-933) and Ghostty (osc.zig:94-98) keep {title, body} toasts, so no raw reader can attribute the
 // code or rebuild the payload (@cto 94631c52, 91f6fd75). The owned Termless exposes that store as getToasts, graded by
-// single-sequence deltas with a cross control (@cto 3cc4a3ae); the published 0.10.2 and Ghostty WASM have no reader,
-// so their cells stay TEST TODO, never Unsupported.
+// single-sequence deltas with a cross control (@cto 3cc4a3ae); the published 0.10.2 has no reader, so its cells stay
+// TEST TODO, never Unsupported. The owned ghostty-web WASM keeps the same toasts as the native engine (@cto c65d2a67).
 // @level l1
 // @consumer extensions.notifications and extensions.osc777-notify through the actual LibProbeSource
 function weztermNativeAvailable(): boolean {
@@ -1167,7 +1167,7 @@ function weztermNativeAvailable(): boolean {
 test.for([
   ["wezterm", weztermNativeAvailable(), OWNED_LAYOUT, null, async () => createWeztermBackend()],
   ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, "", async () => createGhosttyNativeBackend()],
-  ["ghostty wasm", true, false, null, () => resolveGhosttyWasm()],
+  ["ghostty wasm", true, OWNED_LAYOUT, "", () => resolveGhosttyWasm()],
 ] as const)(
   "%s parsed-toast engine grades OSC 9 and OSC 777 only through its toast reader",
   async ([name, available, reader, osc9Title, create], context) => {
@@ -1215,16 +1215,16 @@ test.for([
 )
 
 // @failure #32271: Kitty and Ghostty native store the last OSC 9;4 report, but no binding read it, so the progress
-// criterion stayed grid-only. Named gaps keep the other two undeclared: WezTerm's stored Progress::None covers
-// never-reported, 9;4;0 and paused (tattoy-wezterm-term fork.5 performer.rs:1080-1085, terminal.rs:37-43), and
-// ghostty-web's WASM API exposes no progress reader (@cto 3636f1ee).
+// criterion stayed grid-only. A named gap keeps WezTerm undeclared: its stored Progress::None covers never-reported,
+// 9;4;0 and paused (tattoy-wezterm-term fork.5 performer.rs:1080-1085, terminal.rs:37-43). The owned ghostty-web WASM
+// stores the last report like the native engine (@cto c65d2a67); the published 0.10.2 has no reader.
 // @level l1
 // @consumer extensions.osc9-progress through the actual LibProbeSource
 test.for([
   ["kitty", isKittyAvailable(), OWNED_LAYOUT, async () => createKittyBackend()],
   ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, async () => createGhosttyNativeBackend()],
   ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
-  ["ghostty wasm", true, false, () => resolveGhosttyWasm()],
+  ["ghostty wasm", true, OWNED_LAYOUT, () => resolveGhosttyWasm()],
 ] as const)(
   "%s OSC 9;4 progress grades through the stored-report reader only where the engine stores one",
   async ([name, available, reader, create], context) => {
