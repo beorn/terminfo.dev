@@ -204,8 +204,16 @@ with any other outcome is inconclusive. Otherwise either qualified snap is negat
 are positive. Failed controls and every other drift withhold a verdict. Missing history or scroll
 control/state names coverage; operational and cleanup errors propagate. Retained buffer-state evidence has baseline, anchor,
 control, ordinary and synchronized keys. The exact DECSET 2026 bytes exercise output inside that
-block without claiming painting support. The app coverage callback performs no I/O and stays
-Test to-do because it has no live terminal UI scroll actuator; its manual UI recipe remains in the catalog.
+block without claiming painting support. The app arm uses existing owned wheel input and whole-window
+pixel capture in one fresh Linux Ghostty job. Its optional input-fixture wheel bound carries pinned
+configuration/application provenance; until that bound is justified from the pinned application, the job
+omits it and the callback returns named Test to-do before I/O. The configuration sets only wheel movement,
+never output-scroll policy. Separate ordinary/synchronized phases require key delivery, unique anchors,
+constructed-tail bottom equality after all downward inputs, and a second verified restore after the
+comparison scroll. Both qualified holds are positive; a qualified snap or bottom-relative motion is
+negative. Any unqualified phase withholds the result; capture/harness errors fail. Complete pixel digests
+use the existing ED3 frame comparator without masks or container-ref equality. Other application contexts
+retain the catalog manual recipe. No production capture or result is supplied by this implementation.
 
 The optional library capability `productViewport: { available: false, reason }` explicitly declares
 that the library subject has no product viewport; an absent declaration means undeclared. The

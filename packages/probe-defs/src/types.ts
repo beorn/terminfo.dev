@@ -919,6 +919,14 @@ export interface ClipboardFixture {
 
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
 export interface InputFixture {
+  /** Reviewed wheel bound for this fresh owned job, justified from its pinned application/configuration.
+   * Omit until established; this carries provenance, not an application identity gate. */
+  wheelPlacement?: {
+    maxRowsPerNotch: number
+    configurationHash: string
+    applicationVersion: string
+    applicationHash: string
+  }
   injectKey(keys: string): Promise<void>
   injectClick(button: 1 | 4 | 5): Promise<void>
   /** Button-event (1002) motion. Absent adapters stay click-only. */
