@@ -970,7 +970,7 @@ test("real vterm metadata reaches both registered callbacks and the batch produc
           second: "file://localhost/terminfo-cwd-B",
           restored: "file://localhost/original",
         })
-        expect(value.getCwd()).toBe("file://localhost/original")
+        expect(value.getCwd?.()).toBe("file://localhost/original")
       } else {
         expect(observed).toMatchObject({
           before: ["previous notice"],
@@ -1042,6 +1042,35 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
     }
   },
 )
+
+// @failure #32053: an engine declaring osc-metadata for notifications only (kitty) has no cwd reader; the OSC 7
+// criterion must read that as missing evidence, never as an engine that reports no working directory.
+// @level l1
+// @consumer extensions.osc7-cwd through the actual LibProbeSource
+test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a test-todo, never unsupported", async (context) => {
+  const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
+  if (!existsSync(sibling)) context.skip(`Real-vterm metadata controls require missing sibling ${sibling}`)
+  const value = createVtermBackend({ cols: 80, rows: 24 })
+  try {
+    delete (value as { getCwd?: unknown }).getCwd
+    expect(hasExtension(value, "osc-metadata")).toBe(true)
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    expect(source.getCwd).toBeUndefined()
+    expect(source.getNotifications).toBeTypeOf("function")
+    const feed = vi.spyOn(value, "feed")
+    const cwd = registryDefinitions(["extensions.osc7-cwd"])[0]!.lib!(source)
+    expect(cwd.criterionBranch).toBe("headless-observable-review")
+    expect(cwd.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+    expect(cwd.observation).toBeUndefined()
+    expect(cwd.assertions).toBeUndefined()
+    expect(feed).not.toHaveBeenCalled()
+    feed.mockRestore()
+    const notifications = registryDefinitions(["extensions.notifications"])[0]!.lib!(source)
+    expect(notifications.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  } finally {
+    value.destroy()
+  }
+})
 
 // @failure Declared native readers are lost at the collector binding, or undeclared/non-callable readers are exposed.
 // @level l1
@@ -1375,7 +1404,7 @@ test("cwd readback errors propagate after restoring the original metadata", asyn
         throw new Error("metadata read failed")
       })
     expect(() => registryDefinitions(["extensions.osc7-cwd"])[0]!.lib!(source)).toThrow("metadata read failed")
-    expect(value.getCwd()).toBe("file://localhost/original")
+    expect(value.getCwd?.()).toBe("file://localhost/original")
   } finally {
     value.destroy()
   }
