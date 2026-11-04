@@ -2,7 +2,7 @@
  * @failure A region row lands as a collector error because a cell it never compares holds the
  *   host's U+FFFD stand-in, so one probe's non-BMP glyph decides every row after it.
  * @level l1
- * @consumer captureRegionVerdict, the one region decision every cell-readback row runs.
+ * @consumer captureRegionCallbackResult, the one region decision every cell-readback row runs.
  * @testonly none
  *
  * Measured 2026-10-18 on the hosted Windows arm: `text.wide.emoji-zwj` left a non-BMP glyph at row
@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { textCellsFrame } from "../../terminfo.dev/src/serve.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { captureRegionCallbackResult, type RegionReadback } from "./region-readback.ts"
 import type { CaptureRequest, TermProbeSource } from "./types.ts"
 
 const spec: Omit<RegionReadback, "pixelGeometry"> = {
@@ -94,7 +94,7 @@ function poisonedSource(): { ctx: TermProbeSource; writes: string[]; requests: C
 describe("a stand-in outside the compared cells does not decide a region row", () => {
   it("measures its own region while the previous probe's leftover is still on screen", async () => {
     const { ctx, writes } = poisonedSource()
-    const result = await captureRegionVerdict(ctx, "erase.character", spec)
+    const result = await captureRegionCallbackResult(ctx, "erase.character", spec)
     expect(result).not.toBeNull()
     expect(result?.observation?.note ?? "").not.toContain("refused the text snapshot")
     expect(result?.observation?.outcome).not.toBe("error")
@@ -109,7 +109,10 @@ describe("a stand-in outside the compared cells does not decide a region row", (
   it("still refuses by name when the compared region holds that same cell", async () => {
     const { ctx } = poisonedSource()
     await expect(
-      captureRegionVerdict(ctx, "erase.character", { ...spec, region: { top: 1, left: 1, bottom: 1, right: 8 } }),
+      captureRegionCallbackResult(ctx, "erase.character", {
+        ...spec,
+        region: { top: 1, left: 1, bottom: 1, right: 8 },
+      }),
     ).rejects.toThrow(/row 1, column 1 holds U\+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit/u)
   })
 })

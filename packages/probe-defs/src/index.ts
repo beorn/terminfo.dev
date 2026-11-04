@@ -98,7 +98,7 @@ export {
   beginCaptureLifecycle,
   endCaptureLifecycle,
   captureRegionReadbackDecision,
-  captureRegionVerdict,
+  captureRegionCallbackResult,
   collectorRegionRead,
   queryPixelGeometry,
   DEFAULT_TIMEOUT_MS,

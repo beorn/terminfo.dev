@@ -211,7 +211,7 @@ function inconclusive(
 /**
  * A refusal taken before any byte: the collector declined to measure, so it is not pixel evidence.
  * Evidence "none" must carry a zero-byte trace, so a branch that has already queried is never this
- * shape — it reports evidence "query" instead (see captureRegionVerdict).
+ * shape — it reports evidence "query" instead (see captureRegionCallbackResult).
  */
 function refused(id: string, note: string): ProbeCallbackResult {
   return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: note }] }
@@ -522,7 +522,7 @@ export type PixelGeometrySource =
  * and does not support the query, so that negative is a fact about the terminal, not about this run.
  *
  * `transient` is read by the pre-flight, which is the only caller that acts on it; the per-row
- * `captureRegionVerdict` grades a missing report the same way whichever it is, because a row that
+ * `captureRegionCallbackResult` grades a missing report the same way whichever it is, because a row that
  * asks its own question is not aborting a batch.
  */
 export interface PixelGeometryRefusal {
@@ -690,7 +690,7 @@ export async function captureRegionGeometry(
  * `callerHasQuery` records that the caller already attempted its own query before asking. That
  * attempt preserves failure on a subsequent refusal; a genuinely unattempted fixture stays TODO.
  */
-export async function captureRegionVerdict(
+export async function captureRegionCallbackResult(
   ctx: TermProbeSource,
   id: string,
   spec: Omit<RegionReadback, "pixelGeometry">,

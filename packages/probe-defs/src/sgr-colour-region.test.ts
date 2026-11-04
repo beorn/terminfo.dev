@@ -19,7 +19,7 @@
 import { expect, test } from "vitest"
 import { sgrProbes } from "./sgr.ts"
 import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
-import { captureRegionVerdict } from "./region-readback.ts"
+import { captureRegionCallbackResult } from "./region-readback.ts"
 import type {
   CaptureCells,
   CapturePixelGeometry,
@@ -583,7 +583,7 @@ for (const id of COLOUR_IDS) {
     // assertion that named it.
     const spec = COLOUR_CAPTURE[id]
     if (!spec) throw new Error(`${id}: no colour capture row`)
-    const oracle = await captureRegionVerdict(
+    const oracle = await captureRegionCallbackResult(
       colourTerminal("deferred-paint", PALETTES[0] as Palette).ctx,
       id,
       spec,

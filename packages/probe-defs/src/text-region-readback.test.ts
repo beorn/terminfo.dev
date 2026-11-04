@@ -3,12 +3,12 @@
  *   a pixel geometry it can never have — so the 105 hosted-arm rows stay unreadable even with a
  *   text adapter installed.
  * @level l1
- * @consumer captureRegionVerdict, the one region decision every cell-readback row runs.
+ * @consumer captureRegionCallbackResult, the one region decision every cell-readback row runs.
  * @testonly none
  */
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { captureRegionCallbackResult, type RegionReadback } from "./region-readback.ts"
 import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
@@ -83,7 +83,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
       const whole = digest("outside-cell motion")
       return { ...frame, ref: whole, frameDigest: whole }
     }
-    const result = await captureRegionVerdict(ctx, "erase.el", spec)
+    const result = await captureRegionCallbackResult(ctx, "erase.el", spec)
     expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(JSON.parse(String(result?.response))).toMatchObject({
       stability: {
@@ -95,7 +95,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
   })
 
   it("decides a supported row without ever demanding a pixel report", async () => {
-    const result = await captureRegionVerdict(textSource(), "erase.el", spec)
+    const result = await captureRegionCallbackResult(textSource(), "erase.el", spec)
     expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     // No image to point at, and a text digest in screenshotRef would be refused at admission.
     expect(result?.observation?.screenshotRef).toBeUndefined()
@@ -107,7 +107,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
 
   it("keeps the pixel path untouched when the run's adapter reads pixels", async () => {
     const ctx: TermProbeSource = { ...textSource(), captureKind: "pixels", captureGeometry: undefined }
-    const result = await captureRegionVerdict(ctx, "erase.el", spec)
+    const result = await captureRegionCallbackResult(ctx, "erase.el", spec)
     // The same run, now declaring pixels, must refuse for the missing pixel report by name.
     expect(result?.observation).toBeUndefined()
     expect(result?.tests).toMatchObject([
@@ -124,7 +124,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
       ...textSource(),
       capture: async (request) => textFrame(request.label, request.role, "other"),
     }
-    const result = await captureRegionVerdict(ctx, "erase.el", spec)
+    const result = await captureRegionCallbackResult(ctx, "erase.el", spec)
     expect(result?.observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",

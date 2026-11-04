@@ -16,7 +16,7 @@ import {
   queryDecrpm,
   type DecrpmPs,
 } from "./helpers.ts"
-import { captureRegionVerdict, cropPositionRefusal, type RegionReadback } from "./region-readback.ts"
+import { captureRegionCallbackResult, cropPositionRefusal, type RegionReadback } from "./region-readback.ts"
 
 /**
  * CUP inside a DECSTBM region with DECOM on is region-relative, so the marker must land on the
@@ -1257,7 +1257,11 @@ export const cursorProbes: ProbeDefinition[] = [
           }
         }
         if (adapter) {
-          const verdict = await captureRegionVerdict(ctx, "cursor.cup-scroll-region", CURSOR_CUP_SCROLL_REGION_READBACK)
+          const verdict = await captureRegionCallbackResult(
+            ctx,
+            "cursor.cup-scroll-region",
+            CURSOR_CUP_SCROLL_REGION_READBACK,
+          )
           if (verdict) return verdict
           try {
             // Control: label physical rows 1, 5 and 15 with no scroll region or origin mode, and

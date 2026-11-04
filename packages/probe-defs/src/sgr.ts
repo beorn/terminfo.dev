@@ -26,7 +26,7 @@ import {
   finalizeProbeResult,
 } from "./helpers.ts"
 import { kittyWait } from "./kitty-capture.ts"
-import { captureRegionVerdict, cropPositionRefusal } from "./region-readback.ts"
+import { captureRegionCallbackResult, cropPositionRefusal } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
 
@@ -273,11 +273,11 @@ export function sgrTermReadback(
     const captureResult = async () => {
       // DECRQSS already wrote/queried, so any refusal retains that attempted evidence path.
       if (region) {
-        const verdict = await captureRegionVerdict(ctx, id, region, true)
+        const verdict = await captureRegionCallbackResult(ctx, id, region, true)
         if (verdict) return verdict
       }
       if (colour) {
-        const verdict = await captureRegionVerdict(ctx, id, colour, true)
+        const verdict = await captureRegionCallbackResult(ctx, id, colour, true)
         if (verdict) return colourCaptureCallbackResult(id, verdict)
       }
       return fallback(ctx)

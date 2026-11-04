@@ -34,7 +34,7 @@ import {
 } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { captureRegionVerdict, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
+import { captureRegionCallbackResult, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
 
 /** One addressing fixture supplies both parser-state and capture-region observers. */
 export const modesReadbackRows: readonly RegionReadbackRow[] = [
@@ -127,7 +127,7 @@ async function primaryRestoreCapture(
   // An alternate seed makes restoration a change in the existing character oracle.
   // Keep the unrelated ?47 recipe and its no-change pixel criterion intact.
   const changesSeed = mode !== 47
-  const result = await captureRegionVerdict(ctx, id, {
+  const result = await captureRegionCallbackResult(ctx, id, {
     region: { top: 1, left: 1, bottom: 1, right: Math.max(primary.length, alternate.length) },
     sentinel: { row: 2, col: 1 },
     cursorRow: 3,
@@ -226,7 +226,7 @@ const STACK_EXPECTED = {
   },
 } as const
 
-type CaptureSpec = Parameters<typeof captureRegionVerdict>[2]
+type CaptureSpec = Parameters<typeof captureRegionCallbackResult>[2]
 /** A fixture's target frame read as the same-run expected frame, its ignored contrast, or neither. */
 type CaptureRead = { match: "expected" | "ignored" | "other"; result: ProbeCallbackResult }
 
@@ -241,7 +241,7 @@ async function captureStackFixture(
   fixture: string,
   spec: CaptureSpec,
 ): Promise<CaptureRead | ProbeCallbackResult> {
-  const result = await captureRegionVerdict(ctx, `${id} ${fixture}`, spec)
+  const result = await captureRegionCallbackResult(ctx, `${id} ${fixture}`, spec)
   if (!result) throw new Error(`${id}: owned ${fixture} capture disappeared`)
   const outcome = result.observation?.outcome
   if (outcome === undefined) return result
@@ -1802,7 +1802,7 @@ const modeDefinitions: ProbeDefinition[] = [
         }
         if (ctx.capture || ctx.cells) {
           const reset = "\x1b[4l\x1b[0m\x1b[2J\x1b[H"
-          const result = await captureRegionVerdict(
+          const result = await captureRegionCallbackResult(
             ctx,
             "modes.insert-replace",
             {
@@ -1937,7 +1937,7 @@ const modeDefinitions: ProbeDefinition[] = [
         if (refusal) return refusal
         if (ctx.capture) {
           const reset = "\x1b[?69h\x1b[s\x1b[?69l\x1b[?7h\x1b[0m\x1b[2J\x1b[H"
-          const result = await captureRegionVerdict(ctx, "modes.left-right-margin", {
+          const result = await captureRegionCallbackResult(ctx, "modes.left-right-margin", {
             region: { top: 2, left: 3, bottom: 2, right: 3 },
             sentinel: { row: 3, col: 1 },
             cursorRow: 4,

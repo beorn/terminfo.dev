@@ -19,7 +19,7 @@
  * EL background row grade attribute changes on both arms instead of being hand-written beside it.
  */
 import type { ProbeDefinition, LibProbeSource } from "./types.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { captureRegionCallbackResult, type RegionReadback } from "./region-readback.ts"
 import { isBlank, parserStateResult } from "./helpers.ts"
 
 /** One write between the seed frame and the final read, and the cursor report it must reach. */
@@ -751,7 +751,7 @@ export function regionReadbackProbe(
       }
     },
     async term(ctx) {
-      const decided = await captureRegionVerdict(ctx, row.id, readback)
+      const decided = await captureRegionCallbackResult(ctx, row.id, readback)
       if (decided) return decided
       // No adapter and a REFUSED calibration both leave `ctx.capture` absent, so the row tells them
       // apart by the one fact the collector recorded: the refusal is named here, in the note that

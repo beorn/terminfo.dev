@@ -13,7 +13,7 @@ import { expect, test } from "vitest"
 import {
   captureRegionReadbackDecision,
   captureRegionGeometry,
-  captureRegionVerdict,
+  captureRegionCallbackResult,
   queryPixelGeometry,
   type CellRegion,
   type PixelGeometry,
@@ -640,7 +640,7 @@ test("a pixel query answered with a sentinel reports query evidence, not a zero-
     }),
   }
   const geometry = spec()
-  const result = await captureRegionVerdict(ctx, "editing.delete-chars", {
+  const result = await captureRegionCallbackResult(ctx, "editing.delete-chars", {
     region: geometry.region,
     sentinel: geometry.sentinel,
     cursorRow: geometry.cursorRow,
@@ -960,7 +960,7 @@ test("region rows consume the same calibrated run geometry without re-dividing w
       ...(captured.regionRectangle ? { regionRectangle: captured.regionRectangle } : {}),
     }
   }
-  const result = await captureRegionVerdict(fake.ctx, "editing.delete-chars", spec())
+  const result = await captureRegionCallbackResult(fake.ctx, "editing.delete-chars", spec())
   expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
   expect(queries).toBe(0)
   expect(fake.requests.length).toBeGreaterThan(0)
@@ -973,7 +973,7 @@ test("region rows refuse a calibrated footprint that no longer covers the curren
   fake.ctx.capture = async () => {
     throw new Error("A stale calibrated footprint must be refused before capture")
   }
-  const result = await captureRegionVerdict(fake.ctx, "editing.delete-chars", spec())
+  const result = await captureRegionCallbackResult(fake.ctx, "editing.delete-chars", spec())
   if (result === null) throw new Error("Expected the calibrated footprint refusal, not an absent capture path")
   expect(result.observation).toBeUndefined()
   expect(result).toMatchObject({
@@ -1096,7 +1096,7 @@ async function familyDecide(
   id: (typeof RESET_FAMILY_ROWS)[number],
   applied: string,
 ): Promise<MeasuredProbeCallbackResult> {
-  const result = await captureRegionVerdict(familyTerminal(applied), id, familyRow(id))
+  const result = await captureRegionCallbackResult(familyTerminal(applied), id, familyRow(id))
   if (!result?.observation) throw new Error(`${id}: the fixture run produced no observation`)
   return result as MeasuredProbeCallbackResult
 }
@@ -1507,7 +1507,9 @@ test.each(
     const probe = sgrProbes.find((candidate) => candidate.id === id)
     if (!probe?.term) throw new Error(`${id}: missing callback`)
     const result =
-      route === "oracle" ? await captureRegionVerdict(terminal.ctx, id, familyRow(id)) : await probe.term(terminal.ctx)
+      route === "oracle"
+        ? await captureRegionCallbackResult(terminal.ctx, id, familyRow(id))
+        : await probe.term(terminal.ctx)
     const label = `${id}: ${ignoreBold}, ${fault}, ${route}`
     expect(result?.observation?.outcome, label).toBe("inconclusive")
     expect(result?.observation?.reason, label).toBe("insufficient-evidence")
@@ -1553,7 +1555,7 @@ test.each(SELECTIVE_COMPANION_ROWS)(
       if (!probe?.term) throw new Error(`${id}: missing callback`)
       const result =
         route === "oracle"
-          ? await captureRegionVerdict(terminal.ctx, id, familyRow(id))
+          ? await captureRegionCallbackResult(terminal.ctx, id, familyRow(id))
           : await probe.term(terminal.ctx)
       expect(result?.observation, route).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
       expect(result?.assertions?.[0]?.kind, route).toBe("negative")
@@ -1620,7 +1622,7 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
   ]
   for (const entry of cases) {
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
-    const result = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
+    const result = await captureRegionCallbackResult(terminal.ctx, entry.id, familyRow(entry.id))
     expect(result?.observation, entry.id).toBeUndefined()
     expect(result?.tests, entry.id).toMatchObject([
       {
@@ -1634,7 +1636,7 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
   }
   const correct = statefulTerminal(ALL_ATTRS, { ris: true })
   for (const id of NO_REFERENCE_ROWS) {
-    const result = await captureRegionVerdict(correct.ctx, id, familyRow(id))
+    const result = await captureRegionCallbackResult(correct.ctx, id, familyRow(id))
     expect(result?.observation, id).toBeUndefined()
     expect(result?.tests, id).toMatchObject([
       {
@@ -1670,7 +1672,7 @@ test("the refused rows are exactly the rows whose reset clears two or more attri
   for (const entry of cases) {
     const { noIndependentReference: _refusal, ...bare } = familyRow(entry.id)
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
-    const refused = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
+    const refused = await captureRegionCallbackResult(terminal.ctx, entry.id, familyRow(entry.id))
     expect(refused?.observation, `${entry.id}: with the refusal`).toBeUndefined()
     expect(refused?.tests, entry.id).toMatchObject([
       {
@@ -1678,7 +1680,7 @@ test("the refused rows are exactly the rows whose reset clears two or more attri
         reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
       },
     ])
-    const graded = await captureRegionVerdict(terminal.ctx, entry.id, bare)
+    const graded = await captureRegionCallbackResult(terminal.ctx, entry.id, bare)
     expect(graded?.observation?.outcome, `${entry.id}: with the refusal stripped`).toBe("supported")
   }
 })
@@ -1688,7 +1690,7 @@ test("the bold row's faint case is the third no-reference row", async () => {
   // 22 and RIS both keeping faint left the row reading supported. This is the case the named grade
   // removes; with the grade removed it reads supported.
   const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: ["faint"], risRetains: ["faint"] })
-  const result = await captureRegionVerdict(
+  const result = await captureRegionCallbackResult(
     terminal.ctx,
     "sgr.selective-reset.bold",
     familyRow("sgr.selective-reset.bold"),
@@ -1721,7 +1723,7 @@ test("no combination of a missed cleared attribute and a retained reference attr
           resetMisses: misses as Array<SgrAttr | SgrColor>,
           risRetains: keeps as Array<SgrAttr | SgrColor>,
         })
-        const result = await captureRegionVerdict(terminal.ctx, id, familyRow(id))
+        const result = await captureRegionCallbackResult(terminal.ctx, id, familyRow(id))
         const outcome = result?.observation?.outcome
         const label = `${id}: reset misses [${misses.join("+")}] and RIS keeps [${keeps.join("+")}] (cleared [${cleared.join("+")}])`
         if (outcome === "supported") {

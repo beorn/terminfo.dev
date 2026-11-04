@@ -1,5 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { captureRegionCallbackResult, type RegionReadback } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
   decrpmReading,
@@ -107,7 +107,7 @@ export const resetProbes: ProbeDefinition[] = [
           // is graded against expected and ignored frames painted in this same run.
           const regionReadback = RESET_FAMILY_CAPTURE["reset.sgr"]
           if (regionReadback) {
-            const verdict = await captureRegionVerdict(ctx, "reset.sgr", regionReadback, readbackAttempted)
+            const verdict = await captureRegionCallbackResult(ctx, "reset.sgr", regionReadback, readbackAttempted)
             if (verdict) return verdict
           }
           try {
@@ -354,7 +354,7 @@ export const resetProbes: ProbeDefinition[] = [
         const readback = decalnReadback(rows, cols)
         if (readback) {
           // The verdict path owns this row wherever the run can map cells onto its own window.
-          const verdict = await captureRegionVerdict(ctx, "reset.decaln", readback)
+          const verdict = await captureRegionCallbackResult(ctx, "reset.decaln", readback)
           if (verdict) return verdict
         }
         if (!capture || !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 2 || cols < 2) {
