@@ -329,7 +329,10 @@ test.each([
         expect(readFileSync(join(out, "collector.log"), "utf8")).toBe(collectorAncestry + "\n")
         expect(readFileSync(join(out, "collector-exit"), "utf8")).toBe("0\n")
         expect(summary).toHaveProperty("intervalSource", "collect-step-start-through-failure-evidence")
-        expect(log.argv).toEqual(expect.arrayContaining([expect.stringContaining('process == "WindowServer"')]))
+        expect(log).toHaveProperty(
+          "argv",
+          expect.arrayContaining([expect.stringContaining('process == "WindowServer"')]),
+        )
         if (!missingLaunch) {
           expect(summary).toHaveProperty("receiptRunId", "b".repeat(32))
           expect(summary).toHaveProperty(
