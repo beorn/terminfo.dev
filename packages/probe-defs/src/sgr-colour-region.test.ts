@@ -1,6 +1,6 @@
 /**
  * @failure The 11 sgr.* colour rows on an owned-capture run all return the generic
- *   "Control and target pixels captured; visual interpretation requires review" and stay
+ *   "Control and target pixels captured; no same-run pixel check decides the visual effect" and stay
  *   inconclusive on every context, although each row's own catalogue probe already names a
  *   discriminator that needs no absolute palette: the styled sample must differ from the neutral
  *   sample AND from a named sibling that a terminal lacking exactly the claimed capability would
@@ -562,7 +562,7 @@ for (const id of COLOUR_IDS) {
       const { ctx } = colourTerminal("render", palette)
       const result = await run(id, ctx)
       const note = result.observation?.note ?? ""
-      expect(note).not.toContain("visual interpretation requires review")
+      expect(note).not.toContain("no same-run pixel check decides the visual effect")
       expect(result.observation?.outcome).toBe("supported")
       expect(result.observation?.assertionType).toBe("screenshot")
       expect(result.pass).toBe(true)

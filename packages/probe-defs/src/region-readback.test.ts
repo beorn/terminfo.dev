@@ -1210,7 +1210,7 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
     expect(observation!.outcome, id).toBe("supported")
     expect(observation!.assertionType, id).toBe("screenshot")
     expect(observation!.note ?? "", `${id}: no ungraded "review required" note`).not.toContain(
-      "visual interpretation requires review",
+      "no same-run pixel check decides the visual effect",
     )
   }
   for (const id of NO_REFERENCE_ROWS) {

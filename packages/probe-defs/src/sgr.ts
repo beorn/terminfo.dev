@@ -145,7 +145,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
         {
           id: "review",
           status: "test-todo",
-          reason: "Valid control and nine blink samples; required visual review pending",
+          reason: "Valid control and nine blink samples; no same-run pixel check decides it",
         },
       ],
       assertions: [
@@ -545,7 +545,7 @@ async function consumedResetSgr(
         "\x1b[0m\x1b[2J\x1b[3;3H" + setup + "X" + reset + "Y",
         id,
         { setup, reset },
-        "The control shows the styled X without the reset; the target adds the reset Y, so review can compare the reset effect",
+        "The control shows the styled X without the reset; the target adds the reset Y; the capture alone does not decide the reset effect",
       )
     } finally {
       ctx.write("\x1b[0m")

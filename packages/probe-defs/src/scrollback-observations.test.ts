@@ -105,14 +105,13 @@ const currentHistoryRuntime: WasmRuntime = {
     sha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
   },
 }
-const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "drift", string?][] = [
+const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "drift"][] = [
   ["qualified", historyRuntime, true],
   ["current qualified", currentHistoryRuntime, true],
   [
     "current wrong WASM",
     { ...currentHistoryRuntime, loadedBinary: { ...currentHistoryRuntime.loadedBinary, sha256: "f".repeat(64) } },
     "drift",
-    currentHistoryRuntime.loadedBinary.sha256,
   ],
   [
     "current unknown adapter and wrong WASM",

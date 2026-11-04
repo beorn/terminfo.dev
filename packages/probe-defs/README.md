@@ -405,9 +405,9 @@ after reset, and fresh F painted after reset, alongside the existing query contr
 Exact glyphs and valid RGB must establish a default distinct from the verified aa/bb/cc seed.
 Fresh F matching D proves reset; F remaining seeded is a controlled negative when S also remains seeded.
 S records cell storage (resolved at read or at paint), so S remaining seeded with F restored still proves reset.
-S restored with F seeded, a third fresh colour or missing post-reset readings require independent review.
-An answered post-reset query still reporting the seed contradicts a fresh cell restored to default and also requires review.
-Missing S-after is conservatively reviewed even when F matches D; no storage reading is invented.
+S restored with F seeded, a third fresh colour or missing post-reset readings are TEST TODO with that cause named.
+An answered post-reset query still reporting the seed contradicts a fresh cell restored to default and is also TEST TODO.
+Missing S-after stays TEST TODO even when F matches D; no storage reading is invented.
 Sentinel negatives keep their original DA1 response, with optional indexed-cell controls retained in the assertion note.
 Cell-decided results retain the original sentinel outcome and timing alongside their controls.
 Missing default or seed controls retain the existing query/sentinel/review rules, never a reset negative.
@@ -437,7 +437,7 @@ Declared getters returning null report unlinked cells, so URI mismatches remain 
 The declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
 semantic prompts, OSC 633 and iTerm2 images), OSC 7 and notifications without their metadata readers, an absent OSC 8 URI observer,
 and checks lacking timing, host-event or rendering facilities retain their existing coverage and raw
-state on `headless-observable-review`. Each carries a required review naming its missing observable.
+state on `headless-observable-review`. Each is TEST TODO naming its missing observable.
 Measured mode state is separate from unmeasured presentation, including scroll cadence, inverted frames
 and tearing. App callbacks and real-observable
 paths keep their criteria. Existing captures acquire no new branch or review.
@@ -522,7 +522,7 @@ pixel-identical to the ordinary placement of the same opaque image over the same
 expose a cells adapter, unequal readbacks still veto to inconclusive before the table, and a text-only run
 refuses by name before it.
 
-The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support, and a pending required review does not become an unsupported result.
+The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support; only a same-run pixel check decides it, and a capture without one stays TEST TODO, never Unsupported.
 
 ## How execution becomes status
 
