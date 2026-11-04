@@ -763,6 +763,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         out,
         expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
         process: options.processOwner,
+        ...(muxSubject && outerApp && { darwinMux: { subject: muxSubject, outerApp } }),
       })
       await installDarwinCapture(ownedTerminal)
     } else if (kind === "darwinHosted") {

@@ -22,6 +22,101 @@ const launchRunId = "c".repeat(32)
 const captureRunId = "d".repeat(32)
 const directories: string[] = []
 
+// #31400: direct-app fixtures keep one TTY and cannot expose a mux owner's outer/pane split.
+// Replay the retained r14 OS answers through the real factory; only the running collector PID is
+// rebound. These source checks do not qualify a native Mac capture or the historical binary bytes.
+test.each(["valid", "changed-birth", "missing-tty"])("Screen owner produces measured mux attachment: %s", (fault) => {
+  const specimen = JSON.parse(readFileSync(join(import.meta.dirname, "fixtures/darwin-screen-process.json"), "utf8"))
+  const result = spawnSync(process.execPath, ["-e", String.raw`
+    import {mock} from "bun:test"
+    import assert from "node:assert/strict"
+    import {EventEmitter} from "node:events"
+    import {createHash} from "node:crypto"
+    const f=${JSON.stringify(specimen)},fault=${JSON.stringify(fault)}
+    Object.defineProperty(process,"platform",{value:"darwin"})
+    process.env.TERMINFO_RUN_ID=f.launchRunId
+    const originalCollector=f.rows[0].pid,self=process.pid
+    const rows=f.rows.map(r=>({...r,pid:r.pid===originalCollector?self:r.pid}))
+    const byPid=new Map(rows.map(r=>[r.pid,r]))
+    const raw=(value)=>String(value).replaceAll(String(originalCollector),String(self))
+    const pane=f.rows[0],shell=f.rows[4],owner=f.rows[6],client=f.rows[3]
+    const config=client.raw.command.stdout.trim().split(/\s+/)[4]
+    const marker={flag:"--config-file",value:"/tmp/terminfo-run-kIN8uT/ghostty-"+f.launchRunId}
+    const preflight=f.rows.at(-1)
+    const digest=s=>createHash("sha256").update(s).digest("hex")
+    const launch=JSON.stringify({launchRunId:f.launchRunId,executablePath:owner.kernelExecutable,marker,
+      outerTerminal:{pid:owner.pid,startedAtEpochSeconds:owner.startedAtEpochSeconds},bootId:f.boot.value,
+      identityFile:{path:"/fixture/identity",sha256:digest("identity")},runFileSha256:digest("run file"),
+      autoUpdate:{key:"SUEnableAutomaticChecks",value:"0",plistPath:"/fixture/preferences",plistSha256:digest("preferences")}})
+    const reads=[];const births=new Map()
+    const ps=args=>{
+      const pid=Number(args[args.indexOf("-p")+1]),r=byPid.get(pid)
+      if(!r)throw Error("Unmeasured process "+pid)
+      const field=args[args.indexOf("-o")+1]
+      if(field==="tty=")return (r.tty??"??")+"\n"
+      if(field==="ppid=")return String(r.ppid)+"\n"
+      if(field==="pid=")return r.pid+" "+r.ppid+" "+r.comm+"\n"
+      if(field==="lstart="){
+        const n=(births.get(pid)??0)+1;births.set(pid,n)
+        if(fault==="changed-birth"&&pid===self&&n>1)return "Thu Oct 22 19:44:18 2026\n"
+        return r.raw.lstartBefore.stdout
+      }
+      if(field==="pid=,ppid=,uid=,ruid=,tty=")return raw(r.raw.ids.stdout)
+      if(field==="comm="||field==="command=")return r.raw[field==="comm="?"comm":"command"].stdout
+      throw Error("Unmeasured ps request "+args.join(" "))
+    }
+    const realFs=await import("node:fs"),realCp=await import("node:child_process"),realTty=await import("node:tty")
+    const dev=(r,big)=>({dev:big?7n:7,rdev:big?BigInt(r):r,ino:big?11n:11,isCharacterDevice:()=>true,isSocket:()=>true})
+    mock.module("node:fs",()=>({...realFs,realpathSync:p=>p,
+      fstatSync:()=>dev(pane.ttyRdev,true),statSync:(p,o)=>dev(p==="/dev/"+shell.tty?shell.ttyRdev:pane.ttyRdev,o?.bigint),
+      readFileSync:(p,...a)=>p===f.binary.path?Buffer.from("screen-fixture-binary"):p===config?Buffer.from(""):realFs.readFileSync(p,...a)}))
+    mock.module("node:tty",()=>({...realTty,isatty:()=>true}))
+    mock.module("./packages/terminfo.dev/src/darwin-kernel-exec.ts",()=>({kernelExecPath:pid=>{
+      const r=byPid.get(pid);if(!r)throw Error("Unmeasured kernel pid "+pid)
+      return {path:r.kernelExecutable,reader:r.kernelExecutableReader,error:r.kernelExecutableError,attempts:r.kernelExecutableAttempts}
+    }}))
+    const command=(binary,args,options)=>{
+      reads.push({binary,args,env:options?.env})
+      if(binary==="/bin/ps")return {status:0,stdout:ps(args),stderr:""}
+      if(binary==="/usr/sbin/sysctl")return f.boot.raw
+      if(binary==="/usr/bin/stat"){
+        const r=rows.find(r=>"/dev/"+r.tty===args.at(-1))
+        if(fault==="missing-tty"&&r?.tty===pane.tty)throw Error("fixture TTY measurement unavailable")
+        if(!r?.raw.rdev)throw Error("Unmeasured stat "+args.join(" "))
+        return r.raw.rdev
+      }
+      if(binary===f.binary.path&&args[0]==="-v")return f.binary.version
+      if(binary===f.binary.path&&args[0]==="-ls")return f.topology.sessionList
+      throw Error("Unmeasured command "+binary+" "+args.join(" "))
+    }
+    mock.module("node:child_process",()=>({...realCp,spawnSync:command,
+      execFileSync:(b,a,o)=>{const r=command(b,a,o);if(r.status!==0)throw Object.assign(Error("command exit "+r.status),r);return r.stdout},
+      spawn:(b,a)=>{assert.equal(b,"/bin/stty");const p=new EventEmitter();p.stdout=new EventEmitter();p.stderr=new EventEmitter();p.kill=()=>true;queueMicrotask(()=>{p.stdout.emit("data",Buffer.from("24 80\n"));p.emit("close",0)});return p}}))
+    const {createOwnedTerminal}=await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    try{
+      const grant=await createOwnedTerminal({captureRunId:"d".repeat(32),expectedLaunchRunId:f.launchRunId,out:process.stdout,
+        process:{asserter:"terminfo-admin",launchRunId:f.launchRunId,workerPid:self,provider:"cli-process",ownerPid:owner.pid,
+          executablePath:owner.kernelExecutable,marker,tty:"/dev/"+shell.tty,intendedVersion:"1.3.1"},
+        darwinMux:{subject:{kind:"mux",id:"screen",mux:"screen",version:"4.00.03",config,os:"macos"},
+          outerApp:{rawReplies:{"collector.outerLaunch":launch,"collector.preflightIdentity":JSON.stringify({pid:preflight.pid,startedAtEpochSeconds:preflight.startedAtEpochSeconds,launchRunId:f.launchRunId})}}}})
+      const proof=grant.muxAttachmentProof
+      assert.ok(proof,"real owner factory must produce its measured mux attachment")
+      assert.equal(proof.collector.pid,self);assert.equal(proof.attachedClient.pid,client.pid)
+      assert.equal(proof.collector.ttyRdev,pane.ttyRdev);assert.equal(proof.outerShell.ttyRdev,shell.ttyRdev)
+      assert.equal(proof.collector.startedAtEpochSeconds,pane.startedAtEpochSeconds)
+      assert.deepEqual(proof.chain.map(r=>[r.pid,r.ppid,r.uid]),rows.slice(0,7).map(r=>[r.pid,r.ppid,r.uid]))
+      assert.equal(proof.chain[1].executablePath,"login");assert.equal(proof.chain[1].kernelExecutable,"/usr/bin/login")
+      assert.equal(proof.receiptSha256,digest(launch));assert.equal(proof.executable.sha256,digest("screen-fixture-binary"))
+      assert.deepEqual(JSON.parse(grant.summary).muxAttachment,proof);assert.equal(grant.clipboard,undefined)
+      assert.ok(reads.filter(r=>r.args.includes("lstart=")).every(r=>r.env?.LC_ALL==="C"&&r.env?.TZ==="UTC"))
+      await grant.dispose();console.log("PROOF")
+    }catch(e){console.log("ERROR "+e.message)}
+  `], {cwd:packageRoot,encoding:"utf8",timeout:20000})
+  expect(result.status,result.stderr).toBe(0)
+  if(fault==="valid")expect(result.stdout.trim(),result.stderr).toBe("PROOF")
+  else expect(result.stdout).toMatch(fault==="changed-birth"?/birth|changed|identity/i:/TTY measurement unavailable/)
+})
+
 afterEach(() => {
   for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true })
 })
