@@ -961,7 +961,11 @@ test("app cursor hide seeds a shown steady fixed-cell control and records geomet
   expect(checkpoints[1]).toContain("\x1b[?25l")
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
   // Stored-review re-admission is gone (#32246), so no wording may promise an independent review (@cto e9af174e).
-  expect(result.tests).toContainEqual({ id: "review", status: "test-todo", reason: "no measured raster or DECRQM reply; captured frames are evidence only" })
+  expect(result.tests).toContainEqual({
+    id: "review",
+    status: "test-todo",
+    reason: "no measured raster or DECRQM reply; captured frames are evidence only",
+  })
   expect(result.observation?.note).toBe(
     "No measured raster, so the same cell cannot be compared by raw-pixel digest; the three frames are evidence only and blink phase cannot establish a negative",
   )
