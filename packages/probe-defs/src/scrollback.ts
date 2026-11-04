@@ -491,8 +491,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
         for (let i = 0; i < lineCount; i++) ctx.feed(`line ${i}\r\n`)
         const scroll = ctx.getScrollback()
         return parserStateResult(
-          scroll.totalLines > baseline.totalLines,
-          "Measured total lines increase after writing beyond the screen",
+          scroll.totalLines - baseline.totalLines >= lineCount - rows,
+          "Measured history grows by at least the overflow beyond the screen",
           { baseline, lineCount, scroll },
         )
       },

@@ -815,6 +815,26 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
   }
 })
 
+test.each([
+  ["scrollback.total-lines", 9, false],
+  ["scrollback.total-lines", 10, true],
+  ["scrollback.accumulate", 9, true],
+] as const)("%s with %i new history lines meets its own growth claim: %s", (id, growth, expected) => {
+  const probe = scrollbackProbes.find((item) => item.id === id)
+  if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
+  let readings = 0
+  const result = probe.lib(
+    headless({
+      getScrollback: () => ({
+        viewportOffset: 0,
+        totalLines: 37 + (readings++ === 0 ? 0 : growth),
+        screenLines: 37,
+      }),
+    }),
+  )
+  expect(result.pass).toBe(expected)
+})
+
 test("headless scrollback uses initialized screenLines rather than a 24-row assumption", () => {
   const screenLines = 37
   for (const [id, expectedFeeds] of [
