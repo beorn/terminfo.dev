@@ -942,7 +942,7 @@ test("app CUP refuses nonfinite geometry before a feature write", async () => {
   }
 })
 
-// Capture safety is distinct from the independent review of the resulting pixels.
+// Capture safety is distinct from grading: without a measured raster the frames are evidence only.
 test("app cursor hide seeds a shown steady fixed-cell control and records geometry without grading pixels", async () => {
   const context = app(null)
   const writes: string[] = []
@@ -960,6 +960,11 @@ test("app cursor hide seeds a shown steady fixed-cell control and records geomet
   expect(checkpoints[0]).toContain("\x1b[2;1HL  R")
   expect(checkpoints[1]).toContain("\x1b[?25l")
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
+  // Stored-review re-admission is gone (#32246), so no wording may promise an independent review (@cto e9af174e).
+  expect(result.tests).toContainEqual({ id: "review", status: "test-todo", reason: "no measured raster or DECRQM reply; captured frames are evidence only" })
+  expect(result.observation?.note).toBe(
+    "No measured raster, so the same cell cannot be compared by raw-pixel digest; the three frames are evidence only and blink phase cannot establish a negative",
+  )
   expect(JSON.parse(result.response ?? "")).toMatchObject({ rows: 24, cols: 80, cursor: { row: 2, col: 3 } })
   expect(result.assertions).toMatchObject([{ kind: "positive", note: expect.stringContaining("capture-only") }])
   expect(writes.at(-1)).toContain("\x1b[2J")

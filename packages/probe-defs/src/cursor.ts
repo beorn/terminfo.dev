@@ -393,7 +393,7 @@ export const cursorProbes: ProbeDefinition[] = [
             }
           }
         }
-        // No measured raster: keep the control/target record for a reviewer rather than grading it.
+        // No measured raster: keep the control, target and restored frames as evidence only; they never grade it.
         if (capture) {
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -417,7 +417,7 @@ export const cursorProbes: ProbeDefinition[] = [
                 {
                   id: "review",
                   status: "test-todo",
-                  reason: "Valid cursor control, hidden and restored frames; required independent review pending",
+                  reason: "no measured raster or DECRQM reply; captured frames are evidence only",
                 },
               ],
               observation: {
@@ -426,7 +426,7 @@ export const cursorProbes: ProbeDefinition[] = [
                 assertionType: "screenshot",
                 screenshotRef: target.ref,
                 frames: [control, target, restored],
-                note: "No measured raster, so the same cell cannot be compared by raw-pixel digest; the three frames need independent review and blink phase cannot establish a negative",
+                note: "No measured raster, so the same cell cannot be compared by raw-pixel digest; the three frames are evidence only and blink phase cannot establish a negative",
               },
               assertions: [
                 {
