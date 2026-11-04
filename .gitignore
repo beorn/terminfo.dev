@@ -1,4 +1,5 @@
 node_modules/
+.vitest/
 content/analysis.json
 docs/.vitepress/cache/
 docs/.vitepress/dist/
