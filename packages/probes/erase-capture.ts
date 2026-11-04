@@ -42,15 +42,15 @@ function readReference(directory: string, reference: unknown): Buffer {
   return bytes
 }
 
-export function readEraseCapture(
+/** Shared private schema-4 artifact binding; family-specific checks follow this read. */
+export function readProbeCapture(
   directory: string,
   source: Extract<RunDraft["source"], { kind: "trace" }>,
   expected: {
     manifest: ProbeSuiteManifest & { schemaVersion: 4 }
     sourceRevision: string
     subject: ProbeSubject
-    runtimeIdentity: HeadlessRuntimeIdentity
-    geometry: typeof HEADLESS_TERMINAL
+    runtimeIdentity?: HeadlessRuntimeIdentity
   },
 ) {
   const bytes = readReference(directory, source.trace).toString("utf8")
@@ -71,8 +71,23 @@ export function readEraseCapture(
     !isDeepStrictEqual(capture.subject, expected.subject) ||
     !isDeepStrictEqual(capture.runtimeIdentity, expected.runtimeIdentity)
   ) {
-    throw new IncompleteReplay("Erase capture run, suite, source, subject or loaded runtime binding differs")
+    throw new IncompleteReplay("Capture run, suite, source, subject or loaded runtime binding differs")
   }
+  return capture
+}
+
+export function readEraseCapture(
+  directory: string,
+  source: Extract<RunDraft["source"], { kind: "trace" }>,
+  expected: {
+    manifest: ProbeSuiteManifest & { schemaVersion: 4 }
+    sourceRevision: string
+    subject: ProbeSubject
+    runtimeIdentity: HeadlessRuntimeIdentity
+    geometry: typeof HEADLESS_TERMINAL
+  },
+) {
+  const capture = readProbeCapture(directory, source, expected)
   const manifestRaw = capture.rawReplies["collector.traceManifest"]
   if (typeof manifestRaw !== "string") throw new IncompleteReplay("Erase capture is missing collector.traceManifest")
   const manifest = parseJsonStrict("erase trace manifest", manifestRaw)

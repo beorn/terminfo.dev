@@ -10,7 +10,10 @@ import {
   recordExecutedProbe,
   type CapturedRunDraft,
   type ProbeResult,
+  type TermProbeSource,
 } from "@terminfo/probe-defs"
+import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
+import { readCallLog, withCallLog, IncompleteReplay } from "viprobe"
 import {
   derivedSuiteManifest,
   probeSuiteSnapshot,
@@ -22,7 +25,7 @@ import { headlessRuntimeIdentity } from "./headless-identity.ts"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
 import { eraseProbes } from "../probe-defs/src/erase.ts"
 import { captureEraseCalls, replayEraseCalls } from "./erase-replay.ts"
-import { readEraseCapture } from "./erase-capture.ts"
+import { readEraseCapture, readProbeCapture } from "./erase-capture.ts"
 import { ERASE_REPLAY_ROOT } from "./erase-store.ts"
 
 type EraseRecords = ReturnType<typeof replayEraseCalls>
@@ -47,7 +50,15 @@ declare module "vitest" {
   }
 }
 
-export async function runEraseReplay(context: TestContext): Promise<EraseRunRecord> {
+export async function runEraseReplay(
+  context: TestContext,
+  retained?: {
+    directory: string
+    source: Parameters<typeof readProbeCapture>[1]
+    expected: Parameters<typeof readProbeCapture>[2]
+    featureId: string
+  },
+): Promise<EraseRunRecord> {
   const startedAt = new Date().toISOString()
   const finalRecord: EraseRunRecord = { assertions: [], checks: [], files: [] }
   let failure: unknown
@@ -57,7 +68,7 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
     failure = error
     const message = error instanceof Error ? error.message : String(error)
     finalRecord.error = message
-    finalRecord.failureResults = eraseProbes.map(({ id }) =>
+    finalRecord.failureResults = (retained ? [{ id: retained.featureId }] : eraseProbes).map(({ id }) =>
       recordExecutedProbe({
         featureId: id,
         attempt: { scope: "collection", startedAt },
@@ -67,13 +78,40 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
     )
   }
   try {
-    mkdirSync(ERASE_REPLAY_ROOT, { recursive: true })
-    const directory = mkdtempSync(join(ERASE_REPLAY_ROOT, "erase-"))
+    if (!retained) mkdirSync(ERASE_REPLAY_ROOT, { recursive: true })
+    const directory = retained?.directory ?? mkdtempSync(join(ERASE_REPLAY_ROOT, "erase-"))
     const snapshot = probeSuiteSnapshot()
     const dirt = uncommittedCollectorDirt(undefined, snapshot)
     if (dirt) throw new Error("Erase capture requires committed source inputs:\n" + dirt)
     const manifest = derivedSuiteManifest(snapshot)
     const sourceRevision = sourceSuiteEnvironment().TERMINFO_SOURCE_REVISION
+    let capture: Pick<CapturedRunDraft, "runId" | "suiteId" | "subject" | "runtimeIdentity" | "identity" | "measuredAt" | "origin" | "provenance" | "outerApp">
+    let source: Parameters<typeof readProbeCapture>[1]
+    let replay: () => EraseRecords | Promise<EraseRecords>
+    if (retained) {
+      const definition = ALL_PROBES.find(({ id }) => id === retained.featureId && id.startsWith("sgr."))
+      if (!definition?.term) throw new IncompleteReplay("Missing selected SGR term callback: " + retained.featureId)
+      capture = readProbeCapture(directory, retained.source, retained.expected)
+      source = retained.source
+      const callback = definition.term
+      replay = async () => {
+        const validated = readProbeCapture(directory, retained.source, retained.expected)
+        const raw = validated.rawReplies[definition.id + ".callLog"]
+        if (typeof raw !== "string") throw new IncompleteReplay("Missing full-source call log: " + definition.id)
+        if (validated.screenshotRefs.length || validated.textSnapshotRefs.length) {
+          throw new IncompleteReplay("SGR query-reply replay has unresolved capture dependencies")
+        }
+        const log = readCallLog(parseJsonStrict(definition.id + " call log", raw))
+        const session = withCallLog<TermProbeSource>(null, { mode: "replay", log })
+        const startedAt = new Date().toISOString()
+        try {
+          return [{ featureId: definition.id, startedAt, result: await callback(session.context), checks: [] }]
+        } finally {
+          session.finish()
+        }
+      }
+      finalRecord.files.push(join(directory, source.trace.path))
+    } else {
     const runtimeIdentity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
     const subject = {
       kind: "lib" as const,
@@ -87,7 +125,7 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
       permissions: null,
     }
     const measuredAt = new Date().toISOString()
-    const capture: CapturedRunDraft = {
+    const liveCapture: CapturedRunDraft = {
       ...initializeRunDraft({
         runId: randomUUID(),
         manifest,
@@ -102,17 +140,17 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
       origin: { kind: "collector" },
     }
     const recorded = captureEraseCalls(context, runtimeIdentity)
-    capture.rawReplies["collector.callLog"] = JSON.stringify(recorded.log)
-    capture.rawReplies["collector.captureChecks"] = JSON.stringify(recorded.results)
-    capture.rawReplies["collector.traceManifest"] = JSON.stringify({
+    liveCapture.rawReplies["collector.callLog"] = JSON.stringify(recorded.log)
+    liveCapture.rawReplies["collector.captureChecks"] = JSON.stringify(recorded.results)
+    liveCapture.rawReplies["collector.traceManifest"] = JSON.stringify({
       captureKind: "buffer_state",
       geometry: HEADLESS_TERMINAL,
       blobs: [],
     })
-    const capturePath = saveDaemonProbeRun(capture, directory)
-    finalRecord.captureRunId = capture.runId
+    const capturePath = saveDaemonProbeRun(liveCapture, directory)
+    capture = liveCapture
     finalRecord.files.push(capturePath)
-    const source = {
+    source = {
       kind: "trace" as const,
       trace: {
         path: basename(capturePath),
@@ -123,6 +161,10 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
       captureSourceRevision: sourceRevision,
     }
     const expected = { manifest, sourceRevision, subject, runtimeIdentity, geometry: HEADLESS_TERMINAL }
+      replay = () => replayEraseCalls(readEraseCapture(directory, source, expected).log, context)
+    }
+    finalRecord.captureRunId = capture.runId
+    const { subject, runtimeIdentity, measuredAt } = capture
     for (let attempt = 0; attempt < 2; attempt++) {
       const assertion: CapturedRunDraft = {
         ...initializeRunDraft({ runId: randomUUID(), manifest, sourceRevision, source, intendedSubject: subject }),
@@ -131,9 +173,10 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
         identity: capture.identity,
         measuredAt,
         origin: { ...capture.origin },
+        ...(capture.provenance && { provenance: capture.provenance }),
+        ...(capture.outerApp && { outerApp: capture.outerApp }),
       }
-      const validated = readEraseCapture(directory, source, expected)
-      const records = replayEraseCalls(validated.log, context)
+      const records = await replay()
       for (const { featureId, startedAt, result, checks } of records) {
         if (!ALL_PROBES.some(({ id }) => id === featureId)) {
           throw new Error("Erase result outside catalogue: " + featureId)
@@ -168,6 +211,7 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
       const path = join(directory, assertion.runId + ".assertion.draft.json")
       const checksPath = join(directory, assertion.runId + ".checks.json")
       writeFileSync(path, JSON.stringify(assertion, null, 2), { flag: "wx" })
+      parseRun(path, readFileSync(path, "utf8"), manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]))
       writeFileSync(checksPath, JSON.stringify(records, null, 2), { flag: "wx" })
       finalRecord.assertions.push(assertion)
       finalRecord.checks.push(records)

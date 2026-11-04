@@ -6,9 +6,9 @@
  * @reach fs-walk <fixture-only: /tmp/terminfo-disposable-receipts>
  */
 import { createHash } from "node:crypto"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import { readCallLog, withCallLog } from "viprobe"
 import {
@@ -24,6 +24,11 @@ import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
 import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
+import { saveDaemonProbeRun } from "../capture-writer.ts"
+import { readProbeCapture } from "../../../probes/erase-capture.ts"
+import { runEraseReplay } from "../../../probes/erase-run.ts"
+import * as headlessIdentity from "../../../probes/headless-identity.ts"
+import { derivedSuiteManifest } from "../../../admin/versions.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
 import { collectTextQualification } from "../text-qualification.ts"
 import { createClipboardTransaction, type LinuxClipboardAdapter } from "../linux-clipboard.ts"
@@ -2083,7 +2088,7 @@ it("records failed clipboard restoration as collector error rather than retainin
 // #30932 AC3: a TTY-only log loses the source's optional capture method even when
 // DECRQSS decides the result before calling it. Existing reply/trace tests cannot
 // establish that the same source shape reaches the callback during offline replay.
-it("retains SGR query-reply source shape for strict offline replay", async () => {
+it("retains SGR query-reply source shape for strict offline replay", async (context) => {
   verifiedBatchFixture()
   const writes: string[] = []
   process.stdout.write = ((value: string) => {
@@ -2102,7 +2107,32 @@ it("retains SGR query-reply source shape for strict offline replay", async () =>
     capture,
   })
   expect(batch.results.find(({ featureId }) => featureId === "sgr.bold")?.status).toBe("supported")
-  const log = readCallLog(JSON.parse(batch.rawReplies["sgr.bold.callLog"]!))
+  // The persistence boundary must accept a terminal query-reply capture without
+  // inventing an erase buffer/geometry manifest or a headless runtime identity.
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const draft = asRun(batch)
+  if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) throw new Error("Incomplete fixture")
+  const path = saveDaemonProbeRun({ ...draft, subject: draft.subject, identity: draft.identity, measuredAt: draft.measuredAt, origin: draft.origin }, directory)
+  const bytes = readFileSync(path)
+  const source = {
+    kind: "trace" as const,
+    trace: { path: basename(path), sha256: createHash("sha256").update(bytes).digest("hex") },
+    captureRunId: draft.runId,
+    captureSuiteId: draft.suiteId,
+    captureSourceRevision: draft.sourceRevision,
+  }
+  const expected = { manifest, sourceRevision, subject: draft.subject }
+  const validated = readProbeCapture(directory, source, expected)
+  const log = readCallLog(JSON.parse(validated.rawReplies["sgr.bold.callLog"]!))
+  for (const invalid of [
+    { ...source, captureRunId: "other-capture" },
+    { ...source, captureSuiteId: "other-suite" },
+    { ...source, captureSourceRevision: "other-source" },
+    { ...source, trace: { ...source.trace, sha256: "0".repeat(64) } },
+    { ...source, trace: { ...source.trace, path: "../outside.json" } },
+  ]) expect(() => readProbeCapture(directory, invalid, expected)).toThrow()
+  expect(() => readProbeCapture(directory, source, { ...expected, subject: { ...expected.subject, version: "other" } })).toThrow()
   const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
   expect(typeof replay.context.capture).toBe("function")
   const callback = ALL_PROBES.find(({ id }) => id === "sgr.bold")?.term
@@ -2113,6 +2143,30 @@ it("retains SGR query-reply source shape for strict offline replay", async () =>
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(writes).toHaveLength(beforeReplay)
   expect(capture).not.toHaveBeenCalled()
+  const nativeIdentity = vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockImplementation(async () => {
+    throw new Error("Offline SGR assertion attempted native runtime discovery")
+  })
+  try {
+    const record = await runEraseReplay(context, { directory, source, expected, featureId: "sgr.bold" })
+    expect(record.assertions).toHaveLength(2)
+    expect(new Set(record.assertions.map(({ runId }) => runId)).size).toBe(2)
+    for (const assertion of record.assertions) {
+      expect(assertion.runId).not.toBe(draft.runId)
+      expect(assertion.source).toEqual(source)
+      expect(assertion.subject).toEqual(draft.subject)
+      expect(assertion.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({ status: "supported", assertionType: "query_reply" })
+      const assertionPath = record.files.find((file) => file.endsWith(assertion.runId + ".assertion.draft.json"))
+      if (!assertionPath) throw new Error("Missing persisted assertion")
+      const executingManifest = derivedSuiteManifest()
+      expect(parseRun(assertionPath, readFileSync(assertionPath, "utf8"), executingManifest.catalogIds!, new Map([[executingManifest.probeHash, executingManifest]])).source).toEqual(source)
+    }
+    expect(nativeIdentity).not.toHaveBeenCalled()
+    expect(writes).toHaveLength(beforeReplay)
+    expect(capture).not.toHaveBeenCalled()
+  } finally {
+    nativeIdentity.mockRestore()
+  }
+  expect(readFileSync(path)).toEqual(bytes)
 })
 
 // AC1/AC3: images belong to the callback's run before it is sealed. Existing
