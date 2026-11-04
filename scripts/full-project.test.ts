@@ -50,6 +50,75 @@ const other: CensusContext = { context: "xterm/linux", terminalId: "xterm", os: 
 const engine: CensusContext = { context: "libvterm/headless", terminalId: "libvterm", os: "headless", kind: "lib" }
 
 describe("full-scope rows", () => {
+  // Composed feature statuses can disagree with a representative raw probe. Single-method fixtures miss this.
+  it("keeps a composed conflict incomplete and validates all retained contributors", () => {
+    const ids = ["a.one", "device.env-term"]
+    const raw = recorded(ids, "supported")
+    const latest = { runId: "latest-method", results: raw, suiteId: suite, measuredAt: "2026-10-17T00:00:00Z" }
+    const earlier = {
+      ...latest,
+      runId: "earlier-method",
+      results: [...recorded(["a.one"], "unsupported"), ...recorded(["device.env-term"], "supported")],
+    }
+    const entry = candidate({ kind: "term", terminalId: "kitty", os: "linux", results: raw })
+    entry.sources = [latest, earlier].map(({ runId, measuredAt, suiteId }) => ({
+      runId,
+      measuredAt,
+      suiteId,
+      suiteRelation: "tree" as const,
+    }))
+    entry.context = {
+      cells: Object.fromEntries(
+        raw.map((result) => [
+          result.featureId,
+          {
+            result,
+            run: latest,
+            origin: { runId: latest.runId, resultId: result.featureId },
+            ...(result.featureId === "a.one" && {
+              featureResult: {
+                featureId: result.featureId,
+                status: "probe-conflict",
+                probeId: null,
+                strength: null,
+                conflictingProbes: ["a.one:output", "a.one:visual"],
+              },
+            }),
+          },
+        ]),
+      ),
+    } as unknown as NonNullable<ContextCandidate["context"]>
+    const args = {
+      census: [app],
+      catalogIds: ids,
+      candidates: [entry],
+      requiredSuiteId: suite,
+      projection: { history: { [entry.key]: [latest, earlier] } },
+    }
+    const rows = buildFullProjectRows(args as unknown as Parameters<typeof buildFullProjectRows>[0])
+    const row = rows.contexts[0]
+    if (!row?.collected) throw new Error("expected a collected composed context")
+    expect(row.result).toMatchObject({
+      fraction: "0/1",
+      denominator: 1,
+      complete: false,
+      counts: { "probe-conflict": 1 },
+    })
+    expect(row.observations).toMatchObject([{ state: "probe-conflict" }, { state: "supported" }])
+    expect(rows.complete).toBe(false)
+    expect(raw.map((result) => result.status)).toEqual(["supported", "supported"])
+    args.projection.history[entry.key] = [latest]
+    expect(() => buildFullProjectRows(args as unknown as Parameters<typeof buildFullProjectRows>[0])).toThrow(
+      /earlier-method/,
+    )
+    args.projection.history[entry.key] = [latest, { ...earlier, results: recorded(["device.env-term"], "supported") }]
+    expect(() => buildFullProjectRows(args as unknown as Parameters<typeof buildFullProjectRows>[0])).toThrow(
+      /earlier-method.*a.one/,
+    )
+    expect(() =>
+      buildFullProjectRows({ ...args, projection: undefined } as unknown as Parameters<typeof buildFullProjectRows>[0]),
+    ).toThrow(/original projection history/)
+  })
   // CTO436fd774: showing retained off-suite support must not raise the required-suite release score.
   // Whole-run fixtures cannot distinguish a visible retained cell from admitted release evidence.
   it("keeps mixed required-suite scoring neutral while exposing held original cells", () => {
@@ -71,7 +140,15 @@ describe("full-scope rows", () => {
     const cells = Object.fromEntries(
       catalogIds.map((id, index) => {
         const run = index === 1 ? older : original
-        return [id, { origin: { runId: run.runId, resultId: id }, run, result: run.results[index]! }]
+        return [
+          id,
+          {
+            origin: { runId: run.runId, resultId: id },
+            run,
+            result: run.results[index]!,
+            featureResult: { status: run.results[index]!.status },
+          },
+        ]
       }),
     )
     const mixed = {
@@ -91,7 +168,15 @@ describe("full-scope rows", () => {
       },
     } as unknown as ContextCandidate
     const build = (entry: ContextCandidate) =>
-      buildFullProjectRows({ census: [app], catalogIds, candidates: [entry], requiredSuiteId: suite }).contexts[0]
+      buildFullProjectRows({
+        census: [app],
+        catalogIds,
+        candidates: [entry],
+        requiredSuiteId: suite,
+        projection: { history: { [entry.key]: [original, older] } } as unknown as NonNullable<
+          Parameters<typeof buildFullProjectRows>[0]["projection"]
+        >,
+      }).contexts[0]
     const before = build(onSuite)
     const after = build(mixed)
     if (!before?.collected || !after?.collected) throw new Error("Both evidence-bearing contexts must remain collected")
@@ -248,12 +333,15 @@ describe("full-scope rows", () => {
   // The old excluded-denominator fixtures cannot prove the strengthened 33 × 273 finish rule.
   it("requires all 9009 recorded positions and zero TODO/failure in every context", () => {
     const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
-    const census = Array.from({ length: 33 }, (_, index): CensusContext => ({
-      context: `terminal-${index}/linux`,
-      terminalId: `terminal-${index}`,
-      os: "linux",
-      kind: "term",
-    }))
+    const census = Array.from(
+      { length: 33 },
+      (_, index): CensusContext => ({
+        context: `terminal-${index}/linux`,
+        terminalId: `terminal-${index}`,
+        os: "linux",
+        kind: "term",
+      }),
+    )
     const candidates = census.map((context) =>
       candidate({
         kind: context.kind,
@@ -278,12 +366,15 @@ describe("full-scope rows", () => {
   // builder that owns the behavior: the same 33 contexts and 273 positions, with no runs at all.
   it("keeps an all-history corpus incomplete without inventing a current score", () => {
     const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
-    const census = Array.from({ length: 33 }, (_, index): CensusContext => ({
-      context: `terminal-${index}/linux`,
-      terminalId: `terminal-${index}`,
-      os: "linux",
-      kind: "term",
-    }))
+    const census = Array.from(
+      { length: 33 },
+      (_, index): CensusContext => ({
+        context: `terminal-${index}/linux`,
+        terminalId: `terminal-${index}`,
+        os: "linux",
+        kind: "term",
+      }),
+    )
     const rows = buildFullProjectRows({ census, catalogIds: ids, candidates: [], requiredSuiteId: suite })
     expect(rows.collected).toBe(0)
     expect(rows.notCollected).toBe(33)

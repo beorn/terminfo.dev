@@ -10,15 +10,20 @@
  */
 import type { ContextCandidate } from "./run-selection.ts"
 import { pickContextRun } from "./run-selection.ts"
-import type { ProbeStatus } from "@terminfo/probe-defs"
+import type { FeatureResultStatus } from "@terminfo/probe-defs"
+import { originalRunFor, type SelectedProjection } from "./selected-results.ts"
 import { scopeAggregate, type ScopeResult } from "./full-scope.ts"
-import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
+import {
+  environmentGroupIds,
+  gradedFeatureIds,
+  isEnvironmentGroup,
+} from "../../packages/probe-defs/src/environment-groups.ts"
 import type { CensusContext, ContextKind } from "./full-census.ts"
 
 /** One catalog row of a collected context, with its state and the run's own method and words. */
 export interface ObservationRow {
   id: string
-  state: ProbeStatus
+  state: FeatureResultStatus
   /** The observation method the run recorded (pixel, text cell, query/reply), when it names one. */
   method: string | null
   note: string | null
@@ -84,6 +89,7 @@ export function buildFullProjectRows(args: {
   catalogIds: readonly string[]
   candidates: readonly ContextCandidate[]
   requiredSuiteId: string
+  projection?: Pick<SelectedProjection, "history">
 }): FullProjectRows {
   if (!args.requiredSuiteId) throw new Error("the full-scope reader needs the suite it scores against")
   const rows = args.census.map((context): FullContextRow => buildRow(context, args))
@@ -106,6 +112,7 @@ function buildRow(
     catalogIds: readonly string[]
     candidates: readonly ContextCandidate[]
     requiredSuiteId: string
+    projection?: Pick<SelectedProjection, "history">
   },
 ): FullContextRow {
   const base = { context: context.context, terminalId: context.terminalId, os: context.os, kind: context.kind }
@@ -149,9 +156,12 @@ function buildRow(
     return { ...base, collected: false, cause: "selected run is historical; stored current results required" }
   }
   const byId = new Map(results.map((result) => [result.featureId, result]))
+  if (picked.run.context && !args.projection) {
+    throw new Error(`Current context ${picked.run.key} needs its original projection history`)
+  }
   for (const source of onSuiteSources) {
     const original = picked.run.context
-      ? Object.values(picked.run.context.cells).find((cell) => cell.origin.runId === source.runId)?.run.results
+      ? originalRunFor(args.projection!, picked.run.key, source.runId).results
       : results
     for (const id of args.catalogIds) {
       if (!original?.some((result) => result.featureId === id)) {
@@ -163,6 +173,10 @@ function buildRow(
   const observations = args.catalogIds.map((id): ObservationRow => {
     const cell = byId.get(id)
     if (!cell) throw new Error(`Current context ${picked.run.key} lacks recorded catalogue feature ${id}`)
+    const featureResult = picked.run.context?.cells[id]?.featureResult
+    if (picked.run.context && !isEnvironmentGroup(id) && !featureResult) {
+      throw new Error(`Current context ${picked.run.key}/${id} lacks its computed feature result`)
+    }
     const original = picked.run.context?.cells[id]?.run
     const source = original ?? firstOnSuite
     const hold =
@@ -172,7 +186,7 @@ function buildRow(
     if (hold) heldIds.push(id)
     return {
       id,
-      state: cell.status,
+      state: isEnvironmentGroup(id) ? cell.status : (featureResult?.status ?? cell.status),
       method: cell.assertionType ?? null,
       note: null,
       reason: cell.reason ?? null,
@@ -183,6 +197,7 @@ function buildRow(
     }
   })
   const held = new Set(heldIds)
+  const states = new Map(observations.map((observation) => [observation.id, observation.state]))
   return {
     ...base,
     collected: true,
@@ -195,7 +210,12 @@ function buildRow(
     result: scopeAggregate({
       scope: context.context,
       catalogIds: args.catalogIds,
-      results: results.map((result) => (held.has(result.featureId) ? { ...result, status: "probe-todo" } : result)),
+      results: results.map((result) => {
+        const status = states.get(result.featureId)
+        if (status === undefined)
+          throw new Error(`Current context ${picked.run.key} has foreign feature ${result.featureId}`)
+        return { featureId: result.featureId, status: held.has(result.featureId) ? "probe-todo" : status }
+      }),
     }),
     observations,
   }

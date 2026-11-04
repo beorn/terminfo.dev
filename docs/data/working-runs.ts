@@ -22,7 +22,7 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { join, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
-import { PROBE_STATUSES, type ProbeStatus } from "@terminfo/probe-defs"
+import { PROBE_STATUSES, isEnvironmentGroup, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { loadRawCapture, UntrustedSuiteError } from "../../packages/admin/raw-capture.ts"
 import { compatibilitySubjects, loadCurrentResults, type CurrentResult } from "./current-results.ts"
@@ -287,7 +287,7 @@ export interface RawSide {
 }
 
 export interface ReviewedSide {
-  status: ProbeStatus
+  status: FeatureResultStatus
   criterionBranch?: string
   runId: string
   suiteId: string
@@ -308,7 +308,7 @@ export interface WorkingCell {
 }
 
 // No cell waits on a source review any more (#32246): a retired source-negative cell reads its own status.
-const display = (side: { status: ProbeStatus }): string => side.status
+const display = (side: { status: FeatureResultStatus }): string => side.status
 
 /** The per-cell provenance rule; pure, so the headline rule is tested without a corpus. */
 export function workingCell(raw: RawSide, reviewed: ReviewedSide | undefined): WorkingCell {
@@ -383,10 +383,13 @@ export function composeWorkingView(
     const suiteId = run.probeHash
     const cells = run.results.map((result) => {
       const cell = review?.selected.cells[result.featureId]
+      if (cell && !isEnvironmentGroup(result.featureId) && !cell.featureResult) {
+        throw new Error(`Reviewed context ${review!.contextKey}/${result.featureId} lacks its computed feature result`)
+      }
       const reviewedSide: ReviewedSide | undefined =
         cell && review
           ? {
-              status: cell.result.status,
+              status: isEnvironmentGroup(result.featureId) ? cell.result.status : cell.featureResult!.status,
               ...(cell.result.criterionBranch !== undefined && { criterionBranch: cell.result.criterionBranch }),
               runId: cell.run.runId,
               suiteId: cell.run.probeHash ?? cell.run.suiteId,
