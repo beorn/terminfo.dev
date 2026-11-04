@@ -2153,10 +2153,14 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
   })
   const batch = await runProbeBatch({
     ids: ["sgr.bold"],
+    subject: { kind: "term", id: "kitty", os: "linux" },
     ownedTerminal: geometryOwner(measured(24, 80)),
     capture,
   })
-  expect(batch.results.find(({ featureId }) => featureId === "sgr.bold")?.status).toBe("supported")
+  expect(batch.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({
+    status: "test-todo",
+    reason: "visual effect not observed in this run",
+  })
   // The persistence boundary must accept a terminal query-reply capture without
   // inventing an erase buffer/geometry manifest or a headless runtime identity.
   const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
@@ -2190,6 +2194,9 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
   expect(() =>
     readProbeCapture(directory, source, { ...expected, subject: { ...expected.subject, version: "other" } }),
   ).toThrow()
+  expect(() => readProbeCapture(directory, source, { ...expected, sourceRevision: "other-source" })).toThrow(
+    /binding differs/,
+  )
   const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
   expect(typeof replay.context.capture).toBe("function")
   const callback = ALL_PROBES.find(({ id }) => id === "sgr.bold")?.term
@@ -2212,7 +2219,8 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       expect(assertion.source).toEqual(source)
       expect(assertion.subject).toEqual(draft.subject)
       expect(assertion.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({
-        status: "supported",
+        status: "test-todo",
+        reason: "visual effect not observed in this run",
         assertionType: "query_reply",
       })
       const assertionPath = record.files.find((file) => file.endsWith(assertion.runId + ".assertion.draft.json"))
@@ -2232,7 +2240,15 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     }
     // A syntactically valid recording can still be incomplete for this callback.
     // These reach the persisted runner, which the core recorder tests cannot cover.
-    for (const fault of ["missing-log", "tty-root", "missing-call", "unconsumed-call", "missing-dependency"] as const) {
+    for (const fault of [
+      "missing-log",
+      "tty-root",
+      "missing-call",
+      "unconsumed-call",
+      "missing-dependency",
+      "resized",
+      "non-live",
+    ] as const) {
       const rawReplies = { ...draft.rawReplies }
       const stored = JSON.parse(rawReplies["sgr.bold.callLog"]!) as {
         root: { entries: Array<[string, unknown]> }
@@ -2249,6 +2265,11 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         }
         rawReplies["sgr.bold.callLog"] = JSON.stringify(stored)
       }
+      if (fault === "resized") {
+        const geometry = JSON.parse(rawReplies["collector.geometry"]!) as { checks: [{ post: { cols: number } }] }
+        geometry.checks[0].post.cols = 79
+        rawReplies["collector.geometry"] = JSON.stringify(geometry)
+      }
       const invalid = {
         ...draft,
         subject: draft.subject,
@@ -2260,6 +2281,11 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         screenshotRefs: fault === "missing-dependency" ? [`sha256:${"d".repeat(64)}`] : [],
       }
       const invalidPath = saveDaemonProbeRun(invalid, directory)
+      if (fault === "non-live") {
+        const nonLive = JSON.parse(readFileSync(invalidPath, "utf8")) as { source: typeof source }
+        nonLive.source = source
+        writeFileSync(invalidPath, JSON.stringify(nonLive))
+      }
       const invalidSource = {
         ...source,
         captureRunId: invalid.runId,
@@ -2271,11 +2297,22 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       await expect(
         runEraseReplay(context, { directory, source: invalidSource, expected, featureId: "sgr.bold" }),
         fault,
-      ).rejects.toThrow(/Incomplete:/)
+      ).rejects.toThrow(fault === "tty-root" ? /SGR source shape does not match its live capture/ : /SGR replay:/)
       expect(context.task.meta.terminfoErase?.failureResults, fault).toMatchObject([
         { featureId: "sgr.bold", status: "test-failure" },
       ])
     }
+    await expect(
+      runEraseReplay(context, { directory, source, expected, featureId: "extensions.osc52-write" }),
+    ).rejects.toThrow(/SGR replay:.*Missing selected SGR/)
+    await expect(
+      runEraseReplay(context, {
+        directory,
+        source: { ...source, trace: { ...source.trace, path: "missing-trace.json" } },
+        expected,
+        featureId: "sgr.bold",
+      }),
+    ).rejects.toThrow(/SGR replay:.*ENOENT/)
     // A batch may retain another probe's blob beside this query-only log. Its
     // existing manifest binds the bytes; no pixel observation is fabricated here.
     const blob = Buffer.from("unrelated retained capture dependency")
@@ -2305,6 +2342,33 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       captureRunId: bound.runId,
       trace: { path: basename(boundPath), sha256: createHash("sha256").update(readFileSync(boundPath)).digest("hex") },
     }
+    // A bound blob must exist; a digest/path in the manifest alone is not retained evidence.
+    const missingBlobRef = `sha256:${"e".repeat(64)}`
+    const missingBlob = {
+      ...bound,
+      runId: randomUUID(),
+      screenshotRefs: [missingBlobRef],
+      rawReplies: {
+        ...bound.rawReplies,
+        "collector.traceManifest": JSON.stringify({ blobs: [{ path: missingBlobRef, sha256: digest }] }),
+      },
+    }
+    const missingBlobPath = saveDaemonProbeRun(missingBlob, directory)
+    await expect(
+      runEraseReplay(context, {
+        directory,
+        source: {
+          ...source,
+          captureRunId: missingBlob.runId,
+          trace: {
+            path: basename(missingBlobPath),
+            sha256: createHash("sha256").update(readFileSync(missingBlobPath)).digest("hex"),
+          },
+        },
+        expected,
+        featureId: "sgr.bold",
+      }),
+    ).rejects.toThrow(/SGR replay:.*ENOENT/)
     const boundRecord = await runEraseReplay(context, {
       directory,
       source: boundSource,
@@ -2314,7 +2378,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     expect(boundRecord.files).toContain(join(directory, blobRef))
     expect(
       boundRecord.assertions.map(({ results }) => results.find(({ featureId }) => featureId === "sgr.bold")?.status),
-    ).toEqual(["supported", "supported"])
+    ).toEqual(["test-todo", "test-todo"])
     expect(nativeIdentity).not.toHaveBeenCalled()
     expect(writes).toHaveLength(beforeReplay)
     expect(capture).not.toHaveBeenCalled()
@@ -2372,6 +2436,8 @@ it("retains same-callback control and target frames without declaring visual sup
   ])
   const trace = JSON.parse(batch.rawReplies["sgr.underline.curly"]!) as { captures: unknown[] }
   expect(trace.captures).toHaveLength(2)
+  // The capture writer clones the batch before persistence; recorder proxies must not escape.
+  expect(structuredClone(batch)).toEqual(batch)
   expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
     checks: [{ featureId: "sgr.underline.curly", pre: { rows: 24, cols: 80 }, post: { rows: 24, cols: 80 } }],
   })

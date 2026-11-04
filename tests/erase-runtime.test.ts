@@ -149,7 +149,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
         expect(readEraseCapture(dirname(capturePath), historicalSource, expected).capture.runId).toBe(capture.runId)
         await writeFile(historicalPath, historicalBytes + "\n")
         expect(() => readEraseCapture(dirname(capturePath), historicalSource, expected)).toThrow(
-          "Erase artifact SHA256 differs",
+          "Replay artifact SHA256 differs",
         )
       }
       expect(capture.runtimeIdentity?.adapterSources).toEqual(record.assertions[0]?.runtimeIdentity?.adapterSources)
