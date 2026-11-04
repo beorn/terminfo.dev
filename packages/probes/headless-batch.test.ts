@@ -1008,8 +1008,16 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
       if (id === "extensions.osc7-cwd") vi.spyOn(source, "getCwd").mockReturnValue("file://localhost/stale")
       else vi.spyOn(source, "getNotifications").mockReturnValue(["stale notice"])
       const stale = definition.lib!(source)
-      expect(stale.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
-      expect(stale.assertions).toMatchObject([{ kind: "negative", observed: stale.response }])
+      if (id === "extensions.osc7-cwd") {
+        // A stale Cwd reader cannot qualify the independent control either. The qualified no-op negative is
+        // covered by the existing real callback contract suite; this native fixture must remain undecided.
+        expect(stale.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+        expect(stale.observation).toBeUndefined()
+        expect(stale.assertions).toBeUndefined()
+      } else {
+        expect(stale.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+        expect(stale.assertions).toMatchObject([{ kind: "negative", observed: stale.response }])
+      }
       if (id === "extensions.notifications") {
         vi.mocked(source.getNotifications!).mockRestore()
         const delivery = vi.spyOn(source, "feed").mockImplementation(() => {})
@@ -1155,8 +1163,17 @@ test.for(VTERM_MARK_CASES)(
       expect(observed.second.at(-1)).toEqual({ type, startRow: 1, startCol: 2 })
       expect(observed.first).toHaveLength(observed.before.length + 1)
       expect(observed.second).toHaveLength(observed.secondBefore.length + 1)
-      const cached = value.getSemanticMarks()
-      vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
+      const realFeed = source.feed.bind(source)
+      let controlled = false
+      let cached: ReturnType<typeof value.getSemanticMarks> | undefined
+      vi.spyOn(source, "feed").mockImplementation((text) => {
+        if (text.startsWith(`\x1b]${selector === 133 ? 633 : 133};`)) controlled = true
+        if (controlled && text.startsWith(`\x1b]${selector};`) && cached === undefined) {
+          cached = value.getSemanticMarks()
+        }
+        realFeed(text)
+      })
+      vi.spyOn(source, "getSemanticMarks").mockImplementation(() => cached ?? value.getSemanticMarks())
       expect(definition.lib!(source).observation).toMatchObject({
         outcome: "unsupported",
         assertionType: "buffer_state",
@@ -1219,8 +1236,17 @@ test.for(["type", "position", "count", "history"] as const)("rejects fresh mark 
     if (fault === "history") value.feed(new TextEncoder().encode("\x1b[7;8H\x1b]133;C\x07"))
     const source = createLibProbeSource(value, undefined, undefined, undefined)
     const actual = source.getSemanticMarks!
+    const realFeed = source.feed.bind(source)
+    let controlled = false
+    let targetPhase = false
+    vi.spyOn(source, "feed").mockImplementation((text) => {
+      if (text.startsWith("\x1b]633;A")) controlled = true
+      if (controlled && text.startsWith("\x1b]133;A")) targetPhase = true
+      realFeed(text)
+    })
     vi.spyOn(source, "getSemanticMarks").mockImplementation(() => {
       const marks = actual()
+      if (!targetPhase) return marks
       if (fault === "type") {
         return marks.map((mark) => (mark.type === "command-end" ? mark : { ...mark, type: "command" as const }))
       }
