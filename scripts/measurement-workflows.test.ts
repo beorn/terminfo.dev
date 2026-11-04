@@ -1,12 +1,12 @@
 /**
  * @failure A hosted measurement workflow installs changed archive bytes, retains inherited secrets,
- *   loses the owned editor launch/close ordering, or omits TERMINFO_RUN_ID and dies at collection.
+ *   loses the owned editor launch/close ordering, omits TERMINFO_RUN_ID, or retains spent consent automation.
  * @level l2
  * @consumer The GitHub-hosted macOS and Windows measurement collectors (27917).
  * @reach fs-walk vendor/terminfo.dev/.github/workflows/macos-measurement.yml vendor/terminfo.dev/.github/workflows/windows-measurement.yml
  * @testonly none
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { runInNewContext } from "node:vm"
@@ -19,105 +19,12 @@ import { expect, test } from "vitest"
 
 const root = join(import.meta.dirname, "..")
 
-test.each(["allowed", "other-capture", "other-app", "other-probe", "remember-checked", "accessibility-denied"])(
-  "one iTerm consent job preserves temporary native permission through %s",
-  (scenario) => {
-    const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
-    const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect").run
-    const tail = collect.slice(collect.indexOf('touch "$OUT/collector-ready"'))
-    const directory = mkdtempSync(join(tmpdir(), "iterm-one-consent-"))
-    const out = join(directory, "out")
-    const bin = join(directory, "bin")
-    mkdirSync(out)
-    mkdirSync(bin)
-    writeFileSync(join(out, "collector-exit"), "0\n")
-    writeFileSync(join(out, "run.json"), "{}")
-    writeFileSync(
-      join(out, "host-measured.json"),
-      JSON.stringify({
-        runId: "native-launch",
-        appLaunch: {
-          bundlePath: "/Applications/iTerm.app",
-          cfBundleShortVersionString: "3.6.11",
-          executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
-        },
-      }),
-    )
-    writeFileSync(
-      join(bin, "node"),
-      `#!${process.execPath}
-const fs = require('node:fs');
-const vm = require('node:vm');
-const out = process.env.OUT;
-const result = (status, stdout = '', stderr = '') => ({status,stdout,stderr});
-const native = {spawnSync(file,args) {
-  if (file.endsWith('/defaults')) {
-    if (args[0] !== 'read') throw new Error('preference mutation');
-    return result(1, '', 'The domain/default pair does not exist');
-  }
-  if (file.endsWith('/PlistBuddy')) return result(0,'com.googlecode.iterm2\\n');
-  if (file.endsWith('/pgrep')) return result(0,'123\\n');
-  if (file.endsWith('/ps')) return result(0,'/Applications/iTerm.app/Contents/MacOS/iTerm2\\n');
-  if (file.endsWith('/screencapture')) { fs.writeFileSync(args.at(-1),'frame'); return result(0); }
-  if (file.endsWith('/osascript')) {
-    if (process.env.SCENARIO === 'accessibility-denied') return result(1,'','Not authorized to send Apple events');
-    const box = {name:()=> 'Remember my choice',value:()=> process.env.SCENARIO === 'remember-checked' ? 1 : 0};
-    const dialog = {staticTexts:()=>[{value:()=> 'Allow Terminal-Initiated Display?'}],checkBoxes:()=>[box],
-      buttons:()=>[{name:()=> 'Yes',click:()=>fs.appendFileSync(out+'/clicked','Yes\\n')},{name:()=> 'No'}],sheets:()=>[]};
-    const proc = {windows:()=>[dialog]};
-    try { return result(0,vm.runInNewContext(args[3]+'; run('+JSON.stringify(args.slice(4))+')',{
-      Application:()=>({applicationProcesses:{whose:()=>()=>[proc]}}),
-    })); } catch (error) { return result(1,'',String(error)); }
-  }
-  throw new Error('unexpected native command '+file);
-}};
-const source = fs.readFileSync(0,'utf8');
-process.argv.splice(1,1);
-vm.runInNewContext(source, {require:(name)=>name==='node:child_process'?native:require(name),process,console,setTimeout,Buffer});
-`,
-      { mode: 0o755 },
-    )
-    try {
-      const run = spawnSync("/bin/bash", ["-eu", "-c", tail], {
-        encoding: "utf8",
-        timeout: 10000,
-        env: {
-          ...process.env,
-          PATH: `${bin}:${process.env.PATH}`,
-          OUT: out,
-          APP_ID: scenario === "other-app" ? "terminal-app" : "iterm2",
-          APP_BUNDLE: "/Applications/iTerm.app",
-          PROBE_IDS: scenario === "other-probe" ? '["sgr.bold"]' : '["extensions.iterm2-images"]',
-          CAPTURE_RUN_ID: scenario === "other-capture" ? "not-authorized" : "18f8ea627153436fbb6a03572beb00ca",
-          SCENARIO: scenario,
-          GITHUB_OUTPUT: join(directory, "github-output"),
-        },
-      })
-      expect(run.error).toBeUndefined()
-      expect(existsSync(join(out, "clicked"))).toBe(scenario === "allowed")
-      expect(run.status, run.stderr).toBe(
-        scenario === "remember-checked" || scenario === "accessibility-denied" ? 1 : 0,
-      )
-      if (scenario === "allowed") {
-        expect(readFileSync(join(out, "clicked"), "utf8")).toBe("Yes\n")
-        const entries = readFileSync(join(out, "iterm-consent.log"), "utf8")
-          .trim()
-          .split("\n")
-          .map((line) => JSON.parse(line))
-        expect(
-          entries.filter(
-            (entry) =>
-              typeof entry === "object" && entry !== null && "file" in entry && entry.file === "/usr/bin/defaults",
-          ),
-        ).toHaveLength(8)
-        expect(entries.at(-1)).toMatchObject({ persisted: false })
-        expect(readFileSync(join(directory, "github-output"), "utf8")).toContain("iterm_consent_check=true")
-      }
-    } finally {
-      rmSync(directory, { recursive: true, force: true })
-    }
-  },
-)
+test("spent iTerm consent action is absent from the workflow", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
+  expect(workflow).not.toContain("18f8ea627153436fbb6a03572beb00ca")
+  expect(workflow).not.toContain("ITERM_CONSENT_PID")
+  expect(workflow).not.toContain("iterm_consent_check")
+})
 
 // The actual shell must launch and record one array. Parser fixtures cannot catch a
 // workflow that records a parallel recipe or never writes the uploaded handoff.
