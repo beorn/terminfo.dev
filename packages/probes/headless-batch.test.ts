@@ -8,8 +8,9 @@
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend adapter boundary. */
 import { createXtermBackend } from "@termless/xtermjs"
 import { createVtermBackend } from "@termless/vterm"
-import { createWeztermBackend } from "@termless/wezterm"
+import { createWeztermBackend, loadWeztermNative } from "@termless/wezterm"
 import { resolve as resolveLibvterm } from "@termless/libvterm"
+import { resolve as resolveGhosttyWasm } from "@termless/ghostty"
 import { resolve as resolveVt100 } from "@termless/vt100"
 import { resolve as resolveVt220 } from "@termless/vt220"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
@@ -1071,6 +1072,98 @@ test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a test-to
     value.destroy()
   }
 })
+
+// @failure #32053: Kitty receives every OSC 777 payload but its binding dropped them, so OSC 777 notify stayed a
+// grid-only test-todo; a stale or inert reader stays TEST TODO, and an absent reader keeps the old route.
+// @level l1
+// @consumer extensions.osc777-notify through the actual LibProbeSource on the real Kitty bridge
+test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe through the raw reader", () => {
+  const configDirectory = mkdtempSync(join(tmpdir(), "terminfo-kitty-config-"))
+  vi.stubEnv("KITTY_CONFIG_DIRECTORY", configDirectory)
+  const value = createKittyBackend({ cols: 80, rows: 24 })
+  try {
+    expect(hasExtension(value, "osc-metadata")).toBe(true)
+    const definition = registryDefinitions(["extensions.osc777-notify"])[0]!
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    // A non-notify payload is engine evidence too, but not this criterion's.
+    source.feed("\x1b]777;preexec\x07")
+    const result = definition.lib!(source)
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+    expect((JSON.parse(result.response!) as { second: string[] }).second).toEqual([
+      "preexec",
+      "terminfo-777-control",
+      "notify;terminfo-777-title-A;terminfo-777-body-A",
+      "notify;terminfo-777-title-B;terminfo-777-body-B",
+    ])
+    expect(source.getOsc777Payloads!()[0]).toBe("preexec")
+
+    // A stale or inert reader records no control, so it stays TEST TODO, never Unsupported (@cto cd6b67d9).
+    const stale = vi.spyOn(source, "getOsc777Payloads").mockReturnValue(["notify;stale;notice"])
+    expect(definition.lib!(source).notTested).toMatchObject({ reason: "no-semantic-observable" })
+    stale.mockRestore()
+    const inert = vi.spyOn(source, "feed").mockImplementation(() => {})
+    expect(definition.lib!(source).notTested).toMatchObject({ reason: "no-semantic-observable" })
+    inert.mockRestore()
+
+    const absent = createLibProbeSource(value, undefined, undefined, undefined)
+    delete (absent as { getOsc777Payloads?: unknown }).getOsc777Payloads
+    const missing = definition.lib!(absent)
+    expect(missing.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(missing.observation).toBeUndefined()
+    expect(missing.assertions).toBeUndefined()
+  } finally {
+    value.destroy()
+    vi.unstubAllEnvs()
+    rmSync(configDirectory, { recursive: true, force: true })
+  }
+})
+
+// @failure #32053: engine stores parsed toasts only; OSC 9 and 777;notify;X arrive identical. WezTerm
+// (performer.rs:904-933) and Ghostty (osc.zig:94-98) keep {title, body} toasts, so no raw reader can attribute the
+// code or rebuild the payload, and a reader declared on them would grade a guess. Their OSC 9 and OSC 777 cells
+// must stay TEST TODO with no reader, never Unsupported (@cto 94631c52, 91f6fd75).
+// @level l1
+// @consumer extensions.notifications and extensions.osc777-notify through the actual LibProbeSource
+function weztermNativeAvailable(): boolean {
+  try {
+    loadWeztermNative()
+    return true
+  } catch {
+    return false
+  }
+}
+
+test.for([
+  ["wezterm", weztermNativeAvailable(), async () => createWeztermBackend()],
+  ["ghostty-native", isGhosttyNativeAvailable(), async () => createGhosttyNativeBackend()],
+  ["ghostty wasm", true, () => resolveGhosttyWasm()],
+] as const)(
+  "%s parsed-toast engine keeps OSC 9 and OSC 777 TEST TODO with no reader",
+  async ([name, available, create], context) => {
+    if (!available) context.skip(`${name} native addon unavailable (NOT MEASURED)`)
+    const value = await create()
+    value.init({ cols: 80, rows: 24 })
+    try {
+      expect(hasExtension(value, "osc-metadata")).toBe(false)
+      const source = createLibProbeSource(value, undefined, undefined, undefined)
+      expect(source.getNotifications).toBeUndefined()
+      expect(source.getOsc777Payloads).toBeUndefined()
+      const [notifications, osc777] = registryDefinitions(["extensions.notifications", "extensions.osc777-notify"]).map(
+        (definition) => definition.lib!(source),
+      )
+      expect(notifications!.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(notifications!.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(osc777!.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+      for (const result of [notifications!, osc777!]) {
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+      }
+    } finally {
+      value.destroy()
+    }
+  },
+)
 
 // @failure Declared native readers are lost at the collector binding, or undeclared/non-callable readers are exposed.
 // @level l1

@@ -4666,3 +4666,54 @@ describe("partial probe automation candidates", () => {
     }
   })
 })
+
+// @failure #32053: a present OSC 777 reader graded Unsupported with no same-run control, so a stale or inert reader
+// read as an engine that drops notify (@cto cd6b67d9, grading rule 2). These rows run without a Kitty binary.
+// @level l1
+// @consumer extensions.osc777-notify library callback
+describe("OSC 777 raw reader grading", () => {
+  /** A scripted engine: records each OSC 777 payload, optionally dropping the notify subcommand. */
+  function osc777Source(record: "all" | "non-notify"): LibProbeSource {
+    const payloads: string[] = []
+    return context({
+      feed(text) {
+        for (const [, payload] of text.matchAll(/\x1b\]777;([^\x07]*)\x07/g)) {
+          if (record === "all" || !payload!.startsWith("notify;")) payloads.push(payload!)
+        }
+      },
+      getOsc777Payloads: () => [...payloads],
+    })
+  }
+  const controlReason = `${NO_SAME_PATH_CONTROL}: OSC 777 control payload not recorded; this reader is not shown to observe the OSC 777 path`
+
+  test("a correct reader grades Supported", () => {
+    const result = probe("extensions.osc777-notify").lib!(osc777Source("all"))
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  })
+
+  test("a reader that records the control but drops notify grades Unsupported", () => {
+    const result = probe("extensions.osc777-notify").lib!(osc777Source("non-notify"))
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+  })
+
+  test.each([
+    ["a stale fixed list", context({ getOsc777Payloads: () => ["notify;stale;notice"] })],
+    ["an inert feed", { ...osc777Source("all"), feed() {} }],
+  ])("%s stays TEST TODO without a recorded control", (_label, source) => {
+    const result = probe("extensions.osc777-notify").lib!(source)
+    // The rendered not-tested reason is notTested.noObservable, so the specific reason must be on it.
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: controlReason })
+    expect(result.note).toBe(controlReason)
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+  })
+
+  test("an absent reader keeps the grid-only TEST TODO route", () => {
+    const result = probe("extensions.osc777-notify").lib!(context({}))
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.note).toBe(NO_SAME_PATH_CONTROL)
+    expect(result.observation).toBeUndefined()
+  })
+})

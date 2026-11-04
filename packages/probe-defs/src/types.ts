@@ -748,6 +748,8 @@ export interface LibProbeSource {
   getCwd?(): string | null
   /** Copied parser notification payloads; this does not observe OS notification delivery. */
   getNotifications?(): readonly string[]
+  /** Copied OSC 777 payloads after "777;", verbatim and in order, notify or not; absent means no reader. */
+  getOsc777Payloads?(): readonly string[]
   /** Copied entries selected by semantic-marks (starts) or semantic-command-end (raw completion); absent means no reader. */
   getSemanticMarks?(): readonly (
     | {

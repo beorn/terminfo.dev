@@ -5140,17 +5140,55 @@ export const extensionsProbes: ProbeDefinition[] = [
   },
 
   // OSC 777 — rxvt-unicode notifications
-  probe(
-    "extensions.osc777-notify",
-    noSamePathControl("\x1b]777;notify;test;body\x07"),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]777;notify;test;body\x07")
-      const pos = await ctx.queryCursorPosition()
-      return unmeasuredCellResult(pos, "OSC 777 notification delivery")
-    },
-    null,
-  ),
+  {
+    ...probe(
+      "extensions.osc777-notify",
+      (ctx) => {
+        // Without a raw OSC 777 reader the grid is the only witness, and it cannot see a notification.
+        const readPayloads = ctx.getOsc777Payloads
+        if (!readPayloads) return noSamePathControl("\x1b]777;notify;test;body\x07")(ctx)
+        const read = () => [...readPayloads.call(ctx)]
+        // Grading rule 2: a non-notify control must read back verbatim on this reader before any Unsupported (@cto cd6b67d9).
+        const before = read()
+        const controlPayload = "terminfo-777-control"
+        const controlWrite = `\x1b]777;${controlPayload}\x07`
+        ctx.feed(controlWrite)
+        const control = read()
+        if (JSON.stringify(control) !== JSON.stringify([...before, controlPayload])) {
+          // The cell renders notTested.noObservable, so the specific reason rides there (@cto c3da3964).
+          return notTestedResult(
+            `${NO_SAME_PATH_CONTROL}: OSC 777 control payload not recorded; this reader is not shown to observe the OSC 777 path`,
+            { before, control, writes: [controlWrite] },
+          )
+        }
+        // The reader returns every OSC 777 payload; only the notify subcommand is this criterion (@cto 94631c52).
+        const notifies = (payloads: readonly string[]) => payloads.filter((payload) => payload.startsWith("notify;"))
+        const firstPayload = "notify;terminfo-777-title-A;terminfo-777-body-A"
+        const secondPayload = "notify;terminfo-777-title-B;terminfo-777-body-B"
+        const writes = [controlWrite, `\x1b]777;${firstPayload}\x07`, `\x1b]777;${secondPayload}\x07`] as const
+        ctx.feed(writes[1])
+        const first = read()
+        ctx.feed(writes[2])
+        const second = read()
+        const expectedBefore = notifies(control)
+        return parserStateResult(
+          JSON.stringify(notifies(first)) === JSON.stringify([...expectedBefore, firstPayload]) &&
+            JSON.stringify(notifies(second)) === JSON.stringify([...expectedBefore, firstPayload, secondPayload]),
+          "OSC 777 notify appends each exact title and body payload in order and preserves earlier payloads",
+          { before, control, first, second, writes },
+          "Measures the parser OSC 777 sink, not OS notification delivery",
+        )
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]777;notify;test;body\x07")
+        const pos = await ctx.queryCursorPosition()
+        return unmeasuredCellResult(pos, "OSC 777 notification delivery")
+      },
+      null,
+    ),
+    libAssertionType: "buffer_state",
+  },
 
   // OSC 666 — VTE termprop
   probe(
