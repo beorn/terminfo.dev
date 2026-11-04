@@ -335,11 +335,10 @@ cursor on a wrapped line and terminal-app resize unmeasured". No broader coverag
 the separate terminal-app arm remains Test to-do. Private apparatus results grant no exact-run decision,
 corpus placement; the native absolute-row consumer hold remains with independent batch review.
 
-A default-config observation is not engine capability absence. Libvterm0.3 exposes
-`vterm_screen_enable_reflow`, disabled unless the embedder enables it, and the current adapter
-retains no history, keeping this criterion Test to-do. Its one future qualification route installs
-scrollback callbacks, enables reflow and records the setting with the next adapter re-pin.
-A source review of default-off behavior cannot replace that recorded enablement. This slice changes no adapter.
+The libvterm adapter retains native history, enables `vterm_screen_enable_reflow` and records that
+setting. Libvterm is graded by the same main-screen and retained-history criterion; the recorded
+setting alone never establishes support. A default-config source observation is not engine
+capability absence and cannot replace the observed criterion.
 
 The Linux Kitty/Ghostty launcher pins one exact font file for the entire run, with no fallback face,
 through a private fontconfig directory. Its receipt retains that file's SHA256, launch arguments and HarfBuzz glyph
