@@ -74,6 +74,14 @@ reply prefix. XTWINOPS 14 (`CSI 14 t`) reports text-area pixels; the outer-windo
 query is `CSI 14;2 t`. These criteria establish query replies, without measuring
 palette push/pop effects or graphics capabilities.
 
+The XTWINOPS 22/23 library callbacks run separate pop and push fixtures. The pop
+fixture saves title A, sets B and restores A; the push fixture sets A then B,
+saves, sets C and restores B. They retain the incoming title plus each fixture's
+original, changed and restored readings, and restore the incoming title on exit.
+A stale A restored in both fixtures distinguishes a failed push from a working
+pop. If neither fixture restores a saved title, the failing operation remains
+unknown and both rows retain the no-control PROBE TODO reason.
+
 ## From definition to recorded result
 
 Linux and Darwin pixel collectors share the complete-raster calibration in

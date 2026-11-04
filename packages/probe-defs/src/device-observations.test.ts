@@ -707,42 +707,74 @@ describe("window-operation qualification", () => {
     },
   }
 
-  // AC3: a failed push/pop pair cannot identify which individual operation failed.
-  // The prior case only covered failed setup; final WezTerm raw has valid setup and failed restoration.
-  test.each(["device.xtwinops-22", "device.xtwinops-23"])("%s qualifies the complete title round trip", (id) => {
-    for (const [titles, outcome] of [
-      [["pushed-title", "new-title", "pushed-title"], "supported"],
-      [["pushed-title", "new-title", "new-title"], "todo"],
-      [["test-icon", "test-icon", "test-icon"], "review"],
-    ] as const) {
-      let index = 0
-      const context = {
-        feed: () => undefined,
-        getTitle: () => {
-          const title = titles[index++]
-          if (title === undefined) throw new Error("Unexpected title read")
-          return title
-        },
-      } as unknown as LibProbeSource
-      const result = callback(id).headless(context)
-      expect(result.response).toBe(JSON.stringify({ original: titles[0], changed: titles[1], restored: titles[2] }))
-      if (outcome === "review") {
-        // An unobservable setup decides neither operation (#31387).
-        expect(result).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
-        expect(result.observation).toBeUndefined()
-        expect(result.assertions).toBeUndefined()
-        continue
+  // #32282 AC1/2: model actual title writes and stack effects, rather than three canned reads.
+  // The old fixture passes a stale snapshot as PUSH support and leaves its title behind.
+  function titleContext(behavior: "working" | "stale" | "none" | "unobservable") {
+    let title = "incoming-title"
+    let firstSaved: string | undefined
+    const stack: string[] = []
+    const ctx = {
+      feed: (sequence: string) => {
+        const set = /^\x1b\]2;([^\x07]*)\x07$/.exec(sequence)
+        if (set && behavior !== "unobservable") title = set[1]!
+        if (sequence === "\x1b[22;0t" && behavior !== "none" && behavior !== "unobservable") {
+          firstSaved ??= title
+          stack.push(behavior === "stale" ? firstSaved : title)
+        }
+        if (sequence === "\x1b[23;0t" && stack.length) title = stack.pop()!
+      },
+      getTitle: () => (behavior === "unobservable" ? "" : title),
+    } as unknown as LibProbeSource
+    return { ctx, title: () => title, depth: () => stack.length }
+  }
+
+  test.each(["working", "stale", "none", "unobservable"] as const)(
+    "title stack separates each operation and cleans up: %s",
+    (behavior) => {
+      for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+        const fixture = titleContext(behavior)
+        const result = callback(id).headless(fixture.ctx)
+        const observed = JSON.parse(result.response!)
+        expect(observed).toMatchObject({ before: behavior === "unobservable" ? "" : "incoming-title" })
+        if (behavior !== "unobservable") {
+          expect(observed).toMatchObject({
+            popFixture: {
+              original: "pushed-title",
+              changed: "new-title",
+              restored: behavior === "none" ? "new-title" : "pushed-title",
+            },
+            pushFixture: {
+              original: "new-title",
+              changed: "next-title",
+              restored: behavior === "none" ? "next-title" : behavior === "stale" ? "pushed-title" : "new-title",
+            },
+          })
+        }
+        if (behavior === "none") expect(result).toMatchObject(UNDECIDED_TITLE_STACK)
+        else if (behavior === "unobservable") expect(result).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
+        else {
+          const outcome = behavior === "stale" && id.endsWith("22") ? "unsupported" : "supported"
+          expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
+        }
+        if (behavior !== "unobservable") expect(fixture.title()).toBe("incoming-title")
+        expect(fixture.depth()).toBe(0)
       }
-      if (outcome === "todo") {
-        // Push and pop share one observation, so an un-restored title is PROBE TODO, never graded (#32246).
-        expect(result).toMatchObject(UNDECIDED_TITLE_STACK)
-        expect(result.observation).toBeUndefined()
-        expect(result.assertions).toBeUndefined()
-        expect(result.criterionBranch).toBeUndefined()
-        continue
+    },
+  )
+
+  test("title-stack fixtures restore the incoming title and checkpoint when a read throws", () => {
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+      const fixture = titleContext("working")
+      const read = fixture.ctx.getTitle.bind(fixture.ctx)
+      let reads = 0
+      const failure = new Error("title read failed after push")
+      fixture.ctx.getTitle = () => {
+        if (++reads === 3) throw failure
+        return read()
       }
-      expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
-      expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
+      expect(() => callback(id).headless(fixture.ctx)).toThrow(failure)
+      expect(fixture.title()).toBe("incoming-title")
+      expect(fixture.depth()).toBe(0)
     }
   })
 
@@ -787,29 +819,25 @@ describe("window-operation qualification", () => {
     ["no runtime identity", undefined],
   ] as const)("title-stack on a %s is never graded from source", (_name, runtimeIdentity) => {
     for (const id of ["device.xtwinops-22", "device.xtwinops-23"] as const) {
-      const makeCtx = (titles: readonly [string, string, string]): LibProbeSource => {
-        let index = 0
-        return {
-          feed: () => undefined,
-          runtimeIdentity,
-          getTitle: () => titles[index++]!,
-        } as unknown as LibProbeSource
-      }
-      const undecided = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"]))
+      const makeCtx = (behavior: Parameters<typeof titleContext>[0]): LibProbeSource => ({
+        ...titleContext(behavior).ctx,
+        runtimeIdentity,
+      })
+      const undecided = callback(id).headless(makeCtx("none"))
       expect(undecided).toMatchObject(UNDECIDED_TITLE_STACK)
       expect(undecided.observation).toBeUndefined()
       expect(undecided.assertions).toBeUndefined()
       expect(undecided.criterionBranch).toBeUndefined()
       expect(JSON.parse(undecided.response!)).toEqual({
-        original: "pushed-title",
-        changed: "new-title",
-        restored: "new-title",
+        before: "incoming-title",
+        popFixture: { original: "pushed-title", changed: "new-title", restored: "new-title" },
+        pushFixture: { original: "new-title", changed: "next-title", restored: "next-title" },
       })
 
-      const positive = callback(id).headless(makeCtx(["pushed-title", "new-title", "pushed-title"]))
+      const positive = callback(id).headless(makeCtx("working"))
       expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
 
-      const unobservable = callback(id).headless(makeCtx(["", "", ""]))
+      const unobservable = callback(id).headless(makeCtx("unobservable"))
       expect(unobservable).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
       expect(unobservable.observation).toBeUndefined()
     }

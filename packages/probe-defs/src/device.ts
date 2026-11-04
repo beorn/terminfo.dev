@@ -1,7 +1,6 @@
 import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
-  parserStateResult,
   probe,
   replyFailure,
   notTestedResult,
@@ -12,6 +11,8 @@ import {
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
+  stackVerdict,
+  stackStateResult,
 } from "./helpers.ts"
 
 /** A library context has no application child by construction, so TERM_FEATURES is never observable there (@cto 1265b1f4). */
@@ -234,37 +235,57 @@ const DECRQSS_DECSCL: DeviceReply = {
   expected: 'complete DECRQSS status 1 DECSCL conformance parameters ending "p and ST',
 }
 
-function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbackResult {
-  ctx.feed("\x1b]2;pushed-title\x07")
-  const original = ctx.getTitle()
-  ctx.feed("\x1b[22;0t")
-  ctx.feed("\x1b]2;new-title\x07")
-  const changed = ctx.getTitle()
-  ctx.feed("\x1b[23;0t")
-  const restored = ctx.getTitle()
-  if (original === "pushed-title" && changed === "new-title" && restored === "pushed-title") {
-    return parserStateResult(true, expected, { original, changed, restored })
+function titleStackHeadless(ctx: LibProbeSource, expected: string, operation: "push" | "pop"): ProbeCallbackResult {
+  const before = ctx.getTitle()
+  const saved = before === "pushed-title" ? "other-pushed-title" : "pushed-title"
+  const set = (title: string) => ctx.feed(`\x1b]2;${title}\x07`)
+  let pushed = false
+  try {
+    // The existing per-operation stack criterion (#31904): POP restores A; PUSH must save B,
+    // rather than a stale A. Both fixtures retain their title controls (#32282).
+    const fixture = (originalTitle: string, changedTitle: string) => {
+      set(saved)
+      set(originalTitle)
+      const original = ctx.getTitle()
+      ctx.feed("\x1b[22;0t")
+      pushed = true
+      set(changedTitle)
+      const changed = ctx.getTitle()
+      pushed = false
+      ctx.feed("\x1b[23;0t")
+      return { original, changed, restored: ctx.getTitle() }
+    }
+    const popFixture = fixture(saved, "new-title")
+    const pushFixture = fixture("new-title", "next-title")
+    const state = { before, popFixture, pushFixture }
+    if (
+      popFixture.original !== saved ||
+      popFixture.changed !== "new-title" ||
+      pushFixture.original !== "new-title" ||
+      pushFixture.changed !== "next-title"
+    ) {
+      const note = "Title setup was not observable"
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, state)
+    }
+    const pop = popFixture.restored === saved ? "restored" : popFixture.restored === "new-title" ? "persisted" : "other"
+    const push =
+      pushFixture.restored === "new-title"
+        ? "restored"
+        : pushFixture.restored === saved
+          ? "earlier"
+          : pushFixture.restored === "next-title"
+            ? "persisted"
+            : "other"
+    // Two absent stack effects still cannot isolate a failed push from a failed pop (#32246).
+    if (pop === "persisted" && push === "persisted") return notTestedResult(NO_SAME_PATH_CONTROL, state)
+    return stackStateResult(stackVerdict(operation, pop, push), expected, { ...state, pop, push })
+  } finally {
+    try {
+      if (pushed) ctx.feed("\x1b[23;0t")
+    } finally {
+      set(before)
+    }
   }
-  if (original === "pushed-title" && changed === "new-title" && restored === "new-title") {
-    // Push and pop share one observation, so this run cannot tell which failed; source never decides it (#32246).
-    return notTestedResult(NO_SAME_PATH_CONTROL, { original, changed, restored })
-  }
-  if (original !== "pushed-title" || changed !== "new-title") {
-    // No title readback means this adapter exposes no title observable, which decides neither operation
-    // (Ghostty native reads empty at all three steps, #31387), so this run cannot decide it.
-    const note = "Title setup was not observable"
-    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
-      original,
-      changed,
-      restored,
-    })
-  }
-  return parserStateResult(
-    null,
-    expected,
-    { original, changed, restored },
-    "Title push/pop did not restore the old title; the failing operation is unknown",
-  )
 }
 
 function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
@@ -656,7 +677,11 @@ export const deviceProbes: ProbeDefinition[] = [
     ...probe(
       "device.xtwinops-22",
       (ctx) =>
-        titleStackHeadless(ctx, "XTWINOPS 22 preserves the old title on its stack after a different title is set"),
+        titleStackHeadless(
+          ctx,
+          "XTWINOPS 22 preserves the old title on its stack after a different title is set",
+          "push",
+        ),
       async (ctx) => {
         ctx.write("\x1b]2;pushed-title\x07")
         ctx.write("\x1b[22;0t") // push
@@ -689,7 +714,7 @@ export const deviceProbes: ProbeDefinition[] = [
   {
     ...probe(
       "device.xtwinops-23",
-      (ctx) => titleStackHeadless(ctx, "XTWINOPS 23 restores the title saved before a different title was set"),
+      (ctx) => titleStackHeadless(ctx, "XTWINOPS 23 restores the title saved before a different title was set", "pop"),
       async (ctx) => {
         ctx.write("\x1b[22;0t") // push first so we have something to pop
         ctx.write("\x1b[23;0t")

@@ -4783,7 +4783,7 @@ test("refuses a declared native SHA mismatch before probe collection", async () 
 
 // 31387: Ghostty native's adapter reports an empty title after OSC 2, so the title-stack round trip observes
 // nothing. A rowless inconclusive was folded to PROBE INVALID as a callback defect; an unobservable setup takes
-// the headless observable review instead, with the three empty readings retained as raw state.
+// the headless observable review instead, retaining both fixtures' empty readings (#32282).
 const TITLE_STACK_IDS = ["device.xtwinops-22", "device.xtwinops-23"] as const
 
 function expectTitleSetupReview(batch: Awaited<ReturnType<typeof collectBatch>>): void {
@@ -4804,7 +4804,11 @@ function expectTitleSetupReview(batch: Awaited<ReturnType<typeof collectBatch>>)
   expect(batch.observations).toEqual([])
   expect(batch.assertions).toEqual([])
   for (const id of TITLE_STACK_IDS) {
-    expect(JSON.parse(batch.rawReplies[id]!)).toEqual({ original: "", changed: "", restored: "" })
+    expect(JSON.parse(batch.rawReplies[id]!)).toEqual({
+      before: "",
+      popFixture: { original: "", changed: "", restored: "" },
+      pushFixture: { original: "", changed: "", restored: "" },
+    })
   }
 }
 
