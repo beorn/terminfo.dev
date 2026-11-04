@@ -259,9 +259,12 @@ test.each(headlessStateFeatures)(
       expect(result.assertions).toBeUndefined()
       return
     }
-    // #32246: a painted setup whose target state is unexposed has no same-path control in this run, so the cell
-    // is the TEST TODO coverage record; no source review decides it and no negative assertion is emitted.
-    const noObservable = id === "sgr.selective-reset.italic" ? reason : NO_SAME_PATH_CONTROL
+    // Missing underline colour and compound reset retain their named unexposed state. Other painted setups
+    // here have no same-path control; none of these coverage records decides a grade or emits a negative.
+    const noObservable =
+      id === "sgr.selective-reset.italic" || id === "sgr.underline.color" || id === "sgr.underline-color-indexed"
+        ? reason
+        : NO_SAME_PATH_CONTROL
     expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
     expect(result.criterionBranch).toBeUndefined()
     expect(result.tests).toBeUndefined()
