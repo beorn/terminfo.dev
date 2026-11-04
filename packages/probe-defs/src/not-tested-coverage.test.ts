@@ -261,10 +261,7 @@ test.each(headlessStateFeatures)(
     }
     // #32246: a painted setup whose target state is unexposed has no same-path control in this run, so the cell
     // is the TEST TODO coverage record; no source review decides it and no negative assertion is emitted.
-    const noObservable =
-      id === "sgr.selective-reset.italic"
-        ? "compound reset not decided: italic and bold not shown at setup; a reset needs at least one shown set facet and every preserved facet shown"
-        : NO_SAME_PATH_CONTROL
+    const noObservable = id === "sgr.selective-reset.italic" ? reason : NO_SAME_PATH_CONTROL
     expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
     expect(result.criterionBranch).toBeUndefined()
     expect(result.tests).toBeUndefined()
