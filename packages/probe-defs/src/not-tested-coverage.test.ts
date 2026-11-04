@@ -263,7 +263,7 @@ test.each(headlessStateFeatures)(
     // is the TEST TODO coverage record; no source review decides it and no negative assertion is emitted.
     const noObservable =
       id === "sgr.selective-reset.italic"
-        ? "compound reset not decided: italic and bold not shown at setup; every claimed facet must be seeded and read"
+        ? "compound reset not decided: italic and bold not shown at setup; a reset needs at least one shown set facet and every preserved facet shown"
         : NO_SAME_PATH_CONTROL
     expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
     expect(result.criterionBranch).toBeUndefined()
