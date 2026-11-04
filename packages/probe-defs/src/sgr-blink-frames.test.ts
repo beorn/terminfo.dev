@@ -93,6 +93,26 @@ const ALTERNATING = Array.from({ length: SAMPLES }, (_, index) => (index % 2 ===
 const EQUAL = Array.from({ length: SAMPLES }, () => "on")
 const plainMovingAt = (index: number) => STEADY_PLAIN.map((value, at) => (at === index ? "q" : value))
 
+// A valid DECRQSS reply must still reach blink's owned multi-frame oracle.
+// Existing rows only exercise the query-silence fallback.
+test("a valid 0;5 reply reaches the owned blink oracle", async () => {
+  const { context, captures } = app({ styled: ALTERNATING, plain: STEADY_PLAIN, geometry: true })
+  const raw = "\x1bP1$r0;5m\x1b\\"
+  const reply: TermProbeSource["queryWithSentinelOutcome"] = async (_sequence, pattern) => ({
+    match: raw.match(pattern),
+    reason: "reply",
+    raw,
+    rawBase64: btoa(raw),
+  })
+  context.queryWithSentinelOutcome = vi.fn(reply)
+  const result = await term(context)
+  expect(context.queryWithSentinelOutcome).toHaveBeenCalledTimes(1)
+  expect(captures.filter((entry) => entry.cells?.top === 3)).toHaveLength(SAMPLES + 1)
+  expect(captures.filter((entry) => entry.cells?.top === 1)).toHaveLength(SAMPLES + 1)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+  expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "screenshot" }])
+})
+
 test("blink samples the styled text nine times over 2000 ms with no write between, beside a plain line", async () => {
   const { context, writes, captures } = app({ styled: ALTERNATING, plain: STEADY_PLAIN, geometry: true })
   const result = await term(context)

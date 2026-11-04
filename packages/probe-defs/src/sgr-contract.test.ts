@@ -485,7 +485,7 @@ test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
     )
     expect(result.notTested).toEqual({
       reason: "no-semantic-observable",
-      noObservable: `compound reset not decided: ${id.endsWith("bold") ? "dim and italic" : "italic"} not shown at setup; every claimed facet must be seeded and read`,
+      noObservable: `compound reset not decided: ${id.endsWith("bold") ? "dim and italic" : "italic"} not shown at setup; a reset needs at least one shown set facet and every preserved facet shown`,
     })
     expect(result.pass).toBe(false)
     expect(result.observation).toBeUndefined()
