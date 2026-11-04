@@ -556,7 +556,7 @@ jobs:
           const { join } = require('node:path');
           const [out, captureId] = process.argv.slice(2);
           const command = (file, args) => {
-            const result = spawnSync(file, args, { encoding: 'utf8', timeout: 5000, maxBuffer: 262144 });
+            const result = spawnSync(file, args, { encoding: 'utf8', timeout: 5000, killSignal: 'SIGKILL', maxBuffer: 262144 });
             console.log(JSON.stringify({ file, args, status: result.status, signal: result.signal, error: result.error?.message, stdout: result.stdout, stderr: result.stderr }));
             if (result.error || result.signal) throw new Error(`Native command failed: ${file}`);
             return result;
