@@ -933,26 +933,29 @@ describe("zero-byte replies on a loaded artifact", () => {
     writes: { selector: string; payload: string; text?: string; decodeError?: string }[]
     pasteSelector?: string
   }) {
-    let fed = ""
+    const fedPayloads: string[] = []
     return probe("extensions.osc52-write").lib!({
       kind: "live",
       cols: 80,
       feed(text: string) {
-        fed += text
+        const payload = /\x1b\]52;c;([A-Za-z0-9+/=]*)/.exec(text)?.[1]
+        if (payload !== undefined) fedPayloads.push(payload)
       },
       feedCapture: () => "",
       getCell: () => {
         throw new Error("unused")
       },
       getClipboardState: () => {
-        if (state.writes.some((write) => write.payload === "")) {
-          const payload = /\x1b\]52;c;([A-Za-z0-9+/=]*)/.exec(fed)?.[1] ?? ""
-          return {
-            ...state,
-            writes: state.writes.map((write) => (write.payload === "" ? { ...write, payload } : write)),
-          }
+        const [controlPayload, targetPayload] = fedPayloads
+        return {
+          ...state,
+          writes: [
+            ...(controlPayload === undefined ? [] : [{ selector: "c", payload: controlPayload }]),
+            ...(targetPayload === undefined
+              ? []
+              : state.writes.map((write) => (write.payload === "" ? { ...write, payload: targetPayload } : write))),
+          ],
         }
-        return state
       },
     } as unknown as LibProbeSource)
   }
@@ -975,7 +978,7 @@ describe("zero-byte replies on a loaded artifact", () => {
     expect(result.note).toContain("decoded-note")
   })
 
-  test("osc52-write is unsupported when the engine callback retained no writes", () => {
+  test("osc52-write is unsupported when the engine callback retained no target writes after the control", () => {
     const result = writeWithClipboard({ writes: [] })
     expect(result.observation?.outcome).toBe("unsupported")
     expect(result.assertions?.[0]?.assertionType).toBe("query_reply")
@@ -984,7 +987,7 @@ describe("zero-byte replies on a loaded artifact", () => {
     expect(result.note).toContain("engine copy_to_clipboard callback read via getClipboardState, no reply bytes")
   })
 
-  test("osc52-write is inconclusive when the engine callback retained a different write", () => {
+  test("osc52-write is inconclusive when the engine callback retained a different target write after the control", () => {
     const result = writeWithClipboard({ writes: [{ selector: "p", payload: "cHJpbWFyeQ==" }] })
     expect(result.observation?.outcome).toBe("inconclusive")
     expect(result.assertions).toBeUndefined()
