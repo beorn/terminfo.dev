@@ -5017,7 +5017,8 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
         const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
         const requested = before.icon === "test-icon" ? "test-icon-2" : "test-icon"
-        const iconControl = before.icon === "terminfo-icon-control" ? "terminfo-icon-control-2" : "terminfo-icon-control"
+        const iconControl =
+          before.icon === "terminfo-icon-control" ? "terminfo-icon-control-2" : "terminfo-icon-control"
         const control =
           before.title === "terminfo-title-control" ? "terminfo-title-control-2" : "terminfo-title-control"
         try {
