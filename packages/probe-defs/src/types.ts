@@ -435,8 +435,16 @@ export type AppLaunchReceipt =
       bundlePath: string
       cfBundleShortVersionString: string
       cfBundleVersion: string
-      /** Transformed invoked array, argv[0] first; may differ from the measured executable.
-       * Absent means not recorded. Redaction precedes every persistence; no environment is captured. */
+      /**
+       * The defined transformed invocation array this process received, argv[0] first. The invoked
+       * binary may differ from executablePath (WezTerm, Cursor and VS Code). Absent, never empty,
+       * when the route used a wrapper or did not observe the array; the trace names why.
+       *
+       * Guarantee boundary, not an entropy detector: only a value following a secret-shaped flag
+       * name or an argument the launcher declares sensitive is redacted. A secret in an unflagged
+       * positional argument, URL or config path may appear verbatim. The fixed [redacted] sentinel
+       * reveals neither the value nor its reuse. Redaction precedes persistence; environment is never captured.
+       */
       argv?: string[]
       executablePath: string
       executableSha256: string
@@ -444,8 +452,16 @@ export type AppLaunchReceipt =
     }
   | {
       platform: "win32"
-      /** Transformed invoked array, argv[0] first; may differ from the measured executable.
-       * Absent means not recorded. Redaction precedes every persistence; no environment is captured. */
+      /**
+       * The defined transformed invocation array this process received, argv[0] first. The invoked
+       * binary may differ from executablePath (WezTerm, Cursor and VS Code). Absent, never empty,
+       * when the route used a wrapper or did not observe the array; the trace names why.
+       *
+       * Guarantee boundary, not an entropy detector: only a value following a secret-shaped flag
+       * name or an argument the launcher declares sensitive is redacted. A secret in an unflagged
+       * positional argument, URL or config path may appear verbatim. The fixed [redacted] sentinel
+       * reveals neither the value nor its reuse. Redaction precedes persistence; environment is never captured.
+       */
       argv?: string[]
       executablePath: string
       productVersion: string

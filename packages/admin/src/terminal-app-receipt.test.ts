@@ -181,6 +181,7 @@ test.each([
   "sensitive-marker",
   "not-developer-id",
   "unsigned",
+  "ad-hoc",
   "missing-tool",
   "modified",
   "unexpected-exit",
@@ -213,10 +214,12 @@ test.each([
       stdout =
         scenario === "unsigned"
           ? "code object is not signed at all\n"
-          : "Identifier=org.ghostty\n" +
-            (scenario === "bad-facts"
-              ? ""
-              : "CDHash=" + (scenario === "changed-facts" && displays > 1 ? "34" : "12").repeat(20) + "\n")
+          : scenario === "ad-hoc"
+            ? "Signature=adhoc\n"
+            : "Identifier=org.ghostty\n" +
+              (scenario === "bad-facts"
+                ? ""
+                : "CDHash=" + (scenario === "changed-facts" && displays > 1 ? "34" : "12").repeat(20) + "\n")
     } else stdout = commandOutput(cmd === "/bin/ps" ? "ps" : cmd, values)
     const status =
       cmd !== "codesign"
@@ -227,7 +230,7 @@ test.each([
             : scenario === "unexpected-exit"
               ? 2
               : 0
-          : values.includes("--verify") && ["unsigned", "modified"].includes(scenario)
+          : values.includes("--verify") && ["unsigned", "ad-hoc", "modified"].includes(scenario)
             ? 1
             : 0
     return { status, stdout, stderr: cmd === "codesign" ? stdout : "", error: undefined } as ReturnType<
@@ -256,14 +259,14 @@ test.each([
   expect(commands[0]).toMatchObject({
     command: "codesign",
     argv: ["--verify", "--strict", "/Applications/Ghostty.app"],
-    status: scenario === "unsigned" ? 1 : 0,
+    status: scenario === "unsigned" || scenario === "ad-hoc" ? 1 : 0,
   })
   expect(commands.at(-1)).toMatchObject({
     command: "codesign",
     argv: ["-dv", "--verbose=4", "/Applications/Ghostty.app"],
     status: 0,
   })
-  if (scenario !== "unsigned") {
+  if (scenario !== "unsigned" && scenario !== "ad-hoc") {
     expect(commands[1]).toMatchObject({
       status: scenario === "not-developer-id" ? 3 : 0,
       stdout: expect.any(String),
@@ -272,9 +275,11 @@ test.each([
     expect(commands[1]?.argv[2]).toBe("-R")
     expect(commands[1]?.argv[3]).toMatch(/^=anchor apple generic/)
   }
-  if (scenario === "not-developer-id" || scenario === "unsigned") {
+  if (scenario === "not-developer-id" || scenario === "unsigned" || scenario === "ad-hoc") {
     expect(result.receipt).toBeUndefined()
-    expect(result.trace.argvAbsentReason).toBe(scenario === "unsigned" ? "unsigned or ad-hoc" : "not Developer ID")
+    expect(result.trace.argvAbsentReason).toBe(
+      scenario === "not-developer-id" ? "not Developer ID" : "unsigned or ad-hoc",
+    )
     return
   }
   expect(result.receipt).toMatchObject({
