@@ -201,7 +201,7 @@ export {
 
 export { splitDecidableBasis } from "./decidable-basis.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
-export { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
+export { ENVIRONMENT_GROUP_IDS, scoredFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
 export type { EnvironmentGroupId } from "./environment-groups.ts"
 
 export { TEXT_QUALIFICATION_SPEC, TEXT_QUALIFICATION_SHAPES, textQualificationFixtures } from "./text-qualification.ts"

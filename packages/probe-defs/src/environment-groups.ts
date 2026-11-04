@@ -10,7 +10,7 @@
  * 8,712 + 297 = 9,009, the same total as 273 × 33, differently partitioned. Runs keep recording 273.
  *
  * One declared list plus this predicate is the single home (@cto, verdict 74a0bd62): display sites ask
- * `isEnvironmentGroup` rather than keeping a second list, and `gradedFeatureIds` is derived from the
+ * `isEnvironmentGroup` rather than keeping a second list, and `scoredFeatureIds` is derived from the
  * ids it is given, so no second arithmetic exists. The record this list mirrors is checked by a test,
  * never by a runtime refusal — a new load-time throw would be a new gate.
  */
@@ -40,7 +40,7 @@ export function isEnvironmentGroup(id: string): boolean {
  * ids removed; an id absent from the cohort is not invented, so a historical run whose catalogue lacks
  * some of the nine still gets its own honest graded count from the same rule.
  */
-export function gradedFeatureIds(cohortIds: readonly string[]): string[] {
+export function scoredFeatureIds(cohortIds: readonly string[]): string[] {
   return cohortIds.filter((id) => !isEnvironmentGroup(id))
 }
 

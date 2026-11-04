@@ -7,7 +7,7 @@
  */
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
-import { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
+import { ENVIRONMENT_GROUP_IDS, scoredFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
 
 /**
  * The drift guard for the D132 B partition, stated as a test rather than a runtime refusal (@cto
@@ -45,7 +45,7 @@ describe("environment-group partition (D132 B)", () => {
   })
 
   it("partitions the recorded catalogue into 264 graded plus 9 environment ids", () => {
-    const graded = gradedFeatureIds(recordedIds)
+    const graded = scoredFeatureIds(recordedIds)
     const environment = recordedIds.filter(isEnvironmentGroup)
     expect(recordedIds).toHaveLength(273)
     expect(environment).toHaveLength(9)
@@ -59,10 +59,10 @@ describe("environment-group partition (D132 B)", () => {
     // A cohort recorded before one of the nine existed loses an UNGRADED id, so its graded count is
     // still 264 — the absent environment position never reduced the graded denominator.
     const withoutOneEnvironmentId = recordedIds.filter((id) => id !== "device.env-no-color")
-    expect(gradedFeatureIds(withoutOneEnvironmentId)).toHaveLength(264)
+    expect(scoredFeatureIds(withoutOneEnvironmentId)).toHaveLength(264)
     // A cohort missing a GRADED capability is one graded capability smaller, not silently padded.
     const withoutOneGradedId = recordedIds.filter((id) => id !== "sgr.bold")
-    expect(gradedFeatureIds(withoutOneGradedId)).toHaveLength(263)
-    expect(gradedFeatureIds([])).toEqual([])
+    expect(scoredFeatureIds(withoutOneGradedId)).toHaveLength(263)
+    expect(scoredFeatureIds([])).toEqual([])
   })
 })

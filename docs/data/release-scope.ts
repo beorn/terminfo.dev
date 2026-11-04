@@ -6,7 +6,7 @@ import {
   type ProbeStatus,
   type ProbeSubject,
 } from "../../packages/probe-defs/src/types.ts"
-import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
+import { environmentGroupIds, scoredFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { PublicVersion, PublicProbeResult, PublicFeatureResult, PublicContextSummary } from "./public-results.ts"
 
 /** Read a current (schema 3 or 4) published result without manufacturing any legacy observation. */
@@ -105,7 +105,7 @@ export interface ProbeOpenRankRow {
 
 /**
  * The single status-and-rollup computation over one terminal's recorded statuses (Phase 2.4):
- * folds the graded positions (`gradedFeatureIds`) into the five status counts, family rollups,
+ * folds the graded positions (`scoredFeatureIds`) into the five status counts, family rollups,
  * decisive/decided/open sums, percentages, and four-way completeness tier.
  */
 export function rollupTerminalStatuses(
@@ -151,7 +151,7 @@ export function rollupTerminalStatuses(
   for (const id of envIds) {
     ensureFamily(id.split(".")[0] ?? id).environmentPositions++
   }
-  const gradedIds = gradedFeatureIds(catalogIds)
+  const gradedIds = scoredFeatureIds(catalogIds)
   for (const id of gradedIds) {
     const status = Object.hasOwn(statuses, id) ? statuses[id] : undefined
     if (!status || !FEATURE_RESULT_STATUSES.includes(status as FeatureResultStatus)) {
@@ -204,7 +204,7 @@ export function rollupTerminalStatuses(
 }
 
 /**
- * Work-list ranking over the graded positions (`gradedFeatureIds`) across library status maps
+ * Work-list ranking over the graded positions (`scoredFeatureIds`) across library status maps
  * (Phase 2.4 A5): deterministic tie-breaking by `(-libOpen, -libFailure, featureId)`.
  */
 export function rankOpenProbes(
@@ -213,7 +213,7 @@ export function rankOpenProbes(
     ...new Set(Object.values(libCells).flatMap((statuses) => Object.keys(statuses))),
   ].sort(),
 ): ProbeOpenRankRow[] {
-  const gradedIds = gradedFeatureIds(catalogIds)
+  const gradedIds = scoredFeatureIds(catalogIds)
   const libMaps = Object.values(libCells)
   const rows: ProbeOpenRankRow[] = []
 
@@ -274,7 +274,7 @@ export function aggregateCurrentResults(
     throw new Error("Current results differ from recorded catalogue membership")
   }
   const rollup = rollupTerminalStatuses(statuses, catalogIds)
-  for (const id of gradedFeatureIds(catalogIds)) {
+  for (const id of scoredFeatureIds(catalogIds)) {
     idsByState[statuses[id] as FeatureResultStatus].push(id)
   }
   return {
@@ -412,7 +412,7 @@ export function computeFeatureResults(
   catalogIds: readonly string[],
 ): Record<string, FeatureResult> {
   const results: Record<string, FeatureResult> = {}
-  for (const featureId of gradedFeatureIds(catalogIds)) {
+  for (const featureId of scoredFeatureIds(catalogIds)) {
     const observed = probes.filter((probe) => probe.featureId === featureId && probe.method !== "source")
     const decided = observed.filter((probe) => probe.status === "supported" || probe.status === "unsupported")
     const first = decided[0]
