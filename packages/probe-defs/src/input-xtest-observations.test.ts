@@ -22,7 +22,7 @@ test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
     for (const backendName of ["alacritty", "vt100", "vt220", "vt100-rust", "xtermjs"]) {
       const result = probe(id).lib!({ ...libMouseSource({ extensions: [] }), backendName })
       expect(isDeclaredUntestable(result), backendName).toBe(true)
-      expect(result.tests?.[0]?.reason).toMatch(/public key-event encoder/)
+      expect(result.tests?.[0]?.reason).toMatch(/(?:public key-event|key-event-to-byte) encoder/)
       expect(result.observation).toBeUndefined()
     }
     for (const backendName of ["libvterm", "ghostty", "ghostty-native", "wezterm", "kitty", "vterm", "unknown"]) {
