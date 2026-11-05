@@ -22,6 +22,7 @@ test.each([2, 3] as const)("native MOK %i qualifies unchanged bytes with cursor-
     "before-fails",
     "after-fails",
     "recovery-fails",
+    "recovery-malformed",
     "already-target",
     "changes",
   ] as const) {
@@ -40,7 +41,8 @@ test.each([2, 3] as const)("native MOK %i qualifies unchanged bytes with cursor-
         const value = text.match(/^\x1b\[>4;(\d)m$/)?.[1]
         if (value !== undefined) mok = Number(value)
       },
-      feedCapture: () => (behavior === "recovery-fails" ? "" : "\x1b[1;1R"),
+      feedCapture: () =>
+        behavior === "recovery-fails" ? "" : behavior === "recovery-malformed" ? "not a CPR" : "\x1b[1;1R",
       encodeKey(event) {
         const fail =
           (behavior === "before-fails" && controlPhase === 1) || (behavior === "after-fails" && controlPhase === 2)
@@ -69,7 +71,7 @@ test.each([2, 3] as const)("native MOK %i qualifies unchanged bytes with cursor-
       expect(observed.cursorModeControl.after.off.bytes).toEqual([27, 91, 65])
       expect(observed.absenceKey).toBe(level === 2 ? "ctrlA" : "i")
       expect(result.assertions?.some((assertion) => assertion.kind === "negative")).toBe(true)
-    } else if (behavior === "recovery-fails") {
+    } else if (behavior === "recovery-fails" || behavior === "recovery-malformed") {
       expect(result.notTested?.noObservable).toMatch(/DSR recovery control/i)
     } else if (behavior.endsWith("fails")) {
       expect(result.notTested?.noObservable).toMatch(/cursor.*control/i)
