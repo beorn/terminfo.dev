@@ -4955,30 +4955,69 @@ export const extensionsProbes: ProbeDefinition[] = [
           const report = readProgress.call(ctx)
           return report && { state: report.state, value: report.value }
         }
-        // Grading rule 2: a set control must read back on this reader before any Unsupported (@cto 3636f1ee).
-        const writes = ["\x1b]9;4;1;37\x07", "\x1b]9;4;3\x07", "\x1b]9;4;0\x07"] as const
         const before = read()
-        ctx.feed(writes[0])
-        const control = read()
-        // A control counts only when its change was seen: a report already at state 1, value 37 proves nothing.
-        const stale = before?.state === 1 && before.value === 37
-        if (stale || control?.state !== 1 || control.value !== 37) {
-          // Clearing last restores the engine either way.
-          ctx.feed(writes[2])
+        // Both controls must change this reader, including when the incoming value is already 37.
+        const firstValue = before?.state === 1 && before.value === 37 ? 73 : 37
+        const secondValue = firstValue === 37 ? 73 : 37
+        const writes: string[] = []
+        const feed = (state: number, value: number | null = null) => {
+          const sequence = `\x1b]9;4;${state}${value === null ? "" : `;${value}`}\x07`
+          writes.push(sequence)
+          ctx.feed(sequence)
+        }
+        let control: ReturnType<typeof read> = null
+        let secondControl: ReturnType<typeof read> = null
+        let indeterminate: ReturnType<typeof read> = null
+        let cleared: ReturnType<typeof read> = null
+        let restored: ReturnType<typeof read> = null
+        let controlsPassed = false
+        let failed = false
+        let primaryError: unknown
+        try {
+          feed(1, firstValue)
+          control = read()
+          feed(1, secondValue)
+          secondControl = read()
+          controlsPassed =
+            control?.state === 1 &&
+            control.value === firstValue &&
+            secondControl?.state === 1 &&
+            secondControl.value === secondValue
+          if (controlsPassed) {
+            feed(3)
+            indeterminate = read()
+            feed(0)
+            cleared = read()
+          }
+        } catch (error) {
+          failed = true
+          primaryError = error
+        } finally {
+          try {
+            // A protocol cannot restore "never reported" history; that case retains the prior clear cleanup.
+            feed(before?.state ?? 0, before?.value ?? null)
+            restored = read()
+            if (before && (restored?.state !== before.state || restored.value !== before.value)) {
+              throw new Error(`OSC 9;4 incoming progress restoration failed: ${JSON.stringify({ before, restored })}`)
+            }
+          } catch (error) {
+            if (failed) throw new AggregateError([primaryError, error], "OSC 9;4 measurement and restoration failed")
+            throw error
+          }
+        }
+        if (failed) throw primaryError
+        const raw = { before, control, secondControl, indeterminate, cleared, restored, writes }
+        if (!controlsPassed) {
           return notTestedResult(
-            `${NO_SAME_PATH_CONTROL}: OSC 9;4;1;37 control did not read back as state 1, value 37; this reader is not shown to observe the OSC 9;4 path`,
-            { before, control, writes: [writes[0], writes[2]] },
+            `${NO_SAME_PATH_CONTROL}: two distinct OSC 9;4 percentage controls did not read back; this reader is not shown to observe the OSC 9;4 path`,
+            raw,
           )
         }
-        ctx.feed(writes[1])
-        const indeterminate = read()
-        ctx.feed(writes[2])
-        const cleared = read()
         return parserStateResult(
           indeterminate?.state === 3 && cleared?.state === 0,
           "OSC 9;4 stores the last report's state: 3 after 9;4;3, then 0, never no report, after 9;4;0",
-          { before, control, indeterminate, cleared, writes },
-          "Measures the engine's stored OSC 9;4 state, not progress display; the error state 2, the paused state 4, 100%, and the stored values for states 0 and 3 are not graded",
+          raw,
+          "Measures stored OSC 9;4 state, not progress display; states 2/4, 100%, stored values for 0/3 and never-reported history are not graded. Incoming reported state is restored; an unset report is left cleared because OSC cannot restore absent history",
         )
       },
       () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),

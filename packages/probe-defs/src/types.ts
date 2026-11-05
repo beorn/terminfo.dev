@@ -783,7 +783,7 @@ export interface LibProbeSource {
   getNotifications?(): readonly string[]
   /** Copied OSC 777 payloads after "777;", verbatim and in order, notify or not; absent means no reader. */
   getOsc777Payloads?(): readonly string[]
-  /** The engine's stored last OSC 9;4 report (raw state code, stored value); null means never reported. */
+  /** Engine-stored OSC 9;4 state/value; null means no report where known. WezTerm initial/clear/pause are state0/null. */
   getProgress?(): { state: number; value: number | null } | null
   /** Copied parsed OSC 9/777 toasts, engine fields verbatim, in order; the store does not say which OSC made one. */
   getToasts?(): readonly { title: string | null; body: string }[]
