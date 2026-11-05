@@ -84,9 +84,13 @@ The XTWINOPS 22/23 library callbacks run separate pop and push fixtures. The pop
 fixture saves title A, sets B and restores A; the push fixture sets A then B,
 saves, sets C and restores B. They retain the incoming title plus each fixture's
 original, changed and restored readings, and restore the incoming title on exit.
-A stale A restored in both fixtures distinguishes a failed push from a working
-pop. If neither fixture restores a saved title, the failing operation remains
-unknown and both rows retain the no-control PROBE TODO reason.
+Both IDs grade the joint round trip: both fixtures restoring their own pushed
+titles reads Supported; qualified OSC 2 controls followed by non-restoration reads
+Unsupported with `push/pop round trip does not restore`. This does not identify
+which primitive is missing. Failed title controls retain the named PROBE TODO cause.
+OSC 0 remains a conjunction: a controlled title failure disproves it, while title
+success alone cannot prove an unobserved icon clause. Both clauses must be observed
+for Supported; a complete exact-payload reply remains positive evidence.
 
 ## From definition to recorded result
 

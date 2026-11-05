@@ -1,6 +1,6 @@
 /**
- * @failure OSC 0 is graded from a title change alone, or a missing icon/title reply is promoted to
- *   support or to a negative.
+ * @failure OSC 0 is supported from a title change alone, or an unobserved clause is treated as negative.
+ *   A controlled title failure must disprove the conjunction without depending on a query reply.
  * @level l1
  * @consumer extensions.osc0-icon-title on both the termless parser arm and the sentinel app arm.
  * @testonly none
@@ -48,6 +48,43 @@ function lib(replies: Record<string, string>): LibProbeSource {
   } as unknown as LibProbeSource
 }
 
+// #32323: this is the title-reader-only contract; the icon clause remains unobserved.
+test.each([
+  { controlWorks: true, titleWorks: false, iconReply: false, outcome: "unsupported" },
+  { controlWorks: true, titleWorks: true, iconReply: false, outcome: undefined },
+  { controlWorks: false, titleWorks: false, iconReply: false, outcome: undefined },
+  // Exact positive reply evidence can complete the observed title clause without a title-query reply.
+  { controlWorks: true, titleWorks: true, iconReply: true, outcome: "supported" },
+] as const)(
+  "OSC 0 title-only control=$controlWorks effect=$titleWorks icon-reply=$iconReply",
+  ({ controlWorks, titleWorks, iconReply, outcome }) => {
+    let title = "incoming-title"
+    const ctx = Object.assign(lib(iconReply ? { [ICON_QUERY]: `\x1b]L${PAYLOAD}\x07` } : {}), {
+      getTitle: () => title,
+      feed: (sequence: string) => {
+        const osc2 = /^\x1b\]2;([^\x07]*)\x07$/.exec(sequence)
+        const osc0 = /^\x1b\]0;([^\x07]*)\x07$/.exec(sequence)
+        if (osc2 && controlWorks) title = osc2[1]!
+        if (osc0 && titleWorks) title = osc0[1]!
+      },
+    })
+    const result = termlessCallback()(ctx)
+    expect(result.observation?.outcome).toBe(outcome)
+    if (outcome) {
+      if (outcome === "unsupported") {
+        expect(result.observation?.assertionType).toBe("buffer_state")
+        expect(result.assertions).toContainEqual(expect.objectContaining({ kind: "negative" }))
+      } else {
+        expect(result.assertions?.map((assertion) => assertion.assertionType)).toEqual(["query_reply", "buffer_state"])
+        expect(result.assertions?.map((assertion) => assertion.kind)).toEqual(["positive", "positive"])
+      }
+    } else {
+      expect(result.notTested?.reason).toBe("no-semantic-observable")
+    }
+    expect(title).toBe("incoming-title")
+  },
+)
+
 function terminal(replies: Record<string, string>): TermProbeSource {
   const outcome = (sequence: string, pattern: RegExp) => {
     const raw = replies[sequence] ?? ""
@@ -79,7 +116,7 @@ test("OSC 0 declares qualified library state evidence and application query evid
   expect(definition.libAssertionType).toMatchObject({
     when: expect.any(Function),
     then: ["buffer_state"],
-    otherwise: ["query_reply"],
+    otherwise: ["buffer_state", "query_reply"],
   })
 })
 
@@ -188,9 +225,7 @@ test.each(["audited-identity", "foreign-identity"])(
         ...auditedXtermFixtureIdentity,
         ...(route === "foreign-identity" ? { engineVersion: "not-xterm" } : {}),
       },
-      getTitle: () => {
-        throw new Error("query route read title state")
-      },
+      getTitle: () => "", // The unavailable state control does not erase complete positive reply evidence.
     })
     const result = termlessCallback()(ctx)
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
@@ -204,18 +239,15 @@ test("the termless arm supports OSC 0 only when both replies return the exact pa
   expect(result.assertions?.map(({ kind }) => kind)).toEqual(["positive", "positive"])
 })
 
-test("the termless arm reads a complete wrong icon payload as unsupported", () => {
+test("an uncontrolled wrong icon reply cannot supply the missing negative control", () => {
   const result = termlessCallback()(lib({ ...exactReplies, [ICON_QUERY]: "\x1b]Lother-icon\x07" }))
-  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-  expect(result.assertions?.map(({ kind }) => kind)).toEqual(["negative", "positive"])
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+  expect(result.observation).toBeUndefined()
 })
 
-test("the termless arm names a missing title reply as a test failure, never unsupported", () => {
+test("the termless arm leaves a missing title observation to-test", () => {
   const result = termlessCallback()(lib({ [ICON_QUERY]: `\x1b]L${PAYLOAD}\x07` }))
-  expect(result.tests).toMatchObject([
-    { status: "probe-invalid", reason: expect.stringContaining("window title (CSI 21 t): feedCapture boundary") },
-  ])
-  expect(result.replyFailureTestIds).toEqual(["criterion"])
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
   expect(result.observation).toBeUndefined()
 })
 
@@ -223,9 +255,9 @@ test("the termless arm names a missing title reply as a test failure, never unsu
 // DA1 evidence must survive, but only the member's matched reports can decide the OSC0 effect.
 test.each([
   { when: "exact reports", replies: exactReplies, outcome: "supported" },
-  { when: "wrong icon", replies: { ...exactReplies, [ICON_QUERY]: "\x1b]Lother-icon\x07" }, outcome: "unsupported" },
-  { when: "missing title", replies: { [ICON_QUERY]: exactReplies[ICON_QUERY] }, outcome: "probe-invalid" },
-  { when: "sentinel silence", replies: {}, outcome: "probe-invalid" },
+  { when: "wrong icon", replies: { ...exactReplies, [ICON_QUERY]: "\x1b]Lother-icon\x07" }, outcome: "probe-todo" },
+  { when: "missing title", replies: { [ICON_QUERY]: exactReplies[ICON_QUERY] }, outcome: "probe-todo" },
+  { when: "sentinel silence", replies: {}, outcome: "probe-todo" },
 ])("the qualified termless arm retains both query traces for $when", ({ replies, outcome }) => {
   const queries: string[] = []
   const writes: string[] = []
@@ -249,17 +281,17 @@ test.each([
     }
   }
   const result = termlessCallback()(ctx)
-  if (outcome === "probe-invalid") expect(result.tests).toMatchObject([{ status: outcome }])
+  if (outcome === "probe-todo") expect(result.notTested?.reason).toBe("no-semantic-observable")
   else expect(result.observation?.outcome).toBe(outcome)
   expect(queries).toEqual([ICON_QUERY, TITLE_QUERY])
-  expect(writes).toEqual([`\x1b]0;${PAYLOAD}\x07`])
+  expect(writes).toContain(`\x1b]0;${PAYLOAD}\x07`)
+  expect(writes.at(-1)).toBe("\x1b]2;\x07")
   expect(JSON.parse(result.response!)).toMatchObject({
     icon: ((replies as Record<string, string>)[ICON_QUERY] ?? "") + "\x1b[?1;2c",
     title: ((replies as Record<string, string>)[TITLE_QUERY] ?? "") + "\x1b[?1;2c",
   })
-  if (outcome === "probe-invalid") {
-    expect(result.tests?.[0].reason).toContain("window title (CSI 21 t): sentinel")
-    expect(result.replyFailureTestIds).toEqual(["criterion"])
+  if (outcome === "probe-todo") {
+    expect(result.notTested?.noObservable).toContain("observation not decided: no same-path control")
     expect(result.observation).toBeUndefined()
     expect(result.assertions?.some(({ kind }) => kind === "negative")).not.toBe(true)
   }

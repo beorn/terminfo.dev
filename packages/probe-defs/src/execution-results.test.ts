@@ -222,6 +222,7 @@ it.each([
       ? definition.lib!({
           feed() {},
           feedCapture: capture,
+          ...(id === "extensions.osc0-icon-title" && { getTitle: () => "" }),
           ...(id === "device.decrqss" && { queryWithSentinelOutcome: outcome }),
         } as unknown as LibProbeSource)
       : await definition.term!({
@@ -250,7 +251,9 @@ it.each([
   if (highlightZeroReply) {
     expect(callback.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
   }
-  const expectedReplyFailure = (!rawOverride || id === "extensions.osc0-icon-title") && !highlightZeroReply
+  const missingOsc0State = kind === "lib" && id === "extensions.osc0-icon-title"
+  const expectedReplyFailure =
+    (!rawOverride || id === "extensions.osc0-icon-title") && !highlightZeroReply && !missingOsc0State
   if (expectedReplyFailure) expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
   else expect(callback).not.toHaveProperty("replyFailureTestIds")
   const result =
