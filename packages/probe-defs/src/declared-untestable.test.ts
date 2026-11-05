@@ -126,9 +126,14 @@ describe("audited OSC interface absence", () => {
   const vt100 = vtIdentity("vt100")
   const vt100Release = vtIdentity("vt100", "72b03cdc69980e98fe83eb9ecd51a5b01bbc4ccb", "0.11.0")
   const vt220Release = vtIdentity("vt220", "6b22dcb3365f8ee2045c5cdb5fc0b4f41990ee1d", "0.11.0")
+  // R6: ignored-command numbers expose neither completed CWD metadata nor ordered notification payloads.
+  const vt100IgnoredReport = vtIdentity("vt100", "2a2536134a2a45982cfd27f892fe71e5078a8730", "0.13.0")
+  const vt220IgnoredReport = vtIdentity("vt220", "96b1a890bf64164af924b48e7d84d3d5f6e91617", "0.13.0")
   const current = [
     ["vt100", vtIdentity("vt100", "5486c34f7fc6bbd10284ea68a504eec2c38a061f", "0.12.0")],
     ["vt220", vtIdentity("vt220", "dee664e0e0554a5465a0c78cf760f437a360b0f2", "0.12.0")],
+    ["vt100", vt100IgnoredReport],
+    ["vt220", vt220IgnoredReport],
   ] as const
   const readerSubjects = [["vt100", vt100], ...current] as const
   const alacritty = {
@@ -202,15 +207,27 @@ describe("audited OSC interface absence", () => {
     ["new version with an old VT220 tree", "vt220", { ...vtIdentity("vt220"), engineVersion: "0.11.0" }],
     ["0.12 with the 0.11 VT100 tree", "vt100", { ...vt100Release, engineVersion: "0.12.0" }],
     ["0.12 with the 0.11 VT220 tree", "vt220", { ...vt220Release, engineVersion: "0.12.0" }],
+    [
+      "0.13 with the 0.12 VT100 tree",
+      "vt100",
+      vtIdentity("vt100", "5486c34f7fc6bbd10284ea68a504eec2c38a061f", "0.13.0"),
+    ],
+    [
+      "0.13 with the 0.12 VT220 tree",
+      "vt220",
+      vtIdentity("vt220", "dee664e0e0554a5465a0c78cf760f437a360b0f2", "0.13.0"),
+    ],
+    ["0.12 with the 0.13 VT100 tree", "vt100", { ...vt100IgnoredReport, engineVersion: "0.12.0" }],
+    ["0.12 with the 0.13 VT220 tree", "vt220", { ...vt220IgnoredReport, engineVersion: "0.12.0" }],
     ...current.flatMap(([backend, identity]): [string, string, HeadlessRuntimeIdentity][] => [
-      [`0.11 with the 0.12 ${backend} tree`, backend, { ...identity, engineVersion: "0.11.0" }],
+      [`0.11 with the ${identity.engineVersion} ${backend} tree`, backend, { ...identity, engineVersion: "0.11.0" }],
       [
-        `a dirty 0.12 ${backend} tree`,
+        `a dirty ${identity.engineVersion} ${backend} tree`,
         backend,
         { ...identity, integrity: { ...identity.integrity, cleanTree: false } },
       ],
       [
-        `another repository with the 0.12 ${backend} tree`,
+        `another repository with the ${identity.engineVersion} ${backend} tree`,
         backend,
         { ...identity, integrity: { ...identity.integrity, repository: "https://example.invalid/vterm.git" } },
       ],
