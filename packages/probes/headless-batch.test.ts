@@ -3427,6 +3427,84 @@ test.each([
   },
 )
 
+// @failure @cto's vt100-public-ignored-report ruling R3: declaring `osc-metadata` with ONLY
+//   `getUnhandledSequences` must add no other reader and move no VT100 row by itself. The merged consumer
+//   arm qualifies its control with OSC 2 and the title reader, and the VT100 engine handles no OSC, so an
+//   engine that reports the exact code a probe feeds still leaves every row at its baseline result.
+// @level l2
+// @consumer 32362 consumer boundary for the VT100 ignored-report producer (32364).
+// @testonly none
+test("declaring osc-metadata with only getUnhandledSequences moves no VT100 row", async () => {
+  const ids = [
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.semantic-prompts",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc-633-vscode",
+    "extensions.osc113-reset-pointer-fg",
+    "extensions.osc114-reset-pointer-bg",
+    "extensions.osc117-reset-highlight-bg",
+    "extensions.osc119-reset-highlight-fg",
+    "sgr.blink",
+    "sgr.strikethrough",
+    "sgr.underline.double",
+    "sgr.underline.curly",
+    "sgr.underline.dotted",
+    "sgr.underline.dashed",
+    "extensions.osc7-cwd",
+    "extensions.osc9-progress",
+    "extensions.osc633-p",
+    "extensions.osc777-notify",
+  ]
+  const definitions = registryDefinitions(ids)
+  const baseline = await collectBatch(resolveVt100, "vt100", definitions)
+  let reported = 0
+  const declaring = async () => {
+    const value = await resolveVt100()
+    const report: { kind: "osc"; code: string }[] = []
+    value.capabilities.extensions.add("osc-metadata")
+    const feed = value.feed.bind(value)
+    Object.assign(value, { getUnhandledSequences: () => report.slice() })
+    value.feed = (data: Uint8Array) => {
+      const text = new TextDecoder().decode(data)
+      for (const match of text.matchAll(/\x1b\](\d+)/g)) {
+        report.push({ kind: "osc", code: match[1]! })
+        reported += 1
+      }
+      feed(data)
+    }
+    // The variant must carry the declaration and only this member; otherwise the proof is vacuous.
+    expect(hasExtension(value, "osc-metadata")).toBe(true)
+    expect(typeof (value as Partial<OscMetadataExtension>).getUnhandledSequences).toBe("function")
+    return value
+  }
+  const variant = await collectBatch(declaring, "vt100", definitions)
+  const rows = (batch: Awaited<ReturnType<typeof collectBatch>>) =>
+    batch.results.map((result) => ({
+      featureId: result.featureId,
+      status: result.status,
+      criterionBranch: result.criterionBranch ?? null,
+      reason: result.reason ?? null,
+      // Timing fields differ between any two runs; the criterion verdict is what a row comparison reads.
+      tests: (result.tests ?? []).map((entry) => ({
+        id: entry.id,
+        status: entry.status,
+        reason: entry.reason ?? null,
+      })),
+    }))
+  // Non-vacuous: the variant really fed OSC sequences its own report recorded.
+  expect(reported).toBeGreaterThan(0)
+  expect(rows(variant)).toEqual(rows(baseline))
+  expect(JSON.stringify(variant.results)).not.toContain("library reported this sequence as unhandled")
+})
+
 test("keeps the measured probe result when the engine answers its colour readback", async () => {
   const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions(COLOR_READBACK_IDS))
   expect(batch.observations).toEqual(
