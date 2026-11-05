@@ -18,12 +18,7 @@ import { kittyKeyboardFlagProbe } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
 const inputDefinitions: ProbeDefinition[] = [
-  probe(
-    "input.modify-other-keys",
-    modifyOtherKeysLib,
-    modifyOtherKeys2,
-    "input_bytes",
-  ),
+  probe("input.modify-other-keys", modifyOtherKeysLib, modifyOtherKeys2, "input_bytes"),
 
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
@@ -35,12 +30,7 @@ const inputDefinitions: ProbeDefinition[] = [
   probe("input.urxvt-mouse", (ctx) => mouseEncodingLib(ctx, "urxvt"), urxvtMouse, "input_bytes"),
   probe("input.x10-mouse", (ctx) => mouseEncodingLib(ctx, "x10"), x10Mouse, "input_bytes"),
 
-  probe(
-    "input.modify-other-keys-3",
-    modifyOtherKeysLib,
-    modifyOtherKeys3,
-    "input_bytes",
-  ),
+  probe("input.modify-other-keys-3", modifyOtherKeysLib, modifyOtherKeys3, "input_bytes"),
 
   probe("input.button-event-mouse", (ctx) => mouseEncodingLib(ctx, "button"), buttonEventMouse, "input_bytes"),
 
@@ -120,7 +110,8 @@ function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResul
 /** Checked library-interface absences, not protocol support claims (#32309, CTO47010d76). */
 function modifyOtherKeysLib(ctx: LibProbeSource): ProbeCallbackResult {
   const reasons: Readonly<Record<string, string>> = {
-    alacritty: "alacritty_terminal 0.26.0 exposes terminal state and byte-oriented PTY notification, but no public key-event encoder",
+    alacritty:
+      "alacritty_terminal 0.26.0 exposes terminal state and byte-oriented PTY notification, but no public key-event encoder",
     vt100: "vt100.js 0.10.1 exposes a Screen byte parser and state readers, but no public key-event encoder",
     vt220: "vt220.js 0.10.1 exposes a Screen byte parser and state readers, but no public key-event encoder",
     "vt100-rust": "vt100 0.16.2 exposes Parser/Screen state and mode serialization, but no public key-event encoder",
