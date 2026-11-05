@@ -4865,8 +4865,8 @@ export const extensionsProbes: ProbeDefinition[] = [
           })
         }
         if (!ctx.getNotifications) {
-          const note = "Declared OSC 9 capability does not establish desktop notification delivery"
-          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+          const note = "Library exposes neither getNotifications nor getToasts to observe OSC 9 notification payloads"
+          return declaredUntestableResult(note, {
             declared: ctx.capabilities.extensions.has("osc9"),
           })
         }

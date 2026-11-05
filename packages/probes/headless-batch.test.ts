@@ -1058,7 +1058,11 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
       const feed = vi.spyOn(value, "feed")
       const missing = definition.lib!(absent)
       expect(missing.criterionBranch).toBe("headless-observable-review")
-      expect(missing.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
+      expect(missing.tests).toMatchObject([
+        id === "extensions.notifications"
+          ? { id: "declared-untestable", status: "untestable" }
+          : { id: "review", status: "probe-todo" },
+      ])
       expect(missing.observation).toBeUndefined()
       expect(missing.assertions).toBeUndefined()
       expect(feed).not.toHaveBeenCalled()
