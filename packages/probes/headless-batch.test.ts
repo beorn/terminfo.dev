@@ -1215,15 +1215,15 @@ test.for([
 )
 
 // @failure #32271: Kitty and Ghostty native store the last OSC 9;4 report, but no binding read it, so the progress
-// criterion stayed grid-only. A named gap keeps WezTerm undeclared: its stored Progress::None covers never-reported,
-// 9;4;0 and paused (tattoy-wezterm-term fork.5 performer.rs:1080-1085, terminal.rs:37-43). The owned ghostty-web WASM
+// criterion stayed grid-only. WezTerm exposes current state only: initial/clear/pause all read state0/null
+// (CTO f7cf72f9); the callback must qualify transitions and restore incoming progress. The owned ghostty-web WASM
 // stores the last report like the native engine (@cto c65d2a67); the published 0.10.2 has no reader.
 // @level l1
 // @consumer extensions.osc9-progress through the actual LibProbeSource
 test.for([
   ["kitty", isKittyAvailable(), OWNED_LAYOUT, async () => createKittyBackend()],
   ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, async () => createGhosttyNativeBackend()],
-  ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
+  ["wezterm", weztermNativeAvailable(), OWNED_LAYOUT, async () => createWeztermBackend()],
   ["ghostty wasm", true, OWNED_LAYOUT, () => resolveGhosttyWasm()],
 ] as const)(
   "%s OSC 9;4 progress probe results are decided through the stored-report reader only where the engine stores one",
@@ -1235,12 +1235,14 @@ test.for([
     value.init({ cols: 80, rows: 24 })
     try {
       const source = createLibProbeSource(value, undefined, undefined, undefined)
+      // Existing default-state tests missed stale controls and destruction of incoming progress.
+      if (reader) source.feed("\x1b]9;4;1;37\x07")
       const result = registryDefinitions(["extensions.osc9-progress"])[0]!.lib!(source)
       if (reader) {
         expect(result.notTested).toBeUndefined()
         expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
-        // Clearing last restores the engine: a state-0 report, never "never reported".
-        expect(source.getProgress!()).toMatchObject({ state: 0 })
+        // Probe cleanup restores the incoming report, including a value matching its first control.
+        expect(source.getProgress!()).toEqual({ state: 1, value: 37 })
       } else {
         expect(source.getProgress).toBeUndefined()
         expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
