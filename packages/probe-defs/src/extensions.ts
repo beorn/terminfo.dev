@@ -4560,15 +4560,17 @@ export const extensionsProbes: ProbeDefinition[] = [
               title: titleOutcome ? titleOutcome.reason : "feedCapture boundary",
             },
           )
-          return {
-            ...result,
-            ...(controlled && {
+          const response = JSON.stringify({ ...state, icon, title, iconLabel, windowTitle, iconReason, titleReason })
+          if (controlled && result.observation) {
+            return {
+              ...result,
               assertions: result.assertions?.map((assertion, index) =>
                 index === 1 ? { ...assertion, assertionType: "buffer_state" as const } : assertion,
               ),
-            }),
-            response: JSON.stringify({ ...state, icon, title, iconLabel, windowTitle, iconReason, titleReason }),
+              response,
+            }
           }
+          return { ...result, response }
         } finally {
           ctx.feed(`\x1b]2;${before}\x07`)
         }
