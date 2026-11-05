@@ -354,9 +354,8 @@ test.each([
   if ("resolvedAtPaint" in options) expect(result.observation?.note).toContain("resolved at paint")
 })
 
-// #31955 (@cto 758ee3b5): the initial-query sentinel decides a host-slot reset only when the seeded control
-// did not establish a live path, and every host slot keeps the control bytes beside its sentinel negative.
-function silentHostSlot(code: 10 | 11 | 12, seeded: string, restored: string) {
+// The reset effect needs its own answered set-and-verify control. DA1 alone proves transport.
+function silentHostSlot(code: 10 | 11 | 12 | 13 | 14, seeded: string, restored: string) {
   const replies = [seeded, restored]
   return {
     feed() {},
@@ -381,13 +380,15 @@ test.each([10, 11, 12] as const)("OSC %i reset reviews a verified control instea
   expect(JSON.stringify(result)).toContain("reset produced neither the baseline nor the verified seed")
 })
 
-test.each([10, 11, 12] as const)("OSC %i reset sentinel negative carries the control bytes", (code) => {
+test.each([10, 11, 12] as const)("OSC %i reset keeps silent set-and-verify readback undecided", (code) => {
   const source = silentHostSlot(code, "", "")
   const result = callback(`extensions.osc${code + 100}-reset-${{ 10: "fg", 11: "bg", 12: "cursor" }[code]}`).lib!(
     source,
   )
-  expect(result.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
-  expect(JSON.parse(result.assertions![0]!.note!)).toMatchObject({
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
+  expect(result.assertions).toBeUndefined()
+  expect(JSON.parse(result.response!)).toMatchObject({
     query: `\x1b]${code};?\x07`,
     originalRaw: "",
     controls: [
@@ -399,13 +400,26 @@ test.each([10, 11, 12] as const)("OSC %i reset sentinel negative carries the con
   })
 })
 
-test("OSC104 keeps sentinel reply bytes and retains unqualified cell readings beside them", () => {
+test.each([10, 11, 12] as const)(
+  "OSC %i reset can be negative when answered readback retains the verified seed",
+  (code) => {
+    const seed = `\x1b]${code};rgb:aaaa/bbbb/cccc\x07`
+    const result = callback(`extensions.osc${code + 100}-reset-${{ 10: "fg", 11: "bg", 12: "cursor" }[code]}`).lib!(
+      silentHostSlot(code, seed, seed),
+    )
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(result.assertions).toMatchObject([{ kind: "negative" }])
+  },
+)
+
+test("OSC104 retains silent-query controls and unqualified cell readings without a negative", () => {
   const result = callback("extensions.osc104-reset-palette").lib!(
     indexedPalette({ sentinel: true, ignoresSeed: true }).source,
   )
-  expect(result.response).toBe("\x1b[?1;2c")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
-  const state = JSON.parse(result.assertions![0]!.note!)
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
+  expect(result.assertions).toBeUndefined()
+  const state = JSON.parse(result.response!)
   expect(state).toMatchObject({
     cells: {
       before: { char: "D", fg: { r: 29, g: 31, b: 33 } },
@@ -413,6 +427,50 @@ test("OSC104 keeps sentinel reply bytes and retains unqualified cell readings be
     },
     initialSentinel: { sentinel: { graceMs: 250 } },
   })
+})
+
+// Each entry is an authorized effect-readback regression, not the query feature itself (#32324).
+test.each([
+  "extensions.kitty-graphics.display",
+  "extensions.kitty-graphics.transmit",
+  "extensions.osc104-reset-palette",
+  "extensions.osc110-reset-fg",
+  "extensions.osc111-reset-bg",
+  "extensions.osc112-reset-cursor",
+  "extensions.osc113-reset-pointer-fg",
+  "extensions.osc114-reset-pointer-bg",
+  "extensions.osc30001-color-stack-push",
+  "extensions.osc30101-color-stack-pop",
+])("%s never treats an unanswered effect readback plus DA1 as an app negative", async (id) => {
+  const source = silentHostSlot(10, "", "")
+  const result = await callback(id).term!({
+    write: source.feed,
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) =>
+      source.queryWithSentinelOutcome!(sequence, pattern),
+  } as unknown as TermProbeSource)
+  expect(result.pass).toBe(false)
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.assertions).toBeUndefined()
+  expect(
+    result.notTested?.reason === "no-semantic-observable" || result.tests?.some((t) => t.status === "probe-todo"),
+  ).toBe(true)
+})
+
+test.each([
+  "extensions.kitty-graphics.display",
+  "extensions.kitty-graphics.transmit",
+  "extensions.osc113-reset-pointer-fg",
+  "extensions.osc114-reset-pointer-bg",
+  "extensions.osc30001-color-stack-push",
+  "extensions.osc30101-color-stack-pop",
+])("%s requires its own answered effect reader before a library negative", (id) => {
+  const result = callback(id).lib!(silentHostSlot(10, "", ""))
+  expect(result.pass).toBe(false)
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.assertions).toBeUndefined()
+  expect(
+    result.notTested?.reason === "no-semantic-observable" || result.tests?.some((t) => t.status === "probe-todo"),
+  ).toBe(true)
 })
 
 test.each([
@@ -1030,9 +1088,9 @@ test.each(appResetProbes)(
     const noReply = await run([])
     expect(noReply.writes, id).toEqual([])
     expect(noReply.result.observation, id).toBeUndefined()
-    expect(noReply.result.tests, id).toMatchObject([
-      expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) }),
-    ])
+    expect(noReply.result.notTested?.reason, id).toBe("no-semantic-observable")
+    expect(noReply.result.notTested?.noObservable, id).toContain("reset has no effect readback")
+    expect(noReply.result.assertions, id).toBeUndefined()
   },
 )
 
@@ -1241,7 +1299,7 @@ test.each([
   },
 )
 
-test("a placement that is never acknowledged is a decisive negative about the acknowledgement, not display", async () => {
+test("an answered allocation with silent placement leaves the display effect undecided", async () => {
   // 27915: WezTerm acknowledges the transfer and places silently; DA1 answers and no a=p reply comes in the window.
   const definition = callback("extensions.kitty-graphics.display")
   const result = await definition.term!({
@@ -1259,8 +1317,9 @@ test("a placement that is never acknowledged is a decisive negative about the ac
     },
     write: () => undefined,
   } as unknown as TermProbeSource)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-  expect(result.assertions).toMatchObject([{ kind: "negative", expected: expect.stringContaining("acknowledgement") }])
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+  expect(result.assertions).toBeUndefined()
   expect(JSON.stringify(result)).not.toMatch(/does not display/u)
 })
 
