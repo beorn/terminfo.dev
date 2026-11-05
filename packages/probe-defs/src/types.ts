@@ -758,6 +758,15 @@ export interface HistoricalInterpretation {
 
 export type Interpretation = HistoricalInterpretation
 
+/**
+ * One sequence a library reported as passed through unhandled. The binding records the number only:
+ * an OSC command number, or the library's own normalized CSI values with the final byte ("5m", "4:3m", "?5m").
+ */
+export interface UnhandledSequence {
+  readonly kind: "osc" | "csi"
+  readonly code: string
+}
+
 /** Source for library probing (synchronous cell-state access) */
 export interface LibProbeSource {
   /** Existing adapter name, retained only for human-readable binding diagnostics. */
@@ -787,6 +796,9 @@ export interface LibProbeSource {
   getProgress?(): { state: number; value: number | null } | null
   /** Copied parsed OSC 9/777 toasts, engine fields verbatim, in order; the store does not say which OSC made one. */
   getToasts?(): readonly { title: string | null; body: string }[]
+  /** Sequences this library reported as passed through without acting on them, in order; absent means no report on
+   * this adapter, which stays missing evidence rather than a negative (@cto 2026-11-05 07:25 appendix, Case 1). */
+  getUnhandledSequences?(): readonly UnhandledSequence[]
   /** Copied entries selected by semantic-marks (starts) or semantic-command-end (raw completion); absent means no reader. */
   getSemanticMarks?(): readonly (
     | {

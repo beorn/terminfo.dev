@@ -23,6 +23,7 @@ import type {
   TerminalQueryOutcome,
   LibProbeSource,
   TermProbeSource,
+  UnhandledSequence,
 } from "./types.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
@@ -378,6 +379,63 @@ export function parserStateResult(
     },
     ...(assertions && { assertions }),
   }
+}
+
+/** The one reason text a library's own unhandled report may print (@cto 2026-11-05 07:25 appendix, condition 6). */
+export const UNHANDLED_SEQUENCE_REASON = "library reported this sequence as unhandled"
+
+/** The handled OSC 2 the report's control uses; its title reader proves the library acted on it. */
+export const UNHANDLED_OSC_CONTROL_TITLE = "terminfo-unhandled-report-control"
+
+/**
+ * True when a library result already carries a decided outcome. Only an undecided result may be
+ * replaced by the unhandled report, so no Supported or Unsupported answer changes because of it
+ * (@cto 2026-11-05 07:25 appendix, condition 5). A pass without an observation counts as decided.
+ */
+export function reportsDecidedOutcome(result: ProbeCallbackResult): boolean {
+  const outcome = result.observation?.outcome
+  return result.pass === true || outcome === "supported" || outcome === "unsupported" || outcome === "error"
+}
+
+/**
+ * Case 1 consumer (@cto 2026-11-05 07:25 appendix): a library's own unhandled report decides a STATE cell
+ * Unsupported only when the same run proves both controls on the same reader — a handled sequence adds no
+ * entry and its own reader shows it applied, then the target adds exactly one entry carrying its exact code.
+ * Anything else returns undefined, so the calling probe keeps its undecided branch; a source without the
+ * member never reaches here, which keeps today's exact path (missing evidence, never a negative).
+ */
+export function unhandledSequenceVerdict(
+  ctx: LibProbeSource,
+  target: { readonly feed: string; readonly code: UnhandledSequence },
+  control: {
+    readonly feed: string
+    readonly applied: () => boolean
+    readonly cleanup?: string
+  },
+  evidence: object,
+): ProbeCallbackResult | undefined {
+  const read = ctx.getUnhandledSequences?.bind(ctx)
+  if (!read) return undefined
+  const before = read()
+  ctx.feed(control.feed)
+  const afterControl = read()
+  const controlHeld = afterControl.length === before.length && control.applied()
+  if (control.cleanup !== undefined) ctx.feed(control.cleanup)
+  if (!controlHeld) return undefined
+  ctx.feed(target.feed)
+  const afterTarget = read()
+  const added = afterTarget.slice(afterControl.length)
+  const only = added.length === 1 ? added[0] : undefined
+  if (only === undefined || only.kind !== target.code.kind || only.code !== target.code.code) {
+    return undefined
+  }
+  const label = target.code.kind === "osc" ? `OSC ${target.code.code}` : `SGR ${target.code.code}`
+  return parserStateResult(
+    false,
+    `${label}: the library's own report carries this exact code, with both same-run controls qualified`,
+    { evidence, unhandled: { control: control.feed, target: target.code, added } },
+    UNHANDLED_SEQUENCE_REASON,
+  )
 }
 
 /**
@@ -1077,6 +1135,49 @@ const SGR_ATTRIBUTE_READER_ABSENCE: Readonly<Record<string, string>> = {
   "vt100-rust:0.16.2:strikethrough": "vt100 0.16.2 public Cell has no strikethrough reader",
 }
 
+/**
+ * The only SGR cells a library's own unhandled report may move (@cto 2026-11-05 07:25 appendix and
+ * 07:38 addendum, Case 1): blink, strikethrough and the four non-single underline styles. Every other
+ * SGR cell keeps its own reader's path, so no unnamed row can move.
+ */
+const UNHANDLED_CSI_CELLS: ReadonlySet<string> = new Set([
+  "sgr.blink",
+  "sgr.strikethrough",
+  "sgr.underline.double",
+  "sgr.underline.curly",
+  "sgr.underline.dotted",
+  "sgr.underline.dashed",
+])
+
+/**
+ * The CSI arm's control (@cto 2026-11-05 07:37 status): SGR 1 must add no report entry while the same
+ * cell reader shows bold applied, then the target must add exactly one entry carrying the code its own
+ * sequence produces ("5m", "9m", "21m", "4:3m", "4:4m", "4:5m"). Anything else keeps the body's result.
+ */
+function withUnhandledSgrReport(
+  id: string,
+  sequence: string,
+  body: (ctx: LibProbeSource) => ProbeCallbackResult,
+): (ctx: LibProbeSource) => ProbeCallbackResult {
+  return (ctx) => {
+    const result = body(ctx)
+    if (reportsDecidedOutcome(result)) return result
+    const cursor = ctx.getCursor()
+    return (
+      unhandledSequenceVerdict(
+        ctx,
+        { feed: sequence, code: { kind: "csi", code: sequence.slice(2) } },
+        {
+          feed: "\x1b[0m\x1b[1mC",
+          applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
+          cleanup: "\x1b[0m",
+        },
+        { sequence, ...(result.response !== undefined && { body: result.response }) },
+      ) ?? result
+    )
+  }
+}
+
 export function sgrProbe(
   id: string,
   sequence: string,
@@ -1086,7 +1187,7 @@ export function sgrProbe(
   sourceReviewReason?: string,
   capture?: SgrCapture,
 ): ProbeDefinition {
-  return {
+  const definition: ProbeDefinition = {
     id,
     termNeedsGeometry: true,
     termAssertionType: readback ? "query_reply" : null,
@@ -1266,6 +1367,11 @@ export function sgrProbe(
       then: ["buffer_state", "query_reply"],
       otherwise: ["buffer_state"],
     },
+  }
+  const body = definition.lib
+  return {
+    ...definition,
+    lib: body && UNHANDLED_CSI_CELLS.has(id) ? withUnhandledSgrReport(id, sequence, body) : body,
   }
 }
 

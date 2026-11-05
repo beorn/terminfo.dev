@@ -325,6 +325,15 @@ async function listenForLateReply(
   return late?.bytes ? late : undefined
 }
 
+/**
+ * The producer member (@dev/4, termless) is not pinned on this branch yet, so it is read structurally
+ * here; replace this with the real OscMetadataExtension member when that pin arrives. Absent stays
+ * absent: a library without the report keeps today's exact path, never a negative.
+ */
+type UnhandledSequenceReport = {
+  getUnhandledSequences?: () => readonly { readonly kind: "osc" | "csi"; readonly code: string }[]
+}
+
 export function createLibProbeSource(
   backend: TerminalBackend,
   proven: ProvenReplyPath | undefined,
@@ -359,6 +368,11 @@ export function createLibProbeSource(
     typeof metadata?.getOsc777Payloads === "function" ? metadata.getOsc777Payloads.bind(metadata) : undefined
   const readProgress = typeof metadata?.getProgress === "function" ? metadata.getProgress.bind(metadata) : undefined
   const readToasts = typeof metadata?.getToasts === "function" ? metadata.getToasts.bind(metadata) : undefined
+  const unhandledReport = metadata as UnhandledSequenceReport | undefined
+  const readUnhandledSequences =
+    typeof unhandledReport?.getUnhandledSequences === "function"
+      ? unhandledReport.getUnhandledSequences.bind(unhandledReport)
+      : undefined
   const readSemanticMarks =
     (hasExtension<SemanticMarkExtension>(backend, "semantic-marks") ||
       hasExtension<SemanticMarkExtension>(backend, "semantic-command-end")) &&
@@ -409,6 +423,7 @@ export function createLibProbeSource(
     getOsc777Payloads: readOsc777Payloads,
     getProgress: readProgress,
     getToasts: readToasts,
+    getUnhandledSequences: readUnhandledSequences,
     getSemanticMarks: readSemanticMarks,
     getSixelImages: readSixelImages,
     getClipboardState: readClipboardState,

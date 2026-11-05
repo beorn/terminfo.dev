@@ -40,6 +40,9 @@ import {
   unmeasuredCellResult,
   stackStateResult,
   decideStackOperation,
+  reportsDecidedOutcome,
+  unhandledSequenceVerdict,
+  UNHANDLED_OSC_CONTROL_TITLE,
   type StackReading,
 } from "./helpers.ts"
 import { measureAlternateReflow } from "./modes.ts"
@@ -674,7 +677,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
     `\\x1b\\]${setCode};${indexPart}(rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
     "i",
   )
-  return (ctx) => {
+  const body = (ctx: LibProbeSource): ProbeCallbackResult => {
     if (index === undefined && [10, 11, 12].includes(setCode) && resetCode === setCode + 100 && ctx.getDefaultColors) {
       type Colors = ReturnType<NonNullable<LibProbeSource["getDefaultColors"]>>
       const slots = ["fg", "bg", "cursor"] as const
@@ -1036,6 +1039,22 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         }
       }
     }
+  }
+  return (ctx) => {
+    const result = body(ctx)
+    if (reportsDecidedOutcome(result)) return result
+    const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
+    return (
+      unhandledSequenceVerdict(
+        ctx,
+        { feed: reset, code: { kind: "osc", code: String(resetCode) } },
+        {
+          feed: `\x1b]2;${UNHANDLED_OSC_CONTROL_TITLE}\x07`,
+          applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
+        },
+        { query, reset, ...(result.response !== undefined && { body: result.response }) },
+      ) ?? result
+    )
   }
 }
 
@@ -1446,7 +1465,7 @@ function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
  * retains the applicable named review. A consumed-but-unqualified read, and a missing cell, stay
  * a real consumption observation — never not-tested.
  */
-function promptMarkResult(
+function promptMarkBody(
   ctx: LibProbeSource,
   sequence: string,
   noObservable: string,
@@ -1672,6 +1691,36 @@ function promptMarkResult(
       : "OSC 133 / 633 mark was consumed but this run has no qualified declared mark or zone reader",
     readerKey === undefined ? noObservable : NO_SAME_PATH_CONTROL,
     { home, target, control, cell: cell.char },
+  )
+}
+
+/**
+ * Case 1 consumer, OSC arm (@cto 2026-11-05 07:25 appendix, conditions 3 and 5): the library's own
+ * unhandled report decides a shell mark Unsupported only where the body left the cell undecided, and
+ * only when the same run shows a handled OSC 2 adding no report entry while the title reader reports
+ * it applied, then the target adding exactly one entry carrying its number. The colour reset arm
+ * reuses this reader through the same control.
+ */
+function promptMarkResult(
+  ctx: LibProbeSource,
+  sequence: string,
+  noObservable: string,
+  sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
+): ProbeCallbackResult {
+  const result = promptMarkBody(ctx, sequence, noObservable, sourceReview)
+  if (reportsDecidedOutcome(result)) return result
+  const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
+  if (code === undefined) return result
+  return (
+    unhandledSequenceVerdict(
+      ctx,
+      { feed: sequence, code: { kind: "osc", code } },
+      {
+        feed: `\x1b]2;${UNHANDLED_OSC_CONTROL_TITLE}\x07`,
+        applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
+      },
+      { sequence, ...(result.response !== undefined && { body: result.response }) },
+    ) ?? result
   )
 }
 
