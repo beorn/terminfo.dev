@@ -1,6 +1,7 @@
 import type {
   LibProbeSource,
   LibKeyEvent,
+  LibMouseEvent,
   MeasuredProbeCallbackResult,
   ProbeDefinition,
   ProbeCallbackResult,
@@ -835,6 +836,7 @@ function mouseEncodingLib(
       mouseEncoding: false,
     })
   }
+  const encodeMouse = ctx.encodeMouse.bind(ctx)
   const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
   const tracking = kind === "x10" ? 9 : kind === "button" ? 1002 : 1000
   const encoding = kind === "x10" ? "" : `\x1b[?${kind === "pixel" ? 1016 : kind === "urxvt" ? 1015 : 1006}h`
@@ -853,16 +855,31 @@ function mouseEncodingLib(
         : kind === "urxvt"
           ? "\x1b[32;5;3M"
           : `\x1b[<${kind === "button" ? 32 : kind === "wheel" ? 64 : 0};5;3M`
+  let held: LibMouseEvent | undefined
+  let failed = false
+  let primary: unknown
+  const release = () => {
+    if (!held) return null
+    const pressed = held
+    held = undefined
+    return decodeMouseReport(encodeMouse({ ...pressed, action: "release" }))
+  }
+  const encode = (input: LibMouseEvent) => {
+    if (input.button === "left" && input.action === "press") held = input
+    return decodeMouseReport(encodeMouse(input))
+  }
   ctx.feed(reset)
   try {
-    const negativeControl = decodeMouseReport(ctx.encodeMouse(event))
+    const negativeControl = encode(event)
     if (negativeControl !== null) throw new Error("Mouse encoding emitted a report with tracking reset")
+    if (release() !== null) throw new Error("Mouse encoding emitted a report with tracking reset")
     ctx.feed(`\x1b[?${tracking}h${encoding}`)
     const enabled = ctx.getMode("mouseTracking")
     if (enabled === null) {
       return notTestedResult(`adapter binding ${ctx.backendName}: mouseTracking unavailable`, { tracking: null })
     }
-    const report = decodeMouseReport(ctx.encodeMouse(event))
+    if (kind === "button") encode({ ...event, x: 3, action: "press" })
+    const report = encode(event)
     const observed = { tracking: enabled, negativeControl, report }
     if (
       (kind === "pixel" || kind === "urxvt") &&
@@ -871,11 +888,25 @@ function mouseEncodingLib(
       // A former source-negative site: shared encoder bytes are instrument output, not engine evidence (#32246).
       return notTestedResult(NO_SAME_PATH_CONTROL, observed)
     }
-    return enabled && report === expected
-      ? interactionResult(`mouse-encoding:${kind}`, expected, observed)
-      : unsupportedInteraction(`mouse-encoding:${kind}`, expected, observed)
+    if (enabled && report === expected) return interactionResult(`mouse-encoding:${kind}`, expected, observed)
+    release()
+    ctx.feed(reset)
+    ctx.feed("\x1b[?1000h\x1b[?1006h")
+    const controlTracking = ctx.getMode("mouseTracking")
+    const controlReport = encode({ x: 4, y: 2, button: "left", action: "press" })
+    release()
+    ctx.feed(reset)
+    const controlled = { ...observed, controlTracking, controlReport }
+    if (controlTracking !== true || controlReport !== "\x1b[<0;5;3M") {
+      return notTestedResult(NO_SAME_PATH_CONTROL, controlled)
+    }
+    return unsupportedInteraction(`mouse-encoding:${kind}`, expected, controlled)
   } catch (error) {
+    failed = true
+    primary = error
     if (error instanceof Error && error.message.startsWith("mouse encoding unavailable:")) {
+      // Named binding refusals reject the gesture before native button input is accepted.
+      held = undefined
       return notTestedResult(`${ctx.backendName}: ${error.message}; #31297`, {
         mouseEncoding: true,
         unavailable: error.message,
@@ -883,7 +914,19 @@ function mouseEncodingLib(
     }
     throw error
   } finally {
-    ctx.feed(reset)
+    const failures: unknown[] = failed ? [primary] : []
+    try {
+      release()
+    } catch (cleanup) {
+      failures.push(cleanup)
+    }
+    try {
+      ctx.feed(reset)
+    } catch (cleanup) {
+      failures.push(cleanup)
+    }
+    if (failures.length > 1) throw new AggregateError(failures, "Mouse encoding and cleanup failed")
+    if (!failed && failures.length) throw failures[0]
   }
 }
 
