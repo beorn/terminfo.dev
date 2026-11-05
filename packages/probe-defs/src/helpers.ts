@@ -1163,7 +1163,10 @@ export function sgrProbe(
           const styleControl = ctx.getCell(0, 2)
           const styleState = { ...state, styleControl, input: { ...state.input, styleControl: styleControlInput } }
           if (styleControl.char !== "D" || styleControl.underline !== style) {
-            return notTestedResult(`Underline reader did not distinguish the ${style} style control in this run`, styleState)
+            return notTestedResult(
+              `Underline reader did not distinguish the ${style} style control in this run`,
+              styleState,
+            )
           }
           return parserStateResult(
             false,

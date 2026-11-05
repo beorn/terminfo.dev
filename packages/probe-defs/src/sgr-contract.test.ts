@@ -496,7 +496,13 @@ test.each([
   ],
   ["alacritty", "0.26.0", "sgr.blink", "blink", "alacritty_terminal 0.26.0 public term::cell::Flags has no blink flag"],
   ["vt100-rust", "0.16.2", "sgr.blink", "blink", "vt100 0.16.2 public Cell has no blink reader"],
-  ["vt100-rust", "0.16.2", "sgr.strikethrough", "strikethrough", "vt100 0.16.2 public Cell has no strikethrough reader"],
+  [
+    "vt100-rust",
+    "0.16.2",
+    "sgr.strikethrough",
+    "strikethrough",
+    "vt100 0.16.2 public Cell has no strikethrough reader",
+  ],
 ] as const)("%s %s names its checked %s reader prerequisite", (backendName, engineVersion, id, field, prerequisite) => {
   const probe = sgrProbes.find((probe) => probe.id === id)!
   const surface = createSemanticSurface()
