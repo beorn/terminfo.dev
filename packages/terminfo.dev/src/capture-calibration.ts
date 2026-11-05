@@ -1,4 +1,5 @@
 import type { CapturePixelGeometry, CaptureRectangle, TermProbeSource } from "@terminfo/probe-defs"
+import { clearLine, cursorHome, cursorTo } from "@silvery/ansi"
 import type { CapturedFrame, NamedTextOrigin } from "./capture-core.ts"
 
 function refusal(message: string, cause?: unknown): Error {
@@ -538,10 +539,13 @@ export async function calibrateCaptureOrigin({
   let baseline: CapturedFrame | undefined
   let observedPaint: CapturedFrame | undefined
   let failure: unknown
+  const eraseVisibleGrid = collectorLaunched
+    ? Array.from({ length: ctx.rows }, (_unused, row) => cursorTo(row, 0) + clearLine()).join("") + cursorHome()
+    : "\x1b[2J\x1b[H"
   try {
     // Normalization and every later mutation are inside the same restoration transaction.
     if (collectorLaunched) ctx.write("\x1b[?25h")
-    ctx.write("\x1b[?25l\x1b[0m\x1b[2J\x1b[H")
+    ctx.write(`\x1b[?25l\x1b[0m${eraseVisibleGrid}`)
     baseline = await confirmedFrame("before grid paint", () => true)
     const before = baseline
     let solid: CapturedFrame | undefined
@@ -731,7 +735,7 @@ export async function calibrateCaptureOrigin({
     try {
       let surfaceFailure: unknown
       try {
-        ctx.write("\x1b[0m\x1b[2J\x1b[H")
+        ctx.write(`\x1b[0m${eraseVisibleGrid}`)
         if (!baseline) {
           throw new Error(
             failure === undefined
