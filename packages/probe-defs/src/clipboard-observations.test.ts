@@ -475,6 +475,85 @@ describe("native clipboard paste encoding", () => {
     expect(model.calls.every((call) => call.raw === call.text)).toBe(true)
   })
 
+  test("provided xterm native encoder is measured before the declared absence branch", () => {
+    const model = nativePasteModel()
+    model.ctx.backendName = "xterm"
+    const result = pasteProbe().lib!(model.ctx)
+    expect(result.observation?.outcome).toBe("supported")
+    expect(result.tests?.some((test) => test.status === "untestable")).not.toBe(true)
+  })
+
+  test("unknown backend without an encoder remains TODO", () => {
+    const model = nativePasteModel()
+    delete model.ctx.encodePaste
+    const result = pasteProbe().lib!(model.ctx)
+    expect(result.tests).toMatchObject([{ status: "probe-todo", reason: expect.stringContaining("paste-encoding") }])
+    expect(result.observation).toBeUndefined()
+    expect(model.feeds).toEqual([])
+  })
+
+  test("unknown native mode query replies never permit raw-output inference or mutation", () => {
+    for (const raw of ["", "\x1b[?2004;0$y", "\x1b[?2004;9$y"]) {
+      const model = nativePasteModel({ initial: true, supports: false })
+      model.ctx.getMode = () => null
+      model.ctx.feedCapture = () => raw
+      const result = pasteProbe().lib!(model.ctx)
+      expect(result.tests).toMatchObject([{ status: "probe-todo" }])
+      expect(result.observation?.outcome).toBe("inconclusive")
+      expect(model.feeds).toEqual([])
+      expect(model.calls).toEqual([])
+      expect(model.enabled()).toBe(true)
+    }
+  })
+
+  test.each([3, 4])("permanent DECRPM Ps%s cannot qualify mutable paste controls", (ps) => {
+    const model = nativePasteModel({ initial: true, supports: false })
+    model.ctx.getMode = () => null
+    const raw = `\x1b[?2004;${ps}$y`
+    model.ctx.feedCapture = () => raw
+    const result = pasteProbe().lib!(model.ctx)
+    expect(result.tests).toMatchObject([{ status: "probe-todo", reason: expect.stringContaining("permanently") }])
+    expect(result.assertions).toBeUndefined()
+    expect(model.feeds).toEqual([])
+    expect(model.calls).toEqual([])
+    expect(model.enabled()).toBe(true)
+    const evidence = JSON.parse(result.response!) as { modeReads: Array<{ raw: string; ps: number }> }
+    expect(evidence.modeReads).toMatchObject([{ raw, ps }])
+  })
+
+  test.each(["reply", "timeout"] as const)(
+    "sentinel mode-query fallback retains the %s outcome and control",
+    (reason) => {
+      const model = nativePasteModel({ initial: true, supports: false })
+      model.ctx.getMode = () => null
+      const raw = "\x1b[?2004;1$y\x1b[?1;2c"
+      model.ctx.queryWithSentinelOutcome = () => ({
+        raw,
+        rawBase64: btoa(raw),
+        match: ["\x1b[?2004;1$y", "1"],
+        reason,
+      })
+      const result = pasteProbe().lib!(model.ctx)
+      if (reason === "timeout") {
+        expect(result.tests).toMatchObject([{ status: "probe-todo" }])
+        expect(model.feeds).toEqual([])
+        expect(model.calls).toEqual([])
+      } else {
+        expect(result.observation?.outcome).toBe("unsupported")
+        expect(model.calls).toHaveLength(6)
+      }
+      expect(model.enabled()).toBe(true)
+      const evidence = JSON.parse(result.response!) as {
+        modeReads: Array<{ raw: string; control: string; outcome: { reason: string } }>
+      }
+      expect(
+        evidence.modeReads.every(
+          (read) => read.raw === raw && read.control === "\x1b[?1;2c" && read.outcome.reason === reason,
+        ),
+      ).toBe(true)
+    },
+  )
+
   test("raw-only encoder preserves an incoming enabled mode", () => {
     const model = nativePasteModel({ initial: true, supports: false })
     const result = pasteProbe().lib!(model.ctx)
