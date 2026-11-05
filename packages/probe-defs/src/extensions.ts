@@ -4879,7 +4879,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             const note = `${ctx.backendName}: the audited library exposes no working-directory state or OSC 7 callback`
             return declaredUntestableResult(note, {
               backend: ctx.backendName,
-              runtimeIdentity: ctx.runtimeIdentity,
+              runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
               getCwd: false,
             })
           }

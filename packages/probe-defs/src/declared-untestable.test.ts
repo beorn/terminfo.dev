@@ -272,6 +272,10 @@ describe("audited OSC interface absence", () => {
     })
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
+    const identity = JSON.parse(result.response!).runtimeIdentity
+    expect(identity).not.toHaveProperty("resolvedPath")
+    expect(identity).not.toHaveProperty("termlessRevision")
+    expect(identity.integrity).not.toHaveProperty("revision")
   })
 
   test("OSC 7's supplied Cwd reader wins over the audited absence", () => {
