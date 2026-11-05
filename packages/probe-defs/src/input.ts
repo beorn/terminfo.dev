@@ -7,6 +7,7 @@ import type {
 } from "./types.ts"
 import {
   HEADLESS_OBSERVABLE_REVIEW,
+  declaredUntestableResult,
   notTestedResult,
   osInputReviewResult,
   NO_SAME_PATH_CONTROL,
@@ -45,7 +46,11 @@ const inputDefinitions: ProbeDefinition[] = [
 
   probe(
     "input.xtest-key",
-    (ctx) => vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true),
+    (ctx) => {
+      const declared = XTEST_KEY_NO_LIBRARY_ENCODER[ctx.backendName]
+      if (declared) return declaredUntestableResult(declared, { input: false })
+      return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true)
+    },
     xtestKey,
     "input_bytes",
   ),
@@ -103,6 +108,25 @@ function xtestCoverage(kind?: string): ProbeCallbackResult {
   return notTestedResult(kind ? `OS-level XTEST ${kind}` : "real-surface input injection (XTEST/CGEvent)", {
     input: false,
   })
+}
+
+/**
+ * Declared Untestable (operator Nov 4 16:55): these libraries export no public key-event encoder, so a key event has
+ * no library interface to reach. Each reason names the checked public surface (@dev/7 export audit, CTO 47010d76).
+ * libvterm, ghostty-web, ghostty-native, WezTerm and Kitty export one, and vterm keeps its own result: they are not
+ * declared here.
+ */
+const XTEST_KEY_NO_LIBRARY_ENCODER: Readonly<Record<string, string>> = {
+  vt100:
+    "OS-level XTEST key injection: vt100.js 0.10.1 exports createVt100Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
+  vt220:
+    "OS-level XTEST key injection: vt220.js 0.10.1 exports createVt220Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
+  xtermjs:
+    "OS-level XTEST key injection: @xterm/headless 6.0.0 exports Terminal, whose input() takes already encoded bytes, and no public key-event encoder",
+  alacritty:
+    "OS-level XTEST key injection: alacritty_terminal 0.26.0 exposes terminal state and byte-oriented PTY notification, and no public key-event encoder",
+  "vt100-rust":
+    "OS-level XTEST key injection: the vt100 crate 0.16.2 exposes Parser and Screen state and mode serialization, and no public key-event encoder",
 }
 
 /** The headless arm of an XTEST criterion: the same coverage, with the required review selected. */
