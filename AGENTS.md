@@ -23,6 +23,9 @@ Read the changed results and retained reasons, obtain one peer review, then deli
 Collection writes and publication are separate; a Git push or site build is not deployment authority.
 Existing run, custody and END holds remain in force.
 
+Before a headless run, prepare the selected Termless native runtimes using the [headless runtime prerequisites](docs/capture-routes.private.md#headless-runtime-prerequisites).
+Missing native modules or an unqualified Kitty binary are collection failures, not feature results.
+
 ## Directory Structure
 
 ```

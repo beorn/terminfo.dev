@@ -114,6 +114,24 @@ Headless Kitty collection requires an absolute `KITTY_BINARY`. Its
 the resolved Nix-store binary, closure/derivation metadata and declared-source proof.
 Those checks do not establish which shell supplied the path or a measured capability result.
 
+## Headless runtime prerequisites
+
+Build native addons from the selected Termless source, using its declared package scripts.
+From that checkout's [packages/alacritty](https://github.com/beorn/termless/blob/main/packages/alacritty/package.json),
+[packages/wezterm](https://github.com/beorn/termless/blob/main/packages/wezterm/package.json) and
+[packages/vt100-rust](https://github.com/beorn/termless/blob/main/packages/vt100-rust/package.json) directories,
+run `bun run build:native`; from [packages/ghostty-native](https://github.com/beorn/termless/blob/main/packages/ghostty-native/package.json)
+run `bash build/build.sh`.
+These existing recipes produce the addon and its build receipt.
+Retain the receipt with the loaded binary and check its `nativeTreeOid` against the selected package's native tree;
+a package-version label alone does not identify the build.
+Ghostty-native also retains the source `flake.lock` identified by the receipt's `lockSha256`.
+
+Kitty uses its Python bridge rather than a `.node` addon.
+Supply the absolute `KITTY_BINARY` from the host's declared Nix build;
+the existing [identity collector](../packages/probes/headless-identity.ts) requires its resolved store path and derivation/source proof.
+Prepare these prerequisites before the selected collection command; retain any failure as a named collection failure.
+
 ## Hosted macOS launch facts
 
 These describe workflow and launcher code, not measured results.
