@@ -1120,13 +1120,11 @@ export function sgrProbe(
               if (targetParameters !== undefined) {
                 const result = evaluateSgrReadback(id, sequence, targetParameters.split(";"), readback, true)
                 const response = JSON.stringify(evidence)
-                return {
-                  ...result,
-                  response,
-                  ...(result.assertions
-                    ? { assertions: result.assertions.map((assertion) => ({ ...assertion, observed: response })) }
-                    : {}),
+                result.response = response
+                if (result.assertions) {
+                  result.assertions = result.assertions.map((assertion) => ({ ...assertion, observed: response }))
                 }
+                return result
               }
               return notTestedResult(missingReader, evidence)
             }
