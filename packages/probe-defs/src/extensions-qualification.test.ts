@@ -159,8 +159,8 @@ test.each(formerSourceNegativeOsc)(
   },
 )
 
-// A missing reader writes nothing and never asserts engine non-support. OSC7 and iTerm2 images
-// use their declared Untestable route; notifications retain their existing observable review.
+// Adapter getter absence does not prove public-library interface absence. OSC7 and notifications
+// retain their observable review; iTerm2 images keep their separately authorized declaration.
 test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2-images"])(
   "%s without a state reader uses its authorized library disposition for every identity",
   (id) => {
@@ -175,12 +175,12 @@ test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2
         } as unknown as LibProbeSource)
         expect(result.criterionBranch).toBe("headless-observable-review")
         expect(result.tests).toMatchObject([
-          id !== "extensions.notifications"
+          id === "extensions.iterm2-images"
             ? { id: "declared-untestable", status: "untestable" }
             : { id: "review", status: "probe-todo" },
         ])
         if (id === "extensions.osc7-cwd") {
-          expect(result.tests?.[0]?.reason).toMatch(/working-directory.*(?:reader|callback|state)/)
+          expect(result.tests?.[0]?.reason).toMatch(/working-directory metadata delivery/)
         }
         expect(result.assertions).toBeUndefined()
         expect(result.observation).toBeUndefined()
