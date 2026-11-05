@@ -4875,10 +4875,15 @@ export const extensionsProbes: ProbeDefinition[] = [
               ...(iconLabel !== OSC0_PAYLOAD ? [`icon label (CSI 20 t): ${iconReason}`] : []),
               ...(windowTitle !== OSC0_PAYLOAD ? [`window title (CSI 21 t): ${titleReason}`] : []),
             ]
-            return notTestedResult(
-              `${NO_SAME_PATH_CONTROL}: OSC 0 lacks a deciding observation for ${missing.join("; ")}`,
-              { ...state, icon, title, iconLabel, windowTitle, iconReason, titleReason },
-            )
+            return notTestedResult(`OSC 0 lacks a deciding observation for ${missing.join("; ")}`, {
+              ...state,
+              icon,
+              title,
+              iconLabel,
+              windowTitle,
+              iconReason,
+              titleReason,
+            })
           }
           const result = osc0IconTitleResult(
             iconLabel,
