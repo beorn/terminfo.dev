@@ -258,7 +258,7 @@ function pasteAndRead(
   return { ctx, keys, clipboardWrites }
 }
 
-test("extensions.clipboard-paste is not tested without an OS XTEST adapter", async () => {
+test("extensions.clipboard-paste declares a missing library paste interface Untestable while apps still need XTEST", async () => {
   const definition = pasteProbe()
   const writes: string[] = []
   const headless = definition.lib!({
@@ -292,6 +292,11 @@ test("extensions.clipboard-paste is not tested without an OS XTEST adapter", asy
       extensions: new Set(),
     },
   })
+  // Operator Nov 4 16:55: a library with no own paste interface has a declared result;
+  // the app arm still requires actual OS input and must retain its separate refusal.
+  expect(headless.tests).toEqual([
+    expect.objectContaining({ status: "untestable", reason: expect.stringMatching(/paste.*interface|interface.*paste/i) }),
+  ])
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
     noObservable: expect.stringMatching(/XTEST|OS-level|paste|clipboard/i),
