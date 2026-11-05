@@ -8,6 +8,7 @@ import {
   type DefaultColorsExtension,
   type MouseEncodingExtension,
   type PasteEncodingExtension,
+  type KeyEncodingExtension,
   type OscMetadataExtension,
   type SemanticMarkExtension,
   type SixelStorageExtension,
@@ -384,6 +385,13 @@ export function createLibProbeSource(
   }
   const encodePaste =
     declaresPasteEncoding && typeof candidateEncodePaste === "function" ? candidateEncodePaste.bind(backend) : undefined
+  const declaresKeyEncoding = backend.capabilities.extensions.has("key-encoding")
+  const candidateEncodeKey = (backend as Partial<KeyEncodingExtension>).encodeKey
+  if (declaresKeyEncoding && typeof candidateEncodeKey !== "function") {
+    throw new Error(`${backend.name} declares capability extension "key-encoding" without an encodeKey function`)
+  }
+  const encodeKey =
+    declaresKeyEncoding && typeof candidateEncodeKey === "function" ? candidateEncodeKey.bind(backend) : undefined
   return {
     backendName: backend.name,
     kind: "live",
@@ -446,6 +454,7 @@ export function createLibProbeSource(
     }),
     ...(encodeMouse && { encodeMouse }),
     ...(encodePaste && { encodePaste }),
+    ...(encodeKey && { encodeKey }),
     getTitle() {
       return backend.getTitle()
     },

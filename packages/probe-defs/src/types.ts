@@ -877,6 +877,8 @@ export interface LibProbeSource {
    * and `typeof backend.encodePaste === "function"`. Returns this instance's bytes in its current mode.
    */
   encodePaste?(text: string): Uint8Array
+  /** Library-native key bytes in this instance's modes; absent for host-encoded adapters. */
+  encodeKey?(event: LibKeyEvent): Uint8Array
   getTitle(): string
   reset(): void
   capabilities: {
@@ -937,6 +939,15 @@ export interface TerminalQueryOutcome {
    * sentinel". Absent when nothing answered DA1.
    */
   sentinel?: { atMs: number; graceMs: number }
+}
+
+/** Library key-event input; the collector translates only these named fields. */
+export interface LibKeyEvent {
+  key: string
+  shift?: boolean
+  ctrl?: boolean
+  alt?: boolean
+  super?: boolean
 }
 
 /** Library mouse-event input matching `@termless/core` `MouseEvent` (#31798). */
