@@ -3042,11 +3042,9 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
   })
 }
 
-// OSC 0 sets the icon name and the window title together. Set ONE known payload, then ask the
-// terminal for both values: CSI 20 t answers with the icon label as OSC L, CSI 21 t with the title
-// as OSC l. Support requires BOTH replies to return the exact payload. A missing reply is
-// inconclusive, never a negative: a terminal that does not answer these queries has not shown that
-// the set was ignored, and an unqualified title change cannot stand in for the icon label.
+// OSC 0 sets both labels. Library readers prefer controlled effects; exact positive replies also
+// supply evidence. One observed false clause disproves the conjunction, while a missing observation
+// never proves a negative. The application callback retains its existing two-query route.
 const OSC0_PAYLOAD = "osc0-icon-title"
 const OSC0_ICON_QUERY = "\x1b[20t"
 const OSC0_TITLE_QUERY = "\x1b[21t"
@@ -4475,14 +4473,21 @@ export const extensionsProbes: ProbeDefinition[] = [
           const controls = {
             icon: before.icon === "osc0-icon-control" ? "osc0-icon-control-2" : "osc0-icon-control",
             title: before.title === "osc0-title-control" ? "osc0-title-control-2" : "osc0-title-control",
+            secondTitle: "osc0-title-control-next",
           }
           try {
             ctx.feed(`\x1b]1;${controls.icon}\x07`)
             ctx.feed(`\x1b]2;${controls.title}\x07`)
+            const firstTitleControl = ctx.getTitle()
+            ctx.feed(`\x1b]2;${controls.secondTitle}\x07`)
             const controlled = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
-            if (controlled.icon !== controls.icon || controlled.title !== controls.title) {
+            if (
+              controlled.icon !== controls.icon ||
+              firstTitleControl !== controls.title ||
+              controlled.title !== controls.secondTitle
+            ) {
               return {
-                response: JSON.stringify({ before, controls, controlled }),
+                response: JSON.stringify({ before, controls, firstTitleControl, controlled }),
                 ...replyFailure("OSC 0 independent icon/title controls were not both read back"),
               }
             }
@@ -4491,7 +4496,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             return parserStateResult(
               after.icon === OSC0_PAYLOAD && after.title === OSC0_PAYLOAD,
               "OSC 0 changes both independently controlled icon and title labels to its exact payload",
-              { before, controls, controlled, requested: OSC0_PAYLOAD, after },
+              { before, controls, firstTitleControl, controlled, requested: OSC0_PAYLOAD, after },
             )
           } finally {
             try {
@@ -4501,24 +4506,72 @@ export const extensionsProbes: ProbeDefinition[] = [
             }
           }
         }
-        ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
-        const iconOutcome = ctx.queryWithSentinelOutcome?.(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
-        const titleOutcome = ctx.queryWithSentinelOutcome?.(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
-        const icon = iconOutcome ? iconOutcome.raw : ctx.feedCapture(OSC0_ICON_QUERY)
-        const title = titleOutcome ? titleOutcome.raw : ctx.feedCapture(OSC0_TITLE_QUERY)
-        const iconLabel = iconOutcome ? (iconOutcome.match?.[1] ?? null) : (OSC0_ICON_REPLY.exec(icon)?.[1] ?? null)
-        const windowTitle = titleOutcome
-          ? (titleOutcome.match?.[1] ?? null)
-          : (OSC0_TITLE_REPLY.exec(title)?.[1] ?? null)
-        return osc0IconTitleResult(
-          iconLabel,
-          windowTitle,
-          { icon, title },
-          {
-            icon: iconOutcome ? iconOutcome.reason : "feedCapture boundary",
-            title: titleOutcome ? titleOutcome.reason : "feedCapture boundary",
-          },
-        )
+        const before = ctx.getTitle()
+        const controls = [
+          before === "osc0-title-control" ? "osc0-title-control-2" : "osc0-title-control",
+          "osc0-title-control-next",
+        ]
+        try {
+          ctx.feed(`\x1b]2;${controls[0]}\x07`)
+          const firstControl = ctx.getTitle()
+          ctx.feed(`\x1b]2;${controls[1]}\x07`)
+          const secondControl = ctx.getTitle()
+          const controlled = firstControl === controls[0] && secondControl === controls[1]
+          ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
+          const observedTitle = ctx.getTitle()
+          const state = { before, controls, firstControl, secondControl, requested: OSC0_PAYLOAD, observedTitle }
+          if (controlled && observedTitle !== OSC0_PAYLOAD) {
+            return parserStateResult(
+              false,
+              "OSC 0 sets both icon and window title to its payload",
+              state,
+              "OSC 0 did not set the window title after two OSC 2 controls passed",
+            )
+          }
+          // A positive exact-payload reply remains evidence; absent/unqualified replies do not prove a negative.
+          const iconOutcome = ctx.queryWithSentinelOutcome?.(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
+          const titleOutcome = ctx.queryWithSentinelOutcome?.(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
+          const icon = iconOutcome ? iconOutcome.raw : ctx.feedCapture(OSC0_ICON_QUERY)
+          const title = titleOutcome ? titleOutcome.raw : ctx.feedCapture(OSC0_TITLE_QUERY)
+          const iconLabel = iconOutcome ? (iconOutcome.match?.[1] ?? null) : (OSC0_ICON_REPLY.exec(icon)?.[1] ?? null)
+          const windowTitle = controlled
+            ? observedTitle
+            : titleOutcome
+              ? (titleOutcome.match?.[1] ?? null)
+              : (OSC0_TITLE_REPLY.exec(title)?.[1] ?? null)
+          const iconReason = iconOutcome ? iconOutcome.reason : "feedCapture boundary"
+          const titleReason = titleOutcome ? titleOutcome.reason : "feedCapture boundary"
+          if (iconLabel !== OSC0_PAYLOAD || windowTitle !== OSC0_PAYLOAD) {
+            const missing = [
+              ...(iconLabel !== OSC0_PAYLOAD ? [`icon label (CSI 20 t): ${iconReason}`] : []),
+              ...(windowTitle !== OSC0_PAYLOAD ? [`window title (CSI 21 t): ${titleReason}`] : []),
+            ]
+            return notTestedResult(
+              `${NO_SAME_PATH_CONTROL}: OSC 0 lacks a deciding observation for ${missing.join("; ")}`,
+              { ...state, icon, title, iconLabel, windowTitle, iconReason, titleReason },
+            )
+          }
+          const result = osc0IconTitleResult(
+            iconLabel,
+            windowTitle,
+            { icon, title },
+            {
+              icon: iconOutcome ? iconOutcome.reason : "feedCapture boundary",
+              title: titleOutcome ? titleOutcome.reason : "feedCapture boundary",
+            },
+          )
+          return {
+            ...result,
+            ...(controlled && {
+              assertions: result.assertions?.map((assertion, index) =>
+                index === 1 ? { ...assertion, assertionType: "buffer_state" as const } : assertion,
+              ),
+            }),
+            response: JSON.stringify({ ...state, icon, title, iconLabel, windowTitle, iconReason, titleReason }),
+          }
+        } finally {
+          ctx.feed(`\x1b]2;${before}\x07`)
+        }
       },
       async (ctx) => {
         ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
@@ -4533,7 +4586,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       "query_reply",
     ),
-    libAssertionType: { when: readsIconTitleState, then: ["buffer_state"], otherwise: ["query_reply"] },
+    libAssertionType: { when: readsIconTitleState, then: ["buffer_state"], otherwise: ["buffer_state", "query_reply"] },
   },
 
   // OSC 52 — clipboard
