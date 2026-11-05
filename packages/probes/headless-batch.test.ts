@@ -340,7 +340,10 @@ test.skipIf(!OWNED_LAYOUT || !isGhosttyNativeAvailable()).each([
   expect(batch.results[0]).toMatchObject({ featureId: "device.secondary-da", status: expected })
   if (fault === "healthy") {
     // A no-wait repeat must not describe the configured third-pass window as elapsed evidence.
-    const repeats = JSON.parse(batch.rawReplies["collector.repeatPasses"] ?? "")
+    const repeats = JSON.parse(batch.rawReplies["collector.repeatPasses"] ?? "") as {
+      secondAssertions: { observed: string }[]
+      thirdAssertions: { observed: string }[]
+    }
     expect(repeats.secondAssertions.map((assertion: { observed: string }) => assertion.observed)).toEqual([
       expect.stringContaining("no grace wait"),
     ])
