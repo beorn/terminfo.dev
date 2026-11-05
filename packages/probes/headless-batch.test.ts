@@ -2660,10 +2660,12 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   })
   expect.soft(writes).toContain("\x1b=")
   expect.soft(writes).toContain("\x1b>")
-  // #30702: the margin and alternate-screen arms read the cells, so their raw state is the seeded frames.
+  // Margin wrapping retains both calibrated controls and libvterm's observed unbounded target.
   expect.soft(JSON.parse(batch.rawReplies["modes.left-right-margin"]!)).toMatchObject({
-    seed: "ABCDEFGH",
+    placement: { wrapped: "E", unbounded: " " },
+    control: { wrapped: " ", unbounded: "E" },
     margins: "3-6",
+    target: { wrapped: " ", unbounded: "E" },
   })
   for (const id of ["modes.altscreen-47", "modes.altscreen-1047"]) {
     expect.soft(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({ seedA: "PRIMARY-A", seedB: "PRIMARY-B" })
