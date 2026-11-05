@@ -313,8 +313,8 @@ test("a row reading overline is notTested when the bit is null, bound when prese
 })
 
 /**
- * A cell without the selected attribute or colour retains its named missing-observable or no-control
- * PROBE TODO cause, never a source-decided negative (#32246).
+ * The assigned SGR effect rows decide absent target effects only with passing same-reader controls
+ * (#32318). Missing observables or a failed control remain open; source never decides support.
  */
 const underlineColorUnexposed =
   "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
@@ -325,17 +325,17 @@ const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   noObservable?: string,
 ])[] = [
   ["sgr.bold", "bold-noop", "inconclusive"],
-  ["sgr.faint", "faint-noop", "probe-todo"],
-  ["sgr.italic", "italic-noop", "probe-todo"],
+  ["sgr.faint", "faint-noop", "unsupported"],
+  ["sgr.italic", "italic-noop", "unsupported"],
   ["sgr.underline.single", "underline-single-noop", "inconclusive"],
-  ["sgr.underline.double", "underline-double-noop", "probe-todo"],
-  ["sgr.underline.curly", "underline-curly-noop", "probe-todo"],
-  ["sgr.underline.dotted", "underline-dotted-noop", "probe-todo"],
-  ["sgr.underline.dashed", "underline-dashed-noop", "probe-todo"],
-  ["sgr.blink", "blink-noop", "probe-todo"],
+  ["sgr.underline.double", "underline-double-noop", "unsupported"],
+  ["sgr.underline.curly", "underline-curly-noop", "unsupported"],
+  ["sgr.underline.dotted", "underline-dotted-noop", "unsupported"],
+  ["sgr.underline.dashed", "underline-dashed-noop", "unsupported"],
+  ["sgr.blink", "blink-noop", "unsupported"],
   ["sgr.inverse", "inverse-noop", "inconclusive"],
-  ["sgr.hidden", "hidden-noop", "probe-todo"],
-  ["sgr.strikethrough", "strikethrough-noop", "probe-todo"],
+  ["sgr.hidden", "hidden-noop", "unsupported"],
+  ["sgr.strikethrough", "strikethrough-noop", "unsupported"],
   ["sgr.overline", "overline-noop", "inconclusive"],
   ["sgr.underline.color", "underline-color-noop", "probe-todo", underlineColorUnexposed],
   ["sgr.underline-color-indexed", "underline-color-indexed-noop", "probe-todo", underlineColorUnexposed],
@@ -343,12 +343,12 @@ const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   ["sgr.underline-color-reset", "sgr59-noop", "unsupported"],
   ["sgr.fg.standard", "fg-standard-noop", "probe-todo"],
   ["sgr.bg.standard", "bg-standard-noop", "probe-todo"],
-  ["sgr.fg.bright", "fg-bright-noop", "probe-todo"],
-  ["sgr.bg.bright", "bg-bright-noop", "probe-todo"],
+  ["sgr.fg.bright", "fg-bright-noop", "unsupported"],
+  ["sgr.bg.bright", "bg-bright-noop", "unsupported"],
   ["sgr.fg.default", "fg-default-noop", "unsupported"],
   ["sgr.bg.default", "bg-default-noop", "unsupported"],
-  ["sgr.fg.256", "fg-256-noop", "inconclusive"],
-  ["sgr.bg.256", "bg-256-noop", "inconclusive"],
+  ["sgr.fg.256", "fg-256-noop", "unsupported"],
+  ["sgr.bg.256", "bg-256-noop", "unsupported"],
   ["sgr.fg.truecolor", "fg-truecolor-noop", "unsupported"],
   ["sgr.bg.truecolor", "bg-truecolor-noop", "unsupported"],
   ["sgr.selective-reset.bold", "sgr22-noop", "unsupported"],
@@ -400,6 +400,52 @@ test.each(
     })
     expect(negativeGraded.after).toBe(negativeOutcome === "probe-todo" ? undefined : negativeOutcome)
     expect(negativeGraded.satisfies).toBe(negativeOutcome === "unsupported")
+    if (
+      negativeOutcome === "unsupported" &&
+      [
+        "sgr.faint",
+        "sgr.italic",
+        "sgr.blink",
+        "sgr.hidden",
+        "sgr.strikethrough",
+        "sgr.underline.double",
+        "sgr.underline.curly",
+        "sgr.underline.dotted",
+        "sgr.underline.dashed",
+        "sgr.fg.bright",
+        "sgr.bg.bright",
+        "sgr.fg.256",
+        "sgr.bg.256",
+      ].includes(id)
+    ) {
+      expect(negativeResult.assertions).toContainEqual(
+        expect.objectContaining({ kind: "negative", assertionType: "buffer_state" }),
+      )
+      const controlMutation = id.startsWith("sgr.underline.")
+        ? "underline-single-noop"
+        : id.startsWith("sgr.fg.")
+          ? "fg-standard-noop"
+          : id.startsWith("sgr.bg.")
+            ? "bg-standard-noop"
+            : "bold-noop"
+      const withoutControl = probe.lib(
+        libProbeSource(createSemanticSurface({ mutations: [mutation, controlMutation] })),
+      )
+      expect(withoutControl.observation?.outcome).not.toBe("supported")
+      expect(withoutControl.observation?.outcome).not.toBe("unsupported")
+      const inert = probe.lib(libProbeSource(inertModel()))
+      expect(inert.observation?.outcome).not.toBe("supported")
+      expect(inert.observation?.outcome).not.toBe("unsupported")
+      if (id.startsWith("sgr.underline.")) {
+        const surface = createSemanticSurface({ mutations: [mutation] })
+        const collapsed = libProbeSource(surface)
+        collapsed.getCell = (row, col) => ({
+          ...surface.getCell(row, col),
+          underline: !!surface.getCell(row, col).underline,
+        })
+        expect(probe.lib(collapsed).observation?.outcome).not.toBe("unsupported")
+      }
+    }
   },
 )
 
@@ -427,6 +473,10 @@ test.each([
   const probe = sgrProbes.find((probe) => probe.id === id)!
   const run = (value: boolean | null, char = "X") =>
     probe.lib!(libProbeSource(inertModel(40, { [field]: value, char })))
+  const surface = createSemanticSurface()
+  const unreported = libProbeSource(surface)
+  unreported.getCell = (row, col) => ({ ...surface.getCell(row, col), [field]: null })
+  expectNoSamePathTodo(probe.lib!(unreported))
   const missing = run(null)
   expectNoSamePathTodo(missing)
   expect(JSON.parse(missing.response!)).toEqual(expect.objectContaining({ [field]: null }))
@@ -560,3 +610,29 @@ test.each(["wrong requested color", "baseline already requested color"])(
     expect(result.assertions).toBeUndefined()
   },
 )
+
+/** @failure Missing cell attributes are falsely graded from an unqualified DECRQSS facility or DECSTBM fallback. @level l2 @consumer Group2 libvterm SGR effect readback */
+test.each([
+  ["1", "2", "supported"],
+  ["1", "0", "unsupported"],
+  ["0", "0", undefined],
+  [null, "0", undefined],
+] as const)("unreported faint uses only qualified SGR m control %s before target %s", (control, target, expected) => {
+  const probe = sgrProbes.find((entry) => entry.id === "sgr.faint")!
+  const surface = createSemanticSurface()
+  const ctx = libProbeSource(surface)
+  ctx.getCell = (row, col) => ({ ...surface.getCell(row, col), dim: null })
+  const replies = [control, target]
+  const queries: string[] = []
+  ctx.queryWithSentinelOutcome = (sequence, pattern) => {
+    queries.push(sequence)
+    const value = replies.shift()
+    const raw = value == null ? "\x1bP1$r1;24r\x1b\\" : `\x1bP1$r${value}m\x1b\\`
+    return { match: raw.match(pattern), raw, rawBase64: Buffer.from(raw).toString("base64"), reason: "reply" }
+  }
+  const result = probe.lib!(ctx)
+  expect(result.observation?.outcome).toBe(expected)
+  expect(queries).toEqual(expected ? ["\x1bP$qm\x1b\\", "\x1bP$qm\x1b\\"] : ["\x1bP$qm\x1b\\"])
+  if (expected) expect(result.response).toContain("sgrReadback")
+  else expect(result.notTested?.reason).toBe("no-semantic-observable")
+})

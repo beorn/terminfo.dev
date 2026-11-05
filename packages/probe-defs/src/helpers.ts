@@ -1077,6 +1077,50 @@ export function sgrProbe(
         if (noObservable) return notTestedResult(noObservable, cell)
       }
       const measured = cell.char === "X" && check(cell) === true
+      if (sourceReviewReason !== undefined && cell.char === "X") {
+        const underline = id.startsWith("sgr.underline.")
+        ctx.feed(`\x1b[0m${underline ? "\x1b[4m" : "\x1b[1m"}C\x1b[0m`)
+        const control = ctx.getCell(0, 1)
+        const state = { ...cell, control }
+        // A positive effect witnesses its own reader. A negative needs the same-run control,
+        // and a nullable attribute is missing readback even when the control works (#32318).
+        if (measured) return parserStateResult(true, `${id}: attribute applied to the rendered X cell`, state)
+        if (check(cell) === null) {
+          // The reply is used only after this same SGR m reader reports the bold control.
+          // A facility-wide DECRQSS/DECSTBM answer does not qualify it (#32318).
+          if (readback && ctx.queryWithSentinelOutcome) {
+            const query = "\x1bP$qm\x1b\\"
+            const pattern = /\x1bP1\$r([0-9;:]*)m\x1b\\/
+            ctx.feed("\x1b[0m\x1b[1m")
+            const controlReply = ctx.queryWithSentinelOutcome(query, pattern)
+            const controlParameters = controlReply.match?.[1]
+            if (
+              controlParameters !== undefined &&
+              sgrReadbackResult(id, "\x1b[1m", controlParameters.split(";"), { require: [1] }).observation?.outcome ===
+                "supported"
+            ) {
+              ctx.feed(`\x1b[0m${sequence}`)
+              const targetReply = ctx.queryWithSentinelOutcome(query, pattern)
+              const targetParameters = targetReply.match?.[1]
+              const evidence = { ...state, sgrReadback: { control: controlReply.raw, target: targetReply.raw } }
+              if (targetParameters !== undefined) {
+                const result = evaluateSgrReadback(id, sequence, targetParameters.split(";"), readback, true)
+                return { ...result, response: JSON.stringify(evidence) }
+              }
+              return notTestedResult(NO_SAME_PATH_CONTROL, evidence)
+            }
+            return notTestedResult(NO_SAME_PATH_CONTROL, { ...state, sgrReadback: { control: controlReply.raw } })
+          }
+          return notTestedResult(NO_SAME_PATH_CONTROL, state)
+        }
+        const qualified = control.char === "C" && (underline ? control.underline === "single" : control.bold === true)
+        if (!qualified) return notTestedResult(NO_SAME_PATH_CONTROL, state)
+        return parserStateResult(
+          false,
+          `${id}: attribute applied to the rendered X cell with a qualified ${underline ? "single underline style" : "bold"} reader`,
+          state,
+        )
+      }
       return parserStateResult(
         measured ? true : null,
         `${id}: attribute applied to the rendered X cell`,
