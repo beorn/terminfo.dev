@@ -270,6 +270,7 @@ describe("audited OSC interface absence", () => {
       status: "untestable",
       reason: expect.stringMatching(/OSC 7/),
     })
+    expect(fold(definition.id, result).reason).toContain("0.10.1")
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
     const identity = (JSON.parse(result.response!) as { runtimeIdentity: Record<string, unknown> }).runtimeIdentity
