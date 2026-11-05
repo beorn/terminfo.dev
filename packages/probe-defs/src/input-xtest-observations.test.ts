@@ -126,12 +126,13 @@ test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
     for (const [backendName, unavailable] of [
       ["ghostty", true],
       ["ghostty-native", id === "input.modify-other-keys-3"],
+      ["kitty", true],
     ] as const) {
       const result = probe(id).lib!({ ...libMouseSource({ extensions: [] }), backendName })
       expect(isDeclaredUntestable(result), `${backendName}/${id}`).toBe(unavailable)
       if (unavailable) expect(result.tests?.[0]?.reason).toMatch(/public.*(?:parsed|state|selector)/)
     }
-    for (const backendName of ["libvterm", "wezterm", "kitty", "vterm", "unknown"]) {
+    for (const backendName of ["libvterm", "wezterm", "vterm", "unknown"]) {
       const result = probe(id).lib!({ ...libMouseSource({ extensions: [] }), backendName })
       expect(isDeclaredUntestable(result), backendName).toBe(false)
     }
