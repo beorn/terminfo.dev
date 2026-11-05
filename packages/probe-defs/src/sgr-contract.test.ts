@@ -418,6 +418,9 @@ test.each(
         "sgr.bg.256",
       ].includes(id)
     ) {
+      expect(JSON.parse(negativeResult.response!)).toMatchObject({
+        input: { target: expect.stringContaining("X"), control: expect.stringContaining("\x1b[") },
+      })
       expect(negativeResult.assertions).toContainEqual(
         expect.objectContaining({ kind: "negative", assertionType: "buffer_state" }),
       )

@@ -1070,7 +1070,8 @@ export function sgrProbe(
     termNeedsGeometry: true,
     termAssertionType: readback ? "query_reply" : null,
     lib(ctx) {
-      ctx.feed(sequence + "X")
+      const targetInput = sequence + "X"
+      ctx.feed(targetInput)
       const cell = ctx.getCell(0, 0)
       if (cell.char === "X") {
         const noObservable = noObservableWhen?.(cell)
@@ -1079,9 +1080,10 @@ export function sgrProbe(
       const measured = cell.char === "X" && check(cell) === true
       if (sourceReviewReason !== undefined && cell.char === "X") {
         const underline = id.startsWith("sgr.underline.")
-        ctx.feed(`\x1b[0m${underline ? "\x1b[4m" : "\x1b[1m"}C\x1b[0m`)
+        const controlInput = `\x1b[0m${underline ? "\x1b[4m" : "\x1b[1m"}C\x1b[0m`
+        ctx.feed(controlInput)
         const control = ctx.getCell(0, 1)
-        const state = { ...cell, control }
+        const state = { ...cell, control, input: { target: targetInput, control: controlInput } }
         // A positive effect witnesses its own reader. A negative needs the same-run control,
         // and a nullable attribute is missing readback even when the control works (#32318).
         if (measured) return parserStateResult(true, `${id}: attribute applied to the rendered X cell`, state)
@@ -1092,7 +1094,8 @@ export function sgrProbe(
           if (readback && ctx.queryWithSentinelOutcome) {
             const query = "\x1bP$qm\x1b\\"
             const pattern = /\x1bP1\$r([0-9;:]*)m\x1b\\/
-            ctx.feed("\x1b[0m\x1b[1m")
+            const readbackControlInput = "\x1b[0m\x1b[1m"
+            ctx.feed(readbackControlInput)
             const controlReply = ctx.queryWithSentinelOutcome(query, pattern)
             const controlParameters = controlReply.match?.[1]
             if (
@@ -1100,10 +1103,20 @@ export function sgrProbe(
               sgrReadbackResult(id, "\x1b[1m", controlParameters.split(";"), { require: [1] }).observation?.outcome ===
                 "supported"
             ) {
-              ctx.feed(`\x1b[0m${sequence}`)
+              const readbackTargetInput = `\x1b[0m${sequence}`
+              ctx.feed(readbackTargetInput)
               const targetReply = ctx.queryWithSentinelOutcome(query, pattern)
               const targetParameters = targetReply.match?.[1]
-              const evidence = { ...state, sgrReadback: { control: controlReply.raw, target: targetReply.raw } }
+              const evidence = {
+                ...state,
+                sgrReadback: {
+                  controlInput: readbackControlInput,
+                  targetInput: readbackTargetInput,
+                  query,
+                  control: controlReply.raw,
+                  target: targetReply.raw,
+                },
+              }
               if (targetParameters !== undefined) {
                 const result = evaluateSgrReadback(id, sequence, targetParameters.split(";"), readback, true)
                 const response = JSON.stringify(evidence)
@@ -1117,7 +1130,10 @@ export function sgrProbe(
               }
               return notTestedResult(missingReader, evidence)
             }
-            return notTestedResult(missingReader, { ...state, sgrReadback: { control: controlReply.raw } })
+            return notTestedResult(missingReader, {
+              ...state,
+              sgrReadback: { controlInput: readbackControlInput, query, control: controlReply.raw },
+            })
           }
           return notTestedResult(missingReader, state)
         }
