@@ -1086,6 +1086,7 @@ export function sgrProbe(
         // and a nullable attribute is missing readback even when the control works (#32318).
         if (measured) return parserStateResult(true, `${id}: attribute applied to the rendered X cell`, state)
         if (check(cell) === null) {
+          const missingReader = `cell.${id === "sgr.faint" ? "dim" : id.slice("sgr.".length)} is unreported; no qualified SGR m alternative in this run`
           // The reply is used only after this same SGR m reader reports the bold control.
           // A facility-wide DECRQSS/DECSTBM answer does not qualify it (#32318).
           if (readback && ctx.queryWithSentinelOutcome) {
@@ -1105,13 +1106,20 @@ export function sgrProbe(
               const evidence = { ...state, sgrReadback: { control: controlReply.raw, target: targetReply.raw } }
               if (targetParameters !== undefined) {
                 const result = evaluateSgrReadback(id, sequence, targetParameters.split(";"), readback, true)
-                return { ...result, response: JSON.stringify(evidence) }
+                const response = JSON.stringify(evidence)
+                return {
+                  ...result,
+                  response,
+                  ...(result.assertions
+                    ? { assertions: result.assertions.map((assertion) => ({ ...assertion, observed: response })) }
+                    : {}),
+                }
               }
-              return notTestedResult(NO_SAME_PATH_CONTROL, evidence)
+              return notTestedResult(missingReader, evidence)
             }
-            return notTestedResult(NO_SAME_PATH_CONTROL, { ...state, sgrReadback: { control: controlReply.raw } })
+            return notTestedResult(missingReader, { ...state, sgrReadback: { control: controlReply.raw } })
           }
-          return notTestedResult(NO_SAME_PATH_CONTROL, state)
+          return notTestedResult(missingReader, state)
         }
         const qualified = control.char === "C" && (underline ? control.underline === "single" : control.bold === true)
         if (!qualified) return notTestedResult(NO_SAME_PATH_CONTROL, state)
@@ -1194,7 +1202,12 @@ export function sgrProbe(
       }
     },
 
-    libAssertionType: "buffer_state",
+    // A configured SGR readback may qualify the alternate reader when a cell field is absent.
+    libAssertionType: {
+      when: () => readback !== undefined,
+      then: ["buffer_state", "query_reply"],
+      otherwise: ["buffer_state"],
+    },
   }
 }
 

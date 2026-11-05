@@ -476,9 +476,10 @@ test.each([
   const surface = createSemanticSurface()
   const unreported = libProbeSource(surface)
   unreported.getCell = (row, col) => ({ ...surface.getCell(row, col), [field]: null })
-  expectNoSamePathTodo(probe.lib!(unreported))
+  const missingReader = `cell.${field} is unreported; no qualified SGR m alternative in this run`
+  expectNoSamePathTodo(probe.lib!(unreported), missingReader)
   const missing = run(null)
-  expectNoSamePathTodo(missing)
+  expectNoSamePathTodo(missing, missingReader)
   expect(JSON.parse(missing.response!)).toEqual(expect.objectContaining({ [field]: null }))
   expect(run(true).observation?.outcome).toBe("supported")
   const measuredNegative = run(false)

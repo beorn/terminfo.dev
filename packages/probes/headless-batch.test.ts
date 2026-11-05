@@ -4854,3 +4854,32 @@ test.skipIf(!ghosttyNativeAvailable)(
     }
   },
 )
+
+// #32318: callback-only checks miss a mixed reader rejected by the production declaration gate.
+// Use the real libvterm SGR reporter whose faint field is unreported; no feature is implemented by the fixture.
+test("records qualified SGR readback when the cell attribute is unreported", async () => {
+  const definition = registryDefinitions(["sgr.faint"])[0]!
+  const original = definition.lib!
+  const batch = await collectBatch(resolveLibvterm, "libvterm", [
+    {
+      ...definition,
+      lib(ctx) {
+        return original({
+          ...ctx,
+          queryWithSentinelOutcome(sequence, pattern) {
+            const raw = ctx.feedCapture(sequence)
+            return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: raw.match(pattern), reason: "reply" }
+          },
+        })
+      },
+    },
+  ])
+  expect(batch.results[0]?.reason).toBeUndefined()
+  expect(batch.results).toMatchObject([{ featureId: "sgr.faint", status: "unsupported" }])
+  expect(batch.observations).toMatchObject([
+    { featureId: "sgr.faint", outcome: "unsupported", assertionType: "query_reply" },
+  ])
+  expect(JSON.parse(batch.rawReplies["sgr.faint"]!)).toMatchObject({
+    sgrReadback: { control: expect.stringContaining("m"), target: expect.stringContaining("m") },
+  })
+})
