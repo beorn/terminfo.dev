@@ -266,7 +266,10 @@ function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
     phases: Array<{ outcome: string }>
     historyPhases: Array<{ id: string; status: string; outcome: string; reason: string }>
     alternatePhases: Array<{ id: string; status: string; outcome: string; reason: string }>
-    alternateRoundtrips: Record<string, { roundtrip: { pass: boolean }; identity: Record<string, boolean | null> }>
+    alternateRoundtrips: Record<
+      string,
+      { roundtrip: { pass: boolean; response: string; note?: string }; identity: Record<string, boolean | null> }
+    >
     actions: Array<{ kind: string; text?: string; name?: string }>
     reads: Record<string, { cells: string[][]; scrollback: { totalLines: number; screenLines: number } }>
   }
@@ -743,16 +746,18 @@ test.each(["equal", "different", "unreadable", "stayed-alternate", "unreadable-c
     ])
     if (reference === "unreadable-cleanup") {
       const failed = await measurement
-      expect(failed.ungradedDiagnostics["extensions.reflow"]?.message).toMatch(
-        /paired reference cursor unreadable.*reference geometry cleanup failed/s,
-      )
+      expect(failed.ungradedDiagnostics["extensions.reflow"]).toMatchObject({
+        kind: "collector-error",
+        message: expect.stringMatching(/paired reference cursor unreadable.*reference geometry cleanup failed/s),
+      })
       return
     }
     const batch = await measurement
     expect(batch.ungradedDiagnostics).toEqual({})
     const observed = reflowEvidence(batch)
     const phase = observed.alternatePhases.find(({ id }) => id === "alternate-shrink")!
-    const roundtrip = JSON.parse(batch.rawReplies["extensions.reflow"]!).alternateRoundtrips["alternate-shrink"]
+    const roundtrip = observed.alternateRoundtrips["alternate-shrink"]
+    if (!roundtrip) throw new Error("Missing alternate-shrink roundtrip evidence")
     if (reference === "equal") {
       expect(phase).toMatchObject({ status: "unsupported", outcome: "truncated" })
       expect(JSON.parse(roundtrip.roundtrip.response)).toMatchObject({
