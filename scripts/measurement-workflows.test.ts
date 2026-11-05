@@ -19,6 +19,50 @@ import { expect, test } from "vitest"
 
 const root = join(import.meta.dirname, "..")
 
+test("hosted collector build runs at background priority", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const build = workflow.jobs["measure-macos"].steps.find(
+    (step: { name?: string }) => step.name === "Build and retain the current collector",
+  ).run as string
+  const directory = mkdtempSync(join(tmpdir(), "hosted-build-priority-"))
+  const out = join(directory, "measurement-artifacts")
+  mkdirSync(out)
+  mkdirSync(join(directory, "packages/terminfo.dev/dist"), { recursive: true })
+  writeFileSync(join(directory, "bun.lock"), "fixture lock")
+  writeFileSync(join(directory, "packages/terminfo.dev/dist/terminfo.bundle.receipt.json"), "{}")
+  writeFileSync(join(directory, "packages/terminfo.dev/dist/terminfo.bundle.mjs"), "fixture bundle")
+  writeFileSync(join(directory, "bun"), '#!/bin/bash\nps -o ni= -p "$$" >> "$RUNNER_TEMP/priorities"\n', {
+    mode: 0o755,
+  })
+  writeFileSync(
+    join(directory, "nice"),
+    '#!/bin/bash\nprintf "%s\\0%s\\0" "$1" "$2" >> "$RUNNER_TEMP/nice-requests"\nexec /usr/bin/nice "$@"\n',
+    { mode: 0o755 },
+  )
+  try {
+    const result = spawnSync("/bin/bash", ["-c", build], {
+      cwd: directory,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, RUNNER_TEMP: directory },
+    })
+    expect(result.status, result.stderr).toBe(0)
+    const priorities = readFileSync(join(directory, "priorities"), "utf8").trim().split(/\s+/).map(Number)
+    expect(priorities).toHaveLength(3)
+    expect(priorities.every((priority) => priority >= 10)).toBe(true)
+    expect(readFileSync(join(directory, "nice-requests"), "utf8").split("\0").slice(0, -1)).toEqual([
+      "-n",
+      "10",
+      "-n",
+      "10",
+      "-n",
+      "10",
+    ])
+    expect(readFileSync(join(out, "collector-build.json"), "utf8")).toBe("{}")
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test("spent iTerm consent action is absent from the workflow", () => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   expect(workflow).not.toContain("18f8ea627153436fbb6a03572beb00ca")
@@ -107,11 +151,14 @@ test.each(["waiting", "bad-receipt", "collector", "selected"] as const)(
     mkdirSync(out)
     try {
       const invocation = join(out, "invocation")
+      const priority = join(out, "priority")
       writeFileSync(
         collector,
         scenario === "selected"
           ? `import { mock } from "bun:test";
 import { writeFileSync } from "node:fs";
+import { getPriority } from "node:os";
+writeFileSync(${JSON.stringify(priority)}, String(getPriority()));
 mock.module(${JSON.stringify(join(root, "packages/terminfo.dev/src/serve.ts"))}, () => ({
   getCliSuiteProbeHash: () => "fixture-suite",
   getTrustedSuiteReceipt: () => { throw new Error("unexpected receipt read"); },
@@ -126,7 +173,7 @@ mock.module(${JSON.stringify(join(root, "packages/terminfo.dev/src/serve.ts"))},
 mock.module(${JSON.stringify(join(root, "packages/terminfo.dev/src/probe-output.ts"))}, () => ({ probeOutputStream: () => process.stdout }));
 await import(${JSON.stringify(join(root, "packages/terminfo.dev/src/index.tsx"))});
 `
-          : `printf '%s\\0' "$@" "\${TERMINFO_PROBE_IDS-unset}" "$TERMINFO_CAPTURE_RUN_ID" "$TERMINFO_RUN_ID" > ${shellQuote(invocation)}\nprintf 'probe-stdout\\n'\nprintf 'collector-first\\n' >&2\nprintf 'collector-second\\n' >&2\nexit 7\n`,
+          : `ps -o ni= -p "$$" > ${shellQuote(priority)}\nprintf '%s\\0' "$@" "\${TERMINFO_PROBE_IDS-unset}" "$TERMINFO_CAPTURE_RUN_ID" "$TERMINFO_RUN_ID" > ${shellQuote(invocation)}\nprintf 'probe-stdout\\n'\nprintf 'collector-first\\n' >&2\nprintf 'collector-second\\n' >&2\nexit 7\n`,
       )
       const generated = spawnSync("/bin/bash", ["-c", producer![0]], {
         encoding: "utf8",
@@ -152,10 +199,16 @@ await import(${JSON.stringify(join(root, "packages/terminfo.dev/src/index.tsx"))
         )
       }
       const commandEnv = { ...process.env }
+      commandEnv.HOSTED_NICE_REQUEST = join(out, "nice-request")
       delete commandEnv.TERMINFO_PROBE_IDS
       const result = spawnSync(
         "/bin/bash",
-        ["-c", 'sleep() { printf "early-wait-error\\n" >&2; }; export -f sleep; /bin/bash "$1"', "fixture", command],
+        [
+          "-c",
+          'nice() { printf "%s\\0%s\\0" "$1" "$2" > "$HOSTED_NICE_REQUEST"; command nice "$@"; }; export -f nice; sleep() { printf "early-wait-error\\n" >&2; }; export -f sleep; /bin/bash "$1"',
+          "fixture",
+          command,
+        ],
         { encoding: "utf8", env: commandEnv },
       )
       const log = readFileSync(join(out, "collector.log"), "utf8")
@@ -180,6 +233,8 @@ await import(${JSON.stringify(join(root, "packages/terminfo.dev/src/index.tsx"))
           }
           expect(log).toContain("phase=run-id-parsed")
           expect(log).toContain("phase=collector-invoked")
+          expect(Number(readFileSync(priority, "utf8"))).toBeGreaterThanOrEqual(10)
+          expect(readFileSync(commandEnv.HOSTED_NICE_REQUEST, "utf8").split("\0").slice(0, -1)).toEqual(["-n", "10"])
           expect(log).toContain("collector-first\ncollector-second\n")
           expect(log).toContain("phase=collector-exited status=7")
           expect(readFileSync(join(out, "collector-exit"), "utf8")).toBe("7\n")

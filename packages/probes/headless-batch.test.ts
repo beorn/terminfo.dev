@@ -1058,7 +1058,11 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
       const feed = vi.spyOn(value, "feed")
       const missing = definition.lib!(absent)
       expect(missing.criterionBranch).toBe("headless-observable-review")
-      expect(missing.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
+      expect(missing.tests).toMatchObject([
+        id === "extensions.notifications"
+          ? { id: "declared-untestable", status: "untestable" }
+          : { id: "review", status: "probe-todo" },
+      ])
       expect(missing.observation).toBeUndefined()
       expect(missing.assertions).toBeUndefined()
       expect(feed).not.toHaveBeenCalled()
@@ -1215,15 +1219,15 @@ test.for([
 )
 
 // @failure #32271: Kitty and Ghostty native store the last OSC 9;4 report, but no binding read it, so the progress
-// criterion stayed grid-only. A named gap keeps WezTerm undeclared: its stored Progress::None covers never-reported,
-// 9;4;0 and paused (tattoy-wezterm-term fork.5 performer.rs:1080-1085, terminal.rs:37-43). The owned ghostty-web WASM
+// criterion stayed grid-only. WezTerm exposes current state only: initial/clear/pause all read state0/null
+// (CTO f7cf72f9); the callback must qualify transitions and restore incoming progress. The owned ghostty-web WASM
 // stores the last report like the native engine (@cto c65d2a67); the published 0.10.2 has no reader.
 // @level l1
 // @consumer extensions.osc9-progress through the actual LibProbeSource
 test.for([
   ["kitty", isKittyAvailable(), OWNED_LAYOUT, async () => createKittyBackend()],
   ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, async () => createGhosttyNativeBackend()],
-  ["wezterm", weztermNativeAvailable(), false, async () => createWeztermBackend()],
+  ["wezterm", weztermNativeAvailable(), OWNED_LAYOUT, async () => createWeztermBackend()],
   ["ghostty wasm", true, OWNED_LAYOUT, () => resolveGhosttyWasm()],
 ] as const)(
   "%s OSC 9;4 progress probe results are decided through the stored-report reader only where the engine stores one",
@@ -1235,12 +1239,14 @@ test.for([
     value.init({ cols: 80, rows: 24 })
     try {
       const source = createLibProbeSource(value, undefined, undefined, undefined)
+      // Existing default-state tests missed stale controls and destruction of incoming progress.
+      if (reader) source.feed("\x1b]9;4;1;37\x07")
       const result = registryDefinitions(["extensions.osc9-progress"])[0]!.lib!(source)
       if (reader) {
         expect(result.notTested).toBeUndefined()
         expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
-        // Clearing last restores the engine: a state-0 report, never "never reported".
-        expect(source.getProgress!()).toMatchObject({ state: 0 })
+        // Probe cleanup restores the incoming report, including a value matching its first control.
+        expect(source.getProgress!()).toEqual({ state: 1, value: 37 })
       } else {
         expect(source.getProgress).toBeUndefined()
         expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
@@ -4826,14 +4832,21 @@ test("an adapter that reports no title gives the title-stack cells a headless ob
 })
 
 test.skipIf(!ghosttyNativeAvailable)(
-  `real Ghostty native title-stack fixtures retain their no-control evidence${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
+  `real Ghostty native title-stack fixtures retain their observed evidence${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
   async () => {
     const batch = await collectBatch(
       async () => createGhosttyNativeBackend(),
       "ghostty-native",
       registryDefinitions(TITLE_STACK_IDS),
     )
-    // Setup is observable in the pinned native engine; neither fixture restores its saved title.
+    // The published addon exposes no title state; current source builds observe setup.
+    // Each path must retain both fixtures and its own existing PROBE TODO cause.
+    const firstFixture = JSON.parse(batch.rawReplies[TITLE_STACK_IDS[0]]!) as { popFixture: { original: string } }
+    if (firstFixture.popFixture.original === "") {
+      expectTitleSetupReview(batch)
+      return
+    }
+    // Observable setup still leaves both saved-title restores undecided without a control.
     expect(batch.results).toMatchObject(
       TITLE_STACK_IDS.map((featureId) => ({
         featureId,

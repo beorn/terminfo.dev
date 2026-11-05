@@ -159,8 +159,8 @@ test.each(formerSourceNegativeOsc)(
   },
 )
 
-// A missing reader writes nothing and never asserts engine non-support. The operator's Nov 4 OSC 7
-// declaration makes that library result Untestable; undeclared features keep their observable review.
+// A missing reader writes nothing and never asserts engine non-support. The operator's Nov 4
+// declarations make these library results Untestable through the shared result carrier.
 test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2-images"])(
   "%s without a state reader uses its authorized library disposition for every identity",
   (id) => {
@@ -174,11 +174,9 @@ test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2
           getCell: () => ({ char: "X" }),
         } as unknown as LibProbeSource)
         expect(result.criterionBranch).toBe("headless-observable-review")
-        expect(result.tests).toMatchObject([{ status: id === "extensions.osc7-cwd" ? "untestable" : "probe-todo" }])
+        expect(result.tests).toMatchObject([{ id: "declared-untestable", status: "untestable" }])
         if (id === "extensions.osc7-cwd") {
           expect(result.tests?.[0]?.reason).toMatch(/working-directory.*(?:reader|callback|state)/)
-        } else {
-          expect(result.tests?.[0]?.id).toBe("review")
         }
         expect(result.assertions).toBeUndefined()
         expect(result.observation).toBeUndefined()
@@ -227,7 +225,9 @@ test("library TERM_FEATURES is one per-kind result, the same with or without a s
   } as unknown as LibProbeSource)
   expect(unaudited).toEqual(audited)
   expect(definition.lib!({} as unknown as LibProbeSource)).toEqual(audited)
-  expect(audited.criterionBranch).toBeUndefined()
+  // Declared Untestable for every library (operator Nov 4 16:55).
+  expect(audited.criterionBranch).toBe("headless-observable-review")
+  expect(audited.tests).toMatchObject([{ id: "declared-untestable", status: "untestable" }])
   expect(audited.notTested?.noObservable).toMatch(/no application child/)
 })
 

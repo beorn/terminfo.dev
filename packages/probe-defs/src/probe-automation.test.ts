@@ -13,6 +13,7 @@ import {
   SOURCE_NEGATIVE_REVIEW,
   REPLY_AFTER_SENTINEL_NOTE,
   NO_SAME_PATH_CONTROL,
+  isDeclaredUntestable,
 } from "./helpers.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
@@ -4734,8 +4735,10 @@ describe("OSC 777 raw reader grading", () => {
 describe("OSC 9;4 progress reader grading", () => {
   type Report = { state: number; value: number | null } | null
   /** A scripted engine storing the last 9;4 report; `drop` names a state it never stores, `clear` how it stores 0. */
-  function progressSource(options: { drop?: number; clearAs?: "zero" | "null" } = {}): LibProbeSource {
-    let report: Report = null
+  function progressSource(
+    options: { drop?: number; clearAs?: "zero" | "null"; initial?: Report } = {},
+  ): LibProbeSource {
+    let report: Report = options.initial ? { ...options.initial } : null
     return context({
       feed(text) {
         for (const [, state, value] of text.matchAll(/\x1b\]9;4;(\d)(?:;(\d+))?\x07/g)) {
@@ -4750,7 +4753,31 @@ describe("OSC 9;4 progress reader grading", () => {
       getProgress: () => report && { ...report },
     })
   }
-  const controlReason = `${NO_SAME_PATH_CONTROL}: OSC 9;4;1;37 control did not read back as state 1, value 37; this reader is not shown to observe the OSC 9;4 path`
+  const controlReason = `${NO_SAME_PATH_CONTROL}: two distinct OSC 9;4 percentage controls did not read back; this reader is not shown to observe the OSC 9;4 path`
+
+  // Accepted #32288: old default-only cases missed stale37 and cleanup that destroys a live report.
+  test.each([
+    { state: 1, value: 37 },
+    { state: 2, value: 29 },
+    { state: 3, value: null },
+  ])("qualifies fresh controls and restores incoming $state/$value", (initial) => {
+    const source = progressSource({ initial })
+    const result = probe("extensions.osc9-progress").lib!(source)
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation?.outcome).toBe("supported")
+    expect(source.getProgress!()).toEqual(initial)
+    const raw = JSON.parse(result.response!) as {
+      control: { value: number }
+      secondControl: { value: number }
+      restored: unknown
+    }
+    expect(raw).toMatchObject({
+      control: { state: 1, value: expect.any(Number) },
+      secondControl: { state: 1, value: expect.any(Number) },
+    })
+    expect(raw.control.value).not.toBe(raw.secondControl.value)
+    expect(raw.restored).toEqual(initial)
+  })
 
   test("a correct reader grades Supported", () => {
     const result = probe("extensions.osc9-progress").lib!(progressSource())
@@ -4870,9 +4897,16 @@ describe("parsed-toast store grading", () => {
     })
   })
 
-  test("an absent store keeps each criterion's no-reader route", () => {
+  test("an absent notification interface declares Untestable without changing the OSC777 no-reader route", () => {
     const notifications = probe("extensions.notifications").lib!(context({}))
-    expect(notifications.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+    expect(isDeclaredUntestable(notifications)).toBe(true)
+    expect(notifications.tests).toEqual([
+      {
+        id: "declared-untestable",
+        status: "untestable",
+        reason: "Library exposes neither getNotifications nor getToasts to observe OSC 9 notification payloads",
+      },
+    ])
     const osc777 = probe("extensions.osc777-notify").lib!(context({}))
     expect(osc777.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
     for (const result of [notifications, osc777]) expect(result.observation).toBeUndefined()

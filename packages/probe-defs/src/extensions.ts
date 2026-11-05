@@ -31,6 +31,7 @@ import {
   replyFailure,
   cancelReplyFailure,
   reviewResult,
+  declaredUntestableResult,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
   sentinelSilenceResult,
@@ -3727,8 +3728,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.font-ligatures",
       () => {
+        // Declared Untestable for every library (operator Nov 4 16:55): no library shapes glyphs.
         const note = "Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+        return declaredUntestableResult(note, {
           ligatureSample: FONT_LIGATURE_TARGET,
         })
       },
@@ -3797,374 +3799,382 @@ export const extensionsProbes: ProbeDefinition[] = [
   kittyImageTransferProbe("extensions.kitty-graphics.transmit", false),
   kittyImageTransferProbe("extensions.kitty-graphics.display", true),
 
-  probe(
-    "extensions.kitty-graphics.animation",
-    (ctx) => {
-      const note = "Declared Kitty graphics capability does not establish timed animation playback"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
-        declared: ctx.capabilities.kittyGraphics === true,
-      })
-    },
-    async (ctx) => {
-      const id = "extensions.kitty-graphics.animation"
-      const capture = ctx.capture
-      if (!capture) {
-        // No pixel adapter: an instrument limit, named before a byte, never a support conclusion.
-        const note =
-          "Kitty animation is pixels over time; this arm has no pixel capture, so the missing adapter is pixel capture and playback is not observable here"
-        return {
-          pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+  {
+    ...probe(
+      "extensions.kitty-graphics.animation",
+      (ctx) => {
+        // Declared Untestable for every library (operator Nov 4 16:55): no library plays timed frames.
+        const note = "Declared Kitty graphics capability does not establish timed animation playback"
+        return declaredUntestableResult(note, {
+          declared: ctx.capabilities.kittyGraphics === true,
+        })
+      },
+      async (ctx) => {
+        const id = "extensions.kitty-graphics.animation"
+        const capture = ctx.capture
+        if (!capture) {
+          // No pixel adapter: an instrument limit, named before a byte, never a support conclusion.
+          const note =
+            "Kitty animation is pixels over time; this arm has no pixel capture, so the missing adapter is pixel capture and playback is not observable here"
+          return {
+            pass: false,
+            note,
+            tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+          }
         }
-      }
-      if (ctx.captureKind === "text-cells") {
-        return kittyUnobservableResult(id, "a text snapshot has no pixels, so timed playback cannot be seen")
-      }
-      const refusal = sgrCaptureTooSmall(ctx, id)
-      if (refusal) return refusal
-      const reported = await captureRegionGeometry(ctx, id, { region: { ...KITTY_REGION }, ...KITTY_BOUNDS })
-      if ("pass" in reported) return reported
-      const geometry = reported.geometry
-      if (!geometry) {
-        return kittyUnobservableResult(
-          id,
-          "this pixel arm reported no cell-to-pixel geometry, so the compared rectangle cannot be aligned to cells",
-        )
-      }
-      const size = kittyBlockPixels(geometry)
-      const frames: ObservationFrame[] = []
-      const ids: number[] = []
-      const shoot = async (role: "control" | "target", label: string) => {
-        const frame = await capture({ role, label, cells: { ...KITTY_REGION }, pixelGeometry: geometry })
-        frames.push(frame)
-        return frame
-      }
-      const whole = async (role: "control" | "target", label: string) => {
-        const frame = await capture({ role, label, pixelGeometry: geometry })
-        frames.push(frame)
-        return frame
-      }
-      beginCaptureLifecycle(ctx)
-      try {
-        ctx.write(KITTY_CLEAR)
-        ctx.write(kittyPark())
-        const playbackId = kittyImageNumber()
-        ids.push(playbackId)
-        ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
-        ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
-        // The root frame carries no gap at transfer time; its gap is set by the control code.
-        ctx.write(kittyRootGap(playbackId))
-        ctx.write(kittyBlockOrigin())
-        const placement = await ctx.queryWithSentinelOutcome(
-          kittyPlace(playbackId),
-          kittyReplyFrame({ i: String(playbackId) }),
-        )
-        ctx.write(kittyPark())
-        ctx.write(kittyStartPlayback(playbackId))
-        const playbackFirst = await shoot(
-          "target",
-          `Terminal-driven playback, first frame of a ${String(KITTY_GAP_MS)} ms gap, loop v=${String(KITTY_LOOP_FOREVER)}`,
-        )
-        // The interval is measured from this capture's completion, and the elapsed value travels in
-        // the response, so a reader never has to infer the wait from the gap it asked for.
-        const intervalStart = Date.now()
-        await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
-        const playbackSecond = await shoot(
-          "target",
-          "Terminal-driven playback, second frame after 1.5x the gap with no write between the pair",
-        )
-        const playbackElapsedMs = Date.now() - intervalStart
-        let retry: KittyDigestPair | null = null
-        if (playbackFirst.regionDigest === playbackSecond.regionDigest) {
-          await kittyWait(KITTY_GAP_MS * KITTY_RETRY_FACTOR)
-          const retried = await shoot(
-            "target",
-            "Terminal-driven playback retried at twice the gap, no write since the equal pair",
+        if (ctx.captureKind === "text-cells") {
+          return kittyUnobservableResult(id, "a text snapshot has no pixels, so timed playback cannot be seen")
+        }
+        const refusal = sgrCaptureTooSmall(ctx, id)
+        if (refusal) return refusal
+        const reported = await captureRegionGeometry(ctx, id, { region: { ...KITTY_REGION }, ...KITTY_BOUNDS })
+        if ("pass" in reported) return reported
+        const geometry = reported.geometry
+        if (!geometry) {
+          return kittyUnobservableResult(
+            id,
+            "this pixel arm reported no cell-to-pixel geometry, so the compared rectangle cannot be aligned to cells",
           )
-          retry = [playbackSecond.regionDigest, retried.regionDigest]
         }
-        // Arm 2 — the update control. Selecting a frame by hand must change the rectangle; an equal
-        // pair here means the image pipeline is unproven and no negative may be taken from arm 1.
-        ctx.write(kittyStopPlayback(playbackId))
-        ctx.write(kittySelectFrame(playbackId, 1))
-        const clientFirst = await shoot("control", "Client-driven frame selection, frame 1 of a stopped animation")
-        ctx.write(kittySelectFrame(playbackId, 2))
-        const clientSecond = await shoot(
-          "control",
-          "Client-driven frame selection, frame 2 of the same stopped animation",
-        )
-        ctx.write(kittyDeleteImage(playbackId))
-        // Arm 3 — a one-frame image over the same intervals must hold still.
-        const stillId = kittyImageNumber()
-        ids.push(stillId)
-        ctx.write(KITTY_CLEAR)
-        ctx.write(kittyPark())
-        ctx.write(kittyFrameTransfer(stillId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
-        ctx.write(kittyBlockOrigin())
-        await ctx.queryWithSentinelOutcome(kittyPlace(stillId), kittyReplyFrame({ i: String(stillId) }))
-        ctx.write(kittyPark())
-        const stillFirst = await shoot("control", "One-frame image, first capture over the playback intervals")
-        await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
-        const stillSecond = await shoot("control", "One-frame image, second capture over the same interval")
-        // Arm 4 — the cursor-only control. Both captures keep the cursor OUTSIDE the compared
-        // rectangle and differ only by which outside row it parks on, so a change here would mean
-        // the cursor is inside the rectangle and the comparison is contaminated.
-        const cursorFirst = await shoot("control", "Cursor-only control, cursor parked on the parking row")
-        ctx.write("\x1b[1;1H")
-        const cursorSecond = await shoot(
-          "control",
-          "Cursor-only control, cursor moved to row 1, still outside the rectangle",
-        )
-        // Arm 5 — one ordinary glyph outside the rectangle must change the captured screen.
-        const redrawFirst = await whole("control", "Redraw control, whole window before one ordinary glyph")
-        ctx.write("\x1b[1;1HQ")
-        const redrawSecond = await whole(
-          "control",
-          "Redraw control, whole window after one ordinary glyph outside the rectangle",
-        )
-        const captureDecision = decideKittyAnimation({
-          playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
-          retry,
-          clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
-          still: [stillFirst.regionDigest, stillSecond.regionDigest],
-          cursorOnly: [cursorFirst.regionDigest, cursorSecond.regionDigest],
-          redraw: [redrawFirst.pixelsDigest, redrawSecond.pixelsDigest],
-          playbackElapsedMs,
-        })
-        const observed = JSON.stringify({
-          id,
-          region: KITTY_REGION,
-          gapMs: KITTY_GAP_MS,
-          loop: KITTY_LOOP_FOREVER,
-          playbackElapsedMs,
-          playback: captureDecision.outcome,
-          placementAck: placement.raw,
-          frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
-        })
-        return {
-          pass: captureDecision.outcome === "supported",
-          response: observed,
-          observation: {
-            outcome: captureDecision.outcome,
-            ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
-            assertionType: "screenshot",
-            screenshotRef: playbackSecond.ref,
-            frames,
-            note: captureDecision.note,
-          },
-          ...(captureDecision.decidedBy === "a missing region digest"
-            ? {
-                criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-                tests: [{ id: "review" as const, status: "probe-todo" as const, reason: captureDecision.note }],
-              }
-            : {}),
-          ...(captureDecision.outcome === "inconclusive"
-            ? {}
-            : {
-                assertions: [
-                  {
-                    assertionType: "screenshot" as const,
-                    kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
-                    expected:
-                      "Two target frames of one run, no write between them, differ on the animation rectangle while frame selection differs, a one-frame image holds still, the cursor-only capture is equal and a redraw changes the screen outside the rectangle",
-                    observed,
-                    note: `decided by ${captureDecision.decidedBy}`,
-                  },
-                ],
-              }),
+        const size = kittyBlockPixels(geometry)
+        const frames: ObservationFrame[] = []
+        const ids: number[] = []
+        const shoot = async (role: "control" | "target", label: string) => {
+          const frame = await capture({ role, label, cells: { ...KITTY_REGION }, pixelGeometry: geometry })
+          frames.push(frame)
+          return frame
         }
-      } finally {
-        for (const imageId of ids) ctx.write(kittyDeleteImage(imageId))
-        endCaptureLifecycle(ctx)
-      }
-    },
-    "screenshot",
-  ),
+        const whole = async (role: "control" | "target", label: string) => {
+          const frame = await capture({ role, label, pixelGeometry: geometry })
+          frames.push(frame)
+          return frame
+        }
+        beginCaptureLifecycle(ctx)
+        try {
+          ctx.write(KITTY_CLEAR)
+          ctx.write(kittyPark())
+          const playbackId = kittyImageNumber()
+          ids.push(playbackId)
+          ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+          ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
+          // The root frame carries no gap at transfer time; its gap is set by the control code.
+          ctx.write(kittyRootGap(playbackId))
+          ctx.write(kittyBlockOrigin())
+          const placement = await ctx.queryWithSentinelOutcome(
+            kittyPlace(playbackId),
+            kittyReplyFrame({ i: String(playbackId) }),
+          )
+          ctx.write(kittyPark())
+          ctx.write(kittyStartPlayback(playbackId))
+          const playbackFirst = await shoot(
+            "target",
+            `Terminal-driven playback, first frame of a ${String(KITTY_GAP_MS)} ms gap, loop v=${String(KITTY_LOOP_FOREVER)}`,
+          )
+          // The interval is measured from this capture's completion, and the elapsed value travels in
+          // the response, so a reader never has to infer the wait from the gap it asked for.
+          const intervalStart = Date.now()
+          await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
+          const playbackSecond = await shoot(
+            "target",
+            "Terminal-driven playback, second frame after 1.5x the gap with no write between the pair",
+          )
+          const playbackElapsedMs = Date.now() - intervalStart
+          let retry: KittyDigestPair | null = null
+          if (playbackFirst.regionDigest === playbackSecond.regionDigest) {
+            await kittyWait(KITTY_GAP_MS * KITTY_RETRY_FACTOR)
+            const retried = await shoot(
+              "target",
+              "Terminal-driven playback retried at twice the gap, no write since the equal pair",
+            )
+            retry = [playbackSecond.regionDigest, retried.regionDigest]
+          }
+          // Arm 2 — the update control. Selecting a frame by hand must change the rectangle; an equal
+          // pair here means the image pipeline is unproven and no negative may be taken from arm 1.
+          ctx.write(kittyStopPlayback(playbackId))
+          ctx.write(kittySelectFrame(playbackId, 1))
+          const clientFirst = await shoot("control", "Client-driven frame selection, frame 1 of a stopped animation")
+          ctx.write(kittySelectFrame(playbackId, 2))
+          const clientSecond = await shoot(
+            "control",
+            "Client-driven frame selection, frame 2 of the same stopped animation",
+          )
+          ctx.write(kittyDeleteImage(playbackId))
+          // Arm 3 — a one-frame image over the same intervals must hold still.
+          const stillId = kittyImageNumber()
+          ids.push(stillId)
+          ctx.write(KITTY_CLEAR)
+          ctx.write(kittyPark())
+          ctx.write(kittyFrameTransfer(stillId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+          ctx.write(kittyBlockOrigin())
+          await ctx.queryWithSentinelOutcome(kittyPlace(stillId), kittyReplyFrame({ i: String(stillId) }))
+          ctx.write(kittyPark())
+          const stillFirst = await shoot("control", "One-frame image, first capture over the playback intervals")
+          await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
+          const stillSecond = await shoot("control", "One-frame image, second capture over the same interval")
+          // Arm 4 — the cursor-only control. Both captures keep the cursor OUTSIDE the compared
+          // rectangle and differ only by which outside row it parks on, so a change here would mean
+          // the cursor is inside the rectangle and the comparison is contaminated.
+          const cursorFirst = await shoot("control", "Cursor-only control, cursor parked on the parking row")
+          ctx.write("\x1b[1;1H")
+          const cursorSecond = await shoot(
+            "control",
+            "Cursor-only control, cursor moved to row 1, still outside the rectangle",
+          )
+          // Arm 5 — one ordinary glyph outside the rectangle must change the captured screen.
+          const redrawFirst = await whole("control", "Redraw control, whole window before one ordinary glyph")
+          ctx.write("\x1b[1;1HQ")
+          const redrawSecond = await whole(
+            "control",
+            "Redraw control, whole window after one ordinary glyph outside the rectangle",
+          )
+          const captureDecision = decideKittyAnimation({
+            playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
+            retry,
+            clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
+            still: [stillFirst.regionDigest, stillSecond.regionDigest],
+            cursorOnly: [cursorFirst.regionDigest, cursorSecond.regionDigest],
+            redraw: [redrawFirst.pixelsDigest, redrawSecond.pixelsDigest],
+            playbackElapsedMs,
+          })
+          const observed = JSON.stringify({
+            id,
+            region: KITTY_REGION,
+            gapMs: KITTY_GAP_MS,
+            loop: KITTY_LOOP_FOREVER,
+            playbackElapsedMs,
+            playback: captureDecision.outcome,
+            placementAck: placement.raw,
+            frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
+          })
+          return {
+            pass: captureDecision.outcome === "supported",
+            response: observed,
+            observation: {
+              outcome: captureDecision.outcome,
+              ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+              assertionType: "screenshot",
+              screenshotRef: playbackSecond.ref,
+              frames,
+              note: captureDecision.note,
+            },
+            ...(captureDecision.decidedBy === "a missing region digest"
+              ? {
+                  criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+                  tests: [{ id: "review" as const, status: "probe-todo" as const, reason: captureDecision.note }],
+                }
+              : {}),
+            ...(captureDecision.outcome === "inconclusive"
+              ? {}
+              : {
+                  assertions: [
+                    {
+                      assertionType: "screenshot" as const,
+                      kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
+                      expected:
+                        "Two target frames of one run, no write between them, differ on the animation rectangle while frame selection differs, a one-frame image holds still, the cursor-only capture is equal and a redraw changes the screen outside the rectangle",
+                      observed,
+                      note: `decided by ${captureDecision.decidedBy}`,
+                    },
+                  ],
+                }),
+          }
+        } finally {
+          for (const imageId of ids) ctx.write(kittyDeleteImage(imageId))
+          endCaptureLifecycle(ctx)
+        }
+      },
+      "screenshot",
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "extensions.kitty-graphics.unicode-placeholders",
-    (ctx) => {
-      const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
-        declared: ctx.capabilities.kittyGraphics === true,
-      })
-    },
-    async (ctx) => {
-      const id = "extensions.kitty-graphics.unicode-placeholders"
-      const capture = ctx.capture
-      if (!capture) {
-        const note =
-          "Kitty unicode placeholders are a composited image over cells; this arm has no pixel capture, so the missing adapter is pixel capture and the placeholder rendering is not observable here"
-        return {
-          pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
-        }
-      }
-      if (ctx.captureKind === "text-cells") {
-        return kittyUnobservableResult(
-          id,
-          "this run reads the terminal's cells and no pixels, so a composited image cannot be seen; the cell readback alone never decides this row",
-        )
-      }
-      const refusal = sgrCaptureTooSmall(ctx, id)
-      if (refusal) return refusal
-      const reported = await captureRegionGeometry(ctx, id, {
-        region: { ...KITTY_REGION },
-        ...KITTY_PLACEHOLDER_BOUNDS,
-      })
-      if ("pass" in reported) return reported
-      const geometry = reported.geometry
-      if (!geometry) {
-        return kittyUnobservableResult(
-          id,
-          "this pixel arm reported no cell-to-pixel geometry, so the placeholder rectangle cannot be aligned to cells",
-        )
-      }
-      const size = kittyBlockPixels(geometry)
-      const frames: ObservationFrame[] = []
-      const ids: number[] = []
-      const shoot = async (
-        role: "control" | "target",
-        label: string,
-        region: {
-          readonly top: number
-          readonly left: number
-          readonly bottom: number
-          readonly right: number
-        } = KITTY_REGION,
-      ) => {
-        const frame = await capture({ role, label, cells: { ...region }, pixelGeometry: geometry })
-        frames.push(frame)
-        return frame
-      }
-      // A cell adapter, when the run exposes one, can only VETO: two states that read back different
-      // text compared two different screens. A pixel run exposes none, and that absence is recorded.
-      const readCells = async (label: string) => {
-        if (!ctx.cells) return undefined
-        const frame = await ctx.cells({ role: "control", label, cells: { ...KITTY_REGION }, pixelGeometry: geometry })
-        frames.push(frame)
-        return frame.cellDigest
-      }
-      beginCaptureLifecycle(ctx)
-      try {
-        ctx.write(KITTY_CLEAR)
-        const placeholderId = kittyPlaceholderNumber()
-        ids.push(placeholderId)
-        ctx.write(kittyVirtualPlacement(placeholderId, { ...size, rgb: KITTY_FRAME_RED }))
-        ctx.write(kittyPlaceholderText(placeholderId))
-        const withImageFirst = await shoot(
-          "target",
-          `Placeholder grid with image ${String(placeholderId)} composited over U+10EEEE cells`,
-        )
-        // A single equal pair is never a negative: the with-image state is re-read after a delay
-        // before any unsupported observation (the same delayed-capture shape reset.decaln uses).
-        await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
-        const withImageSecond = await shoot(
-          "target",
-          "Placeholder grid with the image, re-captured after a delayed interval and no write since",
-        )
-        // Control 1: the same guard bytes beside the grid and on the row below it, captured in the
-        // with-image state. A terminal that reflows when the image arrives moves this text.
-        const guardWithImage = await shoot(
-          "control",
-          `Layout guard "${KITTY_GUARD_TEXT}" beside the placeholder grid and on the row below it, with the image`,
-          KITTY_GUARD_REGION,
-        )
-        const cellsWithImage = await readCells("Placeholder rectangle cells with the image composited")
-        ctx.write(kittyDeleteImage(placeholderId))
-        ctx.write(KITTY_CLEAR)
-        ctx.write(kittyPlaceholderText(placeholderId))
-        const withoutImage = await shoot(
-          "control",
-          "The same placeholder characters and foreground colour with the image deleted",
-        )
-        const guardWithoutImage = await shoot(
-          "control",
-          "Layout guard beside the placeholder grid and on the row below it, with the image deleted",
-          KITTY_GUARD_REGION,
-        )
-        const cellsWithoutImage = await readCells("Placeholder rectangle cells with the image deleted")
-        // The live control: the same pixels painted by an ordinary placement in the same rectangle,
-        // measured against a captured blank rather than assumed from an acknowledgement.
-        ctx.write(KITTY_CLEAR)
-        ctx.write(kittyPark())
-        const ordinaryId = kittyPlaceholderNumber()
-        ids.push(ordinaryId)
-        const blank = await shoot("control", "Blank rectangle captured before the ordinary placement")
-        ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
-        ctx.write(kittyBlockOrigin())
-        await ctx.queryWithSentinelOutcome(kittyPlace(ordinaryId), kittyReplyFrame({ i: String(ordinaryId) }))
-        ctx.write(kittyPark())
-        const ordinary = await shoot("control", "Ordinary a=p placement of the same pixels in the same rectangle")
-        const captureDecision = decideKittyPlaceholders({
-          withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
-          withoutImage: withoutImage.regionDigest,
-          guard: [guardWithImage.regionDigest, guardWithoutImage.regionDigest],
-          blank: blank.regionDigest,
-          ordinary: ordinary.regionDigest,
-          cellReadback:
-            cellsWithImage === undefined || cellsWithoutImage === undefined
-              ? null
-              : [cellsWithImage, cellsWithoutImage],
+  {
+    ...probe(
+      "extensions.kitty-graphics.unicode-placeholders",
+      (ctx) => {
+        // Declared Untestable for every library (operator Nov 4 16:55): no library renders placeholder images.
+        const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
+        return declaredUntestableResult(note, {
+          declared: ctx.capabilities.kittyGraphics === true,
         })
-        const observed = JSON.stringify({
-          id,
-          region: KITTY_REGION,
-          guardRegion: KITTY_GUARD_REGION,
-          placeholderId,
-          ordinaryId,
-          guard: { withImage: guardWithImage.regionDigest, withoutImage: guardWithoutImage.regionDigest },
-          digests: {
+      },
+      async (ctx) => {
+        const id = "extensions.kitty-graphics.unicode-placeholders"
+        const capture = ctx.capture
+        if (!capture) {
+          const note =
+            "Kitty unicode placeholders are a composited image over cells; this arm has no pixel capture, so the missing adapter is pixel capture and the placeholder rendering is not observable here"
+          return {
+            pass: false,
+            note,
+            tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+          }
+        }
+        if (ctx.captureKind === "text-cells") {
+          return kittyUnobservableResult(
+            id,
+            "this run reads the terminal's cells and no pixels, so a composited image cannot be seen; the cell readback alone never decides this row",
+          )
+        }
+        const refusal = sgrCaptureTooSmall(ctx, id)
+        if (refusal) return refusal
+        const reported = await captureRegionGeometry(ctx, id, {
+          region: { ...KITTY_REGION },
+          ...KITTY_PLACEHOLDER_BOUNDS,
+        })
+        if ("pass" in reported) return reported
+        const geometry = reported.geometry
+        if (!geometry) {
+          return kittyUnobservableResult(
+            id,
+            "this pixel arm reported no cell-to-pixel geometry, so the placeholder rectangle cannot be aligned to cells",
+          )
+        }
+        const size = kittyBlockPixels(geometry)
+        const frames: ObservationFrame[] = []
+        const ids: number[] = []
+        const shoot = async (
+          role: "control" | "target",
+          label: string,
+          region: {
+            readonly top: number
+            readonly left: number
+            readonly bottom: number
+            readonly right: number
+          } = KITTY_REGION,
+        ) => {
+          const frame = await capture({ role, label, cells: { ...region }, pixelGeometry: geometry })
+          frames.push(frame)
+          return frame
+        }
+        // A cell adapter, when the run exposes one, can only VETO: two states that read back different
+        // text compared two different screens. A pixel run exposes none, and that absence is recorded.
+        const readCells = async (label: string) => {
+          if (!ctx.cells) return undefined
+          const frame = await ctx.cells({ role: "control", label, cells: { ...KITTY_REGION }, pixelGeometry: geometry })
+          frames.push(frame)
+          return frame.cellDigest
+        }
+        beginCaptureLifecycle(ctx)
+        try {
+          ctx.write(KITTY_CLEAR)
+          const placeholderId = kittyPlaceholderNumber()
+          ids.push(placeholderId)
+          ctx.write(kittyVirtualPlacement(placeholderId, { ...size, rgb: KITTY_FRAME_RED }))
+          ctx.write(kittyPlaceholderText(placeholderId))
+          const withImageFirst = await shoot(
+            "target",
+            `Placeholder grid with image ${String(placeholderId)} composited over U+10EEEE cells`,
+          )
+          // A single equal pair is never a negative: the with-image state is re-read after a delay
+          // before any unsupported observation (the same delayed-capture shape reset.decaln uses).
+          await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
+          const withImageSecond = await shoot(
+            "target",
+            "Placeholder grid with the image, re-captured after a delayed interval and no write since",
+          )
+          // Control 1: the same guard bytes beside the grid and on the row below it, captured in the
+          // with-image state. A terminal that reflows when the image arrives moves this text.
+          const guardWithImage = await shoot(
+            "control",
+            `Layout guard "${KITTY_GUARD_TEXT}" beside the placeholder grid and on the row below it, with the image`,
+            KITTY_GUARD_REGION,
+          )
+          const cellsWithImage = await readCells("Placeholder rectangle cells with the image composited")
+          ctx.write(kittyDeleteImage(placeholderId))
+          ctx.write(KITTY_CLEAR)
+          ctx.write(kittyPlaceholderText(placeholderId))
+          const withoutImage = await shoot(
+            "control",
+            "The same placeholder characters and foreground colour with the image deleted",
+          )
+          const guardWithoutImage = await shoot(
+            "control",
+            "Layout guard beside the placeholder grid and on the row below it, with the image deleted",
+            KITTY_GUARD_REGION,
+          )
+          const cellsWithoutImage = await readCells("Placeholder rectangle cells with the image deleted")
+          // The live control: the same pixels painted by an ordinary placement in the same rectangle,
+          // measured against a captured blank rather than assumed from an acknowledgement.
+          ctx.write(KITTY_CLEAR)
+          ctx.write(kittyPark())
+          const ordinaryId = kittyPlaceholderNumber()
+          ids.push(ordinaryId)
+          const blank = await shoot("control", "Blank rectangle captured before the ordinary placement")
+          ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+          ctx.write(kittyBlockOrigin())
+          await ctx.queryWithSentinelOutcome(kittyPlace(ordinaryId), kittyReplyFrame({ i: String(ordinaryId) }))
+          ctx.write(kittyPark())
+          const ordinary = await shoot("control", "Ordinary a=p placement of the same pixels in the same rectangle")
+          const captureDecision = decideKittyPlaceholders({
             withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
             withoutImage: withoutImage.regionDigest,
+            guard: [guardWithImage.regionDigest, guardWithoutImage.regionDigest],
             blank: blank.regionDigest,
             ordinary: ordinary.regionDigest,
-          },
-          cellReadback:
-            cellsWithImage === undefined ? "unavailable: this pixel arm exposes no cell adapter" : "compared",
-          frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
-        })
-        return {
-          pass: captureDecision.outcome === "supported",
-          response: observed,
-          observation: {
-            outcome: captureDecision.outcome,
-            ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
-            assertionType: "screenshot",
-            screenshotRef: withImageSecond.ref,
-            frames,
-            note: captureDecision.note,
-          },
-          ...(captureDecision.decidedBy === "a missing region digest"
-            ? {
-                criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-                tests: [{ id: "review" as const, status: "probe-todo" as const, reason: captureDecision.note }],
-              }
-            : {}),
-          ...(captureDecision.outcome === "inconclusive"
-            ? {}
-            : {
-                assertions: [
-                  {
-                    assertionType: "screenshot" as const,
-                    kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
-                    expected:
-                      "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move while the ordinary placement painted against the captured blank",
-                    observed,
-                    note: `decided by ${captureDecision.decidedBy}`,
-                  },
-                ],
-              }),
+            cellReadback:
+              cellsWithImage === undefined || cellsWithoutImage === undefined
+                ? null
+                : [cellsWithImage, cellsWithoutImage],
+          })
+          const observed = JSON.stringify({
+            id,
+            region: KITTY_REGION,
+            guardRegion: KITTY_GUARD_REGION,
+            placeholderId,
+            ordinaryId,
+            guard: { withImage: guardWithImage.regionDigest, withoutImage: guardWithoutImage.regionDigest },
+            digests: {
+              withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
+              withoutImage: withoutImage.regionDigest,
+              blank: blank.regionDigest,
+              ordinary: ordinary.regionDigest,
+            },
+            cellReadback:
+              cellsWithImage === undefined ? "unavailable: this pixel arm exposes no cell adapter" : "compared",
+            frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
+          })
+          return {
+            pass: captureDecision.outcome === "supported",
+            response: observed,
+            observation: {
+              outcome: captureDecision.outcome,
+              ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+              assertionType: "screenshot",
+              screenshotRef: withImageSecond.ref,
+              frames,
+              note: captureDecision.note,
+            },
+            ...(captureDecision.decidedBy === "a missing region digest"
+              ? {
+                  criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+                  tests: [{ id: "review" as const, status: "probe-todo" as const, reason: captureDecision.note }],
+                }
+              : {}),
+            ...(captureDecision.outcome === "inconclusive"
+              ? {}
+              : {
+                  assertions: [
+                    {
+                      assertionType: "screenshot" as const,
+                      kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
+                      expected:
+                        "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move while the ordinary placement painted against the captured blank",
+                      observed,
+                      note: `decided by ${captureDecision.decidedBy}`,
+                    },
+                  ],
+                }),
+          }
+        } finally {
+          for (const imageId of ids) ctx.write(kittyDeleteImage(imageId))
+          endCaptureLifecycle(ctx)
         }
-      } finally {
-        for (const imageId of ids) ctx.write(kittyDeleteImage(imageId))
-        endCaptureLifecycle(ctx)
-      }
-    },
-    "screenshot",
-  ),
+      },
+      "screenshot",
+    ),
+    termNeedsGeometry: true,
+  },
 
   // Sixel — rendering remains unmeasured without pixel readback.
   {
@@ -4201,8 +4211,10 @@ export const extensionsProbes: ProbeDefinition[] = [
             storage: { retained, before, first, secondBefore, second },
           })
         }
+        // Declared Untestable for every library without Sixel storage (operator Nov 4 16:55): no library rasterises
+        // Sixel. The exception is the storage branch above (vterm), which keeps its observable review.
         const note = "Declared Sixel capability does not establish rendered pixels"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+        return declaredUntestableResult(note, {
           declared: ctx.capabilities.sixel === true,
         })
       },
@@ -4853,8 +4865,8 @@ export const extensionsProbes: ProbeDefinition[] = [
           })
         }
         if (!ctx.getNotifications) {
-          const note = "Declared OSC 9 capability does not establish desktop notification delivery"
-          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+          const note = "Library exposes neither getNotifications nor getToasts to observe OSC 9 notification payloads"
+          return declaredUntestableResult(note, {
             declared: ctx.capabilities.extensions.has("osc9"),
           })
         }
@@ -4891,8 +4903,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.iterm2-images",
       (ctx) => {
+        // Declared Untestable for every library (operator Nov 4 16:55): no library renders image pixels.
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+        return declaredUntestableResult(note, {
           declared: ctx.capabilities.extensions.has("iterm2Images"),
         })
       },
@@ -4955,30 +4968,69 @@ export const extensionsProbes: ProbeDefinition[] = [
           const report = readProgress.call(ctx)
           return report && { state: report.state, value: report.value }
         }
-        // Grading rule 2: a set control must read back on this reader before any Unsupported (@cto 3636f1ee).
-        const writes = ["\x1b]9;4;1;37\x07", "\x1b]9;4;3\x07", "\x1b]9;4;0\x07"] as const
         const before = read()
-        ctx.feed(writes[0])
-        const control = read()
-        // A control counts only when its change was seen: a report already at state 1, value 37 proves nothing.
-        const stale = before?.state === 1 && before.value === 37
-        if (stale || control?.state !== 1 || control.value !== 37) {
-          // Clearing last restores the engine either way.
-          ctx.feed(writes[2])
+        // Both controls must change this reader, including when the incoming value is already 37.
+        const firstValue = before?.state === 1 && before.value === 37 ? 73 : 37
+        const secondValue = firstValue === 37 ? 73 : 37
+        const writes: string[] = []
+        const feed = (state: number, value: number | null = null) => {
+          const sequence = `\x1b]9;4;${state}${value === null ? "" : `;${value}`}\x07`
+          writes.push(sequence)
+          ctx.feed(sequence)
+        }
+        let control: ReturnType<typeof read> = null
+        let secondControl: ReturnType<typeof read> = null
+        let indeterminate: ReturnType<typeof read> = null
+        let cleared: ReturnType<typeof read> = null
+        let restored: ReturnType<typeof read> = null
+        let controlsPassed = false
+        let failed = false
+        let primaryError: unknown
+        try {
+          feed(1, firstValue)
+          control = read()
+          feed(1, secondValue)
+          secondControl = read()
+          controlsPassed =
+            control?.state === 1 &&
+            control.value === firstValue &&
+            secondControl?.state === 1 &&
+            secondControl.value === secondValue
+          if (controlsPassed) {
+            feed(3)
+            indeterminate = read()
+            feed(0)
+            cleared = read()
+          }
+        } catch (error) {
+          failed = true
+          primaryError = error
+        } finally {
+          try {
+            // A protocol cannot restore "never reported" history; that case retains the prior clear cleanup.
+            feed(before?.state ?? 0, before?.value ?? null)
+            restored = read()
+            if (before && (restored?.state !== before.state || restored.value !== before.value)) {
+              throw new Error(`OSC 9;4 incoming progress restoration failed: ${JSON.stringify({ before, restored })}`)
+            }
+          } catch (error) {
+            if (failed) throw new AggregateError([primaryError, error], "OSC 9;4 measurement and restoration failed")
+            throw error
+          }
+        }
+        if (failed) throw primaryError
+        const raw = { before, control, secondControl, indeterminate, cleared, restored, writes }
+        if (!controlsPassed) {
           return notTestedResult(
-            `${NO_SAME_PATH_CONTROL}: OSC 9;4;1;37 control did not read back as state 1, value 37; this reader is not shown to observe the OSC 9;4 path`,
-            { before, control, writes: [writes[0], writes[2]] },
+            `${NO_SAME_PATH_CONTROL}: two distinct OSC 9;4 percentage controls did not read back; this reader is not shown to observe the OSC 9;4 path`,
+            raw,
           )
         }
-        ctx.feed(writes[1])
-        const indeterminate = read()
-        ctx.feed(writes[2])
-        const cleared = read()
         return parserStateResult(
           indeterminate?.state === 3 && cleared?.state === 0,
           "OSC 9;4 stores the last report's state: 3 after 9;4;3, then 0, never no report, after 9;4;0",
-          { before, control, indeterminate, cleared, writes },
-          "Measures the engine's stored OSC 9;4 state, not progress display; the error state 2, the paused state 4, 100%, and the stored values for states 0 and 3 are not graded",
+          raw,
+          "Measures stored OSC 9;4 state, not progress display; states 2/4, 100%, stored values for 0/3 and never-reported history are not graded. Incoming reported state is restored; an unset report is left cleared because OSC cannot restore absent history",
         )
       },
       () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),
