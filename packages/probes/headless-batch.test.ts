@@ -58,6 +58,41 @@ async function backend() {
   return createXtermBackend()
 }
 
+// D2's callback-only tests missed this collector boundary: a truthful parser
+// rejection was invalidated by the registered query-only assertion declaration.
+// This fixture tests declaration admission, not a native engine or its verdict.
+test("D2 reply declarations admit parser-report evidence only when its reader exists", async () => {
+  const registered = ALL_PROBES.find((probe) => probe.id === "cursor.position-report")!
+  const definition: ProbeDefinition = {
+    ...registered,
+    lib: () => ({
+      pass: false,
+      response: "measured parser rejection",
+      observation: { outcome: "unsupported", assertionType: "buffer_state" },
+      assertions: [
+        {
+          assertionType: "buffer_state",
+          kind: "negative",
+          expected: "query handled",
+          observed: "measured parser rejection",
+        },
+      ],
+    }),
+  }
+  for (const present of [true, false]) {
+    const carrier = async () => {
+      const value = createXtermBackend()
+      if (present) {
+        value.capabilities.extensions.add("osc-metadata")
+        Object.assign(value, { getUnhandledSequences: () => [] })
+      }
+      return value
+    }
+    const batch = await collectBatch(carrier, "declaration-fixture", [definition])
+    expect(batch.results[0]?.status, JSON.stringify(batch.results[0])).toBe(present ? "unsupported" : "probe-invalid")
+  }
+})
+
 // Required legacy encodeKey can be host-backed; mouse/paste binding checks do not qualify key bytes.
 test("exposes key input only for a declared library encoder and preserves binding failures", async () => {
   const value = await createXtermBackend()
