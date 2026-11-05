@@ -545,16 +545,17 @@ describe("native clipboard paste encoding", () => {
       const model = nativePasteModel({ initial: ps === 1 })
       model.ctx.getMode = () => null
       const raw = `\x1b[?2004;${ps}$y`
-      if (route === "feedCapture")
+      if (route === "feedCapture") {
         model.ctx.feedCapture = (sequence) => {
           expect(sequence).toBe("\x1b[?2004$p\x1b[c")
           return raw
         }
-      else
+      } else {
         model.ctx.queryWithSentinelOutcome = (sequence) => {
           expect(sequence).toBe("\x1b[?2004$p")
           return { raw, rawBase64: btoa(raw), match: [raw, String(ps)], reason: "reply" }
         }
+      }
       const result = pasteProbe().lib!(model.ctx)
       expect(result.tests).toMatchObject([{ status: "probe-todo", reason: expect.stringContaining("DA1") }])
       expect(result.assertions).toBeUndefined()
