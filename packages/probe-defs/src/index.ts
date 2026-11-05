@@ -136,7 +136,7 @@ import { eraseProbes } from "./erase.ts"
 import { editingProbes } from "./editing.ts"
 import { modesProbes } from "./modes.ts"
 import { deviceProbes } from "./device.ts"
-import { extensionsProbes } from "./extensions.ts"
+import { extensionsProbes, withVt100RustD2Observation } from "./extensions.ts"
 import { inputProbes } from "./input.ts"
 import { resetProbes } from "./reset.ts"
 import { scrollbackProbes } from "./scrollback.ts"
@@ -161,7 +161,7 @@ export const ALL_PROBES = [
   ...charsetsProbes,
   ...unicodeProbes,
   ...clipboardProbes,
-]
+].map(withVt100RustD2Observation)
 
 /** Resolve execution inputs without changing the full catalogue or suite membership. */
 export function resolveProbeIds(

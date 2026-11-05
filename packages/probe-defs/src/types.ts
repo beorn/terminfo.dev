@@ -1086,7 +1086,9 @@ export interface ProbeDefinition {
     | AssertionType
     | null
     | {
-        readonly when: (source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel">) => boolean
+        readonly when: (
+          source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel" | "getUnhandledSequences">,
+        ) => boolean
         readonly then: readonly [AssertionType, ...AssertionType[]]
         readonly otherwise: readonly [AssertionType, ...AssertionType[]]
       }

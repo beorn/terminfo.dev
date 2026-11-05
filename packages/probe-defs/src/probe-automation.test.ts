@@ -3186,7 +3186,12 @@ describe("Kitty protocol detection", () => {
     } else source.queryWithSentinelOutcome = exchange
     const result = p.lib(source)
     expect(sent).toHaveLength(1)
-    expect(p.libAssertionType).toBe("query_reply")
+    const declaration = p.libAssertionType
+    if (!declaration || typeof declaration !== "object") throw new Error("Missing conditional notification assertion")
+    expect(declaration.then).toEqual(["query_reply", "buffer_state"])
+    expect(declaration.otherwise).toEqual(["query_reply"])
+    expect(declaration.when(source)).toBe(false)
+    expect(declaration.when({ ...source, getUnhandledSequences: () => [] })).toBe(true)
     if (replyKind === "valid" || replyKind === "fallback-valid") {
       expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed }])

@@ -409,7 +409,12 @@ test("decrqcra tests the one-cell character delta of the seeded rectangle", () =
   const probe = ALL_PROBES.find((entry) => entry.id === "editing.decrqcra")
   if (!probe?.lib) throw new Error("decrqcra termless callback missing")
   expect(probe.termAssertionType).toBe("query_reply")
-  expect(probe.libAssertionType).toBe("query_reply")
+  const declaration = probe.libAssertionType
+  if (!declaration || typeof declaration !== "object") throw new Error("Missing conditional checksum assertion")
+  expect(declaration.then).toEqual(["query_reply", "buffer_state"])
+  expect(declaration.otherwise).toEqual(["query_reply"])
+  expect(declaration.when(headless())).toBe(false)
+  expect(declaration.when(headless({ getUnhandledSequences: () => [] }))).toBe(true)
   const run = (values: readonly string[]) => {
     let index = 0
     return probe.lib!(headless({ feedCapture: () => values[index++] ?? "" }))
