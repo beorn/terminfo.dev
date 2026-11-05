@@ -29,6 +29,7 @@ import {
   readCollectorAttempt,
   recordCollectorAttempt,
   withReplyFailureEvidence,
+  finalizeProbeResult,
 } from "@terminfo/probe-defs"
 import type {
   AssertionType,
@@ -50,12 +51,12 @@ import { validateHostRecipeCauses } from "@terminfo/run-parser"
 import {
   headlessRuntimeIdentity,
   readAdapterSources,
-  replyDeliveryDecision,
   type HeadlessProbeRuntime,
   type ReplyPathDecision,
 } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
+import { notTestedResult, NO_SAME_PATH_CONTROL } from "../probe-defs/src/helpers.ts"
 
 /**
  * Preserve run identity before collection: a declared native SHA must equal the loaded binary.
@@ -180,6 +181,64 @@ const decoder = new TextDecoder()
 
 /** The DA1 query the sentinel member sends in its own capture, as the live collector appends it. */
 const DA1_QUERY = "\x1b[c"
+const CPR_SPOTS = [
+  [3, 7],
+  [5, 11],
+  [7, 13],
+  [9, 17],
+  [11, 19],
+] as const
+type QueryFact = { sequence: string; matched: boolean; empty: boolean; controlError?: string }
+type QueryPass = {
+  control: boolean
+  wait: boolean
+  brackets?: readonly [readonly [number, number], readonly [number, number]]
+}
+
+function cprCapture(backend: TerminalBackend, spot: readonly [number, number], captures: HostQueryCapture[]): boolean {
+  const [row, col] = spot
+  return feedCapture(backend, `\x1b[${row};${col}H\x1b[6n`, captures) === `\x1b[${row};${col}R`
+}
+
+function bracketOutcome(
+  backend: TerminalBackend,
+  sequence: string,
+  pattern: RegExp,
+  spots: readonly [readonly [number, number], readonly [number, number]],
+  captures: HostQueryCapture[],
+  proven: ProvenReplyPath,
+): { outcome: TerminalQueryOutcome; fact: QueryFact } {
+  const at = Date.now()
+  const reply = feedCapture(backend, sequence, captures)
+  const match = reply.match(pattern)
+  const first = cprCapture(backend, spots[0], captures)
+  const tail = cprCapture(backend, spots[1], captures)
+  const raw = captures
+    .slice(-3)
+    .map((capture) => capture.response)
+    .join("")
+  const captured = { raw, rawBase64: Buffer.from(raw).toString("base64") }
+  const fact = {
+    sequence,
+    matched: match !== null,
+    empty: reply === "",
+    ...(!first || !tail
+      ? { controlError: "CPR bracket or tail missing, wrong coordinate, or containing late bytes" }
+      : {}),
+  }
+  if (match) return { outcome: { match: [...match], reason: "reply", ...captured }, fact }
+  if (!first || !tail) return { outcome: { match: null, reason: "timeout", ...captured }, fact }
+  proven.onSentinel()
+  return {
+    outcome: {
+      match: null,
+      reason: "sentinel",
+      sentinel: { atMs: Date.now() - at, graceMs: proven.graceMs },
+      ...captured,
+    },
+    fact,
+  }
+}
 
 /** A proven reply path, as the collector hands it to one probe's context (#30554). */
 export interface ProvenReplyPath {
@@ -686,13 +745,14 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeCall
   })
 }
 
-export async function collectBatch(
+async function collectPass(
   createBackend: () => Promise<TerminalBackend>,
   backendName: string,
   definitions: readonly ProbeDefinition[],
   draft?: Pick<RunDraft, "results" | "runId" | "rawReplies">,
   onCheckpoint?: (batch: Batch) => void,
   runtime?: HeadlessProbeRuntime,
+  pass?: QueryPass,
 ): Promise<Batch> {
   // One read of the grace window per pass: every sentinel outcome records it and G1 waits it out.
   let graceMs: number | undefined
@@ -702,12 +762,6 @@ export async function collectBatch(
     runtimeIdentity?: HeadlessRuntimeIdentity
     decisions: Record<string, Pick<ReplyPathDecision, "member" | "reason" | "runtimeIdentity">>
   } = { backend: backendName, ...(runtime && { runtimeIdentity: runtime.identity }), decisions: {} }
-  const warned = new Set<string>()
-  const warn = (line: string) => {
-    if (warned.has(line)) return
-    warned.add(line)
-    process.stderr.write(`${line}\n`)
-  }
   const batch: Batch = {
     results:
       draft?.results ??
@@ -741,6 +795,8 @@ export async function collectBatch(
     let callbackTests: ProbeCallbackResult["tests"]
     let criterionBranch: string | undefined
     let hostRecord: { runId: string; captures: HostQueryCapture[]; causes: RetainedHostRecipeCause[] } | undefined
+    const queryFacts: QueryFact[] = []
+    let retainedCaptures: HostQueryCapture[] = []
     try {
       backend = await createBackend()
       backend.init(HEADLESS_TERMINAL)
@@ -756,7 +812,17 @@ export async function collectBatch(
       const declaration = hasExtension<ReplyDeliveryExtension>(backend, "reply-delivery")
         ? backend.replyDelivery
         : undefined
-      const decision = replyDeliveryDecision(backendName, declaration, initializedRuntime, warn)
+      const hostRecipes = probe.libHostRecipes ?? []
+      const nativeHostRoute = declaration?.engine.kind === "native"
+      const usesHostRoute = hostRecipes.length > 0 && (nativeHostRoute || declaration === undefined)
+      const decision = {
+        member: pass?.control === true && !usesHostRoute,
+        reason: usesHostRoute
+          ? "probe uses its declared host recipe"
+          : pass?.control
+            ? "same-run CPR path control answered"
+            : "same-run CPR path control did not answer",
+      }
       const identityChanged =
         runtime !== undefined &&
         initializedRuntime !== undefined &&
@@ -765,8 +831,6 @@ export async function collectBatch(
         ? `${backendName} initialized instance identity differs from the recorded run identity`
         : decision.reason
       if (declaration) replyPath.declaration ??= declaration
-      const nativeHostRoute = declaration?.engine.kind === "native"
-      const hostRecipes = probe.libHostRecipes ?? []
       replyPath.decisions[probe.id] = {
         member: decision.member && !identityChanged,
         reason,
@@ -782,7 +846,7 @@ export async function collectBatch(
       const sentinel = { fired: false }
       const proven = decision.member
         ? {
-            graceMs: (graceMs ??= sentinelGraceMs()),
+            graceMs: pass?.wait === false ? 0 : (graceMs ??= sentinelGraceMs()),
             onSentinel: () => {
               sentinel.fired = true
             },
@@ -791,7 +855,27 @@ export async function collectBatch(
       const unreproduced: UnreproducedRecord = { captures: [], silent: false }
       drainUnreproduced(backend) // Nothing reported before this probe's first capture belongs to it.
       const replyCaptures = hostRecord?.captures ?? []
+      retainedCaptures = replyCaptures
       const ctx = createLibProbeSource(backend, proven, initializedRuntime?.identity, replyCaptures, unreproduced)
+      const initializedBackend = backend
+      const originalQuery = ctx.queryWithSentinelOutcome
+      if (originalQuery && proven) {
+        ctx.queryWithSentinelOutcome = (sequence, pattern) => {
+          if (pass?.brackets) {
+            const read = bracketOutcome(initializedBackend, sequence, pattern, pass.brackets, replyCaptures, proven)
+            queryFacts.push(read.fact)
+            return read.outcome
+          }
+          const start = replyCaptures.length
+          const outcome = originalQuery(sequence, pattern)
+          const target = replyCaptures[start]?.response ?? ""
+          const answer = replyCaptures[start + 1]?.response ?? ""
+          const sentinel = sentinelAnswer(answer)
+          const clean = answer === "" || (sentinel?.start === 0 && answer.slice(sentinel.end) === "")
+          queryFacts.push({ sequence, matched: outcome.reason === "reply", empty: target === "" && clean })
+          return outcome
+        }
+      }
       const assertionDeclaration = probe.libAssertionType
       let declaredAssertionTypes: readonly AssertionType[] | null | undefined
       if (assertionDeclaration === null || assertionDeclaration === undefined) {
@@ -865,10 +949,20 @@ export async function collectBatch(
       }
       // G1 runs before the callback's probe result is kept: a late byte refuses that result as a collector error,
       // while the run file keeps what was observed, the on-time capture and the late bytes beside it.
-      const late = sentinel.fired && proven ? await listenForLateReply(backend, proven.graceMs) : undefined
+      const late =
+        sentinel.fired && proven && pass?.wait !== false ? await listenForLateReply(backend, proven.graceMs) : undefined
       if (late) {
         retainCallbackResponse(batch, probe.id, callback)
         batch.rawReplies[`${probe.id}.late`] = late.bytes
+        if (pass?.brackets) {
+          const pending = notTestedResult("late reply after CPR bracket; no negative established", {
+            captures: replyCaptures,
+            late,
+          })
+          callbackTests = pending.tests
+          recordResult(batch, probe, pending, declaredAssertionTypes)
+          continue
+        }
         throw new Error(
           withRefusedClaim(
             `late reply after sentinel: ${String(late.bytes.length)} bytes ${JSON.stringify(late.bytes)} at +${String(late.firstAtMs)}ms`,
@@ -899,6 +993,10 @@ export async function collectBatch(
         message,
       }
     } finally {
+      batch.rawReplies[`collector.queryCaptures.${probe.id}`] = JSON.stringify({
+        queries: queryFacts,
+        captures: retainedCaptures,
+      })
       if (hostRecord) batch.rawReplies[`collector.hostRecipes.${probe.id}`] = JSON.stringify(hostRecord)
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)
       const diagnostic = batch.ungradedDiagnostics[probe.id]
@@ -941,4 +1039,164 @@ export async function collectBatch(
     }
   }
   return batch
+}
+
+/** The existing per-probe collector is also the only execution path for fresh-instance repeats. */
+export async function collectBatch(
+  createBackend: () => Promise<TerminalBackend>,
+  backendName: string,
+  definitions: readonly ProbeDefinition[],
+  draft?: Pick<RunDraft, "results" | "runId" | "rawReplies">,
+  onCheckpoint?: (batch: Batch) => void,
+  runtime?: HeadlessProbeRuntime,
+): Promise<Batch> {
+  const captures: HostQueryCapture[] = []
+  const controlBackend = await createBackend()
+  let control: boolean
+  try {
+    controlBackend.init(HEADLESS_TERMINAL)
+    control = cprCapture(controlBackend, CPR_SPOTS[0], captures)
+  } finally {
+    controlBackend.destroy()
+  }
+  const first = await collectPass(createBackend, backendName, definitions, draft, onCheckpoint, runtime, {
+    control,
+    wait: true,
+  })
+  first.rawReplies["collector.replyControl"] = JSON.stringify({ answered: control, captures })
+  const facts = (batch: Batch, id: string): { queries: QueryFact[]; captures: HostQueryCapture[] } => {
+    const raw = batch.rawReplies[`collector.queryCaptures.${id}`]
+    if (raw === undefined) throw new Error(`Missing retained query captures for ${backendName}:${id}`)
+    return JSON.parse(raw) as { queries: QueryFact[]; captures: HostQueryCapture[] }
+  }
+  const selected = definitions.filter((probe) => {
+    if (!probe.lib) return false
+    const result = first.results.find((row) => row.featureId === probe.id)
+    if (!result) throw new Error(`Missing first-pass result for ${backendName}:${probe.id}`)
+    // A callback's own review stays intact. A bare missing-control refusal can still
+    // become a negative when fresh CPR passes establish the previously missing control.
+    const candidate = result.reason === "negative by sentinel" || result.reason === NO_SAME_PATH_CONTROL
+    return candidate && facts(first, probe.id).queries.some((query) => query.empty && !query.matched)
+  })
+  if (!selected.length) return first
+  const repeatDraft = () =>
+    draft
+      ? {
+          runId: draft.runId,
+          rawReplies: { ...draft.rawReplies },
+          results: selected.map((probe) => ({
+            featureId: probe.id,
+            status: "probe-todo" as const,
+            attempt: { scope: "none" as const },
+            tests: [],
+          })),
+        }
+      : undefined
+  const second = await collectPass(createBackend, backendName, selected, repeatDraft(), undefined, runtime, {
+    control,
+    wait: false,
+    brackets: [CPR_SPOTS[1], CPR_SPOTS[2]],
+  })
+  const third = await collectPass(createBackend, backendName, selected, repeatDraft(), undefined, runtime, {
+    control,
+    wait: true,
+    brackets: [CPR_SPOTS[3], CPR_SPOTS[4]],
+  })
+  first.rawReplies["collector.repeatPasses"] = JSON.stringify({
+    second: second.rawReplies,
+    third: third.rawReplies,
+    secondAssertions: second.assertions,
+    thirdAssertions: third.assertions,
+  })
+  const repeatedAssertionOffset = first.assertions.length
+  const repeatRef = (ref: string) => `collector.repeatResponse.${ref}`
+  first.assertions.push(
+    ...second.assertions.map((assertion) => {
+      if (assertion.rawReplyRef === undefined) return assertion
+      const response = second.rawReplies[assertion.rawReplyRef]
+      if (response === undefined) {
+        throw new Error(`Missing repeat assertion response for ${backendName}:${assertion.featureId}`)
+      }
+      const rawReplyRef = repeatRef(assertion.rawReplyRef)
+      first.rawReplies[rawReplyRef] = response
+      return { ...assertion, rawReplyRef }
+    }),
+  )
+  for (const probe of selected) {
+    const a = facts(first, probe.id),
+      b = facts(second, probe.id),
+      c = facts(third, probe.id)
+    first.rawReplies[`collector.repeats.${probe.id}`] = JSON.stringify({
+      first: a,
+      second: b,
+      third: c,
+      secondResults: second.results.filter((row) => row.featureId === probe.id),
+      thirdResults: third.results.filter((row) => row.featureId === probe.id),
+    })
+    const index = first.results.findIndex((row) => row.featureId === probe.id)
+    const prior = first.results[index]
+    const secondResult = second.results.find((row) => row.featureId === probe.id)
+    const thirdResult = third.results.find((row) => row.featureId === probe.id)
+    if (!prior || !secondResult || !thirdResult) {
+      throw new Error(`Missing fresh-pass result for ${backendName}:${probe.id}`)
+    }
+    const controls = [...b.queries, ...c.queries].find((query) => query.controlError)
+    const late = second.rawReplies[`${probe.id}.late`] ?? third.rawReplies[`${probe.id}.late`]
+    const broken = [secondResult, thirdResult].find((row) => row.status === "probe-invalid")
+    const signature = (queries: QueryFact[]) =>
+      JSON.stringify(queries.map(({ matched, empty }) => ({ matched, empty })))
+    if (controls || late) {
+      const reason = controls?.controlError ?? "late reply after CPR bracket"
+      first.results[index] = finalizeProbeResult({
+        ...prior,
+        reason,
+        tests: [{ id: "reply-control", status: "probe-todo", reason, attempt: prior.attempt }],
+      })
+    } else if (broken) {
+      const reason = broken.reason ?? "fresh-instance repeat failed"
+      first.results[index] = finalizeProbeResult({
+        ...prior,
+        reason,
+        tests: [{ id: "repeat-execution", status: "probe-invalid", reason, attempt: prior.attempt }],
+      })
+    } else if (signature(a.queries) !== signature(b.queries) || signature(a.queries) !== signature(c.queries)) {
+      const reason = "query observations disagree across fresh-instance passes"
+      process.stderr.write(`${backendName} ${probe.id}: ${reason}\n`)
+      first.results[index] = finalizeProbeResult({
+        ...prior,
+        reason,
+        tests: [{ id: "repeat-consistency", status: "probe-invalid", reason, attempt: prior.attempt }],
+      })
+    } else {
+      const next = secondResult
+      const last = thirdResult
+      if (
+        prior.status === "probe-todo" &&
+        next.status === "unsupported" &&
+        last.status === "unsupported" &&
+        next.assertionType === "query_reply"
+      ) {
+        const offset = repeatedAssertionOffset
+        first.observations.push(
+          ...second.observations
+            .filter((row) => row.featureId === probe.id)
+            .map((row) => ({ ...row, ...(row.rawReplyRef && { rawReplyRef: repeatRef(row.rawReplyRef) }) })),
+        )
+        const response = second.rawReplies[probe.id]
+        if (response === undefined) throw new Error(`Missing repeat target response for ${backendName}:${probe.id}`)
+        first.rawReplies[repeatRef(probe.id)] = response
+        first.results[index] = {
+          ...next,
+          ...(next.rawReplyRef && { rawReplyRef: repeatRef(next.rawReplyRef) }),
+          tests: next.tests.map((test) => ({
+            ...test,
+            ...(test.rawReplyRef && { rawReplyRef: repeatRef(test.rawReplyRef) }),
+            ...(test.assertionRefs && { assertionRefs: test.assertionRefs.map((ref) => ref + offset) }),
+          })),
+        }
+      }
+    }
+  }
+  onCheckpoint?.(first)
+  return first
 }

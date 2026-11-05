@@ -2331,8 +2331,13 @@ export function sentinelNegativeResult(
   expected: string,
 ): ProbeCallbackResult | null {
   const answer = sentinelAnswer(raw)
-  if (!sentinel || answer === null || answer.start > 0 || raw.slice(answer.end).trim() !== "") return null
-  const observed = `DA1 answered at +${String(sentinel.atMs)}ms; no reply through the ${String(sentinel.graceMs)} ms window`
+  const cpr = /^(?:\x1b\[[0-9]+;[0-9]+R){2}$/.test(raw)
+  if (!sentinel || (!cpr && (answer === null || answer.start > 0 || raw.slice(answer.end).trim() !== ""))) return null
+  const silence =
+    sentinel.graceMs === 0
+      ? "no reply at control; no grace wait"
+      : `no reply through the ${String(sentinel.graceMs)} ms window`
+  const observed = `${cpr ? "CPR brackets" : "DA1"} answered at +${String(sentinel.atMs)}ms; ${silence}`
   return {
     pass: false,
     response: raw,
