@@ -1,9 +1,8 @@
 /**
  * @failure The six XT stack probes grade a headless engine on DA1 responsiveness instead of the
  *   saved/restored state, or grade a backend that reports no attributes, palette or wrap state as a
- *   negative; or the left/right margin probe grades mode metadata instead of an ICH its margins
- *   confine, or grades a backend whose ICH shows no shift as a negative (it stays PROBE TODO without a
- *   same-path control, #32246).
+ *   negative; or the left/right margin probe relies on ICH instead of a calibrated wrap effect,
+ *   or grades a backend whose placement control cannot be read as a negative.
  * @level l1
  * @consumer Headless Modes observations for the six XT stack cells and the left/right margin cell on
  *   every termless engine (#30700, #30702).
@@ -35,8 +34,6 @@ interface ScreenOptions {
   stackOutput?: string
   /** The backend implements DECLRMM (?69) and DECSLRM. */
   margins?: boolean
-  /** The backend implements ICH. */
-  insertChars?: boolean
 }
 
 const DEFAULT_INDEX_1: Rgb = { r: 205, g: 0, b: 0 }
@@ -54,7 +51,6 @@ function fakeScreen(options: ScreenOptions = {}) {
   const wrapOff = options.wrapOff ?? true
   const stackOutput = options.stackOutput ?? ""
   const margins = options.margins ?? true
-  const insertChars = options.insertChars ?? true
   const blank = () => ({ char: " ", bold: false, italic: false, fg: null as Rgb | null })
   let cells = Array.from({ length: rows }, () => Array.from({ length: cols }, blank))
   const palette = new Map<number, Rgb>([[1, { ...DEFAULT_INDEX_1 }]])
@@ -74,7 +70,7 @@ function fakeScreen(options: ScreenOptions = {}) {
 
   const put = (char: string) => {
     if (pendingWrap) {
-      if (autoWrap) cursor = { x: 0, y: Math.min(cursor.y + 1, rows - 1) }
+      if (autoWrap) cursor = { x: leftRightMode ? leftMargin : 0, y: Math.min(cursor.y + 1, rows - 1) }
       else cursor = { ...cursor, x: cols - 1 }
       pendingWrap = false
     }
@@ -82,7 +78,7 @@ function fakeScreen(options: ScreenOptions = {}) {
     const row = cells[cursor.y]
     if (!row) throw new Error("cursor row off the grid")
     row[cursor.x] = { char, bold, italic, fg }
-    if (cursor.x === cols - 1) pendingWrap = true
+    if (cursor.x === (leftRightMode ? rightMargin : cols - 1)) pendingWrap = true
     else cursor = { ...cursor, x: cursor.x + 1 }
   }
   const parseRgb = (osc: string): Rgb => {
@@ -176,19 +172,6 @@ function fakeScreen(options: ScreenOptions = {}) {
           }
           return ""
         }
-        const ich = /^\x1b\[(\d*)@$/u.exec(token)
-        if (ich) {
-          const row = cells[cursor.y]
-          if (!row) throw new Error("cursor row off the grid")
-          const inside = !leftRightMode || (cursor.x >= leftMargin && cursor.x <= rightMargin)
-          if (insertChars && inside) {
-            const end = leftRightMode ? rightMargin : cols - 1
-            const count = Math.min(Number(ich[1] || 1), end - cursor.x + 1)
-            for (let col = end; col >= cursor.x + count; col -= 1) row[col] = row[col - count] ?? blank()
-            for (let col = cursor.x; col < cursor.x + count; col += 1) row[col] = blank()
-          }
-          return ""
-        }
         if (token.startsWith("\x1b")) throw new Error(`unmodelled sequence ${JSON.stringify(token)}`)
         put(token)
         return ""
@@ -232,6 +215,42 @@ const SGR = ["modes.xtpushsgr", "modes.xtpopsgr"] as const
 const MODE = ["modes.xtsave", "modes.xtrestore"] as const
 const COLOR = ["modes.xtpushcolors", "modes.xtpopcolors"] as const
 const ALL = [...SGR, ...MODE, ...COLOR] as const
+
+// CTO d0f854d5: a calibrated bold-only reader may witness the joint negative,
+// but cannot witness the positive italic clause. Existing cases require both attributes.
+test.each(SGR)("%s qualifies a limited reader only for the observed joint negative", (id) => {
+  for (const [sgrStack, attributes, negative] of [
+    [false, true, true],
+    [true, true, false],
+    [false, false, false],
+  ] as const) {
+    const screen = fakeScreen({ sgrStack, attributes })
+    const source: LibProbeSource = {
+      ...screen.context,
+      getCell(row, col) {
+        return { ...screen.context.getCell(row, col), italic: null }
+      },
+    }
+    const result = headless(id)(source)
+    expect(result.pass).toBe(false)
+    if (negative) {
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+      expect(result.assertions?.[0]?.kind).toBe("negative")
+      expect(result.note).toContain("italic")
+      expect(JSON.parse(result.response!)).toMatchObject({
+        control: { b: { bold: true }, x: { bold: false }, y: { bold: true } },
+        popFixture: { y: { char: "Y", bold: false, italic: null } },
+        pushFixture: { y: { char: "Y", bold: false, italic: null } },
+      })
+    } else {
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.notTested?.noObservable).toContain("italic")
+    }
+    expect(screen.depth()).toBe(0)
+    expect(screen.wrap()).toBe(true)
+  }
+})
 
 test.each(ALL)("%s grades a working roundtrip supported from cells, never from DA1", (id) => {
   const screen = fakeScreen()
@@ -319,41 +338,71 @@ test.each(ALL)("%s keeps a stack operation that answers as an invalid reply and 
 const MARGIN = "modes.left-right-margin"
 
 test.each([
-  ["honoured margins", "supported", {}, "AB CDEGH"],
-  ["ignored margins", "unsupported", { margins: false }, "AB CDEFG"],
-] as const)("%s grade %s from row 1's cells inside and outside DECSLRM 3;6", (_label, outcome, options, target) => {
+  ["honoured margins", "supported", {}, { wrapped: "E", unbounded: " " }],
+  ["ignored margins", "unsupported", { margins: false }, { wrapped: " ", unbounded: "E" }],
+] as const)("%s grade %s from a calibrated DECSLRM wrap", (_label, outcome, options, target) => {
   const screen = fakeScreen(options)
   const result = headless(MARGIN)(screen.context)
   expect(result.pass).toBe(outcome === "supported")
   expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
-  if (outcome === "unsupported") expect(result.observation?.note).toContain("shifted the whole row")
+  if (outcome === "unsupported") expect(result.observation?.note).toContain("unbounded")
   expect(result.assertions?.[0]?.kind).toBe(outcome === "supported" ? "positive" : "negative")
-  expect(JSON.parse(result.response ?? "{}")).toMatchObject({ seed: "ABCDEFGH", control: "AB CDEFG", target })
-  expect(screen.feeds.join("")).toContain("\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b[@")
-  expect(screen.feeds.at(-1)).toBe("\x1b[s\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
+  expect(JSON.parse(result.response ?? "{}")).toMatchObject({ target })
+  expect(screen.feeds.join("")).toContain("\x1b[?7h")
+  expect(screen.feeds.join("")).toContain("\x1b[?69h\x1b[3;6s\x1b[1;3HABCDE")
+  expect(screen.feeds.at(-1)).toContain("\x1b[?69h\x1b[s\x1b[?69l\x1b[?7h")
   expect(screen.margins()).toEqual({ leftRightMode: false, leftMargin: 0, rightMargin: 7 })
 })
 
-test("modes.left-right-margin keeps a readback whose ICH shows no shift PROBE TODO with no same-path control", () => {
-  const screen = fakeScreen({ insertChars: false })
-  const result = headless(MARGIN)(screen.context)
+test("modes.left-right-margin keeps unqualified placement reads PROBE TODO", () => {
+  const screen = fakeScreen()
+  const result = headless(MARGIN)({
+    ...screen.context,
+    getCell(row, col) {
+      return { ...screen.context.getCell(row, col), char: " " }
+    },
+  })
   expect(result.pass).toBe(false)
   expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
   expect(result.criterionBranch).toBeUndefined()
   expect(result.tests).toBeUndefined()
   expect(result.observation).toBeUndefined()
-  expect(screen.feeds.join("")).not.toContain("\x1b[?69h")
-  expect(screen.feeds.at(-1)).toBe("\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
+  expect(screen.feeds.at(-1)).toContain("\x1b[?69h\x1b[s\x1b[?69l\x1b[?7h")
 })
 
-test("modes.left-right-margin stays inconclusive on a grid narrower than its eight-column seed, before any bytes", () => {
-  const screen = fakeScreen({ cols: 7 })
-  const result = headless(MARGIN)(screen.context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    note: "Measured grid needs eight columns",
+test.each([{ cols: 7 }, { rows: 1 }])(
+  "modes.left-right-margin refuses insufficient geometry %o before bytes",
+  (options) => {
+    const screen = fakeScreen(options)
+    const result = headless(MARGIN)(screen.context)
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      note: expect.stringContaining("two rows and eight columns"),
+    })
+    expect(result.assertions).toBeUndefined()
+    expect(screen.feeds).toEqual([])
+  },
+)
+
+test("margin readback outside both calibrated patterns stays open and restores incoming wrap-off", () => {
+  const screen = fakeScreen()
+  screen.context.feed("\x1b[?7l")
+  let target = false
+  const result = headless(MARGIN)({
+    ...screen.context,
+    feed(sequence) {
+      target = sequence.includes("\x1b[3;6s")
+      screen.context.feed(sequence)
+    },
+    getCell(row, col) {
+      const cell = screen.context.getCell(row, col)
+      return target && row === 0 && col === 6 ? { ...cell, char: "E" } : cell
+    },
   })
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(result.assertions).toBeUndefined()
-  expect(screen.feeds).toEqual([])
+  expect(screen.wrap()).toBe(false)
+  expect(screen.margins()).toEqual({ leftRightMode: false, leftMargin: 0, rightMargin: 7 })
 })

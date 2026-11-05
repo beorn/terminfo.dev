@@ -92,6 +92,19 @@ OSC 0 remains a conjunction: a controlled title failure disproves it, while titl
 success alone cannot prove an unobserved icon clause. Both clauses must be observed
 for Supported; a complete exact-payload reply remains positive evidence.
 
+The XTPUSHSGR/XTPOPSGR library callbacks retain both real post-pop fixtures.
+When the reader cannot calibrate italic, a passing bold on/off control and both
+fixtures remaining plain establish only the joint push/pop negative; its reason
+retains the unobservable italic clause. Other limited readings remain PROBE TODO.
+Supported still requires the complete bold-and-italic control and restoration.
+
+The left/right-margin library arm measures wrapping rather than ICH or mode metadata.
+With DECAWM explicitly on, a placement control witnesses row2,column3 and an
+unbounded ABCDE write witnesses row1,column7. Under margins3–6 the same write
+must wrap E to2;3; only E at1;7 with2;3 blank gives the calibrated negative.
+Other outcomes stay PROBE TODO. Cleanup resets margins and DECLRMM and restores
+the incoming reported DECAWM state, or the explicitly established on state.
+
 ## From definition to recorded result
 
 Linux and Darwin pixel collectors share the complete-raster calibration in
