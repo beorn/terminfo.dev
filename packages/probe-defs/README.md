@@ -70,6 +70,11 @@ Failed hosted collection retains its original delegated draft as failure custody
 Only a source-, suite-, run- and selection-bound collector attempt with a recorded start establishes execution;
 a job-start marker alone does not. A nonzero collector exit reports `failed`, with its exit code and log path.
 This custody never supplies support conclusions or bypasses canonical validation.
+The private eight-app cohort uses serial one-context calls and the existing hosted collector's recorded active-run skip.
+Its typed cohort dispatch input gives each macOS workflow run a run-unique concurrency group; legacy cancellation is unchanged.
+A foreign dispatch racing the preflight can overlap on its independent hosted runner, but cannot cancel the cohort or be canceled by it.
+Artifacts remain bound to their own run ID. Job intervals retained after either watch outcome are execution time, not billed minutes or CPU/RSS;
+missing timing stays explicitly unavailable, and timing-query failure never suppresses artifact custody.
 The read-only admin `report --scoreboard <inputs...>` accepts explicit raw captures or pass files/directories, preserves pass identities,
 and uses the canonical selected-results reader and local `origin/live` revision to distinguish selection from proven publication.
 
