@@ -403,6 +403,15 @@ export function reportsDecidedOutcome(result: ProbeCallbackResult): boolean {
  * entry and its own reader shows it applied, then the target adds exactly one entry carrying its exact code.
  * Anything else returns undefined, so the calling probe keeps its undecided branch; a source without the
  * member never reaches here, which keeps today's exact path (missing evidence, never a negative).
+ *
+ * Case 2 fallback (@cto 09:00 plan ruling R1): an engine that handles no OSC can never qualify the handled
+ * OSC 2 control, so its own report could never decide an OSC cell. `fallback` may qualify an OSC target
+ * with a handled non-OSC sequence — SGR 1 and bold — only in the same run that shows the OSC 2 control
+ * added exactly one entry carrying `fallback.proves` while the title stayed unapplied: the engine reports
+ * the OSC path and handles none of it. The fallback then reads its own baseline, so the control's entry is
+ * never counted against the target's one-entry delta. A Case 1 engine whose title read answered never
+ * reaches it, and every report length is compared exactly, so a bounded history that rolled decides
+ * nothing rather than a wrong grade.
  */
 export function unhandledSequenceVerdict(
   ctx: LibProbeSource,
@@ -413,18 +422,44 @@ export function unhandledSequenceVerdict(
     readonly cleanup?: string
   },
   evidence: object,
+  fallback?: {
+    readonly proves: UnhandledSequence
+    /** Called only when the primary control's own entry proves the engine handles none of this path. */
+    readonly arm: () => { readonly feed: string; readonly applied: () => boolean; readonly cleanup?: string }
+  },
 ): ProbeCallbackResult | undefined {
   const read = ctx.getUnhandledSequences?.bind(ctx)
   if (!read) return undefined
   const before = read()
   ctx.feed(control.feed)
   const afterControl = read()
-  const controlHeld = afterControl.length === before.length && control.applied()
+  const controlApplied = control.applied()
   if (control.cleanup !== undefined) ctx.feed(control.cleanup)
-  if (!controlHeld) return undefined
+  let qualifying: { readonly feed: string; readonly baseline: readonly UnhandledSequence[] } | undefined
+  if (afterControl.length === before.length && controlApplied) {
+    qualifying = { feed: control.feed, baseline: afterControl }
+  } else if (
+    fallback !== undefined &&
+    target.code.kind === "osc" &&
+    !controlApplied &&
+    afterControl.length === before.length + 1
+  ) {
+    const proved = afterControl[before.length]
+    if (proved !== undefined && proved.kind === fallback.proves.kind && proved.code === fallback.proves.code) {
+      const fallbackControl = fallback.arm()
+      const baseline = read()
+      ctx.feed(fallbackControl.feed)
+      const afterFallback = read()
+      const fallbackHeld = afterFallback.length === baseline.length && fallbackControl.applied()
+      if (fallbackControl.cleanup !== undefined) ctx.feed(fallbackControl.cleanup)
+      if (fallbackHeld) qualifying = { feed: fallbackControl.feed, baseline: afterFallback }
+    }
+  }
+  if (qualifying === undefined) return undefined
   ctx.feed(target.feed)
   const afterTarget = read()
-  const added = afterTarget.slice(afterControl.length)
+  const added =
+    afterTarget.length === qualifying.baseline.length + 1 ? afterTarget.slice(qualifying.baseline.length) : []
   const only = added.length === 1 ? added[0] : undefined
   if (only === undefined || only.kind !== target.code.kind || only.code !== target.code.code) {
     return undefined
@@ -433,7 +468,7 @@ export function unhandledSequenceVerdict(
   return parserStateResult(
     false,
     `${label}: the library's own report carries this exact code, with both same-run controls qualified`,
-    { evidence, unhandled: { control: control.feed, target: target.code, added } },
+    { evidence, unhandled: { control: qualifying.feed, target: target.code, added } },
     UNHANDLED_SEQUENCE_REASON,
   )
 }
@@ -1137,11 +1172,14 @@ const SGR_ATTRIBUTE_READER_ABSENCE: Readonly<Record<string, string>> = {
 
 /**
  * The only SGR cells a library's own unhandled report may move (@cto 2026-11-05 07:25 appendix and
- * 07:38 addendum, Case 1): blink, strikethrough and the four non-single underline styles. Every other
- * SGR cell keeps its own reader's path, so no unnamed row can move.
+ * 07:38 addendum, Case 1; faint and italic added by the 09:00 Case 2 ruling R2): blink, faint, italic,
+ * strikethrough and the four underline styles. Every other SGR cell keeps its own reader's path, so no
+ * unnamed row can move.
  */
 const UNHANDLED_CSI_CELLS: ReadonlySet<string> = new Set([
   "sgr.blink",
+  "sgr.faint",
+  "sgr.italic",
   "sgr.strikethrough",
   "sgr.underline.double",
   "sgr.underline.curly",

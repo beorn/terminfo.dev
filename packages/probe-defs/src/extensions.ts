@@ -1693,6 +1693,11 @@ const UNHANDLED_REPORT_COLOUR_RESETS: readonly string[] = ["113", "114", "117", 
  * only when the same run shows a handled OSC 2 adding no report entry while the title reader reports
  * it applied, then the target adding exactly one entry carrying its number. A decided outcome is
  * returned untouched, and a source without the member keeps today's exact path.
+ *
+ * Case 2 (@cto 09:00 plan ruling R1): an engine that handles no OSC — VT100.js, VT220.js — reports the
+ * OSC 2 control as an ignored entry and never sets the title. That same run is the proof that its OSC
+ * path reports and handles nothing, so SGR 1 with a bold cell may qualify the control instead, with the
+ * fallback reading its own baseline.
  */
 function unhandledOscReportResult(
   ctx: LibProbeSource,
@@ -1711,6 +1716,19 @@ function unhandledOscReportResult(
         applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
       },
       { sequence, ...(result.response !== undefined && { body: result.response }) },
+      {
+        // The control feed above is OSC 2, so its own ignored entry is this code.
+        proves: { kind: "osc", code: "2" },
+        arm: () => {
+          // Read the cell this control paints only when the fallback is actually reached.
+          const cursor = ctx.getCursor()
+          return {
+            feed: "\x1b[0m\x1b[1mC",
+            applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
+            cleanup: "\x1b[0m",
+          }
+        },
+      },
     ) ?? result
   )
 }
