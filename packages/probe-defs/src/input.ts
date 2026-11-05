@@ -27,7 +27,10 @@ const inputDefinitions: ProbeDefinition[] = [
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
 
-  probe("input.pixel-mouse", (ctx) => mouseEncodingLib(ctx, "pixel"), pixelMouse, "input_bytes"),
+  {
+    ...probe("input.pixel-mouse", (ctx) => mouseEncodingLib(ctx, "pixel"), pixelMouse, "input_bytes"),
+    termNeedsGeometry: true,
+  },
   probe("input.urxvt-mouse", (ctx) => mouseEncodingLib(ctx, "urxvt"), urxvtMouse, "input_bytes"),
   probe("input.x10-mouse", (ctx) => mouseEncodingLib(ctx, "x10"), x10Mouse, "input_bytes"),
 

@@ -1360,6 +1360,58 @@ it("reports undeclared geometry reads as collector errors without invented evide
   }
 })
 
+// Plain-number callback fixtures bypass the collector's guarded rows/cols getters. These native
+// failures must consume measured geometry, while removing their declaration must still refuse it.
+it.each(["extensions.kitty-graphics.animation", "extensions.kitty-graphics.unicode-placeholders", "input.pixel-mouse"])(
+  "delivers owned geometry to %s and preserves its declaration guard",
+  async (id) => {
+    verifiedBatchFixture()
+    const definition = ALL_PROBES.find((item) => item.id === id)!
+    const original = definition.termNeedsGeometry
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const collect = () =>
+      runProbeBatch({
+        ids: [id],
+        ownedTerminal: geometryOwner(measured(1, 1)),
+        capture: async () => {
+          throw new Error("Undersized geometry must decline before capture")
+        },
+        input: {
+          injectKey: async () => {},
+          injectClick: async () => {
+            // A genuine delivery-control report outside the measured 1x1 cell reaches the size read.
+            process.stdin.emit("data", Buffer.from("\x1b[<0;2;2M"))
+          },
+        },
+      })
+    try {
+      const batch = await collect()
+      expect(batch.ungradedDiagnostics[id], id).toBeUndefined()
+      expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
+        checks: [
+          {
+            featureId: id,
+            pre: { status: "measured", rows: 1, cols: 1 },
+            post: { status: "measured", rows: 1, cols: 1 },
+          },
+        ],
+      })
+      expect(batch.observations, id).toEqual([])
+      expect(batch.results.find((result) => result.featureId === id)?.status, id).toBe("probe-todo")
+      definition.termNeedsGeometry = undefined
+      const undeclared = await collect()
+      expect(undeclared.ungradedDiagnostics[id], id).toMatchObject({
+        kind: "collector-error",
+        name: "UndeclaredTerminalGeometry",
+        message: expect.stringContaining(id),
+      })
+      expect(undeclared.observations, id).toEqual([])
+    } finally {
+      definition.termNeedsGeometry = original
+    }
+  },
+)
+
 it.each([
   "modes.left-right-margin",
   "modes.altscreen-47",
