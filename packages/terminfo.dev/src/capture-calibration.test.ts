@@ -297,6 +297,37 @@ test("owned disposable calibration sets cursor visibility before painting and re
   expect(run.reads.get("restore grid paint")).toBe(2)
 })
 
+test.each([true, false])(
+  "history normalization before baseline and restoration is owned-only: %s",
+  async (collectorLaunched) => {
+    const clears: Array<string | undefined> = []
+    const run = calibration({
+      collectorLaunched,
+      beforeCapture: (label, writes) => {
+        if (
+          label === "collector raster calibration: before grid paint" ||
+          label === "collector raster calibration: restore grid paint"
+        ) {
+          clears.push(writes.findLast((text) => text.includes("\x1b[2J")))
+        }
+      },
+    })
+    await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
+    const history = collectorLaunched ? "\x1b[3J" : ""
+    expect(clears).toEqual([`\x1b[?25l\x1b[0m\x1b[2J${history}\x1b[H`, `\x1b[0m\x1b[2J${history}\x1b[H`])
+    expect(run.writes.filter((text) => text.includes("\x1b[3J")).length).toBe(collectorLaunched ? 2 : 0)
+  },
+)
+
+test("owned history normalization also runs in finally after an unobserved paint", async () => {
+  const run = calibration({ collectorLaunched: true, frames: { "solid grid paint": [blank] } })
+  await expect(run.promise).rejects.toMatchObject({ name: "CaptureCalibrationRefused" })
+  expect(run.writes.filter((text) => text.includes("\x1b[3J"))).toEqual([
+    "\x1b[?25l\x1b[0m\x1b[2J\x1b[3J\x1b[H",
+    "\x1b[0m\x1b[2J\x1b[3J\x1b[H",
+  ])
+})
+
 // Owned disposable sessions set a state explicitly, independent of any prior report.
 test.each(["sentinel", "zero"] as const)("owned calibration establishes visibility despite %s", async (reply) => {
   const raw = "\x1b[?1;2c"
