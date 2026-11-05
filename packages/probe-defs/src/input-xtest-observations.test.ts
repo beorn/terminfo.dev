@@ -1475,60 +1475,68 @@ function sgrBytes(button: number, x: number, y: number, suffix: "M" | "m" = "M")
 // Native mouse APIs retain presses and positions even while reporting is off (#32370).
 // Existing prompt-click fixtures do not exercise the ordinary mouse probe's off/on transition.
 test.each([
-  ["input.xtest-click", true, false],
-  ["input.button-event-mouse", true, false],
-  ["input.xtest-click", false, false],
-  ["input.x10-mouse", false, false],
-  ["input.pixel-mouse", false, false],
-  ["input.x10-mouse", false, true],
-] as const)("%s preserves native input state (stateful=%s, dead=%s)", (id, stateful, dead) => {
-  let tracking = false
-  let pixelTracking = false
-  let held = false
-  let x = -1
-  let y = -1
-  const ctx = libMouseSource({
-    encodeMouse(event) {
-      const moved = x !== event.x || y !== event.y
-      x = event.x
-      y = event.y
-      const wasHeld = held
-      if (event.button === "left" && event.action !== "move") held = event.action === "press"
-      if (!tracking || dead) return null
-      if (pixelTracking && !event.pixel) throw new Error("Pixel mode requires pixel coordinates")
-      if (stateful && event.action === "press" && wasHeld) return null
-      if (stateful && event.action === "move" && (!wasHeld || !moved)) return null
-      const point = event.pixel ?? event
-      return sgrBytes(
-        event.action === "move" ? 32 : 0,
-        point.x + 1,
-        point.y + 1,
-        event.action === "release" ? "m" : "M",
-      )
-    },
-  })
-  ctx.feed = (text) => {
-    if (text.endsWith("l")) tracking = pixelTracking = false
-    if (/\?100[023]h|\?9h/.test(text)) tracking = true
-    if (text.includes("?1016h")) pixelTracking = true
-  }
-  ctx.getMode = () => tracking
-  const result = probe(id).lib!(ctx)
-  if (dead) {
-    expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
-    expect(result.observation).toBeUndefined()
-  } else if (id === "input.x10-mouse") {
-    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
-    expect(JSON.parse(result.response ?? "{}")).toMatchObject({
-      controlTracking: true,
-      controlReport: "\x1b[<0;5;3M",
+  ["input.xtest-click", true, false, false],
+  ["input.button-event-mouse", true, false, false],
+  ["input.xtest-click", false, false, false],
+  ["input.x10-mouse", false, false, false],
+  ["input.pixel-mouse", false, false, false],
+  ["input.x10-mouse", false, true, false],
+  ["input.pixel-mouse", false, false, true],
+] as const)(
+  "%s preserves native input state (stateful=%s, dead=%s, unavailable=%s)",
+  (id, stateful, dead, unavailable) => {
+    let tracking = false
+    let pixelTracking = false
+    let held = false
+    let x = -1
+    let y = -1
+    const ctx = libMouseSource({
+      encodeMouse(event) {
+        if (unavailable) throw new Error("mouse encoding unavailable: pixel input is not bound")
+        const moved = x !== event.x || y !== event.y
+        x = event.x
+        y = event.y
+        const wasHeld = held
+        if (event.button === "left" && event.action !== "move") held = event.action === "press"
+        if (!tracking || dead) return null
+        if (pixelTracking && !event.pixel) throw new Error("Pixel mode requires pixel coordinates")
+        if (stateful && event.action === "press" && wasHeld) return null
+        if (stateful && event.action === "move" && (!wasHeld || !moved)) return null
+        const point = event.pixel ?? event
+        return sgrBytes(
+          event.action === "move" ? 32 : 0,
+          point.x + 1,
+          point.y + 1,
+          event.action === "release" ? "m" : "M",
+        )
+      },
     })
-  } else {
-    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
-  }
-  expect(held).toBe(false)
-  expect(tracking).toBe(false)
-})
+    ctx.feed = (text) => {
+      if (text.endsWith("l")) tracking = pixelTracking = false
+      if (/\?100[023]h|\?9h/.test(text)) tracking = true
+      if (text.includes("?1016h")) pixelTracking = true
+    }
+    ctx.getMode = () => tracking
+    const result = probe(id).lib!(ctx)
+    if (unavailable) {
+      expect(result.notTested?.noObservable).toContain("mouse encoding unavailable: pixel input is not bound")
+      expect(result.observation).toBeUndefined()
+    } else if (dead) {
+      expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
+      expect(result.observation).toBeUndefined()
+    } else if (id === "input.x10-mouse") {
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+      expect(JSON.parse(result.response ?? "{}")).toMatchObject({
+        controlTracking: true,
+        controlReport: "\x1b[<0;5;3M",
+      })
+    } else {
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+    }
+    expect(held).toBe(false)
+    expect(tracking).toBe(false)
+  },
+)
 
 test("mouse probe releases a held target and retains target plus reset failures", () => {
   const primary = new Error("target failure")

@@ -905,6 +905,8 @@ function mouseEncodingLib(
     failed = true
     primary = error
     if (error instanceof Error && error.message.startsWith("mouse encoding unavailable:")) {
+      // Named binding refusals reject the gesture before native button input is accepted.
+      held = undefined
       return notTestedResult(`${ctx.backendName}: ${error.message}; #31297`, {
         mouseEncoding: true,
         unavailable: error.message,
