@@ -33,11 +33,6 @@ const context = (): LibProbeSource =>
 // Declared capability flags do not establish rendering, delivery, timing or event behaviour.
 const headlessObservableFeatures = [
   [
-    "extensions.osc7-cwd",
-    "Declared OSC 7 capability does not establish working-directory metadata delivery",
-    { declared: true },
-  ],
-  [
     "extensions.notifications",
     "Declared OSC 9 capability does not establish desktop notification delivery",
     { declared: true },
@@ -56,6 +51,11 @@ const headlessObservableFeatures = [
 
 // The operator's Nov 4 16:55 declaration (part A): the same missing observable and state, read as Untestable.
 const declaredUntestableFeatures = [
+  [
+    "extensions.osc7-cwd",
+    "No working-directory callback or state reader is exposed by this library",
+    { declared: false },
+  ],
   [
     "extensions.kitty-graphics.animation",
     "Declared Kitty graphics capability does not establish timed animation playback",
