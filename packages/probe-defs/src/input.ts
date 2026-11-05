@@ -18,12 +18,7 @@ import { kittyKeyboardFlagProbe } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
 const inputDefinitions: ProbeDefinition[] = [
-  probe(
-    "input.modify-other-keys",
-    (ctx) => vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
-    modifyOtherKeys2,
-    "input_bytes",
-  ),
+  probe("input.modify-other-keys", modifyOtherKeysLib, modifyOtherKeys2, "input_bytes"),
 
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
@@ -35,20 +30,15 @@ const inputDefinitions: ProbeDefinition[] = [
   probe("input.urxvt-mouse", (ctx) => mouseEncodingLib(ctx, "urxvt"), urxvtMouse, "input_bytes"),
   probe("input.x10-mouse", (ctx) => mouseEncodingLib(ctx, "x10"), x10Mouse, "input_bytes"),
 
-  probe(
-    "input.modify-other-keys-3",
-    (ctx) => vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
-    modifyOtherKeys3,
-    "input_bytes",
-  ),
+  probe("input.modify-other-keys-3", modifyOtherKeysLib, modifyOtherKeys3, "input_bytes"),
 
   probe("input.button-event-mouse", (ctx) => mouseEncodingLib(ctx, "button"), buttonEventMouse, "input_bytes"),
 
   probe(
     "input.xtest-key",
     (ctx) => {
-      const declared = XTEST_KEY_NO_LIBRARY_ENCODER[ctx.backendName]
-      if (declared) return declaredUntestableResult(declared, { input: false })
+      const declared = NO_LIBRARY_KEY_ENCODER[ctx.backendName]
+      if (declared) return declaredUntestableResult(`OS-level XTEST key injection: ${declared}`, { input: false })
       return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true)
     },
     xtestKey,
@@ -116,17 +106,17 @@ function xtestCoverage(kind?: string): ProbeCallbackResult {
  * libvterm, ghostty-web, ghostty-native, WezTerm and Kitty export one, and vterm keeps its own result: they are not
  * declared here.
  */
-const XTEST_KEY_NO_LIBRARY_ENCODER: Readonly<Record<string, string>> = {
+const NO_LIBRARY_KEY_ENCODER: Readonly<Record<string, string>> = {
   vt100:
-    "OS-level XTEST key injection: vt100.js 0.10.1 exports createVt100Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
+    "vt100.js 0.10.1 exports createVt100Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
   vt220:
-    "OS-level XTEST key injection: vt220.js 0.10.1 exports createVt220Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
-  xtermjs:
-    "OS-level XTEST key injection: @xterm/headless 6.0.0 exports Terminal, whose input() takes already encoded bytes, and no public key-event encoder",
+    "vt220.js 0.10.1 exports createVt220Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
+  xterm:
+    "@xterm/headless 6.0.0 exports Terminal, whose input() takes already encoded bytes, and no public key-event encoder",
   alacritty:
-    "OS-level XTEST key injection: alacritty_terminal 0.26.0 exposes terminal state and byte-oriented PTY notification, and no public key-event encoder",
+    "alacritty_terminal 0.26.0 exposes terminal state and byte-oriented PTY notification, and no public key-event encoder",
   "vt100-rust":
-    "OS-level XTEST key injection: the vt100 crate 0.16.2 exposes Parser and Screen state and mode serialization, and no public key-event encoder",
+    "the vt100 crate 0.16.2 exposes Parser and Screen state and mode serialization, and no public key-event encoder",
 }
 
 /** The headless arm of an XTEST criterion: the same coverage, with the required review selected. */
@@ -138,6 +128,13 @@ function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResul
       ? "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
       : undefined,
   )
+}
+
+/** Checked library-interface absences, not protocol support claims (#32309, CTO47010d76). */
+function modifyOtherKeysLib(ctx: LibProbeSource): ProbeCallbackResult {
+  const reason = NO_LIBRARY_KEY_ENCODER[ctx.backendName]
+  if (reason) return declaredUntestableResult(reason, { keyEncoder: false })
+  return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection")
 }
 
 /**

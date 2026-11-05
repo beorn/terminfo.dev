@@ -7,6 +7,10 @@
  */
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend adapter boundary. */
 import { createXtermBackend } from "@termless/xtermjs"
+import { createAlacrittyBackend } from "@termless/alacritty"
+import { createVt100RustBackend } from "@termless/vt100-rust"
+import { createVt100Backend } from "@termless/vt100"
+import { createVt220Backend } from "@termless/vt220"
 import { createVtermBackend } from "@termless/vterm"
 import { createWeztermBackend, loadWeztermNative } from "@termless/wezterm"
 import { resolve as resolveLibvterm } from "@termless/libvterm"
@@ -53,6 +57,43 @@ function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
 async function backend() {
   return createXtermBackend()
 }
+
+// Declared absences must use adapter names, not package names. Callback fixtures with hand-written
+// backendName values missed xtermjs's actual factory name "xterm" and left its declared cells TODO.
+test("key-encoder absence declarations cover every actual adapter factory name", () => {
+  const definitions = registryDefinitions(["input.modify-other-keys", "input.modify-other-keys-3", "input.xtest-key"])
+  for (const create of [
+    createAlacrittyBackend,
+    createVt100Backend,
+    createVt220Backend,
+    createVt100RustBackend,
+    createXtermBackend,
+  ]) {
+    const actual = create()
+    try {
+      for (const definition of definitions) {
+        const result = definition.lib!({ kind: "live", backendName: actual.name } as LibProbeSource)
+        expect(result.tests?.[0], `${actual.name} ${definition.id}`).toMatchObject({
+          id: "declared-untestable",
+          status: "untestable",
+        })
+      }
+    } finally {
+      actual.destroy()
+    }
+  }
+})
+
+test("xterm key-encoder absence survives actual adapter collection", async () => {
+  const ids = ["input.modify-other-keys", "input.modify-other-keys-3", "input.xtest-key"]
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions(ids))
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual(
+    ids.map((featureId) => ({ featureId, status: "untestable" })),
+  )
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+})
 
 // The collector must apply the registered library product declaration before its final checkpoint.
 // Callback-only tests cannot catch losing that fact between the manifest and the recorded result.
@@ -2624,6 +2665,7 @@ test("separates mode readback from headless OS-input review without fabricating 
     "modes.application-keypad",
   ]
   const modeIds = new Set(["modes.alt-scroll-1007", "modes.application-keypad"])
+  const declaredInputIds = new Set(["input.xtest-key", "input.modify-other-keys", "input.modify-other-keys-3"])
   const definitions = ids.map((id) => {
     const found = ALL_PROBES.find((probe) => probe.id === id)
     if (!found) throw new Error(`Missing registry definition ${id}`)
@@ -2647,6 +2689,13 @@ test("separates mode readback from headless OS-input review without fabricating 
         result.featureId === "modes.application-keypad" ? "buffer_state" : "query_reply",
       )
       expect(batch.notTested.some((row) => row.featureId === result.featureId)).toBe(false)
+      continue
+    }
+    if (declaredInputIds.has(result.featureId)) {
+      expect(result.status, result.featureId).toBe("untestable")
+      expect(result.tests, result.featureId).toContainEqual(
+        expect.objectContaining({ id: "declared-untestable", status: "untestable", reason: expect.any(String) }),
+      )
       continue
     }
     expect(result.status, result.featureId).toBe("probe-todo")
