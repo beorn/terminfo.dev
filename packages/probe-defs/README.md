@@ -25,7 +25,7 @@ The [writer and finalizer](src/helpers.ts) fold explicit tests and diagnostics i
 a supported observation can still have a failed or pending required test; an inconclusive observation alone
 does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named
 missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
-to PROBE INVALID. The one route to Untestable is the operator's Nov 4 16:55 declaration: a probe's own library arm returns declaredUntestableResult with its reason, and isDeclaredUntestable is the only form the finalizer and the run reader admit (@cto ruling 2026-11-04). Any other untestable test folds to PROBE TODO.
+to PROBE INVALID. The one route to Untestable is the operator's Nov 4 16:55 declaration: a probe's own library arm returns declaredUntestableResult with its reason, and isDeclaredUntestable is the only form the finalizer and the run reader admit (@cto ruling 2026-11-04). The operator's Nov 4 D1 APPLY extends that declaration to OSC720 on the libvterm 0.3.3 and WezTerm Screen 0.1.0-fork.5 library subjects, whose public interfaces expose history without their own scrolling window. Any other untestable test folds to PROBE TODO.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
 OSC 17 or 19 supplies no initial colour, the callback records a named PROBE TODO; broken or untrustworthy
 measurement remains PROBE INVALID. Silence alone does not establish Unsupported.
