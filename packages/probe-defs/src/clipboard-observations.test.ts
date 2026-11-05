@@ -409,6 +409,7 @@ function nativePasteModel(
   options: {
     initial?: boolean
     supports?: boolean
+    fixed?: boolean
     sample?: (text: string, call: number, enabled: boolean) => string
   } = {},
 ) {
@@ -423,9 +424,11 @@ function nativePasteModel(
     },
     feed(sequence: string) {
       feeds.push(sequence)
-      if (sequence === "\x1b[?2004h") enabled = true
-      else if (sequence === "\x1b[?2004l") enabled = false
-      else throw new Error(`Unexpected paste stimulus ${JSON.stringify(sequence)}`)
+      if (sequence === "\x1b[?2004h") {
+        if (!options.fixed) enabled = true
+      } else if (sequence === "\x1b[?2004l") {
+        if (!options.fixed) enabled = false
+      } else throw new Error(`Unexpected paste stimulus ${JSON.stringify(sequence)}`)
     },
     encodePaste(text: string) {
       const call = calls.length
@@ -505,19 +508,70 @@ describe("native clipboard paste encoding", () => {
     }
   })
 
-  test.each([3, 4])("permanent DECRPM Ps%s cannot qualify mutable paste controls", (ps) => {
-    const model = nativePasteModel({ initial: true, supports: false })
+  // CTO 790b6741 supersedes the earlier permanent-mode refusal: measured controls decide.
+  test.each([3, 4])("permanent DECRPM Ps%s is decided by the actual native controls", (ps) => {
+    const initial = ps === 3
+    const model = nativePasteModel({ initial, fixed: true })
     model.ctx.getMode = () => null
-    const raw = `\x1b[?2004;${ps}$y`
+    const raw = `\x1b[?2004;${ps}$y\x1b[?1;2c`
     model.ctx.feedCapture = () => raw
     const result = pasteProbe().lib!(model.ctx)
-    expect(result.tests).toMatchObject([{ status: "probe-todo", reason: expect.stringContaining("permanently") }])
-    expect(result.assertions).toBeUndefined()
-    expect(model.feeds).toEqual([])
-    expect(model.calls).toEqual([])
-    expect(model.enabled()).toBe(true)
+    expect(result.observation?.outcome).toBe(ps === 4 ? "unsupported" : "inconclusive")
+    expect(model.feeds).toEqual(
+      ps === 4 ? ["\x1b[?2004l", "\x1b[?2004h", "\x1b[?2004l"] : ["\x1b[?2004l", "\x1b[?2004h"],
+    )
+    expect(model.calls).toHaveLength(ps === 4 ? 6 : 4)
+    expect(model.enabled()).toBe(initial)
     const evidence = JSON.parse(result.response!) as { modeReads: Array<{ raw: string; ps: number }> }
-    expect(evidence.modeReads).toMatchObject([{ raw, ps }])
+    expect(evidence.modeReads).toMatchObject([
+      { raw, ps },
+      { raw, ps },
+    ])
+    if (ps === 3) {
+      expect(result.assertions).toBeUndefined()
+      const stored = recordExecutedProbe({
+        featureId: "extensions.clipboard-paste",
+        tests: result.tests,
+        assertions: [],
+        attempt: { scope: "probe", startedAt: "2026-11-05T03:20:00.000Z" },
+      })
+      expect(stored.status).toBe("probe-todo")
+      expect(stored.reason).toBe("Native paste raw controls did not both qualify; enabled framing cannot be decided")
+    } else expect(result.assertions?.[0]?.kind).toBe("negative")
+  })
+
+  test.each(["feedCapture", "sentinel"] as const)("%s mode query needs same-feed DA1 before any mutation", (route) => {
+    for (const ps of [1, 2]) {
+      const model = nativePasteModel({ initial: ps === 1 })
+      model.ctx.getMode = () => null
+      const raw = `\x1b[?2004;${ps}$y`
+      if (route === "feedCapture") {
+        model.ctx.feedCapture = (sequence) => {
+          expect(sequence).toBe("\x1b[?2004$p\x1b[c")
+          return raw
+        }
+      } else {
+        model.ctx.queryWithSentinelOutcome = (sequence) => {
+          expect(sequence).toBe("\x1b[?2004$p")
+          return { raw, rawBase64: btoa(raw), match: [raw, String(ps)], reason: "reply" }
+        }
+      }
+      const result = pasteProbe().lib!(model.ctx)
+      expect(result.tests).toMatchObject([{ status: "probe-todo", reason: expect.stringContaining("DA1") }])
+      expect(result.assertions).toBeUndefined()
+      expect(model.feeds).toEqual([])
+      expect(model.calls).toEqual([])
+      expect(model.enabled()).toBe(ps === 1)
+      expect(result.response).toContain(JSON.stringify(raw).slice(1, -1))
+    }
+  })
+
+  test("restoration query must return the original DECRPM Ps", () => {
+    const model = nativePasteModel()
+    model.ctx.getMode = () => null
+    let read = 0
+    model.ctx.feedCapture = () => `\x1b[?2004;${read++ === 0 ? 2 : 4}$y\x1b[?1;2c`
+    expect(() => pasteProbe().lib!(model.ctx)).toThrow(/restoration/i)
   })
 
   test.each(["reply", "timeout"] as const)(
@@ -592,6 +646,15 @@ describe("native clipboard paste encoding", () => {
       expect(result.response).toContain(JSON.stringify(raw).slice(1, -1))
       expect(model.enabled()).toBe(false)
       if (phase === "initial") expect(model.feeds).toEqual([])
+      if (phase === "on") {
+        const stored = recordExecutedProbe({
+          featureId: "extensions.clipboard-paste",
+          tests: result.tests,
+          assertions: [],
+          attempt: { scope: "probe", startedAt: "2026-11-05T03:20:00.000Z" },
+        })
+        expect(stored.status).toBe("probe-invalid")
+      }
     }
   })
 

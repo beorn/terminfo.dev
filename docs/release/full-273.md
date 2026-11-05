@@ -7,8 +7,17 @@ next: false
 
 <script setup>
 import { data } from '../data/full-project.data'
-import { currentCoverageSentence, publicResultFor } from '../data/release-scope.ts'
+import { currentCoverageSentence, publicResultFor, rankOpenProbes } from '../data/release-scope.ts'
 const collected = data.contexts.filter((row) => row.collected)
+const workingLibraries = data.working && !data.working.unreadable
+  ? data.working.contexts.filter((context) => context.kind === 'lib')
+  : []
+const openProbes = workingLibraries.length
+  ? rankOpenProbes(Object.fromEntries(workingLibraries.map((context) => [
+      context.contextKey,
+      Object.fromEntries(context.cells.map((cell) => [cell.featureId, cell.raw.status]))
+    ]))).filter((row) => row.libOpen > 0)
+  : []
 function resultFor(row, id) { return publicResultFor(data.evidenceContexts[row.context], id) }
 </script>
 
@@ -24,9 +33,26 @@ This page reads composed contexts with original stored sources on the required s
   <div v-if="data.working.unreadable" class="danger custom-block"><p class="custom-block-title">Hourly run not shown</p><p><strong>{{ data.working.unreadable.banner }}</strong></p><p>{{ data.working.unreadable.reason }}</p></div>
   <p>{{ data.working.rule }} Where a reviewed answer exists it is the headline; the raw cell sits beside it and says <em>differs from reviewed</em> when it disagrees on the same suite and engine version; each side names its version. Raw counts below describe only that hourly context.</p>
   <p v-if="data.working.unmeasured.length">Not measured in this run: <span v-for="row in data.working.unmeasured" :key="row.engine"><code>{{ row.engine }}</code> ({{ row.status }}: {{ row.reason }}) </span></p>
+  <section v-if="!data.working.unreadable" id="probe-worklist">
+    <h3>Per-probe work list — raw, unreviewed</h3>
+    <template v-if="workingLibraries.length">
+      <p>Each count is the number of measured library contexts in the hourly run above, out of {{ workingLibraries.length }}. Open means PROBE TODO, PROBE INVALID or PROBE CONFLICT. Environment groups are excluded. This list does not change reviewed results or completion.</p>
+      <p>Probes open on eight or more libraries appear first. Within each open count, invalid/conflict counts sort descending, then feature ID. Run, suite, version, source and measurement receipts follow below.</p>
+      <table v-if="openProbes.length">
+        <thead><tr><th>Probe</th><th>Open libraries</th><th>Invalid / conflict</th><th>TODO</th></tr></thead>
+        <tbody><tr v-for="probe in openProbes" :key="probe.featureId">
+          <td><code>{{ probe.featureId }}</code></td>
+          <td><strong v-if="probe.libOpen >= 8">{{ probe.libOpen }} (8+ first)</strong><template v-else>{{ probe.libOpen }}</template></td>
+          <td>{{ probe.libFailure }}</td><td>{{ probe.libTodo }}</td>
+        </tr></tbody>
+      </table>
+      <p v-else>No open probes in the measured library contexts of this hourly run.</p>
+    </template>
+    <p v-else>No library contexts were measured in this hourly run; the work list is unavailable.</p>
+  </section>
   <div v-for="context in data.working.contexts" :key="context.contextKey">
     <h3>{{ context.engine }} <small>raw, unreviewed &middot; {{ context.reviewedContextKey ? 'beside reviewed ' + context.reviewedContextKey : 'raw is the only answer' }}</small></h3>
-    <p>Context <code>{{ context.contextKey }}</code> &middot; version {{ context.version }} &middot; raw run <code>{{ context.runId }}</code> &middot; suite <code>{{ context.suiteId }}</code> &middot; measured {{ context.measuredAt }}.</p>
+    <p>Context <code>{{ context.contextKey }}</code> &middot; version {{ context.version }} &middot; raw run <code>{{ context.runId }}</code> &middot; suite <code>{{ context.suiteId }}</code> &middot; source <code>{{ context.sourceRevision }}</code> &middot; measured {{ context.measuredAt }}.</p>
     <p>Raw, unreviewed, of {{ context.positions }} term features: {{ context.counts.supported }} Supported &middot; {{ context.counts.unsupported }} Unsupported &middot; {{ context.counts.untestable }} Untestable &middot; {{ context.counts['probe-todo'] }} PROBE TODO &middot; {{ context.counts['probe-invalid'] }} PROBE INVALID.</p>
     <details>
       <summary>All {{ context.cells.length }} features: reviewed headline, raw beside it</summary>

@@ -37,7 +37,7 @@ No result is answered from source code (operator 2026-11-03). Source is read onl
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
-SGR attribute negatives require a rendered target and a same-run bold cell control; underline styles instead require the control to read exact `single` style. Missing nullable attributes and collapsed boolean underline readers stay open. Bright/indexed colour negatives require an ordinary-red control on the same colour reader and targets unchanged from the neutral baseline; different nondefault colours remain inconclusive. Existing positive effects witness their own reader. When an attribute field is unreported, a DECRQSS alternative qualifies only after this probe reads a status-1 SGR `m` bold control; a facility or DECSTBM reply does not qualify it. The exact issued input strings and control/target evidence are retained together. These library controls do not change app-arm criteria.
+SGR attribute negatives require a rendered target and a same-run bold cell control. Underline style negatives require both exact `single` readback and a non-single style other than the target reading back as itself: curly for the double target, double for the other targets. Missing nullable attributes and on/off readers normalized to `single` stay open. Bright/indexed colour negatives require an ordinary-red control on the same colour reader and targets unchanged from the neutral baseline; different nondefault colours remain inconclusive. Existing positive effects witness their own reader. When an attribute field is unreported, a DECRQSS alternative qualifies only after this probe reads a status-1 SGR `m` bold control; a facility or DECSTBM reply does not qualify it. The exact issued input strings and control/target evidence are retained together. These library controls do not change app-arm criteria.
 
 Headless DEC-mode queries use the existing sentinel reader when the collector has qualified reply delivery.
 Their retained captures include the target query and its separate DA1 control. DA1 responsiveness proves
@@ -404,15 +404,17 @@ is a binding error, and native encoding failures propagate without substituting 
 extension. Its native encoder returns actual input bytes without consuming pending replies or emitting
 paste bytes through response callbacks. The probe reads incoming mode 2004 through the existing
 mode getter or, when that getter is unavailable, a native DECRPM query. Query replies and DA1 controls
-are retained; unavailable readback stays PROBE TODO without changing modes. Permanent Ps3/Ps4 replies
-also stay PROBE TODO because mutable on/off controls cannot run. It samples the incoming
+are retained; missing or failed same-feed DA1 and unavailable readback stay PROBE TODO without
+changing modes. DECRPM Ps1/Ps3 read on and Ps2/Ps4 read off; actual native controls decide permanent
+modes too. Ps3 with an always-framed encoder fails the off controls and stays TODO; Ps4 with qualified
+raw output is Unsupported. Restoration must re-query the same Ps. It samples the incoming
 paste behavior, checks two fresh nonces with mode 2004 reset and two with it set, then restores and
 verifies both the incoming mode and behavior. Exact raw payloads with mode reset qualify the control. Both framed payloads
 with mode set establish Supported; both raw payloads establish Unsupported. Silent, malformed or
 inconsistent bytes stay inconclusive. Captures retain the bytes and ordered calls. An absent encoder
-stays named PROBE TODO, except the approved `@xterm/headless` 6.0.0 public `Terminal` API absence:
-its `input()` accepts encoded bytes and `onData` reports output, with no native paste encoder, so that
-library records Untestable. A provided encoder is always measured first. The app arm keeps its existing OS-input recipe.
+stays named PROBE TODO, except the three approved public API absences: `alacritty_terminal` 0.26.0
+`Term`, `vt100` 0.16.2 `Screen`/`Parser`, and `@xterm/headless` 6.0.0 `Terminal` expose mode state but
+no native paste encoder, so those libraries record Untestable. Their reasons name the specific public surface. A provided encoder is always measured first. The app arm keeps its existing OS-input recipe.
 
 Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video 5, synchronized output 2026,
 DECSCLM 4 and color-scheme reporting 2031. Snapshot Ps 1/3 is Supported without mutation; Ps 0/4 is
