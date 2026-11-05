@@ -4781,8 +4781,8 @@ test("refuses a declared native SHA mismatch before probe collection", async () 
   expect(kittyWarnings).toEqual([])
 })
 
-// 31387: Ghostty native's adapter reports an empty title after OSC 2, so the title-stack round trip observes
-// nothing. A rowless inconclusive was folded to PROBE INVALID as a callback defect; an unobservable setup takes
+// 31387: An adapter reporting an empty title after OSC 2 leaves the title-stack round trip unobservable.
+// A rowless inconclusive was folded to PROBE INVALID as a callback defect; an unobservable setup takes
 // the headless observable review instead, retaining both fixtures' empty readings (#32282).
 const TITLE_STACK_IDS = ["device.xtwinops-22", "device.xtwinops-23"] as const
 
@@ -4826,13 +4826,29 @@ test("an adapter that reports no title gives the title-stack cells a headless ob
 })
 
 test.skipIf(!ghosttyNativeAvailable)(
-  `real Ghostty native title-stack cells are a headless observable review${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
+  `real Ghostty native title-stack fixtures retain their no-control evidence${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
   async () => {
     const batch = await collectBatch(
       async () => createGhosttyNativeBackend(),
       "ghostty-native",
       registryDefinitions(TITLE_STACK_IDS),
     )
-    expectTitleSetupReview(batch)
+    // Setup is observable in the pinned native engine; neither fixture restores its saved title.
+    expect(batch.results).toMatchObject(
+      TITLE_STACK_IDS.map((featureId) => ({
+        featureId,
+        status: "probe-todo",
+        tests: [{ id: "criterion", status: "probe-todo", reason: NO_SAME_PATH_CONTROL }],
+      })),
+    )
+    expect(batch.observations).toEqual([])
+    expect(batch.assertions).toEqual([])
+    for (const id of TITLE_STACK_IDS) {
+      expect(JSON.parse(batch.rawReplies[id]!)).toEqual({
+        before: "",
+        popFixture: { original: "pushed-title", changed: "new-title", restored: "new-title" },
+        pushFixture: { original: "new-title", changed: "next-title", restored: "next-title" },
+      })
+    }
   },
 )
