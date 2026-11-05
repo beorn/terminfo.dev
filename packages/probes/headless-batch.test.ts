@@ -1187,6 +1187,34 @@ test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a probe-t
   }
 })
 
+// @failure #32307: completed public OSC callbacks were not wired to the existing probe source, leaving real777 TODO.
+// @level l1
+// @consumer extensions.osc777-notify through the real vterm and xterm adapters and existing source forwarding.
+test.each([
+  ["vterm", createVtermBackend],
+  ["xterm", createXtermBackend],
+] as const)("%s OSC777 payloads reach the qualified probe with prior history", (_name, create) => {
+  const value = create({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    source.feed("\x1b]777;preexec\x07")
+    const definition = registryDefinitions(["extensions.osc777-notify"])[0]!
+    const result = definition.lib!(source)
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+    const expected = [
+      "preexec",
+      "terminfo-777-control",
+      "notify;terminfo-777-title-A;terminfo-777-body-A",
+      "notify;terminfo-777-title-B;terminfo-777-body-B",
+    ]
+    expect((JSON.parse(result.response!) as { second: string[] }).second).toEqual(expected)
+    expect(source.getOsc777Payloads!()).toEqual(expected)
+  } finally {
+    value.destroy()
+  }
+})
+
 // @failure #32053: Kitty receives every OSC 777 payload but its binding dropped them, so OSC 777 notify stayed a
 // grid-only probe-todo; a stale or inert reader stays PROBE TODO, and an absent reader keeps the old route.
 // @level l1
