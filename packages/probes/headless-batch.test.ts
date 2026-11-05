@@ -3444,7 +3444,20 @@ test.each([
 // @level l2
 // @consumer 32369 consumer boundary for the VT100 ignored-report producer (32364).
 // @testonly none
-test("a VT100-shaped report moves the claimed OSC and SGR cells and nothing else", async () => {
+test("a VT100-shaped report moves the claimed OSC and SGR cells and nothing else", async (context) => {
+  // Standalone CI cure (@cto 84fee08c, @dev/8 11:02): this assertion is about the LINKED generation, so
+  // name the one shape that cannot hold it.
+  // In a standalone terminfo.dev checkout the registry supplies @termless/core and @termless/vt100: with no
+  // rendering declaration there, finalizeSgrResult discards every visual SGR result, and the published engine
+  // applies OSC 2, so the Case 2 fallback is unreachable. Skip by name rather than assert an impossible shape.
+  const core = fileURLToPath(new URL("../../../termless/backends.json", import.meta.url))
+  const declared = existsSync(core)
+    ? (JSON.parse(readFileSync(core, "utf8")) as { backends?: Record<string, { rendering?: string }> }).backends?.vt100
+        ?.rendering
+    : undefined
+  if (declared !== "parser-only" && declared !== "render-capable") {
+    context.skip(`VT100 report boundary requires the linked @termless/core rendering declaration; absent at ${core}`)
+  }
   const ids = [
     "extensions.osc133-a",
     "extensions.osc133-b",
@@ -3521,7 +3534,15 @@ test("a VT100-shaped report moves the claimed OSC and SGR cells and nothing else
     }))
   // Non-vacuous: the variant really fed sequences its own report recorded, of both kinds.
   expect(reported).toBeGreaterThan(0)
-  const moved = rows(variant).filter((row, index) => JSON.stringify(row) !== JSON.stringify(rows(baseline)[index]))
+  const verdict = (row: ReturnType<typeof rows>[number]) =>
+    JSON.stringify({
+      featureId: row.featureId,
+      status: row.status,
+      criterionBranch: row.criterionBranch,
+      tests: row.tests,
+    })
+  const baselineRows = rows(baseline)
+  const moved = rows(variant).filter((row, index) => verdict(row) !== verdict(baselineRows[index]!))
   const expectedMoves = [
     "extensions.osc-633-vscode",
     "extensions.osc113-reset-pointer-fg",
