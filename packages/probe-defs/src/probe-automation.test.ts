@@ -21,7 +21,7 @@ const OSC_SEMANTIC_MARK_CASES = [
   ["extensions.osc133-b", "\x1b]133;B\x07"],
   ["extensions.osc133-c", "\x1b]133;C\x07"],
   ["extensions.osc133-d", "\x1b]133;D;0\x07"],
-  ["extensions.osc133-p", "\x1b]133;P;Cwd=/tmp\x07"],
+  ["extensions.osc133-p", "\x1b]133;P\x07"],
   ["extensions.osc633-a", "\x1b]633;A\x07"],
   ["extensions.osc633-b", "\x1b]633;B\x07"],
   ["extensions.osc633-c", "\x1b]633;C\x07"],

@@ -1471,7 +1471,8 @@ function promptMarkResult(
     readMarks && (osc633End || commandEnd || markType)
       ? (() => {
           const before = readMarks()
-          const namespace = osc633End || sourceReview?.selector === 633 ? 133 : 633
+          const namespace =
+            osc633End || sourceReview?.selector === 633 || sourceReview?.probeId === "extensions.osc133-p" ? 133 : 633
           const selector = commandEnd ? "D" : markType === "prompt" ? "A" : markType === "command" ? "B" : "C"
           ctx.feed(`\x1b]${namespace};${selector}${commandEnd ? ";0" : ""}\x07`)
           const first = readMarks()
@@ -5045,16 +5046,17 @@ export const extensionsProbes: ProbeDefinition[] = [
     libAssertionType: "buffer_state",
   },
 
-  // OSC 133;P — properties (Cwd, CmdLine, etc.)
+  // OSC 133;P — secondary prompt start
   {
     ...probe(
       "extensions.osc133-p",
       (ctx) =>
-        promptMarkResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration", {
+        promptMarkResult(ctx, "\x1b]133;P\x07", "OSC 133;P secondary prompt start", {
           probeId: "extensions.osc133-p",
           selector: 133,
+          markType: "prompt",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
+      (ctx) => promptMarkAppResult(ctx, "\x1b]133;P\x07", "OSC 133;P secondary prompt start"),
     ),
     libAssertionType: "buffer_state",
   },

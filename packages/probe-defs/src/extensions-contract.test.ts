@@ -389,7 +389,7 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
 
 // These readers cannot observe the whole claim; a richer shared fixture cannot promote them.
 // Reflow's real positive/negative/fault controls remain owned by packages/probes/headless-batch.test.ts.
-test.each(["semantic-prompts", "osc-633-vscode", "osc133-p", "osc633-e"])(
+test.each(["semantic-prompts", "osc-633-vscode", "osc633-e"])(
   "extensions.%s retains its explicit TODO with available shared readers",
   (name) => {
     const probe = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!
@@ -400,19 +400,37 @@ test.each(["semantic-prompts", "osc-633-vscode", "osc133-p", "osc633-e"])(
       const result = probe.lib!(source)
       expect(result.tests, name).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
       expect(result.observation?.outcome, name).not.toBe("supported")
-      if (consumes && (name === "osc133-p" || name === "osc633-e")) {
+      if (consumes && name === "osc633-e") {
         expect(result.tests?.[0]?.reason).toBe(
           "OSC 133 P / 633 E consumed; no property or command-line observer exists in this run",
         )
-        expect(result.notTested?.noObservable).toBe(
-          name === "osc133-p"
-            ? "OSC 133;P properties mark registration"
-            : "OSC 633;E commandline-with-nonce mark registration",
-        )
+        expect(result.notTested?.noObservable).toBe("OSC 633;E commandline-with-nonce mark registration")
       }
     }
   },
 )
+
+// 133;P starts a secondary prompt. A 133-only reader must qualify its own negative.
+test.each(["supported", "unsupported", "missing-reader"] as const)("OSC 133;P observes %s", (outcome) => {
+  const working = semanticSurfaceSource(["osc633-a-noop", ...(outcome === "unsupported" ? ["osc133-p-noop"] : [])])
+  const source = outcome === "missing-reader" ? { ...working, getSemanticMarks: undefined } : working
+  const result = extensionsProbes.find((entry) => entry.id === "extensions.osc133-p")!.lib!(source)
+  if (outcome === "missing-reader") {
+    expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  } else {
+    expect(result.observation?.outcome).toBe(outcome)
+    const retained = JSON.parse(result.response!) as {
+      endControl: { before: unknown[]; first: unknown[]; second: unknown[] }
+    }
+    expect(retained.endControl.first).toHaveLength(retained.endControl.before.length + 1)
+    expect(retained.endControl.second).toHaveLength(retained.endControl.first.length + 1)
+    expect(retained.endControl.second.slice(-2)).toEqual([
+      expect.objectContaining({ type: "prompt" }),
+      expect.objectContaining({ type: "prompt" }),
+    ])
+  }
+})
 
 /**
  * The 79 extension features (78 defined in extensions.ts + 1 catalog-only in features.json).
@@ -501,7 +519,7 @@ const EXTENSIONS_CONTRACT: GroupContract = [
     expected: "inconclusive",
     claim: "OSC 133;D command finished (FTCS_COMMAND_FINISHED): ESC ] 133 ; D ; exitcode BEL",
   },
-  { id: "extensions.osc133-p", expected: "inconclusive", claim: "OSC 133;P properties: ESC ] 133 ; P ; key=value BEL" },
+  { id: "extensions.osc133-p", expected: "inconclusive", claim: "OSC 133;P secondary prompt start: ESC ] 133 ; P BEL" },
   { id: "extensions.osc633-a", expected: "inconclusive", claim: "OSC 633;A prompt start: ESC ] 633 ; A BEL" },
   { id: "extensions.osc633-b", expected: "inconclusive", claim: "OSC 633;B prompt end: ESC ] 633 ; B BEL" },
   { id: "extensions.osc633-c", expected: "inconclusive", claim: "OSC 633;C pre-execution: ESC ] 633 ; C BEL" },

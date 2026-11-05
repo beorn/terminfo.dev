@@ -1387,14 +1387,14 @@
     "sequence": "ESC ] 133 ; D ; exitcode BEL"
   },
   "extensions.osc133-p": {
-    "name": "OSC 133;P properties",
+    "name": "OSC 133;P secondary prompt start",
     "slug": "osc133-p-properties",
     "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
     "tags": ["osc"],
     "baseline": "rich",
-    "body": "<p><strong>OSC 133;P</strong> sets properties or metadata about the current command. The format is <code>OSC 133 ; P ; key=value BEL</code>, where common keys include <code>Cwd</code> (current working directory), <code>CmdLine</code> (the literal command text), and shell-specific state.</p>\n<p>Property reporting lets the terminal track shell state without parsing command output or relying on environment variables. For example, the terminal can know the working directory of each command in scrollback, enabling features like \"open this command's directory\" or \"reproduce this command in a new tab with the same cwd\". <a href=\"/extensions/osc-633-vscode\" class=\"hover-link\">VS Code's OSC 633</a> extends this concept with additional VS Code-specific properties.</p>",
-    "probe": "Send <code>OSC 133 ; P ; Cwd=/tmp BEL</code>, then check that the cursor does not advance and the terminal stays responsive. No reply is defined, and shell-integration markers live outside the cell grid, so an ignored sequence and an honoured one leave the same screen. The attempted cursor query cannot distinguish an ignored sequence from an honored one; it is PROBE INVALID for this claim.",
-    "sequence": "ESC ] 133 ; P ; key=value BEL"
+    "body": "<p><strong>OSC 133;P</strong> marks the start of a secondary prompt, including a continuation-line or right-side prompt. The sequence is <code>OSC 133 ; P BEL</code>. It registers a prompt start; it does not report properties or the working directory.</p>",
+    "probe": "Headless: use a declared semantic-marks reader. Send two <code>OSC 133 ; A BEL</code> controls through that reader, then send bare <code>OSC 133 ; P BEL</code> at row 0, column 0 and row 1, column 2. Supported requires one new prompt mark at each target position and unchanged earlier history. If both A controls register but P adds no marks, the result is Unsupported. A missing or unqualified reader leaves PROBE TODO. Retain the control and target readings. Prompt kind is not graded. Applications report PROBE TODO because marker-cell and cursor consumption cannot observe prompt registration.",
+    "sequence": "ESC ] 133 ; P BEL"
   },
   "extensions.osc633-a": {
     "name": "OSC 633;A prompt start",

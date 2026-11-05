@@ -1698,9 +1698,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     if (code === "133" || code === "633") {
       const [selector, status] = payload.split(";")
       if (selector === undefined || mutations.has(`osc${code}-${selector.toLowerCase()}-noop`)) return
-      if (selector === "A" || selector === "B" || selector === "C") {
+      if (selector === "A" || selector === "B" || selector === "C" || (code === "133" && selector === "P")) {
         semanticMarks.push({
-          type: selector === "A" ? "prompt" : selector === "B" ? "command" : "output",
+          type: selector === "A" || selector === "P" ? "prompt" : selector === "B" ? "command" : "output",
           startRow: cursorY,
           startCol: cursorX,
         })
