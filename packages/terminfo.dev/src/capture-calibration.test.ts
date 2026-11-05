@@ -287,14 +287,65 @@ function calibration(
   return { promise, writes, reads, budgets }
 }
 
-test("owned disposable calibration sets cursor visibility before painting and restores that explicit state", async () => {
-  // CTO 99185ca9: prior hidden state is irrelevant only in our disposable session.
-  // The old launch-default fallback preserved a reported hidden state instead.
-  const run = calibration({ collectorLaunched: true, visibility: "reset" })
-  await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
-  expect(run.writes[0]).toBe("\x1b[?25h")
+test.each([
+  [true, 4, 4],
+  [true, 3, 5],
+  [false, 4, 4],
+  [false, 3, 5],
+] as const)(
+  "calibration owned=%s at %sx%s restores only its visible fixture",
+  async (collectorLaunched, rows, cols) => {
+    const columnEdges = Array.from({ length: cols + 1 }, (_unused, index) => 2 + index * 2)
+    const rowEdges = Array.from({ length: rows + 1 }, (_unused, index) => 2 + index * 2)
+    const baseline = frame(16)
+    const solid = gridFrame(16, columnEdges, rowEdges, "solid")
+    const columns = gridFrame(16, columnEdges, rowEdges, "columns")
+    const rowPattern = gridFrame(16, columnEdges, rowEdges, "rows")
+    const clears: Array<string | undefined> = []
+    const run = calibration({
+      collectorLaunched,
+      visibility: "reset",
+      rows,
+      cols,
+      frames: {
+        "before grid paint": [baseline, baseline],
+        "solid grid paint": [solid, solid],
+        "column edge paint": [columns, columns],
+        "row edge paint": [rowPattern, rowPattern],
+        "restore grid paint": [baseline, baseline],
+      },
+      beforeCapture: (label, writes) => {
+        if (
+          label === "collector raster calibration: before grid paint" ||
+          label === "collector raster calibration: restore grid paint"
+        ) {
+          clears.push(writes.at(-1))
+        }
+      },
+    })
+    await expect(run.promise).resolves.toMatchObject({
+      pixelGeometry: { cellWidth: 2, cellHeight: 2, textWidth: cols * 2, textHeight: rows * 2 },
+    })
+    const erase = collectorLaunched
+      ? Array.from({ length: rows }, (_unused, index) => `\x1b[${index + 1};1H\x1b[2K`).join("") + "\x1b[H"
+      : "\x1b[2J\x1b[H"
+    expect(clears).toEqual([`\x1b[?25l\x1b[0m${erase}`, `\x1b[0m${erase}`])
+    if (collectorLaunched) {
+      expect(run.writes[0]).toBe("\x1b[?25h")
+      expect(run.writes.filter((text) => /\x1b\[[23]J/.test(text))).toEqual([])
+    }
+    expect(run.writes.at(-1)).toBe(collectorLaunched ? "\x1b[?25h" : "\x1b[?25l")
+    expect(run.reads.get("restore grid paint")).toBe(2)
+  },
+)
+
+test("owned visible-row cleanup runs in finally after an unobserved paint", async () => {
+  const run = calibration({ collectorLaunched: true, frames: { "solid grid paint": [blank] } })
+  await expect(run.promise).rejects.toMatchObject({ name: "CaptureCalibrationRefused" })
+  const erase = "\x1b[1;1H\x1b[2K\x1b[2;1H\x1b[2K\x1b[3;1H\x1b[2K\x1b[4;1H\x1b[2K\x1b[H"
+  expect(run.writes[1]).toBe(`\x1b[?25l\x1b[0m${erase}`)
+  expect(run.writes.at(-2)).toBe(`\x1b[0m${erase}`)
   expect(run.writes.at(-1)).toBe("\x1b[?25h")
-  expect(run.reads.get("restore grid paint")).toBe(2)
 })
 
 // Owned disposable sessions set a state explicitly, independent of any prior report.
