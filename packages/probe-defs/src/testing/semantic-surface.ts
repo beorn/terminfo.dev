@@ -1643,7 +1643,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       const sized = /^[ws]=(\d+);(.*)$/u.exec(payload)
       if (sized && !mutations.has("osc66-noop")) {
         const text = sized[2]!
-        for (let index = 0; index < text.length; ) {
+        for (let index = 0; index < text.length;) {
           const grapheme = nextGrapheme(text, index, mutations)
           writeCluster(grapheme.cluster, clusterWidth(grapheme.cluster, mutations) * Number(sized[1]))
           index += grapheme.length
