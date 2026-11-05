@@ -360,12 +360,11 @@ already decided result retains its previous path. The additional IDs are:
   `extensions.osc701-locale`, `extensions.osc702-version`, `extensions.osc776-cell-size`,
   `extensions.osc7770-font-size`, `extensions.osc7777-font-window-size`, `extensions.osc99-kitty-notify`.
 
-The same exact profile declares twelve cells Untestable through `declaredUntestableResult`:
-DECRQSS, XTGETTCAP, XTGETXRES and the Kitty graphics query/transmit cells lack a public DCS/APC
-observer or reply writer; OSC 22, 176, 3008, 440, 555, 666 and 710 are host effects handed to the
-generic embedder callback, with no effect of the library's own to observe. Those seven are never
-negative-report cells. OSC52 read exposes a public host request and remains TODO; no reply is
-invented. Other libraries and every terminal arm retain their existing paths.
+The twelve proposed Untestable declarations remain outside this negative-only cut pending
+operator wording approval: DECRQSS, XTGETTCAP, XTGETXRES, the Kitty graphics query/transmit
+cells, and OSC 22, 176, 3008, 440, 555, 666 and 710 retain their prior paths. OSC52 read also
+retains its public host-request path; no reply is invented. Other libraries and every terminal
+arm retain their existing paths.
 
 ## Evidence, capture and assertion
 

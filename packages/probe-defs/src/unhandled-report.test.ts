@@ -297,8 +297,8 @@ describe("the report arm decides italic and faint as well, and nothing outside i
   })
 })
 
-// Accepted D2 requirement (CTO d2ada1d8): exactly these 34 controlled negatives and
-// 12 declarations at the audited native profile, with no other identity moving.
+// Accepted D2 cut (Chief 6ef3debd): exactly these 34 controlled negatives;
+// the 12 proposed declarations remain on their prior paths pending policy wording.
 // The independent input/code oracle was measured from the real addon before the
 // consumer existed (4966 census); existing tests exercise none of these 46 IDs.
 describe("vt100-rust D2 at the ALL_PROBES consumer", () => {
@@ -400,11 +400,11 @@ describe("vt100-rust D2 at the ALL_PROBES consumer", () => {
     }
   })
 
-  test.each(declared)("%s uses the existing declaration only on the audited version", (id) => {
+  test.each(declared)("%s stays outside the negative-only cut while declaration policy is held", (id) => {
     const lib = definition(id).lib!
     const result = lib({ ...inertLibProbeSource(), backendName: "vt100-rust", runtimeIdentity: identity })
-    expect(isDeclaredUntestable(result)).toBe(true)
-    expect(JSON.stringify(result)).toContain("0.16.2")
+    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(result.observation?.outcome).not.toBe("unsupported")
     for (const overrides of [
       { runtimeIdentity: undefined },
       { backendName: "libvterm" },

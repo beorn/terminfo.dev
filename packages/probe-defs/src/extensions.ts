@@ -6029,39 +6029,11 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
 }
 
-const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
-  "device.decrqss":
-    "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public DCS callback, response writer or device.decrqss result state",
-  "device.xtgettcap":
-    "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public DCS callback, response writer or device.xtgettcap result state",
-  "device.xtgetxres":
-    "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public DCS callback, response writer or device.xtgetxres result state",
-  "extensions.kitty-graphics":
-    "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
-  "extensions.kitty-graphics.transmit":
-    "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
-  "extensions.osc22-pointer":
-    "OSC 22 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc176-app-id":
-    "OSC 176 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc3008-context":
-    "OSC 3008 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc440-audio":
-    "OSC 440 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc555-flash":
-    "OSC 555 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc666-termprop":
-    "OSC 666 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc710-font-normal":
-    "OSC 710 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-}
-
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withVt100RustD2Observation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
   const target = VT100_RUST_D2_NEGATIVES[definition.id]
-  const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
-  if (!lib || (!target && !reason)) return definition
+  if (!lib || !target) return definition
   return {
     ...definition,
     ...(target && definition.libAssertionType === "query_reply"
@@ -6076,11 +6048,8 @@ export function withVt100RustD2Observation(definition: ProbeDefinition): ProbeDe
       : {}),
     lib(ctx) {
       if (!hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")) return lib(ctx)
-      if (reason) {
-        return declaredUntestableResult(reason, { backend: ctx.backendName, runtimeIdentity: ctx.runtimeIdentity })
-      }
       const result = lib(ctx)
-      if (!target || reportsDecidedOutcome(result)) return result
+      if (reportsDecidedOutcome(result)) return result
       const cursor = ctx.getCursor()
       return (
         unhandledSequenceVerdict(
