@@ -3383,7 +3383,9 @@ test("mouse collector distinguishes unavailable state/pixels, measured no-report
     vi.spyOn(backend, "getMode").mockReturnValue(state)
     vi.spyOn(backend, "encodeMouse")
       .mockReturnValueOnce(null)
-      .mockImplementation(() => {
+      .mockImplementation((event) => {
+        if (event.action !== "press") return null
+        if (!event.pixel) return new TextEncoder().encode("\x1b[<0;5;3M")
         if (error) throw new Error(error)
         return null
       })
@@ -3416,6 +3418,7 @@ test("pixel library arm never uses a cell-coordinate encoder report to decide a 
   const encode = vi
     .spyOn(backend, "encodeMouse")
     .mockReturnValueOnce(null)
+    .mockReturnValueOnce(null)
     .mockReturnValue(new TextEncoder().encode("\x1b[<0;5;3M"))
   const batch = await collectBatch(async () => backend, "vterm", registryDefinitions(["input.pixel-mouse"]))
   expect(batch.results).toMatchObject([{ status: "unsupported", assertionType: "input_bytes" }])
@@ -3424,7 +3427,7 @@ test("pixel library arm never uses a cell-coordinate encoder report to decide a 
     negativeControl: null,
     report: "\x1b[<0;5;3M",
   })
-  expect(encode).toHaveBeenCalledTimes(2)
+  expect(encode).toHaveBeenCalledTimes(6)
   expect(batch.assertions).toMatchObject([{ kind: "negative", assertionType: "input_bytes" }])
 })
 
