@@ -685,8 +685,9 @@ it.each([
           ),
         ).toBe(false)
         for (const [command, args] of launcher.mock.calls) {
-          if (command === "gh" && args?.[1] === "view")
+          if (command === "gh" && args?.[1] === "view") {
             expect(args.at(-1)).toBe("headSha,headBranch,event,workflowName")
+          }
         }
       }
       if (cohort) {
@@ -773,10 +774,11 @@ it.each([
           expect(hosted?.unavailable).toEqual(expect.any(String))
           expect(hosted).not.toHaveProperty("jobs")
           expect(pass.errors).toContain(hosted!.unavailable)
-          if (inputChange === "cohort-failed-timing")
+          if (inputChange === "cohort-failed-timing") {
             expect(readFileSync(join(pass.directory, "hosted", "macos", "jobs.stderr.log"), "utf8")).toBe(
               "timing API unavailable",
             )
+          }
         } else if (inputChange === "cohort-invalid-jobs") {
           expect(hosted?.jobs).toHaveLength(6)
           expect(

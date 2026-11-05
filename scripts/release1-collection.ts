@@ -1008,8 +1008,9 @@ function collectHostedArtifacts(
               receipt,
             ),
           ) as Array<{ workflow_runs?: Array<{ id?: unknown; status?: unknown; head_sha?: unknown }> }>
-          if (!Array.isArray(pages) || pages.length === 0)
+          if (!Array.isArray(pages) || pages.length === 0) {
             throw new Error(`${receipt.stdout}: missing active-run pages`)
+          }
           for (const page of pages) {
             if (!Array.isArray(page?.workflow_runs)) throw new Error(`${receipt.stdout}: missing workflow_runs`)
             for (const active of page.workflow_runs) {
@@ -1028,8 +1029,9 @@ function collectHostedArtifacts(
         }
         if (facts.activeRuns.length > 0) {
           const reason = `Skipped active ${workflow} on ${dispatchRef}: runs ${facts.activeRuns.map((run) => `${run.id} (${run.status})`).join(", ")}; checked ${facts.checkedAt}`
-          for (const context of contexts)
+          for (const context of contexts) {
             results.set(coverageKey(context.kind, context.id, context.os), { directory: output, reason })
+          }
           continue
         }
       }
@@ -1186,12 +1188,14 @@ function collectHostedArtifacts(
             run.headBranch !== branch ||
             run.event !== "workflow_dispatch" ||
             run.workflowName !== workflow
-          )
+          ) {
             throw new Error(
               `${receipt.stdout}: ${workflow} run ${runId} attempt ${facts.attempt} source/ref/event/workflow/attempt identity differs`,
             )
-          if (!Array.isArray(run.jobs) || run.jobs.length === 0)
+          }
+          if (!Array.isArray(run.jobs) || run.jobs.length === 0) {
             throw new Error(`${receipt.stdout}: no jobs for run ${runId} attempt ${facts.attempt}`)
+          }
           facts.jobs = run.jobs.map((job) => {
             if (
               !Number.isSafeInteger(job?.databaseId) ||
@@ -1207,8 +1211,9 @@ function collectHostedArtifacts(
                 typeof value !== "string" ||
                 !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value) ||
                 value.startsWith("0001-")
-              )
+              ) {
                 return NaN
+              }
               const milliseconds = Date.parse(value)
               const normalized = value.replace(
                 /(?:\.(\d{1,3}))?Z$/,
