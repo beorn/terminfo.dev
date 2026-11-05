@@ -25,6 +25,7 @@ import {
   probe,
   readHyperlinkMetadata,
   readSentinelReply,
+  sentinelAnswer,
   replyFrame,
   replyFailure,
   cancelReplyFailure,
@@ -3026,6 +3027,12 @@ function escapeRegex(value: string): string {
 function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   const encodePaste = ctx.encodePaste
   if (!encodePaste) {
+    if (ctx.backendName === "xterm") {
+      return declaredUntestableResult(
+        "@xterm/headless 6.0.0 exports Terminal, whose input() takes already encoded bytes and onData reports output; it has no paste or bracketed-paste encoder",
+        { backend: ctx.backendName, encodePaste: false },
+      )
+    }
     const reason = `${ctx.backendName}: paste-encoding extension unavailable; native paste interface not observed`
     return reviewResult("paste-encoding", reason, reason, { backend: ctx.backendName, encodePaste: false })
   }
@@ -3048,15 +3055,59 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
     calls.push({ method: "feed", input })
     ctx.feed(input)
   }
+  const modeReads: Record<string, unknown>[] = []
+  let unavailableModeReason = "Incoming bracketedPaste mode readback is unavailable"
   const readMode = () => {
     calls.push({ method: "getMode", input: "bracketedPaste" })
-    return ctx.getMode("bracketedPaste")
+    const getter = ctx.getMode("bracketedPaste")
+    if (getter !== null) {
+      modeReads.push({ getter })
+      return getter
+    }
+    const query = "\x1b[?2004$p"
+    const pattern = decrpmReplyPattern(2004)
+    let raw: string
+    let frame: string | null
+    let outcome: TerminalQueryOutcome | undefined
+    let sequence: string
+    if (ctx.queryWithSentinelOutcome) {
+      sequence = query
+      calls.push({ method: "queryWithSentinelOutcome", input: sequence })
+      outcome = ctx.queryWithSentinelOutcome(sequence, pattern)
+      raw = outcome.raw
+      frame = replyFrame(outcome)
+    } else if (typeof ctx.feedCapture === "function") {
+      sequence = `${query}\x1b[c`
+      calls.push({ method: "feedCapture", input: sequence })
+      raw = ctx.feedCapture(sequence)
+      frame = pattern.exec(raw)?.[0] ?? null
+    } else {
+      modeReads.push({ getter, query, reason: "no native mode query observable" })
+      return null
+    }
+    const control = sentinelAnswer(raw)
+    const ps = decrpmPs(frame === null ? undefined : pattern.exec(frame)?.[1])
+    modeReads.push({
+      getter,
+      query: sequence,
+      raw,
+      frame,
+      ps,
+      control: control ? raw.slice(control.start, control.end) : null,
+      ...(outcome && { outcome }),
+    })
+    if (ps === 3 || ps === 4) {
+      unavailableModeReason = `Incoming bracketedPaste mode is permanently ${ps === 3 ? "set" : "reset"} (DECRPM Ps ${ps}); mutable on/off controls cannot run`
+      return null
+    }
+    if (ps !== 1 && ps !== 2) return null
+    return ps === 1
   }
   const expected = "two exact raw native paste controls with 2004 off, then two exact bracketed nonces with 2004 on"
   const incomingMode = readMode()
-  const state = { mode: "clipboard-paste", backend: ctx.backendName, incomingMode, samples, calls }
+  const state = { mode: "clipboard-paste", backend: ctx.backendName, incomingMode, modeReads, samples, calls }
   if (incomingMode === null) {
-    const reason = "Incoming bracketedPaste mode readback is unavailable"
+    const reason = unavailableModeReason
     return {
       ...parserStateResult(null, expected, state, reason, undefined, "input_bytes"),
       tests: [{ id: "criterion", status: "probe-todo", reason }],

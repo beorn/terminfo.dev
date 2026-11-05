@@ -397,12 +397,17 @@ These remain review PROBE TODO rows; earlier captures stay unchanged.
 
 `extensions.clipboard-paste` uses the same backend instance’s declared `paste-encoding`
 extension. Its native encoder returns actual input bytes without consuming pending replies or emitting
-paste bytes through response callbacks. The probe samples the incoming bracketed-paste behavior,
-checks two fresh nonces with mode 2004 reset and two with it set, then restores and verifies the
-incoming behavior. Exact raw payloads with mode reset qualify the control. Both framed payloads
+paste bytes through response callbacks. The probe reads incoming mode 2004 through the existing
+mode getter or, when that getter is unavailable, a native DECRPM query. Query replies and DA1 controls
+are retained; unavailable readback stays PROBE TODO without changing modes. Permanent Ps3/Ps4 replies
+also stay PROBE TODO because mutable on/off controls cannot run. It samples the incoming
+paste behavior, checks two fresh nonces with mode 2004 reset and two with it set, then restores and
+verifies both the incoming mode and behavior. Exact raw payloads with mode reset qualify the control. Both framed payloads
 with mode set establish Supported; both raw payloads establish Unsupported. Silent, malformed or
 inconsistent bytes stay inconclusive. Captures retain the bytes and ordered calls. An absent encoder
-stays named PROBE TODO; it does not declare Untestable. The app arm keeps its existing OS-input recipe.
+stays named PROBE TODO, except the approved `@xterm/headless` 6.0.0 public `Terminal` API absence:
+its `input()` accepts encoded bytes and `onData` reports output, with no native paste encoder, so that
+library records Untestable. A provided encoder is always measured first. The app arm keeps its existing OS-input recipe.
 
 Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video 5, synchronized output 2026,
 DECSCLM 4 and color-scheme reporting 2031. Snapshot Ps 1/3 is Supported without mutation; Ps 0/4 is

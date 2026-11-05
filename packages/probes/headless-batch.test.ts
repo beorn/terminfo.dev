@@ -2661,7 +2661,12 @@ test("separates mode readback from headless OS-input review without fabricating 
     "modes.application-keypad",
   ]
   const modeIds = new Set(["modes.alt-scroll-1007", "modes.application-keypad"])
-  const declaredInputIds = new Set(["input.xtest-key", "input.modify-other-keys", "input.modify-other-keys-3"])
+  const declaredInputIds = new Set([
+    "input.xtest-key",
+    "extensions.clipboard-paste",
+    "input.modify-other-keys",
+    "input.modify-other-keys-3",
+  ])
   const definitions = ids.map((id) => {
     const found = ALL_PROBES.find((probe) => probe.id === id)
     if (!found) throw new Error(`Missing registry definition ${id}`)
@@ -2694,30 +2699,7 @@ test("separates mode readback from headless OS-input review without fabricating 
       )
       continue
     }
-    expect(result.status, result.featureId).toBe("probe-todo")
-    const paste = result.featureId === "extensions.clipboard-paste"
-    const expected = paste
-      ? { reason: /paste-encoding extension unavailable/, raw: { backend: "xterm", encodePaste: false } }
-      : { reason: /OS-level XTEST/, raw: { input: false } }
-    expect(result.reason, result.featureId).toMatch(expected.reason)
-    expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
-    expect(JSON.parse(batch.rawReplies[result.featureId]!), result.featureId).toMatchObject(expected.raw)
-    expect(batch.notTested, result.featureId).toContainEqual({
-      featureId: result.featureId,
-      reason: "no-semantic-observable",
-      noObservable: expect.stringMatching(expected.reason),
-      rawReplyRef: result.featureId,
-    })
-    expect(result.criterionBranch, result.featureId).toBe(paste ? "paste-encoding" : "os-input-review")
-    expect(result.tests, result.featureId).toContainEqual(
-      expect.objectContaining({
-        id: "review",
-        status: "probe-todo",
-        attempt: { scope: "none" },
-        rawReplyRef: result.featureId,
-        reason: expect.any(String),
-      }),
-    )
+    throw new Error(`Unclassified input fixture ${result.featureId}`)
   }
 })
 
@@ -4973,4 +4955,43 @@ test("records qualified SGR readback when the cell attribute is unreported", asy
   expect(JSON.parse(batch.rawReplies["sgr.faint"]!)).toMatchObject({
     sgrReadback: { control: expect.stringContaining("m"), target: expect.stringContaining("m") },
   })
+})
+
+// The factory's actual backend name is the approved subject of this one absence declaration.
+test("real xterm factory paste absence records the approved Untestable result", async () => {
+  const value = createXtermBackend()
+  value.init({ cols: 80, rows: 24 })
+  expect(value.name).toBe("xterm")
+  const definition = registryDefinitions(["extensions.clipboard-paste"])[0]!
+  const batch = await collectBatch(async () => value, "xtermjs", [definition])
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    {
+      status: "untestable",
+      reason: expect.stringContaining("@xterm/headless 6.0.0"),
+    },
+  ])
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+})
+
+// A native DECRPM reply can save actual state even where the optional library getter is unavailable.
+test.each([false, true])("libvterm paste mode query measures and restores actual incoming 2004=%s", async (initial) => {
+  const value = await resolveLibvterm()
+  value.init({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    expect(source.getMode("bracketedPaste")).toBeNull()
+    source.feed(initial ? "\x1b[?2004h" : "\x1b[?2004l")
+    const definition = registryDefinitions(["extensions.clipboard-paste"])[0]!
+    const result = definition.lib!(source)
+    expect(result.observation?.outcome).toBe("supported")
+    expect(source.feedCapture("\x1b[?2004$p")).toContain(initial ? "\x1b[?2004;1$y" : "\x1b[?2004;2$y")
+    const evidence = JSON.parse(result.response!) as { incomingMode: boolean; modeReads: Array<{ raw: string }> }
+    expect(evidence.incomingMode).toBe(initial)
+    expect(evidence.modeReads).toHaveLength(2)
+    expect(evidence.modeReads.every((read) => read.raw.includes(initial ? ";1$y" : ";2$y"))).toBe(true)
+  } finally {
+    value.destroy()
+  }
 })
