@@ -3070,7 +3070,11 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
       throw cleanup
     }
   }
-  return parserStateResult(pass, expected, state, note, undefined, "input_bytes")
+  const result = parserStateResult(pass, expected, state, note, undefined, "input_bytes")
+  for (const assertion of result.assertions ?? []) {
+    assertion.action = "native paste with 2004 off, on, then restored"
+  }
+  return result
 }
 
 /** OS clipboard → app via ctrl+shift+v. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */

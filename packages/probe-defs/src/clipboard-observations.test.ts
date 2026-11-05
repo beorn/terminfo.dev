@@ -463,6 +463,7 @@ describe("native clipboard paste encoding", () => {
         .map((call: { input: string }) => call.input),
     ).toEqual(model.calls.map((call) => call.text))
     expect(result.assertions?.[0]?.kind).toBe("positive")
+    expect(result.assertions?.[0]?.action).toBe("native paste with 2004 off, on, then restored")
   })
 
   test("qualified raw output is unsupported and is sensitive to the disabled feature", () => {
