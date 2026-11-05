@@ -30,34 +30,34 @@
     {
       "name": "@termless/core",
       "repository": "beorn/termless",
-      "commit": "1af9bbd8e49e6210f11f708d87f4cb4154596c44",
+      "commit": "3a0bcc0f615cc22d64ea6b756026521d697f0c61",
       "pack": true
     },
     {
       "name": "@termless/xtermjs",
       "repository": "beorn/termless",
-      "commit": "c37cabea8c422c6e91247fdb3bcbfc6260a4febb",
+      "commit": "3a0bcc0f615cc22d64ea6b756026521d697f0c61",
       "pack": true,
       "directory": "packages/xtermjs"
     },
     {
       "name": "@termless/libvterm",
       "repository": "beorn/termless",
-      "commit": "615b36b583f3aa3923d1c34b85d82df37490dfa5",
+      "commit": "3a0bcc0f615cc22d64ea6b756026521d697f0c61",
       "pack": true,
       "directory": "packages/libvterm"
     },
     {
       "name": "@termless/wezterm",
       "repository": "beorn/termless",
-      "commit": "9b8f45b969bed6c0e843cf8ed133d4ff88dbbde9",
+      "commit": "3a0bcc0f615cc22d64ea6b756026521d697f0c61",
       "pack": true,
       "directory": "packages/wezterm"
     },
     {
       "name": "@termless/vterm",
       "repository": "beorn/termless",
-      "commit": "259f98617b4d1dd3d295803d6fa365e88e3975e1",
+      "commit": "3a0bcc0f615cc22d64ea6b756026521d697f0c61",
       "pack": true,
       "directory": "packages/vterm"
     },
