@@ -1472,6 +1472,78 @@ function sgrBytes(button: number, x: number, y: number, suffix: "M" | "m" = "M")
   return new TextEncoder().encode(`${prefix}${String(button)};${String(x)};${String(y)}${suffix}`)
 }
 
+// Native mouse APIs retain presses and positions even while reporting is off (#32370).
+// Existing prompt-click fixtures do not exercise the ordinary mouse probe's off/on transition.
+test.each([
+  ["input.xtest-click", true, false],
+  ["input.button-event-mouse", true, false],
+  ["input.xtest-click", false, false],
+  ["input.x10-mouse", false, true],
+] as const)("%s preserves native input state (stateful=%s, dead=%s)", (id, stateful, dead) => {
+  let tracking = false
+  let held = false
+  let x = -1
+  let y = -1
+  const ctx = libMouseSource({
+    encodeMouse(event) {
+      const moved = x !== event.x || y !== event.y
+      x = event.x
+      y = event.y
+      const wasHeld = held
+      if (event.button === "left" && event.action !== "move") held = event.action === "press"
+      if (!tracking || dead) return null
+      if (stateful && event.action === "press" && wasHeld) return null
+      if (stateful && event.action === "move" && (!wasHeld || !moved)) return null
+      return sgrBytes(event.action === "move" ? 32 : 0, x + 1, y + 1, event.action === "release" ? "m" : "M")
+    },
+  })
+  ctx.feed = (text) => {
+    if (text.endsWith("l")) tracking = false
+    if (/\?100[023]h|\?9h/.test(text)) tracking = true
+  }
+  ctx.getMode = () => tracking
+  const result = probe(id).lib!(ctx)
+  if (dead) {
+    expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
+    expect(result.observation).toBeUndefined()
+  } else {
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+  }
+  expect(held).toBe(false)
+  expect(tracking).toBe(false)
+})
+
+test("mouse probe releases a held target and retains target plus reset failures", () => {
+  const primary = new Error("target failure")
+  const cleanup = new Error("reset failure")
+  let tracking = false
+  let held = false
+  let resets = 0
+  const ctx = libMouseSource({
+    encodeMouse(event) {
+      held = event.action === "press"
+      if (tracking && held) throw primary
+      return null
+    },
+  })
+  ctx.feed = (text) => {
+    if (text.endsWith("l")) {
+      tracking = false
+      if (++resets === 2) throw cleanup
+    } else tracking = true
+  }
+  ctx.getMode = () => tracking
+  let failure: unknown
+  try {
+    probe("input.xtest-click").lib!(ctx)
+  } catch (error) {
+    failure = error
+  }
+  expect(failure).toBeInstanceOf(AggregateError)
+  expect((failure as AggregateError).errors).toEqual([primary, cleanup])
+  expect(held).toBe(false)
+})
+
 function libMouseSource(
   overrides: {
     extensions?: Iterable<string>
