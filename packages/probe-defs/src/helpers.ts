@@ -1407,6 +1407,11 @@ export function headlessDecrpmArm(
 ): (ctx: LibProbeSource) => ProbeCallbackResult {
   const [modeNum, modeName] = args
   return (ctx) => {
+    // Retain the existing reader's same-path DA1 control where the collector has proved delivery.
+    // Transport responsiveness does not replace this criterion's own DECRPM reply.
+    const capture = () =>
+      ctx.queryWithSentinelOutcome?.(`\x1b[?${modeNum}$p`, decrpmReplyPattern(modeNum)).raw ??
+      ctx.feedCapture(`\x1b[?${modeNum}$p`)
     if (args.length === 3) {
       // The strict overload requires a mode key; the name is display-only, never an engine selector.
       const key = args[1]
@@ -1416,11 +1421,11 @@ export function headlessDecrpmArm(
         ctx.feed(`\x1b[?${modeNum}h`)
         const insertAfter = modeNum === 4 ? ctx.getMode("insertMode") : undefined
         const setMode = ctx.getMode(key)
-        const setReply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
+        const setReply = capture()
         ctx.feed(`\x1b[?${modeNum}l`)
         resetSent = true
         const resetMode = ctx.getMode(key)
-        const resetReply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
+        const resetReply = capture()
         const state = { setReply, resetReply, setMode, resetMode, insertBefore, insertAfter }
         const response = JSON.stringify(state)
         const setPs = decrpmPs(decrpmReplyPattern(modeNum).exec(setReply)?.[1])
@@ -1519,7 +1524,7 @@ export function headlessDecrpmArm(
     // query they do not have, and the order no longer changes the reading. Reading first still keeps the
     // context independent of how any engine treats an unknown query.
     const mode = modeName === undefined ? undefined : ctx.getMode(modeName)
-    const reply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
+    const reply = capture()
     const state = modeName === undefined ? { reply } : { reply, mode }
     ctx.feed(`\x1b[?${modeNum}l`)
     const ps = decrpmPs(decrpmReplyPattern(modeNum).exec(reply)?.[1])

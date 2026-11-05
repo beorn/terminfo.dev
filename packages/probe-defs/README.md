@@ -37,6 +37,10 @@ No result is answered from source code (operator 2026-11-03). Source is read onl
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
+Headless DEC-mode queries use the existing sentinel reader when the collector has qualified reply delivery.
+Their retained captures include the target query and its separate DA1 control. DA1 responsiveness proves
+transport only: without the criterion's own DECRPM reply, these mode results retain their named PROBE TODO.
+
 External release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 Terminal tiers describe progress: 0 missing, 1 incomplete, 2 broken and 3 done. These are distinct from the former Release 1 query/reply group and from color depth. This terminology defines no thresholds and changes no status computation.

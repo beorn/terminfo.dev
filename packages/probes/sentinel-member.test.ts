@@ -393,6 +393,55 @@ function definitionOf(id: string): ProbeDefinition {
   return definition
 }
 
+// #32286: generic sentinel tests miss a registered mode callback bypassing the proven reader.
+// DA1 qualifies transport only; without DECRPM the existing mode criterion remains TODO.
+test.each([
+  ["vt100", "\x1b[?1;2c"],
+  ["vt220", "\x1b[?62;1;2;6;7;8;9c"],
+])("%s mode callbacks retain real CSI controls without promoting silent DECRQM", async (name, answer) => {
+  const create = engines[name]
+  if (!create) throw new Error(`no engine factory for ${name}`)
+  for (const feature of [
+    "alt-scroll-1007",
+    "bracketed-paste",
+    "color-scheme-reporting",
+    "focus-tracking",
+    "mouse-all",
+    "mouse-sgr",
+    "mouse-tracking",
+    "synchronized-output",
+    "utf8-mouse-1005",
+  ]) {
+    const id = `modes.${feature}`
+    const lib = definitionOf(id).lib
+    if (!lib) throw new Error(`no library callback for ${id}`)
+    const backend = await create()
+    backend.init({ cols: 80, rows: 24 })
+    try {
+      const captures: Array<{ query: string; response: string; error: string | null }> = []
+      const result = lib(createLibProbeSource(backend, proven(), undefined, captures))
+      const targets = captures.filter((capture) => capture.query !== DA1_QUERY)
+      const controls = captures.filter((capture) => capture.query === DA1_QUERY)
+      expect(targets.length, id).toBeGreaterThan(0)
+      expect(
+        targets.every((capture) => capture.response === "" && capture.error === null),
+        id,
+      ).toBe(true)
+      expect(controls, id).toHaveLength(targets.length)
+      expect(
+        controls.every((capture) => capture.response === answer && capture.error === null),
+        id,
+      ).toBe(true)
+      expect(result.pass, id).toBe(false)
+      expect(result.observation?.outcome, id).not.toBe("unsupported")
+      expect(result.notTested, id).toBeDefined()
+      expect(result.response, id).toContain(JSON.stringify(answer).slice(1, -1))
+    } finally {
+      backend.destroy()
+    }
+  }
+})
+
 function armsOf(id: string) {
   const { lib, term } = definitionOf(id)
   if (!lib || !term) throw new Error(`${id} has no headless and live arm pair`)
