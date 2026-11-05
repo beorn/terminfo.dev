@@ -860,7 +860,7 @@ function mouseEncodingLib(
   let primary: unknown
   const release = () => {
     if (!held) return null
-    const { pixel: _pixel, ...pressed } = held
+    const pressed = held
     held = undefined
     return decodeMouseReport(encodeMouse({ ...pressed, action: "release" }))
   }
@@ -896,10 +896,11 @@ function mouseEncodingLib(
     const controlReport = encode({ x: 4, y: 2, button: "left", action: "press" })
     release()
     ctx.feed(reset)
+    const controlled = { ...observed, controlTracking, controlReport }
     if (controlTracking !== true || controlReport !== "\x1b[<0;5;3M") {
-      return notTestedResult(NO_SAME_PATH_CONTROL, { ...observed, controlTracking, controlReport })
+      return notTestedResult(NO_SAME_PATH_CONTROL, controlled)
     }
-    return unsupportedInteraction(`mouse-encoding:${kind}`, expected, observed)
+    return unsupportedInteraction(`mouse-encoding:${kind}`, expected, controlled)
   } catch (error) {
     failed = true
     primary = error

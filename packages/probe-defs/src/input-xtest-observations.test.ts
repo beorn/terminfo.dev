@@ -1478,9 +1478,12 @@ test.each([
   ["input.xtest-click", true, false],
   ["input.button-event-mouse", true, false],
   ["input.xtest-click", false, false],
+  ["input.x10-mouse", false, false],
+  ["input.pixel-mouse", false, false],
   ["input.x10-mouse", false, true],
 ] as const)("%s preserves native input state (stateful=%s, dead=%s)", (id, stateful, dead) => {
   let tracking = false
+  let pixelTracking = false
   let held = false
   let x = -1
   let y = -1
@@ -1492,20 +1495,34 @@ test.each([
       const wasHeld = held
       if (event.button === "left" && event.action !== "move") held = event.action === "press"
       if (!tracking || dead) return null
+      if (pixelTracking && !event.pixel) throw new Error("Pixel mode requires pixel coordinates")
       if (stateful && event.action === "press" && wasHeld) return null
       if (stateful && event.action === "move" && (!wasHeld || !moved)) return null
-      return sgrBytes(event.action === "move" ? 32 : 0, x + 1, y + 1, event.action === "release" ? "m" : "M")
+      const point = event.pixel ?? event
+      return sgrBytes(
+        event.action === "move" ? 32 : 0,
+        point.x + 1,
+        point.y + 1,
+        event.action === "release" ? "m" : "M",
+      )
     },
   })
   ctx.feed = (text) => {
-    if (text.endsWith("l")) tracking = false
+    if (text.endsWith("l")) tracking = pixelTracking = false
     if (/\?100[023]h|\?9h/.test(text)) tracking = true
+    if (text.includes("?1016h")) pixelTracking = true
   }
   ctx.getMode = () => tracking
   const result = probe(id).lib!(ctx)
   if (dead) {
     expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
     expect(result.observation).toBeUndefined()
+  } else if (id === "input.x10-mouse") {
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+    expect(JSON.parse(result.response ?? "{}")).toMatchObject({
+      controlTracking: true,
+      controlReport: "\x1b[<0;5;3M",
+    })
   } else {
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   }
