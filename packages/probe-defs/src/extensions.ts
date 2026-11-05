@@ -4828,6 +4828,11 @@ export const extensionsProbes: ProbeDefinition[] = [
             declared: ctx.capabilities.extensions.has("osc7"),
           })
         }
+        const sameUrl = (observed: string | null, expected: string): boolean =>
+          observed !== null &&
+          URL.canParse(observed) &&
+          URL.canParse(expected) &&
+          new URL(observed).href === new URL(expected).href
         const before = ctx.getCwd()
         const controlUri = "file://localhost/terminfo-cwd-control"
         const firstUri = "file://localhost/terminfo-cwd-A"
@@ -4848,13 +4853,13 @@ export const extensionsProbes: ProbeDefinition[] = [
           if (ctx.getCwd() !== before) ctx.feed(`\x1b]633;P;Cwd=${before ?? ""}\x07`)
         }
         const restored = ctx.getCwd()
-        const supported = first === firstUri && second === secondUri
-        if (!supported && controlled !== controlUri && restored === before) {
+        const supported = sameUrl(first, firstUri) && sameUrl(second, secondUri)
+        if (!supported && !sameUrl(controlled, controlUri) && restored === before) {
           return notTestedResult(NO_SAME_PATH_CONTROL, { before, controlUri, controlled, first, second, restored })
         }
         const result = parserStateResult(
           restored === before ? supported : null,
-          `OSC 7 stores successive exact URIs ${firstUri}, ${secondUri} and restores the original URI`,
+          `OSC 7 stores successive URI values equal to ${firstUri}, ${secondUri} after WHATWG URL serialization and restores the original URI`,
           { before, controlUri, controlled, first, second, restored, writes },
         )
         if (restored !== before) {

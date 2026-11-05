@@ -292,8 +292,11 @@ The OSC 1 library criterion requires separate icon readback and a verified OSC 2
 
 The OSC 7 and notification library criteria use optional `getCwd` and
 `getNotifications` readers from the backend's `osc-metadata` extension. OSC 7
-retains two successive exact URI readbacks and restores the original URI,
-including null for an unset slot. Notifications retain the original payloads
+requires both target values to equal the expected URLs after WHATWG URL
+serialization; the raw values are retained. They are equal under the WHATWG URL
+Standard, which the Rust url crate also implements. The same-reader control uses
+that comparison; restoring the original value remains exact, including null for
+an unset slot. Notifications retain the original payloads
 and require two distinct OSC 9 messages to append in order without changing
 that prefix. The collector gives each probe its own disposable backend, so
 notification messages cannot leak into another probe. These are `buffer_state`
