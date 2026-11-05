@@ -323,7 +323,7 @@ or OSC 9;4 progress measurement. Missing readers keep the existing
 `headless-observable-review` tool gap; getter errors propagate. Notifications
 instead use the operator's declared Untestable route when neither notification
 nor toast reader exists and the measured source matches the audited VT100.js
-0.10.1/0.11.0, VT220.js 0.10.1/0.11.0 or Alacritty 0.26.0 profile. The shared identity qualifier
+0.10.1/0.11.0/0.12.0, VT220.js 0.10.1/0.11.0/0.12.0 or Alacritty 0.26.0 profile. The shared identity qualifier
 in `extensions.ts` checks exact clean source trees or native provenance and
 adapter blobs. Changed or unknown profiles remain PROBE TODO. This declares
 public-interface absence, not DEC hardware or desktop-notification support.

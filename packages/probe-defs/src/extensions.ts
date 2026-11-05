@@ -115,7 +115,9 @@ function hasAuditedOscInterfaceAbsence(ctx: LibProbeSource): boolean {
         tree === "c7c4dd7c37882a37ae336490eb42ef784c0b7045" ||
         tree === "4c946bbce73a95093ed16bab183b17032c622e21")) ||
     (identity.engineVersion === "0.11.0" &&
-      (tree === "72b03cdc69980e98fe83eb9ecd51a5b01bbc4ccb" || tree === "6b22dcb3365f8ee2045c5cdb5fc0b4f41990ee1d"))
+      (tree === "72b03cdc69980e98fe83eb9ecd51a5b01bbc4ccb" || tree === "6b22dcb3365f8ee2045c5cdb5fc0b4f41990ee1d")) ||
+    (identity.engineVersion === "0.12.0" &&
+      (tree === "5486c34f7fc6bbd10284ea68a504eec2c38a061f" || tree === "dee664e0e0554a5465a0c78cf760f437a360b0f2"))
   )
 }
 

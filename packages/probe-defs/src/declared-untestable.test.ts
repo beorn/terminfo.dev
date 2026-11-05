@@ -126,6 +126,11 @@ describe("audited OSC interface absence", () => {
   const vt100 = vtIdentity("vt100")
   const vt100Release = vtIdentity("vt100", "72b03cdc69980e98fe83eb9ecd51a5b01bbc4ccb", "0.11.0")
   const vt220Release = vtIdentity("vt220", "6b22dcb3365f8ee2045c5cdb5fc0b4f41990ee1d", "0.11.0")
+  const current = [
+    ["vt100", vtIdentity("vt100", "5486c34f7fc6bbd10284ea68a504eec2c38a061f", "0.12.0")],
+    ["vt220", vtIdentity("vt220", "dee664e0e0554a5465a0c78cf760f437a360b0f2", "0.12.0")],
+  ] as const
+  const readerSubjects = [["vt100", vt100], ...current] as const
   const alacritty = {
     kind: "native" as const,
     engineVersion: "0.26.0",
@@ -161,6 +166,7 @@ describe("audited OSC interface absence", () => {
     ["vt220", vtIdentity("vt220")],
     ["vt100", vt100Release],
     ["vt220", vt220Release],
+    ...current,
     ["alacritty", alacritty],
   ] as const)("%s's audited source declares notification absence without a measured assertion", (backend, identity) => {
     let feeds = 0
@@ -194,6 +200,21 @@ describe("audited OSC interface absence", () => {
     ["old version with the new VT220 tree", "vt220", { ...vt220Release, engineVersion: "0.10.1" }],
     ["new version with an old VT100 tree", "vt100", { ...vt100, engineVersion: "0.11.0" }],
     ["new version with an old VT220 tree", "vt220", { ...vtIdentity("vt220"), engineVersion: "0.11.0" }],
+    ["0.12 with the 0.11 VT100 tree", "vt100", { ...vt100Release, engineVersion: "0.12.0" }],
+    ["0.12 with the 0.11 VT220 tree", "vt220", { ...vt220Release, engineVersion: "0.12.0" }],
+    ...current.flatMap(([backend, identity]): [string, string, HeadlessRuntimeIdentity][] => [
+      [`0.11 with the 0.12 ${backend} tree`, backend, { ...identity, engineVersion: "0.11.0" }],
+      [
+        `a dirty 0.12 ${backend} tree`,
+        backend,
+        { ...identity, integrity: { ...identity.integrity, cleanTree: false } },
+      ],
+      [
+        `another repository with the 0.12 ${backend} tree`,
+        backend,
+        { ...identity, integrity: { ...identity.integrity, repository: "https://example.invalid/vterm.git" } },
+      ],
+    ]),
     ["a changed tree", "vt100", { ...vt100, integrity: { ...vt100.integrity, treeOid: "0".repeat(40) } }],
     ["a dirty tree", "vt100", { ...vt100, integrity: { ...vt100.integrity, cleanTree: false } }],
     [
@@ -247,10 +268,10 @@ describe("audited OSC interface absence", () => {
     expect(fold("extensions.notifications", result).status).toBe("probe-todo")
   })
 
-  test("a real raw reader wins over the source declaration and must append to prove support", () => {
+  test.each(readerSubjects)("%s's raw and toast readers win over the source declaration", (backend, identity) => {
     for (const enabled of [true, false]) {
       const values: string[] = []
-      const result = run("vt100", vt100, {
+      const result = run(backend, identity, {
         feed(text) {
           if (enabled && text === "\x1b]9;terminfo-notification-A\x07") values.push("terminfo-notification-A")
           if (enabled && text === "\x1b]9;terminfo-notification-B\x07") values.push("terminfo-notification-B")
@@ -262,35 +283,52 @@ describe("audited OSC interface absence", () => {
       else expect(result.observation?.outcome).not.toBe("supported")
     }
     expect(() =>
-      run("vt100", vt100, {
+      run(backend, identity, {
         getNotifications: () => {
           throw new Error("reader failed")
         },
       }),
     ).toThrow("reader failed")
+    expect(() =>
+      run(backend, identity, {
+        getToasts: () => {
+          throw new Error("toast reader failed")
+        },
+      }),
+    ).toThrow("toast reader failed")
   })
 
-  test("OSC 7's audited interface absence folds to Untestable", () => {
+  test.each(readerSubjects)("%s's OSC 7 audited interface absence folds to Untestable", (backend, identity) => {
     const definition = ALL_PROBES.find((probe) => probe.id === "extensions.osc7-cwd")!
-    const result = definition.lib!({ ...library("vt100"), runtimeIdentity: vt100 })
+    const result = definition.lib!({ ...library(backend), runtimeIdentity: identity })
     expect(isDeclaredUntestable(result)).toBe(true)
     expect(fold(definition.id, result)).toMatchObject({
       status: "untestable",
       reason: expect.stringMatching(/OSC 7/),
     })
-    expect(fold(definition.id, result).reason).toContain("0.10.1")
+    expect(fold(definition.id, result).reason).toContain(identity.engineVersion)
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
-    const identity = (JSON.parse(result.response!) as { runtimeIdentity: Record<string, unknown> }).runtimeIdentity
-    expect(identity).not.toHaveProperty("resolvedPath")
-    expect(identity).not.toHaveProperty("termlessRevision")
-    expect(identity.integrity).not.toHaveProperty("revision")
+    const evidenceIdentity = (JSON.parse(result.response!) as { runtimeIdentity: Record<string, unknown> })
+      .runtimeIdentity
+    expect(evidenceIdentity).not.toHaveProperty("resolvedPath")
+    expect(evidenceIdentity).not.toHaveProperty("termlessRevision")
+    expect(evidenceIdentity.integrity).not.toHaveProperty("revision")
   })
 
-  test("OSC 7's supplied Cwd reader wins over the audited absence", () => {
+  test.each(readerSubjects)("%s's supplied Cwd reader wins over the audited absence", (_backend, identity) => {
     const definition = ALL_PROBES.find((probe) => probe.id === "extensions.osc7-cwd")!
-    const result = definition.lib!({ ...libProbeSource(createSemanticSurface()), runtimeIdentity: vt100 })
+    const result = definition.lib!({ ...libProbeSource(createSemanticSurface()), runtimeIdentity: identity })
     expect(isDeclaredUntestable(result)).toBe(false)
     expect(result.observation?.outcome).toBe("supported")
+    expect(() =>
+      definition.lib!({
+        ...libProbeSource(createSemanticSurface()),
+        runtimeIdentity: identity,
+        getCwd: () => {
+          throw new Error("Cwd reader failed")
+        },
+      }),
+    ).toThrow("Cwd reader failed")
   })
 })
