@@ -327,6 +327,10 @@ nor toast reader exists and the measured source matches the audited VT100.js
 in `extensions.ts` checks exact clean source trees or native provenance and
 adapter blobs. Changed or unknown profiles remain PROBE TODO. This declares
 public-interface absence, not DEC hardware or desktop-notification support.
+OSC 7 uses that same identity qualifier when its Cwd reader is absent, with its
+own working-directory interface-absence reason. A supplied Cwd reader always
+runs the existing measured criterion; a missing reader on any other identity
+remains PROBE TODO.
 
 ## Evidence, capture and assertion
 
