@@ -5,7 +5,9 @@ set -euo pipefail
 # share this value for every linux group. @dev/3 ruling 51326e54 (2026-10-11):
 # 120s curl was the artefact (ghostty 140.6s, xterm 157.9s completed under 600);
 # 180s attach SIGTERM'd wezterm at 177s before classify. Do not split these.
-PROBE_BATCH_TIMEOUT_SECONDS=600
+# A full WezTerm batch was still progressing when the shared 600s limit sent SIGTERM
+# on 2026-11-04 (OOMKilled=false). Keep both consumers on the same 900s budget.
+PROBE_BATCH_TIMEOUT_SECONDS=900
 
 # Calibrate the source face independently of the terminal. A missing proof is a named tool gap,
 # never an engine grade. The private fontconfig has exactly one immutable file to prevent fallback.
