@@ -1969,6 +1969,8 @@ test("Wezterm prompt PROBE TODO rows survive actual collection and capture bindi
     const value = await backend()
     // The JS carrier's metadata belongs to this mocked WezTerm fixture, not the loaded JS engine.
     value.getAdapterSources = () => identity.adapterSources
+    // The mocked historical WezTerm identity has no cwd reader.
+    delete (value as Partial<OscMetadataExtension>).getCwd
     return value
   }
   const batch = await collectBatch(carrier, "wezterm", registryDefinitions(ids), draft, undefined, {
