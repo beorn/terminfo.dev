@@ -106,12 +106,12 @@ test("the declared helper needs a reason and folds only in its exact form", () =
 // Operator decision B: absence is qualified by the audited public source, not a
 // missing adapter method. These identities are from the unchanged 2167 captures.
 describe("audited OSC interface absence", () => {
-  const vtIdentity = (backend: "vt100" | "vt220", treeOid?: string) => ({
+  const vtIdentity = (backend: "vt100" | "vt220", treeOid?: string, engineVersion = "0.10.1") => ({
     kind: "js" as const,
     runtimeFormat: "js" as const,
     adapterVersion: "0.10.2",
     termlessRevision: "ce3e783b6536df0cc4e0a11d4567f1cdd96bafee",
-    engineVersion: "0.10.1",
+    engineVersion,
     resolvedPath: `vendor/vterm/packages/${backend}/src/index.ts`,
     integrity: {
       kind: "source" as const,
@@ -124,6 +124,8 @@ describe("audited OSC interface absence", () => {
     },
   })
   const vt100 = vtIdentity("vt100")
+  const vt100Release = vtIdentity("vt100", "72b03cdc69980e98fe83eb9ecd51a5b01bbc4ccb", "0.11.0")
+  const vt220Release = vtIdentity("vt220", "6b22dcb3365f8ee2045c5cdb5fc0b4f41990ee1d", "0.11.0")
   const alacritty = {
     kind: "native" as const,
     engineVersion: "0.26.0",
@@ -157,6 +159,8 @@ describe("audited OSC interface absence", () => {
     ["vt100", vt100],
     ["vt100", vtIdentity("vt100", "8e082c695f238ec87dd22a496b836e5b1ef56458")],
     ["vt220", vtIdentity("vt220")],
+    ["vt100", vt100Release],
+    ["vt220", vt220Release],
     ["alacritty", alacritty],
   ] as const)("%s's audited source declares notification absence without a measured assertion", (backend, identity) => {
     let feeds = 0
@@ -186,6 +190,10 @@ describe("audited OSC interface absence", () => {
     ["no measured identity", "vt100", undefined],
     ["unlisted backend", "unlisted", undefined],
     ["a new version", "vt100", { ...vt100, engineVersion: "0.10.2" }],
+    ["old version with the new VT100 tree", "vt100", { ...vt100Release, engineVersion: "0.10.1" }],
+    ["old version with the new VT220 tree", "vt220", { ...vt220Release, engineVersion: "0.10.1" }],
+    ["new version with an old VT100 tree", "vt100", { ...vt100, engineVersion: "0.11.0" }],
+    ["new version with an old VT220 tree", "vt220", { ...vtIdentity("vt220"), engineVersion: "0.11.0" }],
     ["a changed tree", "vt100", { ...vt100, integrity: { ...vt100.integrity, treeOid: "0".repeat(40) } }],
     ["a dirty tree", "vt100", { ...vt100, integrity: { ...vt100.integrity, cleanTree: false } }],
     [
