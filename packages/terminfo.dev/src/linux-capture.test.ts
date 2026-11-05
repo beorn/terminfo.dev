@@ -19,7 +19,7 @@ import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterEach, expect, test } from "vitest"
+import { afterEach, expect, test, vi } from "vitest"
 import { createLinuxCapture, PNG_CONVERSION_ARGS, screenPixels, windowPixels } from "./linux-capture.ts"
 
 import { capturePixels, cellRectangle, command, finishCapture } from "./capture-core.ts"
@@ -27,6 +27,35 @@ import { capturePixels, cellRectangle, command, finishCapture } from "./capture-
 const temporary: string[] = []
 const originalPath = process.env.PATH
 const originalDisplay = process.env.DISPLAY
+
+test("capture apparatus runs in a separate process group and session without a controlling tty", async () => {
+  const caller = spawnSync("/bin/ps", ["-o", "pgid=,sess=,tty=", "-p", String(process.pid)], {
+    encoding: "utf8",
+    timeout: 5000,
+  })
+  expect(caller.error).toBeUndefined()
+  expect(caller.status).toBe(0)
+  const [callerGroup, callerSession] = caller.stdout.trim().split(/\s+/)
+  expect(callerGroup).toBeTruthy()
+  expect(callerSession).toBeTruthy()
+  const input = Buffer.from([0, 17, 255, 10])
+  const output = await command(
+    process.execPath,
+    [
+      "-e",
+      "const { execFileSync } = require('node:child_process'); const { readFileSync } = require('node:fs'); const identity = execFileSync('/bin/ps', ['-o', 'pgid=,sess=,tty=', '-p', String(process.pid)], { encoding: 'utf8', timeout: 1000 }).trim().split(/\\s+/); process.stdout.write(JSON.stringify({ pid: process.pid, identity, input: readFileSync(0).toString('base64') }))",
+    ],
+    input,
+    Date.now() + 5000,
+  )
+  const child = JSON.parse(output.toString()) as { pid: number; identity: string[]; input: string }
+  const [childGroup, childSession, childTty] = child.identity
+  expect(childGroup).not.toBe(callerGroup)
+  expect(childSession).not.toBe(callerSession)
+  expect(childGroup).toBe(String(child.pid))
+  expect(childTty).toMatch(/^\?{1,2}$/)
+  expect(child.input).toBe(input.toString("base64"))
+})
 
 // A decoded Error.message cannot preserve binary callback output on a failed census (30412).
 // Exercise the real subprocess boundary, without an optional stderr observer to fill the gap.
@@ -69,19 +98,51 @@ test("capture command preserves zero-exit stderr before resolving unchanged stdo
 test("capture command terminates a real child at its supplied deadline and never starts after expiry", async () => {
   const { directory } = fixture()
   const completed = join(directory, "deadline-completed")
-  await expect(
-    command(
-      process.execPath,
-      [
-        "-e",
-        "process.on('SIGTERM', () => {}); setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'completed'), 2000)",
-        completed,
-      ],
-      undefined,
-      Date.now() + 500,
-    ),
-  ).rejects.toMatchObject({ killed: true, signal: "SIGKILL" })
-  expect(existsSync(completed)).toBe(false)
+  const childPidPath = join(directory, "deadline-child-pid")
+  const descendantPidPath = join(directory, "deadline-descendant-pid")
+  const descendantCompleted = join(directory, "deadline-descendant-completed")
+  const descendantSource =
+    "const fs=require('node:fs'); fs.writeFileSync(process.argv[1],String(process.pid)); setTimeout(()=>{fs.writeFileSync(process.argv[2],'orphan continued'); process.exit(0)},2200)"
+  try {
+    await expect(
+      command(
+        process.execPath,
+        [
+          "-e",
+          `const fs=require('node:fs'); fs.writeFileSync(process.argv[2],String(process.pid)); require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(descendantSource)},process.argv[3],process.argv[4]],{stdio:'inherit'}); process.on('SIGTERM',()=>{}); setTimeout(()=>fs.writeFileSync(process.argv[1],'completed'),4000)`,
+          completed,
+          childPidPath,
+          descendantPidPath,
+          descendantCompleted,
+        ],
+        undefined,
+        Date.now() + 1500,
+      ),
+    ).rejects.toMatchObject({ killed: true, signal: "SIGKILL" })
+    expect(existsSync(completed)).toBe(false)
+    const childPid = Number(readFileSync(childPidPath, "utf8"))
+    const descendantPid = Number(readFileSync(descendantPidPath, "utf8"))
+    expect(Number.isSafeInteger(childPid) && childPid > 1).toBe(true)
+    expect(Number.isSafeInteger(descendantPid) && descendantPid > 1).toBe(true)
+    expect(() => process.kill(childPid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }))
+    await vi.waitFor(
+      () => {
+        expect(() => process.kill(descendantPid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }))
+      },
+      { timeout: 1000, interval: 20 },
+    )
+    expect(existsSync(descendantCompleted)).toBe(false)
+  } finally {
+    if (existsSync(childPidPath)) {
+      const childPid = Number(readFileSync(childPidPath, "utf8"))
+      if (!Number.isSafeInteger(childPid) || childPid <= 1) throw new Error("Invalid owned capture fixture PID")
+      try {
+        process.kill(-childPid, "SIGKILL")
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error
+      }
+    }
+  }
   const invoked = join(directory, "expired-invoked")
   await expect(
     command(
