@@ -14,6 +14,104 @@ import { isDeclaredUntestable } from "./helpers.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
 
+// Native MOK needs a controlled transition, not merely an extended key report.
+// App-input fixtures and declaration checks cannot catch a vacuous native encoder.
+test.each([
+  ["input.modify-other-keys", 2],
+  ["input.modify-other-keys-3", 3],
+] as const)("%s measures native off/on/reset and rejects vacuous controls", (id, level) => {
+  for (const form of ["tilde", "u"] as const) {
+    for (const behavior of [
+      "working",
+      "disabled",
+      "noop",
+      "broken",
+      "constant",
+      "equivalent",
+      "wrong",
+      "control-change",
+    ] as const) {
+      const feeds: string[] = []
+      let mode = 0
+      const ctx: LibProbeSource = {
+        ...libMouseSource({ extensions: ["key-encoding"] }),
+        backendName: "libvterm",
+        feed(text) {
+          feeds.push(text)
+          const value = text.match(/^\x1b\[>4;(\d)m$/)?.[1]
+          if (value !== undefined) mode = Number(value)
+        },
+        encodeKey(event) {
+          if (behavior === "noop" || (behavior === "broken" && event.key === "a")) return new Uint8Array()
+          let bytes = event.key === "ArrowUp" ? "\x1b[A" : event.ctrl ? "\x01" : event.key
+          if (behavior === "control-change" && event.key === "a" && event.ctrl && mode === level) {
+            bytes = "\x1b[27;5;97~"
+          }
+          if (event.key === "i") {
+            bytes = event.ctrl ? "\t" : "i"
+            if (
+              ((behavior === "working" || behavior === "wrong") && mode === level) ||
+              behavior === "constant" ||
+              behavior === "equivalent" ||
+              behavior === "control-change"
+            ) {
+              const modifier = event.ctrl ? 5 : 1
+              bytes = form === "tilde" ? `\x1b[27;${modifier};105~` : `\x1b[105;${modifier}u`
+              if (behavior === "equivalent") {
+                bytes = mode === level ? `\x1b[27;${modifier};105~` : `\x1b[105;${modifier}u`
+              }
+              if (behavior === "wrong") bytes = `\x1b[106;${modifier}u`
+            }
+          }
+          return new TextEncoder().encode(bytes)
+        },
+      }
+      const result = probe(id).lib!(ctx)
+      const outcome =
+        behavior === "working" || behavior === "control-change"
+          ? "supported"
+          : behavior === "wrong"
+            ? "unsupported"
+            : undefined
+      expect(result.observation?.outcome, `${form}/${behavior}`).toBe(outcome)
+      if (outcome) {
+        expect(
+          result.assertions?.every(
+            (assertion) => assertion.kind === (outcome === "supported" ? "positive" : "negative"),
+          ),
+        ).toBe(true)
+      }
+      expect(feeds.at(-1)).toBe("\x1b[>4;0m")
+      if (behavior === "working") {
+        expect(probe(id).libAssertionType).toBe("input_bytes")
+        const observed = JSON.parse(result.response!) as {
+          off: { ctrlI: { bytes: number[] } }
+          reset: { ctrlI: { bytes: number[] } }
+          on: { ctrlI: { event: { key: string; ctrl: boolean } } }
+        }
+        expect(observed.off.ctrlI.bytes).toEqual([9])
+        expect(observed.reset.ctrlI.bytes).toEqual([9])
+        expect(observed.on.ctrlI.event).toEqual({ key: "i", ctrl: true })
+        expect(result.assertions?.some((entry) => entry.kind === "positive")).toBe(true)
+      } else if (!outcome) {
+        expect(result.notTested?.noObservable).toMatch(/control|unchanged|discriminator/)
+      }
+    }
+  }
+  const failure = new Error("native key encoder failed")
+  const feeds: string[] = []
+  const ctx = {
+    ...libMouseSource(),
+    backendName: "libvterm",
+    feed: (s: string) => feeds.push(s),
+    encodeKey() {
+      throw failure
+    },
+  }
+  expect(() => probe(id).lib!(ctx)).toThrow(failure)
+  expect(feeds.at(-1)).toBe("\x1b[>4;0m")
+})
+
 // The operator-approved interface absence is distinct from an encoder not yet wired to the probe.
 // Existing generic headless/app cases do not protect this per-library declaration boundary.
 test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
@@ -423,7 +521,7 @@ test("input.modify-other-keys is not tested without an OS XTEST adapter", async 
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+    noObservable: "Native key-encoding route is not qualified for this library",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -536,7 +634,7 @@ test("input.modify-other-keys-3 is not tested without an OS XTEST adapter", asyn
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+    noObservable: "Native key-encoding route is not qualified for this library",
   })
   expect(headless.observation).toBeUndefined()
 
