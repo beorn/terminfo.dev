@@ -676,6 +676,128 @@ test("reflow qualifies main, history, and alternate phases when primary ED 2 scr
   ])
 })
 
+// @failure Resizing compares a restored cursor with old geometry, or reference reset conceals a failed exit.
+// @level l1
+// @consumer Registered reflow callback through the existing real headless source and batch projection.
+// Existing layout cases have no independent cursor resize, unavailable reference or stayed-in-alternate control.
+test.each(["equal", "different", "unreadable", "stayed-alternate", "unreadable-cleanup"] as const)(
+  "alternate reflow qualifies the paired cursor reference (%s)",
+  async (reference) => {
+    const definition = registryDefinitions(["extensions.reflow"])[0]!
+    const trace: Array<
+      | { kind: "reset"; cols: number }
+      | { kind: "feed"; text: string }
+      | { kind: "resize"; cols: number; rows: number; alternate: boolean }
+    > = []
+    const measurement = collectBatch(backend, "xtermjs", [
+      {
+        ...definition,
+        lib(ctx: LibProbeSource) {
+          const feed = ctx.feed
+          const resize = ctx.resize!
+          const reset = ctx.reset
+          const cursor = ctx.getCursor
+          const mode = ctx.getMode
+          let columns = ctx.cols
+          let alternateShrank = false
+          let restored = false
+          let primaryParked = false
+          let referenceResized = false
+          ctx.feed = (text) => {
+            feed(text)
+            trace.push({ kind: "feed", text })
+            if (text === "\x1b[5;7H") primaryParked = mode("altScreen") === false
+            if (text === "\x1b[?1049h") primaryParked = false
+            if (text === "\x1b[?1049l" && alternateShrank) restored = true
+          }
+          ctx.resize = (cols, rows) => {
+            if (referenceResized && reference === "unreadable-cleanup")
+              throw new Error("reference geometry cleanup failed")
+            const alternate = mode("altScreen") === true
+            resize(cols, rows)
+            trace.push({ kind: "resize", cols, rows, alternate })
+            if (columns === 20 && cols === 12) {
+              if (alternate) alternateShrank = true
+              else if (primaryParked) referenceResized = true
+            }
+            columns = cols
+          }
+          ctx.reset = () => {
+            trace.push({ kind: "reset", cols: columns })
+            reset()
+            alternateShrank = restored = primaryParked = referenceResized = false
+          }
+          ctx.getMode = (name) =>
+            name === "altScreen" && restored && reference === "stayed-alternate" ? true : mode(name)
+          ctx.getCursor = () => {
+            if (referenceResized) {
+              if (reference.startsWith("unreadable")) throw new Error("paired reference cursor unreadable")
+              return { ...cursor(), x: reference === "different" ? 3 : 2, y: 4 }
+            }
+            return restored ? { ...cursor(), x: 2, y: 4 } : cursor()
+          }
+          return definition.lib!(ctx)
+        },
+      },
+    ])
+    if (reference === "unreadable-cleanup") {
+      const failed = await measurement
+      expect(failed.ungradedDiagnostics["extensions.reflow"]?.message).toMatch(
+        /paired reference cursor unreadable.*reference geometry cleanup failed/s,
+      )
+      return
+    }
+    const batch = await measurement
+    expect(batch.ungradedDiagnostics).toEqual({})
+    const observed = reflowEvidence(batch)
+    const phase = observed.alternatePhases.find(({ id }) => id === "alternate-shrink")!
+    const roundtrip = JSON.parse(batch.rawReplies["extensions.reflow"]!).alternateRoundtrips["alternate-shrink"]
+    if (reference === "equal") {
+      expect(phase).toMatchObject({ status: "unsupported", outcome: "truncated" })
+      expect(JSON.parse(roundtrip.roundtrip.response)).toMatchObject({
+        before: { x: 6, y: 4 },
+        reference: { x: 2, y: 4 },
+        after: { x: 2, y: 4 },
+      })
+    } else if (reference === "different") {
+      expect(phase.status).toBe("probe-invalid")
+      expect(roundtrip.roundtrip.note).toContain("saved cursor not restored")
+      expect(JSON.parse(roundtrip.roundtrip.response)).toMatchObject({
+        reference: { x: 3, y: 4 },
+        after: { x: 2, y: 4 },
+      })
+    } else if (reference === "unreadable") {
+      expect(phase).toMatchObject({ status: "probe-todo", outcome: "reference-unavailable" })
+      expect(phase.reason).toMatch(/reference.*unreadable/)
+    } else {
+      expect(phase.status).toBe("probe-invalid")
+      expect(roundtrip.identity).toMatchObject({ restored: true, after: true })
+    }
+    if (reference !== "stayed-alternate") {
+      const target = trace.findIndex((step) => step.kind === "resize" && step.alternate && step.cols === 12)
+      const entered = trace.findLastIndex(
+        (step, index) => index < target && step.kind === "feed" && step.text === "\x1b[?1049h",
+      )
+      const originalStart = trace.findLastIndex((step, index) => index < entered && step.kind === "reset")
+      const referenceTarget = trace.findIndex(
+        (step, index) => index > target && step.kind === "resize" && !step.alternate && step.cols === 12,
+      )
+      expect(referenceTarget).toBeGreaterThan(target)
+      const referenceStart = trace.findLastIndex((step, index) => index < referenceTarget && step.kind === "reset")
+      const project = (step: (typeof trace)[number]) =>
+        step.kind === "feed"
+          ? { kind: step.kind, text: step.text.replace(/\x1b\[\?1049[hl]/g, "") }
+          : step.kind === "resize"
+            ? { kind: step.kind, cols: step.cols, rows: step.rows }
+            : step
+      expect(trace.slice(referenceStart, referenceTarget + 1).map(project)).toEqual([
+        ...trace.slice(originalStart, entered).map(project),
+        { kind: "resize", cols: 12, rows: 24 },
+      ])
+    }
+  },
+)
+
 // @failure Qualified alternate positives are omitted, or their polarity is folded against another buffer.
 // @level l1
 // @consumer Actual vterm alternate resize/readback; the xterm case above supplies complete physical negatives.

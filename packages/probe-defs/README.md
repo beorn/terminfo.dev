@@ -374,6 +374,14 @@ can yield an identity or no-entry PROBE TODO.
 Slot errors retain their cause while measured/final leaves run;
 outer cleanup independently attempts alternate exit, initial-width restoration and reset.
 
+For a qualified resizing alternate phase, saved-cursor restoration uses a paired primary-only
+resize reference on the same instance. Replay restores the geometry recorded before that iteration's
+reset, then repeats its reset, resize, clear and shared primary seed without1049. Actual post-leave
+identity and span/cursor readings are retained before replay can reset them. Raw evidence keeps
+before/reference/after. An unavailable reference is a named TODO only when cursor equality is the
+sole unmet clause; span, leak and identity failures keep precedence, and cleanup failures remain loud.
+Ordinary no-resize1049 still compares with its original cursor. This does not grade resize correctness.
+
 The library criterion requires main-screen growth/shrink and retained-history growth/shrink.
 Each required row cites only its own phase's assertions; the existing mixed-main criterion cites
 only main assertions. The shared finalizer gives required failures precedence over PROBE TODO results, then
