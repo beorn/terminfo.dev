@@ -104,6 +104,10 @@ export const ADAPTER_SOURCE_AUDITS = {
     // Mouse-state binding (termless 286fddf6, #31295) changes the backend blob; parser and callbacks are unchanged.
     "packages/vt100-rust/src/backend.ts": "9b3477c0fedf8586430781e8f4d17019569af98b",
   },
+  vt100RustDdabecd4: {
+    "packages/vt100-rust/src/index.ts": "3ddb74f3ae1f79bb356952103853232f69211268",
+    "packages/vt100-rust/src/backend.ts": "ddabecd4881be4f6b63f1c35f9c2265b53d35df4",
+  },
   kitty: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
     "packages/kitty/src/backend.ts": "88dd0f299e059457946b92edfc6eb324ac3c7e30",
@@ -464,7 +468,7 @@ export function unhandledSequenceVerdict(
   if (only === undefined || only.kind !== target.code.kind || only.code !== target.code.code) {
     return undefined
   }
-  const label = target.code.kind === "osc" ? `OSC ${target.code.code}` : `SGR ${target.code.code}`
+  const label = `${target.code.kind === "osc" ? "OSC" : target.code.code.endsWith("m") ? "SGR" : "CSI"} ${target.code.code}`
   return parserStateResult(
     false,
     `${label}: the library's own report carries this exact code, with both same-run controls qualified`,

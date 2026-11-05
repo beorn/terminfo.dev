@@ -9,6 +9,7 @@ import type {
   HostInputName,
   HostRecipeName,
   ObservationFrame,
+  UnhandledSequence,
 } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
@@ -91,8 +92,22 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 // The OSC 7/9 public-interface census qualifies these exact sources, not every
 // version carrying the same backend name. Real readers take precedence at each caller.
-function hasAuditedOscInterfaceAbsence(ctx: LibProbeSource): boolean {
+function hasAuditedOscInterfaceAbsence(
+  ctx: LibProbeSource,
+  cohort: "osc-absence" | "vt100-rust-d2" = "osc-absence",
+): boolean {
   const identity = ctx.runtimeIdentity
+  if (cohort === "vt100-rust-d2") {
+    return (
+      ctx.backendName === "vt100-rust" &&
+      identity?.kind === "native" &&
+      identity.engineVersion === "0.16.2" &&
+      identity.loadedBinary.sha256 === "72855b1d5462ac4c168d6c2f4a6252ab0bbfbd8682bcd68c732521ed1f4e661c" &&
+      identity.provenance.sourceCommit === "3a0bcc0f615cc22d64ea6b756026521d697f0c61" &&
+      identity.provenance.lockSha256 === "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6" &&
+      auditedAdapterSources(identity, "vt100RustDdabecd4")
+    )
+  }
   if (identity?.kind === "native") {
     return (
       identity.engineVersion === "0.26.0" &&
@@ -5976,3 +5991,85 @@ export const extensionsProbes: ProbeDefinition[] = [
     libAssertionType: "query_reply",
   },
 ]
+
+// Operator D2 / CTO Nov 5 11:16: these exact feeds and normalized codes were
+// measured on the audited real addon. Delivery effects and OSC52 read are not negatives.
+const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
+  "cursor.position-report": { feed: "\u001b[6n", code: { kind: "csi", code: "6n" } },
+  "device.decrpm": { feed: "\u001b[?7$p", code: { kind: "csi", code: "?$7p" } },
+  "device.dsr-996-color-scheme": { feed: "\u001b[?996n", code: { kind: "csi", code: "?996n" } },
+  "device.primary-da": { feed: "\u001b[c", code: { kind: "csi", code: "0c" } },
+  "device.secondary-da": { feed: "\u001b[>c", code: { kind: "csi", code: ">0c" } },
+  "device.status-report": { feed: "\u001b[5n", code: { kind: "csi", code: "5n" } },
+  "device.tertiary-da": { feed: "\u001b[=c", code: { kind: "csi", code: "=0c" } },
+  "device.xtreportcolors": { feed: "\u001b[#R", code: { kind: "csi", code: "#0R" } },
+  "device.xtversion": { feed: "\u001b[>0q", code: { kind: "csi", code: ">0q" } },
+  "device.xtwinops-14": { feed: "\u001b[14t", code: { kind: "csi", code: "14t" } },
+  "device.xtwinops-16": { feed: "\u001b[16t", code: { kind: "csi", code: "16t" } },
+  "device.xtwinops-18": { feed: "\u001b[18t", code: { kind: "csi", code: "18t" } },
+  "device.xtwinops-20": { feed: "\u001b[20t", code: { kind: "csi", code: "20t" } },
+  "device.xtwinops-21": { feed: "\u001b[21t", code: { kind: "csi", code: "21t" } },
+  "editing.decrqcra": { feed: "\u001b[1;1;1;1;1;5*y", code: { kind: "csi", code: "*1;1;1;1;1;5y" } },
+  "extensions.sixel-da1": { feed: "\u001b[c", code: { kind: "csi", code: "0c" } },
+  "extensions.sixel-geometry-report": { feed: "\u001b[?2;1;0S", code: { kind: "csi", code: "?2;1;0S" } },
+  "modes.decsscls": { feed: "\u001b[9 p", code: { kind: "csi", code: " 9p" } },
+  "extensions.osc10-fg-color": { feed: "\u001b]10;?\u0007", code: { kind: "osc", code: "10" } },
+  "extensions.osc11-bg-color": { feed: "\u001b]11;?\u0007", code: { kind: "osc", code: "11" } },
+  "extensions.osc12-cursor-color": { feed: "\u001b]12;?\u0007", code: { kind: "osc", code: "12" } },
+  "extensions.osc1337-capabilities": { feed: "\u001b]1337;Capabilities\u0007", code: { kind: "osc", code: "1337" } },
+  "extensions.osc1337-cellsize": { feed: "\u001b]1337;ReportCellSize\u0007", code: { kind: "osc", code: "1337" } },
+  "extensions.osc17-highlight-bg": { feed: "\u001b]17;?\u0007", code: { kind: "osc", code: "17" } },
+  "extensions.osc19-highlight-fg": { feed: "\u001b]19;?\u0007", code: { kind: "osc", code: "19" } },
+  "extensions.osc21-kitty-color": { feed: "\u001b]21;foreground=?\u001b\\", code: { kind: "osc", code: "21" } },
+  "extensions.osc4-palette": { feed: "\u001b]4;0;?\u0007", code: { kind: "osc", code: "4" } },
+  "extensions.osc5-special-color": { feed: "\u001b]5;0;?\u0007", code: { kind: "osc", code: "5" } },
+  "extensions.osc701-locale": { feed: "\u001b]701;?\u0007", code: { kind: "osc", code: "701" } },
+  "extensions.osc702-version": { feed: "\u001b]702;?\u0007", code: { kind: "osc", code: "702" } },
+  "extensions.osc776-cell-size": { feed: "\u001b]776\u0007", code: { kind: "osc", code: "776" } },
+  "extensions.osc7770-font-size": { feed: "\u001b]7770;?\u0007", code: { kind: "osc", code: "7770" } },
+  "extensions.osc7777-font-window-size": { feed: "\u001b]7777;?\u0007", code: { kind: "osc", code: "7777" } },
+  "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
+}
+
+/** One registry consumer; other subjects and decided results retain their existing path. */
+export function withVt100RustD2Observation(definition: ProbeDefinition): ProbeDefinition {
+  const lib = definition.lib
+  const target = VT100_RUST_D2_NEGATIVES[definition.id]
+  if (!lib || !target) return definition
+  return {
+    ...definition,
+    ...(target && definition.libAssertionType === "query_reply"
+      ? {
+          libAssertionType: {
+            when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
+              typeof source.getUnhandledSequences === "function",
+            then: ["query_reply", "buffer_state"] as const,
+            otherwise: ["query_reply"] as const,
+          },
+        }
+      : {}),
+    lib(ctx) {
+      if (!hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")) return lib(ctx)
+      const result = lib(ctx)
+      if (reportsDecidedOutcome(result)) return result
+      const cursor = ctx.getCursor()
+      return (
+        unhandledSequenceVerdict(
+          ctx,
+          target,
+          target.code.kind === "osc"
+            ? {
+                feed: "\x1b]2;" + UNHANDLED_OSC_CONTROL_TITLE + "\x07",
+                applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
+              }
+            : {
+                feed: "\x1b[0m\x1b[1mC",
+                applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
+                cleanup: "\x1b[0m",
+              },
+          { featureId: definition.id, ...(result.response !== undefined && { body: result.response }) },
+        ) ?? result
+      )
+    },
+  }
+}
