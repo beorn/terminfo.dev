@@ -29,13 +29,18 @@ on:
         type: string
         required: false
         default: "{}"
+      cohort:
+        description: "Isolate this serial cohort dispatch from legacy workflow cancellation"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ inputs.cohort && format('-cohort-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:

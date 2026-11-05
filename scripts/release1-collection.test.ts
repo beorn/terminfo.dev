@@ -210,6 +210,23 @@ it.each([
   ["matching", "hosted-ref-lightweight-tag"],
   ["matching", "hosted-ref-missing"],
   ["matching", "hosted-ref-mismatch"],
+  ["matching", "cohort-active-queued"],
+  ["matching", "cohort-active-in_progress"],
+  ["matching", "cohort-active-requested"],
+  ["matching", "cohort-active-waiting"],
+  ["matching", "cohort-active-pending"],
+  ["matching", "cohort-active-pagination"],
+  ["matching", "cohort-source-mismatch"],
+  ["matching", "cohort-completed"],
+  ["matching", "cohort-failed-watch"],
+  ["matching", "cohort-failed-timing"],
+  ["matching", "cohort-invalid-jobs"],
+  ["matching", "cohort-wrong-run"],
+  ["matching", "cohort-wrong-attempt"],
+  ["matching", "cohort-wrong-source"],
+  ["matching", "cohort-wrong-ref"],
+  ["matching", "cohort-wrong-event"],
+  ["matching", "cohort-wrong-workflow"],
   ["matching", "completed-collector-error"],
   ["matching", "empty-selection"],
   ["matching", "linux-prestart"],
@@ -224,6 +241,7 @@ it.each([
 ] as const)(
   "retains a private %s-suite foreign-attempt artifact after %s without current admission",
   async (suite, inputChange) => {
+    const cohort = inputChange.startsWith("cohort-")
     const directory = mkdtempSync(join(tmpdir(), "terminfo-development-pass-"))
     const input = join(directory, "suite-input.ts")
     writeFileSync(input, "original private suite input")
@@ -243,7 +261,7 @@ it.each([
     const sourceRef =
       inputChange === "hosted-ref-tag" || inputChange === "hosted-ref-lightweight-tag"
         ? "fixture-tag"
-        : inputChange.startsWith("hosted-ref-")
+        : inputChange.startsWith("hosted-ref-") || cohort
           ? "main"
           : undefined
     const catalogSelection =
@@ -370,13 +388,32 @@ it.each([
                   : inputChange === "hosted-ref-missing"
                     ? []
                     : [
-                        `${inputChange === "hosted-ref-mismatch" ? "0".repeat(40) : raw.sourceRevision}\trefs/heads/${sourceRef ?? "fixture-collection"}`,
+                        `${inputChange === "hosted-ref-mismatch" || inputChange === "cohort-source-mismatch" ? "0".repeat(40) : raw.sourceRevision}\trefs/heads/${sourceRef ?? "fixture-collection"}`,
                       ]
           return respond(refs.filter((line) => args.includes(line.split("\t")[1])).join("\n") + "\n")
         }
         throw new Error(`unexpected Git command ${args.join(" ")}`)
       }
       if (command === "gh") {
+        if (args[0] === "api") {
+          expect(args).toContain("--paginate")
+          expect(args).toContain("--slurp")
+          const endpoint = args.find((argument) => String(argument).startsWith("repos/"))
+          expect(endpoint).toContain("repos/beorn/terminfo.dev/actions/workflows/macos-measurement.yml/runs?")
+          const query = new URLSearchParams(String(endpoint).split("?")[1])
+          expect(query.get("branch")).toBe("main")
+          expect(query.get("per_page")).toBe("100")
+          expect(query.has("head_sha")).toBe(false)
+          const status = query.get("status")
+          const active =
+            inputChange === `cohort-active-${status}` ||
+            (inputChange === "cohort-active-pagination" && status === "pending")
+          const pages = [
+            { workflow_runs: [] },
+            { workflow_runs: active ? [{ id: 8000, status, head_sha: "a".repeat(40) }] : [] },
+          ]
+          return respond(JSON.stringify(pages))
+        }
         if (args[0] === "workflow") {
           return respond(
             `https://github.com/beorn/terminfo.dev/actions/runs/${args[2] === "macos-measurement.yml" ? "9001" : "9002"}\n`,
@@ -384,17 +421,62 @@ it.each([
         }
         const mac = args[2] === "9001"
         if (args[1] === "view") {
+          const timing = args.includes("--attempt")
+          if (timing && inputChange === "cohort-failed-timing") {
+            if (Array.isArray(stdio) && typeof stdio[2] === "number") writeSync(stdio[2], "timing API unavailable")
+            return respond("timing query failed", 1)
+          }
           return respond(
             JSON.stringify({
-              headSha: suite === "different" ? "0".repeat(40) : raw.sourceRevision,
-              headBranch: sourceRef ?? "fixture-collection",
-              event: "workflow_dispatch",
-              workflowName: mac ? "macos-measurement" : "windows-measurement",
+              headSha:
+                suite === "different" || (timing && inputChange === "cohort-wrong-source")
+                  ? "0".repeat(40)
+                  : raw.sourceRevision,
+              headBranch: timing && inputChange === "cohort-wrong-ref" ? "other" : (sourceRef ?? "fixture-collection"),
+              event: timing && inputChange === "cohort-wrong-event" ? "push" : "workflow_dispatch",
+              workflowName:
+                timing && inputChange === "cohort-wrong-workflow"
+                  ? "other"
+                  : mac
+                    ? "macos-measurement"
+                    : "windows-measurement",
+              ...(cohort && {
+                databaseId: timing && inputChange === "cohort-wrong-run" ? 9009 : 9001,
+                attempt: timing && inputChange === "cohort-wrong-attempt" ? 3 : 2,
+              }),
+              ...(timing && {
+                jobs: (inputChange === "cohort-invalid-jobs"
+                  ? [
+                      { startedAt: null, completedAt: "2026-11-05T03:22:00Z" },
+                      { startedAt: "malformed", completedAt: "2026-11-05T03:22:00Z" },
+                      { startedAt: "2026-11-05T03:22:01Z", completedAt: "2026-11-05T03:22:00Z" },
+                      { startedAt: "2026-11-05T03:22:00Z", completedAt: "2026-11-05T03:22:00Z", conclusion: "skipped" },
+                      { startedAt: "2026-11-05T03:17:16Z", completedAt: "0001-01-01T00:00:00Z" },
+                      { startedAt: "2026-02-30T03:17:16Z", completedAt: "2026-03-02T03:22:00Z" },
+                    ]
+                  : [{ startedAt: "2026-11-05T03:17:16Z", completedAt: "2026-11-05T03:22:00Z" }]
+                ).map((job, index) => ({
+                  databaseId: 127025869216 + index,
+                  name: `measure fixture ${index}`,
+                  status: "completed",
+                  conclusion: "failure",
+                  ...job,
+                })),
+              }),
             }),
           )
         }
         if (args[1] === "watch") {
-          return respond("workflow fixture result", inputChange.startsWith("macos-") ? 1 : mac ? 0 : 1)
+          return respond(
+            "workflow fixture result",
+            inputChange.startsWith("macos-") ||
+              inputChange === "cohort-failed-watch" ||
+              inputChange === "cohort-failed-timing"
+              ? 1
+              : mac
+                ? 0
+                : 1,
+          )
         }
         if (args[1] === "download") {
           const artifacts = args[args.indexOf("--dir") + 1]
@@ -402,7 +484,7 @@ it.each([
           for (const id of mac
             ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "cmux"]
             : ["windows-terminal", "alacritty"]) {
-            const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
+            const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-${cohort ? 2 : 1}`)
             mkdirSync(folder, { recursive: true })
             if (inputChange.startsWith("macos-") && macosContexts.includes(id)) {
               // The real six-context failure retained completed drafts after canonical output failed.
@@ -530,7 +612,7 @@ it.each([
             }
             writeFileSync(
               join(folder, "collector-bun.lock"),
-              id === "terminal-app" && !textCase ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
+              id === "terminal-app" && !textCase && !cohort ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
             )
             writeFileSync(
               join(folder, "collector-build.json"),
@@ -559,23 +641,25 @@ it.each([
     })
     try {
       // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
-      const selection = inputChange.startsWith("macos-")
-        ? { contexts: macosContexts.map((id) => `${id}/macos`), ids: ["sgr.bold"] }
-        : inputChange === "hosted-selected"
-          ? { contexts: ["terminal-app/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
-          : inputChange === "hosted-one-os"
-            ? { contexts: ["com.microsoft.VSCode/macos"], ids: ["sgr.bold"] }
-            : inputChange === "hosted-contexts" || inputChange.startsWith("hosted-ref-")
-              ? { contexts: ["terminal-app/macos"] }
-              : inputChange === "selected" || inputChange === "completed-collector-error"
-                ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
-                : inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")
-                  ? { contexts: ["alacritty/linux"], ids: ["sgr.bold"] }
-                  : inputChange === "empty-selection"
-                    ? { contexts: [], ids: [] }
-                    : inputChange === "empty-probes"
-                      ? { contexts: ["alacritty/linux"], ids: [] }
-                      : undefined
+      const selection = cohort
+        ? { contexts: ["terminal-app/macos"], ids: ["sgr.bold"] }
+        : inputChange.startsWith("macos-")
+          ? { contexts: macosContexts.map((id) => `${id}/macos`), ids: ["sgr.bold"] }
+          : inputChange === "hosted-selected"
+            ? { contexts: ["terminal-app/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
+            : inputChange === "hosted-one-os"
+              ? { contexts: ["com.microsoft.VSCode/macos"], ids: ["sgr.bold"] }
+              : inputChange === "hosted-contexts" || inputChange.startsWith("hosted-ref-")
+                ? { contexts: ["terminal-app/macos"] }
+                : inputChange === "selected" || inputChange === "completed-collector-error"
+                  ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
+                  : inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")
+                    ? { contexts: ["alacritty/linux"], ids: ["sgr.bold"] }
+                    : inputChange === "empty-selection"
+                      ? { contexts: [], ids: [] }
+                      : inputChange === "empty-probes"
+                        ? { contexts: ["alacritty/linux"], ids: [] }
+                        : undefined
       // Requirement: private release collection leaves corpus bytes untouched. The old admission
       // mocks could miss a direct corpus write, so compare the actual placement directories.
       const corpusSnapshot = () =>
@@ -590,7 +674,133 @@ it.each([
           )
           .sort((a, b) => a[0]!.localeCompare(b[0]!))
       const beforeCorpus = suite === "matching" && inputChange === "none" ? corpusSnapshot() : undefined
-      const pass = await collectPass(directory, { runner: "local" }, selection, sourceRef)
+      const pass = cohort
+        ? await collectPass(directory, { runner: "local" }, selection, sourceRef, { cohort: true })
+        : await collectPass(directory, { runner: "local" }, selection, sourceRef)
+      if (!cohort) {
+        expect(Object.hasOwn(pass, "hosted")).toBe(false)
+        expect(
+          launcher.mock.calls.some(
+            ([command, args]) => command === "gh" && (args?.[0] === "api" || args?.includes("--attempt")),
+          ),
+        ).toBe(false)
+        for (const [command, args] of launcher.mock.calls) {
+          if (command === "gh" && args?.[1] === "view") {
+            expect(args.at(-1)).toBe("headSha,headBranch,event,workflowName")
+          }
+        }
+      }
+      if (cohort) {
+        const ghCalls = launcher.mock.calls.filter(([command]) => command === "gh").map(([, args]) => args!)
+        const dispatches = ghCalls.filter((args) => args[0] === "workflow")
+        expect(pass.contexts).toHaveLength(1)
+        expect(pass.complete).toBe(false)
+        if (inputChange === "cohort-source-mismatch") {
+          expect(ghCalls).toEqual([])
+          expect(pass.contexts[0]?.error).toContain("not measured source")
+          return
+        }
+        const preflight = ghCalls.filter((args) => args[0] === "api")
+        expect(preflight).toHaveLength(5)
+        expect(
+          preflight
+            .map((args) =>
+              new URLSearchParams(
+                String(args.find((argument) => String(argument).startsWith("repos/"))).split("?")[1],
+              ).get("status"),
+            )
+            .sort(),
+        ).toEqual(["in_progress", "pending", "queued", "requested", "waiting"])
+        const hosted = pass.hosted?.[0]
+        expect(hosted).toMatchObject({
+          workflow: "macos-measurement",
+          ref: "refs/heads/main",
+          sourceRevision: raw.sourceRevision,
+          checkedAt: expect.any(String),
+        })
+        expect(Number.isFinite(Date.parse(hosted!.checkedAt))).toBe(true)
+        if (inputChange.startsWith("cohort-active-")) {
+          expect(dispatches).toEqual([])
+          expect(ghCalls.every((args) => args[0] === "api")).toBe(true)
+          expect(hosted?.activeRuns).toEqual([
+            {
+              id: 8000,
+              status:
+                inputChange === "cohort-active-pagination" ? "pending" : inputChange.slice("cohort-active-".length),
+              headSha: "a".repeat(40),
+            },
+          ])
+          expect(hosted).not.toHaveProperty("runId")
+          const row = pass.contexts[0]!
+          expect(row.status).toBe("not-started")
+          expect(row.reason ?? row.error).toMatch(/active.*macos-measurement.*refs\/heads\/main.*8000/)
+          expect(row.reason ?? row.error).toContain(hosted!.checkedAt)
+          const retained = JSON.parse(readFileSync(row.rawRun!, "utf8")) as RunDraft
+          expect(readCollectorAttempt(retained.rawReplies)?.startedAt).toBeUndefined()
+          expect(retained.subject).toBeUndefined()
+          expect(retained.results.every((result) => result.status === "probe-todo")).toBe(true)
+          return
+        }
+        expect(dispatches).toHaveLength(1)
+        expect(dispatches[0]).toContain("cohort=true")
+        expect(hosted).toMatchObject({ runId: "9001", attempt: 2, activeRuns: [] })
+        const timing = ghCalls.filter((args) => args[1] === "view" && args.includes("--attempt"))
+        expect(timing).toHaveLength(1)
+        expect(timing[0]?.slice(0, 3)).toEqual(["run", "view", "9001"])
+        expect(timing[0]?.[timing[0].indexOf("--attempt") + 1]).toBe("2")
+        expect(timing[0]?.at(-1)).toContain("jobs")
+        expect(ghCalls.findIndex((args) => args === timing[0])).toBeGreaterThan(
+          ghCalls.findIndex((args) => args[1] === "watch"),
+        )
+        expect(ghCalls.findIndex((args) => args[1] === "download")).toBeGreaterThan(
+          ghCalls.findIndex((args) => args === timing[0]),
+        )
+        expect(
+          readFileSync(
+            join(pass.directory, "hosted", "macos", "artifacts", "macos-terminal-app-9001-2", "run.json"),
+            "utf8",
+          ),
+        ).toBe("{}")
+        expect(hosted?.receiptPath).toBe(join(pass.directory, "hosted", "macos", "jobs.stdout.log"))
+        if (inputChange === "cohort-failed-watch" || inputChange === "cohort-failed-timing") {
+          expect(pass.errors).toContain(
+            `macos-measurement exited 1; logs retained at ${join(pass.directory, "hosted", "macos")}`,
+          )
+          expect(readFileSync(join(pass.directory, "hosted", "macos", "watch.stdout.log"), "utf8")).toBe(
+            "workflow fixture result",
+          )
+        }
+        if (inputChange === "cohort-failed-timing" || inputChange.startsWith("cohort-wrong-")) {
+          expect(hosted?.unavailable).toEqual(expect.any(String))
+          expect(hosted).not.toHaveProperty("jobs")
+          expect(pass.errors).toContain(hosted!.unavailable)
+          if (inputChange === "cohort-failed-timing") {
+            expect(readFileSync(join(pass.directory, "hosted", "macos", "jobs.stderr.log"), "utf8")).toBe(
+              "timing API unavailable",
+            )
+          }
+        } else if (inputChange === "cohort-invalid-jobs") {
+          expect(hosted?.jobs).toHaveLength(6)
+          expect(
+            hosted?.jobs?.every((job) => job.executionSeconds === null && typeof job.unavailable === "string"),
+          ).toBe(true)
+        } else {
+          expect(hosted?.jobs).toEqual([
+            {
+              id: 127025869216,
+              name: "measure fixture 0",
+              status: "completed",
+              conclusion: "failure",
+              executionSeconds: 284,
+            },
+          ])
+          const receipt = JSON.parse(readFileSync(hosted!.receiptPath!, "utf8")) as {
+            jobs: Array<{ startedAt: string }>
+          }
+          expect(receipt.jobs[0]?.startedAt).toBe("2026-11-05T03:17:16Z")
+        }
+        return
+      }
       if (beforeCorpus) expect(corpusSnapshot()).toEqual(beforeCorpus)
       if (inputChange === "hosted-census-one") {
         const dispatches = launcher.mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow")
