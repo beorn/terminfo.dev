@@ -496,12 +496,12 @@ interface ArmCase {
   when: string
   /** The engine's reply to each query; anything unnamed is silent. DA1 always answers. */
   replies: Readonly<Record<string, string>>
-  outcome: "unsupported" | "inconclusive" | "probe-invalid"
+  outcome: "unsupported" | "inconclusive" | "probe-invalid" | "probe-todo"
 }
 
 // One real arm per reply-criterion family, both two-step arms, and DECRQSS's second step after an SGR refusal.
 const ARM_CASES: ArmCase[] = [
-  { id: "extensions.osc0-icon-title", when: "silent", replies: {}, outcome: "probe-invalid" },
+  { id: "extensions.osc0-icon-title", when: "silent", replies: {}, outcome: "probe-todo" },
   { id: "device.xtversion", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.xtwinops-20", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.decrqss", when: "silent", replies: {}, outcome: "unsupported" },
@@ -516,22 +516,48 @@ const ARM_CASES: ArmCase[] = [
   { id: "extensions.sixel-geometry-report", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "extensions.osc21-kitty-color", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "extensions.kitty-graphics", when: "silent", replies: {}, outcome: "unsupported" },
-  { id: "extensions.kitty-graphics.transmit", when: "silent", replies: {}, outcome: "unsupported" },
+  { id: "extensions.kitty-graphics.transmit", when: "silent", replies: {}, outcome: "probe-todo" },
 ]
 
 test.each(ARM_CASES)(
-  "$id, $when: the proven headless arm records the same probe results as live for the same outcomes",
+  "$id, $when: the proven headless arm retains its criterion outcome and missing observations",
   async ({ id, replies, outcome }) => {
     const { lib, term } = armsOf(id)
     const { ctx, outcomes } = recordingSource((text) => (text === DA1_QUERY ? DA1 : (replies[text] ?? "")))
-    // The scripted xterm backend reads its icon and title state, which OSC 0 now uses directly once no audit gates it
-    // (#32246); hide that state so this case keeps exercising the query arm the sentinel member serves.
+    // Hide the icon reader while retaining the real title reader: title success alone cannot prove OSC 0.
+    // Its library criterion and the Kitty transfer effect need more than the app arm's query outcome.
     const queryOnly = <T extends { getIconLabel?: unknown }>(source: T): T => {
       delete source.getIconLabel
       return source
     }
     const headless = lib(queryOnly(ctx))
     expect(outcomes.length, id).toBeGreaterThan(0)
+    if (outcome === "probe-todo") {
+      expect(headless.observation, id).toBeUndefined()
+      expect(headless.assertions, id).toBeUndefined()
+      expect(headless.notTested, id).toMatchObject({
+        reason: "no-semantic-observable",
+        noObservable: expect.any(String),
+      })
+      const live = await term(replayingLive(outcomes))
+      if (id === "extensions.osc0-icon-title") {
+        expect(headless.notTested?.noObservable).toContain("icon label")
+        expect(live.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+      } else {
+        expect(headless.notTested?.noObservable).toContain("image allocation readback")
+        expect(live.observation).toBeUndefined()
+        expect(live.notTested?.noObservable).toBe(headless.notTested?.noObservable)
+      }
+      const plain = lib(queryOnly(sourceOf(scripted(() => ""))))
+      expect(plain.observation, id).toBeUndefined()
+      if (id === "extensions.osc0-icon-title") expect(plain.notTested?.reason, id).toBe("no-semantic-observable")
+      else {
+        expect(plain.tests).toContainEqual(
+          expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("allocation") }),
+        )
+      }
+      return
+    }
     if (outcome === "probe-invalid") {
       expect(headless.tests, id).toMatchObject([{ status: outcome }])
       expect(headless.replyFailureTestIds, id).toEqual(["criterion"])

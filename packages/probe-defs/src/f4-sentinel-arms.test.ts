@@ -1,6 +1,6 @@
 /**
  * @failure A hand-written probe's headless arm reads a bare capture on a proven engine, so a query the
- *   terminal ignores grades as inconclusive/PROBE TODO instead of the measured negative F4 asks for.
+ *   terminal ignores loses its measured query negative, or transport silence decides an unobserved reset/stack effect.
  * @level l2
  * @consumer #30699 F4 remainder: DSR 996, DECRQCRA and the OSC 104/110-114/30001/30101 reset and
  *   colour-stack queries on the five proven parser engines.
@@ -17,10 +17,10 @@ const da1 = "\x1b[?1;2c"
 const sentinelAt = { atMs: 1, graceMs: 250 }
 const base = { feed: () => {}, feedCapture: () => "" }
 
-/** The ten F4 criteria whose headless arm now asks the sentinel before it reads a bare capture. */
+/** Query silence can decide a reply criterion; it cannot decide an unobserved state change. */
+const QUERY_CRITERIA = new Set<string>(["device.dsr-996-color-scheme", "editing.decrqcra"])
 const F4 = [
-  "device.dsr-996-color-scheme",
-  "editing.decrqcra",
+  ...QUERY_CRITERIA,
   "extensions.osc104-reset-palette",
   "extensions.osc110-reset-fg",
   "extensions.osc111-reset-bg",
@@ -53,15 +53,25 @@ function silentSentinel(reason: TerminalQueryOutcome["reason"] = "sentinel"): Te
   }
 }
 
-test.each(F4)("%s: an answered DA1 with no reply is the measured negative F4 asks for", (id) => {
+test.each(F4)("%s: DA1-only silence decides reply criteria, leaving effects without readback open", (id) => {
   const result = run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel() })
-  expect(result.observation).toMatchObject({
-    outcome: "unsupported",
-    assertionType: "query_reply",
-    note: "negative by sentinel",
-  })
-  expect(result.response).toBe(da1)
-  expect(result.assertions?.map(({ kind }) => kind)).toEqual(["negative"])
+  if (QUERY_CRITERIA.has(id)) {
+    expect(result.observation).toMatchObject({
+      outcome: "unsupported",
+      assertionType: "query_reply",
+      note: "negative by sentinel",
+    })
+    expect(result.response).toBe(da1)
+    expect(result.assertions?.map(({ kind }) => kind)).toEqual(["negative"])
+  } else {
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(result.criterionBranch).toBe("color-readback-review")
+    expect(result.tests).toContainEqual(
+      expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining("readback") }),
+    )
+    expect(result.response).toContain(JSON.stringify(da1).slice(1, -1))
+  }
 })
 
 test.each(F4)("%s: an unanswered DA1 keeps the capture reading, never a negative", (id) => {
@@ -75,5 +85,10 @@ test.each(F4)("%s: an engine with no proven reply path keeps its pre-existing re
   const memberWithoutSentinel = run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel("timeout") })
   expect(withoutMember.observation?.outcome).not.toBe("unsupported")
   expect(withoutMember.observation?.outcome).toBe(memberWithoutSentinel.observation?.outcome)
-  expect(withMember.observation?.outcome).toBe("unsupported")
+  if (QUERY_CRITERIA.has(id)) expect(withMember.observation?.outcome).toBe("unsupported")
+  else {
+    expect(withMember.observation).toBeUndefined()
+    expect(withMember.criterionBranch).toBe("color-readback-review")
+    expect(withMember.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
+  }
 })

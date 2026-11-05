@@ -62,30 +62,25 @@ test.each(["libvterm", "ghostty", "ghostty-native", "wezterm", "kitty"])(
   },
 )
 
-test.each([
-  [
-    "input.xtest-key",
-    "os-input-review",
-    "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
-  ],
-  [
-    "extensions.clipboard-paste",
-    "paste-encoding",
-    "unknown: paste-encoding extension unavailable; native paste interface not observed",
-  ],
-])("%s retains its named lib review until its native interface is bound", (id, branch, reason) => {
-  const definition = [...inputProbes, ...extensionsProbes].find((entry) => entry.id === id)!
-  const result = definition.lib!({ kind: "live", backendName: "unknown" } as LibProbeSource)
-  expect(result.observation).toBeUndefined()
-  expect(result.criterionBranch).toBe(branch)
-  expect(result.tests).toEqual([
-    {
-      id: "review",
-      status: "probe-todo",
-      reason,
-    },
-  ])
-})
+test.each(["input.xtest-key", "extensions.clipboard-paste"])(
+  "%s retains its named missing library input observation",
+  (id) => {
+    const definition = [...inputProbes, ...extensionsProbes].find((entry) => entry.id === id)!
+    const result = definition.lib!({ kind: "live" } as LibProbeSource)
+    expect(result.observation).toBeUndefined()
+    expect(result.criterionBranch).toBe(id === "extensions.clipboard-paste" ? "paste-encoding" : "os-input-review")
+    expect(result.tests).toEqual([
+      {
+        id: "review",
+        status: "probe-todo",
+        reason:
+          id === "extensions.clipboard-paste"
+            ? expect.stringContaining("paste-encoding extension unavailable; native paste interface not observed")
+            : "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+      },
+    ])
+  },
+)
 
 test.each([
   "input.xtest-key",
