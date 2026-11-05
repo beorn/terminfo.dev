@@ -4840,22 +4840,31 @@ test.skipIf(!ghosttyNativeAvailable)(
       registryDefinitions(TITLE_STACK_IDS),
     )
     // The published addon exposes no title state; current source builds observe setup.
-    // Each path must retain both fixtures and its own existing PROBE TODO cause.
+    // Each path retains both fixtures; only observable controls can decide the round trip.
     const firstFixture = JSON.parse(batch.rawReplies[TITLE_STACK_IDS[0]]!) as { popFixture: { original: string } }
     if (firstFixture.popFixture.original === "") {
       expectTitleSetupReview(batch)
       return
     }
-    // Observable setup still leaves both saved-title restores undecided without a control.
+    // Both OSC 2 controls work, but the joint push/pop round trip does not restore either title.
     expect(batch.results).toMatchObject(
       TITLE_STACK_IDS.map((featureId) => ({
         featureId,
-        status: "probe-todo",
-        tests: [{ id: "criterion", status: "probe-todo", reason: NO_SAME_PATH_CONTROL }],
+        status: "unsupported",
+        tests: [{ id: "criterion", status: "unsupported", reason: "push/pop round trip does not restore" }],
       })),
     )
-    expect(batch.observations).toEqual([])
-    expect(batch.assertions).toEqual([])
+    expect(batch.observations).toMatchObject(
+      TITLE_STACK_IDS.map((featureId) => ({
+        featureId,
+        outcome: "unsupported",
+        assertionType: "buffer_state",
+        note: "push/pop round trip does not restore",
+      })),
+    )
+    expect(batch.assertions).toMatchObject(
+      TITLE_STACK_IDS.map((featureId) => ({ featureId, kind: "negative", assertionType: "buffer_state" })),
+    )
     for (const id of TITLE_STACK_IDS) {
       expect(JSON.parse(batch.rawReplies[id]!)).toEqual({
         before: "",

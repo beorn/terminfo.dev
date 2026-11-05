@@ -762,7 +762,7 @@ describe("zero-byte replies on a loaded artifact", () => {
     // No source answer decides the cell (@cto 9fad23d7): the silent reply has no same-path control in this run.
     expect(result.notTested).toMatchObject({
       reason: "no-semantic-observable",
-      noObservable: expect.stringContaining(NO_SAME_PATH_CONTROL),
+      noObservable: id === "extensions.osc0-icon-title" ? expect.stringContaining(NO_SAME_PATH_CONTROL) : NO_SAME_PATH_CONTROL,
     })
     expect(result.criterionBranch).toBeUndefined()
     expect(result.observation).toBeUndefined()

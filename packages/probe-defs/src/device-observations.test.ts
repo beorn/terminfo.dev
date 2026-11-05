@@ -722,7 +722,7 @@ describe("window-operation qualification", () => {
   }
 
   test.each(["working", "stale", "none", "unobservable"] as const)(
-    "title stack separates each operation and cleans up: %s",
+    "title stack measures the controlled joint round trip and cleans up: %s",
     (behavior) => {
       for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
         const fixture = titleContext(behavior)
