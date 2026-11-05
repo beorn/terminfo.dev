@@ -938,6 +938,12 @@ test.each(["macos", "windows"])("%s workflow keeps the full matrix in its dispat
   } else {
     expect(matrix.include).toHaveLength(9)
     expect(matrix.include.every((row: { id: string; bundle?: string }) => row.id && row.bundle)).toBe(true)
+    expect(inputs.cohort).toMatchObject({ type: "boolean", required: false, default: false })
+    expect(workflow.concurrency).toEqual({
+      group:
+        "${{ github.workflow }}-${{ github.ref }}${{ inputs.cohort && format('-cohort-{0}', github.run_id) || '' }}",
+      "cancel-in-progress": true,
+    })
   }
   expect(job.strategy.matrix).toBe("${{ fromJSON(inputs.context_matrix) }}")
   expect(job.if).toBe(
