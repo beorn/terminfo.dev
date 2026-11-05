@@ -37,6 +37,8 @@ No result is answered from source code (operator 2026-11-03). Source is read onl
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
+SGR attribute negatives require a rendered target and a same-run bold cell control; underline styles instead require the control to read exact `single` style. Missing nullable attributes and collapsed boolean underline readers stay open. Bright/indexed colour negatives require an ordinary-red control on the same colour reader and targets unchanged from the neutral baseline; different nondefault colours remain inconclusive. Existing positive effects witness their own reader. When an attribute field is unreported, a DECRQSS alternative qualifies only after this probe reads a status-1 SGR `m` bold control; a facility or DECSTBM reply does not qualify it. The exact issued input strings and control/target evidence are retained together. These library controls do not change app-arm criteria.
+
 Headless DEC-mode queries use the existing sentinel reader when the collector has qualified reply delivery.
 Their retained captures include the target query and its separate DA1 control. DA1 responsiveness proves
 transport only: without the criterion's own DECRPM reply, these mode results retain their named PROBE TODO.
@@ -123,6 +125,10 @@ Library `cell.hidden: null` means conceal is not reported; missing cell observab
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO
 when no clipboard-state witness is wired; a read negative cannot measure the write.
+Reset, colour-stack and Kitty transfer/display effects likewise stay PROBE TODO when their
+readback is silent, even if DA1 answers. Effect absence needs an answered same-probe state
+control and an observed comparison. Existing own-state readers and answered unchanged-state
+comparisons continue to decide results; query features retain their own reply criteria.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
 silence. Qualified silence from every control names an unmet detection prerequisite as PROBE TODO,
 retaining each raw window. Any control reply leaves target silence as PROBE INVALID; complete,

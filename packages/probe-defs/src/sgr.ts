@@ -627,11 +627,21 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
     ...probe(
       id,
       (ctx) => {
-        ctx.feed(`C${first}X${second}Y`)
+        const targetInput = `C${first}X${second}Y`
+        ctx.feed(targetInput)
         const baseline = ctx.getCell(0, 0)
         const firstCell = ctx.getCell(0, 1)
         const secondCell = ctx.getCell(0, 2)
-        const state = { baseline, first: firstCell, second: secondCell }
+        const bright = id.endsWith(".bright")
+        const controlInput = `\x1b[0m\x1b[${channel === "fg" ? 31 : 41}mR\x1b[0m`
+        if (bright) ctx.feed(controlInput)
+        const control = bright ? ctx.getCell(0, 3) : undefined
+        const state = {
+          baseline,
+          first: firstCell,
+          second: secondCell,
+          ...(control ? { control, input: { target: targetInput, control: controlInput } } : {}),
+        }
         const expected = `${id}: the two named colors select distinct exposed ${channel} RGB values`
         if (baseline.char !== "C" || firstCell.char !== "X" || secondCell.char !== "Y") {
           return parserStateResult(null, expected, state, "Neutral control or named-color cells were not exposed")
@@ -648,6 +658,15 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
         // and two targets that all read no color show nothing about the color field, so that is a
         // coverage record, as in the truecolor and default-color arms (#30701, @cto cd391424).
         if (neutral && sameCellColor(neutral, a) && sameCellColor(neutral, b)) {
+          return parserStateResult(false, expected, state)
+        }
+        if (
+          control?.char === "R" &&
+          control[channel] &&
+          !sameCellColor(neutral, control[channel]) &&
+          sameCellColor(neutral, a) &&
+          sameCellColor(neutral, b)
+        ) {
           return parserStateResult(false, expected, state)
         }
         if (!neutral && !a && !b) {
@@ -682,13 +701,25 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
     ...probe(
       id,
       (ctx) => {
-        ctx.feed(`C\x1b[${sgr};2;95;135;175mA\x1b[${sgr};2;215;135;95mB\x1b[${sgr};5;67mX\x1b[${sgr};5;173mY`)
+        const targetInput = `C\x1b[${sgr};2;95;135;175mA\x1b[${sgr};2;215;135;95mB\x1b[0m\x1b[${sgr};5;67mX\x1b[${sgr};5;173mY`
+        ctx.feed(targetInput)
         const baseline = ctx.getCell(0, 0)
         const directFirst = ctx.getCell(0, 1)
         const directSecond = ctx.getCell(0, 2)
         const indexedFirst = ctx.getCell(0, 3)
         const indexedSecond = ctx.getCell(0, 4)
-        const state = { baseline, directFirst, directSecond, indexedFirst, indexedSecond }
+        const controlInput = `\x1b[0m\x1b[${channel === "fg" ? 31 : 41}mR\x1b[0m`
+        ctx.feed(controlInput)
+        const control = ctx.getCell(0, 5)
+        const state = {
+          baseline,
+          directFirst,
+          directSecond,
+          indexedFirst,
+          indexedSecond,
+          control,
+          input: { target: targetInput, control: controlInput },
+        }
         const expected = `${id}: indices 67 and 173 match two independently observed canonical RGB cube references`
         if (
           baseline.char !== "C" ||
@@ -703,6 +734,15 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         const b = directSecond[channel]
         const x = indexedFirst[channel]
         const y = indexedSecond[channel]
+        if (
+          control.char === "R" &&
+          control[channel] &&
+          !sameCellColor(baseline[channel], control[channel]) &&
+          sameCellColor(baseline[channel], x) &&
+          sameCellColor(baseline[channel], y)
+        ) {
+          return parserStateResult(false, expected, state)
+        }
         // #30701, @cto ruling C: direct RGB that does not read back its fed value is a reference that
         // cannot be calibrated (PROBE TODO). A calibrated reference the indices miss is a custom indexed
         // palette OR an adapter that does not resolve indices to RGB (wezterm reports an index as
@@ -872,7 +912,7 @@ export const sgrProbes: ProbeDefinition[] = [
   sgrProbe(
     "sgr.faint",
     "\x1b[2m",
-    (cell) => cell.dim === true,
+    (cell) => (cell.dim == null ? null : cell.dim),
     undefined,
     { require: [2] },
     "Cell readback cannot distinguish unsupported faint styling from an unreported or collapsed attribute",
@@ -881,7 +921,7 @@ export const sgrProbes: ProbeDefinition[] = [
   sgrProbe(
     "sgr.italic",
     "\x1b[3m",
-    (cell) => cell.italic === true,
+    (cell) => (cell.italic == null ? null : cell.italic),
     undefined,
     { require: [3] },
     "Cell readback cannot distinguish unsupported italic styling from an unreported attribute",
@@ -937,7 +977,7 @@ export const sgrProbes: ProbeDefinition[] = [
   sgrProbe(
     "sgr.blink",
     "\x1b[5m",
-    (cell) => cell.blink === true,
+    (cell) => (cell.blink == null ? null : cell.blink),
     undefined,
     { require: [5] },
     "Cell readback cannot distinguish unsupported blink styling from an unreported attribute",
@@ -958,7 +998,7 @@ export const sgrProbes: ProbeDefinition[] = [
   sgrProbe(
     "sgr.strikethrough",
     "\x1b[9m",
-    (cell) => cell.strikethrough === true,
+    (cell) => (cell.strikethrough == null ? null : cell.strikethrough),
     undefined,
     { require: [9] },
     "Cell readback cannot distinguish unsupported strikethrough from an unreported attribute",

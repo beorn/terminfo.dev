@@ -4831,14 +4831,21 @@ test("an adapter that reports no title gives the title-stack cells a headless ob
 })
 
 test.skipIf(!ghosttyNativeAvailable)(
-  `real Ghostty native title-stack fixtures retain their no-control evidence${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
+  `real Ghostty native title-stack fixtures retain their observed evidence${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
   async () => {
     const batch = await collectBatch(
       async () => createGhosttyNativeBackend(),
       "ghostty-native",
       registryDefinitions(TITLE_STACK_IDS),
     )
-    // Setup is observable in the pinned native engine; neither fixture restores its saved title.
+    // The published addon exposes no title state; current source builds observe setup.
+    // Each path must retain both fixtures and its own existing PROBE TODO cause.
+    const firstFixture = JSON.parse(batch.rawReplies[TITLE_STACK_IDS[0]]!) as { popFixture: { original: string } }
+    if (firstFixture.popFixture.original === "") {
+      expectTitleSetupReview(batch)
+      return
+    }
+    // Observable setup still leaves both saved-title restores undecided without a control.
     expect(batch.results).toMatchObject(
       TITLE_STACK_IDS.map((featureId) => ({
         featureId,
@@ -4879,4 +4886,33 @@ test("paste-encoding forwarding requires declaration and function, binds the bac
   } finally {
     value.destroy()
   }
+})
+
+// #32318: callback-only checks miss a mixed reader rejected by the production declaration gate.
+// Use the real libvterm SGR reporter whose faint field is unreported; no feature is implemented by the fixture.
+test("records qualified SGR readback when the cell attribute is unreported", async () => {
+  const definition = registryDefinitions(["sgr.faint"])[0]!
+  const original = definition.lib!
+  const batch = await collectBatch(resolveLibvterm, "libvterm", [
+    {
+      ...definition,
+      lib(ctx) {
+        return original({
+          ...ctx,
+          queryWithSentinelOutcome(sequence, pattern) {
+            const raw = ctx.feedCapture(sequence)
+            return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: raw.match(pattern), reason: "reply" }
+          },
+        })
+      },
+    },
+  ])
+  expect(batch.results[0]?.reason).toBeUndefined()
+  expect(batch.results).toMatchObject([{ featureId: "sgr.faint", status: "unsupported" }])
+  expect(batch.observations).toMatchObject([
+    { featureId: "sgr.faint", outcome: "unsupported", assertionType: "query_reply" },
+  ])
+  expect(JSON.parse(batch.rawReplies["sgr.faint"]!)).toMatchObject({
+    sgrReadback: { control: expect.stringContaining("m"), target: expect.stringContaining("m") },
+  })
 })

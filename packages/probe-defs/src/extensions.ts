@@ -717,7 +717,12 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
     if (ctx.queryWithSentinelOutcome) {
       initialSentinel = ctx.queryWithSentinelOutcome(query, replyPattern)
       silence = sentinelSilenceResult(initialSentinel, `Complete OSC ${setCode} color reply`)
-      if (silence && !hostColorSlot && !highlightColorSlot) return silence
+      if (silence && !hostColorSlot && !highlightColorSlot) {
+        return colorReadbackReviewResult(
+          `OSC ${setCode} query did not answer, so OSC ${resetCode} reset has no effect readback`,
+          { query, initialSentinel },
+        )
+      }
     }
     const originalRaw = silence ? "" : ctx.feedCapture(query)
     const original = replyPattern.exec(originalRaw)?.[1]
@@ -811,7 +816,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           reset,
         )
         const restoredRaw = capture(query)
-        const state = { query, originalRaw, controls, ...(indexed && { cells, ...(silence && { initialSentinel }) }) }
+        const state = { query, originalRaw, controls, ...(indexed && { cells }), ...(silence && { initialSentinel }) }
         const response = JSON.stringify(state)
         const rgb = (cell: Cell | null, char: string) =>
           cell?.char === char &&
@@ -895,11 +900,11 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
               ),
             )
           }
-          // Keep the deciding DA1 bytes intact; every host slot's control evidence accompanies its assertion.
           return answer(
-            silence.observation
-              ? { ...silence, assertions: silence.assertions?.map((assertion) => ({ ...assertion, note: response })) }
-              : silence,
+            colorReadbackReviewResult(
+              `OSC ${setCode} set-and-verify query did not answer, so OSC ${resetCode} reset has no effect readback`,
+              state,
+            ),
           )
         }
         if (control.setterRaw === "" && control.seededRaw === "" && resetRaw === "" && restoredRaw === "") {
@@ -1062,6 +1067,12 @@ async function colorResetAppProbe(
   }
   const before = await read()
   if (!before.rgb) {
+    if (before.outcome.reason === "sentinel") {
+      return notTestedResult(
+        `OSC ${spec.setCode} query did not answer, so OSC ${spec.resetCode} reset has no effect readback`,
+        { query, initialReadback: before.outcome },
+      )
+    }
     return oscReplyResult(before.outcome.raw, null, `Complete OSC ${spec.setCode} color reply`, before.outcome.sentinel)
   }
   const requested = probeForeground(before.rgb)
@@ -1681,13 +1692,18 @@ function colorStackError(actionKind: "query" | "behavior", action: string, error
 function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): ProbeDefinition["lib"] {
   return (ctx) => {
     const operation = ownSequence === colorPush ? "push" : "pop"
-    let silence: ProbeCallbackResult | null = null
+    let initialReadback: TerminalQueryOutcome | undefined
     if (ctx.queryWithSentinelOutcome) {
-      silence = sentinelSilenceResult(
-        ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply),
-        "Complete OSC 10 foreground color reply",
-      )
-      if (silence && ctx.runtimeIdentity?.kind !== "native") return silence
+      initialReadback = ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
+      if (
+        sentinelSilenceResult(initialReadback, "Complete OSC 10 foreground color reply") &&
+        ctx.runtimeIdentity?.kind !== "native"
+      ) {
+        return colorReadbackReviewResult("OSC 10 query did not answer, so the colour-stack effect has no readback", {
+          query: foregroundQuery,
+          initialReadback,
+        })
+      }
     }
     let result: ProbeCallbackResult | undefined
     let primaryError: unknown
@@ -1769,17 +1785,15 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         }
         if (!control.verified || control.color === null) {
           if (control.setterRaw === "" && control.seededRaw === "") {
-            result =
-              silence ??
-              colorReadbackReviewResult(
-                "OSC 10 initial and seeded foreground queries answered nothing, so the colour-stack effect has no readback",
-                { query: foregroundQuery, originalRaw },
-              )
+            result = colorReadbackReviewResult(
+              "OSC 10 initial and seeded foreground queries answered nothing, so the colour-stack effect has no readback",
+              { query: foregroundQuery, originalRaw, initialReadback, trace },
+            )
           } else {
             const note = "Current-colour fixture setter or exact seeded readback was not established"
             result = { pass: false, note, tests: [{ id: "criterion", status: "probe-invalid", reason: note }] }
           }
-          readbackUnavailable = result !== silence
+          readbackUnavailable = true
           return result
         }
         before = control.color
@@ -1913,10 +1927,11 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
           attempt.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
         }
       }
-      if (seedAttempted && result && result !== silence) {
+      if (seedAttempted && result) {
         const response = JSON.stringify({
           query: foregroundQuery,
           originalRaw,
+          initialReadback,
           ...comparison,
           ...(fixtureVerified && { fixture: { name: "verified seeded current", color: seededCurrentColor } }),
           trace,
@@ -1942,12 +1957,21 @@ async function colorStackTermProbe(
 ): Promise<ProbeCallbackResult> {
   const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
   const before = foregroundValue(originalReply.match?.[0] ?? "")
+  if (!before && originalReply.reason === "sentinel") {
+    return notTestedResult("OSC 10 query did not answer, so the colour-stack effect has no readback", {
+      query: foregroundQuery,
+      initialReadback: originalReply,
+    })
+  }
   if (!before) return unansweredQuery(originalReply, "No original OSC 10 foreground reply; color stack was not changed")
   let pushed = false
   const colors = colorStackColors(before)
   const read = async (missing: string) => {
     const reply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
     const value = foregroundValue(reply.match?.[0] ?? "")
+    if (!value && reply.reason === "sentinel") {
+      return notTestedResult(`${missing}; no answered effect readback`, { query: foregroundQuery, readback: reply })
+    }
     return value ? value : unansweredQuery(reply, missing)
   }
   // The same two fixtures as the headless arm (#31904): POP sets A, PUSH sets A then B.
@@ -2481,6 +2505,15 @@ function allocationOutcomeResult(
   imageNumber: number,
 ): { imageId: number | null; result: ProbeCallbackResult } {
   if (!reply.match) {
+    if (reply.reason === "sentinel") {
+      return {
+        imageId: null,
+        result: notTestedResult("No image allocation readback; DA1 does not observe image transmission", {
+          imageNumber,
+          readback: reply,
+        }),
+      }
+    }
     return {
       imageId: null,
       result: unansweredQuery(
@@ -2499,6 +2532,12 @@ function placementRequest(imageId: number): string {
 
 /** Live's reading of a placement outcome, shared by both arms (#30554). */
 function placementOutcomeResult(placement: TerminalQueryOutcome, imageId: number): ProbeCallbackResult {
+  if (!placement.match && placement.reason === "sentinel") {
+    return notTestedResult("No placement readback or image-state observation; DA1 does not observe display", {
+      imageId,
+      readback: placement,
+    })
+  }
   // The probe grades the acknowledgement, never rendering: WezTerm places silently (27915).
   return matchedReplyResult(placement, "No placement acknowledgement; visible pixels were not tested", (frame) =>
     graphicsQueryResult(frame, imageId, "Image placement acknowledged; visible pixels were not tested"),

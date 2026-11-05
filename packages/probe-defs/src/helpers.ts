@@ -1070,13 +1070,79 @@ export function sgrProbe(
     termNeedsGeometry: true,
     termAssertionType: readback ? "query_reply" : null,
     lib(ctx) {
-      ctx.feed(sequence + "X")
+      const targetInput = sequence + "X"
+      ctx.feed(targetInput)
       const cell = ctx.getCell(0, 0)
       if (cell.char === "X") {
         const noObservable = noObservableWhen?.(cell)
         if (noObservable) return notTestedResult(noObservable, cell)
       }
       const measured = cell.char === "X" && check(cell) === true
+      if (sourceReviewReason !== undefined && cell.char === "X") {
+        const underline = id.startsWith("sgr.underline.")
+        const controlInput = `\x1b[0m${underline ? "\x1b[4m" : "\x1b[1m"}C\x1b[0m`
+        ctx.feed(controlInput)
+        const control = ctx.getCell(0, 1)
+        const state = { ...cell, control, input: { target: targetInput, control: controlInput } }
+        // A positive effect witnesses its own reader. A negative needs the same-run control,
+        // and a nullable attribute is missing readback even when the control works (#32318).
+        if (measured) return parserStateResult(true, `${id}: attribute applied to the rendered X cell`, state)
+        if (check(cell) === null) {
+          const missingReader = `cell.${id === "sgr.faint" ? "dim" : id.slice("sgr.".length)} is unreported; no qualified SGR m alternative in this run`
+          // The reply is used only after this same SGR m reader reports the bold control.
+          // A facility-wide DECRQSS/DECSTBM answer does not qualify it (#32318).
+          if (readback && ctx.queryWithSentinelOutcome) {
+            const query = "\x1bP$qm\x1b\\"
+            const pattern = /\x1bP1\$r([0-9;:]*)m\x1b\\/
+            const readbackControlInput = "\x1b[0m\x1b[1m"
+            ctx.feed(readbackControlInput)
+            const controlReply = ctx.queryWithSentinelOutcome(query, pattern)
+            const controlParameters = controlReply.match?.[1]
+            if (
+              controlParameters !== undefined &&
+              sgrReadbackResult(id, "\x1b[1m", controlParameters.split(";"), { require: [1] }).observation?.outcome ===
+                "supported"
+            ) {
+              const readbackTargetInput = `\x1b[0m${sequence}`
+              ctx.feed(readbackTargetInput)
+              const targetReply = ctx.queryWithSentinelOutcome(query, pattern)
+              const targetParameters = targetReply.match?.[1]
+              const evidence = {
+                ...state,
+                sgrReadback: {
+                  controlInput: readbackControlInput,
+                  targetInput: readbackTargetInput,
+                  query,
+                  control: controlReply.raw,
+                  target: targetReply.raw,
+                },
+              }
+              if (targetParameters !== undefined) {
+                const result = evaluateSgrReadback(id, sequence, targetParameters.split(";"), readback, true)
+                const response = JSON.stringify(evidence)
+                result.response = response
+                if (result.assertions) {
+                  result.assertions = result.assertions.map((assertion) => ({ ...assertion, observed: response }))
+                }
+                return result
+              }
+              return notTestedResult(missingReader, evidence)
+            }
+            return notTestedResult(missingReader, {
+              ...state,
+              sgrReadback: { controlInput: readbackControlInput, query, control: controlReply.raw },
+            })
+          }
+          return notTestedResult(missingReader, state)
+        }
+        const qualified = control.char === "C" && (underline ? control.underline === "single" : control.bold === true)
+        if (!qualified) return notTestedResult(NO_SAME_PATH_CONTROL, state)
+        return parserStateResult(
+          false,
+          `${id}: attribute applied to the rendered X cell with a qualified ${underline ? "single underline style" : "bold"} reader`,
+          state,
+        )
+      }
       return parserStateResult(
         measured ? true : null,
         `${id}: attribute applied to the rendered X cell`,
@@ -1150,7 +1216,12 @@ export function sgrProbe(
       }
     },
 
-    libAssertionType: "buffer_state",
+    // A configured SGR readback may qualify the alternate reader when a cell field is absent.
+    libAssertionType: {
+      when: () => readback !== undefined,
+      then: ["buffer_state", "query_reply"],
+      otherwise: ["buffer_state"],
+    },
   }
 }
 

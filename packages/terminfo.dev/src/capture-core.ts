@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process"
+import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -27,46 +27,78 @@ export function command(
       timeout = Math.min(timeout, Math.ceil(remaining))
     }
     let stdinError: Error | undefined
-    const child = execFile(
-      file,
-      args,
-      {
-        encoding: "buffer",
-        timeout,
-        maxBuffer: 32 * 1024 * 1024,
-        ...(deadline !== undefined ? { killSignal: "SIGKILL" as const } : {}),
-      },
-      (error, stdout, stderr) => {
-        try {
-          onStderr?.(Buffer.isBuffer(stderr) ? stderr : Buffer.from(stderr))
-        } catch (observerError) {
-          reject(observerError)
-          return
-        }
-        if (error) {
-          // Keep the native Error and its exit/deadline semantics; its message cannot carry
-          // arbitrary callback bytes. Only this private diagnostic crosses the HTTP boundary.
-          reject(
-            Object.assign(error, {
+    let failure: Error | undefined
+    let killed = false
+    const maxBuffer = 32 * 1024 * 1024
+    const chunks: Record<"stdout" | "stderr", Buffer[]> = { stdout: [], stderr: [] }
+    const sizes = { stdout: 0, stderr: 0 }
+    const killSignal = deadline === undefined ? "SIGTERM" : "SIGKILL"
+    const child = spawn(file, args, { detached: process.platform !== "win32", stdio: "pipe" })
+    const terminate = () => {
+      if (killed || child.pid === undefined) return
+      try {
+        if (process.platform === "win32") child.kill(killSignal)
+        else process.kill(-child.pid, killSignal)
+        killed = true
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") failure ??= error as Error
+      }
+    }
+    const timer = setTimeout(terminate, timeout)
+    const collect = (stream: "stdout" | "stderr", chunk: Buffer) => {
+      if (failure !== undefined) return
+      const remaining = maxBuffer - sizes[stream]
+      const retained = chunk.subarray(0, remaining)
+      chunks[stream].push(retained)
+      sizes[stream] += retained.length
+      if (chunk.length > remaining) {
+        failure = Object.assign(new RangeError(`Capture command ${stream} exceeded ${maxBuffer} bytes`), {
+          code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+        })
+        child.stdout.destroy()
+        child.stderr.destroy()
+        terminate()
+      }
+    }
+    child.stdout.on("data", (chunk: Buffer) => collect("stdout", chunk))
+    child.stderr.on("data", (chunk: Buffer) => collect("stderr", chunk))
+    child.on("error", (error) => {
+      failure ??= error
+    })
+    child.on("close", (code, signal) => {
+      clearTimeout(timer)
+      const stdout = Buffer.concat(chunks.stdout)
+      const stderr = Buffer.concat(chunks.stderr)
+      try {
+        onStderr?.(stderr)
+      } catch (observerError) {
+        reject(observerError)
+        return
+      }
+      if (failure !== undefined || code !== 0 || signal !== null || killed) {
+        const failureCode = failure && "code" in failure ? failure.code : code
+        reject(
+          Object.assign(
+            failure ?? new Error(`Capture command ${file} failed: ${signal ?? `exit ${code}`}\n${stderr.toString()}`),
+            {
+              code: failureCode,
+              signal,
+              killed,
               captureCommand: {
                 file,
                 args: [...args],
-                stdoutBase64: (Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)).toString("base64"),
-                stderrBase64: (Buffer.isBuffer(stderr) ? stderr : Buffer.from(stderr)).toString("base64"),
-                code: error.code ?? null,
-                signal: error.signal ?? null,
-                killed: error.killed ?? null,
+                stdoutBase64: stdout.toString("base64"),
+                stderrBase64: stderr.toString("base64"),
+                code: failureCode,
+                signal,
+                killed,
               },
-            }),
-          )
-        } else if (stdinError) reject(stdinError)
-        else resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout))
-      },
-    )
-    if (!child.stdin) {
-      if (input) reject(new Error(`Capture command ${file} has no stdin for ${input.length} input bytes`))
-      return
-    }
+            },
+          ),
+        )
+      } else if (stdinError) reject(stdinError)
+      else resolve(stdout)
+    })
     child.stdin.on("error", (error: Error) => {
       stdinError = error
     })
