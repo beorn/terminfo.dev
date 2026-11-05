@@ -3384,10 +3384,12 @@ test.each([
     // (_core._inputHandler.onColor events; #31735, @cto 863bef67), while the 7 default/stack
     // queries remain silent and request color-readback-review.
     const cellWitnessIds = engine === "xtermjs" ? ["extensions.osc104-reset-palette"] : []
-    // libvterm's own unhandled report decides the two pointer resets (@si/32362, @cto Case 1); its other
-    // resets stay silent, so they keep asking for review with their raw query.
+    // libvterm and the owned DEC adapters report the two pointer resets as unhandled.
+    // Published DEC adapters lack that reader; other silent resets keep their review and raw query.
     const unhandledReportIds =
-      engine === "libvterm" ? ["extensions.osc113-reset-pointer-fg", "extensions.osc114-reset-pointer-bg"] : []
+      engine === "libvterm" || (OWNED_LAYOUT && (engine === "vt100" || engine === "vt220"))
+        ? ["extensions.osc113-reset-pointer-fg", "extensions.osc114-reset-pointer-bg"]
+        : []
     expect(batch.observations).toEqual([
       ...cellWitnessIds.map((featureId) =>
         expect.objectContaining({ featureId, outcome: "supported", assertionType: "buffer_state" }),
@@ -3480,7 +3482,17 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
     "extensions.osc777-notify",
   ]
   const definitions = registryDefinitions(ids)
-  const baseline = await collectBatch(resolveVt100, "vt100", definitions)
+  // Keep the same real engine and capabilities, withholding only the report reader.
+  // The native adapter now exposes it, so using resolveVt100 directly compares two positives.
+  const baseline = await collectBatch(
+    async () => {
+      const value = await resolveVt100()
+      Object.assign(value, { getUnhandledSequences: undefined })
+      return value
+    },
+    "vt100",
+    definitions,
+  )
   let reported = 0
   // What the VT100 engine's own ignore loop reports: a numeric SGR operand outside its handled list
   // (0/1/4/5/7/22/24/25/27), one entry per operand. A colon group is NaN and records nothing.
