@@ -1183,24 +1183,21 @@ export const sgrProbes: ProbeDefinition[] = [
 
 const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
 
-/** Apply the rendered-effect requirement after execution, without changing the measured evidence. */
+/** Require app/mux rendered evidence while preserving library cell criteria after execution. */
 export function finalizeSgrResult(
   recorded: ProbeResult,
-  target: { kind: "term" | "mux" | "lib"; id: string; rendering?: "render-capable" | "parser-only" },
+  target: { kind: "term" | "mux" | "lib" },
   captures: readonly ObservationFrame[],
 ): ProbeResult {
   if (!visualSgrIds.has(recorded.featureId) || (recorded.status !== "supported" && recorded.status !== "unsupported")) {
     return recorded
   }
-  if (target.kind === "lib" && target.rendering === "parser-only") return recorded
-  const undeclared = target.kind === "lib" && target.rendering !== "render-capable"
+  if (target.kind === "lib") return recorded
   const hasScreenshot =
     recorded.screenshotRef !== undefined &&
     captures.some((frame) => frame.kind !== "text-cells" && frame.ref === recorded.screenshotRef)
-  if (!undeclared && hasScreenshot) return recorded
-  const reason = undeclared
-    ? `rendering declaration missing for library ${target.id} in @termless/core/backends.json`
-    : "visual effect not observed in this run"
+  if (hasScreenshot) return recorded
+  const reason = "visual effect not observed in this run"
   return finalizeProbeResult({
     ...recorded,
     reason,

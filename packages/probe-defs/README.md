@@ -665,19 +665,20 @@ Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`.
 
 That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only PROBE TODO can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 
-For new app, mux and declared render-capable library results, every member of the existing `sgrProbes`
+For new app and mux results, every member of the existing `sgrProbes`
 registry (including colors and resets) requires a screenshot for that feature in the same run. The shared
-`finalizeSgrResult` applies this requirement in the native and headless batch writers before checkpointing.
+`finalizeSgrResult` applies this requirement in the native batch writer before checkpointing.
 Only the result's own screenshot reference matched to a non-text-cells frame in that probe's captures counts;
 a batch-wide reference or an assertion labelled screenshot does not. A missing frame retains a pending `visual` test with
 reason `visual effect not observed in this run` when a Supported or Unsupported result lacks that evidence.
 Existing pending and failure results retain their causes; a screenshot never establishes support by presence alone.
-The Termless backend registry owns the optional `rendering` product declaration: `render-capable` or
-`parser-only`, with cited sources beside its values. Parser-only libraries keep their parser decisions.
-An undeclared library retains a named missing-declaration PROBE TODO identifying its selector and
-`@termless/core/backends.json`; absence never means parser-only. Kitty remains undeclared because its
-internal Screen bridge has no separate public library contract establishing this boundary.
-The current synchronous library route captures no pixels, so render-capable libraries retain the visual gap.
+Library SGR results retain their existing cell-state criterion results, including through headless checkpointing
+and library replay. They describe the effect on observed cells; they do not establish a rendered pixel effect.
+Ghostty web 0.4.0's canvas draws double, curly, dotted and dashed underline styles as a single line.
+The Termless backend registry still owns the optional `rendering` product declaration: `render-capable` or
+`parser-only`, with cited sources beside its values. This finalizer no longer reads those declarations.
+Kitty remains undeclared because its internal Screen bridge has no separate public library contract establishing
+this boundary. The current synchronous library route captures no pixels.
 No new capture API or pixel predicate is supplied here. Historical run bytes and reader interpretation stay unchanged.
 
 The headless OSC 52 read callback seeds an isolated nonce and accepts measured silence only through

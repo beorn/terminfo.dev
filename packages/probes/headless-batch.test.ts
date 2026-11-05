@@ -144,46 +144,34 @@ test("xterm key-encoder absence survives actual adapter collection", async () =>
   expect(batch.assertions).toEqual([])
 })
 
-// The collector must apply the registered library product declaration before its final checkpoint.
-// Callback-only tests cannot catch losing that fact between the manifest and the recorded result.
-// Kitty uses an explicitly labelled xterm parser fixture: this tests undeclared-target recording,
-// not a Kitty execution, identity, rendering claim or capture.
+// The collector must retain the measured library cell result through its final checkpoint.
+// Callback-only tests cannot catch losing that result between execution and checkpoint delivery.
 test.each([
-  { name: "xtermjs", create: backend, expected: "probe-todo", reason: "visual effect not observed in this run" },
-  { name: "vterm", create: async () => createVtermBackend(), expected: "supported", reason: undefined },
-  {
-    name: "kitty",
-    create: backend,
-    expected: "probe-todo",
-    reason: "rendering declaration missing for library kitty in @termless/core/backends.json",
-  },
-] as const)(
-  "records $name SGR with its rendering declaration before checkpoint",
-  async ({ name, create, expected, reason }) => {
-    const definition = registryDefinitions(["sgr.bold"])[0]!
-    const draft = {
-      runId: "library-rendering-declaration-fixture",
-      rawReplies: {},
-      results: [
-        { featureId: definition.id, status: "probe-todo" as const, attempt: { scope: "none" as const }, tests: [] },
-      ],
-    }
-    const checkpoints: string[] = []
-    const batch = await collectBatch(create, name, [definition], draft, (value) => {
-      checkpoints.push(value.results[0]!.status)
-    })
-    expect(batch.ungradedDiagnostics).toEqual({})
-    expect(batch.results[0]!.status).toBe(expected)
-    if (reason) expect(batch.results[0]!.reason).toBe(reason)
-    expect(draft.results[0]!.status).toBe(expected)
-    expect(checkpoints.at(-1)).toBe(expected)
-    expect(batch.observations[0]).toMatchObject({
-      featureId: definition.id,
-      outcome: "supported",
-      assertionType: "buffer_state",
-    })
-  },
-)
+  { name: "xtermjs", create: backend, expected: "supported" },
+  { name: "vterm", create: async () => createVtermBackend(), expected: "supported" },
+] as const)("records $name SGR cell criterion before checkpoint", async ({ name, create, expected }) => {
+  const definition = registryDefinitions(["sgr.bold"])[0]!
+  const draft = {
+    runId: "library-cell-criterion-fixture",
+    rawReplies: {},
+    results: [
+      { featureId: definition.id, status: "probe-todo" as const, attempt: { scope: "none" as const }, tests: [] },
+    ],
+  }
+  const checkpoints: string[] = []
+  const batch = await collectBatch(create, name, [definition], draft, (value) => {
+    checkpoints.push(value.results[0]!.status)
+  })
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results[0]!.status).toBe(expected)
+  expect(draft.results[0]!.status).toBe(expected)
+  expect(checkpoints.at(-1)).toBe(expected)
+  expect(batch.observations[0]).toMatchObject({
+    featureId: definition.id,
+    outcome: "supported",
+    assertionType: "buffer_state",
+  })
+})
 
 // @failure A real collector source drops backend.name and turns the adapter-binding TODO into an undefined label.
 // @consumer The registered six-mode callback through createLibProbeSource and canonical batch recording.
@@ -3445,8 +3433,7 @@ test.each([
 //   the report. @dev/8 Case 2 consumer: 32369.
 //   Owned layout only: this boundary needs the linked @termless/vt100 generation. Hosted unit packs
 //   @termless/core from source-siblings.json but takes registry @termless/vt100 0.10.2, whose vt100.js
-//   0.7.0 applies the OSC 2 title, so the Case 2 fallback is unreachable. A plain registry install also
-//   lacks the VT100 rendering declaration, so finalizeSgrResult discards the visual SGR results there.
+//   0.7.0 applies the OSC 2 title, so the Case 2 fallback is unreachable.
 // @level l2
 // @consumer 32369 consumer boundary for the VT100 ignored-report producer (32364).
 // @testonly none
@@ -5006,8 +4993,7 @@ test("a silent loaded binary collects a no-same-path-control TODO and an observe
     assertionType: "buffer_state",
   })
   expect(batch.results.find((row) => row.featureId === "sgr.bold")).toMatchObject({
-    status: "probe-todo",
-    reason: "visual effect not observed in this run",
+    status: "supported",
   })
 })
 
