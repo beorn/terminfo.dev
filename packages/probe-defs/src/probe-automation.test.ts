@@ -763,7 +763,9 @@ describe("zero-byte replies on a loaded artifact", () => {
     expect(result.notTested).toMatchObject({
       reason: "no-semantic-observable",
       noObservable:
-        id === "extensions.osc0-icon-title" ? expect.stringContaining(NO_SAME_PATH_CONTROL) : NO_SAME_PATH_CONTROL,
+        id === "extensions.osc0-icon-title"
+          ? "OSC 0 lacks a deciding observation for icon label (CSI 20 t): feedCapture boundary; window title (CSI 21 t): feedCapture boundary"
+          : NO_SAME_PATH_CONTROL,
     })
     expect(result.criterionBranch).toBeUndefined()
     expect(result.observation).toBeUndefined()

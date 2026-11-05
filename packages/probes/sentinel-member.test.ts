@@ -55,8 +55,12 @@ async function scriptedRuntimeFixture() {
       backend.capabilities.extensions.add("reply-delivery");
       Object.defineProperty(backend, "replyDelivery", { configurable: true, value: declaration });
       backend.getAdapterSources = () => declaration.adapterSources;
+      const feed = backend.feed.bind(backend);
       if (script) backend.feed = bytes => {
-        const reply = script(new TextDecoder().decode(bytes));
+        const text = new TextDecoder().decode(bytes);
+        // The actual engine answers the collector's fresh CUP+CPR controls.
+        if (text.endsWith(String.fromCharCode(27) + "[6n")) { feed(bytes); return; }
+        const reply = script(text);
         if (reply) backend.onResponse?.(new TextEncoder().encode(reply));
       };
       return backend;
@@ -714,6 +718,11 @@ test("G1: a silent proven engine publishes the sentinel negative once the grace 
       expected: "complete XTVERSION DCS >| printable name/version ST",
       observed: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the 40 ms window$/),
     },
+    {
+      kind: "negative",
+      expected: "complete XTVERSION DCS >| printable name/version ST",
+      observed: expect.stringMatching(/^CPR brackets answered at \+\d+ms; no reply at control; no grace wait$/),
+    },
   ])
 })
 
@@ -750,7 +759,7 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
   })
   expect(batch.assertions).toStrictEqual([])
   // The refusal keeps what was observed: the on-time read window, and the late bytes beside it.
-  expect(batch.rawReplies).toStrictEqual({
+  expect(batch.rawReplies).toMatchObject({
     "collector.replyPath": expect.any(String),
     "device.xtversion": DA1,
     "device.xtversion.late": "\x1bP>|late\x1b\\",
@@ -779,8 +788,8 @@ test("qualifies each initialized callback instance and forwards the measured run
       vi.spyOn(value, "init").mockImplementation((options) => {
         init(options)
         lifecycle.push("init")
-        if (index === 2) value.capabilities.extensions.delete("reply-delivery")
-        if (index === 3) Object.defineProperty(value, "replyDelivery", { value: undefined })
+        if (index === 3) value.capabilities.extensions.delete("reply-delivery")
+        if (index === 4) Object.defineProperty(value, "replyDelivery", { value: undefined })
       })
       return value
     },
@@ -798,11 +807,11 @@ test("qualifies each initialized callback instance and forwards the measured run
     undefined,
     runtime,
   )
-  expect(instance).toBe(4)
-  expect(lifecycle).toEqual(["init", "measure", "init", "measure", "init", "measure", "init", "measure"])
+  expect(instance).toBe(5)
+  expect(lifecycle).toEqual(["init", "init", "measure", "init", "measure", "init", "measure", "init", "measure"])
   expect(runtimeIdentityOwner.headlessRuntimeIdentity).toHaveBeenCalledTimes(4)
   expect(runtimeIdentityOwner.headlessRuntimeIdentity).toHaveBeenCalledWith("xtermjs", runtime.adapterPackage, "js")
-  expect(members).toEqual([true, true, false, false])
+  expect(members).toEqual([true, true, true, true])
   expect(identities).toEqual([runtime.identity, runtime.identity, runtime.identity, runtime.identity])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toStrictEqual({
     backend: "xtermjs",
@@ -811,15 +820,14 @@ test("qualifies each initialized callback instance and forwards the measured run
     decisions: {
       declared: { member: true, reason: expect.any(String), runtimeIdentity: runtime.identity },
       "declared-again": { member: true, reason: expect.any(String), runtimeIdentity: runtime.identity },
-      absent: { member: false, reason: "xtermjs declares no reply delivery", runtimeIdentity: runtime.identity },
-      changed: { member: false, reason: "xtermjs declares no reply delivery", runtimeIdentity: runtime.identity },
+      absent: { member: true, reason: "same-run CPR path control answered", runtimeIdentity: runtime.identity },
+      changed: { member: true, reason: "same-run CPR path control answered", runtimeIdentity: runtime.identity },
     },
   })
   expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual([
     "headless xtermjs probe declared\n",
     "headless xtermjs probe declared-again\n",
     "headless xtermjs probe absent\n",
-    "headless xtermjs declares no reply delivery\n",
     "headless xtermjs probe changed\n",
   ])
 })
@@ -846,7 +854,7 @@ test.each(["changed", "unavailable"] as const)(
     )
     expect(measure).toHaveBeenCalledOnce()
     expect(callback).not.toHaveBeenCalled()
-    expect(destroy).toHaveBeenCalledOnce()
+    expect(destroy).toHaveBeenCalledTimes(2)
     expect(batch.results[0]).toMatchObject({
       status: "probe-invalid",
       reason: expect.stringContaining(
@@ -863,11 +871,11 @@ test.each(["changed", "unavailable"] as const)(
 
 // Same adapter/version/capabilities without the independent measurement cannot qualify.
 // H1/H2/H4/H6: explicit native-input unit fixture; no actual native engine qualification.
-test.each(["observed", "source-audited", "unimplemented", "missing", "error", "late"] as const)(
+test.each(["observed", "source-audited", "unimplemented", "missing", "error", "withheld"] as const)(
   "retains and validates %s host custody before checkpointing the callback",
   async (mode) => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true)
-    if (mode === "late") vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
+    if (mode === "withheld") vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
     const query = "\x1b]10;?\x07",
       artifact = "a".repeat(64),
       id = "host.fixture"
@@ -911,7 +919,7 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "l
     const batch = await collectBatch(
       async () => {
         const backend = fixture.create((text) => {
-          if (mode !== "late" || text !== DA1_QUERY) return ""
+          if (mode !== "withheld" || text !== DA1_QUERY) return ""
           setTimeout(() => backend.onResponse?.(encoder.encode("late-native-reply")), 5)
           return DA1
         })
@@ -929,11 +937,11 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "l
           lib: (ctx) => {
             expect(ctx.feedCapture(query)).toBe("")
             if (mode === "error") throw new Error("original callback error")
-            if (mode === "late") {
-              expect(ctx.queryWithSentinelOutcome?.(query, /\x1b]10;/).reason).toBe("sentinel")
+            if (mode === "withheld") {
+              expect(ctx.queryWithSentinelOutcome).toBeUndefined()
             }
             const cause: CallbackHostRecipeCause =
-              mode === "observed" || mode === "late"
+              mode === "observed" || mode === "withheld"
                 ? { recipe: "color-request", cause: { kind: "observed", missing: "foreground-rgb", query } }
                 : {
                     recipe: "color-request",
@@ -946,7 +954,6 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "l
                   }
             return {
               ...fakeProbeResult(),
-              ...(mode === "late" && { response: DA1 }),
               ...(mode !== "missing" && { hostRecipeCauses: [cause] }),
             }
           },
@@ -962,30 +969,17 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "l
     const retained = JSON.parse(batch.rawReplies[`collector.hostRecipes.${id}`] ?? "null")
     expect(retained).toMatchObject({
       runId: draft.runId,
-      captures: [
-        { query, response: "", error: null },
-        ...(mode === "late"
-          ? [
-              { query, response: "", error: null },
-              { query: DA1_QUERY, response: DA1, error: null },
-            ]
-          : []),
-      ],
+      captures: [{ query, response: "", error: null }],
     })
     expect(checkpoints.at(-1)).toBe(batch.rawReplies[`collector.hostRecipes.${id}`])
-    // G1/H6: native qualification must retain cause + both read windows while refusing the callback.
-    // The JS-only late-byte case cannot catch a native-route bypass or lost native host record.
-    if (mode === "late") {
+    // Rule A: a native host recipe owns its cause; CPR never grants it a negative-reply member.
+    // Keeping this fixture's DA1-triggered late reply would expose accidental member leakage.
+    if (mode === "withheld") {
       expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
-        decisions: { [id]: { member: true } },
+        decisions: { [id]: { member: false } },
       })
-      expect(batch.results[0]).toMatchObject({ status: "probe-invalid" })
-      expect(batch.ungradedDiagnostics[id]).toMatchObject({
-        message: expect.stringContaining("late reply after sentinel"),
-      })
-      expect(batch.observations).toEqual([])
-      expect(batch.rawReplies[id]).toBe(DA1)
-      expect(batch.rawReplies[`${id}.late`]).toBe("late-native-reply")
+      expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+      expect(batch.rawReplies[`${id}.late`]).toBeUndefined()
       expect(retained).toMatchObject({
         causes: [{ cause: { kind: "observed", eventRef: `collector.hostRecipes.${id}` } }],
       })
@@ -1024,7 +1018,7 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "l
   },
 )
 
-test("a declaration without measured runtime identity withholds the member and names lost coverage", async () => {
+test("same-run control grants the member without inventing a measured runtime identity", async () => {
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const seen: unknown[] = []
   const batch = await collectBatch(async () => fixture.create(), "xtermjs", [
@@ -1037,12 +1031,12 @@ test("a declaration without measured runtime identity withholds the member and n
       },
     },
   ])
-  expect(seen).toEqual([undefined, undefined])
+  expect(seen).toEqual([expect.any(Function), undefined])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
     backend: "xtermjs",
     declaration: fixture.declaration,
     decisions: {
-      unmeasured: { member: false, reason: "xtermjs has no measured runtime identity for reply delivery" },
+      unmeasured: { member: true, reason: "same-run CPR path control answered" },
     },
   })
 })

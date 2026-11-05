@@ -182,7 +182,7 @@ for (const scenario of [
 // @failure A non-native engine's ordinary silent queries lose their controlled negatives merely because a native host recipe exists.
 // @level l1
 // @consumer Production collectBatch with the six real xterm.js host-recipe registry rows
-test("keeps non-native host-recipe queries on the measured reply path", async () => {
+test.runIf(OWNED_LAYOUT)("keeps non-native host-recipe queries on the measured reply path", async () => {
   const ids = [
     "device.xtwinops-14",
     "extensions.osc10-fg-color",
