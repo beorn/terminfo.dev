@@ -760,7 +760,10 @@ describe("zero-byte replies on a loaded artifact", () => {
   ] as const)("current native zero-byte reply stays PROBE TODO: %s", (id, _osc0) => {
     const { result } = run(id, "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", () => "")
     // No source answer decides the cell (@cto 9fad23d7): the silent reply has no same-path control in this run.
-    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.notTested).toMatchObject({
+      reason: "no-semantic-observable",
+      noObservable: expect.stringContaining(NO_SAME_PATH_CONTROL),
+    })
     expect(result.criterionBranch).toBeUndefined()
     expect(result.observation).toBeUndefined()
   })
@@ -810,17 +813,22 @@ describe("zero-byte replies on a loaded artifact", () => {
       route === "lib"
         ? definition.lib!(context({ queryWithSentinelOutcome: outcome }))
         : await definition.term!(terminalSource({ queryWithSentinelOutcome: async (sequence) => outcome(sequence) }))
-    expect(result).toMatchObject({
-      tests: [
-        {
-          id: "criterion",
-          status: "probe-invalid",
-          reason: expect.stringContaining("icon label (CSI 20 t): sentinel"),
-        },
-      ],
-      replyFailureTestIds: ["criterion"],
-    })
-    expect(result.tests?.[0].reason).toContain(`window title (CSI 21 t): ${titleReason}`)
+    if (route === "term") {
+      expect(result).toMatchObject({
+        tests: [
+          {
+            id: "criterion",
+            status: "probe-invalid",
+            reason: expect.stringContaining("icon label (CSI 20 t): sentinel"),
+          },
+        ],
+        replyFailureTestIds: ["criterion"],
+      })
+    }
+    const reason = route === "lib" ? result.notTested?.noObservable : result.tests?.[0].reason
+    if (route === "lib") expect(result.notTested?.reason).toBe("no-semantic-observable")
+    expect(reason).toContain("icon label (CSI 20 t): sentinel")
+    expect(reason).toContain(`window title (CSI 21 t): ${titleReason}`)
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
   })
@@ -839,23 +847,24 @@ describe("zero-byte replies on a loaded artifact", () => {
         route === "lib"
           ? definition.lib!(context({ queryWithSentinelOutcome: outcome }))
           : await definition.term!(terminalSource({ queryWithSentinelOutcome: async (sequence) => outcome(sequence) }))
-      expect(result).toMatchObject({
-        tests: [{ status: "probe-invalid", reason: expect.stringContaining("window title (CSI 21 t): sentinel") }],
-      })
-      expect(result.tests?.[0].reason).not.toContain("icon label (CSI 20 t):")
+      if (route === "term") {
+        expect(result).toMatchObject({
+          tests: [{ status: "probe-invalid", reason: expect.stringContaining("window title (CSI 21 t): sentinel") }],
+        })
+      }
+      const reason = route === "lib" ? result.notTested?.noObservable : result.tests?.[0].reason
+      expect(reason).toContain("window title (CSI 21 t): sentinel")
+      expect(reason).not.toContain("icon label (CSI 20 t):")
       expect(JSON.parse(result.response!)).toMatchObject({ iconLabel: "osc0-icon-title", windowTitle: null })
     },
   )
 
   test("OSC 0 without a query outcome names the synchronous capture boundary", () => {
     const result = probe("extensions.osc0-icon-title").lib!(context({ feedCapture: () => "\x1b[?1;2c" }))
-    expect(result).toMatchObject({
-      tests: [
-        { status: "probe-invalid", reason: expect.stringContaining("icon label (CSI 20 t): feedCapture boundary") },
-      ],
-    })
-    expect(result.tests?.[0].reason).toContain("window title (CSI 21 t): feedCapture boundary")
-    expect(result.tests?.[0].reason).not.toContain("timeout")
+    expect(result.notTested?.reason).toBe("no-semantic-observable")
+    expect(result.notTested?.noObservable).toContain("icon label (CSI 20 t): feedCapture boundary")
+    expect(result.notTested?.noObservable).toContain("window title (CSI 21 t): feedCapture boundary")
+    expect(result.notTested?.noObservable).not.toContain("timeout")
   })
 
   test("native OSC 0 keeps the answered title arm measured and names the missing icon arm", () => {
@@ -863,9 +872,9 @@ describe("zero-byte replies on a loaded artifact", () => {
     const answerTitle = (q: string) => (q === "\x1b[21t" ? "\x1b]losc0-icon-title\x07" : "")
     const { result } = run("extensions.osc0-icon-title", sha, answerTitle)
     // One arm replied, so the capture is not silent and no source answer replaces it (#32246).
-    expect(result.notTested).toBeUndefined()
+    expect(result.notTested?.reason).toBe("no-semantic-observable")
     expect(result.observation).toBeUndefined()
-    expect(result.tests?.[0]?.reason).toContain("icon label (CSI 20 t)")
+    expect(result.notTested?.noObservable).toContain("icon label (CSI 20 t)")
     expect(JSON.parse(result.response!)).toMatchObject({ windowTitle: "osc0-icon-title", iconLabel: null })
     expect(result).toEqual(run("extensions.osc0-icon-title", "f".repeat(64), answerTitle).result)
     const answerIcon = (q: string) => (q === "\x1b[20t" ? "\x1b]Losc0-icon-title\x07" : "")

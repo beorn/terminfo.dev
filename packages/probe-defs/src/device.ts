@@ -12,7 +12,6 @@ import {
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
-  decideStackOperation,
   stackStateResult,
 } from "./helpers.ts"
 
@@ -239,14 +238,13 @@ const DECRQSS_DECSCL: DeviceReply = {
   expected: 'complete DECRQSS status 1 DECSCL conformance parameters ending "p and ST',
 }
 
-function titleStackHeadless(ctx: LibProbeSource, expected: string, operation: "push" | "pop"): ProbeCallbackResult {
+function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbackResult {
   const before = ctx.getTitle()
   const saved = before === "pushed-title" ? "other-pushed-title" : "pushed-title"
   const set = (title: string) => ctx.feed(`\x1b]2;${title}\x07`)
   let pushed = false
   try {
-    // The existing per-operation stack criterion (#31904): POP restores A; PUSH must save B,
-    // rather than a stale A. Both fixtures retain their title controls (#32282).
+    // #32323: both IDs grade the joint round trip; the second fixture excludes a stale saved title.
     const fixture = (originalTitle: string, changedTitle: string) => {
       set(saved)
       set(originalTitle)
@@ -271,18 +269,8 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string, operation: "p
       const note = "Title setup was not observable"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, state)
     }
-    const pop = popFixture.restored === saved ? "restored" : popFixture.restored === "new-title" ? "persisted" : "other"
-    const push =
-      pushFixture.restored === "new-title"
-        ? "restored"
-        : pushFixture.restored === saved
-          ? "earlier"
-          : pushFixture.restored === "next-title"
-            ? "persisted"
-            : "other"
-    // Two absent stack effects still cannot isolate a failed push from a failed pop (#32246).
-    if (pop === "persisted" && push === "persisted") return notTestedResult(NO_SAME_PATH_CONTROL, state)
-    return stackStateResult(decideStackOperation(operation, pop, push), expected, { ...state, pop, push })
+    const pass = popFixture.restored === saved && pushFixture.restored === "new-title"
+    return stackStateResult({ pass, ...(!pass && { note: "push/pop round trip does not restore" }) }, expected, state)
   } finally {
     try {
       if (pushed) ctx.feed("\x1b[23;0t")
@@ -680,12 +668,7 @@ export const deviceProbes: ProbeDefinition[] = [
   {
     ...probe(
       "device.xtwinops-22",
-      (ctx) =>
-        titleStackHeadless(
-          ctx,
-          "XTWINOPS 22 preserves the old title on its stack after a different title is set",
-          "push",
-        ),
+      (ctx) => titleStackHeadless(ctx, "XTWINOPS 22/23 restores the pushed title after a controlled title change"),
       async (ctx) => {
         ctx.write("\x1b]2;pushed-title\x07")
         ctx.write("\x1b[22;0t") // push
@@ -718,7 +701,7 @@ export const deviceProbes: ProbeDefinition[] = [
   {
     ...probe(
       "device.xtwinops-23",
-      (ctx) => titleStackHeadless(ctx, "XTWINOPS 23 restores the title saved before a different title was set", "pop"),
+      (ctx) => titleStackHeadless(ctx, "XTWINOPS 22/23 restores the pushed title after a controlled title change"),
       async (ctx) => {
         ctx.write("\x1b[22;0t") // push first so we have something to pop
         ctx.write("\x1b[23;0t")

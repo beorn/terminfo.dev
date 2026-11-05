@@ -700,13 +700,6 @@ describe("window-operation qualification", () => {
     ],
   }
 
-  const UNDECIDED_TITLE_STACK = {
-    notTested: {
-      reason: "no-semantic-observable",
-      noObservable: "observation not decided: no same-path control in this run",
-    },
-  }
-
   // #32282 AC1/2: model actual title writes and stack effects, rather than three canned reads.
   // The old fixture passes a stale snapshot as PUSH support and leaves its title behind.
   function titleContext(behavior: "working" | "stale" | "none" | "unobservable") {
@@ -750,10 +743,9 @@ describe("window-operation qualification", () => {
             },
           })
         }
-        if (behavior === "none") expect(result).toMatchObject(UNDECIDED_TITLE_STACK)
-        else if (behavior === "unobservable") expect(result).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
+        if (behavior === "unobservable") expect(result).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
         else {
-          const outcome = behavior === "stale" && id.endsWith("22") ? "unsupported" : "supported"
+          const outcome = behavior === "working" ? "supported" : "unsupported"
           expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
         }
         if (behavior !== "unobservable") expect(fixture.title()).toBe("incoming-title")
@@ -778,9 +770,8 @@ describe("window-operation qualification", () => {
     }
   })
 
-  // #32246 (operator 2026-11-03): the former source-audited title-stack artifacts and JS source trees no longer grade
-  // Unsupported; an observed setup with an un-restored title stays PROBE TODO whatever the runtime identity, while real
-  // restoration still reads Supported and an unobservable setup still says this run cannot decide it.
+  // #32323: only the controlled round-trip effect decides, independent of any source/artifact identity.
+  // Failed restoration is a joint negative; it never identifies which stack primitive is missing.
   test.each([
     [
       "formerly audited WASM artifact",
@@ -823,12 +814,11 @@ describe("window-operation qualification", () => {
         ...titleContext(behavior).ctx,
         runtimeIdentity,
       })
-      const undecided = callback(id).headless(makeCtx("none"))
-      expect(undecided).toMatchObject(UNDECIDED_TITLE_STACK)
-      expect(undecided.observation).toBeUndefined()
-      expect(undecided.assertions).toBeUndefined()
-      expect(undecided.criterionBranch).toBeUndefined()
-      expect(JSON.parse(undecided.response!)).toEqual({
+      const negative = callback(id).headless(makeCtx("none"))
+      expect(negative.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+      expect(negative.assertions).toContainEqual(expect.objectContaining({ kind: "negative" }))
+      expect(negative.note).toBe("push/pop round trip does not restore")
+      expect(JSON.parse(negative.response!)).toMatchObject({
         before: "incoming-title",
         popFixture: { original: "pushed-title", changed: "new-title", restored: "new-title" },
         pushFixture: { original: "new-title", changed: "next-title", restored: "next-title" },

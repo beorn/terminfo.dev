@@ -1267,7 +1267,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 0 sets both the icon name and window title simultaneously. The sequence is <code>ESC ] 0 ; title ST</code>. In practice, the \"icon name\" is a legacy concept from X11 window managers — most modern terminals treat OSC 0 identically to OSC 2 (window title only).\n\nUnder tmux 3.6 the local OSC 0 handler sets the pane title when <code>allow-set-title</code> is on (input.c:2633), but the complete window-operations handler puts <code>CSI 20 t</code> and <code>CSI 21 t</code> in its no-action group (input.c:2032-2116). tmux owns title mutation, not the icon and title roundtrip replies this probe queries, and a missing reply stays inconclusive rather than becoming a capability negative.",
-    "probe": "Send <code>\\x1b]0;osc0-icon-title\\x07</code>, then query <code>\\x1b[20t</code> for the icon label and <code>\\x1b[21t</code> for the window title; both replies must return the exact payload.",
+    "probe": "OSC0 must set both window title and icon label to the requested payload. Prefer direct effect readers. A same-attempt OSC2 setter read back through the title reader controls the window-title clause. If the delivered OSC0 fails that observed title clause, the feature is Unsupported even when icon state is unavailable. If title succeeds but icon is unobservable, the combined feature remains to-test. Supported requires both clauses observed with the relevant controls. A missing reader or unqualified query supplies no negative. Preserve both target outcomes and restore every observable label changed by the attempt.",
     "baseline": "modern",
     "sequence": "ESC ] 0 ; title BEL"
   },
@@ -1943,7 +1943,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTWINOPS subcode 22 pushes the current window title and icon label onto an internal stack. The sequence is <code>CSI 22 ; 0 t</code> (push both), <code>CSI 22 ; 1 t</code> (push icon only), or <code>CSI 22 ; 2 t</code> (push title only). XTWINOPS 23 pops the matching stack.\n\nThe title stack solves a longstanding ergonomics problem: applications that change the terminal title (vim, ssh, tmux) want to restore it on exit, but the only way to do that previously was to query the current title with CSI 21 t — which many terminals refuse for security reasons. Push/pop avoids exposing the title to the application: the terminal saves it internally and the application can restore it without ever seeing the value. Adopted by xterm, Ghostty, Kitty, WezTerm, foot, and others.",
-    "probe": "Send <code>\\x1b[22;0t</code>, verify the sequence is consumed without crashing. Headless emulators verify the stack push happened internally where possible.",
+    "probe": "Measure the joint title-stack round trip. Read back two distinct OSC2 title setters through the same title reader in this attempt. Push the first title with CSI22;0t, change it, then pop with CSI23;0t. Both feature IDs are Supported only when the pushed title is restored. When the OSC2 controls pass and the delivered round trip fails to restore it, both are Unsupported with reason \"push/pop round trip does not restore\". This does not identify which primitive is missing. An unavailable reader or failed control leaves the result to-test. Retain original/changed/restored readings and restore the incoming title.",
     "sequence": "ESC [ 22 ; 0 t"
   },
   "device.xtwinops-23": {
@@ -1953,7 +1953,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTWINOPS subcode 23 pops the most recent title and icon label from the internal stack pushed by CSI 22 t. The sequence is <code>CSI 23 ; 0 t</code> (pop both), <code>CSI 23 ; 1 t</code> (pop icon only), or <code>CSI 23 ; 2 t</code> (pop title only). Always paired with a matching CSI 22 t push earlier in the session.\n\nUsed by long-running TUI applications (vim, tmux, ssh) to restore the original window title on exit. Push/pop is preferred over query/restore (CSI 21 t followed by OSC 2) because it doesn't expose the saved title to user-space processes — many modern terminals refuse to report titles for security but happily maintain a private title stack.",
-    "probe": "Send <code>\\x1b[22;0t</code> followed by <code>\\x1b[23;0t</code>, verify both sequences are consumed and the terminal stays responsive.",
+    "probe": "Measure the joint title-stack round trip. Read back two distinct OSC2 title setters through the same title reader in this attempt. Push the first title with CSI22;0t, change it, then pop with CSI23;0t. Both feature IDs are Supported only when the pushed title is restored. When the OSC2 controls pass and the delivered round trip fails to restore it, both are Unsupported with reason \"push/pop round trip does not restore\". This does not identify which primitive is missing. An unavailable reader or failed control leaves the result to-test. Retain original/changed/restored readings and restore the incoming title.",
     "sequence": "ESC [ 23 ; 0 t"
   },
   "device.xtreportcolors": {
