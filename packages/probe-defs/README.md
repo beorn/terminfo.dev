@@ -332,7 +332,7 @@ own working-directory interface-absence reason. A supplied Cwd reader always
 runs the existing measured criterion; a missing reader on any other identity
 remains PROBE TODO.
 
-An engine's own unhandled-sequence report (`getUnhandledSequences`) decides a state cell
+An engine's own unhandled-sequence report (`getUnhandledSequences`) decides a state or reply cell
 Unsupported only with same-run controls: a handled sequence adds no entry while its own reader
 shows it applied, then the target adds exactly one entry carrying its exact code. Every length is
 compared exactly, so a bounded history that rolled decides nothing rather than a wrong grade. The
@@ -340,7 +340,31 @@ primary control is OSC 2 with the title reader; an engine that handles no OSC â€
 VT220.js â€” reports OSC 2 as an ignored entry and never sets the title, and that same run lets SGR 1
 with a bold cell qualify instead. Only the named shell, colour-reset and eight SGR cells (blink,
 faint, italic, strikethrough and the four underline styles) may move; delivery cells, a decided
-outcome, a missing member and any other code keep their own path.
+outcome, a missing member and any other code keep their own path, except for the exact vt100-rust
+cohort below.
+
+Operator D2 and the November 5 11:16 ruling add 34 cells only at the audited vt100 crate 0.16.2
+native provenance and adapter profile. One `ALL_PROBES` decorator uses the same verdict helper;
+OSC 2/title controls OSC targets and SGR 1/bold controls CSI targets. Exact normalized codes were
+measured from that addon. A changed identity, failed control, missing member, unmatched code or
+already decided result retains its previous path. The additional IDs are:
+
+- `cursor.position-report`; `device.decrpm`, `device.dsr-996-color-scheme`, `device.primary-da`,
+  `device.secondary-da`, `device.status-report`, `device.tertiary-da`, `device.xtreportcolors`,
+  `device.xtversion`, `device.xtwinops-14`, `device.xtwinops-16`, `device.xtwinops-18`,
+  `device.xtwinops-20`, `device.xtwinops-21`; `editing.decrqcra`; `modes.decsscls`.
+- `extensions.sixel-da1`, `extensions.sixel-geometry-report`, `extensions.osc10-fg-color`,
+  `extensions.osc11-bg-color`, `extensions.osc12-cursor-color`, `extensions.osc1337-capabilities`,
+  `extensions.osc1337-cellsize`, `extensions.osc17-highlight-bg`, `extensions.osc19-highlight-fg`,
+  `extensions.osc21-kitty-color`, `extensions.osc4-palette`, `extensions.osc5-special-color`,
+  `extensions.osc701-locale`, `extensions.osc702-version`, `extensions.osc776-cell-size`,
+  `extensions.osc7770-font-size`, `extensions.osc7777-font-window-size`, `extensions.osc99-kitty-notify`.
+
+The twelve proposed Untestable declarations remain outside this negative-only cut pending
+operator wording approval: DECRQSS, XTGETTCAP, XTGETXRES, the Kitty graphics query/transmit
+cells, and OSC 22, 176, 3008, 440, 555, 666 and 710 retain their prior paths. OSC52 read also
+retains its public host-request path; no reply is invented. Other libraries and every terminal
+arm retain their existing paths.
 
 ## Evidence, capture and assertion
 

@@ -17,8 +17,9 @@ import { describe, expect, test } from "vitest"
 
 import { extensionsProbes } from "./extensions.ts"
 import { sgrProbes } from "./sgr.ts"
+import { ALL_PROBES, isDeclaredUntestable } from "./index.ts"
 import { inertLibProbeSource } from "./testing/group-harness.ts"
-import type { LibProbeSource, UnhandledSequence } from "./types.ts"
+import type { HeadlessRuntimeIdentity, LibProbeSource, UnhandledSequence } from "./types.ts"
 
 const REASON = "library reported this sequence as unhandled"
 
@@ -292,6 +293,185 @@ describe("the report arm decides italic and faint as well, and nothing outside i
   test("an SGR cell outside the eight keeps its own path", () => {
     const source = reportingSource({ records: [recordsCsi("53m"), recordsCsi("1m")] })
     const result = sgr("sgr.overline").lib!(source)
+    expect(JSON.stringify(result)).not.toContain(REASON)
+  })
+})
+
+// Accepted D2 cut (Chief 6ef3debd): exactly these 34 controlled negatives;
+// the 12 proposed declarations remain on their prior paths pending policy wording.
+// The independent input/code oracle was measured from the real addon before the
+// consumer existed (4966 census); existing tests exercise none of these 46 IDs.
+describe("vt100-rust D2 at the ALL_PROBES consumer", () => {
+  const identity: HeadlessRuntimeIdentity = {
+    kind: "native",
+    engineVersion: "0.16.2",
+    adapterVersion: "0.10.2",
+    termlessRevision: "39f7cd8336b01debdbbe775d1a40900195a7f91e",
+    loadedBinary: {
+      path: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
+      sha256: "72855b1d5462ac4c168d6c2f4a6252ab0bbfbd8682bcd68c732521ed1f4e661c",
+    },
+    provenance: {
+      sha256: "72855b1d5462ac4c168d6c2f4a6252ab0bbfbd8682bcd68c732521ed1f4e661c",
+      sourceCommit: "3a0bcc0f615cc22d64ea6b756026521d697f0c61",
+      buildHash: "1384077ee447681a93471e6ee176b8bbdc4ae172e2f94ab3d7cc1f84a1f674eb",
+      toolchain:
+        "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+      lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
+    },
+    adapterSources: [
+      {
+        path: "packages/vt100-rust/src/index.ts",
+        blobOid: "3ddb74f3ae1f79bb356952103853232f69211268",
+      },
+      {
+        path: "packages/vt100-rust/src/backend.ts",
+        blobOid: "ddabecd4881be4f6b63f1c35f9c2265b53d35df4",
+      },
+    ],
+  }
+  const targets = [
+    ["cursor.position-report", "\u001b[6n", "csi", "6n"],
+    ["device.decrpm", "\u001b[?7$p", "csi", "?$7p"],
+    ["device.dsr-996-color-scheme", "\u001b[?996n", "csi", "?996n"],
+    ["device.primary-da", "\u001b[c", "csi", "0c"],
+    ["device.secondary-da", "\u001b[>c", "csi", ">0c"],
+    ["device.status-report", "\u001b[5n", "csi", "5n"],
+    ["device.tertiary-da", "\u001b[=c", "csi", "=0c"],
+    ["device.xtreportcolors", "\u001b[#R", "csi", "#0R"],
+    ["device.xtversion", "\u001b[>0q", "csi", ">0q"],
+    ["device.xtwinops-14", "\u001b[14t", "csi", "14t"],
+    ["device.xtwinops-16", "\u001b[16t", "csi", "16t"],
+    ["device.xtwinops-18", "\u001b[18t", "csi", "18t"],
+    ["device.xtwinops-20", "\u001b[20t", "csi", "20t"],
+    ["device.xtwinops-21", "\u001b[21t", "csi", "21t"],
+    ["editing.decrqcra", "\u001b[1;1;1;1;1;5*y", "csi", "*1;1;1;1;1;5y"],
+    ["extensions.sixel-da1", "\u001b[c", "csi", "0c"],
+    ["extensions.sixel-geometry-report", "\u001b[?2;1;0S", "csi", "?2;1;0S"],
+    ["modes.decsscls", "\u001b[9 p", "csi", " 9p"],
+    ["extensions.osc10-fg-color", "\u001b]10;?\u0007", "osc", "10"],
+    ["extensions.osc11-bg-color", "\u001b]11;?\u0007", "osc", "11"],
+    ["extensions.osc12-cursor-color", "\u001b]12;?\u0007", "osc", "12"],
+    ["extensions.osc1337-capabilities", "\u001b]1337;Capabilities\u0007", "osc", "1337"],
+    ["extensions.osc1337-cellsize", "\u001b]1337;ReportCellSize\u0007", "osc", "1337"],
+    ["extensions.osc17-highlight-bg", "\u001b]17;?\u0007", "osc", "17"],
+    ["extensions.osc19-highlight-fg", "\u001b]19;?\u0007", "osc", "19"],
+    ["extensions.osc21-kitty-color", "\u001b]21;foreground=?\u001b\\", "osc", "21"],
+    ["extensions.osc4-palette", "\u001b]4;0;?\u0007", "osc", "4"],
+    ["extensions.osc5-special-color", "\u001b]5;0;?\u0007", "osc", "5"],
+    ["extensions.osc701-locale", "\u001b]701;?\u0007", "osc", "701"],
+    ["extensions.osc702-version", "\u001b]702;?\u0007", "osc", "702"],
+    ["extensions.osc776-cell-size", "\u001b]776\u0007", "osc", "776"],
+    ["extensions.osc7770-font-size", "\u001b]7770;?\u0007", "osc", "7770"],
+    ["extensions.osc7777-font-window-size", "\u001b]7777;?\u0007", "osc", "7777"],
+    ["extensions.osc99-kitty-notify", "\u001b]99;i=dev4-census:p=?;\u001b\\", "osc", "99"],
+  ] as const
+  const declared = [
+    "device.decrqss",
+    "device.xtgettcap",
+    "device.xtgetxres",
+    "extensions.kitty-graphics",
+    "extensions.kitty-graphics.transmit",
+    "extensions.osc22-pointer",
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc555-flash",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+  ] as const
+  const definition = (id: string) => ALL_PROBES.find((p) => p.id === id)!
+  const source = (feed: string, kind: "osc" | "csi", code: string, overrides: Partial<LibProbeSource> = {}) => ({
+    ...reportingSource({
+      records: [{ match: new RegExp(feed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), code: { kind, code } }],
+    }),
+    backendName: "vt100-rust",
+    runtimeIdentity: identity,
+    ...overrides,
+  })
+
+  test.each(targets)("%s uses the measured normalized code with both handled controls", (id, feed, kind, code) => {
+    const result = definition(id).lib!(source(feed, kind, code))
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(JSON.stringify(result)).toContain(REASON)
+    if (kind === "csi") {
+      expect(JSON.stringify(result)).toContain("CSI " + code)
+      expect(JSON.stringify(result)).not.toContain("SGR " + code)
+    }
+  })
+
+  test.each(declared)("%s stays outside the negative-only cut while declaration policy is held", (id) => {
+    const lib = definition(id).lib!
+    const result = lib({ ...inertLibProbeSource(), backendName: "vt100-rust", runtimeIdentity: identity })
+    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    for (const overrides of [
+      { runtimeIdentity: undefined },
+      { backendName: "libvterm" },
+      { runtimeIdentity: { ...identity, engineVersion: "0.16.3" } },
+      { runtimeIdentity: { ...identity, provenance: { ...identity.provenance, lockSha256: "0".repeat(64) } } },
+    ]) {
+      expect(
+        isDeclaredUntestable(
+          lib({ ...inertLibProbeSource(), backendName: "vt100-rust", runtimeIdentity: identity, ...overrides }),
+        ),
+      ).toBe(false)
+    }
+  })
+
+  test("failed controls, mismatch, extra entry, missing member and changed identity keep the old path", () => {
+    const [id, feed, kind, code] = targets[0]
+    const lib = definition(id).lib!
+    for (const ctx of [
+      source(feed, kind, "other"),
+      source(feed, kind, code, { getUnhandledSequences: undefined }),
+      source(feed, kind, code, { backendName: "libvterm" }),
+      source(feed, kind, code, { runtimeIdentity: { ...identity, engineVersion: "0.16.3" } }),
+      source(feed, kind, code, {
+        runtimeIdentity: { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+      }),
+      source(feed, kind, code, {
+        runtimeIdentity: { ...identity, provenance: { ...identity.provenance, sourceCommit: "0".repeat(40) } },
+      }),
+      source(feed, kind, code, {
+        runtimeIdentity: { ...identity, provenance: { ...identity.provenance, lockSha256: "0".repeat(64) } },
+      }),
+      source(feed, kind, code, {
+        runtimeIdentity: {
+          ...identity,
+          adapterSources: identity.adapterSources?.map((s) => ({ ...s, blobOid: "0".repeat(40) })),
+        },
+      }),
+      {
+        ...source(feed, kind, code),
+        ...reportingSource({ boldApplies: false, records: [{ match: /\x1b\[6n/, code: { kind, code } }] }),
+        backendName: "vt100-rust",
+      },
+      {
+        ...source(feed, kind, code),
+        ...reportingSource({
+          records: [
+            { match: /\x1b\[6n/, code: { kind, code } },
+            { match: /\x1b\[6n/, code: { kind, code } },
+          ],
+        }),
+        backendName: "vt100-rust",
+      },
+    ]) {
+      const result = lib(ctx)
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(JSON.stringify(result)).not.toContain(REASON)
+    }
+  })
+
+  test("a decided reply survives the report and OSC52 read is neither declared nor negative", () => {
+    const target = source("\x1b[6n", "csi", "6n", {
+      feedCapture: () => "\x1b[3;5R",
+      getCursor: () => ({ x: 4, y: 2, visible: true, style: null }),
+    })
+    expect(definition("cursor.position-report").lib!(target).observation?.outcome).toBe("supported")
+    const result = definition("extensions.osc52-read").lib!(target)
+    expect(isDeclaredUntestable(result)).toBe(false)
     expect(JSON.stringify(result)).not.toContain(REASON)
   })
 })
