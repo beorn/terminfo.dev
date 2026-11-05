@@ -3874,7 +3874,7 @@ describe("partial probe automation candidates", () => {
       expect(capture).toEqual([c.expected, c.expected, c.expected])
       expect(feed).toEqual([`\x1b]${c.set};rgb:aa/bb/cc\x07`, c.reset])
       expect(replies).toEqual([])
-      // C4: unreadable pointer slots keep their old no-mutation path, with and without a sentinel.
+      // Unreadable pointer slots keep the no-mutation path; DA1 transport qualification supplies no effect readback.
       // The positive readback above cannot expose seed/reset writes made before a missing prerequisite.
       for (const qualified of [false, true]) {
         const calls: string[] = []
@@ -3904,7 +3904,7 @@ describe("partial probe automation candidates", () => {
         )
         expect(calls).toEqual([c.expected])
         expect(empty.hostRecipeCauses).toBeUndefined()
-        expect(empty.criterionBranch).toBe(qualified ? undefined : "color-readback-review")
+        expect(empty.criterionBranch).toBe("color-readback-review")
       }
     }
   })
