@@ -711,8 +711,9 @@ test.each(["equal", "different", "unreadable", "stayed-alternate", "unreadable-c
             if (text === "\x1b[?1049l" && alternateShrank) restored = true
           }
           ctx.resize = (cols, rows) => {
-            if (referenceResized && reference === "unreadable-cleanup")
+            if (referenceResized && reference === "unreadable-cleanup") {
               throw new Error("reference geometry cleanup failed")
+            }
             const alternate = mode("altScreen") === true
             resize(cols, rows)
             trace.push({ kind: "resize", cols, rows, alternate })

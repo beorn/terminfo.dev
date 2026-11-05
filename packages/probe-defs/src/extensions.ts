@@ -3778,11 +3778,13 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         result = phase("invalid", `Alternate measurement failed: ${evidence.measurementError}`)
       } else if (evidence.measurement) {
         result = evidence.measurement
-        const referenceUnavailable = evidence.roundtrip.notTested?.noObservable?.startsWith(
-          "paired primary resize reference unavailable:",
-        )
-        if (referenceUnavailable && identity.restored === false && identity.after === false) {
-          result = phase("reference-unavailable", evidence.roundtrip.notTested!.noObservable)
+        const referenceUnavailable = evidence.roundtrip.notTested?.noObservable
+        if (
+          referenceUnavailable?.startsWith("paired primary resize reference unavailable:") &&
+          identity.restored === false &&
+          identity.after === false
+        ) {
+          result = phase("reference-unavailable", referenceUnavailable)
         } else if (!evidence.roundtrip.pass || identity.restored === true || identity.after === true) {
           result = phase(
             "invalid",
