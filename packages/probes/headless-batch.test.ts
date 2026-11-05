@@ -4832,14 +4832,21 @@ test("an adapter that reports no title gives the title-stack cells a headless ob
 })
 
 test.skipIf(!ghosttyNativeAvailable)(
-  `real Ghostty native title-stack fixtures retain their no-control evidence${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
+  `real Ghostty native title-stack fixtures retain their observed evidence${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
   async () => {
     const batch = await collectBatch(
       async () => createGhosttyNativeBackend(),
       "ghostty-native",
       registryDefinitions(TITLE_STACK_IDS),
     )
-    // Setup is observable in the pinned native engine; neither fixture restores its saved title.
+    // The published addon exposes no title state; current source builds observe setup.
+    // Each path must retain both fixtures and its own existing PROBE TODO cause.
+    const firstFixture = JSON.parse(batch.rawReplies[TITLE_STACK_IDS[0]]!) as { popFixture: { original: string } }
+    if (firstFixture.popFixture.original === "") {
+      expectTitleSetupReview(batch)
+      return
+    }
+    // Observable setup still leaves both saved-title restores undecided without a control.
     expect(batch.results).toMatchObject(
       TITLE_STACK_IDS.map((featureId) => ({
         featureId,
