@@ -407,7 +407,14 @@ with the mode reset, requested, then reset again. They retain event fields, exac
 separate recovery CPR. Same-path controls must pass in every phase. The target is extended
 Ctrl+i for level 2 and extended bare i for level 3; both CSI-u and CSI-27 forms are compared
 by logical codepoint and modifier. No logical mode transition in the fixed key list, target silence or failed reset/control evidence
-remains a named PROBE TODO. Native exceptions propagate after the reset command in `finally`.
+remains a named PROBE TODO, except a qualified unchanged-byte negative: cursor-key mode
+must change ArrowUp from CSI A to SS3 A and back, both before MOK and after reset.
+With those controls, the ordinary delivery controls and recovery CPR passing, an unchanged
+sample whose off form differs from the required level encoding establishes Unsupported.
+Level 2 first checks Ctrl+a against codepoint 97/modifier 5, then Ctrl+i; level 3 checks
+plain i against codepoint 105/modifier 1. The record names that absence key and retains
+both cursor controls. An already-target off form is never negative evidence.
+Native exceptions propagate after the reset command in `finally`.
 The reviewed Ghostty-web 0.4.0 MOK2/MOK3 cells are declared Untestable: its public encoder
 cannot receive parsed MOK state, and no level-3 selector exists. Ghostty-native 1.3.1 MOK3
 is also declared Untestable because its public options carry only the state-2 boolean.

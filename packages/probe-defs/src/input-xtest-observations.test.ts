@@ -14,6 +14,60 @@ import { isDeclaredUntestable } from "./helpers.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
 
+// An unchanged key is a negative only when this encoder demonstrably follows fed modes.
+// Existing transition fixtures keep ArrowUp constant and cannot establish that witness.
+test.each([2, 3] as const)("native MOK %i qualifies unchanged bytes with cursor-mode controls", (level) => {
+  for (const behavior of ["unchanged", "before-fails", "after-fails", "already-target", "changes"] as const) {
+    let cursorMode = false
+    let controlPhase = 0
+    let mok = 0
+    const ctx: LibProbeSource = {
+      ...libMouseSource({ extensions: ["key-encoding"] }),
+      backendName: "generic-mode-coupled-fixture",
+      feed(text) {
+        if (text === "\x1b[?1h") {
+          cursorMode = true
+          controlPhase++
+        }
+        if (text === "\x1b[?1l") cursorMode = false
+        const value = text.match(/^\x1b\[>4;(\d)m$/)?.[1]
+        if (value !== undefined) mok = Number(value)
+      },
+      feedCapture: () => "\x1b[1;1R",
+      encodeKey(event) {
+        const fail =
+          (behavior === "before-fails" && controlPhase === 1) || (behavior === "after-fails" && controlPhase === 2)
+        let text = event.key
+        if (event.key === "ArrowUp") text = cursorMode && !fail ? "\x1bOA" : "\x1b[A"
+        else if (event.key === "a" && event.ctrl) text = behavior === "already-target" ? "\x1b[97;5u" : "\x01"
+        else if (event.key === "i") {
+          text = event.ctrl ? "\x1b[105;5u" : "i"
+          if (behavior === "already-target" || (behavior === "changes" && mok === level)) {
+            text = `\x1b[105;${event.ctrl ? 5 : 1}u`
+          } else if (behavior === "changes" && event.ctrl) text = "\t"
+        }
+        return new TextEncoder().encode(text)
+      },
+    }
+    const id = level === 2 ? "input.modify-other-keys" : "input.modify-other-keys-3"
+    const result = probe(id).lib!(ctx)
+    const expected = behavior === "unchanged" ? "unsupported" : behavior === "changes" ? "supported" : undefined
+    expect(result.observation?.outcome, `${level}/${behavior}`).toBe(expected)
+    if (behavior === "unchanged") {
+      const observed = JSON.parse(result.response!) as {
+        cursorModeControl: { before: { on: { bytes: number[] } }; after: { off: { bytes: number[] } } }
+        absenceKey: string
+      }
+      expect(observed.cursorModeControl.before.on.bytes).toEqual([27, 79, 65])
+      expect(observed.cursorModeControl.after.off.bytes).toEqual([27, 91, 65])
+      expect(observed.absenceKey).toBe(level === 2 ? "ctrlA" : "i")
+      expect(result.assertions?.some((assertion) => assertion.kind === "negative")).toBe(true)
+    } else if (behavior.endsWith("fails")) {
+      expect(result.notTested?.noObservable).toMatch(/cursor.*control/i)
+    }
+  }
+})
+
 // Native MOK needs a controlled transition, not merely an extended key report.
 // App-input fixtures and declaration checks cannot catch a vacuous native encoder.
 test.each([
