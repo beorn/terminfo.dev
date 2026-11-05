@@ -3441,10 +3441,10 @@ test.each([
 //   3m, strikethrough 9m, double underline 21m), and nothing else: blink (5) is in the engine's handled
 //   list, the three colon underline forms record nothing, and the four delivery cells are never decided by
 //   the report. @dev/8 Case 2 consumer: 32369.
-//   Owned layout only: a standalone terminfo.dev checkout resolves the registry @termless/core and
-//   @termless/vt100, where the engine applies the OSC 2 title and VT100 is not declared render-capable, so
-//   the Case 2 fallback is unreachable there and finalizeSgrResult discards the visual SGR results. That
-//   shape cannot hold this assertion.
+//   Owned layout only: this boundary needs the linked @termless/vt100 generation. Hosted unit packs
+//   @termless/core from source-siblings.json but takes registry @termless/vt100 0.10.2, whose vt100.js
+//   0.7.0 applies the OSC 2 title, so the Case 2 fallback is unreachable. A plain registry install also
+//   lacks the VT100 rendering declaration, so finalizeSgrResult discards the visual SGR results there.
 // @level l2
 // @consumer 32369 consumer boundary for the VT100 ignored-report producer (32364).
 // @testonly none
