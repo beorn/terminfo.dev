@@ -15,6 +15,8 @@ import {
   recordExecutedProbe,
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
+import { libProbeSource } from "./testing/group-harness.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { HeadlessRuntimeIdentity, LibProbeSource, NotTestedCoverageResult, ProbeCallbackResult } from "./types.ts"
 
 const attempt = { scope: "probe", startedAt: "2026-11-05T01:00:00.000Z" } as const
@@ -258,5 +260,24 @@ describe("audited OSC interface absence", () => {
         },
       }),
     ).toThrow("reader failed")
+  })
+
+  test("OSC 7's audited interface absence folds to Untestable", () => {
+    const definition = ALL_PROBES.find((probe) => probe.id === "extensions.osc7-cwd")!
+    const result = definition.lib!({ ...library("vt100"), runtimeIdentity: vt100 })
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(fold(definition.id, result)).toMatchObject({
+      status: "untestable",
+      reason: expect.stringMatching(/OSC 7/),
+    })
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+  })
+
+  test("OSC 7's supplied Cwd reader wins over the audited absence", () => {
+    const definition = ALL_PROBES.find((probe) => probe.id === "extensions.osc7-cwd")!
+    const result = definition.lib!({ ...libProbeSource(createSemanticSurface()), runtimeIdentity: vt100 })
+    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(result.observation?.outcome).toBe("supported")
   })
 })

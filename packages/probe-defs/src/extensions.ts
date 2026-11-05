@@ -4875,6 +4875,14 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc7-cwd",
       (ctx) => {
         if (!ctx.getCwd) {
+          if (hasAuditedOscInterfaceAbsence(ctx)) {
+            const note = `${ctx.backendName}: the audited library exposes no working-directory state or OSC 7 callback`
+            return declaredUntestableResult(note, {
+              backend: ctx.backendName,
+              runtimeIdentity: ctx.runtimeIdentity,
+              getCwd: false,
+            })
+          }
           const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
             declared: ctx.capabilities.extensions.has("osc7"),
