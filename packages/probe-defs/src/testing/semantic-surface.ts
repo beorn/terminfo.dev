@@ -713,12 +713,13 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   const writeCluster = (cluster: string, width: number): void => {
     if (width === 0 || mutations.has("basic-text-noop")) return
     const shouldWrap = shouldWrapCluster(autoWrap, width, mutations)
-    if (cursorX + width > cols) {
+    const right = declrmm ? marginRight + 1 : cols
+    if (cursorX + width > right) {
       if (shouldWrap) {
-        cursorX = 0
+        cursorX = declrmm ? marginLeft : 0
         lineFeed()
       } else {
-        cursorX = Math.max(0, cols - width)
+        cursorX = Math.max(0, right - width)
       }
     }
     const target = grid[cursorY]
@@ -735,7 +736,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         }
       }
     }
-    cursorX = shouldWrap ? cursorX + width : Math.min(cols - 1, cursorX + width)
+    cursorX = shouldWrap ? cursorX + width : Math.min(right - 1, cursorX + width)
     lastCluster = cluster
     lastWidth = width
   }
@@ -1642,7 +1643,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       const sized = /^[ws]=(\d+);(.*)$/u.exec(payload)
       if (sized && !mutations.has("osc66-noop")) {
         const text = sized[2]!
-        for (let index = 0; index < text.length;) {
+        for (let index = 0; index < text.length; ) {
           const grapheme = nextGrapheme(text, index, mutations)
           writeCluster(grapheme.cluster, clusterWidth(grapheme.cluster, mutations) * Number(sized[1]))
           index += grapheme.length

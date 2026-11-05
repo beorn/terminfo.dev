@@ -16,6 +16,7 @@ import {
   headlessDecrpmArm,
   parserStateResult,
   notTestedResult,
+  NO_SAME_PATH_CONTROL,
   reviewResult,
   HEADLESS_OBSERVABLE_REVIEW,
   sameRgb,
@@ -535,12 +536,13 @@ function italicOnly(cell: StackCell): boolean {
  * is restored, bold-only Y is the earlier state, plain Y persisted. Every pass value is non-default,
  * so a pop that resets to the default never passes, and the PUSH fixture's pass value differs from
  * the POP fixture's, so a stack that keeps a stale snapshot never passes the push row. The control
- * writes bold, italic and bold+italic cells with no stack ops, so a backend that does not report bold
- * or italic has no observable for the claim (a coverage record, PROBE TODO).
+ * writes bold, italic and bold+italic cells with no stack ops. A calibrated bold-only reader can
+ * witness the joint negative when both post-pop fixtures stay plain; every other limited reading
+ * remains PROBE TODO, and Supported still requires the complete bold/italic control.
  */
 function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
   const id = operation === "push" ? "modes.xtpushsgr" : "modes.xtpopsgr"
-  const expected = `${id}: ${STACK_EXPECTED.sgr[operation]}`
+  const expected = `${id}: ${STACK_EXPECTED.sgr[operation]}; a calibrated bold-only reader decides only the joint negative when both post-pop fixtures stay plain, never Supported`
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 3) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs three columns")
   }
@@ -553,12 +555,13 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
   try {
     ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b[1mB\x1b[0m\x1b[3mX\x1b[1mY\x1b[0m")
     const control = readBXY()
-    if (!charsIntact(control) || !boldOnly(control.b) || !italicOnly(control.x) || !boldItalic(control.y)) {
+    if (!charsIntact(control) || !boldOnly(control.b) || control.x.bold !== false || control.y.bold !== true) {
       return notTestedResult(
         "bold and italic cell attributes in the headless readback (control frame not calibrated)",
         { control },
       )
     }
+    const attributesCalibrated = italicOnly(control.x) && boldItalic(control.y)
     const fixture = (prefix: string, pushState: string, changed: string) => {
       ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${prefix}${pushState}B`)
       const pushOutput = ctx.feedCapture("\x1b[#{")
@@ -578,6 +581,19 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
     const state = { control, popFixture: popCells, pushFixture: pushCells }
     if (!charsIntact(popCells) || !charsIntact(pushCells)) {
       return parserStateResult(null, expected, state, "Stack sequence disturbed the B, X, Y cells")
+    }
+    if (!attributesCalibrated) {
+      if (plain(popCells.y) && plain(pushCells.y)) {
+        return stackStateResult(
+          {
+            pass: false,
+            note: "Push/pop jointly left both post-pop fixtures plain after a passing bold control; italic clause unobservable on this reader",
+          },
+          expected,
+          state,
+        )
+      }
+      return notTestedResult("italic cell attributes in the headless readback (control frame not calibrated)", state)
     }
     const pop: StackReading = boldOnly(popCells.y) ? "restored" : italicOnly(popCells.y) ? "persisted" : "other"
     const push: StackReading = boldItalic(pushCells.y)
@@ -1119,81 +1135,65 @@ function alt1049ReadbackInconclusive(expected: string, note: string, error: unkn
   return parserStateResult(null, expected, { readbackError: message }, note)
 }
 
-/** Row 1's seed for the margin fixture: one glyph in each of columns 1-8. */
-const LR_MARGIN_SEED = "ABCDEFGH"
-/** ICH at column 3 with no margins shifts C-G right one column and pushes H off column 8. */
-const LR_MARGIN_UNBOUNDED = "AB CDEFG"
-/** The same ICH under DECSLRM 3;6 shifts only columns 3-6: F drops at the right margin, G and H stay. */
-const LR_MARGIN_BOUNDED = "AB CDEGH"
 const LR_MARGIN_EXPECTED =
-  "Left-right margin mode constrains horizontal operations: ICH at column 3 under DECSLRM 3;6 drops F at column 6 and leaves G and H in columns 7-8"
+  "With DECAWM on and DECSLRM 3;6, writing ABCDE from 1;3 wraps E to 2;3; without margins E stays at 1;7"
 
 /**
- * Headless DECLRMM read-back (#30702): DECSLRM 3;6 under ?69h, then ICH at column 3, read back from
- * row 1's cells inside AND outside the margins. Honoured margins confine the shift to columns 3-6, so
- * F drops at the right margin and G and H stay in columns 7-8; ignored margins shift the whole row
- * exactly as the control does. The control runs the same ICH with no margins first, so a backend
- * whose readback does not show ICH shifting the row has no observable for the claim (a coverage
- * record, PROBE TODO) rather than a negative. Cleanup resets the margins while ?69 is still set,
- * where CSI s is DECSLRM rather than a cursor save, then leaves the mode.
+ * Headless DECLRMM effect: qualify both deciding cell positions, then compare the same write
+ * without and with margins. This needs no ICH implementation or mode-state support claim.
+ * Cleanup resets margins while DECLRMM is set, leaves it, and restores the incoming DECAWM
+ * reading when available (otherwise the explicitly established on state).
  */
 function leftRightMarginHeadless(ctx: LibProbeSource): ProbeCallbackResult {
-  const width = LR_MARGIN_SEED.length
-  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < width) {
-    return parserStateResult(null, LR_MARGIN_EXPECTED, { cols: ctx.cols }, "Measured grid needs eight columns")
+  const rows = ctx.getScrollback().screenLines
+  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8 || !Number.isSafeInteger(rows) || rows < 2) {
+    return parserStateResult(
+      null,
+      LR_MARGIN_EXPECTED,
+      { cols: ctx.cols, rows },
+      "Measured grid needs two rows and eight columns",
+    )
   }
-  const readRow = (): string => {
-    const activeRow = activeScreenRow(ctx, 0)
-    let text = ""
-    for (let col = 0; col < width; col += 1) {
-      const char = ctx.getCell(activeRow, col).char
-      text += isBlank(char) ? " " : char
+  const read = () => {
+    const origin = activeScreenRow(ctx, 0)
+    const char = (row: number, col: number) => {
+      const value = ctx.getCell(origin + row, col).char
+      return isBlank(value) ? " " : value
     }
-    return text
+    return { wrapped: char(1, 2), unbounded: char(0, 6) }
   }
-  let margins = false
+  const wrapped = (state: ReturnType<typeof read>) => state.wrapped === "E" && state.unbounded === " "
+  const unbounded = (state: ReturnType<typeof read>) => state.wrapped === " " && state.unbounded === "E"
+  const incomingWrap = ctx.getMode("autoWrap")
+  const reset = "\x1b[?69h\x1b[s\x1b[?69l\x1b[?7h\x1b[0m\x1b[2J\x1b[H"
   try {
-    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H" + LR_MARGIN_SEED)
-    const seed = readRow()
-    if (seed !== LR_MARGIN_SEED) {
-      return parserStateResult(null, LR_MARGIN_EXPECTED, { seed }, "Margin seed ABCDEFGH was not measured")
+    ctx.feed(`${reset}\x1b[2;3HE`)
+    const placement = read()
+    ctx.feed(`${reset}\x1b[1;3HABCDE`)
+    const control = read()
+    if (!wrapped(placement) || !unbounded(control)) {
+      return notTestedResult(NO_SAME_PATH_CONTROL, { placement, control })
     }
-    ctx.feed("\x1b[1;3H\x1b[@")
-    const control = readRow()
-    if (control !== LR_MARGIN_UNBOUNDED) {
-      return parserStateResult(
-        null,
-        LR_MARGIN_EXPECTED,
-        {
-          seed,
-          control,
-        },
-        undefined,
-        "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
-      )
-    }
-    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H" + LR_MARGIN_SEED)
-    margins = true
-    ctx.feed("\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b[@")
-    const target = readRow()
-    const state = { seed, control, margins: "3-6", target }
-    if (target === LR_MARGIN_BOUNDED) return parserStateResult(true, LR_MARGIN_EXPECTED, state)
-    if (target === LR_MARGIN_UNBOUNDED) {
+    ctx.feed(`${reset}\x1b[?69h\x1b[3;6s\x1b[1;3HABCDE`)
+    const target = read()
+    const state = { placement, control, margins: "3-6", target }
+    if (wrapped(target)) return parserStateResult(true, LR_MARGIN_EXPECTED, state)
+    if (unbounded(target)) {
       return parserStateResult(
         false,
         LR_MARGIN_EXPECTED,
         state,
-        "ICH under DECSLRM 3;6 shifted the whole row, exactly as the control without margins did",
+        "Write under DECSLRM 3;6 stayed unbounded at 1;7 with 2;3 blank, exactly as the control without margins did",
       )
     }
     return parserStateResult(
       null,
       LR_MARGIN_EXPECTED,
       state,
-      "ICH under margins 3-6 left neither the bounded nor the unbounded shift",
+      "Write under margins 3-6 left neither the calibrated wrap nor the exact unbounded placement",
     )
   } finally {
-    ctx.feed((margins ? "\x1b[s" : "") + "\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
+    ctx.feed(`\x1b[?69h\x1b[s\x1b[?69l${incomingWrap === false ? "\x1b[?7l" : "\x1b[?7h"}\x1b[0m\x1b[2J\x1b[H`)
   }
 }
 

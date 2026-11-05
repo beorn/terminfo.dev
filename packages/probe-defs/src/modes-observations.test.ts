@@ -8,6 +8,7 @@ import { expect, test, vi } from "vitest"
 import { NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type {
   CaptureRectangle,
   CaptureRequest,
@@ -2022,25 +2023,16 @@ test("alt-screen, left-right-margin, and decsscls headless probes offset primary
   }
 
   // left-right-margin with 1 scrolled line from \x1b[2J (libProbeSource offsets model.getCell by totalLines - screenLines):
-  let marginRow = "        "
+  const marginSurface = createSemanticSurface({ cols: 8 })
   let marginScrolled = 0
-  let marginMode = false
   const marginSource = libProbeSource({
+    ...marginSurface,
     cols: 8,
     getScrollback: () => ({ viewportOffset: 0, totalLines: 24 + marginScrolled, screenLines: 24 }),
     feed(sequence) {
       if (sequence.includes("\x1b[2J")) marginScrolled += 1
-      if (sequence.includes("ABCDEFGH")) marginRow = "ABCDEFGH"
-      if (sequence.includes("\x1b[?69h")) marginMode = true
-      if (sequence.endsWith("\x1b[1;3H\x1b[@")) {
-        marginRow = marginMode ? "AB CDEGH" : "AB CDEFG"
-      }
+      marginSurface.feed(sequence)
     },
-    getCell: (row, col) =>
-      ({
-        char: row === 0 ? (marginRow[col] ?? " ") : " ",
-      }) as ReturnType<LibProbeSource["getCell"]>,
-    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
   })
   const marginResult = modesProbes.find((entry) => entry.id === "modes.left-right-margin")!.lib!(marginSource)
   expect(marginResult.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
