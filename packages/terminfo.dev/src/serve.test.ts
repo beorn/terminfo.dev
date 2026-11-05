@@ -464,11 +464,11 @@ describe("daemon HTTP boundary", () => {
         import {writeFileSync,readFileSync,readdirSync,existsSync} from "node:fs"
         import {join} from "node:path"
         const cp = await import("node:child_process")
-        const execFile = cp.execFile
-        mock.module("node:child_process", () => ({...cp, execFile: (file, args, options, callback) => {
+        const spawn = cp.spawn
+        mock.module("node:child_process", () => ({...cp, spawn: (file, args, options) => {
           assert.equal(file, "/usr/bin/osascript")
           writeFileSync(join(process.env.HOME,"census-invocation.json"), JSON.stringify({file,args}))
-          return execFile(process.execPath, ["-e", "process.stderr.write(Buffer.from([100, 0, 255, 10]));process.exit(17)"], options, callback)
+          return spawn(process.execPath, ["-e", "process.stderr.write(Buffer.from([100, 0, 255, 10]));process.exit(17)"], options)
         }}))
         const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
         globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:"a".repeat(12),probes: { term:unified.ALL_PROBES.map(p=>p.id).sort()}},collectorRevision:"b".repeat(40)}
@@ -680,7 +680,7 @@ describe("daemon HTTP boundary", () => {
  * directory is what makes a run `darwinHosted`, so a script can drop it to collect the same
  * terminal with NO capture adapter at all and compare the two runs row for row.
  */
-function runHostedDarwinFixture(script: string) {
+function runHostedDarwinFixture(script: string, timeoutMs = 10_000) {
   home = mkdtempSync(join(tmpdir(), "terminfo-serve-calibration-"))
   return spawnSync(process.execPath, ["-e", script], {
     cwd: packageRoot,
@@ -693,7 +693,7 @@ function runHostedDarwinFixture(script: string) {
       TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
     },
     encoding: "utf8",
-    timeout: 10_000,
+    timeout: timeoutMs,
   })
 }
 
@@ -986,7 +986,8 @@ describe("private finite daemon startup", () => {
   // exactly as they do when the terminal reports the same cell size itself, and the run records
   // WHICH basis the geometry rests on.
   it("installs the capture on a derived alacritty cell size, deciding the same rows as a 16 t report", () => {
-    const result = runHostedDarwinFixture(`
+    const result = runHostedDarwinFixture(
+      `
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
       import { readdirSync, readFileSync } from "node:fs"
@@ -1114,7 +1115,8 @@ describe("private finite daemon startup", () => {
       // The derived basis still calibrates, once per run, and its probes reach pixels.
       assert.equal(calibrations, 6)
       assert.ok(frames > 0)
-      const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.assertionType === "screenshot"), (key, value) => ["startedAt", "completedAt"].includes(key) ? undefined : value))
+      // Capture labels can include independently allocated image IDs; compare all deciding pixel facts, not those labels.
+      const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.assertionType === "screenshot"), (key, value) => ["startedAt", "completedAt", "label"].includes(key) ? undefined : value))
       assert.ok(pixels(derived).length > 0)
       assert.deepEqual(pixels(derived), pixels(reported))
       assert.deepEqual(pixels(bare), [])
@@ -1122,11 +1124,14 @@ describe("private finite daemon startup", () => {
       assert.equal(reported.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
       assert.equal("ungradedDiagnostics" in derived, false)
       assert.equal("ungradedDiagnostics" in reported, false)
-    `)
+    `,
+      30_000,
+    )
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)
-    // Seven collector attempts share the child. Let its 10 s process limit fail before the outer test.
-  }, 15_000)
+    // Seven full-catalogue attempts take over 10 s with real capture settle waits; bound readiness, not performance.
+    // Keep the child's limit below the outer test so a wedged child leaves its diagnostic result.
+  }, 45_000)
 
   // @cto, 28785 REVISE round 2 must 2: pin EVERY classification site of queryPixelGeometry with
   // one table. A timeout - nothing answered at all, DA1 included - is the one transient cause, and
