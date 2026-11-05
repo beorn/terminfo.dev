@@ -6,7 +6,7 @@
  * @reach Runs each declared probe's library callback against a minimal context and folds it.
  * @testonly none
  */
-import { expect, test } from "vitest"
+import { describe, expect, test } from "vitest"
 import {
   DECLARED_UNTESTABLE_TEST,
   HEADLESS_OBSERVABLE_REVIEW,
@@ -15,7 +15,7 @@ import {
   recordExecutedProbe,
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
-import type { LibProbeSource, NotTestedCoverageResult, ProbeCallbackResult } from "./types.ts"
+import type { HeadlessRuntimeIdentity, LibProbeSource, NotTestedCoverageResult, ProbeCallbackResult } from "./types.ts"
 
 const attempt = { scope: "probe", startedAt: "2026-11-05T01:00:00.000Z" } as const
 
@@ -99,4 +99,164 @@ test("the declared helper needs a reason and folds only in its exact form", () =
     expect(fold("alpha", variant).status).toBe("probe-todo")
   }
   expect(isDeclaredUntestable({ criterionBranch: HEADLESS_OBSERVABLE_REVIEW, tests: [] })).toBe(false)
+})
+
+// Operator decision B: absence is qualified by the audited public source, not a
+// missing adapter method. These identities are from the unchanged 2167 captures.
+describe("audited OSC interface absence", () => {
+  const vtIdentity = (backend: "vt100" | "vt220", treeOid?: string) => ({
+    kind: "js" as const,
+    runtimeFormat: "js" as const,
+    adapterVersion: "0.10.2",
+    termlessRevision: "ce3e783b6536df0cc4e0a11d4567f1cdd96bafee",
+    engineVersion: "0.10.1",
+    resolvedPath: `vendor/vterm/packages/${backend}/src/index.ts`,
+    integrity: {
+      kind: "source" as const,
+      repository: "git@github.com:beorn/vterm.git",
+      revision: "5e17657b7806e88b3370b86dc000e26b3d3c7301",
+      treeOid:
+        treeOid ??
+        (backend === "vt100" ? "c7c4dd7c37882a37ae336490eb42ef784c0b7045" : "4c946bbce73a95093ed16bab183b17032c622e21"),
+      cleanTree: true,
+    },
+  })
+  const vt100 = vtIdentity("vt100")
+  const alacritty = {
+    kind: "native" as const,
+    engineVersion: "0.26.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "ce3e783b6536df0cc4e0a11d4567f1cdd96bafee",
+    loadedBinary: {
+      path: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
+      sha256: "5f5e89db7fae602482e561f0b8625965f56ae2a91337b0de28f05147412941cd",
+    },
+    provenance: {
+      sha256: "5f5e89db7fae602482e561f0b8625965f56ae2a91337b0de28f05147412941cd",
+      sourceCommit: "6e497eb0310dd6747dfce240fc241e12c07d0615",
+      buildHash: "74a0537bebf3369d2348621e76ecd180b3c04002ced3a34faa9485d11ed29a74",
+      toolchain:
+        "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+      lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
+    },
+    adapterSources: [
+      { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
+      { path: "packages/alacritty/src/backend.ts", blobOid: "fb86b6283d4ecaac4b97223bd6c9856c60aa7bbc" },
+      { path: "packages/alacritty/native/src/lib.rs", blobOid: "23b6874c921b03ab2ae99bfec61cd9f00b8cb5a8" },
+      { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
+    ],
+  } satisfies HeadlessRuntimeIdentity
+  const run = (backend: string, runtimeIdentity?: HeadlessRuntimeIdentity, extra: Partial<LibProbeSource> = {}) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === "extensions.notifications")!
+    return definition.lib!({ ...library(backend), runtimeIdentity, ...extra })
+  }
+
+  test.each([
+    ["vt100", vt100],
+    ["vt100", vtIdentity("vt100", "8e082c695f238ec87dd22a496b836e5b1ef56458")],
+    ["vt220", vtIdentity("vt220")],
+    ["alacritty", alacritty],
+  ] as const)("%s's audited source declares notification absence without a measured assertion", (backend, identity) => {
+    let feeds = 0
+    const result = run(backend, identity, {
+      feed: () => {
+        feeds++
+      },
+    })
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(fold("extensions.notifications", result)).toMatchObject({
+      status: "untestable",
+      reason: expect.stringMatching(/OSC 9/),
+    })
+    expect(result.note?.toLowerCase()).toContain(backend)
+    expect(JSON.parse(result.response!)).toMatchObject({
+      backend,
+      runtimeIdentity: { engineVersion: identity.engineVersion },
+    })
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(feeds).toBe(0)
+  })
+
+  // Every variant names a different way a familiar name can cease to identify
+  // the audited API. The existing global Alacritty cohort is historical.
+  const unknown: [string, string, HeadlessRuntimeIdentity | undefined][] = [
+    ["no measured identity", "vt100", undefined],
+    ["unlisted backend", "unlisted", undefined],
+    ["a new version", "vt100", { ...vt100, engineVersion: "0.10.2" }],
+    ["a changed tree", "vt100", { ...vt100, integrity: { ...vt100.integrity, treeOid: "0".repeat(40) } }],
+    ["a dirty tree", "vt100", { ...vt100, integrity: { ...vt100.integrity, cleanTree: false } }],
+    [
+      "another repository",
+      "vt100",
+      { ...vt100, integrity: { ...vt100.integrity, repository: "https://example.invalid/vterm.git" } },
+    ],
+    ["a registry package", "vt100", { ...vt100, integrity: { kind: "registry", lockIntegrity: "unreviewed" } }],
+    [
+      "a changed lock",
+      "alacritty",
+      { ...alacritty, provenance: { ...alacritty.provenance, lockSha256: "0".repeat(64) } },
+    ],
+    [
+      "a changed native source",
+      "alacritty",
+      { ...alacritty, provenance: { ...alacritty.provenance, sourceCommit: "0".repeat(40) } },
+    ],
+    [
+      "a changed adapter blob",
+      "alacritty",
+      {
+        ...alacritty,
+        adapterSources: alacritty.adapterSources.map((s, i) => (i === 1 ? { ...s, blobOid: "0".repeat(40) } : s)),
+      },
+    ],
+    ["a missing source", "alacritty", { ...alacritty, adapterSources: alacritty.adapterSources.slice(1) }],
+    [
+      "an extra source",
+      "alacritty",
+      { ...alacritty, adapterSources: [...alacritty.adapterSources, { path: "extra.ts", blobOid: "0".repeat(40) }] },
+    ],
+    [
+      "the historical Alacritty cohort",
+      "alacritty",
+      {
+        ...alacritty,
+        adapterSources: alacritty.adapterSources.map((s, i) =>
+          i === 1
+            ? { ...s, blobOid: "27b78b1264cd5d2ed72705ba36c9735b29e874c5" }
+            : i === 2
+              ? { ...s, blobOid: "1779ff4f042f7f285ab3d396da039408b492be10" }
+              : s,
+        ),
+      },
+    ],
+  ]
+  test.each(unknown)("%s keeps the missing-reader TODO", (_label, backend, identity) => {
+    const result = run(backend, identity)
+    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(fold("extensions.notifications", result).status).toBe("probe-todo")
+  })
+
+  test("a real raw reader wins over the source declaration and must append to prove support", () => {
+    for (const enabled of [true, false]) {
+      const values: string[] = []
+      const result = run("vt100", vt100, {
+        feed(text) {
+          if (enabled && text === "\x1b]9;terminfo-notification-A\x07") values.push("terminfo-notification-A")
+          if (enabled && text === "\x1b]9;terminfo-notification-B\x07") values.push("terminfo-notification-B")
+        },
+        getNotifications: () => [...values],
+      })
+      expect(isDeclaredUntestable(result)).toBe(false)
+      if (enabled) expect(result.observation?.outcome).toBe("supported")
+      else expect(result.observation?.outcome).not.toBe("supported")
+    }
+    expect(() =>
+      run("vt100", vt100, {
+        getNotifications: () => {
+          throw new Error("reader failed")
+        },
+      }),
+    ).toThrow("reader failed")
+  })
 })

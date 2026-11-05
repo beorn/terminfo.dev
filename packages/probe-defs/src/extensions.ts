@@ -31,6 +31,7 @@ import {
   cancelReplyFailure,
   reviewResult,
   declaredUntestableResult,
+  auditedAdapterSources,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
   sentinelSilenceResult,
@@ -83,6 +84,38 @@ import {
   type KittyDigestPair,
 } from "./kitty-capture.ts"
 import { SIXEL_BOUNDS, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
+import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
+
+// The OSC 7/9 public-interface census qualifies these exact sources, not every
+// version carrying the same backend name. Real readers take precedence at each caller.
+function hasAuditedOscInterfaceAbsence(ctx: LibProbeSource): boolean {
+  const identity = ctx.runtimeIdentity
+  if (identity?.kind === "native") {
+    return (
+      identity.engineVersion === "0.26.0" &&
+      identity.provenance.lockSha256 === "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497" &&
+      identity.provenance.sourceCommit === "6e497eb0310dd6747dfce240fc241e12c07d0615" &&
+      auditedAdapterSources(identity, "alacritty23b6874c")
+    )
+  }
+  if (
+    !identity ||
+    identity.kind !== "js" ||
+    identity.runtimeFormat !== "js" ||
+    identity.engineVersion !== "0.10.1" ||
+    identity.integrity.kind !== "source" ||
+    !identity.integrity.cleanTree ||
+    identity.integrity.repository !== "git@github.com:beorn/vterm.git"
+  ) {
+    return false
+  }
+  const tree = identity.integrity.treeOid
+  return (
+    tree === "8e082c695f238ec87dd22a496b836e5b1ef56458" ||
+    tree === "c7c4dd7c37882a37ae336490eb42ef784c0b7045" ||
+    tree === "4c946bbce73a95093ed16bab183b17032c622e21"
+  )
+}
 
 /** A minimal solid-red 8x8 PNG; the OSC 1337 inline image target renders it as reviewable pixels. */
 const ITERM2_RED_PNG =
@@ -5114,6 +5147,14 @@ export const extensionsProbes: ProbeDefinition[] = [
           })
         }
         if (!ctx.getNotifications) {
+          const identity = ctx.runtimeIdentity
+          if (identity && hasAuditedOscInterfaceAbsence(ctx)) {
+            const reason = `${ctx.backendName} ${identity.engineVersion} exposes no public completed OSC 9 notification callback or ordered event state on its existing parser instance`
+            return declaredUntestableResult(reason, {
+              backend: ctx.backendName,
+              runtimeIdentity: evidenceRuntimeIdentity(identity),
+            })
+          }
           const note = "Declared OSC 9 capability does not establish desktop notification delivery"
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
             declared: ctx.capabilities.extensions.has("osc9"),

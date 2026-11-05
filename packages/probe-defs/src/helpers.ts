@@ -85,6 +85,13 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/alacritty/native/src/lib.rs": "1779ff4f042f7f285ab3d396da039408b492be10",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
+  // Current Term/EventProxy/Processor cohort audited for OSC 7 and OSC 9 interface absence.
+  alacritty23b6874c: {
+    "packages/alacritty/src/index.ts": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
+    "packages/alacritty/src/backend.ts": "fb86b6283d4ecaac4b97223bd6c9856c60aa7bbc",
+    "packages/alacritty/native/src/lib.rs": "23b6874c921b03ab2ae99bfec61cd9f00b8cb5a8",
+    "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
+  },
   wezterm: {
     "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
     "packages/wezterm/src/backend.ts": "42a196995a5f8845ab2e3bb6227192556c470071",

@@ -315,7 +315,13 @@ that prefix. The collector gives each probe its own disposable backend, so
 notification messages cannot leak into another probe. These are `buffer_state`
 observations of parser metadata, not a filesystem operation, OS notification
 or OSC 9;4 progress measurement. Missing readers keep the existing
-`headless-observable-review` tool gap; getter errors propagate.
+`headless-observable-review` tool gap; getter errors propagate. Notifications
+instead use the operator's declared Untestable route when neither notification
+nor toast reader exists and the measured source matches the audited VT100.js
+0.10.1, VT220.js 0.10.1 or Alacritty 0.26.0 profile. The shared identity qualifier
+in `extensions.ts` checks exact clean source trees or native provenance and
+adapter blobs. Changed or unknown profiles remain PROBE TODO. This declares
+public-interface absence, not DEC hardware or desktop-notification support.
 
 ## Evidence, capture and assertion
 
@@ -524,7 +530,9 @@ Declared getters returning null report unlinked cells, so URI mismatches remain 
 The declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
 semantic prompts, OSC 633 and iTerm2 images), OSC 7 and notifications without their metadata readers, an absent OSC 8 URI observer,
 and checks lacking timing, host-event or rendering facilities retain their existing coverage and raw
-state on `headless-observable-review`. Each is PROBE TODO naming its missing observable.
+state on `headless-observable-review`. Without an explicit declared Untestable
+route, each is PROBE TODO naming its missing observable; the source-qualified
+notification exceptions above use that existing declaration route.
 Measured mode state is separate from unmeasured presentation, including scroll cadence, inverted frames
 and tearing. App callbacks and real-observable
 paths keep their criteria. Existing captures acquire no new branch or review.
