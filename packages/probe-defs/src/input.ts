@@ -238,8 +238,13 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
         observed,
       )
     }
+    if (!/^\x1b\[\d+;\d+R$/.test(recovery)) {
+      return notTestedResult("Native DSR recovery control failed after MOK reset", observed)
+    }
     // xterm ctlseqs: level 2 encodes keys "including the exceptions listed" (Control-letter).
     // https://invisible-island.net/xterm/ctlseqs/ctlseqs.html (modifyOtherKeys)
+    // Level 3: content/features.json input.modify-other-keys-3 cites the same source
+    // and requires an encoded unmodified i (codepoint 105, modifier 1).
     const absenceKey =
       level === 2
         ? logical(off.ctrlA.text) !== "97:5"
@@ -253,7 +258,7 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
     const unchanged = (["a", "ctrlA", "ctrlI", "i", "arrow"] as const).every(
       (name) => off[name].text === on[name].text && off[name].text === reset[name].text,
     )
-    if (absenceKey && unchanged && /^\x1b\[\d+;\d+R$/.test(recovery)) {
+    if (absenceKey && unchanged) {
       const bytes = JSON.stringify(off[absenceKey].bytes)
       return unsupportedInteraction(
         `modify-other-keys-${level}:native`,

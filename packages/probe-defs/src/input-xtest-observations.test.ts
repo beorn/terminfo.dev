@@ -17,7 +17,14 @@ const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] a
 // An unchanged key is a negative only when this encoder demonstrably follows fed modes.
 // Existing transition fixtures keep ArrowUp constant and cannot establish that witness.
 test.each([2, 3] as const)("native MOK %i qualifies unchanged bytes with cursor-mode controls", (level) => {
-  for (const behavior of ["unchanged", "before-fails", "after-fails", "already-target", "changes"] as const) {
+  for (const behavior of [
+    "unchanged",
+    "before-fails",
+    "after-fails",
+    "recovery-fails",
+    "already-target",
+    "changes",
+  ] as const) {
     let cursorMode = false
     let controlPhase = 0
     let mok = 0
@@ -33,7 +40,7 @@ test.each([2, 3] as const)("native MOK %i qualifies unchanged bytes with cursor-
         const value = text.match(/^\x1b\[>4;(\d)m$/)?.[1]
         if (value !== undefined) mok = Number(value)
       },
-      feedCapture: () => "\x1b[1;1R",
+      feedCapture: () => (behavior === "recovery-fails" ? "" : "\x1b[1;1R"),
       encodeKey(event) {
         const fail =
           (behavior === "before-fails" && controlPhase === 1) || (behavior === "after-fails" && controlPhase === 2)
@@ -62,6 +69,8 @@ test.each([2, 3] as const)("native MOK %i qualifies unchanged bytes with cursor-
       expect(observed.cursorModeControl.after.off.bytes).toEqual([27, 91, 65])
       expect(observed.absenceKey).toBe(level === 2 ? "ctrlA" : "i")
       expect(result.assertions?.some((assertion) => assertion.kind === "negative")).toBe(true)
+    } else if (behavior === "recovery-fails") {
+      expect(result.notTested?.noObservable).toMatch(/DSR recovery control/i)
     } else if (behavior.endsWith("fails")) {
       expect(result.notTested?.noObservable).toMatch(/cursor.*control/i)
     }
