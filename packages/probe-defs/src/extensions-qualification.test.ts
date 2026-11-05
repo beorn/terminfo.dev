@@ -174,9 +174,7 @@ test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2
           getCell: () => ({ char: "X" }),
         } as unknown as LibProbeSource)
         expect(result.criterionBranch).toBe("headless-observable-review")
-        expect(result.tests).toMatchObject([
-          { status: id === "extensions.osc7-cwd" ? "untestable" : "probe-todo" },
-        ])
+        expect(result.tests).toMatchObject([{ status: id === "extensions.osc7-cwd" ? "untestable" : "probe-todo" }])
         if (id === "extensions.osc7-cwd") {
           expect(result.tests?.[0]?.reason).toMatch(/working-directory.*(?:reader|callback|state)/)
         } else {

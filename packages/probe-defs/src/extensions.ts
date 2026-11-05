@@ -4587,10 +4587,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc7-cwd",
       (ctx) => {
         if (!ctx.getCwd) {
-          return declaredUntestableResult(
-            "No working-directory callback or state reader is exposed by this library",
-            { declared: ctx.capabilities.extensions.has("osc7") },
-          )
+          return declaredUntestableResult("No working-directory callback or state reader is exposed by this library", {
+            declared: ctx.capabilities.extensions.has("osc7"),
+          })
         }
         const before = ctx.getCwd()
         const controlUri = "file://localhost/terminfo-cwd-control"
