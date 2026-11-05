@@ -541,7 +541,7 @@ export async function calibrateCaptureOrigin({
   try {
     // Normalization and every later mutation are inside the same restoration transaction.
     if (collectorLaunched) ctx.write("\x1b[?25h")
-    ctx.write(`\x1b[?25l\x1b[0m\x1b[2J${collectorLaunched ? "\x1b[3J" : ""}\x1b[H`)
+    ctx.write("\x1b[?25l\x1b[0m\x1b[2J\x1b[H")
     baseline = await confirmedFrame("before grid paint", () => true)
     const before = baseline
     let solid: CapturedFrame | undefined
@@ -731,7 +731,7 @@ export async function calibrateCaptureOrigin({
     try {
       let surfaceFailure: unknown
       try {
-        ctx.write(`\x1b[0m\x1b[2J${collectorLaunched ? "\x1b[3J" : ""}\x1b[H`)
+        ctx.write("\x1b[0m\x1b[2J\x1b[H")
         if (!baseline) {
           throw new Error(
             failure === undefined
