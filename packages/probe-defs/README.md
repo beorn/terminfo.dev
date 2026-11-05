@@ -395,6 +395,11 @@ retain `os-input-review`, with reason
 "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
 These remain review PROBE TODO rows; earlier captures stay unchanged.
 
+`LibProbeSource.encodeKey` is exposed only for the same backend instance's declared `key-encoding`
+extension. It returns the library encoder's bytes in that instance's current modes; the legacy
+host-backed `encodeKey` method alone does not qualify. A declared extension without its function
+is a binding error, and native encoding failures propagate without substituting host bytes.
+
 `extensions.clipboard-paste` uses the same backend instance’s declared `paste-encoding`
 extension. Its native encoder returns actual input bytes without consuming pending replies or emitting
 paste bytes through response callbacks. The probe reads incoming mode 2004 through the existing

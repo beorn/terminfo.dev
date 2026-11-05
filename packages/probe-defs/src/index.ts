@@ -14,6 +14,7 @@ export type {
   ProbeSourceKind,
   NoSemanticObservable,
   LibMouseEvent,
+  LibKeyEvent,
   LibProbeSource,
   ModeState,
   TermProbeSource,

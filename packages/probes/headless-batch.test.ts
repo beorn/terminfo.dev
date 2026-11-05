@@ -58,6 +58,38 @@ async function backend() {
   return createXtermBackend()
 }
 
+// Required legacy encodeKey can be host-backed; mouse/paste binding checks do not qualify key bytes.
+test("exposes key input only for a declared library encoder and preserves binding failures", async () => {
+  const value = await createXtermBackend()
+  value.init({ cols: 80, rows: 24 })
+  const bytes = new Uint8Array([1])
+  const encode = vi.spyOn(value, "encodeKey").mockReturnValue(bytes)
+  try {
+    value.capabilities.extensions.delete("key-encoding")
+    expect(createLibProbeSource(value, undefined, undefined, undefined).encodeKey).toBeUndefined()
+    expect(encode).not.toHaveBeenCalled()
+
+    value.capabilities.extensions.add("key-encoding")
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    expect(source.encodeKey).toBeTypeOf("function")
+    expect(source.encodeKey!({ key: "a", ctrl: true })).toBe(bytes)
+    expect(encode).toHaveBeenCalledWith({ key: "a", ctrl: true })
+    expect(encode.mock.contexts[0]).toBe(value)
+
+    const broken = Object.assign(Object.create(Object.getPrototypeOf(value)), value, { encodeKey: undefined })
+    expect(() => createLibProbeSource(broken, undefined, undefined, undefined)).toThrow(
+      /declares capability extension "key-encoding" without an encodeKey function/,
+    )
+    encode.mockImplementation(() => {
+      throw new Error("native key capture failed")
+    })
+    expect(() => source.encodeKey!({ key: "a" })).toThrow("native key capture failed")
+  } finally {
+    encode.mockRestore()
+    value.destroy()
+  }
+})
+
 // Declared absences must use adapter names, not package names. Callback fixtures with hand-written
 // backendName values missed xtermjs's actual factory name "xterm" and left its declared cells TODO.
 test("key-encoder absence declarations cover every actual adapter factory name", () => {
