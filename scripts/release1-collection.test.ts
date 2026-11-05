@@ -792,7 +792,10 @@ it.each([
               executionSeconds: 284,
             },
           ])
-          expect(JSON.parse(readFileSync(hosted!.receiptPath!, "utf8")).jobs[0].startedAt).toBe("2026-11-05T03:17:16Z")
+          const receipt = JSON.parse(readFileSync(hosted!.receiptPath!, "utf8")) as {
+            jobs: Array<{ startedAt: string }>
+          }
+          expect(receipt.jobs[0]?.startedAt).toBe("2026-11-05T03:17:16Z")
         }
         return
       }
