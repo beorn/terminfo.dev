@@ -174,9 +174,9 @@ test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2
           getCell: () => ({ char: "X" }),
         } as unknown as LibProbeSource)
         expect(result.criterionBranch).toBe("headless-observable-review")
-        // Missing notification readers and iTerm2 images use the operator's declared Untestable route.
+        // iTerm2 images are declared Untestable for every library (operator Nov 4 16:55); the others stay reviews.
         expect(result.tests).toMatchObject([
-          id !== "extensions.osc7-cwd"
+          id === "extensions.iterm2-images"
             ? { id: "declared-untestable", status: "untestable" }
             : { id: "review", status: "probe-todo" },
         ])
