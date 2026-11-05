@@ -243,10 +243,7 @@ async function collectOrigin(origin: probeDefs.ProbeDefinition) {
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   try {
     const batch = await collectBatch(async () => createUnqualifiedXtermBackend(), "xtermjs", [origin])
-    expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual([
-      "headless xtermjs probe modes.origin\n",
-      "headless xtermjs declares no reply delivery\n",
-    ])
+    expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual(["headless xtermjs probe modes.origin\n"])
     return batch
   } finally {
     progress.mockRestore()
@@ -314,10 +311,7 @@ test("every region-readback kind row records its real xterm.js probe result", as
       probeDefs.regionReadbackProbes(KIND_ROWS),
     )
     expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual(
-      KIND_ROWS.flatMap((row, index) => [
-        `headless xtermjs probe ${row.id}\n`,
-        ...(index === 0 ? ["headless xtermjs declares no reply delivery\n"] : []),
-      ]),
+      KIND_ROWS.map((row) => `headless xtermjs probe ${row.id}\n`),
     )
     const outcome = (id: string) => batch.observations.find((item) => item.featureId === id)?.outcome ?? `missing:${id}`
     // No row may be absent from the batch: a row with no observation is a fixture that never ran.

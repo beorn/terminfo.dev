@@ -48,10 +48,9 @@ import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, replyFailure } from "../pr
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
-/** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
+/** Feature payloads only; collector records use the reserved collector.* namespace. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
-  const { "collector.replyPath": _qualification, ...replies } = batch.rawReplies
-  return replies
+  return Object.fromEntries(Object.entries(batch.rawReplies).filter(([key]) => !key.startsWith("collector.")))
 }
 
 async function backend() {
@@ -91,6 +90,301 @@ test("D2 reply declarations admit parser-report evidence only when its reader ex
     const batch = await collectBatch(carrier, "declaration-fixture", [definition])
     expect(batch.results[0]?.status, JSON.stringify(batch.results[0])).toBe(present ? "unsupported" : "probe-invalid")
   }
+/** Failure fixtures start after the real engine's independent, healthy path control. */
+function afterReplyControl(factory: typeof backend): typeof backend {
+  let control = true
+  return async () => {
+    if (control) {
+      control = false
+      return backend()
+    }
+    return factory()
+  }
+}
+
+// @failure Reply qualification replaces an engine's own review, or repeats a callback that cannot yield a negative.
+// @level l1
+// @consumer Real Ghostty-native colour/icon callbacks and Alacritty synchronized-output through collectBatch
+for (const scenario of [
+  {
+    name: "ghostty-native",
+    create: async () => createGhosttyNativeBackend(),
+    available: isGhosttyNativeAvailable(),
+    ids: [
+      "extensions.osc0-icon-title",
+      "extensions.osc10-fg-color",
+      "extensions.osc11-bg-color",
+      "extensions.osc12-cursor-color",
+    ],
+  },
+  {
+    name: "alacritty",
+    create: async () => createAlacrittyBackend(),
+    available: true,
+    ids: ["modes.synchronized-output"],
+  },
+]) {
+  test.skipIf(!OWNED_LAYOUT || !scenario.available)(
+    `preserves ${scenario.name} native reviews without fresh-instance repeats`,
+    async () => {
+      const measured = await scenario.create()
+      measured.init({ cols: 80, rows: 24 })
+      const adapterPackage = `@termless/${scenario.name}`
+      const identity = await headlessIdentity.headlessRuntimeIdentity(scenario.name, adapterPackage, "native")
+      identity.adapterSources = headlessIdentity.readAdapterSources(scenario.name, measured)
+      measured.destroy()
+      const draft = initializeRunDraft({
+        source: { kind: "live" },
+        runId: `native-review-fixture-${scenario.name}`,
+        sourceRevision: "a".repeat(40),
+        intendedSubject: { kind: "lib", id: scenario.name },
+        manifest: {
+          schemaVersion: 4,
+          probeHash: "native-review-fixture",
+          adapterVersion: "fixture",
+          catalogIds: scenario.ids,
+          probes: { term: [], mux: [], lib: scenario.ids },
+        },
+      })
+      let instances = 0
+      const batch = await collectBatch(
+        async () => {
+          instances++
+          return scenario.create()
+        },
+        scenario.name,
+        registryDefinitions(scenario.ids),
+        draft,
+        undefined,
+        {
+          identity,
+          adapterPackage,
+          adapterPath: fileURLToPath(import.meta.resolve(adapterPackage)),
+          adapterType: "native",
+        },
+      )
+      const expected = scenario.ids.map((featureId) => {
+        const slot =
+          featureId === "extensions.osc10-fg-color" ? 10 : featureId === "extensions.osc11-bg-color" ? 11 : 12
+        const colour = featureId !== "extensions.osc0-icon-title" && scenario.name === "ghostty-native"
+        const reason = colour
+          ? `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`
+          : scenario.name === "alacritty"
+            ? "DECRPM reply to CSI ? 2026 $ p"
+            : "OSC 0 lacks a deciding observation for icon label (CSI 20 t): timeout"
+        const testReason = colour
+          ? `${reason}, so this run cannot decide it`
+          : scenario.name === "alacritty"
+            ? "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it"
+            : reason
+        return {
+          featureId,
+          status: "probe-todo",
+          reason,
+          criterionBranch: colour
+            ? "color-readback-review"
+            : scenario.name === "alacritty"
+              ? "os-input-review"
+              : undefined,
+          rawReplyRef: featureId,
+          tests: [
+            {
+              id: colour || scenario.name === "alacritty" ? "review" : "criterion",
+              status: "probe-todo",
+              reason: testReason,
+              rawReplyRef: featureId,
+            },
+          ],
+        }
+      })
+      expect(
+        batch.results.map(({ featureId, status, reason, criterionBranch, rawReplyRef, tests }) => ({
+          featureId,
+          status,
+          reason,
+          criterionBranch,
+          rawReplyRef,
+          tests: tests.map(({ id, status, reason, rawReplyRef }) => ({ id, status, reason, rawReplyRef })),
+        })),
+      ).toEqual(expected)
+      expect(instances).toBe(scenario.ids.length + 1)
+    },
+  )
+}
+
+// @failure A non-native engine's ordinary silent queries lose their controlled negatives merely because a native host recipe exists.
+// @level l1
+// @consumer Production collectBatch with the six real xterm.js host-recipe registry rows
+test("keeps non-native host-recipe queries on the measured reply path", async () => {
+  const ids = [
+    "device.xtwinops-14",
+    "extensions.osc10-fg-color",
+    "extensions.osc11-bg-color",
+    "extensions.osc12-cursor-color",
+    "extensions.osc4-palette",
+    "extensions.osc52-read",
+    "extensions.osc104-reset-palette",
+  ]
+  const definitions = ids.map((id) => {
+    const probe = ALL_PROBES.find((entry) => entry.id === id)
+    if (!probe) throw new Error(`Missing registry probe ${id}`)
+    return probe
+  })
+  const measured = await backend()
+  measured.init({ cols: 80, rows: 24 })
+  const identity = await headlessIdentity.headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
+  identity.adapterSources = headlessIdentity.readAdapterSources("xtermjs", measured)
+  measured.destroy()
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "non-native-host-route-fixture",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "xtermjs" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "non-native-host-route-fixture",
+      adapterVersion: "fixture",
+      catalogIds: ids,
+      probes: { term: [], mux: [], lib: ids },
+    },
+  })
+  const batch = await collectBatch(backend, "xtermjs", definitions, draft, undefined, {
+    identity,
+    adapterPackage: "@termless/xtermjs",
+    adapterType: "js",
+    adapterPath: fileURLToPath(import.meta.resolve("@termless/xtermjs")),
+  })
+  expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual(
+    ids.map((featureId) => ({
+      featureId,
+      status: featureId === "extensions.osc104-reset-palette" ? "supported" : "unsupported",
+    })),
+  )
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "non-native-host-route-fixture",
+    adapterVersion: "fixture",
+    catalogIds: ids,
+    probes: { term: [], mux: [], lib: ids },
+  }
+  const captured = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "xtermjs",
+      version: identity.engineVersion,
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: identity,
+    measuredAt: new Date().toISOString(),
+    origin: { kind: "collector" },
+    rawReplies: batch.rawReplies,
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  expect(
+    parseRun(
+      "non-native-host-route.capture.json",
+      JSON.stringify(captured),
+      ids,
+      new Map([[manifest.probeHash, manifest]]),
+    ).results,
+  ).toEqual(batch.results)
+})
+
+// @failure A real engine's answered CPR path is ignored because no hash declaration qualifies its silent query.
+// @level l1
+// @consumer Existing device.secondary-da probe through the production headless collector
+test.skipIf(!OWNED_LAYOUT || !isGhosttyNativeAvailable()).each([
+  ["healthy", "unsupported"],
+  ["missing", "probe-todo"],
+  ["wrong-coordinate", "probe-todo"],
+  ["disagree", "probe-invalid"],
+  ["late", "probe-todo"],
+] as const)("qualifies a real Ghostty-native silent query with %s controls", async (fault, expected) => {
+  const measured = createGhosttyNativeBackend()
+  measured.init({ cols: 80, rows: 24 })
+  const identity = await headlessIdentity.headlessRuntimeIdentity(
+    "ghostty-native",
+    "@termless/ghostty-native",
+    "native",
+  )
+  identity.adapterSources = headlessIdentity.readAdapterSources("ghostty-native", measured)
+  measured.destroy()
+  const id = "device.secondary-da"
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "silent-reply-native-fixture",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "ghostty-native" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "silent-reply-native-fixture",
+      adapterVersion: "fixture",
+      catalogIds: [id],
+      probes: { term: [], mux: [], lib: [id] },
+    },
+  })
+  let instance = 0
+  const cleanups: ReturnType<typeof vi.spyOn>[] = []
+  const batch = await collectBatch(
+    async () => {
+      const value = createGhosttyNativeBackend()
+      const index = instance++
+      const feed = value.feed.bind(value)
+      cleanups.push(vi.spyOn(value, "destroy"))
+      // Fault injection changes the transport to a real engine; it supplies no fabricated replies.
+      value.feed = (bytes) => {
+        const text = new TextDecoder().decode(bytes)
+        if (fault === "missing" && index === 0 && text.includes("\x1b[6n")) return
+        if (fault === "wrong-coordinate" && index >= 2 && text.includes("\x1b[6n")) {
+          feed(new TextEncoder().encode(text.replace(/;([0-9]+)H/, (_, col) => `;${Number(col) + 1}H`)))
+          return
+        }
+        if (fault === "disagree" && index === 2 && text === "\x1b[>c") {
+          feed(new TextEncoder().encode("\x1b[5n"))
+          return
+        }
+        feed(bytes)
+        if (fault === "late" && index === 3 && text === "\x1b[>c") {
+          setTimeout(() => feed(new TextEncoder().encode("\x1b[5n")), 0)
+        }
+      }
+      return value
+    },
+    "ghostty-native",
+    registryDefinitions(["device.secondary-da"]),
+    draft,
+    undefined,
+    {
+      adapterPackage: "@termless/ghostty-native",
+      adapterPath: fileURLToPath(import.meta.resolve("@termless/ghostty-native")),
+      adapterType: "native",
+      identity,
+    },
+  )
+  expect(batch.results).toHaveLength(1)
+  expect(batch.results[0]).toMatchObject({ featureId: "device.secondary-da", status: expected })
+  if (fault === "healthy") {
+    // A no-wait repeat must not describe the configured third-pass window as elapsed evidence.
+    const repeats = JSON.parse(batch.rawReplies["collector.repeatPasses"] ?? "") as {
+      secondAssertions: { observed: string }[]
+      thirdAssertions: { observed: string }[]
+    }
+    expect(repeats.secondAssertions.map((assertion: { observed: string }) => assertion.observed)).toEqual([
+      expect.stringContaining("no grace wait"),
+    ])
+    expect(repeats.thirdAssertions.map((assertion: { observed: string }) => assertion.observed)).toEqual([
+      expect.stringContaining(" ms window"),
+    ])
+  }
+  for (const cleanup of cleanups) expect(cleanup).toHaveBeenCalledTimes(1)
 })
 
 // Required legacy encodeKey can be host-backed; mouse/paste binding checks do not qualify key bytes.
@@ -2365,7 +2659,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
                 report: "\x1b[<0;41;25M",
               }
             : {
-                setReply: id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y",
+                setReply: (id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y") + "\x1b[?1;2c",
               },
         )
       } else if (id === "input.pixel-mouse") {
@@ -2399,15 +2693,24 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
 
 // A registered callback can lose its marker while a synthetic marked callback still passes.
 // Missing qualification must not turn its configured, silent writer into producer absence.
-test("retains registered reply failure evidence when the writer is unqualified", async () => {
+test("retains registered reply failure evidence when the path control is silent", async () => {
   const id = "device.dsr-996-color-scheme"
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
-  const batch = await collectBatch(backend, "xtermjs", [definition])
+  let initial = true
+  const factory = async () => {
+    const value = await backend()
+    if (initial) {
+      initial = false
+      vi.spyOn(value, "feed").mockImplementationOnce(() => {})
+    }
+    return value
+  }
+  const batch = await collectBatch(factory, "xtermjs", [definition])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
     decisions: {
       [id]: {
         member: false,
-        reason: "xtermjs has no measured runtime identity for reply delivery",
+        reason: "same-run CPR path control did not answer",
       },
     },
   })
@@ -2827,12 +3130,13 @@ test.each([0, 1, 4] as const)(
   "OSC 5522 Ps %s retains detection and raw bytes through the production batch recorder",
   async (ps) => {
     const id = "extensions.osc5522-clipboard"
-    const response = `\x1b[?5522;${ps}$y\x1b[?1;2c`
+    const reply = `\x1b[?5522;${ps}$y`
+    const response = reply + "\x1b[?1;2c"
     const value = await backend()
     const feed = value.feed.bind(value)
     vi.spyOn(value, "feed").mockImplementation((bytes) => {
       if (new TextDecoder().decode(bytes) === "\x1b[?5522$p") {
-        value.onResponse?.(new TextEncoder().encode(response))
+        value.onResponse?.(new TextEncoder().encode(reply))
       } else feed(bytes)
     })
     const batch = await collectBatch(async () => value, "xtermjs", registryDefinitions([id]))
@@ -3455,13 +3759,25 @@ test.each([
       expect(result.status, result.featureId).toBe("probe-todo")
       expect(result.criterionBranch, result.featureId).toBe("color-readback-review")
       expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
-      const raw = JSON.parse(batch.rawReplies[result.featureId]!) as { query: string; originalRaw: string }
+      const raw = JSON.parse(batch.rawReplies[result.featureId]!) as {
+        query: string
+        originalRaw?: string
+        initialSentinel?: unknown
+        initialReadback?: unknown
+      }
       expect(raw.query, result.featureId).toMatch(/^\x1b\]1?\d;/)
-      expect(raw.originalRaw, result.featureId).toBe("")
+      if (Object.hasOwn(raw, "originalRaw")) expect(raw.originalRaw, result.featureId).toBe("")
+      else {
+        expect(raw.initialSentinel ?? raw.initialReadback, result.featureId).toMatchObject({
+          match: null,
+          reason: "sentinel",
+          raw: expect.stringMatching(/^\x1b\[\?[0-9;]+c$/),
+        })
+      }
       expect(batch.notTested, result.featureId).toContainEqual({
         featureId: result.featureId,
         reason: "no-semantic-observable",
-        noObservable: expect.stringMatching(/answered nothing/),
+        noObservable: expect.stringMatching(/answered nothing|did not answer/),
         rawReplyRef: result.featureId,
       })
       expect(result.tests, result.featureId).toContainEqual(
@@ -3932,7 +4248,11 @@ test("routes real registry constructor markers while multi-method callbacks rema
   vi.spyOn(value, "init").mockImplementation(() => {
     throw new Error("Registry setup failed")
   })
-  const batch = await collectBatch(async () => value, "xtermjs", definitions)
+  const batch = await collectBatch(
+    afterReplyControl(async () => value),
+    "xtermjs",
+    definitions,
+  )
   expect(batch.observations).toEqual([])
   expect(Object.keys(batch.ungradedDiagnostics).sort()).toEqual([...ids].sort())
   for (const id of ids) {
@@ -3956,10 +4276,10 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
   }
   const callback = vi.fn(() => fakeProbeResult())
   const batch = await collectBatch(
-    async () => {
+    afterReplyControl(async () => {
       if (stage === "factory") throw failure
       return value
-    },
+    }),
     "xtermjs",
     [definition("setup", callback, { libAssertionType: "buffer_state" })],
   )
@@ -3988,10 +4308,10 @@ test.each(["factory", "init"] as const)(
     }
     const callback = vi.fn(() => fakeProbeResult())
     const batch = await collectBatch(
-      async () => {
+      afterReplyControl(async () => {
         if (stage === "factory") throw failure
         return value
-      },
+      }),
       "xtermjs",
       [definition("declines", callback, { libAssertionType: null })],
     )
@@ -4009,9 +4329,9 @@ test("a real none-declaring probe retains its setup failure as a diagnostic", as
   const ligatures = ALL_PROBES.find((probe) => probe.id === "extensions.font-ligatures")
   expect(ligatures?.libAssertionType).toBeNull()
   const batch = await collectBatch(
-    async () => {
+    afterReplyControl(async () => {
       throw new Error("engine unavailable")
-    },
+    }),
     "xtermjs",
     [ligatures!],
   )
@@ -4031,10 +4351,11 @@ test("aborts the batch on failed cleanup before invoking another probe", async (
   const next = vi.fn(() => fakeProbeResult())
   try {
     await expect(
-      collectBatch(async () => value, "xtermjs", [
-        definition("first", () => fakeProbeResult()),
-        definition("next", next),
-      ]),
+      collectBatch(
+        afterReplyControl(async () => value),
+        "xtermjs",
+        [definition("first", () => fakeProbeResult()), definition("next", next)],
+      ),
     ).rejects.toThrow("headless xtermjs probe first: backend cleanup failed")
     expect(next).not.toHaveBeenCalled()
   } finally {
@@ -4049,16 +4370,20 @@ test("attributes a context operation failure and restores the backend response l
   vi.spyOn(value, "feed").mockImplementation(() => {
     throw new Error("Feed failed")
   })
-  const batch = await collectBatch(async () => value, "xtermjs", [
-    definition(
-      "query",
-      (ctx) => {
-        ctx.feedCapture("\x1b[c")
-        return fakeProbeResult("query_reply")
-      },
-      { libAssertionType: "query_reply" },
-    ),
-  ])
+  const batch = await collectBatch(
+    afterReplyControl(async () => value),
+    "xtermjs",
+    [
+      definition(
+        "query",
+        (ctx) => {
+          ctx.feedCapture("\x1b[c")
+          return fakeProbeResult("query_reply")
+        },
+        { libAssertionType: "query_reply" },
+      ),
+    ],
+  )
   expect(value.onResponse).toBe(previous)
   expect(batch).toMatchObject({
     observations: [],
@@ -4915,15 +5240,20 @@ test.skipIf(!ghosttyNativeAvailable)(
         writes,
         errors: [],
       })
-      expect(instances[index]!.writes).toEqual(writes)
+      expect(instances[index + 1]!.writes).toEqual(writes)
     }
     const uri = "https://example.com/osc8-proof"
     expect(JSON.parse(batch.rawReplies["extensions.osc8"]!)).toEqual({
       chars: [..."ALINKZ"],
       links: [null, uri, uri, uri, uri, null].map((uri) => ({ reported: true, uri })),
     })
-    expect(instances).toHaveLength(4)
-    expect(instances.map(({ replies }) => replies)).toEqual([[], [], [], []])
+    expect(instances).toHaveLength(5)
+    expect(instances[0]!.writes).toEqual(["\x1b[3;7H\x1b[6n"])
+    expect(instances.map(({ replies }) => replies)).toEqual([[], [], [], [], []])
+    expect(JSON.parse(batch.rawReplies["collector.replyControl"]!)).toMatchObject({
+      answered: true,
+      captures: [{ response: "\x1b[3;7R" }],
+    })
   },
 )
 
@@ -4999,7 +5329,7 @@ test("retains execution-only failure bytes despite pass true and rejects a typed
 
 // AC1: the old preflight refused an exact declared/loaded identity because it lacked
 // audit-table membership; existing tests deliberately asserted that obsolete refusal.
-test("a silent loaded binary collects a no-same-path-control TODO and an observed buffer result", async () => {
+test("a silent loaded binary uses the measured control and retains its observed buffer result", async () => {
   const sha256 = "f".repeat(64)
   const identity = {
     kind: "native" as const,
@@ -5032,9 +5362,8 @@ test("a silent loaded binary collects a no-same-path-control TODO and an observe
   }))
   const batch = await collectBatch(backend, "xtermjs", definitions)
   expect(batch.results.find((row) => row.featureId === "device.xtgettcap")).toMatchObject({
-    status: "probe-todo",
-    // #32246: a zero-byte reply on a loaded binary is PROBE TODO with no same-path control, never a source audit.
-    tests: [{ id: "criterion", status: "probe-todo", reason: NO_SAME_PATH_CONTROL }],
+    status: "unsupported",
+    tests: [{ id: "criterion", status: "unsupported", reason: "negative by sentinel" }],
   })
   expect(batch.observations.find((row) => row.featureId === "sgr.bold")).toMatchObject({
     outcome: "supported",

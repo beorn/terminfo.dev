@@ -601,23 +601,24 @@ a complete zero-dimension reply has no same-path control in the run, so it is PR
 no-control reason: zero is an unknown, not a measured size. The callback retains query, raw reply and
 measured runtime identity. Malformed replies and positive dimensions retain their query criteria.
 
-The optional sentinel member requires the executing adapter's `reply-delivery` extension. The single
-comparer in [headless-identity.ts](../probes/headless-identity.ts) checks its audited source blobs and
-registry integrity, clean source tree or loaded WASM/native digest against that measured runtime. A native
-declaration requires a native identity and the exact loaded binary SHA256, then the same adapter-source checks. Versions are
-diagnostic facts. Each initialized callback instance supplies its own declaration; the destroyed
-preflight instance cannot authorize another instance. The existing identity owner measures again after
-each actual instance initializes; a changed or unavailable identity prevents its callback. Per-feature
-decisions retain that initialized instance's identity. `collector.replyPath` retains the shared
-declaration and measured identity once, alongside each feature's eligibility result and named
-withholding reason. Each distinct withholding reason is reported once per batch.
+The headless collector qualifies reply delivery with a fresh CPR path control once per engine and run.
+The first probe pass keeps its query and separate DA1 control. Only a possible silence-based negative
+repeats on two fresh instances with CUP/CPR brackets: first without a grace wait, then with the configured
+grace window. A no-wait assertion states that no grace wait occurred; configured windows are not elapsed-time evidence.
+Matching replies decide themselves. Missing or wrong controls and late bytes retain named PROBE TODO;
+disagreement between fresh passes is PROBE INVALID, with all raw control, query and repeat evidence retained.
+
+A recipe probe takes the existing native host route, keeps its existing callback surface on an
+undeclared runtime, and takes the control otherwise. A callback-owned TODO keeps its reason and tests
+and does not repeat; control findings remain in raw metadata. The existing identity owner still measures
+each initialized callback instance; a changed or unavailable identity prevents its callback.
+Per-feature decisions retain that instance's identity. `collector.replyPath` retains the declaration and
+measured identity as diagnostics; declaration hashes do not authorize a silence-based negative.
+The declaration/comparer and public types remain until their separate removal slices. Live collection keeps DA1.
 
 Source-backed collection requires an owned hh checkout with vendored Termless source. A dist-only
 install without the imported source binding refuses collection loudly; silence stays inconclusive.
-Libvterm currently withholds the declaration because engine output can truncate before the adapter
-drains, even though its adapter now drains all queued output. Ghostty also declares no complete path.
-The existing two captures, shared classifier, DA1 control and G1 late-byte grace still decide the read;
-a delivery declaration never declares feature support. Historical runs receive no new proof.
+A delivery declaration never declares feature support. Historical runs receive no new proof.
 
 Conclusive library observations need nonempty raw evidence and matching positive/negative assertions. A direct buffer-state assertion must match the retained response; invalid claims become collector errors.
 
