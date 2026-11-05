@@ -466,6 +466,57 @@ test("a decided SGR row reads unsatisfied from an inert cell", async () => {
 })
 
 // Existing satisfaction rows cover true only; preserve false and missing-X failures separately.
+// #32329: a generic null-field message does not identify the checked public prerequisite.
+test.each([
+  ["vt100", "0.10.1", "sgr.faint", "dim", "vt100.js 0.10.1 public ScreenCell has no dim field"],
+  ["vt100", "0.10.1", "sgr.italic", "italic", "vt100.js 0.10.1 public ScreenCell has no italic field"],
+  [
+    "vt100",
+    "0.10.1",
+    "sgr.strikethrough",
+    "strikethrough",
+    "vt100.js 0.10.1 public ScreenCell has no strikethrough field",
+  ],
+  ["vt220", "0.10.1", "sgr.faint", "dim", "vt220.js 0.10.1 public ScreenCell has no dim field"],
+  ["vt220", "0.10.1", "sgr.italic", "italic", "vt220.js 0.10.1 public ScreenCell has no italic field"],
+  [
+    "vt220",
+    "0.10.1",
+    "sgr.strikethrough",
+    "strikethrough",
+    "vt220.js 0.10.1 public ScreenCell has no strikethrough field",
+  ],
+  ["alacritty", "0.26.0", "sgr.blink", "blink", "alacritty_terminal 0.26.0 public term::cell::Flags has no blink flag"],
+  ["vt100-rust", "0.16.2", "sgr.blink", "blink", "vt100 0.16.2 public Cell has no blink reader"],
+] as const)("%s %s names its checked %s reader prerequisite", (backendName, engineVersion, id, field, prerequisite) => {
+  const probe = sgrProbes.find((probe) => probe.id === id)!
+  const surface = createSemanticSurface()
+  const source = {
+    ...libProbeSource(surface),
+    backendName,
+    runtimeIdentity: {
+      kind: "js" as const,
+      runtimeFormat: "js" as const,
+      engineVersion,
+      adapterVersion: "test",
+      termlessRevision: "fixture",
+      resolvedPath: "/fixture/engine",
+      integrity: { kind: "registry" as const, lockIntegrity: "fixture" },
+    },
+    getCell: (row: number, col: number) => ({ ...surface.getCell(row, col), [field]: null }),
+  }
+  expectNoSamePathTodo(
+    probe.lib!(source),
+    `cell.${field} is unreported; ${prerequisite}; no qualified SGR m alternative in this run`,
+  )
+  expectNoSamePathTodo(
+    probe.lib!({ ...source, runtimeIdentity: { ...source.runtimeIdentity, engineVersion: "unreviewed" } }),
+    `cell.${field} is unreported; no qualified SGR m alternative in this run`,
+  )
+  const measured = probe.lib!({ ...source, getCell: (row, col) => surface.getCell(row, col) })
+  expect(measured.observation?.outcome).toBe("supported")
+})
+
 // #32246: an unreported or false attribute has no same-path control, so it is PROBE TODO with its retained state.
 test.each([
   ["sgr.faint", "dim"],
