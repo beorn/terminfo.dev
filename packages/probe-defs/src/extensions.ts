@@ -106,8 +106,9 @@ function hasAuditedOscInterfaceAbsence(ctx: LibProbeSource): boolean {
     identity.integrity.kind !== "source" ||
     !identity.integrity.cleanTree ||
     identity.integrity.repository !== "git@github.com:beorn/vterm.git"
-  )
+  ) {
     return false
+  }
   const tree = identity.integrity.treeOid
   return (
     tree === "8e082c695f238ec87dd22a496b836e5b1ef56458" ||
