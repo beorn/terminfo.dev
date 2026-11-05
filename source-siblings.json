@@ -43,7 +43,7 @@
     {
       "name": "@termless/libvterm",
       "repository": "beorn/termless",
-      "commit": "3309dec12b0a7d288cca3c37bed49379debfaba5",
+      "commit": "615b36b583f3aa3923d1c34b85d82df37490dfa5",
       "pack": true,
       "directory": "packages/libvterm"
     },
