@@ -399,15 +399,17 @@ These remain review PROBE TODO rows; earlier captures stay unchanged.
 extension. Its native encoder returns actual input bytes without consuming pending replies or emitting
 paste bytes through response callbacks. The probe reads incoming mode 2004 through the existing
 mode getter or, when that getter is unavailable, a native DECRPM query. Query replies and DA1 controls
-are retained; unavailable readback stays PROBE TODO without changing modes. Permanent Ps3/Ps4 replies
-also stay PROBE TODO because mutable on/off controls cannot run. It samples the incoming
+are retained; missing or failed same-feed DA1 and unavailable readback stay PROBE TODO without
+changing modes. DECRPM Ps1/Ps3 read on and Ps2/Ps4 read off; actual native controls decide permanent
+modes too. Ps3 with an always-framed encoder fails the off controls and stays TODO; Ps4 with qualified
+raw output is Unsupported. Restoration must re-query the same Ps. It samples the incoming
 paste behavior, checks two fresh nonces with mode 2004 reset and two with it set, then restores and
 verifies both the incoming mode and behavior. Exact raw payloads with mode reset qualify the control. Both framed payloads
 with mode set establish Supported; both raw payloads establish Unsupported. Silent, malformed or
 inconsistent bytes stay inconclusive. Captures retain the bytes and ordered calls. An absent encoder
-stays named PROBE TODO, except the approved `@xterm/headless` 6.0.0 public `Terminal` API absence:
-its `input()` accepts encoded bytes and `onData` reports output, with no native paste encoder, so that
-library records Untestable. A provided encoder is always measured first. The app arm keeps its existing OS-input recipe.
+stays named PROBE TODO, except the three approved public API absences: `alacritty_terminal` 0.26.0
+`Term`, `vt100` 0.16.2 `Screen`/`Parser`, and `@xterm/headless` 6.0.0 `Terminal` expose mode state but
+no native paste encoder, so those libraries record Untestable. Their reasons name the specific public surface. A provided encoder is always measured first. The app arm keeps its existing OS-input recipe.
 
 Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video 5, synchronized output 2026,
 DECSCLM 4 and color-scheme reporting 2031. Snapshot Ps 1/3 is Supported without mutation; Ps 0/4 is
