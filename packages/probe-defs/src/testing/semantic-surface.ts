@@ -696,12 +696,12 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** RI — one row up, scrolling the measured region down when already at its top. */
   const reverseIndex = (): void => {
-    if (cursorY <= regionTop) {
+    if (cursorY === regionTop) {
       grid.splice(regionBottom, 1)
       grid.splice(regionTop, 0, blankRow())
       return
     }
-    cursorY -= 1
+    if (cursorY > 0) cursorY -= 1
   }
 
   /**

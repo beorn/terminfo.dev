@@ -1486,18 +1486,12 @@ test("scrollback DECSTBM rows judge the app path from the region readback", asyn
     ["the reset restores the full screen", "scrollback.decstbm-reset", {}, "supported"],
     // Without margins the inner RI moves the cursor, leaving a distinct final frame, never Supported.
     ["DECSTBM is ignored entirely", "scrollback.decstbm-reset", { mutations: ["scrollregion-noop"] }, "inconclusive"],
-    // The existing fake scrolls when cursorY <= regionTop: final RI above active 4..6 scrolls it again.
-    // It reads A/-/B/-/-/C, not approved ignored A/-/B/-/C/-, so the oracle honestly stays inconclusive.
-    [
-      "reset ignored yields a third frame on the existing RI fake",
-      "scrollback.decstbm-reset",
-      { strip: "\x1b[r" },
-      "inconclusive",
-    ],
+    // RI above an active region leaves screen row 1 in place; the reset-ignored frame is a known negative.
+    ["the region is set but never reset", "scrollback.decstbm-reset", { strip: "\x1b[r" }, "unsupported"],
   ] as const) {
     const { context } = regionReadbackApp(12, 61, options)
     const result = await findScrollback(id).term!(context)
-    expect(result.observation?.outcome, label).toBe(outcome)
+    expect.soft(result.observation?.outcome, label).toBe(outcome)
     expect(result.pass, label).toBe(outcome === "supported")
     if (outcome === "inconclusive") {
       expect(result.observation, label).toMatchObject({
@@ -1506,7 +1500,7 @@ test("scrollback DECSTBM rows judge the app path from the region readback", asyn
       })
       expect(result.assertions ?? [], label).toEqual([])
     } else {
-      expect(result.assertions ?? [], label).not.toEqual([])
+      expect.soft(result.assertions ?? [], label).not.toEqual([])
     }
   }
   // RI prerequisites are decided by existing lib seed/cursor checks; the app kind does not verify them.
@@ -1530,8 +1524,18 @@ test("scrollback DECSTBM rows judge the app path from the region readback", asyn
       })
       expect.soft(result.assertions ?? [], label).toEqual([])
     } else {
-      expect(result.observation?.outcome, label).toBe(outcome)
-      expect(result.assertions ?? [], label).not.toEqual([])
+      expect.soft(result.observation?.outcome, label).toBe(outcome)
+      expect.soft(result.assertions ?? [], label).not.toEqual([])
+    }
+    if (label === "reset ignored") {
+      // The kind treats a measured space and an unwritten empty cell as the same blank.
+      const after = JSON.parse(result.response ?? "null").after as string[][]
+      expect
+        .soft(
+          after.map((cells) => cells.map((cell) => (cell === " " ? "" : cell))),
+          label,
+        )
+        .toEqual(readbackRow("scrollback.decstbm-reset").ignored)
     }
     expect.soft(result.pass, label).toBe(outcome === "supported")
   }
