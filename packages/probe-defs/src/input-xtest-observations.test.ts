@@ -19,7 +19,7 @@ const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] a
 test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
   "%s declares only checked key-encoder absences Untestable",
   (id) => {
-    for (const backendName of ["alacritty", "vt100", "vt220", "vt100-rust", "xtermjs"]) {
+    for (const backendName of ["alacritty", "vt100", "vt220", "vt100-rust", "xterm"]) {
       const result = probe(id).lib!({ ...libMouseSource({ extensions: [] }), backendName })
       expect(isDeclaredUntestable(result), backendName).toBe(true)
       expect(result.tests?.[0]?.reason).toMatch(/(?:public key-event|key-event-to-byte) encoder/)
@@ -39,7 +39,7 @@ test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
 test.each([
   ["vt100", /vt100\.js 0\.10\.1 exports createVt100Screen/],
   ["vt220", /vt220\.js 0\.10\.1 exports createVt220Screen/],
-  ["xtermjs", /@xterm\/headless 6\.0\.0 exports Terminal/],
+  ["xterm", /@xterm\/headless 6\.0\.0 exports Terminal/],
   ["alacritty", /alacritty_terminal 0\.26\.0 exposes/],
   ["vt100-rust", /vt100 crate 0\.16\.2 exposes/],
 ])("input.xtest-key on %s reads declared Untestable with the missing export", (backendName, reason) => {

@@ -111,7 +111,7 @@ const NO_LIBRARY_KEY_ENCODER: Readonly<Record<string, string>> = {
     "vt100.js 0.10.1 exports createVt100Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
   vt220:
     "vt220.js 0.10.1 exports createVt220Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
-  xtermjs:
+  xterm:
     "@xterm/headless 6.0.0 exports Terminal, whose input() takes already encoded bytes, and no public key-event encoder",
   alacritty:
     "alacritty_terminal 0.26.0 exposes terminal state and byte-oriented PTY notification, and no public key-event encoder",
