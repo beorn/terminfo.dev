@@ -3731,6 +3731,37 @@ function registryDefinitions(ids: readonly string[]): ProbeDefinition[] {
   })
 }
 
+// @failure Ghostty's allocator-plus-rejection pair is mistaken for one unhandled report, or shell reports are lost.
+// @consumer Production collector + existing report verdict; hosted by ghostty-web WASM, no native-addon skip.
+test("real Ghostty web decides seven shell report cells but leaves allocator-limited resets undecided", async () => {
+  const negatives = [
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc133-p",
+    "extensions.osc-633-vscode",
+  ]
+  const resets = [
+    "extensions.osc113-reset-pointer-fg",
+    "extensions.osc114-reset-pointer-bg",
+    "extensions.osc117-reset-highlight-bg",
+    "extensions.osc119-reset-highlight-fg",
+  ]
+  const batch = await collectBatch(resolveGhosttyWasm, "ghostty", registryDefinitions([...negatives, ...resets]))
+  expect(batch.results).toHaveLength(11)
+  for (const result of batch.results) {
+    expect(result.status, result.featureId).toBe(negatives.includes(result.featureId) ? "unsupported" : "probe-todo")
+  }
+  expect(
+    batch.observations
+      .filter((row) => row.outcome === "unsupported")
+      .map((row) => row.featureId)
+      .sort(),
+  ).toEqual([...negatives].sort())
+})
+
 test.each([
   ["xtermjs", async () => createXtermBackend()],
   ["libvterm", resolveLibvterm],
