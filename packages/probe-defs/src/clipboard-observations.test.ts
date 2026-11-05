@@ -7,7 +7,13 @@
  * @testonly none
  */
 import { describe, expect, test } from "vitest"
-import { ALL_PROBES, type ClipboardFixture, type ProbeCallbackResult, type TermProbeSource } from "./index.ts"
+import {
+  ALL_PROBES,
+  type ClipboardFixture,
+  type LibProbeSource,
+  type ProbeCallbackResult,
+  type TermProbeSource,
+} from "./index.ts"
 import { recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
 
 function writeProbe() {
@@ -258,7 +264,7 @@ function pasteAndRead(
   return { ctx, keys, clipboardWrites }
 }
 
-test("extensions.clipboard-paste is not tested without an OS XTEST adapter", async () => {
+test("extensions.clipboard-paste keeps missing native paste encoding PROBE TODO while apps still need XTEST", async () => {
   const definition = pasteProbe()
   const writes: string[] = []
   const headless = definition.lib!({
@@ -292,9 +298,14 @@ test("extensions.clipboard-paste is not tested without an OS XTEST adapter", asy
       extensions: new Set(),
     },
   })
+  // CTO 8baca152: adapter absence does not authorize Untestable; those claims need
+  // the operator's separate approval. The app arm retains its independent XTEST prerequisite.
+  expect(headless.tests).toEqual([
+    expect.objectContaining({ status: "probe-todo", reason: expect.stringMatching(/paste-encoding.*unavailable/i) }),
+  ])
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level|paste|clipboard/i),
+    noObservable: expect.stringMatching(/paste-encoding.*unavailable/i),
   })
   expect(headless.observation).toBeUndefined()
 
@@ -391,4 +402,157 @@ test("extensions.clipboard-paste throws when paste is silent after delivery cont
   expect(writes.join("")).toContain("\x1b[?2004h")
   expect(writes.join("")).toContain("\x1b[?2004l")
   expect(writes.join("")).not.toContain("\x1b]52;")
+})
+
+// Native encoder observations must distinguish framing support from a dead or malformed actuator.
+function nativePasteModel(
+  options: {
+    initial?: boolean
+    supports?: boolean
+    sample?: (text: string, call: number, enabled: boolean) => string
+  } = {},
+) {
+  let enabled = options.initial ?? false
+  const feeds: string[] = []
+  const calls: { text: string; enabled: boolean; raw: string }[] = []
+  const ctx = {
+    backendName: "scripted-model",
+    getMode(mode: string) {
+      if (mode !== "bracketedPaste") throw new Error(`Unexpected mode ${mode}`)
+      return enabled
+    },
+    feed(sequence: string) {
+      feeds.push(sequence)
+      if (sequence === "\x1b[?2004h") enabled = true
+      else if (sequence === "\x1b[?2004l") enabled = false
+      else throw new Error(`Unexpected paste stimulus ${JSON.stringify(sequence)}`)
+    },
+    encodePaste(text: string) {
+      const call = calls.length
+      const raw =
+        options.sample?.(text, call, enabled) ??
+        (enabled && options.supports !== false ? `\x1b[200~${text}\x1b[201~` : text)
+      calls.push({ text, enabled, raw })
+      return new TextEncoder().encode(raw)
+    },
+  } as LibProbeSource
+  return { ctx, feeds, calls, enabled: () => enabled }
+}
+
+describe("native clipboard paste encoding", () => {
+  test.each([false, true])("qualifies framing and restores incoming 2004=%s", (initial) => {
+    const model = nativePasteModel({ initial })
+    const result = pasteProbe().lib!(model.ctx)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+    expect(model.calls.map((call) => call.enabled)).toEqual([initial, false, false, true, true, initial])
+    expect(new Set(model.calls.map((call) => call.text)).size).toBe(6)
+    expect(model.feeds).toEqual(["\x1b[?2004l", "\x1b[?2004h", initial ? "\x1b[?2004h" : "\x1b[?2004l"])
+    expect(model.enabled()).toBe(initial)
+    const evidence = JSON.parse(result.response!) as {
+      samples: Array<{ raw: string; bytes: number[] }>
+      calls: Array<{ method: string; input: string }>
+    }
+    expect(evidence.samples).toHaveLength(6)
+    expect(evidence.samples.map((sample: { raw: string }) => sample.raw)).toEqual(model.calls.map((call) => call.raw))
+    expect(evidence.samples.map((sample: { bytes: number[] }) => sample.bytes)).toEqual(
+      model.calls.map((call) => Array.from(new TextEncoder().encode(call.raw))),
+    )
+    expect(
+      evidence.calls
+        .filter((call: { method: string }) => call.method === "encodePaste")
+        .map((call: { input: string }) => call.input),
+    ).toEqual(model.calls.map((call) => call.text))
+    expect(result.assertions?.[0]?.kind).toBe("positive")
+    expect(result.assertions?.[0]?.action).toBe("native paste with 2004 off, on, then restored")
+  })
+
+  test("qualified raw output is unsupported and is sensitive to the disabled feature", () => {
+    const model = nativePasteModel({ supports: false })
+    const result = pasteProbe().lib!(model.ctx)
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+    expect(result.assertions?.[0]?.kind).toBe("negative")
+    expect(model.calls).toHaveLength(6)
+    expect(model.calls.every((call) => call.raw === call.text)).toBe(true)
+  })
+
+  test("raw-only encoder preserves an incoming enabled mode", () => {
+    const model = nativePasteModel({ initial: true, supports: false })
+    const result = pasteProbe().lib!(model.ctx)
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(model.enabled()).toBe(true)
+    expect(model.feeds.at(-1)).toBe("\x1b[?2004h")
+    expect(model.calls.at(-1)?.enabled).toBe(true)
+  })
+
+  test("unknown actual mode readback never mutates state or grades raw output", () => {
+    const model = nativePasteModel({ initial: true, supports: false })
+    model.ctx.getMode = () => null
+    const result = pasteProbe().lib!(model.ctx)
+    expect(result.observation?.outcome).toBe("inconclusive")
+    const stored = recordExecutedProbe({
+      featureId: "extensions.clipboard-paste",
+      tests: result.tests,
+      assertions: [],
+      attempt: { scope: "probe", startedAt: "2026-11-05T02:17:00.000Z" },
+    })
+    expect(stored.status).toBe("probe-todo")
+    expect(stored.reason).toContain("mode readback is unavailable")
+    expect(result.assertions).toBeUndefined()
+    expect(model.feeds).toEqual([])
+    expect(model.enabled()).toBe(true)
+  })
+
+  test.each(["initial", "off", "on"] as const)("%s malformed or silent output never becomes unsupported", (phase) => {
+    for (const raw of ["", "\x1b[200~wrong\x1b[201~"]) {
+      const model = nativePasteModel({
+        sample: (text, call, enabled) =>
+          call === ({ initial: 0, off: 1, on: 3 }[phase] ?? -1) ? raw : enabled ? `\x1b[200~${text}\x1b[201~` : text,
+      })
+      const result = pasteProbe().lib!(model.ctx)
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.assertions).toBeUndefined()
+      expect(result.response).toContain(JSON.stringify(raw).slice(1, -1))
+      expect(model.enabled()).toBe(false)
+      if (phase === "initial") expect(model.feeds).toEqual([])
+    }
+  })
+
+  test("both raw controls must qualify before enabled samples", () => {
+    const model = nativePasteModel({
+      sample: (text, call, enabled) => (call === 2 ? "bad-control" : enabled ? `\x1b[200~${text}\x1b[201~` : text),
+    })
+    const result = pasteProbe().lib!(model.ctx)
+    expect(result.assertions).toBeUndefined()
+    expect(model.calls.map((call) => call.enabled)).toEqual([false, false, false, false])
+    expect(model.feeds).toEqual(["\x1b[?2004l", "\x1b[?2004l"])
+  })
+
+  test("restoration mismatch is a loud failure", () => {
+    const model = nativePasteModel({
+      sample: (text, call, enabled) => (call === 5 ? "restore-broken" : enabled ? `\x1b[200~${text}\x1b[201~` : text),
+    })
+    expect(() => pasteProbe().lib!(model.ctx)).toThrow(/restor/i)
+  })
+
+  test("primary encoder failure and restoration failure are both preserved", () => {
+    const model = nativePasteModel()
+    const original = model.ctx.encodePaste!
+    let call = 0
+    model.ctx.encodePaste = (text) => {
+      call++
+      if (call === 2) throw new Error("primary paste failure")
+      if (call === 3) throw new Error("cleanup paste failure")
+      return original(text)
+    }
+    try {
+      pasteProbe().lib!(model.ctx)
+      throw new Error("Expected aggregate failure")
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError)
+      expect((error as AggregateError).errors.map((item: Error) => item.message)).toEqual([
+        "primary paste failure",
+        "cleanup paste failure",
+      ])
+    }
+  })
 })

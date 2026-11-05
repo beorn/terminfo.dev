@@ -20,7 +20,6 @@ import {
   decrpmResult,
   notTestedResult,
   NO_SAME_PATH_CONTROL,
-  osInputReviewResult,
   colorReadbackReviewResult,
   parserStateResult,
   probe,
@@ -3023,6 +3022,97 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+/** Observe the same library instance's native paste encoder; no OS clipboard or injected framing. */
+function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
+  const encodePaste = ctx.encodePaste
+  if (!encodePaste) {
+    const reason = `${ctx.backendName}: paste-encoding extension unavailable; native paste interface not observed`
+    return reviewResult("paste-encoding", reason, reason, { backend: ctx.backendName, encodePaste: false })
+  }
+  const samples: { phase: string; text: string; bytes: number[]; raw: string }[] = []
+  const calls: { method: string; input: string }[] = []
+  const sample = (phase: string) => {
+    const text = `terminfo-paste-${randomUUID()}`
+    calls.push({ method: "encodePaste", input: text })
+    const bytes = encodePaste(text)
+    const raw = new TextDecoder().decode(bytes)
+    samples.push({ phase, text, bytes: Array.from(bytes), raw })
+    const plain = new TextEncoder().encode(text)
+    const framed = new TextEncoder().encode(`\x1b[200~${text}\x1b[201~`)
+    const equals = (expected: Uint8Array) =>
+      bytes.length === expected.length && bytes.every((byte, index) => byte === expected[index])
+    return equals(plain) ? "raw" : equals(framed) ? "bracketed" : "unknown"
+  }
+  const setMode = (enabled: boolean) => {
+    const input = enabled ? "\x1b[?2004h" : "\x1b[?2004l"
+    calls.push({ method: "feed", input })
+    ctx.feed(input)
+  }
+  const readMode = () => {
+    calls.push({ method: "getMode", input: "bracketedPaste" })
+    return ctx.getMode("bracketedPaste")
+  }
+  const expected = "two exact raw native paste controls with 2004 off, then two exact bracketed nonces with 2004 on"
+  const incomingMode = readMode()
+  const state = { mode: "clipboard-paste", backend: ctx.backendName, incomingMode, samples, calls }
+  if (incomingMode === null) {
+    const reason = "Incoming bracketedPaste mode readback is unavailable"
+    return {
+      ...parserStateResult(null, expected, state, reason, undefined, "input_bytes"),
+      tests: [{ id: "criterion", status: "probe-todo", reason }],
+    }
+  }
+  const initial = sample("initial")
+  if (initial === "unknown") {
+    return parserStateResult(
+      null,
+      expected,
+      state,
+      "Incoming native paste bytes are silent or malformed",
+      undefined,
+      "input_bytes",
+    )
+  }
+  let pass: boolean | null = null
+  let note: string | undefined
+  let failed = false
+  let primary: unknown
+  try {
+    setMode(false)
+    const controls = [sample("off-1"), sample("off-2")]
+    if (!controls.every((value) => value === "raw")) {
+      note = "Native paste raw controls did not both qualify; enabled framing cannot be decided"
+    } else {
+      setMode(true)
+      const enabled = [sample("on-1"), sample("on-2")]
+      if (enabled.every((value) => value === "bracketed")) pass = true
+      else if (enabled.every((value) => value === "raw")) pass = false
+      else note = "Native paste enabled samples are silent, malformed or inconsistent"
+    }
+  } catch (error) {
+    failed = true
+    primary = error
+    throw error
+  } finally {
+    try {
+      setMode(incomingMode)
+      const restoredEncoding = sample("restore")
+      const restoredMode = readMode()
+      if (restoredMode !== incomingMode || restoredEncoding !== initial) {
+        throw new Error("Native paste 2004 restoration verification failed")
+      }
+    } catch (cleanup) {
+      if (failed) throw new AggregateError([primary, cleanup], "Native paste measurement and restoration failed")
+      throw cleanup
+    }
+  }
+  const result = parserStateResult(pass, expected, state, note, undefined, "input_bytes")
+  for (const assertion of result.assertions ?? []) {
+    assertion.action = "native paste with 2004 off, on, then restored"
+  }
+  return result
+}
+
 /** OS clipboard → app via ctrl+shift+v. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */
 async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
@@ -4668,17 +4758,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 
-  probe(
-    "extensions.clipboard-paste",
-    () =>
-      osInputReviewResult(
-        "OS-level XTEST paste injection",
-        { input: false },
-        "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
-      ),
-    clipboardPaste,
-    "input_bytes",
-  ),
+  probe("extensions.clipboard-paste", headlessClipboardPaste, clipboardPaste, "input_bytes"),
 
   // OSC 10 — foreground color query
   oscColorQueryProbe("extensions.osc10-fg-color", 10),

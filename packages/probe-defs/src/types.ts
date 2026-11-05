@@ -872,6 +872,11 @@ export interface LibProbeSource {
    * `capabilities.extensions.has("mouse-encoding")` and `typeof backend.encodeMouse === "function"` (#31798, @cto C3).
    */
   encodeMouse?(event: LibMouseEvent): Uint8Array | null
+  /**
+   * Library-native paste encoder, wired only when `capabilities.extensions.has("paste-encoding")`
+   * and `typeof backend.encodePaste === "function"`. Returns this instance's bytes in its current mode.
+   */
+  encodePaste?(text: string): Uint8Array
   getTitle(): string
   reset(): void
   capabilities: {
