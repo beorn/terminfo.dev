@@ -527,8 +527,17 @@ describe("native clipboard paste encoding", () => {
       { raw, ps },
       { raw, ps },
     ])
-    if (ps === 3) expect(result.assertions).toBeUndefined()
-    else expect(result.assertions?.[0]?.kind).toBe("negative")
+    if (ps === 3) {
+      expect(result.assertions).toBeUndefined()
+      const stored = recordExecutedProbe({
+        featureId: "extensions.clipboard-paste",
+        tests: result.tests,
+        assertions: [],
+        attempt: { scope: "probe", startedAt: "2026-11-05T03:20:00.000Z" },
+      })
+      expect(stored.status).toBe("probe-todo")
+      expect(stored.reason).toBe("Native paste raw controls did not both qualify; enabled framing cannot be decided")
+    } else expect(result.assertions?.[0]?.kind).toBe("negative")
   })
 
   test.each(["feedCapture", "sentinel"] as const)("%s mode query needs same-feed DA1 before any mutation", (route) => {
@@ -636,6 +645,15 @@ describe("native clipboard paste encoding", () => {
       expect(result.response).toContain(JSON.stringify(raw).slice(1, -1))
       expect(model.enabled()).toBe(false)
       if (phase === "initial") expect(model.feeds).toEqual([])
+      if (phase === "on") {
+        const stored = recordExecutedProbe({
+          featureId: "extensions.clipboard-paste",
+          tests: result.tests,
+          assertions: [],
+          attempt: { scope: "probe", startedAt: "2026-11-05T03:20:00.000Z" },
+        })
+        expect(stored.status).toBe("probe-invalid")
+      }
     }
   })
 

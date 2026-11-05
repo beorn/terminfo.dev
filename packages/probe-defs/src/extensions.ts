@@ -3135,13 +3135,16 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   }
   let pass: boolean | null = null
   let note: string | undefined
+  let controlsQualified = false
+  const controlFailureReason = "Native paste raw controls did not both qualify; enabled framing cannot be decided"
   let failed = false
   let primary: unknown
   try {
     setMode(false)
     const controls = [sample("off-1"), sample("off-2")]
-    if (!controls.every((value) => value === "raw")) {
-      note = "Native paste raw controls did not both qualify; enabled framing cannot be decided"
+    controlsQualified = controls.every((value) => value === "raw")
+    if (!controlsQualified) {
+      note = controlFailureReason
     } else {
       setMode(true)
       const enabled = [sample("on-1"), sample("on-2")]
@@ -3171,6 +3174,9 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
     }
   }
   const result = parserStateResult(pass, expected, state, note, undefined, "input_bytes")
+  if (!controlsQualified) {
+    result.tests = [{ id: "criterion", status: "probe-todo", reason: controlFailureReason }]
+  }
   for (const assertion of result.assertions ?? []) {
     assertion.action = "native paste with 2004 off, on, then restored"
   }
