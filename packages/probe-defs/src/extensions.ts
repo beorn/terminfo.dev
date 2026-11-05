@@ -3456,8 +3456,8 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     })
   const matches = (frame: Frame, lines: string[]) =>
     frame.scrollback.totalLines === height && frame.scrollback.viewportOffset === 0 && matchesCells(frame, lines)
-  const clear = (alternate = false, history = false, leaveAlternate = !alternate) =>
-    feed(`${leaveAlternate ? "\x1b[?1049l" : ""}\x1b[?7h\x1b[2J${alternate || history ? "" : "\x1b[3J"}\x1b[H`)
+  const clear = (alternate = false, history = false) =>
+    feed(`${alternate ? "" : "\x1b[?1049l"}\x1b[?7h\x1b[2J${alternate || history ? "" : "\x1b[3J"}\x1b[H`)
   const widthControl = (name: string, columns: number, history = false, alternate = false) => {
     clear(alternate, history)
     feed("W".repeat(columns) + "Z")
@@ -3644,8 +3644,6 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       ["alternate-grow", 12, 20],
       ["alternate-shrink", 20, 12],
     ] as const) {
-      const priorResize = state.actions.findLast((action) => action.kind === "resize")
-      const resetColumns = priorResize?.cols ?? initial.cols
       state.actions.push({ kind: "reset" })
       ctx.reset()
       readBound = height
@@ -3659,7 +3657,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         outcome,
         reason,
         status:
-          outcome === "identity-unavailable" || outcome === "not-entered" || outcome === "reference-unavailable"
+          outcome === "identity-unavailable" || outcome === "not-entered"
             ? "probe-todo"
             : outcome === "invalid"
               ? "probe-invalid"
@@ -3675,27 +3673,6 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       // Log the shared roundtrip's feeds as well as the fixture's. Read actual mode state immediately
       // after its measured enter/leave; the declaration bit is never a buffer-identity witness.
       const roundtripSource = Object.create(ctx) as LibProbeSource
-      roundtripSource.getCursor = () => {
-        const cursor = ctx.getCursor()
-        // Keep the real post-leave identity before a reference reset can conceal a failed leave.
-        if (identity.restored !== undefined && identity.after === undefined) identity.after = ctx.getMode("altScreen")
-        return cursor
-      }
-      roundtripSource.resize = (cols) => resize(cols)
-      roundtripSource.reset = () => {
-        if (!Number.isSafeInteger(resetColumns) || resetColumns < 1) {
-          throw new Error("original iteration reset geometry unreadable")
-        }
-        resize(resetColumns)
-        state.actions.push({ kind: "reset" })
-        ctx.reset()
-        resize(from)
-        clear(false, false, false)
-        const referenceFresh = read(`${id}.reference-fresh`, from)
-        if (!matches(referenceFresh, []) || ctx.getMode("altScreen") !== false) {
-          throw new Error("paired primary reference reset did not qualify")
-        }
-      }
       roundtripSource.feed = (text) => {
         feed(text)
         if (text === "\x1b[?1049h") identity.entered = ctx.getMode("altScreen")
@@ -3771,21 +3748,14 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       // Keep original causes outside the JSON evidence. A later cleanup failure must not hide a
       // slot error merely because the shared leaves succeeded and returned its invalid phase.
       if (slotFailure) measurementFailures.push(slotFailure.error)
-      if (identity.after === undefined) identity.after = ctx.getMode("altScreen")
+      identity.after = ctx.getMode("altScreen")
       state.alternateRoundtrips[id] = { ...evidence, identity }
       let result: AlternatePhase
       if (evidence.measurementError !== undefined) {
         result = phase("invalid", `Alternate measurement failed: ${evidence.measurementError}`)
       } else if (evidence.measurement) {
         result = evidence.measurement
-        const referenceUnavailable = evidence.roundtrip.notTested?.noObservable
-        if (
-          referenceUnavailable?.startsWith("paired primary resize reference unavailable:") &&
-          identity.restored === false &&
-          identity.after === false
-        ) {
-          result = phase("reference-unavailable", referenceUnavailable)
-        } else if (!evidence.roundtrip.pass || identity.restored === true || identity.after === true) {
+        if (!evidence.roundtrip.pass || identity.restored === true || identity.after === true) {
           result = phase(
             "invalid",
             `Primary restoration after alternate measurement did not qualify: ${evidence.roundtrip.note ?? evidence.roundtrip.response}`,

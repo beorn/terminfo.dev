@@ -858,14 +858,7 @@ type AlternateReflowPhase = {
   id: "alternate-grow" | "alternate-shrink"
   from: 12 | 20
   to: 12 | 20
-  outcome:
-    | "reflow"
-    | "preserved-wraps"
-    | "truncated"
-    | "invalid"
-    | "identity-unavailable"
-    | "not-entered"
-    | "reference-unavailable"
+  outcome: "reflow" | "preserved-wraps" | "truncated" | "invalid" | "identity-unavailable" | "not-entered"
   status: "supported" | "unsupported" | "probe-todo" | "probe-invalid"
   reason: string
 }
@@ -917,12 +910,9 @@ function altScreenRoundtrip(
       `${screen.mode} fixture needs at least ${minRows} visible rows and ${needed} columns`,
     )
   }
-  const seedPrimary = () => {
-    ctx.feed("\x1b[2J\x1b[1;1H" + ALT_1049_SEED_A)
-    ctx.feed("\x1b[3;1H" + ALT_1049_SEED_B)
-    ctx.feed("\x1b[5;7H")
-  }
-  seedPrimary()
+  ctx.feed("\x1b[2J\x1b[1;1H" + ALT_1049_SEED_A)
+  ctx.feed("\x1b[3;1H" + ALT_1049_SEED_B)
+  ctx.feed("\x1b[5;7H")
   let before: { x: number; y: number }
   let seedA: string
   let seedB: string
@@ -995,10 +985,7 @@ function altScreenRoundtrip(
     if (mark !== ALT_1049_MARK) {
       return parserStateResult(null, expected, { mark }, "Alternate marker was not measured")
     }
-    const measuredReflow = measureReflow?.(
-      ctx,
-      Object.freeze({ before: Object.freeze({ ...before }), seedA, seedB, mark }),
-    )
+    const reflow = measureReflow?.(ctx, Object.freeze({ before: Object.freeze({ ...before }), seedA, seedB, mark }))
     ctx.feed(leave)
     let restoredA: string
     let restoredB: string
@@ -1044,65 +1031,10 @@ function altScreenRoundtrip(
     if (restoredA !== ALT_1049_SEED_A) failures.push("PRIMARY-A not restored")
     if (restoredB !== ALT_1049_SEED_B) failures.push("PRIMARY-B not restored")
     if (leaked) failures.push("ALT-MARK leaked into the restored position")
-    let reference: { x: number; y: number } | undefined
-    let referenceFailure: string | undefined
-    let referenceError: { error: unknown } | undefined
-    const resized =
-      measuredReflow &&
-      measuredReflow.from !== measuredReflow.to &&
-      ["reflow", "preserved-wraps", "truncated"].includes(measuredReflow.outcome)
-    if (screen.savesCursor && resized && failures.length === 0 && ctx.getMode("altScreen") === false) {
-      try {
-        if (!ctx.resize) throw new Error("paired primary resize control unavailable")
-        // Reflow's existing source replays its original reset/resize/clear prelude here.
-        ctx.reset()
-        seedPrimary()
-        const parked = ctx.getCursor()
-        if (
-          parked.x !== before.x ||
-          parked.y !== before.y ||
-          readAlt1049Span(ctx, 0, ALT_1049_SEED_A.length) !== seedA ||
-          readAlt1049Span(ctx, 2, ALT_1049_SEED_B.length) !== seedB
-        ) {
-          throw new Error("paired primary reference seed or parked cursor unavailable")
-        }
-        ctx.resize(measuredReflow.to, rows)
-        const cursor = ctx.getCursor()
-        if (
-          !Number.isSafeInteger(cursor.x) ||
-          !Number.isSafeInteger(cursor.y) ||
-          cursor.x < 0 ||
-          cursor.x >= measuredReflow.to ||
-          cursor.y < 0 ||
-          cursor.y >= rows
-        ) {
-          throw new Error("paired primary reference cursor unreadable")
-        }
-        reference = { x: cursor.x, y: cursor.y }
-      } catch (error) {
-        referenceError = { error }
-        referenceFailure = error instanceof Error ? error.message : String(error)
-      } finally {
-        // Cleanup failure remains an operation error, never an unavailable-reference result.
-        try {
-          if (ctx.resize) ctx.resize(measuredReflow.to, rows)
-        } catch (error) {
-          if (!referenceError) throw error
-          const errors = [referenceError.error, error]
-          throw new AggregateError(
-            errors,
-            errors.map((cause) => (cause instanceof Error ? cause.message : String(cause))).join("; "),
-            { cause: errors[0] },
-          )
-        }
-      }
-    }
-    if (resized) Object.assign(state, { reference: reference ?? null, ...(referenceFailure && { referenceFailure }) })
-    if (referenceFailure && failures.length === 0) {
-      return notTestedResult(`paired primary resize reference unavailable: ${referenceFailure}`, state)
-    }
-    const cursorReference = reference ?? before
-    if (screen.savesCursor && (after.x !== cursorReference.x || after.y !== cursorReference.y)) {
+    // Cursor placement across resize is unresolved, so it cannot veto buffer reflow evidence.
+    // Keep both cursor readings in state; ordinary no-resize 1049 still requires equality.
+    const resized = reflow && reflow.from !== reflow.to
+    if (screen.savesCursor && !resized && (after.x !== before.x || after.y !== before.y)) {
       failures.push("saved cursor not restored")
     }
     if (screen.clearsOnExit && reentered === ALT_1049_MARK) {

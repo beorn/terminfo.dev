@@ -679,20 +679,16 @@ test("reflow qualifies main, history, and alternate phases when primary ED 2 scr
   ])
 })
 
-// @failure Resizing compares a restored cursor with old geometry, or reference reset conceals a failed exit.
+// @failure Cursor placement across resize vetoes a sound alternate reflow measurement or triggers a reference replay.
 // @level l1
-// @consumer Registered reflow callback through the existing real headless source and batch projection.
-// Existing layout cases have no independent cursor resize, unavailable reference or stayed-in-alternate control.
-test.each(["equal", "different", "unreadable", "stayed-alternate", "unreadable-cleanup"] as const)(
-  "alternate reflow qualifies the paired cursor reference (%s)",
-  async (reference) => {
+// @consumer Registered reflow callback through the real headless source and canonical batch projection.
+// Existing layout controls lack independently reflowed and unadjusted saved cursors; ordinary 1049 defect controls live in modes-observations.
+test.each(["reflowed", "unadjusted", "stayed-alternate"] as const)(
+  "alternate reflow leaves resize cursor placement ungraded (%s)",
+  async (scenario) => {
     const definition = registryDefinitions(["extensions.reflow"])[0]!
-    const trace: Array<
-      | { kind: "reset"; cols: number }
-      | { kind: "feed"; text: string }
-      | { kind: "resize"; cols: number; rows: number; alternate: boolean }
-    > = []
-    const measurement = collectBatch(backend, "xtermjs", [
+    let referenceReplayed = false
+    const batch = await collectBatch(backend, "xtermjs", [
       {
         ...definition,
         lib(ctx: LibProbeSource) {
@@ -708,99 +704,51 @@ test.each(["equal", "different", "unreadable", "stayed-alternate", "unreadable-c
           let referenceResized = false
           ctx.feed = (text) => {
             feed(text)
-            trace.push({ kind: "feed", text })
             if (text === "\x1b[5;7H") primaryParked = mode("altScreen") === false
             if (text === "\x1b[?1049h") primaryParked = false
             if (text === "\x1b[?1049l" && alternateShrank) restored = true
           }
           ctx.resize = (cols, rows) => {
-            if (referenceResized && reference === "unreadable-cleanup") {
-              throw new Error("reference geometry cleanup failed")
-            }
             const alternate = mode("altScreen") === true
             resize(cols, rows)
-            trace.push({ kind: "resize", cols, rows, alternate })
             if (columns === 20 && cols === 12) {
               if (alternate) alternateShrank = true
-              else if (primaryParked) referenceResized = true
+              else if (primaryParked) referenceReplayed = referenceResized = true
             }
             columns = cols
           }
           ctx.reset = () => {
-            trace.push({ kind: "reset", cols: columns })
             reset()
             alternateShrank = restored = primaryParked = referenceResized = false
           }
           ctx.getMode = (name) =>
-            name === "altScreen" && restored && reference === "stayed-alternate" ? true : mode(name)
+            name === "altScreen" && restored && scenario === "stayed-alternate" ? true : mode(name)
           ctx.getCursor = () => {
-            if (referenceResized) {
-              if (reference.startsWith("unreadable")) throw new Error("paired reference cursor unreadable")
-              return { ...cursor(), x: reference === "different" ? 3 : 2, y: 4 }
-            }
-            return restored ? { ...cursor(), x: 2, y: 4 } : cursor()
+            if (referenceResized) return { ...cursor(), x: 6, y: 3 }
+            return restored ? { ...cursor(), x: scenario === "unadjusted" ? 6 : 2, y: 4 } : cursor()
           }
           return definition.lib!(ctx)
         },
       },
     ])
-    if (reference === "unreadable-cleanup") {
-      const failed = await measurement
-      expect(failed.ungradedDiagnostics["extensions.reflow"]).toMatchObject({
-        kind: "collector-error",
-        message: expect.stringMatching(/paired reference cursor unreadable.*reference geometry cleanup failed/s),
-      })
-      return
-    }
-    const batch = await measurement
     expect(batch.ungradedDiagnostics).toEqual({})
     const observed = reflowEvidence(batch)
     const phase = observed.alternatePhases.find(({ id }) => id === "alternate-shrink")!
     const roundtrip = observed.alternateRoundtrips["alternate-shrink"]
     if (!roundtrip) throw new Error("Missing alternate-shrink roundtrip evidence")
-    if (reference === "equal") {
-      expect(phase).toMatchObject({ status: "unsupported", outcome: "truncated" })
-      expect(JSON.parse(roundtrip.roundtrip.response)).toMatchObject({
-        before: { x: 6, y: 4 },
-        reference: { x: 2, y: 4 },
-        after: { x: 2, y: 4 },
-      })
-    } else if (reference === "different") {
-      expect(phase.status).toBe("probe-invalid")
-      expect(roundtrip.roundtrip.note).toContain("saved cursor not restored")
-      expect(JSON.parse(roundtrip.roundtrip.response)).toMatchObject({
-        reference: { x: 3, y: 4 },
-        after: { x: 2, y: 4 },
-      })
-    } else if (reference === "unreadable") {
-      expect(phase).toMatchObject({ status: "probe-todo", outcome: "reference-unavailable" })
-      expect(phase.reason).toMatch(/reference.*unreadable/)
-    } else {
+    if (scenario === "stayed-alternate") {
       expect(phase.status).toBe("probe-invalid")
       expect(roundtrip.identity).toMatchObject({ restored: true, after: true })
+    } else {
+      expect(phase).toMatchObject({ status: "unsupported", outcome: "truncated" })
+      expect(roundtrip.roundtrip.pass).toBe(true)
     }
-    if (reference !== "stayed-alternate") {
-      const target = trace.findIndex((step) => step.kind === "resize" && step.alternate && step.cols === 12)
-      const entered = trace.findLastIndex(
-        (step, index) => index < target && step.kind === "feed" && step.text === "\x1b[?1049h",
-      )
-      const originalStart = trace.findLastIndex((step, index) => index < entered && step.kind === "reset")
-      const referenceTarget = trace.findIndex(
-        (step, index) => index > target && step.kind === "resize" && !step.alternate && step.cols === 12,
-      )
-      expect(referenceTarget).toBeGreaterThan(target)
-      const referenceStart = trace.findLastIndex((step, index) => index < referenceTarget && step.kind === "reset")
-      const project = (step: (typeof trace)[number]) =>
-        step.kind === "feed"
-          ? { kind: step.kind, text: step.text.replace(/\x1b\[\?1049[hl]/g, "") }
-          : step.kind === "resize"
-            ? { kind: step.kind, cols: step.cols, rows: step.rows }
-            : step
-      expect(trace.slice(referenceStart, referenceTarget + 1).map(project)).toEqual([
-        ...trace.slice(originalStart, entered).map(project),
-        { kind: "resize", cols: 12, rows: 24 },
-      ])
-    }
+    expect(JSON.parse(roundtrip.roundtrip.response)).toMatchObject({
+      before: { x: 6, y: 4 },
+      after: { x: scenario === "unadjusted" ? 6 : 2, y: 4 },
+    })
+    expect(JSON.parse(roundtrip.roundtrip.response)).not.toHaveProperty("reference")
+    expect(referenceReplayed).toBe(false)
   },
 )
 
