@@ -13,6 +13,7 @@ import {
   SOURCE_NEGATIVE_REVIEW,
   REPLY_AFTER_SENTINEL_NOTE,
   NO_SAME_PATH_CONTROL,
+  isDeclaredUntestable,
 } from "./helpers.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
@@ -4912,5 +4913,33 @@ describe("parsed-toast store grading", () => {
     const osc777 = probe("extensions.osc777-notify").lib!(context({}))
     expect(osc777.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
     for (const result of [notifications, osc777]) expect(result.observation).toBeUndefined()
+  })
+
+  test("a present toast reader wins even on an audited absent-interface source", () => {
+    for (const enabled of [true, false]) {
+      const source = toastSource(enabled ? {} : { families: [] })
+      const result = probe("extensions.notifications").lib!({
+        ...source,
+        backendName: "vt100",
+        runtimeIdentity: {
+          kind: "js",
+          runtimeFormat: "js",
+          engineVersion: "0.10.1",
+          adapterVersion: "0.10.2",
+          termlessRevision: "ce3e783b6536df0cc4e0a11d4567f1cdd96bafee",
+          resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+          integrity: {
+            kind: "source",
+            repository: "git@github.com:beorn/vterm.git",
+            revision: "5e17657b7806e88b3370b86dc000e26b3d3c7301",
+            treeOid: "c7c4dd7c37882a37ae336490eb42ef784c0b7045",
+            cleanTree: true,
+          },
+        },
+      })
+      expect(isDeclaredUntestable(result)).toBe(false)
+      if (enabled) expect(result.observation?.outcome).toBe("supported")
+      else expect(result.notTested?.noObservable).toBe(crossReason("OSC 9"))
+    }
   })
 })
