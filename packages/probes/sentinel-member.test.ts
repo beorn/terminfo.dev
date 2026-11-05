@@ -401,17 +401,17 @@ test.each([
 ])("%s mode callbacks retain real CSI controls without promoting silent DECRQM", async (name, answer) => {
   const create = engines[name]
   if (!create) throw new Error(`no engine factory for ${name}`)
-  for (const feature of [
-    "alt-scroll-1007",
-    "bracketed-paste",
-    "color-scheme-reporting",
-    "focus-tracking",
-    "mouse-all",
-    "mouse-sgr",
-    "mouse-tracking",
-    "synchronized-output",
-    "utf8-mouse-1005",
-  ]) {
+  for (const [feature, number] of [
+    ["alt-scroll-1007", 1007],
+    ["bracketed-paste", 2004],
+    ["color-scheme-reporting", 2031],
+    ["focus-tracking", 1004],
+    ["mouse-all", 1003],
+    ["mouse-sgr", 1006],
+    ["mouse-tracking", 1000],
+    ["synchronized-output", 2026],
+    ["utf8-mouse-1005", 1005],
+  ] as const) {
     const id = `modes.${feature}`
     const lib = definitionOf(id).lib
     if (!lib) throw new Error(`no library callback for ${id}`)
@@ -423,6 +423,10 @@ test.each([
       const targets = captures.filter((capture) => capture.query !== DA1_QUERY)
       const controls = captures.filter((capture) => capture.query === DA1_QUERY)
       expect(targets.length, id).toBeGreaterThan(0)
+      expect(
+        targets.every((capture) => capture.query === `\x1b[?${number}$p`),
+        id,
+      ).toBe(true)
       expect(
         targets.every((capture) => capture.response === "" && capture.error === null),
         id,
