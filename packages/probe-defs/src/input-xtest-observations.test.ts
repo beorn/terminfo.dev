@@ -69,6 +69,8 @@ test.each([
   ["passes control but drops ctrl", "a", "a", "unsupported"],
   ["fails the plain-a control", "", "\x01", undefined],
 ] as const)("input.xtest-key library encoder %s", (_name, plain, ctrlA, outcome) => {
+  // The collector admits an undeclared library assertion type, so the measured result alone cannot pin this.
+  expect(probe("input.xtest-key").libAssertionType).toBe("input_bytes")
   const encoder = new TextEncoder()
   const calls: unknown[] = []
   const result = probe("input.xtest-key").lib!({

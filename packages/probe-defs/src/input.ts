@@ -34,17 +34,20 @@ const inputDefinitions: ProbeDefinition[] = [
 
   probe("input.button-event-mouse", (ctx) => mouseEncodingLib(ctx, "button"), buttonEventMouse, "input_bytes"),
 
-  probe(
-    "input.xtest-key",
-    (ctx) => {
-      const declared = NO_LIBRARY_KEY_ENCODER[ctx.backendName]
-      if (declared) return declaredUntestableResult(`OS-level XTEST key injection: ${declared}`, { input: false })
-      if (ctx.encodeKey) return xtestKeyLib(ctx.encodeKey)
-      return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true)
-    },
-    xtestKey,
-    "input_bytes",
-  ),
+  {
+    ...probe(
+      "input.xtest-key",
+      (ctx) => {
+        const declared = NO_LIBRARY_KEY_ENCODER[ctx.backendName]
+        if (declared) return declaredUntestableResult(`OS-level XTEST key injection: ${declared}`, { input: false })
+        if (ctx.encodeKey) return xtestKeyLib(ctx.encodeKey)
+        return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true)
+      },
+      xtestKey,
+      "input_bytes",
+    ),
+    libAssertionType: "input_bytes",
+  },
   probe("input.xtest-click", (ctx) => mouseEncodingLib(ctx, "click"), xtestClick, "input_bytes"),
   probe("input.xtest-wheel", (ctx) => mouseEncodingLib(ctx, "wheel"), xtestWheel, "input_bytes"),
   {
