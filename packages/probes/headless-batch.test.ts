@@ -4991,23 +4991,33 @@ test("records qualified SGR readback when the cell attribute is unreported", asy
   })
 })
 
-// The factory's actual backend name is the approved subject of this one absence declaration.
-test("real xterm factory paste absence records the approved Untestable result", async () => {
-  const value = createXtermBackend()
-  value.init({ cols: 80, rows: 24 })
-  expect(value.name).toBe("xterm")
-  const definition = registryDefinitions(["extensions.clipboard-paste"])[0]!
-  const batch = await collectBatch(async () => value, "xtermjs", [definition])
-  expect(batch.ungradedDiagnostics).toEqual({})
-  expect(batch.results).toMatchObject([
-    {
-      status: "untestable",
-      reason: expect.stringContaining("@xterm/headless 6.0.0"),
-    },
-  ])
-  expect(batch.observations).toEqual([])
-  expect(batch.assertions).toEqual([])
-})
+// The three actual factory names are the approved subjects, not user-facing selectors.
+test.each([
+  ["xterm", "xtermjs", createXtermBackend, "@xterm/headless 6.0.0"],
+  ["alacritty", "alacritty", createAlacrittyBackend, "alacritty_terminal 0.26.0"],
+  ["vt100-rust", "vt100-rust", createVt100RustBackend, "vt100 0.16.2"],
+] as const)(
+  "real %s factory paste absence records the approved Untestable result",
+  async (name, selector, create, library) => {
+    const value = await create()
+    value.init({ cols: 80, rows: 24 })
+    expect(value.name).toBe(name)
+    expect(value.capabilities.extensions.has("paste-encoding")).toBe(false)
+    const definition = registryDefinitions(["extensions.clipboard-paste"])[0]!
+    const draft = {
+      runId: `paste-absence-${name}`,
+      rawReplies: {},
+      results: [
+        { featureId: definition.id, status: "probe-todo" as const, attempt: { scope: "none" as const }, tests: [] },
+      ],
+    }
+    const batch = await collectBatch(async () => value, selector, [definition], draft)
+    expect(batch.ungradedDiagnostics).toEqual({})
+    expect(batch.results).toMatchObject([{ status: "untestable", reason: expect.stringContaining(library) }])
+    expect(batch.observations).toEqual([])
+    expect(batch.assertions).toEqual([])
+  },
+)
 
 // A native DECRPM reply can save actual state even where the optional library getter is unavailable.
 test.each([false, true])("libvterm paste mode query measures and restores actual incoming 2004=%s", async (initial) => {

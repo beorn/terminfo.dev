@@ -3023,15 +3023,23 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+/** Reviewed public library absences; a provided encoder always takes precedence. */
+const NO_LIBRARY_PASTE_ENCODER: Readonly<Record<string, string>> = {
+  alacritty:
+    "alacritty_terminal 0.26.0 exports Term and public TermMode::BRACKETED_PASTE state, but no paste or bracketed-paste encoder; application paste wrapping is outside this library",
+  "vt100-rust":
+    "vt100 0.16.2 exports Parser and Screen with public Screen::bracketed_paste() state and input-mode serialization, but no paste or bracketed-paste encoder",
+  xterm:
+    "@xterm/headless 6.0.0 exports Terminal and public modes.bracketedPasteMode state; input() takes already encoded bytes and onData reports output; it has no paste or bracketed-paste encoder",
+}
+
 /** Observe the same library instance's native paste encoder; no OS clipboard or injected framing. */
 function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   const encodePaste = ctx.encodePaste
   if (!encodePaste) {
-    if (ctx.backendName === "xterm") {
-      return declaredUntestableResult(
-        "@xterm/headless 6.0.0 exports Terminal, whose input() takes already encoded bytes and onData reports output; it has no paste or bracketed-paste encoder",
-        { backend: ctx.backendName, encodePaste: false },
-      )
+    const declared = NO_LIBRARY_PASTE_ENCODER[ctx.backendName]
+    if (declared) {
+      return declaredUntestableResult(declared, { backend: ctx.backendName, encodePaste: false })
     }
     const reason = `${ctx.backendName}: paste-encoding extension unavailable; native paste interface not observed`
     return reviewResult("paste-encoding", reason, reason, { backend: ctx.backendName, encodePaste: false })
@@ -3096,15 +3104,16 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
       control: control ? raw.slice(control.start, control.end) : null,
       ...(outcome && { outcome }),
     })
-    if (ps === 3 || ps === 4) {
-      unavailableModeReason = `Incoming bracketedPaste mode is permanently ${ps === 3 ? "set" : "reset"} (DECRPM Ps ${ps}); mutable on/off controls cannot run`
+    if (!control) {
+      unavailableModeReason = "Incoming bracketedPaste mode query lacks a successful same-feed DA1 control"
       return null
     }
-    if (ps !== 1 && ps !== 2) return null
-    return ps === 1
+    if (ps === null || ps === 0) return null
+    return ps === 1 || ps === 3
   }
   const expected = "two exact raw native paste controls with 2004 off, then two exact bracketed nonces with 2004 on"
   const incomingMode = readMode()
+  const incomingPs = modeReads[0]?.ps
   const state = { mode: "clipboard-paste", backend: ctx.backendName, incomingMode, modeReads, samples, calls }
   if (incomingMode === null) {
     const reason = unavailableModeReason
@@ -3126,13 +3135,16 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   }
   let pass: boolean | null = null
   let note: string | undefined
+  let controlsQualified = false
+  const controlFailureReason = "Native paste raw controls did not both qualify; enabled framing cannot be decided"
   let failed = false
   let primary: unknown
   try {
     setMode(false)
     const controls = [sample("off-1"), sample("off-2")]
-    if (!controls.every((value) => value === "raw")) {
-      note = "Native paste raw controls did not both qualify; enabled framing cannot be decided"
+    controlsQualified = controls.every((value) => value === "raw")
+    if (!controlsQualified) {
+      note = controlFailureReason
     } else {
       setMode(true)
       const enabled = [sample("on-1"), sample("on-2")]
@@ -3149,7 +3161,11 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
       setMode(incomingMode)
       const restoredEncoding = sample("restore")
       const restoredMode = readMode()
-      if (restoredMode !== incomingMode || restoredEncoding !== initial) {
+      if (
+        restoredMode !== incomingMode ||
+        restoredEncoding !== initial ||
+        (incomingPs !== undefined && modeReads.at(-1)?.ps !== incomingPs)
+      ) {
         throw new Error("Native paste 2004 restoration verification failed")
       }
     } catch (cleanup) {
@@ -3158,6 +3174,9 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
     }
   }
   const result = parserStateResult(pass, expected, state, note, undefined, "input_bytes")
+  if (!controlsQualified) {
+    result.tests = [{ id: "criterion", status: "probe-todo", reason: controlFailureReason }]
+  }
   for (const assertion of result.assertions ?? []) {
     assertion.action = "native paste with 2004 off, on, then restored"
   }
