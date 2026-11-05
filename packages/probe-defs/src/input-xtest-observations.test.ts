@@ -44,8 +44,9 @@ test.each([
         encodeKey(event) {
           if (behavior === "noop" || (behavior === "broken" && event.key === "a")) return new Uint8Array()
           let bytes = event.key === "ArrowUp" ? "\x1b[A" : event.ctrl ? "\x01" : event.key
-          if (behavior === "control-change" && event.key === "a" && event.ctrl && mode === level)
+          if (behavior === "control-change" && event.key === "a" && event.ctrl && mode === level) {
             bytes = "\x1b[27;5;97~"
+          }
           if (event.key === "i") {
             bytes = event.ctrl ? "\t" : "i"
             if (
@@ -73,12 +74,13 @@ test.each([
             ? "unsupported"
             : undefined
       expect(result.observation?.outcome, `${form}/${behavior}`).toBe(outcome)
-      if (outcome)
+      if (outcome) {
         expect(
           result.assertions?.every(
             (assertion) => assertion.kind === (outcome === "supported" ? "positive" : "negative"),
           ),
         ).toBe(true)
+      }
       expect(feeds.at(-1)).toBe("\x1b[>4;0m")
       if (behavior === "working") {
         expect(probe(id).libAssertionType).toBe("input_bytes")
