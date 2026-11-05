@@ -405,6 +405,10 @@ separate recovery CPR. Same-path controls must pass in every phase. The target i
 Ctrl+i for level 2 and extended bare i for level 3; both CSI-u and CSI-27 forms are compared
 by logical codepoint and modifier. No logical mode transition in the fixed key list, target silence or failed reset/control evidence
 remains a named PROBE TODO. Native exceptions propagate after the reset command in `finally`.
+The reviewed Ghostty-web 0.4.0 MOK2/MOK3 cells are declared Untestable: its public encoder
+cannot receive parsed MOK state, and no level-3 selector exists. Ghostty-native 1.3.1 MOK3
+is also declared Untestable because its public options carry only the state-2 boolean.
+These criterion-specific declarations do not declare either library's XTEST key interface absent.
 
 `extensions.clipboard-paste` uses the same backend instance’s declared `paste-encoding`
 extension. Its native encoder returns actual input bytes without consuming pending replies or emitting

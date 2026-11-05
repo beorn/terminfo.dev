@@ -114,8 +114,8 @@ function xtestCoverage(kind?: string): ProbeCallbackResult {
 /**
  * Declared Untestable (operator Nov 4 16:55): these libraries export no public key-event encoder, so a key event has
  * no library interface to reach. Each reason names the checked public surface (@dev/7 export audit, CTO 47010d76).
- * libvterm, ghostty-web, ghostty-native, WezTerm and Kitty export one, and vterm keeps its own result: they are not
- * declared here.
+ * Backend/criterion entries declare a missing public parsed-state route or requested-level selector only for that
+ * MOK criterion. Their public encoder still exists; XTEST's backend-only lookup does not select these entries.
  */
 const NO_LIBRARY_KEY_ENCODER: Readonly<Record<string, string>> = {
   vt100:
@@ -128,6 +128,12 @@ const NO_LIBRARY_KEY_ENCODER: Readonly<Record<string, string>> = {
     "alacritty_terminal 0.26.0 exposes terminal state and byte-oriented PTY notification, and no public key-event encoder",
   "vt100-rust":
     "the vt100 crate 0.16.2 exposes Parser and Screen state and mode serialization, and no public key-event encoder",
+  "ghostty/input.modify-other-keys":
+    "ghostty-web 0.4.0 public KeyEncoder exposes a modifyOtherKeys state-2 option but no public route from GhosttyTerminal's parsed modifyOtherKeys state to that option",
+  "ghostty/input.modify-other-keys-3":
+    "ghostty-web 0.4.0 public KeyEncoder exposes only a state-2 option, with no modifyOtherKeys level-3 selector",
+  "ghostty-native/input.modify-other-keys-3":
+    "Ghostty 1.3.1 (332b2aef) public input.KeyEncodeOptions carries only modify_other_keys_state_2: bool, and fromTerminal copies it from the terminal's flags. No public field or route selects modifyOtherKeys level 3",
 }
 
 /** The headless arm of an XTEST criterion: the same coverage, with the required review selected. */
@@ -143,8 +149,11 @@ function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResul
 
 /** Checked library-interface absences, not protocol support claims (#32309, CTO47010d76). */
 function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackResult {
-  const reason = NO_LIBRARY_KEY_ENCODER[ctx.backendName]
-  if (reason) return declaredUntestableResult(reason, { keyEncoder: false })
+  const featureId = level === 2 ? "input.modify-other-keys" : "input.modify-other-keys-3"
+  const reason = NO_LIBRARY_KEY_ENCODER[`${ctx.backendName}/${featureId}`] ?? NO_LIBRARY_KEY_ENCODER[ctx.backendName]
+  if (reason) {
+    return declaredUntestableResult(reason, { keyEncoder: ctx.encodeKey !== undefined, requestedLevel: level })
+  }
   const excluded = vtermNoSamePathControl(ctx, { input: false })
   if (excluded) return excluded
   const encode = ctx.encodeKey
