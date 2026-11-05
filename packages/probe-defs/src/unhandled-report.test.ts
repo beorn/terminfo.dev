@@ -153,7 +153,7 @@ describe("the unhandled report decides only state cells, and only with both cont
   })
 })
 
-describe("the SGR arm moves only the six named cells, with SGR 1 as its control", () => {
+describe("the SGR arm moves only the named cells, with SGR 1 as its control", () => {
   test.each([
     ["sgr.blink", "5m"],
     ["sgr.strikethrough", "9m"],
@@ -188,10 +188,110 @@ describe("the SGR arm moves only the six named cells, with SGR 1 as its control"
     expect(result.observation?.outcome).not.toBe("unsupported")
     expect(JSON.stringify(result)).not.toContain(REASON)
   })
+})
 
-  test("an SGR cell outside the six keeps its own path", () => {
-    const source = reportingSource({ records: [recordsCsi("3m"), recordsCsi("1m")] })
-    const result = sgr("sgr.italic").lib!(source)
+/**
+ * @failure Case 2 (@cto plan ruling 09:00, R1): on an engine that handles no OSC, the merged arm's OSC 2
+ *   control can never qualify, so the engine's own report can never decide an OSC cell. The fallback may
+ *   qualify an OSC target with SGR 1 and bold ONLY in the same run that shows the OSC 2 control added
+ *   exactly one entry of kind osc code 2 while the title stayed unapplied, and it must read its own
+ *   baseline. Any other shape keeps today's TODO.
+ *
+ * @failure Case 2 R2: sgr.italic (3m) and sgr.faint (2m) are inside the report arm's cell set, and a cell
+ *   outside that set is still never decided by the report.
+ *
+ * @level l2
+ * @consumer @si/terminfo/30211-terminfo-273/32369-dec-non-osc-control-consumer
+ * @testonly none
+ */
+describe("an engine that handles no OSC may qualify with a handled non-OSC control", () => {
+  /** An engine with no OSC handling: it reports OSC 2 and the target, never sets the title. */
+  const decLike = (codes: readonly string[]) =>
+    reportingSource({
+      records: [recordsOsc("2"), ...codes.map((code) => recordsOsc(code))],
+      titleApplies: false,
+    })
+
+  test.each([
+    ["extensions.osc133-a", "133"],
+    ["extensions.osc133-p", "133"],
+    ["extensions.osc633-a", "633"],
+    ["extensions.semantic-prompts", "133"],
+    ["extensions.osc113-reset-pointer-fg", "113"],
+    ["extensions.osc777-notify", "777"],
+  ])("a cell the engine reports unhandled becomes Unsupported: %s", (id, code) => {
+    const result = probe(id).lib!(decLike([code]))
+    // osc777-notify is a delivery cell and must keep its own path even under the fallback.
+    if (id === "extensions.osc777-notify") {
+      expect(JSON.stringify(result)).not.toContain(REASON)
+      return
+    }
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(JSON.stringify(result)).toContain(REASON)
+  })
+
+  test("the OSC 2 control that stayed unapplied supplies the report entry the target delta rebases on", () => {
+    // Without its own baseline read, the OSC 2 entry would make the target delta two and nothing would
+    // fire. The positive case above is this assertion's proof; this one names the shape it depends on.
+    const source = decLike(["113"])
+    const result = probe("extensions.osc113-reset-pointer-fg").lib!(source)
+    const parsed = JSON.parse(result.response!) as { unhandled: { control: string } }
+    expect(parsed.unhandled.control).toBe("\x1b[0m\x1b[1mC")
+  })
+
+  test("an OSC 2 control that adds no entry never reaches the fallback", () => {
+    // A handled silent OSC 2 (no entry) proves nothing about the OSC path, so the fallback stays closed.
+    const source = reportingSource({ records: [recordsOsc("113")], titleApplies: false })
+    const result = probe("extensions.osc113-reset-pointer-fg").lib!(source)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(JSON.stringify(result)).not.toContain(REASON)
+  })
+
+  test("an OSC 2 control that adds two entries never reaches the fallback", () => {
+    const source = reportingSource({
+      records: [recordsOsc("2"), recordsOsc("2"), recordsOsc("113")],
+      titleApplies: false,
+    })
+    const result = probe("extensions.osc113-reset-pointer-fg").lib!(source)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(JSON.stringify(result)).not.toContain(REASON)
+  })
+
+  test("a fallback control whose bold reader never applies leaves the cell undecided", () => {
+    const source = reportingSource({
+      records: [recordsOsc("2"), recordsOsc("113")],
+      titleApplies: false,
+      boldApplies: false,
+    })
+    const result = probe("extensions.osc113-reset-pointer-fg").lib!(source)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(JSON.stringify(result)).not.toContain(REASON)
+  })
+
+  test("the fallback never qualifies on an engine whose title reader answered", () => {
+    // Case 1 by construction: the OSC 2 control qualifies normally, so the fallback is not consulted
+    // and an unrecorded target stays undecided.
+    const source = reportingSource({ records: [recordsOsc("2")] })
+    const result = probe("extensions.osc113-reset-pointer-fg").lib!(source)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(JSON.stringify(result)).not.toContain(REASON)
+  })
+})
+
+describe("the report arm decides italic and faint as well, and nothing outside its set", () => {
+  test.each([
+    ["sgr.italic", "3m"],
+    ["sgr.faint", "2m"],
+  ])("%s becomes Unsupported when the library reports %s", (id, code) => {
+    const source = reportingSource({ records: [recordsCsi(code)] })
+    const result = sgr(id).lib!(source)
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(JSON.stringify(result)).toContain(REASON)
+  })
+
+  test("an SGR cell outside the eight keeps its own path", () => {
+    const source = reportingSource({ records: [recordsCsi("53m"), recordsCsi("1m")] })
+    const result = sgr("sgr.overline").lib!(source)
     expect(JSON.stringify(result)).not.toContain(REASON)
   })
 })

@@ -3427,14 +3427,17 @@ test.each([
   },
 )
 
-// @failure @cto's vt100-public-ignored-report ruling R3: declaring `osc-metadata` with ONLY
-//   `getUnhandledSequences` must add no other reader and move no VT100 row by itself. The merged consumer
-//   arm qualifies its control with OSC 2 and the title reader, and the VT100 engine handles no OSC, so an
-//   engine that reports the exact code a probe feeds still leaves every row at its baseline result.
+// @failure @cto's DEC Case 2 ruling R3 (09:00) corrected this test's own claim: a fake that records only
+//   OSC says nothing about the SGR ids it lists. A VT100-shaped report - OSC entries for every terminated
+//   OSC, one numeric SGR entry per operand the engine drops, nothing for a colon group - must move exactly
+//   the twelve shell cells, the four named colour resets and the four numeric SGR cells (faint 2m, italic
+//   3m, strikethrough 9m, double underline 21m), and nothing else: blink (5) is in the engine's handled
+//   list, the three colon underline forms record nothing, and the four delivery cells are never decided by
+//   the report. @dev/8 Case 2 consumer: 32369.
 // @level l2
-// @consumer 32362 consumer boundary for the VT100 ignored-report producer (32364).
+// @consumer 32369 consumer boundary for the VT100 ignored-report producer (32364).
 // @testonly none
-test("declaring osc-metadata with only getUnhandledSequences moves no VT100 row", async () => {
+test("a VT100-shaped report moves the claimed OSC and SGR cells and nothing else", async () => {
   const ids = [
     "extensions.osc133-a",
     "extensions.osc133-b",
@@ -3453,6 +3456,8 @@ test("declaring osc-metadata with only getUnhandledSequences moves no VT100 row"
     "extensions.osc117-reset-highlight-bg",
     "extensions.osc119-reset-highlight-fg",
     "sgr.blink",
+    "sgr.faint",
+    "sgr.italic",
     "sgr.strikethrough",
     "sgr.underline.double",
     "sgr.underline.curly",
@@ -3466,9 +3471,12 @@ test("declaring osc-metadata with only getUnhandledSequences moves no VT100 row"
   const definitions = registryDefinitions(ids)
   const baseline = await collectBatch(resolveVt100, "vt100", definitions)
   let reported = 0
+  // What the VT100 engine's own ignore loop reports: a numeric SGR operand outside its handled list
+  // (0/1/4/5/7/22/24/25/27), one entry per operand. A colon group is NaN and records nothing.
+  const handledSgr = new Set(["0", "1", "4", "5", "7", "22", "24", "25", "27"])
   const declaring = async () => {
     const value = await resolveVt100()
-    const report: { kind: "osc"; code: string }[] = []
+    const report: { kind: "osc" | "csi"; code: string }[] = []
     value.capabilities.extensions.add("osc-metadata")
     const feed = value.feed.bind(value)
     Object.assign(value, { getUnhandledSequences: () => report.slice() })
@@ -3476,6 +3484,11 @@ test("declaring osc-metadata with only getUnhandledSequences moves no VT100 row"
       const text = new TextDecoder().decode(data)
       for (const match of text.matchAll(/\x1b\](\d+)/g)) {
         report.push({ kind: "osc", code: match[1]! })
+        reported += 1
+      }
+      for (const match of text.matchAll(/\x1b\[(\d+)m/g)) {
+        if (handledSgr.has(match[1]!)) continue
+        report.push({ kind: "csi", code: `${match[1]}m` })
         reported += 1
       }
       feed(data)
@@ -3499,10 +3512,56 @@ test("declaring osc-metadata with only getUnhandledSequences moves no VT100 row"
         reason: entry.reason ?? null,
       })),
     }))
-  // Non-vacuous: the variant really fed OSC sequences its own report recorded.
+  // Non-vacuous: the variant really fed sequences its own report recorded, of both kinds.
   expect(reported).toBeGreaterThan(0)
-  expect(rows(variant)).toEqual(rows(baseline))
-  expect(JSON.stringify(variant.results)).not.toContain("library reported this sequence as unhandled")
+  const moved = rows(variant).filter((row, index) => JSON.stringify(row) !== JSON.stringify(rows(baseline)[index]))
+  const expectedMoves = [
+    "extensions.osc-633-vscode",
+    "extensions.osc113-reset-pointer-fg",
+    "extensions.osc114-reset-pointer-bg",
+    "extensions.osc117-reset-highlight-bg",
+    "extensions.osc119-reset-highlight-fg",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.semantic-prompts",
+    "sgr.faint",
+    "sgr.italic",
+    "sgr.strikethrough",
+    "sgr.underline.double",
+  ]
+  expect(moved.map((row) => row.featureId).sort()).toEqual(expectedMoves)
+  for (const row of moved) {
+    expect(row.status, row.featureId).toBe("unsupported")
+    expect(JSON.stringify(row), row.featureId).toContain("library reported this sequence as unhandled")
+  }
+  // Blink, the three colon underline forms and the four delivery cells keep the baseline result exactly.
+  const still = (batch: Awaited<ReturnType<typeof collectBatch>>, keep: (id: string) => boolean) =>
+    rows(batch).filter((row) => keep(row.featureId))
+  const unchanged = (id: string) => !expectedMoves.includes(id)
+  expect(still(variant, unchanged)).toEqual(still(baseline, unchanged))
+  expect(
+    still(variant, unchanged)
+      .map((row) => row.featureId)
+      .sort(),
+  ).toEqual([
+    "extensions.osc633-p",
+    "extensions.osc7-cwd",
+    "extensions.osc777-notify",
+    "extensions.osc9-progress",
+    "sgr.blink",
+    "sgr.underline.curly",
+    "sgr.underline.dashed",
+    "sgr.underline.dotted",
+  ])
+  expect(JSON.stringify(still(variant, unchanged))).not.toContain("library reported this sequence as unhandled")
 })
 
 test("keeps the measured probe result when the engine answers its colour readback", async () => {

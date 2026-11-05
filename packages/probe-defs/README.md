@@ -332,6 +332,16 @@ own working-directory interface-absence reason. A supplied Cwd reader always
 runs the existing measured criterion; a missing reader on any other identity
 remains PROBE TODO.
 
+An engine's own unhandled-sequence report (`getUnhandledSequences`) decides a state cell
+Unsupported only with same-run controls: a handled sequence adds no entry while its own reader
+shows it applied, then the target adds exactly one entry carrying its exact code. Every length is
+compared exactly, so a bounded history that rolled decides nothing rather than a wrong grade. The
+primary control is OSC 2 with the title reader; an engine that handles no OSC — VT100.js and
+VT220.js — reports OSC 2 as an ignored entry and never sets the title, and that same run lets SGR 1
+with a bold cell qualify instead. Only the named shell, colour-reset and eight SGR cells (blink,
+faint, italic, strikethrough and the four underline styles) may move; delivery cells, a decided
+outcome, a missing member and any other code keep their own path.
+
 ## Evidence, capture and assertion
 
 The library reflow callback uses the optional `LibProbeSource.resize` control; every production
