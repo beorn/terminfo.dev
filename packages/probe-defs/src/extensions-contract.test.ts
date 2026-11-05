@@ -1009,6 +1009,7 @@ test("the harness replays every extension feature deterministically", async () =
     "extensions.sixel",
     "extensions.iterm2-images",
     "extensions.notifications",
+    "extensions.osc7-cwd",
   ])
   const headlessReviews = new Set([...declaredUntestable, "extensions.osc7-cwd"])
   const term = replayTermProbeSource(new Map(), {
