@@ -444,9 +444,17 @@ test.each(
         const collapsed = libProbeSource(surface)
         collapsed.getCell = (row, col) => ({
           ...surface.getCell(row, col),
-          underline: !!surface.getCell(row, col).underline,
+          // Actual yes/no adapters normalize every enabled style to "single".
+          underline: surface.getCell(row, col).underline ? "single" : false,
         })
-        expect(probe.lib(collapsed).observation?.outcome).not.toBe("unsupported")
+        const collapsedResult = probe.lib(collapsed)
+        expect(collapsedResult.notTested).toMatchObject({ reason: "no-semantic-observable" })
+        expect(collapsedResult.observation?.outcome).not.toBe("unsupported")
+        const otherStyleMutation = id === "sgr.underline.double" ? "underline-curly-noop" : "underline-double-noop"
+        const withoutStyleControl = probe.lib(
+          libProbeSource(createSemanticSurface({ mutations: [mutation, otherStyleMutation] })),
+        )
+        expect(withoutStyleControl.observation?.outcome).not.toBe("unsupported")
       }
     }
   },
@@ -488,6 +496,13 @@ test.each([
   ],
   ["alacritty", "0.26.0", "sgr.blink", "blink", "alacritty_terminal 0.26.0 public term::cell::Flags has no blink flag"],
   ["vt100-rust", "0.16.2", "sgr.blink", "blink", "vt100 0.16.2 public Cell has no blink reader"],
+  [
+    "vt100-rust",
+    "0.16.2",
+    "sgr.strikethrough",
+    "strikethrough",
+    "vt100 0.16.2 public Cell has no strikethrough reader",
+  ],
 ] as const)("%s %s names its checked %s reader prerequisite", (backendName, engineVersion, id, field, prerequisite) => {
   const probe = sgrProbes.find((probe) => probe.id === id)!
   const surface = createSemanticSurface()

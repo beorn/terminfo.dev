@@ -1067,6 +1067,7 @@ const SGR_ATTRIBUTE_READER_ABSENCE: Readonly<Record<string, string>> = {
   "vt220:0.10.1:strikethrough": "vt220.js 0.10.1 public ScreenCell has no strikethrough field",
   "alacritty:0.26.0:blink": "alacritty_terminal 0.26.0 public term::cell::Flags has no blink flag",
   "vt100-rust:0.16.2:blink": "vt100 0.16.2 public Cell has no blink reader",
+  "vt100-rust:0.16.2:strikethrough": "vt100 0.16.2 public Cell has no strikethrough reader",
 }
 
 export function sgrProbe(
@@ -1153,9 +1154,29 @@ export function sgrProbe(
         }
         const qualified = control.char === "C" && (underline ? control.underline === "single" : control.bold === true)
         if (!qualified) return notTestedResult(NO_SAME_PATH_CONTROL, state)
+        if (underline) {
+          // On/off readers normalize every enabled style to "single". A negative needs
+          // another non-single style to read back as itself in this run (#32318).
+          const style = id === "sgr.underline.double" ? "curly" : "double"
+          const styleControlInput = `\x1b[0m\x1b[4:${style === "curly" ? 3 : 2}mD\x1b[0m`
+          ctx.feed(styleControlInput)
+          const styleControl = ctx.getCell(0, 2)
+          const styleState = { ...state, styleControl, input: { ...state.input, styleControl: styleControlInput } }
+          if (styleControl.char !== "D" || styleControl.underline !== style) {
+            return notTestedResult(
+              `Underline reader did not distinguish the ${style} style control in this run`,
+              styleState,
+            )
+          }
+          return parserStateResult(
+            false,
+            `${id}: attribute applied to the rendered X cell with qualified single and ${style} underline style readers`,
+            styleState,
+          )
+        }
         return parserStateResult(
           false,
-          `${id}: attribute applied to the rendered X cell with a qualified ${underline ? "single underline style" : "bold"} reader`,
+          `${id}: attribute applied to the rendered X cell with a qualified bold reader`,
           state,
         )
       }
