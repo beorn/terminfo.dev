@@ -1529,7 +1529,7 @@ test("scrollback DECSTBM rows judge the app path from the region readback", asyn
     }
     if (label === "reset ignored") {
       // The kind treats a measured space and an unwritten empty cell as the same blank.
-      const after = JSON.parse(result.response ?? "null").after as string[][]
+      const after = (JSON.parse(result.response ?? "null") as { after: string[][] }).after
       expect
         .soft(
           after.map((cells) => cells.map((cell) => (cell === " " ? "" : cell))),
