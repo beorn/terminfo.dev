@@ -4,6 +4,7 @@ import {
   probe,
   replyFailure,
   notTestedResult,
+  declaredUntestableResult,
   NO_SAME_PATH_CONTROL,
   replyFrame,
   reviewResult,
@@ -14,9 +15,12 @@ import {
   stackStateResult,
 } from "./helpers.ts"
 
-/** A library context has no application child by construction, so TERM_FEATURES is never observable there (@cto 1265b1f4). */
+/**
+ * A library context has no application child by construction, so TERM_FEATURES is never observable there (@cto
+ * 1265b1f4). Declared Untestable for every library (operator Nov 4 16:55).
+ */
 function termFeaturesLibraryReview(): ProbeCallbackResult {
-  return notTestedResult(
+  return declaredUntestableResult(
     "TERM_FEATURES: a library context spawns no application child to receive the environment export",
     {},
   )

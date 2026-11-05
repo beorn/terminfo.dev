@@ -15,6 +15,34 @@ const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] a
 
 // Fixed per-capture review reasons must reach the real callbacks, without grading at callback time.
 // Existing input fixtures checked absence of observations, not this retained review contract.
+// Five libraries export no public key-event encoder: their input.xtest-key cell is declared Untestable (operator Nov 4
+// 16:55), and its reason names the missing export.
+test.each([
+  ["vt100", /vt100\.js 0\.10\.1 exports createVt100Screen/],
+  ["vt220", /vt220\.js 0\.10\.1 exports createVt220Screen/],
+  ["xtermjs", /@xterm\/headless 6\.0\.0 exports Terminal/],
+  ["alacritty", /alacritty_terminal 0\.26\.0 exposes/],
+  ["vt100-rust", /vt100 crate 0\.16\.2 exposes/],
+])("input.xtest-key on %s reads declared Untestable with the missing export", (backendName, reason) => {
+  const definition = inputProbes.find((entry) => entry.id === "input.xtest-key")!
+  const result = definition.lib!({ kind: "live", backendName } as unknown as LibProbeSource)
+  expect(result.criterionBranch).toBe("headless-observable-review")
+  expect(result.tests).toEqual([
+    { id: "declared-untestable", status: "untestable", reason: expect.stringMatching(reason) },
+  ])
+})
+
+// Libraries that export a key encoder are not declared; they keep the review until a route is measured.
+test.each(["libvterm", "ghostty", "ghostty-native", "wezterm", "kitty"])(
+  "input.xtest-key on %s keeps its review",
+  (backendName) => {
+    const definition = inputProbes.find((entry) => entry.id === "input.xtest-key")!
+    const result = definition.lib!({ kind: "live", backendName } as unknown as LibProbeSource)
+    expect(result.criterionBranch).toBe("os-input-review")
+    expect(result.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo" })
+  },
+)
+
 test.each(["input.xtest-key", "extensions.clipboard-paste"])(
   "%s retains its by-design lib review for a bound decision",
   (id) => {

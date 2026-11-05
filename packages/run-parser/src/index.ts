@@ -5,6 +5,7 @@ import {
   SEMANTIC_PROMPT_SOURCE_REVIEW,
   HARNESS_INCOMPLETE_TEST,
   UNTESTABLE_ONLY_REVIEW_BRANCHES,
+  isDeclaredUntestable,
   SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES,
   HOST_INPUT_NAMES,
   type HostRecipeExpectation,
@@ -871,7 +872,8 @@ export function parseProbeResults(
     }
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
-    if (semanticSource || status === "untestable") {
+    // The one admitted Untestable is the operator's Nov 4 16:55 declaration, written in the probe (@cto ruling 2026-11-04).
+    if (semanticSource || (status === "untestable" && !isDeclaredUntestable(result))) {
       fail(path, `${featureId} ${status} requires a probe observation; a source answer no longer counts`)
     }
     if ((status === "supported" || status === "unsupported") && !semanticSource) {

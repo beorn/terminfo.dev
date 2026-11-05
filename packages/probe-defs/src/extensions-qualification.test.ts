@@ -174,7 +174,12 @@ test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2
           getCell: () => ({ char: "X" }),
         } as unknown as LibProbeSource)
         expect(result.criterionBranch).toBe("headless-observable-review")
-        expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
+        // Missing notification readers and iTerm2 images use the operator's declared Untestable route.
+        expect(result.tests).toMatchObject([
+          id !== "extensions.osc7-cwd"
+            ? { id: "declared-untestable", status: "untestable" }
+            : { id: "review", status: "probe-todo" },
+        ])
         expect(result.assertions).toBeUndefined()
         expect(result.observation).toBeUndefined()
         expect(fed).toEqual([])
@@ -222,7 +227,9 @@ test("library TERM_FEATURES is one per-kind result, the same with or without a s
   } as unknown as LibProbeSource)
   expect(unaudited).toEqual(audited)
   expect(definition.lib!({} as unknown as LibProbeSource)).toEqual(audited)
-  expect(audited.criterionBranch).toBeUndefined()
+  // Declared Untestable for every library (operator Nov 4 16:55).
+  expect(audited.criterionBranch).toBe("headless-observable-review")
+  expect(audited.tests).toMatchObject([{ id: "declared-untestable", status: "untestable" }])
   expect(audited.notTested?.noObservable).toMatch(/no application child/)
 })
 

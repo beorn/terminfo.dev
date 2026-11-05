@@ -1002,14 +1002,15 @@ test("the extensions contract names its focused tests, and every named file exis
 
 test("the harness replays every extension feature deterministically", async () => {
   const headless = libProbeSource(inertModel())
-  const headlessReviews = new Set([
+  // The operator's Nov 4 16:55 declaration (part A) reads Untestable on the same branch; the rest stay reviews.
+  const declaredUntestable = new Set([
     "extensions.kitty-graphics.animation",
     "extensions.kitty-graphics.unicode-placeholders",
     "extensions.sixel",
-    "extensions.osc7-cwd",
-    "extensions.notifications",
     "extensions.iterm2-images",
+    "extensions.notifications",
   ])
+  const headlessReviews = new Set([...declaredUntestable, "extensions.osc7-cwd"])
   const term = replayTermProbeSource(new Map(), {
     queryCursorPosition: async () => ({ row: 0, col: 0 }),
   })
@@ -1022,7 +1023,11 @@ test("the harness replays every extension feature deterministically", async () =
     if (headlessReviews.has(row.id)) {
       const result = probe.lib!(headless)
       expect(result.criterionBranch, row.id).toBe("headless-observable-review")
-      expect(result.tests, row.id).toMatchObject([{ id: "review", status: "probe-todo" }])
+      expect(result.tests, row.id).toMatchObject([
+        declaredUntestable.has(row.id)
+          ? { id: "declared-untestable", status: "untestable" }
+          : { id: "review", status: "probe-todo" },
+      ])
       expect((await regradeRow(probe, row, { headless })).after, row.id).toBeUndefined()
     }
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
@@ -1478,7 +1483,9 @@ test.each([
   "extensions.osc3008-context",
   "extensions.font-ligatures",
   "extensions.iterm2-images",
-])("%s retains missing-observer TODO with declared working and inert sources", (id) => {
+])("%s retains its missing-observer record with declared working and inert sources", (id) => {
+  // Ligatures and iTerm2 images are declared Untestable for every library (operator Nov 4 16:55).
+  const expected = id === "extensions.font-ligatures" || id === "extensions.iterm2-images" ? "untestable" : "probe-todo"
   const probe = extensionsProbes.find((entry) => entry.id === id)!
   for (const [profile, base] of [
     ["working", libProbeSource(createSemanticSurface())],
@@ -1503,7 +1510,7 @@ test.each([
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
     if (result.tests !== undefined) {
-      for (const criterion of result.tests) expect(criterion.status, id).toBe("probe-todo")
+      for (const criterion of result.tests) expect(criterion.status, id).toBe(expected)
     }
   }
 })
