@@ -862,6 +862,7 @@ function mouseEncodingLib(
     if (enabled === null) {
       return notTestedResult(`adapter binding ${ctx.backendName}: mouseTracking unavailable`, { tracking: null })
     }
+    if (kind === "button") ctx.encodeMouse({ ...event, action: "press" })
     const report = decodeMouseReport(ctx.encodeMouse(event))
     const observed = { tracking: enabled, negativeControl, report }
     if (
@@ -920,6 +921,11 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
     "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
   if (ctx.backendName === "kitty") {
     return notTestedResult("Kitty send_mouse_event does not bind Window's prompt click_events pointer path", {
+      storedClickEvents: false,
+    })
+  }
+  if (ctx.backendName === "wezterm") {
+    return notTestedResult("WezTerm mouse_event does not bind a prompt click_events path", {
       storedClickEvents: false,
     })
   }

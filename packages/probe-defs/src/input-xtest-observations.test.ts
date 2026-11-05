@@ -1521,6 +1521,23 @@ function libMouseSource(
   }
 }
 
+// @failure A drag probe sends movement without the preceding press required by stateful native encoders.
+// @level l1
+// @consumer Registered library mouse callbacks; app XTEST coverage does not observe their native input sequence.
+test.each([
+  ["input.button-event-mouse", ["move", "press", "move"]],
+  ["input.x10-mouse", ["press", "press"]],
+  ["input.urxvt-mouse", ["press", "press"]],
+  ["input.xtest-click", ["press", "press"]],
+  ["input.xtest-wheel", ["press", "press"]],
+  ["input.pixel-mouse", ["press", "press"]],
+] as const)("%s library mouse encoding primes only a measured drag with a real press", (id, actions) => {
+  const events: LibMouseEvent[] = []
+  const source = libMouseSource({ encodeMouse: () => null }, [], events)
+  probe(id).lib!(source)
+  expect(events.map((event) => event.action)).toEqual(actions)
+})
+
 test("input.kitty-click-events declares libAssertionType input_bytes and returns notTestedResult when capability is absent or undeclared", () => {
   const definition = probe("input.kitty-click-events")
   expect(definition.libAssertionType).toBe("input_bytes")
