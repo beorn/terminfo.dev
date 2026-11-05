@@ -103,6 +103,8 @@ test("key-encoder absence declarations cover every actual adapter factory name",
   ]) {
     const actual = create()
     try {
+      // #32308 (@cto e4f1c5bd): the absence map runs first, so a later declaration here would be silently shadowed.
+      expect(actual.capabilities.extensions.has("key-encoding"), actual.name).toBe(false)
       for (const definition of definitions) {
         const result = definition.lib!({ kind: "live", backendName: actual.name } as LibProbeSource)
         expect(result.tests?.[0], `${actual.name} ${definition.id}`).toMatchObject({
@@ -114,6 +116,21 @@ test("key-encoder absence declarations cover every actual adapter factory name",
       actual.destroy()
     }
   }
+})
+
+// #32308: callback fixtures cannot show the real libvterm encoder reaches input.xtest-key through the collector.
+test("libvterm input.xtest-key is graded through its native key encoder", async () => {
+  const batch = await collectBatch(resolveLibvterm, "libvterm", registryDefinitions(["input.xtest-key"]))
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual([
+    { featureId: "input.xtest-key", status: "supported" },
+  ])
+  expect(JSON.parse(batch.rawReplies["input.xtest-key"]!)).toEqual({
+    control: "a",
+    controlBytes: [97],
+    report: "\x01",
+    reportBytes: [1],
+  })
 })
 
 test("xterm key-encoder absence survives actual adapter collection", async () => {

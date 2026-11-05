@@ -39,6 +39,7 @@ const inputDefinitions: ProbeDefinition[] = [
     (ctx) => {
       const declared = NO_LIBRARY_KEY_ENCODER[ctx.backendName]
       if (declared) return declaredUntestableResult(`OS-level XTEST key injection: ${declared}`, { input: false })
+      if (ctx.encodeKey) return xtestKeyLib(ctx.encodeKey)
       return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true)
     },
     xtestKey,
@@ -325,6 +326,29 @@ async function xtestKey(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   }
   const observed = { control, report }
   const expected = "OS XTEST ctrl+a report after plain-a delivery control"
+  return CTRL_A_ENCODING.test(report)
+    ? interactionResult("xtest-key:ctrl+a", expected, observed)
+    : unsupportedInteraction("xtest-key:ctrl+a", expected, observed)
+}
+
+/**
+ * Library arm of input.xtest-key (#32308, @cto e4f1c5bd): the library's own key-event encoder, bound only under
+ * "key-encoding", must encode plain a as "a" before its ctrl+a bytes are judged by the terminal arm's criterion.
+ */
+function xtestKeyLib(encodeKey: NonNullable<LibProbeSource["encodeKey"]>): ProbeCallbackResult {
+  const decoder = new TextDecoder()
+  const controlBytes = encodeKey({ key: "a" })
+  const control = decoder.decode(controlBytes)
+  if (control !== "a") {
+    return notTestedResult("library key-event encoder delivery control: plain a did not encode as a", {
+      control,
+      controlBytes: [...controlBytes],
+    })
+  }
+  const reportBytes = encodeKey({ key: "a", ctrl: true })
+  const report = decoder.decode(reportBytes)
+  const observed = { control, controlBytes: [...controlBytes], report, reportBytes: [...reportBytes] }
+  const expected = "library key-event encoder ctrl+a report after plain-a control"
   return CTRL_A_ENCODING.test(report)
     ? interactionResult("xtest-key:ctrl+a", expected, observed)
     : unsupportedInteraction("xtest-key:ctrl+a", expected, observed)
