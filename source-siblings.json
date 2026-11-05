@@ -57,14 +57,14 @@
     {
       "name": "@termless/vterm",
       "repository": "beorn/termless",
-      "commit": "c37cabea8c422c6e91247fdb3bcbfc6260a4febb",
+      "commit": "259f98617b4d1dd3d295803d6fa365e88e3975e1",
       "pack": true,
       "directory": "packages/vterm"
     },
     {
       "name": "vterm.js",
       "repository": "beorn/vterm",
-      "commit": "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+      "commit": "f98f138dc76a4e179c300fe5e1f60d11557ccd6b",
       "pack": true,
       "directory": "packages/vterm"
     }
