@@ -134,6 +134,10 @@ const NO_LIBRARY_KEY_ENCODER: Readonly<Record<string, string>> = {
     "ghostty-web 0.4.0 public KeyEncoder exposes only a state-2 option, with no modifyOtherKeys level-3 selector",
   "ghostty-native/input.modify-other-keys-3":
     "Ghostty 1.3.1 (332b2aef) public input.KeyEncodeOptions carries only modify_other_keys_state_2: bool, and fromTerminal copies it from the terminal's flags. No public field or route selects modifyOtherKeys level 3",
+  "kitty/input.modify-other-keys":
+    "Kitty 0.49.2 (b2cb8712) public kitty.fast_data_types Screen exposes cursor_key_mode and current_key_encoding_flags(); encode_key_for_tty has no modifyOtherKeys state or level selector",
+  "kitty/input.modify-other-keys-3":
+    "Kitty 0.49.2 (b2cb8712) public kitty.fast_data_types Screen exposes cursor_key_mode and current_key_encoding_flags(); encode_key_for_tty has no modifyOtherKeys state or level selector",
 }
 
 /** The headless arm of an XTEST criterion: the same coverage, with the required review selected. */
