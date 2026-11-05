@@ -477,8 +477,7 @@ describe("native clipboard paste encoding", () => {
 
   test("provided xterm native encoder is measured before the declared absence branch", () => {
     const model = nativePasteModel()
-    model.ctx.backendName = "xterm"
-    const result = pasteProbe().lib!(model.ctx)
+    const result = pasteProbe().lib!({ ...model.ctx, backendName: "xterm" })
     expect(result.observation?.outcome).toBe("supported")
     expect(result.tests?.some((test) => test.status === "untestable")).not.toBe(true)
   })
