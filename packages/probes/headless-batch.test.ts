@@ -2665,6 +2665,7 @@ test("separates mode readback from headless OS-input review without fabricating 
     "modes.application-keypad",
   ]
   const modeIds = new Set(["modes.alt-scroll-1007", "modes.application-keypad"])
+  const declaredInputIds = new Set(["input.xtest-key", "input.modify-other-keys", "input.modify-other-keys-3"])
   const definitions = ids.map((id) => {
     const found = ALL_PROBES.find((probe) => probe.id === id)
     if (!found) throw new Error(`Missing registry definition ${id}`)
@@ -2688,6 +2689,13 @@ test("separates mode readback from headless OS-input review without fabricating 
         result.featureId === "modes.application-keypad" ? "buffer_state" : "query_reply",
       )
       expect(batch.notTested.some((row) => row.featureId === result.featureId)).toBe(false)
+      continue
+    }
+    if (declaredInputIds.has(result.featureId)) {
+      expect(result.status, result.featureId).toBe("untestable")
+      expect(result.tests, result.featureId).toContainEqual(
+        expect.objectContaining({ id: "declared-untestable", status: "untestable", reason: expect.any(String) }),
+      )
       continue
     }
     expect(result.status, result.featureId).toBe("probe-todo")
