@@ -1387,13 +1387,15 @@ it.each(["extensions.kitty-graphics.animation", "extensions.kitty-graphics.unico
     try {
       const batch = await collect()
       expect(batch.ungradedDiagnostics[id], id).toBeUndefined()
-      expect(JSON.parse(batch.rawReplies["collector.geometry"]!).checks).toMatchObject([
-        {
-          featureId: id,
-          pre: { status: "measured", rows: 1, cols: 1 },
-          post: { status: "measured", rows: 1, cols: 1 },
-        },
-      ])
+      expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
+        checks: [
+          {
+            featureId: id,
+            pre: { status: "measured", rows: 1, cols: 1 },
+            post: { status: "measured", rows: 1, cols: 1 },
+          },
+        ],
+      })
       expect(batch.observations, id).toEqual([])
       expect(batch.results.find((result) => result.featureId === id)?.status, id).toBe("probe-todo")
       definition.termNeedsGeometry = undefined
