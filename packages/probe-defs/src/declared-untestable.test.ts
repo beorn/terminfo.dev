@@ -272,7 +272,7 @@ describe("audited OSC interface absence", () => {
     })
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
-    const identity = JSON.parse(result.response!).runtimeIdentity
+    const identity = (JSON.parse(result.response!) as { runtimeIdentity: Record<string, unknown> }).runtimeIdentity
     expect(identity).not.toHaveProperty("resolvedPath")
     expect(identity).not.toHaveProperty("termlessRevision")
     expect(identity.integrity).not.toHaveProperty("revision")
