@@ -123,6 +123,10 @@ Library `cell.hidden: null` means conceal is not reported; missing cell observab
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO
 when no clipboard-state witness is wired; a read negative cannot measure the write.
+Reset, colour-stack and Kitty transfer/display effects likewise stay PROBE TODO when their
+readback is silent, even if DA1 answers. Effect absence needs an answered same-probe state
+control and an observed comparison. Existing own-state readers and answered unchanged-state
+comparisons continue to decide results; query features retain their own reply criteria.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
 silence. Qualified silence from every control names an unmet detection prerequisite as PROBE TODO,
 retaining each raw window. Any control reply leaves target silence as PROBE INVALID; complete,
