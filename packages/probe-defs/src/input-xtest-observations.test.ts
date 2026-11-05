@@ -453,7 +453,7 @@ test("input.modify-other-keys is not tested without an OS XTEST adapter", async 
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+    noObservable: "Native key-encoding route is not qualified for this library",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -566,7 +566,7 @@ test("input.modify-other-keys-3 is not tested without an OS XTEST adapter", asyn
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+    noObservable: "Native key-encoding route is not qualified for this library",
   })
   expect(headless.observation).toBeUndefined()
 
