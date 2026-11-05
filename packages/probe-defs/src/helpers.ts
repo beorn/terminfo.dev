@@ -1056,6 +1056,19 @@ export type SgrCaptureFixture = Readonly<{ sequence: string; sample: string; row
 /** A probe-owned pixel capture, for an attribute one control/target pair cannot show (sgr.blink, #31812). */
 export type SgrCapture = (ctx: TermProbeSource, fixture: SgrCaptureFixture) => Promise<ProbeCallbackResult>
 
+// Diagnostic prerequisites only: these checked public types do not expose the null attribute.
+// A matching runtime version binds the audit; this table never decides a support result (#32329).
+const SGR_ATTRIBUTE_READER_ABSENCE: Readonly<Record<string, string>> = {
+  "vt100:0.10.1:dim": "vt100.js 0.10.1 public ScreenCell has no dim field",
+  "vt100:0.10.1:italic": "vt100.js 0.10.1 public ScreenCell has no italic field",
+  "vt100:0.10.1:strikethrough": "vt100.js 0.10.1 public ScreenCell has no strikethrough field",
+  "vt220:0.10.1:dim": "vt220.js 0.10.1 public ScreenCell has no dim field",
+  "vt220:0.10.1:italic": "vt220.js 0.10.1 public ScreenCell has no italic field",
+  "vt220:0.10.1:strikethrough": "vt220.js 0.10.1 public ScreenCell has no strikethrough field",
+  "alacritty:0.26.0:blink": "alacritty_terminal 0.26.0 public term::cell::Flags has no blink flag",
+  "vt100-rust:0.16.2:blink": "vt100 0.16.2 public Cell has no blink reader",
+}
+
 export function sgrProbe(
   id: string,
   sequence: string,
@@ -1088,7 +1101,10 @@ export function sgrProbe(
         // and a nullable attribute is missing readback even when the control works (#32318).
         if (measured) return parserStateResult(true, `${id}: attribute applied to the rendered X cell`, state)
         if (check(cell) === null) {
-          const missingReader = `cell.${id === "sgr.faint" ? "dim" : id.slice("sgr.".length)} is unreported; no qualified SGR m alternative in this run`
+          const field = id === "sgr.faint" ? "dim" : id.slice("sgr.".length)
+          const prerequisite =
+            SGR_ATTRIBUTE_READER_ABSENCE[`${ctx.backendName}:${ctx.runtimeIdentity?.engineVersion}:${field}`]
+          const missingReader = `cell.${field} is unreported; ${prerequisite ? `${prerequisite}; ` : ""}no qualified SGR m alternative in this run`
           // The reply is used only after this same SGR m reader reports the bold control.
           // A facility-wide DECRQSS/DECSTBM answer does not qualify it (#32318).
           if (readback && ctx.queryWithSentinelOutcome) {
