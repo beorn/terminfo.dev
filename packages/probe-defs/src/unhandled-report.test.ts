@@ -63,11 +63,44 @@ const recordsCsi = (code: string) => ({
 })
 
 describe("the unhandled report decides only state cells, and only with both controls", () => {
-  test("a colour-reset cell the library reports unhandled becomes Unsupported", () => {
-    const source = reportingSource({ records: [recordsOsc("110")] })
-    const result = probe("extensions.osc110-reset-fg").lib!(source)
+  test.each([
+    ["extensions.osc113-reset-pointer-fg", "113"],
+    ["extensions.osc114-reset-pointer-bg", "114"],
+    ["extensions.osc117-reset-highlight-bg", "117"],
+    ["extensions.osc119-reset-highlight-fg", "119"],
+  ])("a colour-reset cell the library reports unhandled becomes Unsupported: %s", (id, code) => {
+    const source = reportingSource({ records: [recordsOsc(code)] })
+    const result = probe(id).lib!(source)
     expect(result.observation?.outcome).toBe("unsupported")
     expect(JSON.stringify(result)).toContain(REASON)
+  })
+
+  test("a colour reset outside the four named cells keeps its own path", () => {
+    // @cto names the ledger's colour-reset group (113/114/117/119); 104/110/111/112 belong to another
+    // card group and must not move here even when the same report carries their number.
+    for (const [id, code] of [
+      ["extensions.osc104-reset-palette", "104"],
+      ["extensions.osc110-reset-fg", "110"],
+      ["extensions.osc111-reset-bg", "111"],
+      ["extensions.osc112-reset-cursor", "112"],
+    ] as const) {
+      const source = reportingSource({ records: [recordsOsc(code)] })
+      const result = probe(id).lib!(source)
+      expect(result.observation?.outcome, id).not.toBe("unsupported")
+      expect(JSON.stringify(result), id).not.toContain(REASON)
+    }
+  })
+
+  test("the two umbrella shell cells reach the report arm too", () => {
+    for (const [id, code] of [
+      ["extensions.semantic-prompts", "133"],
+      ["extensions.osc-633-vscode", "633"],
+    ] as const) {
+      const source = reportingSource({ records: [recordsOsc(code)] })
+      const result = probe(id).lib!(source)
+      expect(result.observation?.outcome, id).toBe("unsupported")
+      expect(JSON.stringify(result), id).toContain(REASON)
+    }
   })
 
   test("a shell-mark cell the library reports unhandled becomes Unsupported", () => {
@@ -79,27 +112,27 @@ describe("the unhandled report decides only state cells, and only with both cont
 
   test("a report without the target's code leaves the cell undecided", () => {
     const source = reportingSource({ records: [recordsOsc("111")] })
-    const result = probe("extensions.osc110-reset-fg").lib!(source)
+    const result = probe("extensions.osc113-reset-pointer-fg").lib!(source)
     expect(result.observation?.outcome).not.toBe("unsupported")
     expect(JSON.stringify(result)).not.toContain(REASON)
   })
 
   test("a report that also records the handled control leaves the cell undecided", () => {
-    const source = reportingSource({ records: [recordsOsc("110"), recordsOsc("2")] })
-    const result = probe("extensions.osc110-reset-fg").lib!(source)
+    const source = reportingSource({ records: [recordsOsc("113"), recordsOsc("2")] })
+    const result = probe("extensions.osc113-reset-pointer-fg").lib!(source)
     expect(result.observation?.outcome).not.toBe("unsupported")
     expect(JSON.stringify(result)).not.toContain(REASON)
   })
 
   test("a control whose own reader does not show it applied leaves the cell undecided", () => {
-    const source = reportingSource({ records: [recordsOsc("110")], titleApplies: false })
-    const result = probe("extensions.osc110-reset-fg").lib!(source)
+    const source = reportingSource({ records: [recordsOsc("113")], titleApplies: false })
+    const result = probe("extensions.osc113-reset-pointer-fg").lib!(source)
     expect(result.observation?.outcome).not.toBe("unsupported")
     expect(JSON.stringify(result)).not.toContain(REASON)
   })
 
   test("a missing member keeps today's meaning", () => {
-    const result = probe("extensions.osc110-reset-fg").lib!(inertLibProbeSource())
+    const result = probe("extensions.osc113-reset-pointer-fg").lib!(inertLibProbeSource())
     expect(result.observation?.outcome).not.toBe("unsupported")
     expect(JSON.stringify(result)).not.toContain(REASON)
   })

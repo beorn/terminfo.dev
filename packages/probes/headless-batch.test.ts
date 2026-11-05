@@ -3377,19 +3377,34 @@ test.each([
     // (_core._inputHandler.onColor events; #31735, @cto 863bef67), while the 7 default/stack
     // queries remain silent and request color-readback-review.
     const cellWitnessIds = engine === "xtermjs" ? ["extensions.osc104-reset-palette"] : []
-    expect(batch.observations).toEqual(
-      cellWitnessIds.map((featureId) =>
+    // libvterm's own unhandled report decides the two pointer resets (@si/32362, @cto Case 1); its other
+    // resets stay silent, so they keep asking for review with their raw query.
+    const unhandledReportIds =
+      engine === "libvterm" ? ["extensions.osc113-reset-pointer-fg", "extensions.osc114-reset-pointer-bg"] : []
+    expect(batch.observations).toEqual([
+      ...cellWitnessIds.map((featureId) =>
         expect.objectContaining({ featureId, outcome: "supported", assertionType: "buffer_state" }),
       ),
-    )
-    expect(batch.assertions).toEqual(
-      cellWitnessIds.map((featureId) =>
+      ...unhandledReportIds.map((featureId) =>
+        expect.objectContaining({ featureId, outcome: "unsupported", assertionType: "buffer_state" }),
+      ),
+    ])
+    expect(batch.assertions).toEqual([
+      ...cellWitnessIds.map((featureId) =>
         expect.objectContaining({ featureId, kind: "positive", assertionType: "buffer_state" }),
       ),
-    )
+      ...unhandledReportIds.map((featureId) =>
+        expect.objectContaining({ featureId, kind: "negative", assertionType: "buffer_state" }),
+      ),
+    ])
     for (const result of batch.results) {
       if (cellWitnessIds.includes(result.featureId)) {
         expect(result.status, result.featureId).toBe("supported")
+        expect(result.criterionBranch, result.featureId).toBeUndefined()
+        continue
+      }
+      if (unhandledReportIds.includes(result.featureId)) {
+        expect(result.status, result.featureId).toBe("unsupported")
         expect(result.criterionBranch, result.featureId).toBeUndefined()
         continue
       }

@@ -544,82 +544,78 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
       { id: string; status: "probe-invalid"; reason: string },
     ],
   })
+  const body = async (ctx: TermProbeSource): Promise<ProbeCallbackResult> => {
+    const initialRead = await read(ctx)
+    const initial = initialRead.colour
+    if (!initial) {
+      if (initialRead.reply.reason === "sentinel") {
+        return {
+          pass: false,
+          response: JSON.stringify({ query: querySeq, initialSentinel: initialRead.reply }),
+          tests: [
+            {
+              id: "criterion",
+              status: "probe-todo",
+              reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
+            },
+          ],
+        }
+      }
+      return inconclusive(
+        `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
+        initialRead.reply,
+      )
+    }
+    // A set that the terminal reports back as the initial colour would let both readings agree
+    // while the reset is ignored, so the changed state has to be distinct from the initial one.
+    const known = HIGHLIGHT_TEST_COLOURS.find((candidate) => candidate !== initial.rgb)
+    if (!known) {
+      return inconclusive(
+        `${id}: every candidate test colour equals the initial ${initial.rgb}, so no observable change is available to grade a reset against`,
+      )
+    }
+    try {
+      ctx.write(`\x1b]${setCode};rgb:${known}\x07`)
+      const appliedRead = await read(ctx)
+      const applied = appliedRead.colour
+      if (!applied) {
+        return inconclusive(
+          `${id}: the known colour was not read back after OSC ${setCode}; a reset cannot be graded against a set that did not apply`,
+          appliedRead.reply,
+        )
+      }
+      if (applied.rgb !== known) {
+        return inconclusive(
+          `${id}: OSC ${setCode} reported ${applied.rgb} after setting ${known}, so the set did not take and a reset means nothing`,
+        )
+      }
+      ctx.write(`\x1b]${resetCode}\x07`)
+      const resetRead = await read(ctx)
+      const afterReset = resetRead.colour
+      if (!afterReset) {
+        return inconclusive(`${id}: OSC ${setCode} did not answer after OSC ${resetCode}`, resetRead.reply)
+      }
+      const ok = afterReset.rgb === initial.rgb
+      return {
+        pass: ok,
+        response: JSON.stringify({ initial: initial.raw, set: applied.raw, afterReset: afterReset.raw }),
+        observation: { outcome: ok ? "supported" : "unsupported", assertionType: "query_reply" },
+        assertions: [
+          {
+            assertionType: "query_reply" as const,
+            kind: (ok ? "positive" : "negative") as "positive" | "negative",
+            expected: `${id}: OSC ${setCode} reports the initial ${initial.rgb} after OSC ${resetCode}`,
+            observed: afterReset.raw,
+          },
+        ],
+      }
+    } finally {
+      // Restore what the run found; a probe never leaves a known test colour behind.
+      ctx.write(`\x1b]${setCode};rgb:${initial.rgb}\x07`)
+    }
+  }
   return {
-    ...probe(
-      id,
-      colorResetProbe(id, setCode, resetCode),
-      async (ctx): Promise<ProbeCallbackResult> => {
-        const initialRead = await read(ctx)
-        const initial = initialRead.colour
-        if (!initial) {
-          if (initialRead.reply.reason === "sentinel") {
-            return {
-              pass: false,
-              response: JSON.stringify({ query: querySeq, initialSentinel: initialRead.reply }),
-              tests: [
-                {
-                  id: "criterion",
-                  status: "probe-todo",
-                  reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
-                },
-              ],
-            }
-          }
-          return inconclusive(
-            `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
-            initialRead.reply,
-          )
-        }
-        // A set that the terminal reports back as the initial colour would let both readings agree
-        // while the reset is ignored, so the changed state has to be distinct from the initial one.
-        const known = HIGHLIGHT_TEST_COLOURS.find((candidate) => candidate !== initial.rgb)
-        if (!known) {
-          return inconclusive(
-            `${id}: every candidate test colour equals the initial ${initial.rgb}, so no observable change is available to grade a reset against`,
-          )
-        }
-        try {
-          ctx.write(`\x1b]${setCode};rgb:${known}\x07`)
-          const appliedRead = await read(ctx)
-          const applied = appliedRead.colour
-          if (!applied) {
-            return inconclusive(
-              `${id}: the known colour was not read back after OSC ${setCode}; a reset cannot be graded against a set that did not apply`,
-              appliedRead.reply,
-            )
-          }
-          if (applied.rgb !== known) {
-            return inconclusive(
-              `${id}: OSC ${setCode} reported ${applied.rgb} after setting ${known}, so the set did not take and a reset means nothing`,
-            )
-          }
-          ctx.write(`\x1b]${resetCode}\x07`)
-          const resetRead = await read(ctx)
-          const afterReset = resetRead.colour
-          if (!afterReset) {
-            return inconclusive(`${id}: OSC ${setCode} did not answer after OSC ${resetCode}`, resetRead.reply)
-          }
-          const ok = afterReset.rgb === initial.rgb
-          return {
-            pass: ok,
-            response: JSON.stringify({ initial: initial.raw, set: applied.raw, afterReset: afterReset.raw }),
-            observation: { outcome: ok ? "supported" : "unsupported", assertionType: "query_reply" },
-            assertions: [
-              {
-                assertionType: "query_reply" as const,
-                kind: (ok ? "positive" : "negative") as "positive" | "negative",
-                expected: `${id}: OSC ${setCode} reports the initial ${initial.rgb} after OSC ${resetCode}`,
-                observed: afterReset.raw,
-              },
-            ],
-          }
-        } finally {
-          // Restore what the run found; a probe never leaves a known test colour behind.
-          ctx.write(`\x1b]${setCode};rgb:${initial.rgb}\x07`)
-        }
-      },
-      "query_reply",
-    ),
+    ...probe(id, colorResetProbe(id, setCode, resetCode), body, "query_reply"),
     // The callback mutates the highlight slot, so the collector must hold a disposable receipt:
     // the same classification the OSC 10-14 reset probes carry.
     termNeedsDisposable: true,
@@ -1042,19 +1038,10 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
   }
   return (ctx) => {
     const result = body(ctx)
-    if (reportsDecidedOutcome(result)) return result
+    // Case 1 names exactly the ledger's four colour-reset cells; every other reset keeps its own body.
+    if (!UNHANDLED_REPORT_COLOUR_RESETS.includes(String(resetCode))) return result
     const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
-    return (
-      unhandledSequenceVerdict(
-        ctx,
-        { feed: reset, code: { kind: "osc", code: String(resetCode) } },
-        {
-          feed: `\x1b]2;${UNHANDLED_OSC_CONTROL_TITLE}\x07`,
-          applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
-        },
-        { query, reset, ...(result.response !== undefined && { body: result.response }) },
-      ) ?? result
-    )
+    return unhandledOscReportResult(ctx, reset, result)
   }
 }
 
@@ -1695,19 +1682,23 @@ function promptMarkBody(
 }
 
 /**
- * Case 1 consumer, OSC arm (@cto 2026-11-05 07:25 appendix, conditions 3 and 5): the library's own
- * unhandled report decides a shell mark Unsupported only where the body left the cell undecided, and
- * only when the same run shows a handled OSC 2 adding no report entry while the title reader reports
- * it applied, then the target adding exactly one entry carrying its number. The colour reset arm
- * reuses this reader through the same control.
+ * The Case 1 colour-reset cells (@cto 2026-11-05 07:25 appendix: "up to 8 colour reset (4 each)"), the
+ * ledger's `colour reset` group. Every other reset code keeps its own body's outcome.
  */
-function promptMarkResult(
+const UNHANDLED_REPORT_COLOUR_RESETS: readonly string[] = ["113", "114", "117", "119"]
+
+/**
+ * Case 1 consumer, OSC arm (@cto 2026-11-05 07:25 appendix, conditions 3 and 5): the library's own
+ * unhandled report decides a state cell Unsupported only where the body left the cell undecided, and
+ * only when the same run shows a handled OSC 2 adding no report entry while the title reader reports
+ * it applied, then the target adding exactly one entry carrying its number. A decided outcome is
+ * returned untouched, and a source without the member keeps today's exact path.
+ */
+function unhandledOscReportResult(
   ctx: LibProbeSource,
   sequence: string,
-  noObservable: string,
-  sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
+  result: ProbeCallbackResult,
 ): ProbeCallbackResult {
-  const result = promptMarkBody(ctx, sequence, noObservable, sourceReview)
   if (reportsDecidedOutcome(result)) return result
   const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
   if (code === undefined) return result
@@ -1722,6 +1713,16 @@ function promptMarkResult(
       { sequence, ...(result.response !== undefined && { body: result.response }) },
     ) ?? result
   )
+}
+
+/** The OSC 133 / 633 shell marks, through the report arm above. */
+function promptMarkResult(
+  ctx: LibProbeSource,
+  sequence: string,
+  noObservable: string,
+  sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
+): ProbeCallbackResult {
+  return unhandledOscReportResult(ctx, sequence, promptMarkBody(ctx, sequence, noObservable, sourceReview))
 }
 
 /**
@@ -4714,14 +4715,15 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.semantic-prompts",
-      () => {
-        const note = "no full-lifecycle observable on this reader"
-        return {
+      // Case 1's twelfth shell cell: the umbrella lifecycle read falls to the library's own report.
+      (ctx) =>
+        unhandledOscReportResult(ctx, "\x1b]133;A\x07", {
           pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
-        }
-      },
+          note: "no full-lifecycle observable on this reader",
+          tests: [
+            { id: "criterion", status: "probe-todo" as const, reason: "no full-lifecycle observable on this reader" },
+          ],
+        }),
       () => {
         const note = "No shell prompt integration metadata or behavior readback for OSC 133"
         return Promise.resolve<ProbeCallbackResult>({
@@ -5012,14 +5014,15 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc-633-vscode",
-      () => {
-        const note = "no full-lifecycle observable on this reader"
-        return {
+      // Case 1's twelfth shell cell on the 633 side: the umbrella read falls to the library's own report.
+      (ctx) =>
+        unhandledOscReportResult(ctx, "\x1b]633;A\x07", {
           pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
-        }
-      },
+          note: "no full-lifecycle observable on this reader",
+          tests: [
+            { id: "criterion", status: "probe-todo" as const, reason: "no full-lifecycle observable on this reader" },
+          ],
+        }),
       () => {
         const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
         return Promise.resolve<ProbeCallbackResult>({
