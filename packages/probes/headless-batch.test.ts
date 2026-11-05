@@ -1485,6 +1485,35 @@ test.for(["semantic-marks", "sixel-storage"] as const)(
   },
 )
 
+// @failure The native WezTerm mouse bridge is not reached by the registered callbacks, or an unbound path is graded.
+// @level l5
+// @consumer Real native WezTerm through the production collector's per-probe backend/source boundary.
+test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide five cells and retain two unbound paths", () => {
+  for (const [id, outcome] of [
+    ["input.xtest-click", "supported"],
+    ["input.xtest-wheel", "supported"],
+    ["input.button-event-mouse", "supported"],
+    ["input.x10-mouse", "unsupported"],
+    ["input.urxvt-mouse", "unsupported"],
+    ["input.pixel-mouse", null],
+    ["input.kitty-click-events", null],
+  ] as const) {
+    // collectBatch likewise constructs and initializes one fresh backend inside its per-probe loop.
+    const value = createWeztermBackend({ cols: 80, rows: 24 })
+    try {
+      const result = registryDefinitions([id])[0]!.lib!(createLibProbeSource(value, undefined, undefined, undefined))
+      if (outcome === null) {
+        expect(result.notTested, id).toBeDefined()
+        expect(result.observation, id).toBeUndefined()
+      } else {
+        expect(result.observation, id).toMatchObject({ outcome, assertionType: "input_bytes" })
+      }
+    } finally {
+      value.destroy()
+    }
+  }
+})
+
 const VTERM_MARK_CASES = [
   ["extensions.osc133-a", 133, "prompt"],
   ["extensions.osc133-b", 133, "command"],

@@ -966,6 +966,11 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
       storedClickEvents: false,
     })
   }
+  if (ctx.backendName === "wezterm") {
+    return notTestedResult("WezTerm mouse_event does not bind a prompt click_events path", {
+      storedClickEvents: false,
+    })
+  }
   if (ctx.backendName === "vterm") {
     return notTestedResult(NO_SAME_PATH_CONTROL, { storedClickEvents: false })
   }
