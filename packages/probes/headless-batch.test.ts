@@ -2646,7 +2646,10 @@ test("separates mode readback from headless OS-input review without fabricating 
       continue
     }
     expect(result.status, result.featureId).toBe("probe-todo")
-    const expected = { reason: /OS-level XTEST/, raw: { input: false } }
+    const paste = result.featureId === "extensions.clipboard-paste"
+    const expected = paste
+      ? { reason: /paste-encoding extension unavailable/, raw: { backend: "xterm", encodePaste: false } }
+      : { reason: /OS-level XTEST/, raw: { input: false } }
     expect(result.reason, result.featureId).toMatch(expected.reason)
     expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
     expect(JSON.parse(batch.rawReplies[result.featureId]!), result.featureId).toMatchObject(expected.raw)
@@ -2656,7 +2659,7 @@ test("separates mode readback from headless OS-input review without fabricating 
       noObservable: expect.stringMatching(expected.reason),
       rawReplyRef: result.featureId,
     })
-    expect(result.criterionBranch, result.featureId).toBe("os-input-review")
+    expect(result.criterionBranch, result.featureId).toBe(paste ? "paste-encoding" : "os-input-review")
     expect(result.tests, result.featureId).toContainEqual(
       expect.objectContaining({
         id: "review",
@@ -4854,3 +4857,26 @@ test.skipIf(!ghosttyNativeAvailable)(
     }
   },
 )
+
+test("paste-encoding forwarding requires declaration and function, binds the backend, and fails loudly on a broken declaration", async () => {
+  const value = await createXtermBackend()
+  value.init({ cols: 80, rows: 24 })
+  const native = vi.fn(function (this: typeof value, text: string) {
+    expect(this).toBe(value)
+    return new TextEncoder().encode(text)
+  })
+  Object.assign(value, { encodePaste: native })
+  try {
+    expect(createLibProbeSource(value, undefined, undefined, undefined).encodePaste).toBeUndefined()
+    value.capabilities.extensions.add("paste-encoding")
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    expect(source.encodePaste?.("native-paste")).toEqual(new TextEncoder().encode("native-paste"))
+    expect(native).toHaveBeenCalledExactlyOnceWith("native-paste")
+    Object.assign(value, { encodePaste: undefined })
+    expect(() => createLibProbeSource(value, undefined, undefined, undefined)).toThrow(
+      /declares capability extension "paste-encoding" without an encodePaste function/,
+    )
+  } finally {
+    value.destroy()
+  }
+})

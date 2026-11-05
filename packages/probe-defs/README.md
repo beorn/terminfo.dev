@@ -380,10 +380,19 @@ above the requested top row. The insert/replace query criterion requires set the
 The twelve real-surface input term criteria retain genuine input measurements. Only an absent
 `input` or `readInput` facility selects the named PROBE TODO `real-surface input injection (XTEST/CGEvent)`.
 The seven host-input library rows (`input.xtest-key`, `input.xtest-click`, `input.xtest-wheel`,
-`input.button-event-mouse`, `input.pixel-mouse`, `input.urxvt-mouse`, `input.x10-mouse`) and
-`extensions.clipboard-paste` retain `os-input-review`, with reason
+`input.button-event-mouse`, `input.pixel-mouse`, `input.urxvt-mouse`, `input.x10-mouse`)
+retain `os-input-review`, with reason
 "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
-This remains a review PROBE TODO; there is no standing class rule, callback support conclusion or change to earlier captures.
+These remain review PROBE TODO rows; earlier captures stay unchanged.
+
+`extensions.clipboard-paste` uses the same backend instance’s declared `paste-encoding`
+extension. Its native encoder returns actual input bytes without consuming pending replies or emitting
+paste bytes through response callbacks. The probe samples the incoming bracketed-paste behavior,
+checks two fresh nonces with mode 2004 reset and two with it set, then restores and verifies the
+incoming behavior. Exact raw payloads with mode reset qualify the control. Both framed payloads
+with mode set establish Supported; both raw payloads establish Unsupported. Silent, malformed or
+inconsistent bytes stay inconclusive. Captures retain the bytes and ordered calls. An absent encoder
+stays named PROBE TODO; it does not declare Untestable. The app arm keeps its existing OS-input recipe.
 
 Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video 5, synchronized output 2026,
 DECSCLM 4 and color-scheme reporting 2031. Snapshot Ps 1/3 is Supported without mutation; Ps 0/4 is
