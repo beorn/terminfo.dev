@@ -318,6 +318,25 @@ export interface CollectionPass {
     receiptSha256: string
     remoteOutput: string
   }
+  hosted?: Array<{
+    workflow: string
+    ref: string
+    sourceRevision: string
+    checkedAt: string
+    activeRuns: Array<{ id: number; status: string; headSha: string }>
+    runId?: string
+    attempt?: number
+    jobs?: Array<{
+      id: number
+      name: string
+      status: string
+      conclusion: string | null
+      executionSeconds: number | null
+      unavailable?: string
+    }>
+    receiptPath?: string
+    unavailable?: string
+  }>
   contexts: Array<{
     context: CollectionContext
     status: "not-started" | "classified" | "failed"
@@ -455,6 +474,7 @@ export async function collectPass(
   ownedApp: OwnedAppTransportOptions = { runner: "local" },
   selection?: { contexts?: readonly string[]; ids?: readonly string[] },
   sourceRef?: string,
+  policy?: { readonly cohort: true },
 ): Promise<CollectionPass> {
   const resolvedIds = selection?.ids === undefined ? undefined : resolveProbeIds(selection.ids)
   if (resolvedIds?.result === "invalid") {
@@ -519,6 +539,7 @@ export async function collectPass(
       },
     }),
     contexts: [],
+    ...(policy?.cohort && { hosted: [] }),
     errors: [],
     complete: false,
   }
@@ -621,6 +642,7 @@ export async function collectPass(
     drafts,
     selection ? (probeIds ?? snapshot.probes.term) : undefined,
     sourceRef,
+    pass.hosted,
   )
   for (const context of census) {
     const row: CollectionPass["contexts"][number] = { context, status: "not-started" }
@@ -693,6 +715,10 @@ export async function collectPass(
         const artifact = hosted.get(coverageKey(context.kind, context.id, context.os))
         if (!artifact) throw new Error("hosted dispatch lost its expected context result")
         row.directory = artifact.directory
+        if (artifact.reason) {
+          row.reason = artifact.reason
+          continue
+        }
         if (artifact.path) row.rawRun = artifact.path
         if (artifact.error) throw new Error(artifact.error)
         if (!artifact.path) throw new Error(`hosted artifact has no raw run in ${artifact.directory}`)
@@ -874,8 +900,9 @@ function collectHostedArtifacts(
   drafts: ReadonlyMap<string, { draft: RunDraft; path: string }>,
   probeIds?: readonly string[],
   sourceRef?: string,
-): Map<string, { directory: string; path?: string; error?: string }> {
-  const results = new Map<string, { directory: string; path?: string; error?: string }>()
+  hosted?: CollectionPass["hosted"],
+): Map<string, { directory: string; path?: string; error?: string; reason?: string }> {
+  const results = new Map<string, { directory: string; path?: string; error?: string; reason?: string }>()
   if (!census.some((context) => context.route === "hosted-workflow")) return results
   const root = join(directory, "hosted")
   const logs = (directory: string, step: string) => ({
@@ -942,14 +969,70 @@ function collectHostedArtifacts(
     }
     return results
   }
-  const dispatched: Array<{ os: string; contexts: CollectionContext[]; output: string; runId: string }> = []
+  const dispatched: Array<{
+    os: string
+    contexts: CollectionContext[]
+    output: string
+    runId: string
+    facts?: NonNullable<CollectionPass["hosted"]>[number]
+  }> = []
   for (const os of ["macos", "windows"] as const) {
     const contexts = census.filter((row) => row.route === "hosted-workflow" && row.os === os)
     if (contexts.length === 0) continue
     const output = join(root, os)
+    const workflow = `${os}-measurement`
+    const facts: NonNullable<CollectionPass["hosted"]>[number] | undefined = hosted && {
+      workflow,
+      ref: dispatchRef,
+      sourceRevision,
+      checkedAt: new Date().toISOString(),
+      activeRuns: [],
+    }
+    if (facts) hosted!.push(facts)
     try {
       mkdirSync(output, { recursive: true })
-      const workflow = `${os}-measurement`
+      if (facts) {
+        for (const status of ["queued", "in_progress", "requested", "waiting", "pending"]) {
+          const receipt = logs(output, `active-${status}`)
+          const pages = parseJsonStrict(
+            receipt.stdout,
+            runChild(
+              [
+                "gh",
+                "api",
+                "--paginate",
+                "--slurp",
+                `repos/beorn/terminfo.dev/actions/workflows/${workflow}.yml/runs?branch=${encodeURIComponent(branch)}&status=${status}&per_page=100`,
+              ],
+              `${workflow} active ${status} on ${dispatchRef}`,
+              receipt,
+            ),
+          ) as Array<{ workflow_runs?: Array<{ id?: unknown; status?: unknown; head_sha?: unknown }> }>
+          if (!Array.isArray(pages) || pages.length === 0)
+            throw new Error(`${receipt.stdout}: missing active-run pages`)
+          for (const page of pages) {
+            if (!Array.isArray(page?.workflow_runs)) throw new Error(`${receipt.stdout}: missing workflow_runs`)
+            for (const active of page.workflow_runs) {
+              if (
+                !Number.isSafeInteger(active?.id) ||
+                Number(active.id) <= 0 ||
+                active.status !== status ||
+                typeof active.head_sha !== "string" ||
+                !/^[a-f0-9]{40}$/.test(active.head_sha)
+              ) {
+                throw new Error(`${receipt.stdout}: malformed active-run identity for ${workflow} on ${dispatchRef}`)
+              }
+              facts.activeRuns.push({ id: active.id as number, status, headSha: active.head_sha })
+            }
+          }
+        }
+        if (facts.activeRuns.length > 0) {
+          const reason = `Skipped active ${workflow} on ${dispatchRef}: runs ${facts.activeRuns.map((run) => `${run.id} (${run.status})`).join(", ")}; checked ${facts.checkedAt}`
+          for (const context of contexts)
+            results.set(coverageKey(context.kind, context.id, context.os), { directory: output, reason })
+          continue
+        }
+      }
       const dispatchLogs = logs(output, "dispatch")
       const response =
         runChild(
@@ -977,6 +1060,7 @@ function collectHostedArtifacts(
               include: hostedAppRows(os).filter((row) => contexts.some((context) => context.id === row.id)),
             })}`,
             ...(probeIds === undefined ? [] : ["--field", `probe_ids=${JSON.stringify(probeIds)}`]),
+            ...(facts && os === "macos" ? ["--field", "cohort=true"] : []),
           ],
           workflow,
           dispatchLogs,
@@ -1002,7 +1086,9 @@ function collectHostedArtifacts(
             "--repo",
             "beorn/terminfo.dev",
             "--json",
-            "headSha,headBranch,event,workflowName",
+            facts
+              ? "headSha,headBranch,event,workflowName,databaseId,attempt"
+              : "headSha,headBranch,event,workflowName",
           ],
           `${workflow} source verification`,
           logs(output, "verify"),
@@ -1012,20 +1098,28 @@ function collectHostedArtifacts(
         headBranch?: unknown
         event?: unknown
         workflowName?: unknown
+        databaseId?: unknown
+        attempt?: unknown
       }
       if (
         run?.headSha !== sourceRevision ||
         run.headBranch !== branch ||
         run.event !== "workflow_dispatch" ||
-        run.workflowName !== workflow
+        run.workflowName !== workflow ||
+        (facts && (String(run.databaseId) !== runId || !Number.isSafeInteger(run.attempt) || Number(run.attempt) < 1))
       ) {
         throw new Error(
           `${workflow}: source revision or workflow identity differs from ${branch}@${sourceRevision}; run ${runId}`,
         )
       }
       writeFileSync(join(output, "workflow.json"), `${JSON.stringify({ runId, ...run }, null, 2)}\n`, { flag: "wx" })
-      dispatched.push({ os, contexts, output, runId })
+      if (facts) {
+        facts.runId = runId
+        facts.attempt = run.attempt as number
+      }
+      dispatched.push({ os, contexts, output, runId, ...(facts && { facts }) })
     } catch (error) {
+      if (facts) facts.unavailable = error instanceof Error ? error.message : String(error)
       for (const context of contexts) {
         results.set(coverageKey(context.kind, context.id, context.os), {
           directory: output,
@@ -1035,7 +1129,7 @@ function collectHostedArtifacts(
     }
   }
   // Both independent hosted platforms start before a blocking watch; local processes stay serial.
-  for (const { os, contexts, output, runId } of dispatched) {
+  for (const { os, contexts, output, runId, facts } of dispatched) {
     const workflow = `${os}-measurement`
     try {
       try {
@@ -1046,6 +1140,107 @@ function collectHostedArtifacts(
         )
       } catch (error) {
         errors.push(error instanceof Error ? error.message : String(error))
+      }
+      if (facts) {
+        const receipt = logs(output, "jobs")
+        facts.receiptPath = receipt.stdout
+        try {
+          const run = parseJsonStrict(
+            receipt.stdout,
+            runChild(
+              [
+                "gh",
+                "run",
+                "view",
+                runId,
+                "--repo",
+                "beorn/terminfo.dev",
+                "--attempt",
+                String(facts.attempt),
+                "--json",
+                "databaseId,attempt,headSha,headBranch,event,workflowName,jobs",
+              ],
+              `${workflow} job execution intervals run ${runId} attempt ${facts.attempt}`,
+              receipt,
+            ),
+          ) as {
+            databaseId?: unknown
+            attempt?: unknown
+            headSha?: unknown
+            headBranch?: unknown
+            event?: unknown
+            workflowName?: unknown
+            jobs?: Array<{
+              databaseId?: unknown
+              name?: unknown
+              status?: unknown
+              conclusion?: unknown
+              startedAt?: unknown
+              completedAt?: unknown
+            }>
+          }
+          if (
+            String(run?.databaseId) !== runId ||
+            run.attempt !== facts.attempt ||
+            run.headSha !== sourceRevision ||
+            run.headBranch !== branch ||
+            run.event !== "workflow_dispatch" ||
+            run.workflowName !== workflow
+          )
+            throw new Error(
+              `${receipt.stdout}: ${workflow} run ${runId} attempt ${facts.attempt} source/ref/event/workflow/attempt identity differs`,
+            )
+          if (!Array.isArray(run.jobs) || run.jobs.length === 0)
+            throw new Error(`${receipt.stdout}: no jobs for run ${runId} attempt ${facts.attempt}`)
+          facts.jobs = run.jobs.map((job) => {
+            if (
+              !Number.isSafeInteger(job?.databaseId) ||
+              Number(job.databaseId) <= 0 ||
+              typeof job.name !== "string" ||
+              typeof job.status !== "string" ||
+              (job.conclusion !== null && typeof job.conclusion !== "string")
+            ) {
+              throw new Error(`${receipt.stdout}: malformed job identity for run ${runId} attempt ${facts.attempt}`)
+            }
+            const endpoints = [job.startedAt, job.completedAt].map((value) => {
+              if (
+                typeof value !== "string" ||
+                !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value) ||
+                value.startsWith("0001-")
+              )
+                return NaN
+              const milliseconds = Date.parse(value)
+              const normalized = value.replace(
+                /(?:\.(\d{1,3}))?Z$/,
+                (_match, fraction: string | undefined) => `.${(fraction ?? "").padEnd(3, "0")}Z`,
+              )
+              return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === normalized
+                ? milliseconds
+                : NaN
+            })
+            const [started, completed] = endpoints as [number, number]
+            const unavailable =
+              job.conclusion === "skipped"
+                ? "Skipped job has no execution interval"
+                : job.status !== "completed" ||
+                    !Number.isFinite(started) ||
+                    !Number.isFinite(completed) ||
+                    completed < started
+                  ? "Missing or malformed completed job execution endpoints"
+                  : undefined
+            return {
+              id: job.databaseId as number,
+              name: job.name,
+              status: job.status,
+              conclusion: job.conclusion as string | null,
+              executionSeconds: unavailable ? null : (completed - started) / 1000,
+              ...(unavailable && { unavailable: `${unavailable}; job ${job.databaseId}; ${receipt.stdout}` }),
+            }
+          })
+        } catch (error) {
+          facts.unavailable = `${workflow} job timing unavailable for run ${runId} attempt ${facts.attempt}: ${error instanceof Error ? error.message : String(error)}; stdout ${receipt.stdout}; stderr ${receipt.stderr}`
+          errors.push(facts.unavailable)
+        }
       }
       const artifacts = join(output, "artifacts")
       mkdirSync(artifacts)
@@ -1061,7 +1256,11 @@ function collectHostedArtifacts(
         results.set(coverageKey(context.kind, context.id, context.os), result)
         try {
           const prefix = `${os === "macos" ? "macos" : "win32"}-${context.id}-${runId}-`
-          const matches = entries.filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
+          const matches = entries.filter(
+            (entry) =>
+              entry.isDirectory() &&
+              (facts ? entry.name === `${prefix}${facts.attempt}` : entry.name.startsWith(prefix)),
+          )
           if (matches.length !== 1 || !matches[0]) {
             throw new Error(`expected one ${prefix} artifact in ${artifacts}; found ${matches.length}`)
           }
