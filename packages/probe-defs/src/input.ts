@@ -190,7 +190,11 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
   const before = logical(off[target].text),
     active = logical(on[target].text),
     after = logical(reset[target].text)
-  if (!on[target].bytes.length || before === active || before !== after) {
+  const discriminator = (["ctrlA", "ctrlI", "i"] as const).some(
+    (name) =>
+      logical(off[name].text) !== logical(on[name].text) && logical(off[name].text) === logical(reset[name].text),
+  )
+  if (!on[target].bytes.length || !discriminator || before !== after) {
     return notTestedResult("Native MOK target unchanged or reset discriminator unavailable", observed)
   }
   const expected = `Native modifyOtherKeys ${level} codepoint 105 modifier ${level === 2 ? 5 : 1} after same-path controls`
@@ -203,9 +207,9 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
     assertions: [
       {
         assertionType: "input_bytes" as const,
-        kind: "positive" as const,
+        kind: result.observation.outcome === "supported" ? ("positive" as const) : ("negative" as const),
         action: "native-key-controls:off/on/reset",
-        expected: "plain a, Ctrl+a and ArrowUp encoded on the same native path in every phase",
+        expected: "criterion after plain a, Ctrl+a and ArrowUp controls on the same native path in every phase",
         observed: JSON.stringify(observed),
       },
       ...(result.assertions ?? []),

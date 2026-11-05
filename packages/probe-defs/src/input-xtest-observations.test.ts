@@ -21,7 +21,16 @@ test.each([
   ["input.modify-other-keys-3", 3],
 ] as const)("%s measures native off/on/reset and rejects vacuous controls", (id, level) => {
   for (const form of ["tilde", "u"] as const) {
-    for (const behavior of ["working", "disabled", "noop", "broken", "constant", "equivalent"] as const) {
+    for (const behavior of [
+      "working",
+      "disabled",
+      "noop",
+      "broken",
+      "constant",
+      "equivalent",
+      "wrong",
+      "control-change",
+    ] as const) {
       const feeds: string[] = []
       let mode = 0
       const ctx: LibProbeSource = {
@@ -35,21 +44,41 @@ test.each([
         encodeKey(event) {
           if (behavior === "noop" || (behavior === "broken" && event.key === "a")) return new Uint8Array()
           let bytes = event.key === "ArrowUp" ? "\x1b[A" : event.ctrl ? "\x01" : event.key
+          if (behavior === "control-change" && event.key === "a" && event.ctrl && mode === level)
+            bytes = "\x1b[27;5;97~"
           if (event.key === "i") {
             bytes = event.ctrl ? "\t" : "i"
-            if ((behavior === "working" && mode === level) || behavior === "constant" || behavior === "equivalent") {
+            if (
+              ((behavior === "working" || behavior === "wrong") && mode === level) ||
+              behavior === "constant" ||
+              behavior === "equivalent" ||
+              behavior === "control-change"
+            ) {
               const modifier = event.ctrl ? 5 : 1
               bytes = form === "tilde" ? `\x1b[27;${modifier};105~` : `\x1b[105;${modifier}u`
               if (behavior === "equivalent") {
                 bytes = mode === level ? `\x1b[27;${modifier};105~` : `\x1b[105;${modifier}u`
               }
+              if (behavior === "wrong") bytes = `\x1b[106;${modifier}u`
             }
           }
           return new TextEncoder().encode(bytes)
         },
       }
       const result = probe(id).lib!(ctx)
-      expect(result.observation?.outcome, `${form}/${behavior}`).toBe(behavior === "working" ? "supported" : undefined)
+      const outcome =
+        behavior === "working" || behavior === "control-change"
+          ? "supported"
+          : behavior === "wrong"
+            ? "unsupported"
+            : undefined
+      expect(result.observation?.outcome, `${form}/${behavior}`).toBe(outcome)
+      if (outcome)
+        expect(
+          result.assertions?.every(
+            (assertion) => assertion.kind === (outcome === "supported" ? "positive" : "negative"),
+          ),
+        ).toBe(true)
       expect(feeds.at(-1)).toBe("\x1b[>4;0m")
       if (behavior === "working") {
         expect(probe(id).libAssertionType).toBe("input_bytes")
@@ -62,7 +91,7 @@ test.each([
         expect(observed.reset.ctrlI.bytes).toEqual([9])
         expect(observed.on.ctrlI.event).toEqual({ key: "i", ctrl: true })
         expect(result.assertions?.some((entry) => entry.kind === "positive")).toBe(true)
-      } else {
+      } else if (!outcome) {
         expect(result.notTested?.noObservable).toMatch(/control|unchanged|discriminator/)
       }
     }

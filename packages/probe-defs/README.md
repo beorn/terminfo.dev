@@ -403,7 +403,7 @@ The two native modifyOtherKeys callbacks sample plain a, Ctrl+a, Ctrl+i, bare i 
 with the mode reset, requested, then reset again. They retain event fields, exact bytes and a
 separate recovery CPR. Same-path controls must pass in every phase. The target is extended
 Ctrl+i for level 2 and extended bare i for level 3; both CSI-u and CSI-27 forms are compared
-by logical codepoint and modifier. Unchanged output, silence or failed reset/control evidence
+by logical codepoint and modifier. No logical mode transition in the fixed key list, target silence or failed reset/control evidence
 remains a named PROBE TODO. Native exceptions propagate after the reset command in `finally`.
 
 `extensions.clipboard-paste` uses the same backend instance’s declared `paste-encoding`
