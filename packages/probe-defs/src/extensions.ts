@@ -13,7 +13,6 @@ import type {
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   HEADLESS_OBSERVABLE_REVIEW,
-  declaredUntestableResult,
   SEMANTIC_PROMPT_SOURCE_REVIEW,
   decrpmPs,
   decrpmReplyPattern,
