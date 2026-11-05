@@ -1535,12 +1535,12 @@ test.skipIf(!isKittyAvailable())(
   },
 )
 
-// @failure A command-end-only native reader misreads A/C or accepts cached/wrong raw status as a new D event.
+// @failure A native semantic reader loses fresh positioned starts or accepts cached/wrong raw status as a new D event.
 // @level l1
 // @consumer Registered OSC133D and start callbacks through the actual Kitty collector source.
 // Existing private callback tests cannot observe the public reader binding or the deciding callback route.
 test.skipIf(!isKittyAvailable())(
-  "Kitty command-end reader preserves start review and witnesses fresh raw D statuses",
+  "Kitty semantic readers witness fresh starts and raw command-end statuses",
   () => {
     const value = createKittyBackend({ cols: 80, rows: 24 })
     try {
@@ -1551,10 +1551,15 @@ test.skipIf(!isKittyAvailable())(
       const observed = JSON.parse(result.response!) as { first: unknown[]; second: unknown[] }
       expect(observed.first.at(-1)).toEqual({ type: "command-end", rawStatus: "0" })
       expect(observed.second.at(-1)).toEqual({ type: "command-end", rawStatus: "17" })
-      for (const id of ["extensions.osc133-a", "extensions.osc133-c"]) {
+      for (const [id, type] of [
+        ["extensions.osc133-a", "prompt"],
+        ["extensions.osc133-c", "output"],
+      ] as const) {
         const start = registryDefinitions([id])[0]!.lib!(source)
-        expect(start.criterionBranch, id).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
-        expect(start.observation, id).toBeUndefined()
+        expect(start.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+        const marks = JSON.parse(start.response!) as { first: unknown[]; second: unknown[] }
+        expect(marks.first.at(-1), id).toEqual({ type, startRow: 0, startCol: 0 })
+        expect(marks.second.at(-1), id).toEqual({ type, startRow: 1, startCol: 2 })
       }
       // The umbrella callbacks stay PROBE TODO until a full-lifecycle reader exists (b5fecd017, #32247).
       for (const id of ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
@@ -1584,8 +1589,13 @@ test.skipIf(!isKittyAvailable())(
       expect(malformedControl.assertions).toBeUndefined()
       value.capabilities.extensions.delete("semantic-command-end")
       const undeclared = createLibProbeSource(value, undefined, undefined, undefined)
-      expect(undeclared.getSemanticMarks).toBeUndefined()
+      expect(undeclared.getSemanticMarks).toBeTypeOf("function")
       expect(definition.lib!(undeclared).criterionBranch).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
+      value.capabilities.extensions.delete("semantic-marks")
+      const noReaders = createLibProbeSource(value, undefined, undefined, undefined)
+      expect(noReaders.getSemanticMarks).toBeUndefined()
+      expect(definition.lib!(noReaders).criterionBranch).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
+      value.capabilities.extensions.add("semantic-marks")
       value.capabilities.extensions.add("semantic-command-end")
       Object.defineProperty(value, "getSemanticMarks", { value: undefined })
       const missing = definition.lib!(createLibProbeSource(value, undefined, undefined, undefined))
