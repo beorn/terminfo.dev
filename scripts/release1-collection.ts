@@ -988,7 +988,7 @@ function collectHostedArtifacts(
       checkedAt: new Date().toISOString(),
       activeRuns: [],
     }
-    if (facts) hosted!.push(facts)
+    if (hosted && facts) hosted.push(facts)
     try {
       mkdirSync(output, { recursive: true })
       if (facts) {
@@ -1239,7 +1239,7 @@ function collectHostedArtifacts(
               status: job.status,
               conclusion: job.conclusion as string | null,
               executionSeconds: unavailable ? null : (completed - started) / 1000,
-              ...(unavailable && { unavailable: `${unavailable}; job ${job.databaseId}; ${receipt.stdout}` }),
+              ...(unavailable && { unavailable: `${unavailable}; job ${String(job.databaseId)}; ${receipt.stdout}` }),
             }
           })
         } catch (error) {
