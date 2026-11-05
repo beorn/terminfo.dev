@@ -101,8 +101,8 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   wezterm: {
     "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
-    "packages/wezterm/src/backend.ts": "42a196995a5f8845ab2e3bb6227192556c470071",
-    "packages/wezterm/native/src/lib.rs": "445f5484027aebbea01a641a96dd92dfea273693",
+    "packages/wezterm/src/backend.ts": "4b376877280d09535bc67a6f99fc5d68b40529e3",
+    "packages/wezterm/native/src/lib.rs": "69a9d1ebc4fd86d46c131a378a9d897cdd6824b3",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   vt100Rust: {
