@@ -399,6 +399,12 @@ These remain review PROBE TODO rows; earlier captures stay unchanged.
 extension. It returns the library encoder's bytes in that instance's current modes; the legacy
 host-backed `encodeKey` method alone does not qualify. A declared extension without its function
 is a binding error, and native encoding failures propagate without substituting host bytes.
+The two native modifyOtherKeys callbacks sample plain a, Ctrl+a, Ctrl+i, bare i and ArrowUp
+with the mode reset, requested, then reset again. They retain event fields, exact bytes and a
+separate recovery CPR. Same-path controls must pass in every phase. The target is extended
+Ctrl+i for level 2 and extended bare i for level 3; both CSI-u and CSI-27 forms are compared
+by logical codepoint and modifier. Unchanged output, silence or failed reset/control evidence
+remains a named PROBE TODO. Native exceptions propagate after the reset command in `finally`.
 
 `extensions.clipboard-paste` uses the same backend instance’s declared `paste-encoding`
 extension. Its native encoder returns actual input bytes without consuming pending replies or emitting

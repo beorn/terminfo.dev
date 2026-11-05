@@ -1,5 +1,6 @@
 import type {
   LibProbeSource,
+  LibKeyEvent,
   MeasuredProbeCallbackResult,
   ProbeDefinition,
   ProbeCallbackResult,
@@ -18,7 +19,10 @@ import { kittyKeyboardFlagProbe } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
 const inputDefinitions: ProbeDefinition[] = [
-  probe("input.modify-other-keys", modifyOtherKeysLib, modifyOtherKeys2, "input_bytes"),
+  {
+    ...probe("input.modify-other-keys", (ctx) => modifyOtherKeysLib(ctx, 2), modifyOtherKeys2, "input_bytes"),
+    libAssertionType: "input_bytes",
+  },
 
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
@@ -30,7 +34,10 @@ const inputDefinitions: ProbeDefinition[] = [
   probe("input.urxvt-mouse", (ctx) => mouseEncodingLib(ctx, "urxvt"), urxvtMouse, "input_bytes"),
   probe("input.x10-mouse", (ctx) => mouseEncodingLib(ctx, "x10"), x10Mouse, "input_bytes"),
 
-  probe("input.modify-other-keys-3", modifyOtherKeysLib, modifyOtherKeys3, "input_bytes"),
+  {
+    ...probe("input.modify-other-keys-3", (ctx) => modifyOtherKeysLib(ctx, 3), modifyOtherKeys3, "input_bytes"),
+    libAssertionType: "input_bytes",
+  },
 
   probe("input.button-event-mouse", (ctx) => mouseEncodingLib(ctx, "button"), buttonEventMouse, "input_bytes"),
 
@@ -131,10 +138,79 @@ function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResul
 }
 
 /** Checked library-interface absences, not protocol support claims (#32309, CTO47010d76). */
-function modifyOtherKeysLib(ctx: LibProbeSource): ProbeCallbackResult {
+function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackResult {
   const reason = NO_LIBRARY_KEY_ENCODER[ctx.backendName]
   if (reason) return declaredUntestableResult(reason, { keyEncoder: false })
-  return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection")
+  const excluded = vtermNoSamePathControl(ctx, { input: false })
+  if (excluded) return excluded
+  const encode = ctx.encodeKey
+  if (!encode) {
+    return notTestedResult("Native key-encoding route is not qualified for this library", { keyEncoder: false })
+  }
+  const events = {
+    a: { key: "a" },
+    ctrlA: { key: "a", ctrl: true },
+    ctrlI: { key: "i", ctrl: true },
+    i: { key: "i" },
+    arrow: { key: "ArrowUp" },
+  } satisfies Record<string, LibKeyEvent>
+  const sampleKey = (event: LibKeyEvent) => {
+    const bytes = Array.from(encode.call(ctx, event))
+    return { event, bytes, text: String.fromCharCode(...bytes) }
+  }
+  const sample = () => ({
+    a: sampleKey(events.a),
+    ctrlA: sampleKey(events.ctrlA),
+    ctrlI: sampleKey(events.ctrlI),
+    i: sampleKey(events.i),
+    arrow: sampleKey(events.arrow),
+  })
+  let off: ReturnType<typeof sample>, on: ReturnType<typeof sample>
+  try {
+    ctx.feed(MODIFY_OTHER_KEYS_RESET)
+    off = sample()
+    ctx.feed(level === 2 ? MODIFY_OTHER_KEYS_2 : MODIFY_OTHER_KEYS_3)
+    on = sample()
+  } finally {
+    ctx.feed(MODIFY_OTHER_KEYS_RESET)
+  }
+  const reset = sample()
+  const recovery = ctx.feedCapture("\x1b[6n")
+  const observed = { level, off, on, reset, recovery }
+  const controls = (phase: ReturnType<typeof sample>) =>
+    phase.a.text === "a" && CTRL_A_ENCODING.test(phase.ctrlA.text) && /^(?:\x1b\[A|\x1bOA)$/.test(phase.arrow.text)
+  if (![off, on, reset].every(controls)) return notTestedResult("Native key delivery control failed", observed)
+  const logical = (text: string) => {
+    const tilde = text.match(/^\x1b\[27;(\d+);(\d+)~$/)
+    if (tilde) return `${Number(tilde[2])}:${Number(tilde[1])}`
+    const u = text.match(/^\x1b\[(\d+);(\d+)u$/)
+    return u ? `${Number(u[1])}:${Number(u[2])}` : text
+  }
+  const target = level === 2 ? "ctrlI" : "i"
+  const before = logical(off[target].text),
+    active = logical(on[target].text),
+    after = logical(reset[target].text)
+  if (!on[target].bytes.length || before === active || before !== after) {
+    return notTestedResult("Native MOK target unchanged or reset discriminator unavailable", observed)
+  }
+  const expected = `Native modifyOtherKeys ${level} codepoint 105 modifier ${level === 2 ? 5 : 1} after same-path controls`
+  const result =
+    active === `105:${level === 2 ? 5 : 1}`
+      ? interactionResult(`modify-other-keys-${level}:native`, expected, observed)
+      : unsupportedInteraction(`modify-other-keys-${level}:native`, expected, observed)
+  return {
+    ...result,
+    assertions: [
+      {
+        assertionType: "input_bytes" as const,
+        kind: "positive" as const,
+        action: "native-key-controls:off/on/reset",
+        expected: "plain a, Ctrl+a and ArrowUp encoded on the same native path in every phase",
+        observed: JSON.stringify(observed),
+      },
+      ...(result.assertions ?? []),
+    ],
+  }
 }
 
 /**
@@ -175,7 +251,7 @@ function unsupportedInteraction(
   action: string,
   expected: string,
   observed: Record<string, unknown>,
-): ProbeCallbackResult {
+): MeasuredProbeCallbackResult {
   return {
     pass: false,
     response: JSON.stringify(observed),
