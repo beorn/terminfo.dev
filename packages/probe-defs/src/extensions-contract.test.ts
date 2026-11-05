@@ -205,6 +205,60 @@ test("OSC 7 restores its baseline when the control reader throws", () => {
   expect(working.getCwd!()).toBe("file://localhost/original")
 })
 
+// The real WezTerm public getter serializes localhost file URLs with an empty host.
+// Literal metadata fixtures missed this valid engine state and left the registered probe TODO.
+test("OSC 7 accepts WezTerm URL serialization without a 633 property reader", () => {
+  const working = semanticSurfaceSource(["osc633-p-noop"])
+  const source = {
+    ...working,
+    getCwd() {
+      const value = working.getCwd!()
+      return value === null ? null : new URL(value).href
+    },
+  }
+  const result = extensionsProbes.find((entry) => entry.id === "extensions.osc7-cwd")!.lib!(source)
+  expect(JSON.parse(result.response!)).toMatchObject({
+    before: null,
+    controlled: null,
+    first: "file:///terminfo-cwd-A",
+    second: "file:///terminfo-cwd-B",
+    restored: null,
+  })
+  expect(result.pass).toBe(true)
+})
+
+// A target mismatch is a negative only after the same reader observes the control.
+test.each([
+  ["remote host", "file://otherhost/terminfo-cwd-A", "file://otherhost/terminfo-cwd-B"],
+  ["bare path", "/terminfo-cwd-A", "/terminfo-cwd-B"],
+  ["unparseable", "file://[", "file://["],
+  ["empty", "", ""],
+  ["unset", null, null],
+])("OSC 7 keeps raw %s values and requires its control for a negative", (_, first, second) => {
+  for (const control of [false, true]) {
+    const working = semanticSurfaceSource(control ? [] : ["osc633-p-noop"])
+    const source = {
+      ...working,
+      getCwd() {
+        const value = working.getCwd!()
+        if (value === "file://localhost/terminfo-cwd-A") return first
+        if (value === "file://localhost/terminfo-cwd-B") return second
+        return value === null ? null : new URL(value).href
+      },
+    }
+    const result = extensionsProbes.find((entry) => entry.id === "extensions.osc7-cwd")!.lib!(source)
+    expect(result.pass).toBe(false)
+    expect(JSON.parse(result.response!)).toMatchObject({ first, second, restored: null })
+    if (control) {
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation?.outcome).toBe("unsupported")
+    } else {
+      expect(result.notTested).toBeDefined()
+      expect(result.observation?.outcome).not.toBe("unsupported")
+    }
+  }
+})
+
 // Batch 11: successful A/B writes with ignored cleanup are a measurement error, not a target negative.
 test("OSC 7 reports an error when target writes work but restoring an empty baseline is ignored", () => {
   const working = semanticSurfaceSource()
