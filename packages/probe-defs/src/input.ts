@@ -182,8 +182,20 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
     i: sampleKey(events.i),
     arrow: sampleKey(events.arrow),
   })
+  const cursorControl = () => {
+    let on: ReturnType<typeof sampleKey>
+    try {
+      ctx.feed("\x1b[?1h")
+      on = sampleKey(events.arrow)
+    } finally {
+      ctx.feed("\x1b[?1l")
+    }
+    return { on, off: sampleKey(events.arrow) }
+  }
+  let cursorBefore: ReturnType<typeof cursorControl>
   let off: ReturnType<typeof sample>, on: ReturnType<typeof sample>
   try {
+    cursorBefore = cursorControl()
     ctx.feed(MODIFY_OTHER_KEYS_RESET)
     off = sample()
     ctx.feed(level === 2 ? MODIFY_OTHER_KEYS_2 : MODIFY_OTHER_KEYS_3)
@@ -192,8 +204,14 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
     ctx.feed(MODIFY_OTHER_KEYS_RESET)
   }
   const reset = sample()
+  let cursorAfter: ReturnType<typeof cursorControl>
+  try {
+    cursorAfter = cursorControl()
+  } finally {
+    ctx.feed(MODIFY_OTHER_KEYS_RESET)
+  }
   const recovery = ctx.feedCapture("\x1b[6n")
-  const observed = { level, off, on, reset, recovery }
+  const observed = { level, off, on, reset, recovery, cursorModeControl: { before: cursorBefore, after: cursorAfter } }
   const controls = (phase: ReturnType<typeof sample>) =>
     phase.a.text === "a" && CTRL_A_ENCODING.test(phase.ctrlA.text) && /^(?:\x1b\[A|\x1bOA)$/.test(phase.arrow.text)
   if (![off, on, reset].every(controls)) return notTestedResult("Native key delivery control failed", observed)
@@ -211,6 +229,44 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
     (name) =>
       logical(off[name].text) !== logical(on[name].text) && logical(off[name].text) === logical(reset[name].text),
   )
+  if (!discriminator) {
+    const cursorPasses = (control: ReturnType<typeof cursorControl>) =>
+      control.on.text === "\x1bOA" && control.off.text === "\x1b[A"
+    if (!cursorPasses(cursorBefore) || !cursorPasses(cursorAfter)) {
+      return notTestedResult(
+        `Native cursor-mode control failed ${!cursorPasses(cursorBefore) ? "before MOK" : "after reset"}`,
+        observed,
+      )
+    }
+    if (!/^\x1b\[\d+;\d+R$/.test(recovery)) {
+      return notTestedResult("Native DSR recovery control failed after MOK reset", observed)
+    }
+    // xterm ctlseqs: level 2 encodes keys "including the exceptions listed" (Control-letter).
+    // https://invisible-island.net/xterm/ctlseqs/ctlseqs.html (modifyOtherKeys)
+    // Level 3: content/features.json input.modify-other-keys-3 cites the same source
+    // and requires an encoded unmodified i (codepoint 105, modifier 1).
+    const absenceKey =
+      level === 2
+        ? logical(off.ctrlA.text) !== "97:5"
+          ? "ctrlA"
+          : logical(off.ctrlI.text) !== "105:5"
+            ? "ctrlI"
+            : undefined
+        : logical(off.i.text) !== "105:1"
+          ? "i"
+          : undefined
+    const unchanged = (["a", "ctrlA", "ctrlI", "i", "arrow"] as const).every(
+      (name) => off[name].text === on[name].text && off[name].text === reset[name].text,
+    )
+    if (absenceKey && unchanged) {
+      const bytes = JSON.stringify(off[absenceKey].bytes)
+      return unsupportedInteraction(
+        `modify-other-keys-${level}:native`,
+        `Native modifyOtherKeys ${level}: ${absenceKey} remains ${bytes} off/on/reset despite passing cursor-mode controls and DSR recovery`,
+        { ...observed, absenceKey },
+      )
+    }
+  }
   if (!on[target].bytes.length || !discriminator || before !== after) {
     return notTestedResult("Native MOK target unchanged or reset discriminator unavailable", observed)
   }
