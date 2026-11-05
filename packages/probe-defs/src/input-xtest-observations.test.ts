@@ -8,7 +8,7 @@ import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import { modesProbes } from "./modes.ts"
 import { extensionsProbes } from "./extensions.ts"
-import type { LibMouseEvent, LibProbeSource, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type { LibKeyEvent, LibMouseEvent, LibProbeSource, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { readResponse } from "../../terminfo.dev/src/tty.ts"
 import { isDeclaredUntestable } from "./helpers.ts"
 
@@ -61,6 +61,41 @@ test.each(["libvterm", "ghostty", "ghostty-native", "wezterm", "kitty"])(
     expect(result.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo" })
   },
 )
+
+// #32308 (@cto e4f1c5bd): a bound library key encoder grades input.xtest-key only after its plain-a control.
+// The review cases above pass no encoder, so they cannot catch a grade from a failed control or a dropped ctrl.
+test.each([
+  ["passes control and encodes ctrl+a", "a", "\x01", "supported"],
+  ["passes control but drops ctrl", "a", "a", "unsupported"],
+  ["fails the plain-a control", "", "\x01", undefined],
+] as const)("input.xtest-key library encoder %s", (_name, plain, ctrlA, outcome) => {
+  // The collector admits an undeclared library assertion type, so the measured result alone cannot pin this.
+  expect(probe("input.xtest-key").libAssertionType).toBe("input_bytes")
+  const encoder = new TextEncoder()
+  const calls: unknown[] = []
+  const result = probe("input.xtest-key").lib!({
+    kind: "live",
+    backendName: "libvterm",
+    encodeKey(event: LibKeyEvent) {
+      calls.push(event)
+      return encoder.encode(event.ctrl ? ctrlA : plain)
+    },
+  } as unknown as LibProbeSource)
+  expect(result.observation?.outcome).toBe(outcome)
+  if (outcome === undefined) {
+    expect(calls).toEqual([{ key: "a" }])
+    expect(result.notTested).toBeDefined()
+    return
+  }
+  expect(calls).toEqual([{ key: "a" }, { key: "a", ctrl: true }])
+  expect(JSON.parse(result.response!)).toEqual({
+    control: "a",
+    controlBytes: [97],
+    report: ctrlA,
+    reportBytes: [...encoder.encode(ctrlA)],
+  })
+  expect(result.assertions?.[0]).toMatchObject({ action: "xtest-key:ctrl+a", assertionType: "input_bytes" })
+})
 
 test.each(["input.xtest-key", "extensions.clipboard-paste"])(
   "%s retains its named missing library input observation",
