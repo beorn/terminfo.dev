@@ -4637,8 +4637,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc7-cwd",
       (ctx) => {
         if (!ctx.getCwd) {
-          const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
-          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+          return declaredUntestableResult("No working-directory callback or state reader is exposed by this library", {
             declared: ctx.capabilities.extensions.has("osc7"),
           })
         }

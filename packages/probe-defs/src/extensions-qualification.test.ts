@@ -159,10 +159,10 @@ test.each(formerSourceNegativeOsc)(
   },
 )
 
-// #32225/#32246: a feature with no state reader keeps the observable review whatever the engine identity, writes
-// nothing and never carries a negative assertion, so no engine can be read as Unsupported from this route.
+// A missing reader writes nothing and never asserts engine non-support. OSC7 and iTerm2 images
+// use their declared Untestable route; notifications retain their existing observable review.
 test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2-images"])(
-  "%s without a state reader keeps the observable review for every identity",
+  "%s without a state reader uses its authorized library disposition for every identity",
   (id) => {
     for (const runtimeIdentity of [undefined, xtermOscIdentity, ...auditedArtifacts]) {
       for (const declared of [false, true]) {
@@ -174,12 +174,14 @@ test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2
           getCell: () => ({ char: "X" }),
         } as unknown as LibProbeSource)
         expect(result.criterionBranch).toBe("headless-observable-review")
-        // iTerm2 images are declared Untestable for every library (operator Nov 4 16:55); the others stay reviews.
         expect(result.tests).toMatchObject([
-          id === "extensions.iterm2-images"
+          id !== "extensions.notifications"
             ? { id: "declared-untestable", status: "untestable" }
             : { id: "review", status: "probe-todo" },
         ])
+        if (id === "extensions.osc7-cwd") {
+          expect(result.tests?.[0]?.reason).toMatch(/working-directory.*(?:reader|callback|state)/)
+        }
         expect(result.assertions).toBeUndefined()
         expect(result.observation).toBeUndefined()
         expect(fed).toEqual([])
