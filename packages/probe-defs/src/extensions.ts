@@ -30,6 +30,7 @@ import {
   replyFailure,
   cancelReplyFailure,
   reviewResult,
+  declaredUntestableResult,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
   sentinelSilenceResult,
@@ -3726,8 +3727,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.font-ligatures",
       () => {
+        // Declared Untestable for every library (operator Nov 4 16:55): no library shapes glyphs.
         const note = "Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+        return declaredUntestableResult(note, {
           ligatureSample: FONT_LIGATURE_TARGET,
         })
       },
@@ -3800,8 +3802,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.kitty-graphics.animation",
       (ctx) => {
+        // Declared Untestable for every library (operator Nov 4 16:55): no library plays timed frames.
         const note = "Declared Kitty graphics capability does not establish timed animation playback"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+        return declaredUntestableResult(note, {
           declared: ctx.capabilities.kittyGraphics === true,
         })
       },
@@ -3988,8 +3991,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.kitty-graphics.unicode-placeholders",
       (ctx) => {
+        // Declared Untestable for every library (operator Nov 4 16:55): no library renders placeholder images.
         const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+        return declaredUntestableResult(note, {
           declared: ctx.capabilities.kittyGraphics === true,
         })
       },
@@ -4206,8 +4210,10 @@ export const extensionsProbes: ProbeDefinition[] = [
             storage: { retained, before, first, secondBefore, second },
           })
         }
+        // Declared Untestable for every library without Sixel storage (operator Nov 4 16:55): no library rasterises
+        // Sixel. The exception is the storage branch above (vterm), which keeps its observable review.
         const note = "Declared Sixel capability does not establish rendered pixels"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+        return declaredUntestableResult(note, {
           declared: ctx.capabilities.sixel === true,
         })
       },
@@ -4897,8 +4903,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.iterm2-images",
       (ctx) => {
+        // Declared Untestable for every library (operator Nov 4 16:55): no library renders image pixels.
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+        return declaredUntestableResult(note, {
           declared: ctx.capabilities.extensions.has("iterm2Images"),
         })
       },

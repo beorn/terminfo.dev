@@ -33,6 +33,30 @@ const context = (): LibProbeSource =>
 // Declared capability flags do not establish rendering, delivery, timing or event behaviour.
 const headlessObservableFeatures = [
   [
+    "extensions.osc7-cwd",
+    "Declared OSC 7 capability does not establish working-directory metadata delivery",
+    { declared: true },
+  ],
+  [
+    "extensions.notifications",
+    "Declared OSC 9 capability does not establish desktop notification delivery",
+    { declared: true },
+  ],
+  [
+    "extensions.osc8",
+    "Adapter (runtime identity unavailable) exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable",
+    { chars: [..."ALINKZ"], links: Array.from({ length: 6 }, () => ({ reported: false })) },
+  ],
+  [
+    "reset.soft",
+    "The headless getMode readback exposes no application-cursor mode (DECCKM) state",
+    { before: null, after: null },
+  ],
+] as const
+
+// The operator's Nov 4 16:55 declaration (part A): the same missing observable and state, read as Untestable.
+const declaredUntestableFeatures = [
+  [
     "extensions.kitty-graphics.animation",
     "Declared Kitty graphics capability does not establish timed animation playback",
     { declared: true },
@@ -44,36 +68,34 @@ const headlessObservableFeatures = [
   ],
   ["extensions.sixel", "Declared Sixel capability does not establish rendered pixels", { declared: true }],
   [
-    "extensions.osc7-cwd",
-    "Declared OSC 7 capability does not establish working-directory metadata delivery",
-    { declared: true },
-  ],
-  [
-    "extensions.notifications",
-    "Declared OSC 9 capability does not establish desktop notification delivery",
-    { declared: true },
-  ],
-  [
     "extensions.iterm2-images",
     "Declared iTerm2 image capability does not establish rendered image pixels",
     { declared: true },
-  ],
-  [
-    "extensions.osc8",
-    "Adapter (runtime identity unavailable) exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable",
-    { chars: [..."ALINKZ"], links: Array.from({ length: 6 }, () => ({ reported: false })) },
   ],
   [
     "extensions.font-ligatures",
     "Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs",
     { ligatureSample: "!= -> => <= ==" },
   ],
-  [
-    "reset.soft",
-    "The headless getMode readback exposes no application-cursor mode (DECCKM) state",
-    { before: null, after: null },
-  ],
 ] as const
+
+test.each(declaredUntestableFeatures)(
+  "%s retains its missing observable and state as declared Untestable",
+  (id, noObservable, state) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === id)
+    if (!definition?.lib) throw new Error("missing headless " + id)
+    const result = definition.lib({
+      ...context(),
+      capabilities: { kittyGraphics: true, sixel: true, extensions: new Set(["iterm2Images"]) },
+    } as unknown as LibProbeSource)
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
+    expect(JSON.parse(result.response!)).toEqual(state)
+    expect(result.criterionBranch).toBe("headless-observable-review")
+    expect(result.tests).toEqual([{ id: "declared-untestable", status: "untestable", reason: noObservable }])
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+  },
+)
 
 test.each(headlessObservableFeatures)(
   "%s retains its missing observable and state as PROBE TODO",

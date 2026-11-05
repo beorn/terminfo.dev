@@ -459,6 +459,29 @@ it.each([
   )
 })
 
+// Requirement: the operator's Nov 4 16:55 declaration is the one admitted Untestable (@cto ruling 2026-11-04). The
+// declared test on the headless observable branch parses as Untestable; the same status without it is refused above.
+it("admits a declared Untestable and refuses an untestable on that branch without the declared test", () => {
+  const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
+  const declaredTest = { id: "declared-untestable", status: "untestable", attempt, reason: "fixture reason" }
+  const row = {
+    featureId: "alpha",
+    status: "untestable",
+    criterionBranch: "headless-observable-review",
+    reason: "fixture reason",
+    attempt,
+    tests: [declaredTest],
+  }
+  expect(parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])[0]).toMatchObject({
+    status: "untestable",
+    reason: "fixture reason",
+  })
+  const undeclared = { ...row, tests: [{ ...declaredTest, id: "review" }] }
+  expect(() => parseProbeResults([undeclared], "fixture.json", new Set(["alpha"]), {}, [])).toThrow(
+    "alpha untestable requires a probe observation; a source answer no longer counts",
+  )
+})
+
 // Requirement: a stored source-negative or reply-path cell is recognised by its branch marker and reads Probe to-do,
 // never Unsupported (operator 2026-11-03, #32246).
 it.each(["source-negative-review", "reply-path-audit-review"] as const)(
