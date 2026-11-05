@@ -1008,10 +1008,9 @@ test("the harness replays every extension feature deterministically", async () =
     "extensions.kitty-graphics.unicode-placeholders",
     "extensions.sixel",
     "extensions.iterm2-images",
-    "extensions.notifications",
     "extensions.osc7-cwd",
   ])
-  const headlessReviews = new Set([...declaredUntestable, "extensions.osc7-cwd"])
+  const headlessReviews = new Set([...declaredUntestable, "extensions.notifications"])
   const term = replayTermProbeSource(new Map(), {
     queryCursorPosition: async () => ({ row: 0, col: 0 }),
   })

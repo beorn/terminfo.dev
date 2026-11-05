@@ -13,7 +13,6 @@ import {
   SOURCE_NEGATIVE_REVIEW,
   REPLY_AFTER_SENTINEL_NOTE,
   NO_SAME_PATH_CONTROL,
-  isDeclaredUntestable,
 } from "./helpers.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
@@ -4897,16 +4896,9 @@ describe("parsed-toast store grading", () => {
     })
   })
 
-  test("an absent notification interface declares Untestable without changing the OSC777 no-reader route", () => {
+  test("an absent store keeps each criterion's no-reader route", () => {
     const notifications = probe("extensions.notifications").lib!(context({}))
-    expect(isDeclaredUntestable(notifications)).toBe(true)
-    expect(notifications.tests).toEqual([
-      {
-        id: "declared-untestable",
-        status: "untestable",
-        reason: "Library exposes neither getNotifications nor getToasts to observe OSC 9 notification payloads",
-      },
-    ])
+    expect(notifications.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
     const osc777 = probe("extensions.osc777-notify").lib!(context({}))
     expect(osc777.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
     for (const result of [notifications, osc777]) expect(result.observation).toBeUndefined()
