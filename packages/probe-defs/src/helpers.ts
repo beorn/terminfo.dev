@@ -60,6 +60,12 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/libvterm/src/wasm-bindings.ts": "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45",
     "packages/libvterm/wasm/libvterm.js": "1e784be87614ab924b96844009919b7c21ce150e",
   },
+  libvterm3b7c0232: {
+    "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
+    "packages/libvterm/src/backend.ts": "d6db3f41fb255cbb3822238432ad3c535757c697",
+    "packages/libvterm/src/wasm-bindings.ts": "9ff9e59c30efe03ca0ee6ec18faf9521d045323b",
+    "packages/libvterm/wasm/libvterm.js": "a57d8193c36702e3d9f72e446a0677f5d0e83e2a",
+  },
   libvterm712298af: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
     "packages/libvterm/src/backend.ts": "f0431b2b3b1824d3028e7a039d55278d2cddc0e8",
@@ -2150,6 +2156,11 @@ export const SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES: ReadonlySet<string> = new Set
  * source citation (31386/32220).
  */
 const LIBVTERM_HISTORY_ARTIFACTS = {
+  libvterm3b7c0232: {
+    engineVersion: "0.3.3",
+    adapterVersion: "0.10.2",
+    wasmSha256: "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0",
+  },
   libvterm: {
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
@@ -2168,7 +2179,7 @@ const LIBVTERM_HISTORY_ARTIFACTS = {
 export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult | undefined {
   const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
   if (!identity || identity.kind !== "js" || identity.runtimeFormat !== "wasm") return undefined
-  const cohort = (["libvterm712298af", "libvterm"] as const).find((key) =>
+  const cohort = (["libvterm3b7c0232", "libvterm712298af", "libvterm"] as const).find((key) =>
     auditedAdapterSources(ctx.runtimeIdentity, key),
   )
   if (cohort === undefined) return undefined
