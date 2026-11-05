@@ -1,6 +1,6 @@
 import { PROBE_STATUSES } from "./types.ts"
 import { createHash } from "node:crypto"
-import type { ProbeTestInput } from "./types.ts"
+import type { NotTestedCoverageResult, ProbeTestInput } from "./types.ts"
 import type {
   ProbeAttempt,
   Observation,
@@ -394,7 +394,7 @@ export function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; 
  * The probe ran and retained raw state, but this environment exposes no applicable observable for
  * the claim. This is a coverage/applicability record, never a fifth measurement outcome.
  */
-export function notTestedResult(noObservable: string, state: object): ProbeCallbackResult {
+export function notTestedResult(noObservable: string, state: object): NotTestedCoverageResult {
   return {
     pass: false,
     response: JSON.stringify(state),
@@ -1872,6 +1872,46 @@ export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
 export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
 export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([HEADLESS_OBSERVABLE_REVIEW])
 
+/** The one test id the Untestable route admits: the operator's Nov 4 16:55 declaration (@cto ruling 2026-11-04). */
+export const DECLARED_UNTESTABLE_TEST = "declared-untestable"
+
+/**
+ * A library result the operator declared Untestable (Nov 4 16:55 PST: no library can show it). The calling probe writes
+ * its reason once, in its own definition, and names any library exception there; this carries no source reference.
+ */
+export function declaredUntestableResult(reason: string, state: object): NotTestedCoverageResult {
+  if (!reason.trim()) throw new Error("A declared Untestable result needs its reason")
+  return {
+    ...notTestedResult(reason, state),
+    criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+    tests: [{ id: DECLARED_UNTESTABLE_TEST, status: "untestable", reason }],
+  }
+}
+
+/** The only admitted route to Untestable, used by finalizeProbeResult and the run reader alike. */
+export function isDeclaredUntestable(result: {
+  readonly criterionBranch?: string
+  readonly reviewRef?: unknown
+  readonly tests?: readonly {
+    readonly id: string
+    readonly status: string
+    readonly reason?: string
+    readonly reviewRef?: unknown
+  }[]
+}): boolean {
+  const test = result.tests?.length === 1 ? result.tests[0] : undefined
+  return (
+    result.criterionBranch === HEADLESS_OBSERVABLE_REVIEW &&
+    result.reviewRef === undefined &&
+    test !== undefined &&
+    test.id === DECLARED_UNTESTABLE_TEST &&
+    test.status === "untestable" &&
+    test.reviewRef === undefined &&
+    typeof test.reason === "string" &&
+    test.reason.trim().length > 0
+  )
+}
+
 /**
  * The branches whose review is a source-only negative: there is no event to assert, so a cell on one of these
  * carries neither an assertion type nor assertionRefs. A colour-readback cell is deliberately not in this set —
@@ -2179,10 +2219,14 @@ export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeRe
   } else if (pending || tests.length === 0) {
     status = "probe-todo"
     reason ??= pending?.reason ?? "Required feature implementation has not run"
+  } else if (impossible && isDeclaredUntestable(input)) {
+    // The one route to Untestable: the operator's Nov 4 16:55 declaration, written in the probe (@cto ruling 2026-11-04).
+    status = "untestable"
+    reason ??= impossible.reason
   } else if (impossible) {
-    // There is no route to Untestable: its only route was a stored review, and source answers no longer grade (#32246).
+    // Any other untestable test folds to PROBE TODO: source answers no longer grade (#32246).
     status = "probe-todo"
-    reason ??= impossible.reason ?? "no route to Untestable"
+    reason ??= impossible.reason ?? "untestable without the operator's declaration"
   } else {
     status = tests.some((test) => test.status === "unsupported") ? "unsupported" : "supported"
   }
