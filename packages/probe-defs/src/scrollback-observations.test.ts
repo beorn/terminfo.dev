@@ -721,7 +721,7 @@ test("cursor replies do not qualify app scrollback contents or region behavior",
 test("DECSTBM reset declines a grid below its measured minimum before writing", async () => {
   const probe = scrollbackProbes.find((entry) => entry.id === "scrollback.decstbm-reset")
   if (!probe?.term) throw new Error("missing scrollback.decstbm-reset app callback")
-  // This row's cursor sits on row 6 and its sentinel on row 8, so the derived minimum is 8 rows by 3
+  // This row's cursor sits on row 7 and its sentinel on row 8, so the derived minimum is 8 rows by 3
   // columns (the region's right edge plus the family margin). A 7-row or a 2-column grid cannot carry
   // the fixture; both refuse before a byte, which is what keeps a `none` observation zero-byte.
   for (const geometry of [
@@ -974,7 +974,8 @@ test("invalid headless geometry retains named coverage and cleanup", async () =>
       const result = reset.lib(
         headless({
           feed: (sequence) => feeds.push(sequence),
-          getCell: (row) => ({ char: row === 0 ? "A" : "" }) as ReturnType<LibProbeSource["getCell"]>,
+          getCell: (row) => ({ char: ["A", "", "B", "C", "", ""][row] ?? "" }) as ReturnType<LibProbeSource["getCell"]>,
+          getCursor: () => ({ x: 0, y: 3, visible: true, style: null }),
           getScrollback: () => ({
             viewportOffset: 0,
             ...(phase === "seed" || reads++ > 0 ? invalid : { screenLines: 24, totalLines: 24 }),
@@ -1098,23 +1099,28 @@ test("DECSTBM reset is graded from the region readback, never from scrollback gr
   if (!probe?.lib) throw new Error("missing decstbm-reset callback")
   const row = readbackRow("scrollback.decstbm-reset")
   // History count is not readable from the screen, so no growth figure can decide this row: a surface
-  // that leaves the compared rows where they were is a measured negative, however much history it
+  // that leaves the approved reset-ignored frame is a measured negative, however much history it
   // claims to have grown.
-  const surface = declaredScreen({ [row.seed]: [["A"], [""]] })
+  const seed = [["A"], [""], ["B"], ["C"], [""], [""]]
+  const ignored = [["A"], [""], ["B"], [""], ["C"], [""]]
+  const finalStep = row.steps.at(-1)
+  if (!finalStep) throw new Error("DECSTBM reset row is missing its final RI step")
+  const surface = declaredScreen({ [row.seed]: seed, [finalStep.write]: ignored })
   let history = 987
   let scrolls = 0
   const result = probe.lib({
     ...surface,
     feed: (sequence) => {
       surface.feed(sequence)
-      if (sequence === "\x1b[S" && ++scrolls === 2) history++
+      if (sequence === "\x1b[1;1H\x1bM" && ++scrolls === 1) history++
     },
     getScrollback: () => ({ viewportOffset: 0, screenLines: 12, totalLines: history + 12 }),
     getCell: (absoluteRow, col) => surface.getCell(absoluteRow - history, col),
+    getCursor: () => ({ x: 0, y: 3, visible: true, style: null }),
   })
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
-  expect(JSON.parse(result.response ?? "null")).toMatchObject({ before: [["A"], [""]], after: [["A"], [""]] })
+  expect(JSON.parse(result.response ?? "null")).toMatchObject({ before: seed, after: ignored })
 })
 
 function captureApp(rows: number, cols: number) {
@@ -1206,7 +1212,7 @@ test("scrollback capture fixtures record control and target frames with honest, 
   expect(decstbms.frames).toEqual([])
 
   const reset = findScrollback("scrollback.decstbm-reset")
-  // The row's minimum now DERIVES (cursor row 6, sentinel row 8) instead of being hand-picked, so a
+  // The row's minimum now DERIVES (cursor row 7, sentinel row 8) instead of being hand-picked, so a
   // 7-row grid cannot carry the row-2 witness on row 6 and the run refuses BY NAME before a byte.
   const short = captureApp(7, 61)
   const shortResult = await reset.term!(short.context)
@@ -1274,7 +1280,6 @@ test.each(["scrollback.set-region", "scrollback.alt-screen", "scrollback.decstbm
 
 test.each([
   ["scrollback.set-region", "scrollregion-noop"],
-  ["scrollback.decstbm-reset", "scrollregion-noop"],
   ["scrollback.alt-screen", "altscreen-noop"],
 ] as const)("%s reads unsupported when the surface ignores exactly that operation", (id, mutation) => {
   const probe = scrollbackProbes.find((item) => item.id === id)
@@ -1468,8 +1473,8 @@ test("scrollback.alt-screen refuses a surface that clears the main grid on 1049l
  *   site table showed the gap on every terminal while the probe's own contract test passed. A reset spec
  *   whose edit was `set; ESC[r; scroll` then had NO observable difference between "set then reset" and
  *   "neither honoured" - both left one full-screen scroll - so a surface that ignored DECSTBM entirely
- *   read supported; the edit now scrolls once INSIDE the region before the reset, which lands both
- *   ignored shapes one full-screen scroll further down, on the seed frame.
+ *   read supported; the reset now uses RI with a seed driver prerequisite and an inner-region cursor
+ *   prerequisite in the lib arm. The app arm retains its existing reference qualification limits.
  * @level l2
  * @consumer 28018 candidate-2 Scrollback group; the site table's scrollback rows for every terminal.
  * @testonly none
@@ -1479,14 +1484,38 @@ test("scrollback DECSTBM rows judge the app path from the region readback", asyn
     ["the set confines the scroll", "scrollback.decstbm", {}, "supported"],
     ["the set is ignored", "scrollback.decstbm", { mutations: ["scrollregion-noop"] }, "unsupported"],
     ["the reset restores the full screen", "scrollback.decstbm-reset", {}, "supported"],
-    ["DECSTBM is ignored entirely", "scrollback.decstbm-reset", { mutations: ["scrollregion-noop"] }, "unsupported"],
-    ["the region is set but never reset", "scrollback.decstbm-reset", { strip: "\x1b[r" }, "unsupported"],
   ] as const) {
     const { context } = regionReadbackApp(12, 61, options)
     const result = await findScrollback(id).term!(context)
     expect(result.observation?.outcome, label).toBe(outcome)
     expect(result.pass, label).toBe(outcome === "supported")
     expect(result.assertions ?? [], label).not.toEqual([])
+  }
+  // RI prerequisites are decided by existing lib seed/cursor checks; the app kind does not verify them.
+  // Old SU fixtures missed absent RI, cursor-only RI, and an ignored set-region precursor.
+  for (const [label, mutations, strip, replacement, outcome, reason] of [
+    ["good RI driver", [], "", "", "supported", ""],
+    ["reset ignored", [], "\x1b[r", "", "unsupported", ""],
+    ["set ignored", ["scrollregion-noop"], "", "", "probe-todo", "the inner RI moved the cursor"],
+    ["RI absent", ["ri-noop"], "", "", "probe-todo", "RI at the screen top"],
+    ["RI moves cursor only", [], "\x1bM", "\x1b[A", "probe-todo", "RI at the screen top"],
+  ] as const) {
+    const context = libProbeSource(createSemanticSurface({ mutations }))
+    const feed = context.feed.bind(context)
+    context.feed = (bytes) => feed(strip ? bytes.replaceAll(strip, replacement) : bytes)
+    const result = findScrollback("scrollback.decstbm-reset").lib!(context)
+    if (outcome === "probe-todo") {
+      expect.soft(result.observation, label).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        note: expect.stringContaining(reason),
+      })
+      expect.soft(result.assertions ?? [], label).toEqual([])
+    } else {
+      expect(result.observation?.outcome, label).toBe(outcome)
+      expect(result.assertions ?? [], label).not.toEqual([])
+    }
+    expect.soft(result.pass, label).toBe(outcome === "supported")
   }
 })
 

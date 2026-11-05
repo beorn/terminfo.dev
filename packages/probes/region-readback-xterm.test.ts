@@ -222,7 +222,10 @@ test.each([false, true])("DECSTBM reset reads the active screen with retained hi
       assertionType: "buffer_state",
     })
     expect(result.assertions).toMatchObject([{ kind: "positive" }])
-    expect(JSON.parse(result.response ?? "null")).toMatchObject({ before: [["A"], [""]], after: [[""], ["A"]] })
+    expect(JSON.parse(result.response ?? "null")).toMatchObject({
+      before: [["A"], [""], ["B"], ["C"], [""], [""]],
+      after: [[""], ["A"], [""], ["B"], [""], ["C"]],
+    })
     expect(backend.getCell(0, 0).char).toBe("S")
   } finally {
     backend.destroy()
