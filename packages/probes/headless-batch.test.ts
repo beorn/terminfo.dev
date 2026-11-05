@@ -90,6 +90,8 @@ test("D2 reply declarations admit parser-report evidence only when its reader ex
     const batch = await collectBatch(carrier, "declaration-fixture", [definition])
     expect(batch.results[0]?.status, JSON.stringify(batch.results[0])).toBe(present ? "unsupported" : "probe-invalid")
   }
+})
+
 /** Failure fixtures start after the real engine's independent, healthy path control. */
 function afterReplyControl(factory: typeof backend): typeof backend {
   let control = true
