@@ -112,12 +112,12 @@ function osc720() {
 }
 
 // The existing movement controls cannot detect loss of a declared absence before history I/O.
-// Retain source-review evidence, including missing identity, without inventing a measurement.
+// Operator D1 declares this absent library interface Untestable, without inventing a measurement.
 test.each([
   { identity: false, actuator: false },
   { identity: true, actuator: false },
   { identity: false, actuator: true },
-])("OSC720 declared viewport absence preserves review boundary %j", ({ identity, actuator }) => {
+])("OSC720 declared viewport absence preserves declaration boundary %j", ({ identity, actuator }) => {
   const source = viewportModel({ scrollableViewport: true, honorsOsc720: true })
   const productViewport = { available: false as const, reason: "Fixture library exposes no product viewport" }
   source.capabilities.productViewport = productViewport
@@ -146,10 +146,13 @@ test.each([
     expect(result.criterionBranch).toBeUndefined()
     expect(result.notTested).toBeUndefined()
   } else {
+    const reason = identity
+      ? "Fixture library exposes no product viewport Library version: fixture."
+      : productViewport.reason
     expect(result).toMatchObject({
       criterionBranch: "headless-observable-review",
-      notTested: { noObservable: "scrollback viewport scroll control" },
-      tests: [{ id: "review", status: "probe-todo", reason: productViewport.reason }],
+      notTested: { noObservable: reason },
+      tests: [{ id: "declared-untestable", status: "untestable", reason }],
     })
     expect(result.observation).toBeUndefined()
   }
