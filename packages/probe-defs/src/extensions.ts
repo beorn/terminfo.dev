@@ -3017,14 +3017,11 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   const incomingMode = readMode()
   const state = { mode: "clipboard-paste", backend: ctx.backendName, incomingMode, samples, calls }
   if (incomingMode === null) {
-    return parserStateResult(
-      null,
-      expected,
-      state,
-      "Incoming bracketedPaste mode readback is unavailable",
-      undefined,
-      "input_bytes",
-    )
+    const reason = "Incoming bracketedPaste mode readback is unavailable"
+    return {
+      ...parserStateResult(null, expected, state, reason, undefined, "input_bytes"),
+      tests: [{ id: "criterion", status: "probe-todo", reason }],
+    }
   }
   const initial = sample("initial")
   if (initial === "unknown") {

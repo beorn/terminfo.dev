@@ -489,6 +489,14 @@ describe("native clipboard paste encoding", () => {
     model.ctx.getMode = () => null
     const result = pasteProbe().lib!(model.ctx)
     expect(result.observation?.outcome).toBe("inconclusive")
+    const stored = recordExecutedProbe({
+      featureId: "extensions.clipboard-paste",
+      tests: result.tests,
+      assertions: [],
+      attempt: { scope: "probe", startedAt: "2026-11-05T02:17:00.000Z" },
+    })
+    expect(stored.status).toBe("probe-todo")
+    expect(stored.reason).toContain("mode readback is unavailable")
     expect(result.assertions).toBeUndefined()
     expect(model.feeds).toEqual([])
     expect(model.enabled()).toBe(true)
