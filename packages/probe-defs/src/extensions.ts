@@ -4875,8 +4875,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc7-cwd",
       (ctx) => {
         if (!ctx.getCwd) {
-          if (hasAuditedOscInterfaceAbsence(ctx)) {
-            const note = `${ctx.backendName}: the audited library exposes no working-directory state or OSC 7 callback`
+          const identity = ctx.runtimeIdentity
+          if (identity && hasAuditedOscInterfaceAbsence(ctx)) {
+            const note = `${ctx.backendName} ${identity.engineVersion}: the audited library exposes no working-directory state or OSC 7 callback`
             return declaredUntestableResult(note, {
               backend: ctx.backendName,
               runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
