@@ -106,11 +106,11 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   kitty: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
-    "packages/kitty/src/backend.ts": "1b7367a9737d1292618ea34a1c451bf3273c3b35",
-    "packages/kitty/build/bridge.py": "f9585e3ac10209eedd1bc8550bcb1a4a1b286f27",
-    "packages/kitty/build/layout.c": "49c0beef4424190e89d2884eac5efe4da50e3630",
-    "packages/kitty/build/native-mode-layout.json": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
-    "packages/kitty/build/native-mode-layout.receipt.json": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+    "packages/kitty/src/backend.ts": "88dd0f299e059457946b92edfc6eb324ac3c7e30",
+    "packages/kitty/build/bridge.py": "95a46fee6da18621bf9293f5acddc18ff357d349",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
+    "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
   },
 } as const
 

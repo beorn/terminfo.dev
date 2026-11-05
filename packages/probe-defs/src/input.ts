@@ -918,6 +918,11 @@ const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
 function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   const expected =
     "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
+  if (ctx.backendName === "kitty") {
+    return notTestedResult("Kitty send_mouse_event does not bind Window's prompt click_events pointer path", {
+      storedClickEvents: false,
+    })
+  }
   if (ctx.backendName === "vterm") {
     return notTestedResult(NO_SAME_PATH_CONTROL, { storedClickEvents: false })
   }
