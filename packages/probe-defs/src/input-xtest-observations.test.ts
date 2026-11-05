@@ -10,8 +10,27 @@ import { modesProbes } from "./modes.ts"
 import { extensionsProbes } from "./extensions.ts"
 import type { LibMouseEvent, LibProbeSource, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { readResponse } from "../../terminfo.dev/src/tty.ts"
+import { isDeclaredUntestable } from "./helpers.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
+
+// The operator-approved interface absence is distinct from an encoder not yet wired to the probe.
+// Existing generic headless/app cases do not protect this per-library declaration boundary.
+test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
+  "%s declares only checked key-encoder absences Untestable",
+  (id) => {
+    for (const backendName of ["alacritty", "vt100", "vt220", "vt100-rust", "xtermjs"]) {
+      const result = probe(id).lib!({ ...libMouseSource({ extensions: [] }), backendName })
+      expect(isDeclaredUntestable(result), backendName).toBe(true)
+      expect(result.tests?.[0]?.reason).toMatch(/public key-event encoder/)
+      expect(result.observation).toBeUndefined()
+    }
+    for (const backendName of ["libvterm", "ghostty", "ghostty-native", "wezterm", "kitty", "vterm", "unknown"]) {
+      const result = probe(id).lib!({ ...libMouseSource({ extensions: [] }), backendName })
+      expect(isDeclaredUntestable(result), backendName).toBe(false)
+    }
+  },
+)
 
 // Fixed per-capture review reasons must reach the real callbacks, without grading at callback time.
 // Existing input fixtures checked absence of observations, not this retained review contract.

@@ -7,6 +7,7 @@ import type {
 } from "./types.ts"
 import {
   HEADLESS_OBSERVABLE_REVIEW,
+  declaredUntestableResult,
   notTestedResult,
   osInputReviewResult,
   NO_SAME_PATH_CONTROL,
@@ -19,7 +20,7 @@ import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 const inputDefinitions: ProbeDefinition[] = [
   probe(
     "input.modify-other-keys",
-    (ctx) => vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
+    modifyOtherKeysLib,
     modifyOtherKeys2,
     "input_bytes",
   ),
@@ -36,7 +37,7 @@ const inputDefinitions: ProbeDefinition[] = [
 
   probe(
     "input.modify-other-keys-3",
-    (ctx) => vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
+    modifyOtherKeysLib,
     modifyOtherKeys3,
     "input_bytes",
   ),
@@ -114,6 +115,20 @@ function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResul
       ? "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
       : undefined,
   )
+}
+
+/** Checked library-interface absences, not protocol support claims (#32309, CTO47010d76). */
+function modifyOtherKeysLib(ctx: LibProbeSource): ProbeCallbackResult {
+  const reasons: Readonly<Record<string, string>> = {
+    alacritty: "alacritty_terminal 0.26.0 exposes terminal state and byte-oriented PTY notification, but no public key-event encoder",
+    vt100: "vt100.js 0.10.1 exposes a Screen byte parser and state readers, but no public key-event encoder",
+    vt220: "vt220.js 0.10.1 exposes a Screen byte parser and state readers, but no public key-event encoder",
+    "vt100-rust": "vt100 0.16.2 exposes Parser/Screen state and mode serialization, but no public key-event encoder",
+    xtermjs: "@xterm/headless 6.0.0 exposes Terminal.input for already encoded bytes, but no public key-event encoder",
+  }
+  const reason = reasons[ctx.backendName]
+  if (reason) return declaredUntestableResult(reason, { keyEncoder: false })
+  return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection")
 }
 
 /**
