@@ -2073,9 +2073,16 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
           "Product viewport declared absent but scroll control is present",
         )
       }
-      let reason = declared.reason
-      if (ctx.runtimeIdentity) reason += ` Library version: ${ctx.runtimeIdentity.engineVersion}.`
-      return declaredUntestableResult(reason, state)
+      const version = ctx.runtimeIdentity?.engineVersion
+      if (
+        !(
+          (ctx.backendName === "libvterm" && version === "0.3.3") ||
+          (ctx.backendName === "wezterm" && version === "0.1.0-fork.5")
+        )
+      ) {
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, declared.reason, "scrollback viewport scroll control", state)
+      }
+      return declaredUntestableResult(`${declared.reason} Library version: ${version}.`, state)
     }
     feedScrollbackHistory(ctx)
     const before = ctx.getScrollback()
