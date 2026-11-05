@@ -48,13 +48,13 @@ const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z"
 
 // One shared owner covers the whole registry and status fold. Native tests retain only the
 // distinct capture-transport binding; headless tests retain manifest-to-checkpoint delivery.
-it("requires visual evidence across the SGR registry while preserving parser-only and non-SGR results", () => {
+it("requires app and mux visual evidence while preserving library cell and non-SGR results", () => {
   const targets = [
     { target: { kind: "term", id: "fixture" }, pending: true },
     { target: { kind: "mux", id: "fixture" }, pending: true },
-    { target: { kind: "lib", id: "fixture", rendering: "render-capable" }, pending: true },
+    { target: { kind: "lib", id: "fixture", rendering: "render-capable" }, pending: false },
     { target: { kind: "lib", id: "fixture", rendering: "parser-only" }, pending: false },
-    { target: { kind: "lib", id: "fixture" }, pending: true },
+    { target: { kind: "lib", id: "fixture" }, pending: false },
   ] as const
   for (const featureId of [...sgrProbes.map(({ id }) => id), "modes.bracketed-paste"]) {
     for (const status of ["supported", "unsupported", "probe-todo", "probe-invalid"] as const) {
@@ -71,11 +71,7 @@ it("requires visual evidence across the SGR registry while preserving parser-onl
         const conclusive = status === "supported" || status === "unsupported"
         if (featureId !== "modes.bracketed-paste" && pending && conclusive) {
           expect(result.status).toBe("probe-todo")
-          expect(result.reason).toBe(
-            target.kind === "lib" && !("rendering" in target)
-              ? "rendering declaration missing for library fixture in @termless/core/backends.json"
-              : "visual effect not observed in this run",
-          )
+          expect(result.reason).toBe("visual effect not observed in this run")
           expect(result.rawReplyRef).toBe(recorded.rawReplyRef)
           expect(result.tests[0]).toEqual(recorded.tests[0])
         } else {
@@ -109,7 +105,7 @@ it("accepts only the recorded SGR screenshot in its own pixel captures without s
       tests: [{ id: "criterion", status, attempt }],
       screenshotRef: ref,
     }
-    const target = { kind: "lib", id: "render-fixture", rendering: "render-capable" } as const
+    const target = { kind: "term", id: "render-fixture" } as const
     expect(finalizeSgrResult(recorded, target, [frame])).toEqual(recorded)
     for (const captures of [[textFrame], [{ ...frame, ref: `sha256:${"b".repeat(64)}` }], []]) {
       expect(finalizeSgrResult(recorded, target, captures).status).toBe(

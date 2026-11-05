@@ -3,7 +3,6 @@
 
 import {
   hasExtension,
-  entry as backendEntry,
   type HyperlinkExtension,
   type DefaultColorsExtension,
   type MouseEncodingExtension,
@@ -1012,11 +1011,7 @@ async function collectPass(
         ...(Object.hasOwn(batch.rawReplies, probe.id) ? { rawReplyRef: probe.id } : {}),
         criterionBranch,
       })
-      const result = finalizeSgrResult(
-        recorded,
-        { kind: "lib", id: backendName, rendering: backendEntry(backendName)?.rendering },
-        [],
-      )
+      const result = finalizeSgrResult(recorded, { kind: "lib" }, [])
       const index = batch.results.findIndex((entry) => entry.featureId === probe.id)
       if (index < 0) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)
       batch.results[index] = result
