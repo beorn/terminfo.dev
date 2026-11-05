@@ -1069,10 +1069,10 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
 )
 
 // @failure #32053: an engine declaring osc-metadata for notifications only (kitty) has no cwd reader; the OSC 7
-// criterion must read that as missing evidence, never as an engine that reports no working directory.
+// criterion uses the operator's declared Untestable route, never an engine negative.
 // @level l1
 // @consumer extensions.osc7-cwd through the actual LibProbeSource
-test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a probe-todo, never unsupported", async (context) => {
+test("an osc-metadata engine without getCwd leaves the OSC 7 criterion declared Untestable", async (context) => {
   const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
   if (!existsSync(sibling)) context.skip(`Real-vterm metadata controls require missing sibling ${sibling}`)
   const value = createVtermBackend({ cols: 80, rows: 24 })
@@ -1085,7 +1085,7 @@ test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a probe-t
     const feed = vi.spyOn(value, "feed")
     const cwd = registryDefinitions(["extensions.osc7-cwd"])[0]!.lib!(source)
     expect(cwd.criterionBranch).toBe("headless-observable-review")
-    expect(cwd.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
+    expect(cwd.tests).toMatchObject([{ id: "declared-untestable", status: "untestable" }])
     expect(cwd.observation).toBeUndefined()
     expect(cwd.assertions).toBeUndefined()
     expect(feed).not.toHaveBeenCalled()
