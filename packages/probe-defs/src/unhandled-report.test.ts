@@ -670,3 +670,107 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
     }
   })
 })
+
+// The Ghostty source census declares semantic absence, not parser recognition.
+// Existing vterm/Alacritty cases do not cover its native source-and-lock cohort.
+describe("Ghostty native 1.3.1 D2 six-cell interface-absence declarations", () => {
+  const identity: HeadlessRuntimeIdentity = {
+    kind: "native",
+    engineVersion: "1.3.1",
+    adapterVersion: "0.10.2",
+    termlessRevision: "f540232e22ba0ccb4005dba5ba2d8de10cb129c5",
+    loadedBinary: {
+      path: "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
+      sha256: "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd",
+    },
+    provenance: {
+      sha256: "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd",
+      sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+      buildHash: "a4404e07f3746b45a9a813fd0cda0aa4156e5753b75f1ecda66722abd4d68d1a",
+      toolchain: "zig 0.15.2",
+      lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+    },
+  }
+  const declared = [
+    "extensions.osc1-icon",
+    "extensions.osc113-reset-pointer-fg",
+    "extensions.osc114-reset-pointer-bg",
+    "extensions.osc117-reset-highlight-bg",
+    "extensions.osc119-reset-highlight-fg",
+    "modes.decsscls",
+  ] as const
+  const definition = (id: string) => ALL_PROBES.find((entry) => entry.id === id)!
+  const nativeSource = (overrides: Partial<LibProbeSource> = {}): LibProbeSource => ({
+    ...inertLibProbeSource(),
+    backendName: "ghostty-native",
+    runtimeIdentity: identity,
+    ...overrides,
+  })
+
+  test.each(declared)("%s declares only at the audited native source and lock", (id) => {
+    const lib = definition(id).lib!
+    const result = lib(nativeSource())
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(JSON.stringify(result)).toContain("Ghostty 1.3.1")
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    for (const overrides of [
+      { runtimeIdentity: undefined },
+      { backendName: "ghostty" },
+      { runtimeIdentity: { ...identity, engineVersion: "1.3.2" } },
+      { runtimeIdentity: { ...identity, provenance: { ...identity.provenance, sourceCommit: "0".repeat(40) } } },
+      { runtimeIdentity: { ...identity, provenance: { ...identity.provenance, lockSha256: "0".repeat(64) } } },
+    ]) {
+      expect(isDeclaredUntestable(lib(nativeSource(overrides)))).toBe(false)
+    }
+    // Addon builds and adapter sources do not change this audited library absence.
+    expect(
+      isDeclaredUntestable(
+        lib(
+          nativeSource({
+            runtimeIdentity: {
+              ...identity,
+              loadedBinary: { ...identity.loadedBinary, sha256: "1".repeat(64) },
+              provenance: { ...identity.provenance, sha256: "1".repeat(64), buildHash: "2".repeat(64) },
+              adapterSources: [{ path: "packages/ghostty-native/src/backend.ts", blobOid: "3".repeat(40) }],
+            },
+          }),
+        ),
+      ),
+    ).toBe(true)
+    expect(isDeclaredUntestable(lib(nativeSource({ getUnhandledSequences: () => [] })))).toBe(false)
+  })
+
+  test("an icon reader and a decided scroll-speed parser outcome retain their measured paths", () => {
+    expect(
+      isDeclaredUntestable(definition("extensions.osc1-icon").lib!(nativeSource({ getIconLabel: () => "" }))),
+    ).toBe(false)
+    let leaked = false
+    const result = definition("modes.decsscls").lib!(
+      nativeSource({
+        feed: (input) => {
+          if (input === "\x1b[9 pQ") leaked = true
+        },
+        getText: () => (leaked ? "9 pQ" : ""),
+        getCursor: () => ({ x: leaked ? 4 : 0, y: 0, visible: true, style: null }),
+      }),
+    )
+    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(result.observation?.outcome).toBe("unsupported")
+  })
+
+  test("OSC 22, host effects and shell cells remain outside the six declarations", () => {
+    for (const id of [
+      "extensions.osc22-pointer",
+      "extensions.osc176-app-id",
+      "extensions.osc3008-context",
+      "extensions.osc440-audio",
+      "extensions.osc555-flash",
+      "extensions.osc666-termprop",
+      "extensions.osc710-font-normal",
+      "extensions.osc133-a",
+      "editing.decsace",
+    ]) {
+      expect(isDeclaredUntestable(definition(id).lib!(nativeSource()))).toBe(false)
+    }
+  })
+})
