@@ -111,6 +111,23 @@ describe("WezTerm D2 audited interface absence", () => {
     expect(result.assertions).toBeUndefined()
   })
 
+  test("the public 0.11.0 adapter retains the ten audited interface absences", () => {
+    const runtimeIdentity = {
+      ...identity,
+      adapterVersion: "0.11.0",
+      termlessRevision: "10dbfe015d27357bac7f2337e2a828a5afe0ad97",
+      adapterSources: identity.adapterSources.map((entry) =>
+        entry.path === "packages/wezterm/src/backend.ts"
+          ? { ...entry, blobOid: "e7b9d32395b3209ef48247c2e3d7f7f21cbd10a6" }
+          : entry,
+      ),
+    }
+    for (const [id, reason] of targets) {
+      const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(source({ runtimeIdentity }))
+      expect(fold(id, result), id).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
+    }
+  })
+
   test("unqualified runtime identities keep the ten cells TODO", () => {
     for (const runtimeIdentity of [
       undefined,

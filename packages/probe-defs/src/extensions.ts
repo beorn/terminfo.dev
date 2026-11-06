@@ -105,7 +105,7 @@ function hasAuditedOscInterfaceAbsence(
       identity.loadedBinary.sha256 === "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186" &&
       identity.provenance.sourceCommit === "f8f48853438f5fb6c43abbbb081162506d14f167" &&
       identity.provenance.lockSha256 === "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58" &&
-      auditedAdapterSources(identity, "wezterm")
+      (auditedAdapterSources(identity, "wezterm") || auditedAdapterSources(identity, "wezterm0110"))
     )
   }
   if (cohort === "vt100-rust-d2") {
