@@ -389,6 +389,15 @@ For the M-1 cells, the deciding observation is the library reporting the mode or
 as unhandled with the SGR 1/bold control. Failed palette and wrap calibration remains evidence;
 the report verdict does not claim those effect readers calibrated successfully.
 
+Alacritty D2 uses the same registry consumer and existing audited native 0.26.0
+profile to declare 23 exact-version public-interface absences: OSC 777, the twelve
+OSC 133/633 and semantic-prompt rows, resets 113/114/117/119, and OSC
+176/3008/440/555/666/710. Each reason names the library/parser version and missing
+public effect. The underlying VTE 0.15.0 dispatcher has no matching handler and
+Alacritty's public events provide no rejection report. A supplied real reader,
+an already decided result or an unknown profile retains its original path.
+Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration cut.
+
 The twelve proposed Untestable declarations remain outside this negative-only cut pending
 operator wording approval: DECRQSS, XTGETTCAP, XTGETXRES, the Kitty graphics query/transmit
 cells, and OSC 22, 176, 3008, 440, 555, 666 and 710 retain their prior paths. OSC52 read also
