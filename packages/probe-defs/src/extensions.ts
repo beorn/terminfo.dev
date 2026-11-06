@@ -3206,7 +3206,8 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
     ),
     libAssertionType: display
       ? {
-          when: (source) => typeof source.getCellImageCount === "function",
+          when: (source) =>
+            typeof source.getCellImageCount === "function" || typeof source.getUnhandledSequences === "function",
           then: ["query_reply", "buffer_state"],
           otherwise: ["query_reply"],
         }

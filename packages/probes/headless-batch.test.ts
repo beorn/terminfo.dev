@@ -82,32 +82,49 @@ test.runIf(OWNED_LAYOUT)("real WezTerm readers expose semantic cells, image plac
   }
 })
 
-// Native positive coverage cannot detect a collector that accepts an inert image reader.
-// @failure A constant image count or a lost placement receives Supported.
+// Native positive coverage cannot detect an inert reader or report-only admission of a silent transfer.
+// @failure A constant image count, a lost placement, or a report without image state receives Supported.
 // @level l0
 // @consumer The Kitty display library arm through the real WezTerm parser.
 test.runIf(OWNED_LAYOUT)(
   "WezTerm image placement requires a changing reader and an inert unknown-image control",
   () => {
-    for (const fault of ["zero", "one", "placement"] as const) {
+    for (const fault of ["zero", "one", "placement", "report-only"] as const) {
       const value = createWeztermBackend()
       try {
         value.init({ cols: 80, rows: 24, pixelGeometry: { cellWidth: 10, cellHeight: 20 } })
         const source = createLibProbeSource(value, { graceMs: 0, onSentinel() {} }, undefined, undefined)
+        let transferWasSilent = false
         const controlled: LibProbeSource = {
           ...source,
-          getCellImageCount: fault === "zero" ? () => 0 : fault === "one" ? () => 1 : source.getCellImageCount,
+          getCellImageCount:
+            fault === "report-only"
+              ? undefined
+              : fault === "zero"
+                ? () => 0
+                : fault === "one"
+                  ? () => 1
+                  : source.getCellImageCount,
+          getUnhandledSequences: fault === "report-only" ? () => [] : source.getUnhandledSequences,
           queryWithSentinelOutcome(sequence, pattern) {
-            return source.queryWithSentinelOutcome!(
-              fault === "placement" ? sequence.replace("a=p,", "a=d,") : sequence,
+            const silentTransfer = fault === "report-only" && sequence.includes("a=t,")
+            const outcome = source.queryWithSentinelOutcome!(
+              silentTransfer
+                ? sequence.replace("a=t,", "a=d,")
+                : fault === "placement"
+                  ? sequence.replace("a=p,", "a=d,")
+                  : sequence,
               pattern,
             )
+            if (silentTransfer) transferWasSilent = outcome.match === null && outcome.reason === "sentinel"
+            return outcome
           },
         }
         const definition = ALL_PROBES.find((probe) => probe.id === "extensions.kitty-graphics.display")!
         const result = definition.lib!(controlled)
         expect(result.observation?.outcome, `${fault}: ${JSON.stringify(result)}`).not.toBe("supported")
         expect(result.notTested, `${fault}: ${JSON.stringify(result)}`).toBeDefined()
+        if (fault === "report-only") expect(transferWasSilent).toBe(true)
       } finally {
         value.destroy()
       }
