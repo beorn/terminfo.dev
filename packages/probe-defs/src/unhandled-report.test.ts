@@ -830,19 +830,27 @@ describe("vterm 0.13.1 D2 nine-cell interface-absence declarations", () => {
         ),
       ),
     ).toBe(true)
-    expect(
-      isDeclaredUntestable(
-        lib(
-          vtermSource({
-            runtimeIdentity: {
-              ...identity,
-              engineVersion: "0.13.2",
-              integrity: { ...sourceIntegrity, treeOid: "8eae12c15ce34e7e3b6c86a005990f1bb0f53af5" },
-            },
-          }),
+    // Moving the engine pin must retain these public-interface absences at the new exact tree.
+    for (const treeOid of [
+      "8eae12c15ce34e7e3b6c86a005990f1bb0f53af5",
+      "3cca402276f5d6b3e4ee9030f7b5e6d5be75667e",
+      "fbee854e249c4046bd8800ff3c8ead25381a8977",
+      "ff2c183d5cbec830dab048f2e81ce6873f26ccbf",
+    ]) {
+      expect(
+        isDeclaredUntestable(
+          lib(
+            vtermSource({
+              runtimeIdentity: {
+                ...identity,
+                engineVersion: "0.13.2",
+                integrity: { ...sourceIntegrity, treeOid },
+              },
+            }),
+          ),
         ),
-      ),
-    ).toBe(true)
+      ).toBe(true)
+    }
     expect(JSON.stringify(result)).toContain("vterm.js ")
     if (shellDeclared.has(id)) {
       expect(JSON.stringify(result)).toContain("generic parser tap")

@@ -511,14 +511,15 @@ Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration c
 The `vterm` D2 slice shares the same private helper (`declaredD2InterfaceAbsence`)
 with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source trees
 `3d58d29a8265aafd928e0736dde6723e2bac2007` and `656da900d83e7c41af13b7ca679f8e1e31481537`, and `vterm.js 0.13.2`, clean source trees
-`8eae12c15ce34e7e3b6c86a005990f1bb0f53af5`, `3cca402276f5d6b3e4ee9030f7b5e6d5be75667e` and
-`fbee854e249c4046bd8800ff3c8ead25381a8977`) to declare nine exact-version
+`8eae12c15ce34e7e3b6c86a005990f1bb0f53af5`, `3cca402276f5d6b3e4ee9030f7b5e6d5be75667e`,
+`fbee854e249c4046bd8800ff3c8ead25381a8977` and `ff2c183d5cbec830dab048f2e81ce6873f26ccbf`) to declare nine exact-version
 public-interface absences: `modes.decsscls`, `extensions.osc9-progress`,
 `extensions.osc22-pointer`, `extensions.osc133-d`, `extensions.osc633-d`,
 `extensions.osc633-e`, `extensions.semantic-prompts`,
 `extensions.osc-633-vscode`, and `input.kitty-click-events`. Because `vterm`
 exposes `getSemanticMarks` for start zones (`extensions.osc133-a`, `b`, and `c`
-stay Supported; `extensions.osc133-p` stays Unsupported), reader precedence
+stay Supported; the ordinary-feature tree `ff2c183d5cbec830dab048f2e81ce6873f26ccbf`
+also supports `extensions.osc133-p` and the Cwd property in `extensions.osc633-p`), reader precedence
 checks the `semantic-command-end` capability alongside `getUnhandledSequences`
 and decided outcomes; the six host-effect OSCs stay held.
 

@@ -222,7 +222,8 @@ export function hasAuditedOscInterfaceAbsence(
         (identity.engineVersion === "0.13.2" &&
           (identity.integrity.treeOid === "8eae12c15ce34e7e3b6c86a005990f1bb0f53af5" ||
             identity.integrity.treeOid === "3cca402276f5d6b3e4ee9030f7b5e6d5be75667e" ||
-            identity.integrity.treeOid === "fbee854e249c4046bd8800ff3c8ead25381a8977")))
+            identity.integrity.treeOid === "fbee854e249c4046bd8800ff3c8ead25381a8977" ||
+            identity.integrity.treeOid === "ff2c183d5cbec830dab048f2e81ce6873f26ccbf")))
     )
   }
   if (identity?.kind === "native") {
@@ -6996,7 +6997,7 @@ const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.semantic-prompts":
     "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc-633-vscode":
-    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E command-end or command-line state for the full VS Code shell-integration lifecycle; these payloads reach only the generic parser tap, which cannot observe state application",
   "input.kitty-click-events":
     "vterm.js drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
 }
