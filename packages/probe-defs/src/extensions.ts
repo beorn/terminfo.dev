@@ -6087,14 +6087,26 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
 }
 
+// CTO Kitty 16:50: shell3/reset2 already use the generic OSC report consumer.
+// These six uncovered routes use their own literal payload and the same canonical controls.
+const KITTY_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
+  "extensions.osc176-app-id": { feed: "\x1b]176;terminfo-test\x07", code: { kind: "osc", code: "176" } },
+  "extensions.osc440-audio": { feed: "\x1b]440;bell.wav\x07", code: { kind: "osc", code: "440" } },
+  "extensions.osc555-flash": { feed: "\x1b]555\x07", code: { kind: "osc", code: "555" } },
+  "extensions.osc666-termprop": { feed: "\x1b]666;test-prop=value\x07", code: { kind: "osc", code: "666" } },
+  "extensions.osc710-font-normal": { feed: "\x1b]710;monospace\x07", code: { kind: "osc", code: "710" } },
+  "modes.decsscls": { feed: "\x1b[9 p", code: { kind: "csi", code: " p" } },
+}
+
 /** One registry consumer; other subjects and decided results retain their existing path. */
-export function withVt100RustD2Observation(definition: ProbeDefinition): ProbeDefinition {
+export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
-  const target = VT100_RUST_D2_NEGATIVES[definition.id]
-  if (!lib || !target) return definition
+  const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]
+  const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
+  if (!lib || (!vt100Target && !kittyTarget)) return definition
   return {
     ...definition,
-    ...(target && definition.libAssertionType === "query_reply"
+    ...(vt100Target && definition.libAssertionType === "query_reply"
       ? {
           libAssertionType: {
             when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
@@ -6105,7 +6117,16 @@ export function withVt100RustD2Observation(definition: ProbeDefinition): ProbeDe
         }
       : {}),
     lib(ctx) {
-      if (!hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")) return lib(ctx)
+      const identity = ctx.runtimeIdentity
+      const target = hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")
+        ? vt100Target
+        : ctx.backendName === "kitty" &&
+            identity?.kind === "native" &&
+            identity.engineVersion === "0.49.2" &&
+            identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+          ? kittyTarget
+          : undefined
+      if (!target) return lib(ctx)
       const result = lib(ctx)
       if (reportsDecidedOutcome(result)) return result
       const cursor = ctx.getCursor()

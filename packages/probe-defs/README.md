@@ -91,6 +91,13 @@ back, and restore the incoming shape. Missing replies or an unqualified control
 retain PROBE TODO. Other libraries retain their existing path; the app criterion
 still requires pointer appearance outside the cell grid.
 
+Kitty 0.49.2's own parser rejection can decide the scoped OSC 176/440/555/666/710
+cells after their individual payload adds exactly one matching report and a handled
+OSC 2 title control adds none. Delivered OSC 9 remains separate and adds no rejection.
+DECSSCLS uses the reported modifier-plus-final code ` p`, without rebuilding a parameter,
+and a same-run bold control. The existing D2 registry consumer supplies these six routes;
+shell and colour-reset rows reuse their existing report consumer. Silence decides nothing.
+
 The XTWINOPS 22/23 library callbacks run separate pop and push fixtures. The pop
 fixture saves title A, sets B and restores A; the push fixture sets A then B,
 saves, sets C and restores B. They retain the incoming title plus each fixture's
