@@ -299,8 +299,10 @@ The optional library capability `productViewport: { available: false, reason }` 
 that the library subject has no product viewport; an absent declaration means undeclared. The
 collector omits the probe source's scroll control for that declaration. Before any phase action or
 OSC720 history I/O, the viewport-hold and OSC720 callbacks retain the declaration and exact reason plus
-`runtimeIdentity` (null when missing). The missing-observable branch selects `headless-observable-review`
-with named scroll-control coverage, not a measured scroll result.
+`runtimeIdentity` (null when missing). Their shared declared-absence branch reads Untestable only for
+libvterm 0.3.3 and WezTerm 0.1.0-fork.5, retaining the declared reason and library version.
+Missing or other identities retain `headless-observable-review` with named scroll-control coverage;
+neither route claims a measured scroll result.
 A declaration of absence paired with a present scroll control is an inconclusive apparatus
 contradiction, with no review row. An undeclared missing scroll control keeps ordinary named coverage.
 Scripted callback tests cover these branches and the exact two-phase arithmetic independently of

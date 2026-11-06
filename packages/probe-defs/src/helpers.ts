@@ -2272,6 +2272,20 @@ export function declaredUntestableResult(reason: string, state: object): NotTest
   }
 }
 
+/** Shared declared-absent viewport branch; callers retain their actuator contradiction check. */
+export function productViewportAbsenceResult(ctx: LibProbeSource, reason: string, state: object): ProbeCallbackResult {
+  const version = ctx.runtimeIdentity?.engineVersion
+  if (
+    !(
+      (ctx.backendName === "libvterm" && version === "0.3.3") ||
+      (ctx.backendName === "wezterm" && version === "0.1.0-fork.5")
+    )
+  ) {
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, "scrollback viewport scroll control", state)
+  }
+  return declaredUntestableResult(`${reason} Library version: ${version}.`, state)
+}
+
 /** The only admitted route to Untestable, used by finalizeProbeResult and the run reader alike. */
 export function isDeclaredUntestable(result: {
   readonly criterionBranch?: string
