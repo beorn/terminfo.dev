@@ -168,7 +168,7 @@ describe("audited OSC interface absence", () => {
     adapterVersion: "0.11.0",
     adapterSources: alacritty.adapterSources.map((source) =>
       source.path === "packages/alacritty/src/backend.ts"
-        ? { ...source, blobOid: "06536c83f34c3e0687ac8664ce0b775589895d1e" }
+        ? { ...source, blobOid: "9ee6e4044b2a084b7181552362b7ee76f234dc14" }
         : source,
     ),
   }
