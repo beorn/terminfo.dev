@@ -904,6 +904,10 @@ function mouseEncodingLib(
   } catch (error) {
     failed = true
     primary = error
+    // Termless packages/libvterm/src/backend.ts rejects pixel coordinates before native input.
+    if (error instanceof Error && error.message === "libvterm mouse API has no native encoding for pixel coordinates") {
+      held = undefined
+    }
     if (error instanceof Error && error.message.startsWith("mouse encoding unavailable:")) {
       // Named binding refusals reject the gesture before native button input is accepted.
       held = undefined

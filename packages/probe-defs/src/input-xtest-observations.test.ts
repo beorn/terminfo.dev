@@ -1538,6 +1538,32 @@ test.each([
   },
 )
 
+// The libvterm pixel guard rejects before native input; existing stateful cases do not cover that refusal.
+test("mouse probe preserves libvterm pixel rejection without sending cleanup input", () => {
+  const primary = new Error("libvterm mouse API has no native encoding for pixel coordinates")
+  const feeds: string[] = []
+  const events: LibMouseEvent[] = []
+  const ctx = libMouseSource(
+    {
+      encodeMouse() {
+        throw primary
+      },
+    },
+    feeds,
+    events,
+  )
+  let failure: unknown
+  try {
+    probe("input.pixel-mouse").lib!(ctx)
+  } catch (error) {
+    failure = error
+  }
+  expect(failure).toBe(primary)
+  expect(events).toEqual([{ x: 4, y: 2, pixel: { x: 40, y: 24 }, button: "left", action: "press" }])
+  const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
+  expect(feeds).toEqual([reset, reset])
+})
+
 test("mouse probe releases a held target and retains target plus reset failures", () => {
   const primary = new Error("target failure")
   const cleanup = new Error("reset failure")
