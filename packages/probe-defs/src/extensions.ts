@@ -1554,14 +1554,6 @@ function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
   return result
 }
 
-/**
- * C154 — a consumed semantic prompt mark proves consumption, not that the mark registered.
- * Read the measured home / target / control sequence from the real cursor and cell state so a
- * provider that answers a constant cursor position cannot satisfy all three positions; only a
- * qualified sequence can witness new start markers through an exposed reader. Without one it
- * retains the applicable named review. A consumed-but-unqualified read, and a missing cell, stay
- * a real consumption observation — never not-tested.
- */
 function semanticCellResult(ctx: LibProbeSource, target: "A" | "B" | "C" | "P"): ProbeCallbackResult {
   const read = ctx.getCellSemanticType?.bind(ctx)
   if (!read) throw new Error(`${ctx.backendName} declares semantic-cells without getCellSemanticType`)
@@ -1615,6 +1607,14 @@ function semanticCellResult(ctx: LibProbeSource, target: "A" | "B" | "C" | "P"):
   return notTestedResult(`OSC133 ${target} cell-type transition lacks a deciding same-run control`, state)
 }
 
+/**
+ * C154 — a consumed semantic prompt mark proves consumption, not that the mark registered.
+ * Read the measured home / target / control sequence from the real cursor and cell state so a
+ * provider that answers a constant cursor position cannot satisfy all three positions; only a
+ * qualified sequence can witness new start markers through an exposed reader. Without one it
+ * retains the applicable named review. A consumed-but-unqualified read, and a missing cell, stay
+ * a real consumption observation — never not-tested.
+ */
 function promptMarkBody(
   ctx: LibProbeSource,
   sequence: string,
