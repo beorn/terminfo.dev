@@ -305,7 +305,7 @@ for (const scenario of [
           ? `Open: the colour query (OSC ${slot}) got no answer before setting a colour or after resetting it. The set-colour control did work, but it cannot show the original default`
           : scenario.name === "alacritty"
             ? "DECRPM reply to CSI ? 2026 $ p"
-            : "OSC 0 lacks a deciding observation for icon label (CSI 20 t): timeout"
+            : "Open: asking for the icon name (CSI 20 t, a short window name) got no answer within our wait, and no reply control worked in this test. With these readings, our test cannot tell whether OSC 0 set both names."
         const testReason = colour
           ? `${reason}, so this run cannot decide it`
           : scenario.name === "alacritty"
@@ -3284,8 +3284,7 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   }
   expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
     status: "probe-todo",
-    reason:
-      "Open: our libvterm adapter cannot read the application keypad mode yet.; keypad key encoding unmeasured; mode state measured",
+    reason: "Open: our libvterm adapter cannot read the application keypad mode yet.",
   })
 })
 
