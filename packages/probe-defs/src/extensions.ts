@@ -6934,7 +6934,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
     lib(ctx) {
       const handoff = appJobHandoff(ctx, definition.id, lib)
       if (handoff) return handoff
-      if (ctx.backendName === "vt100" && decClipboard) {
+      if ((ctx.backendName === "vt100" || ctx.backendName === "vt220") && decClipboard) {
         return unhandledOscReportResult(ctx, "\x1b]52;c;dGVybWluZm8=\x07", lib(ctx))
       }
       if ((ctx.backendName === "vt100" || ctx.backendName === "vt220") && (decTarget || decSetup || decsace)) {

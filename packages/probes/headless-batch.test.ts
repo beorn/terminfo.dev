@@ -6052,9 +6052,12 @@ test.runIf(OWNED_LAYOUT).each([
 
 // Route 2: the real collector must admit the report's buffer_state assertion
 // for these query_reply definitions; callback-only tests cannot catch that boundary.
-test.runIf(OWNED_LAYOUT)("VT100 OSC52 write reports cross the real collector boundary", async () => {
+test.runIf(OWNED_LAYOUT).each([
+  ["vt100", resolveVt100],
+  ["vt220", resolveVt220],
+] as const)("%s OSC52 write reports cross the real collector boundary", async (engine, factory) => {
   const ids = ["extensions.osc52-clipboard", "extensions.osc52-write"]
-  const batch = await collectBatch(resolveVt100, "vt100", registryDefinitions(ids))
+  const batch = await collectBatch(factory, engine, registryDefinitions(ids))
   expect(batch.results.map(({ featureId, status }) => [featureId, status])).toEqual(
     ids.map((id) => [id, "unsupported"]),
   )
