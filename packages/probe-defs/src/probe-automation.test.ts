@@ -288,39 +288,51 @@ describe("native host recipe callers", () => {
    * have published Unsupported for a host input the harness never supplied.
    * @consumer kitty extensions.osc52-write / osc52-read / osc52-clipboard lib arm
    */
-  test("kitty's supplied read permission measures its OSC 52 cells and names the option, with no audited cause", () => {
-    const kitty = "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
-    const runtimeIdentity = {
-      ...nativeIdentity,
-      engineVersion: "0.49.2",
-      loadedBinary: { path: "/fixture/kitty", sha256: kitty },
-      provenance: { ...nativeIdentity.provenance, sha256: kitty },
-    }
-    const control = ["write-clipboard", "write-primary", "read-clipboard", "read-primary"]
-    const kittyContext = () => {
-      let stored = ""
-      return context({
-        runtimeIdentity,
-        feed(text) {
-          stored = /\x1b\]52;c;([A-Za-z0-9+/=]+)/.exec(text)?.[1] ?? stored
-        },
-        // kitty's legacy OSC 52 encoder answers a permitted read with the stored payload.
-        feedCapture: (text) => (text === "\x1b]52;c;?\x07" ? `\x1b]52;c;${stored}\x1b\\` : ""),
-        getClipboardState: () => ({ writes: [{ selector: "c", payload: stored }], control }),
-      } as Partial<LibProbeSource>)
-    }
-    const write = probe("extensions.osc52-write").lib!(kittyContext())
-    expect(write.observation?.outcome).toBe("supported")
-    expect(write.hostRecipeCauses).toBeUndefined()
-    for (const id of ["extensions.osc52-read", "extensions.osc52-clipboard"]) {
-      const read = probe(id).lib!(kittyContext())
-      expect(read.observation?.outcome, id).toBe("supported")
-      expect(read.hostRecipeCauses, id).toBeUndefined()
-      expect(read.note, id).toContain(`harness-supplied clipboard_control ${control.join(" ")}`)
-      expect(read.note, id).toContain("read-clipboard-ask")
-      expect(read.observation?.note, id).toContain(`harness-supplied clipboard_control ${control.join(" ")}`)
-    }
-  })
+  test.each([
+    [
+      "kitty",
+      ["write-clipboard", "write-primary", "read-clipboard", "read-primary"],
+      "clipboard_control",
+      "read-clipboard-ask",
+    ],
+    ["alacritty", ["osc52=CopyPaste"], "osc52=CopyPaste", "OnlyCopy"],
+  ] as const)(
+    "%s supplied read permission measures its OSC 52 cells and names the option, with no audited cause",
+    (name, control, option, defaultOption) => {
+      const kitty = "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+      const runtimeIdentity = {
+        ...nativeIdentity,
+        engineVersion: "0.49.2",
+        loadedBinary: { path: "/fixture/kitty", sha256: kitty },
+        provenance: { ...nativeIdentity.provenance, sha256: kitty },
+      }
+      const kittyContext = () => {
+        let stored = ""
+        return context({
+          backendName: name,
+          runtimeIdentity,
+          feed(text) {
+            stored = /\x1b\]52;c;([A-Za-z0-9+/=]+)/.exec(text)?.[1] ?? stored
+          },
+          // kitty's legacy OSC 52 encoder answers a permitted read with the stored payload.
+          feedCapture: (text) => (text === "\x1b]52;c;?\x07" ? `\x1b]52;c;${stored}\x1b\\` : ""),
+          getClipboardState: () => ({ writes: [{ selector: "c", payload: stored }], control }),
+        } as Partial<LibProbeSource>)
+      }
+      const write = probe("extensions.osc52-write").lib!(kittyContext())
+      expect(write.observation?.outcome).toBe("supported")
+      expect(write.hostRecipeCauses).toBeUndefined()
+      for (const id of ["extensions.osc52-read", "extensions.osc52-clipboard"]) {
+        const read = probe(id).lib!(kittyContext())
+        expect(read.observation?.outcome, id).toBe("supported")
+        expect(read.hostRecipeCauses, id).toBeUndefined()
+        expect(read.note, id).toContain(`harness-supplied ${option}`)
+        expect(read.note, id).toContain(defaultOption)
+        expect(read.observation?.note, id).toContain(`harness-supplied ${option}`)
+        if (name === "alacritty") expect(read.note, id).not.toContain("kitty")
+      }
+    },
+  )
 
   // No per-artifact audit table decides a native host cause any more (#32246): any native artifact records the cause
   // it observed for an empty reply, keeps the criterion PROBE TODO, and records nothing once the host query answers.
