@@ -94,9 +94,18 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 // version carrying the same backend name. Real readers take precedence at each caller.
 function hasAuditedOscInterfaceAbsence(
   ctx: LibProbeSource,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "wezterm-d2" = "osc-absence",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "ghostty-native-d2" | "wezterm-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
+  if (cohort === "ghostty-native-d2") {
+    return (
+      ctx.backendName === "ghostty-native" &&
+      identity?.kind === "native" &&
+      identity.engineVersion === "1.3.1" &&
+      identity.provenance.sourceCommit === "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28" &&
+      identity.provenance.lockSha256 === "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a"
+    )
+  }
   if (cohort === "wezterm-d2") {
     return (
       ctx.backendName === "wezterm" &&
@@ -6202,13 +6211,26 @@ const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
 }
 
+const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.osc1-icon": "Ghostty 1.3.1 parses OSC 1 and ignores it. No icon state or action follows.",
+  "extensions.osc113-reset-pointer-fg":
+    "Ghostty 1.3.1 parses OSC 113 and does nothing with it. It keeps no pointer colour.",
+  "extensions.osc114-reset-pointer-bg":
+    "Ghostty 1.3.1 parses OSC 114 and does nothing with it. It keeps no pointer colour.",
+  "extensions.osc117-reset-highlight-bg":
+    "Ghostty 1.3.1 parses OSC 117 and does nothing with it. It keeps no highlight colour.",
+  "extensions.osc119-reset-highlight-fg":
+    "Ghostty 1.3.1 parses OSC 119 and does nothing with it. It keeps no highlight colour.",
+  "modes.decsscls": "Ghostty 1.3.1 has no handler for this sequence and no scroll-speed state.",
+}
+
 function declaredD2InterfaceAbsence(
   ctx: LibProbeSource,
   lib: (ctx: LibProbeSource) => ProbeCallbackResult,
   id: string,
   table: Readonly<Record<string, string>>,
   backend: string,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "wezterm-d2",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "ghostty-native-d2" | "wezterm-d2",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
 ): ProbeCallbackResult | undefined {
@@ -6266,8 +6288,12 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
+  const ghosttyNativeReason = GHOSTTY_NATIVE_D2_DECLARATIONS[definition.id]
   const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
-  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason && !weztermAbsence)) {
+  if (
+    !lib ||
+    (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason && !ghosttyNativeReason && !weztermAbsence)
+  ) {
     return definition
   }
   return {
@@ -6283,6 +6309,16 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
+      const ghosttyNativeDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        GHOSTTY_NATIVE_D2_DECLARATIONS,
+        "ghostty-native",
+        "ghostty-native-d2",
+        (source, id) => id === "extensions.osc1-icon" && typeof source.getIconLabel === "function",
+      )
+      if (ghosttyNativeDeclared) return ghosttyNativeDeclared
       const alacrittyDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,

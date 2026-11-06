@@ -409,6 +409,15 @@ stay Supported; `extensions.osc133-p` stays Unsupported), reader precedence
 checks the `semantic-command-end` capability alongside `getUnhandledSequences`
 and decided outcomes; the six host-effect OSCs stay held.
 
+Ghostty native D2 shares that helper for six semantic interface absences: OSC 1,
+resets 113/114/117/119, and DECSSCLS. Its cohort requires backend `ghostty-native`,
+a native Ghostty 1.3.1 runtime, source `332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28`
+and lock `3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a`;
+addon hashes and adapter blobs do not select this source-level declaration.
+Recognition-only parsed commands do not observe those semantic effects. A real
+icon reader, unhandled report or decided result retains its existing path.
+OSC 22 has public engine pointer-shape state and stays outside these declarations.
+
 WezTerm D2 uses the same private registry helper with a separate `wezterm-d2`
 cohort: native tattoy-wezterm-term 0.1.0-fork.5, audited binary, source, lock and
 four adapter blobs. It declares ten public-interface absences: pointer resets
