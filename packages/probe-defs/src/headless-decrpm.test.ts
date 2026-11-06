@@ -6,10 +6,43 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { decrpmPs, decrpmReplyPattern, decrpmStatus, NO_SAME_PATH_CONTROL } from "./helpers.ts"
+import { decrpmPs, decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
-import { inputProbes } from "./input.ts"
 import type { LibProbeSource } from "./types.ts"
+
+// DEC1: silence permits these two public-state criteria only; constant, missing,
+// conflated and unknown-mode-sensitive readers cannot qualify a state observation.
+test.each([
+  { id: "modes.application-cursor", number: 1, key: "applicationCursor", other: "reverseVideo", facet: "key encoding" },
+  { id: "modes.reverse-video", number: 5, key: "reverseVideo", other: "applicationCursor", facet: "presentation" },
+])("$id measures controlled state when DECRPM is silent", ({ id, number, key, other, facet }) => {
+  for (const fault of ["none", "constant", "missing", "conflated", "unknown"] as const) {
+    let enabled = false
+    let disturbed = false
+    const source = {
+      ...context("", false, [], []),
+      feed(text: string) {
+        if (text === `\x1b[?${number}h`) enabled = true
+        if (text === `\x1b[?${number}l`) enabled = false
+        if (text === "\x1b[?9999h" && fault === "unknown") disturbed = true
+      },
+      getMode(name: string) {
+        if (name === other) return fault === "conflated" && enabled
+        if (name !== key) return null
+        return fault === "missing" ? null : fault === "constant" ? false : disturbed || enabled
+      },
+    } as LibProbeSource
+    const result = headless(id)(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+    if (fault === "none") {
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      expect(result.note).toContain(`${facet} unmeasured`)
+      expect(JSON.parse(result.response!)).toMatchObject({ initial: false, set: true, reset: false, unknown: false })
+    } else {
+      expect(result.observation?.outcome, fault).not.toBe("supported")
+      expect(result.assertions ?? [], fault).toEqual([])
+    }
+  }
+})
 
 const readbackModes = [
   { id: "modes.alt-scroll-1007", number: 1007, mode: "altScroll" },
@@ -261,7 +294,7 @@ test.each(features)("$id grades the engine's DECRPM reply exactly as the app arm
   expect(JSON.parse(four.response!), id).toEqual(expectedState(fourReply, mode))
 })
 
-test.each(features)(
+test.each(features.filter(({ number }) => number !== 1))(
   "$id routes a missing or foreign DECRPM reply to review, keeping getMode as context only",
   ({ id, number, mode }) => {
     const arm = headless(id)
@@ -323,289 +356,4 @@ test("one DECRPM reading serves the app query, the ANSI query and the headless a
   expect(decrpmReplyPattern(1).test("\x1b[?1000;1$y")).toBe(false)
   expect(decrpmReplyPattern(4, "ansi").exec("\x1b[4;2$y")?.[1]).toBe("2")
   expect(decrpmReplyPattern(4, "ansi").test("\x1b[?4;2$y")).toBe(false)
-})
-
-// #32099: existing reply cases omit runtimeIdentity and miss source-audit overrides.
-// Independent source fixtures from pass-3XQsvM, rekeyed to 0.10.1 after proving both parsers unchanged,
-// then rekeyed to parser repair9e99e4d2 (VT100 b941dae4 / VT2204205f893). The adapter
-// blobs stay as captured: they are not consulted by the mode source key.
-// These are qualifier inputs, not an attestation that the historical run loaded the newer package.
-const capturedModeEngines = [
-  {
-    engine: "vt100",
-    identity: {
-      kind: "js",
-      adapterVersion: "0.10.2",
-      termlessRevision: "8be31bfc35c0359e39a836b1d397f49e7176c97f",
-      resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
-      integrity: {
-        kind: "source",
-        repository: "git@github.com:beorn/vterm.git",
-        revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
-        treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
-        cleanTree: true,
-      },
-      runtimeFormat: "js",
-      engineVersion: "0.10.1",
-      adapterSources: [
-        {
-          path: "packages/vt100/src/index.ts",
-          blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-        },
-        {
-          path: "packages/vt100/src/backend.ts",
-          blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
-        },
-      ],
-    },
-  },
-  {
-    engine: "vt220",
-    identity: {
-      kind: "js",
-      adapterVersion: "0.10.2",
-      termlessRevision: "8be31bfc35c0359e39a836b1d397f49e7176c97f",
-      resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
-      integrity: {
-        kind: "source",
-        repository: "git@github.com:beorn/vterm.git",
-        revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
-        treeOid: "4205f8936ad1848d1029729f3ada888cd61759a8",
-        cleanTree: true,
-      },
-      runtimeFormat: "js",
-      engineVersion: "0.10.1",
-      adapterSources: [
-        {
-          path: "packages/vt220/src/index.ts",
-          blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-        },
-        {
-          path: "packages/vt220/src/backend.ts",
-          blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73",
-        },
-      ],
-    },
-  },
-] satisfies { engine: string; identity: NonNullable<LibProbeSource["runtimeIdentity"]> }[]
-
-function capturedModeContext(identity: LibProbeSource["runtimeIdentity"], behavior = "consume", reply = "") {
-  let x = 0
-  let y = 0
-  let markers = 0
-  const lines: string[][] = Array.from({ length: 24 }, () => [])
-  const fed: string[] = []
-  const modes = new Map<string, boolean>()
-  function render(char: string) {
-    if (char === "X") {
-      markers++
-      if (behavior === "missing-first-X" && markers === 1) return
-      if (behavior === "missing-last-X" && markers === 2) return
-      if (behavior === "moved-line" && markers === 2) {
-        y++
-        x = 0
-      }
-    }
-    lines[y]![x++] = char
-  }
-  function feed(text: string) {
-    fed.push(text)
-    for (const token of text.match(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b[=>]|[^\x1b]/g) ?? []) {
-      if (token === "\x1b[2J") {
-        for (const line of lines) line.length = 0
-        markers = 0
-      } else if (/^\x1b\[(?:1;1)?H$/.test(token)) {
-        x = 0
-        y = 0
-      } else if (token === "\x1b[2K") lines[y]!.length = 0
-      else if (token.startsWith("\x1b")) {
-        const mode = /^\x1b\[\?(\d+)([hl])$/.exec(token)
-        if (mode) modes.set(mode[1]!, mode[2] === "h")
-        if (token === "\x1b=") modes.set("66", true)
-        if (token === "\x1b>") modes.set("66", false)
-        if (behavior === "leak" && markers === 1) for (const char of token.slice(1)) render(char)
-      } else render(token)
-    }
-  }
-  const source = {
-    ...context(reply, false, [], []),
-    runtimeIdentity: identity,
-    feed,
-    getMode: (name: string) =>
-      modes.get(
-        ({ applicationCursor: "1", reverseVideo: "5", applicationKeypad: "66" } as Record<string, string>)[name] ??
-          name,
-      ) ?? false,
-    getCell: (row: number, col: number) => ({ char: lines[row]?.[col] ?? " " }),
-    getText: () =>
-      lines
-        .map((line) => line.join(""))
-        .join("\n")
-        .trimEnd(),
-    getCursor: () => ({ x, y, visible: true, style: null }),
-  } as unknown as LibProbeSource
-  return { source, fed, line: () => lines[0]!.join(""), position: () => ({ x, y }) }
-}
-
-// CTO45a/M5: input observer absence cannot hide these pinned engines own absent mouse modes.
-// Existing mode rows never execute the six input callbacks; existing source/adapter fallback tests stay unchanged.
-// #32246: a consumed mode with no visible effect has no same-path control, so it is PROBE TODO, never source-graded.
-const mouseSourceCases = [
-  ["input.pixel-mouse", 1016],
-  ["input.urxvt-mouse", 1015],
-  ["input.x10-mouse", 9],
-  ["input.button-event-mouse", 1002],
-  ["input.xtest-click", 1000],
-  ["input.xtest-wheel", 1000],
-] as const
-
-test.each(
-  capturedModeEngines.flatMap(({ engine, identity }) =>
-    mouseSourceCases.map(([id, mode]) => ({ engine, identity, id, mode })),
-  ),
-)("$engine $id keeps its consumed own mouse mode PROBE TODO without a same-path control", ({ identity, id, mode }) => {
-  const fixture = capturedModeContext(identity)
-  const source = { ...fixture.source, capabilities: { ...fixture.source.capabilities, extensions: new Set<string>() } }
-  const result = inputProbes.find((entry) => entry.id === id)!.lib!(source)
-  expect(fixture.fed).toContain(`\x1b[?${mode}h`)
-  expect(fixture.fed).toContain(`\x1b[?${mode}l`)
-  expect(fixture.line()).toBe("XX")
-  expect(result.pass).toBe(false)
-  expect(result.criterionBranch).toBeUndefined()
-  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
-  expect(result.observation).toBeUndefined()
-  expect(result.assertions).toBeUndefined()
-  expect(JSON.parse(result.response!)).toMatchObject({ line: "XX", control: "consumed-without-effect" })
-})
-
-test.each(capturedModeEngines)("$engine held modes retain named TODOs", ({ engine, identity }) => {
-  for (const [id, held] of [
-    ["modes.application-cursor", "1"],
-    ...(engine === "vt100" ? [["modes.reverse-video", "5"]] : []),
-  ]) {
-    const result = headless(id!)(capturedModeContext(identity).source) as ModeResult
-    expect.soft(result.tests, id).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
-    expect.soft(result.observation, id).toBeUndefined()
-    expect.soft(result.assertions, id).toBeUndefined()
-    expect.soft(JSON.stringify(result), id).toMatch(new RegExp(`held.*${held}|${held}.*held`, "i"))
-    if (held === "1") {
-      expect.soft(JSON.parse(result.response!), id).toMatchObject({ mode: true })
-    }
-  }
-})
-
-type ModeResult = ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
-const absentCommands = [
-  ...features
-    .filter(({ number }) => number !== 1)
-    .map(({ id, number }) => ({ id, commands: [`\x1b[?${number}h`, `\x1b[?${number}l`], own: String(number) })),
-  { id: "modes.alt-scroll-1007", commands: ["\x1b[?1007h", "\x1b[?1007l"], own: "1007" },
-  { id: "modes.synchronized-output", commands: ["\x1b[?2026h", "\x1b[?2026l"], own: "2026" },
-  { id: "modes.color-scheme-reporting", commands: ["\x1b[?2031h", "\x1b[?2031l"], own: "2031" },
-  ...["modes.xtpushsgr", "modes.xtpopsgr"].map((id) => ({ id, commands: ["\x1b[#{", "\x1b[#}"], own: "SGR" })),
-  ...["modes.xtpushcolors", "modes.xtpopcolors"].map((id) => ({ id, commands: ["\x1b[#P", "\x1b[#Q"], own: "color" })),
-]
-
-test.each(capturedModeEngines)(
-  "$engine absent commands keep consumed and leaked controls PROBE TODO without a same-path control",
-  ({ identity }) => {
-    for (const { id, commands } of absentCommands) {
-      for (const behavior of ["consume", "leak"]) {
-        const fixture = capturedModeContext(identity, behavior)
-        const result = headless(id)(fixture.source) as ModeResult
-        for (const command of commands) expect.soft(fixture.fed.join(""), id).toContain(command)
-        expect.soft(fixture.fed.join(""), id).toContain("\x1b[2J\x1b[1;1H")
-        if (behavior === "consume") expect.soft(fixture.line(), id).toBe("XX")
-        else expect.soft(fixture.line(), id).toMatch(/^X.+X$/)
-        expect.soft(result.criterionBranch, id).toBeUndefined()
-        expect
-          .soft(result.notTested, id)
-          .toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
-        expect.soft(result.observation, id).toBeUndefined()
-        expect.soft(result.assertions, id).toBeUndefined()
-        // Own DECSET/DECRST absence, not rejection of the separate query opcode.
-        const state = JSON.parse(result.response!)
-        expect.soft(state, id).toMatchObject({
-          line: fixture.line(),
-          position: fixture.position(),
-          control: behavior === "consume" ? "consumed-without-effect" : "leaked-as-text",
-        })
-        const definition = modesProbes.find((probe) => probe.id === id)!
-        expect.soft([undefined, "buffer_state"], id).toContain(definition.libAssertionType)
-      }
-    }
-  },
-)
-
-test.each(capturedModeEngines)(
-  "$engine source-negative mode review requires X and matching source/adapter",
-  ({ identity }) => {
-    const altered = [
-      undefined,
-      { ...identity, resolvedPath: "vendor/vterm/packages/vterm/src/index.ts" },
-      { ...identity, integrity: { ...identity.integrity, cleanTree: false } },
-      { ...identity, integrity: { ...identity.integrity, treeOid: "0".repeat(40) } },
-      { ...identity, adapterSources: [] },
-      { ...identity, engineVersion: "foreign" },
-    ]
-    for (const { id } of absentCommands) {
-      for (const behavior of ["missing-first-X", "missing-last-X", "moved-line"]) {
-        const result = headless(id)(capturedModeContext(identity, behavior).source) as ModeResult
-        expect.soft(result.criterionBranch, id).not.toBe("source-negative-review")
-        expect.soft(result.assertions, id).toBeUndefined()
-        expect
-          .soft(result.tests, id)
-          .toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
-        expect
-          .soft(JSON.stringify(result), id)
-          .toMatch(behavior.startsWith("missing") ? /X|control|marker/i : /line|row|cursor|position/i)
-      }
-      for (const fixture of altered.map((changed) => capturedModeContext(changed))) {
-        const result = headless(id)(fixture.source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
-        expect.soft(result.criterionBranch, id).not.toBe("source-negative-review")
-        expect.soft(result.observation?.outcome, id).not.toBe("unsupported")
-      }
-    }
-  },
-)
-
-// #32099 review: stack priors had no tests, so appending only to prior.tests lost the named cause.
-test.each(capturedModeEngines)(
-  "$engine names each source identity failure for mode and stack priors",
-  ({ identity }) => {
-    const changes = [
-      { value: { ...identity, resolvedPath: "moved/index.ts" }, reason: /entry moved/i },
-      { value: { ...identity, integrity: { ...identity.integrity, cleanTree: false } }, reason: /dirty/i },
-      {
-        value: { ...identity, integrity: { ...identity.integrity, treeOid: "0".repeat(40) } },
-        reason: /foreign source/i,
-      },
-      { value: { ...identity, adapterSources: [] }, reason: /adapter source/i },
-      { value: { ...identity, engineVersion: "foreign" }, reason: /engine version/i },
-    ]
-    for (const { id } of absentCommands) {
-      for (const { value, reason } of changes) {
-        const result = headless(id)(capturedModeContext(value).source) as ModeResult
-        expect.soft(result.tests, id).toMatchObject([{ status: "probe-todo", reason: expect.stringMatching(reason) }])
-        expect.soft(result.assertions, id).toBeUndefined()
-        expect.soft(result.criterionBranch, id).not.toBe("source-negative-review")
-      }
-    }
-  },
-)
-
-test.each(capturedModeEngines)("$engine actual DECRPM deciding reply wins over source review", ({ identity }) => {
-  for (const { id, number } of features) {
-    for (const [ps, outcome, kind] of [
-      ["1", "supported", "positive"],
-      ["4", "unsupported", "negative"],
-    ] as const) {
-      const result = headless(id)(
-        capturedModeContext(identity, "consume", `\x1b[?${number};${ps}$y`).source,
-      ) as ModeResult
-      expect.soft(result.observation, id).toMatchObject({ outcome, assertionType: "query_reply" })
-      expect.soft(result.assertions, id).toMatchObject([{ kind, assertionType: "query_reply" }])
-      expect.soft(result.criterionBranch, id).toBeUndefined()
-    }
-  }
 })

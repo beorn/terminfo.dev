@@ -57,7 +57,12 @@ test.each([
       },
     })
     const result = definition.lib(source)
-    if (ps === null) {
+    if (ps === null && mode === 5) {
+      // This fake aliases every mode to enabled, so DEC1's other-flag control fails.
+      expect(result.observation?.outcome).toBe("inconclusive")
+      expect(result.note).toContain("independence control unavailable")
+      expect(result.assertions ?? []).toEqual([])
+    } else if (ps === null) {
       expect(result.criterionBranch, `${id}: silence`).toBe("os-input-review")
       expect(result.tests, `${id}: silence`).toEqual([
         {

@@ -116,7 +116,11 @@ Those checks do not establish which shell supplied the path or a measured capabi
 
 ## Headless runtime prerequisites
 
-Build native addons from the selected Termless source, using its declared package scripts.
+In the owned hh layout, the existing `placeArtifacts` in root
+`tools/terminfo-remeasure.ts` places retained addons whose receipt `nativeTreeOid`
+matches the selected Termless native tree, including Ghostty's recorded lock.
+Use the matching retained artifact before rebuilding; the checks below still apply.
+When none matches, build from the selected Termless source using its declared package scripts.
 From that checkout's [packages/alacritty](https://github.com/beorn/termless/blob/main/packages/alacritty/package.json),
 [packages/wezterm](https://github.com/beorn/termless/blob/main/packages/wezterm/package.json) and
 [packages/vt100-rust](https://github.com/beorn/termless/blob/main/packages/vt100-rust/package.json) directories,

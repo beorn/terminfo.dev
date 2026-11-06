@@ -14,7 +14,7 @@ import {
   osInputReviewResult,
   NO_SAME_PATH_CONTROL,
   probe,
-  withModeSourceReview,
+  withUnhandledModeReport,
 } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
@@ -64,7 +64,7 @@ const inputDefinitions: ProbeDefinition[] = [
   },
 ]
 
-export const inputProbes: ProbeDefinition[] = inputDefinitions.map(withModeSourceReview)
+export const inputProbes: ProbeDefinition[] = inputDefinitions.map(withUnhandledModeReport)
 
 const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_RESET = "\x1b[?1000l\x1b[?1006l"
