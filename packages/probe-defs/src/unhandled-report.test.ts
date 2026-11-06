@@ -232,6 +232,10 @@ describe("the unhandled report decides only state cells, and only with both cont
     ["extensions.osc9-progress", "9"],
     ["extensions.osc22-pointer", "22"],
     ["extensions.osc777-notify", "777"],
+    ["extensions.osc104-reset-palette", "104"],
+    ["extensions.osc110-reset-fg", "110"],
+    ["extensions.osc111-reset-bg", "111"],
+    ["extensions.osc112-reset-cursor", "112"],
     ["extensions.osc113-reset-pointer-fg", "113"],
     ["extensions.osc114-reset-pointer-bg", "114"],
     ["extensions.osc117-reset-highlight-bg", "117"],
@@ -241,22 +245,6 @@ describe("the unhandled report decides only state cells, and only with both cont
     const result = probe(id).lib!(source)
     expect(result.observation?.outcome).toBe("unsupported")
     expect(JSON.stringify(result)).toContain(REASON)
-  })
-
-  test("a colour reset outside the four named cells keeps its own path", () => {
-    // @cto names the ledger's colour-reset group (113/114/117/119); 104/110/111/112 belong to another
-    // card group and must not move here even when the same report carries their number.
-    for (const [id, code] of [
-      ["extensions.osc104-reset-palette", "104"],
-      ["extensions.osc110-reset-fg", "110"],
-      ["extensions.osc111-reset-bg", "111"],
-      ["extensions.osc112-reset-cursor", "112"],
-    ] as const) {
-      const source = reportingSource({ records: [recordsOsc(code)] })
-      const result = probe(id).lib!(source)
-      expect(result.observation?.outcome, id).not.toBe("unsupported")
-      expect(JSON.stringify(result), id).not.toContain(REASON)
-    }
   })
 
   test("the two umbrella shell cells reach the report arm too", () => {

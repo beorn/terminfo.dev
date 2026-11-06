@@ -24,6 +24,8 @@ import {
   type SgrReadback,
   probe,
   finalizeProbeResult,
+  declaredUntestableResult,
+  withUnhandledSgrReport,
 } from "./helpers.ts"
 import { kittyWait } from "./kitty-capture.ts"
 import { captureRegionCallbackResult, cropPositionRefusal } from "./region-readback.ts"
@@ -248,7 +250,50 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
  * PROBE TODO), never a negative (#30701, @cto ruling C: PROBE TODO only where the cell field is missing).
  */
 const UNDERLINE_COLOR_UNEXPOSED =
-  "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
+  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it."
+
+const UNDERLINE_COLOR_UNKNOWN_REASON =
+  "SGR 58 behaved exactly like an unknown number: the numbers after it ran as their own commands"
+
+/**
+ * Where the colour field is missing, read SGR 58 against the made-up SGR 77 with the same operands in the same
+ * run (@cto routes-32 section 1, 23:02 PST Nov 5 2026; replaces #30701 ruling C for this case). A library that
+ * does not know 58 runs its operands as their own commands, exactly as it does for 77. Equal cells with at least
+ * one attribute set read Unsupported; anything else returns undefined and the caller keeps today's Open.
+ */
+function underlineColorUnknownArm(
+  ctx: LibProbeSource,
+  operands: string,
+  expected: string,
+  state: object,
+): ProbeCallbackResult | undefined {
+  ctx.feed(`\x1b[0m\x1b[3;1H\x1b[58;${operands}mX\x1b[0m\x1b[77;${operands}mY\x1b[0m`)
+  const target = ctx.getCell(2, 0)
+  const control = ctx.getCell(2, 1)
+  if (target.char !== "X" || control.char !== "Y") return undefined
+  const attrs = (cell: typeof target) => ({
+    bold: cell.bold === true,
+    dim: cell.dim === true,
+    italic: cell.italic === true,
+    underline: cell.underline === true,
+    blink: cell.blink === true,
+    underlineColor: cell.underlineColor ?? null,
+  })
+  const t = attrs(target)
+  const c = attrs(control)
+  const equal = JSON.stringify(t) === JSON.stringify(c)
+  const anySet = t.bold || t.dim || t.italic || t.underline || t.blink
+  if (!equal || !anySet) return undefined
+  return parserStateResult(
+    false,
+    expected,
+    { ...state, unknownControl: { target: `58;${operands}`, control: `77;${operands}`, equal, attrs: t } },
+    UNDERLINE_COLOR_UNKNOWN_REASON,
+  )
+}
+
+const LIBVTERM_RESET_NO_SETUP =
+  "Untestable (no setup): SGR 58 does not work on this library, so this command has nothing to act on."
 
 /**
  * Keep DECRQSS for state-only claims. Registered colour/reset visual claims use their owned pixel
@@ -421,7 +466,10 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         const expected = `${id}: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell`
         const framed = blueControl.char === "A" && greenControl.char === "B" && target.char === "X"
         if (framed && target.underlineColor == null) {
-          return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+          return (
+            underlineColorUnknownArm(ctx, "2;1;2;3", expected, state) ??
+            notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+          )
         }
         if (
           blueControl.char !== "A" ||
@@ -513,7 +561,7 @@ function measuredReset(
   const retained = preserve.filter(shown).every((attribute) => measuredAttribute(after, attribute) === true)
   if (cleared && retained && (!set.some(shown) || !preserve.every(shown))) {
     return notTestedResult(
-      `compound reset not decided: ${unshown.join(" and ")} not shown at setup; a reset needs at least one shown set facet and every preserved facet shown`,
+      `Open: ${unshown.join(" and ")} did not show during setup, so our test cannot check the combined reset.`,
       state,
     )
   }
@@ -875,7 +923,9 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         if (!changed || sameCellColor(baseColor, changed)) {
           // #30701, @cto ruling C: the colored X is the reference the reset is read against; a setup
           // that reads back as the default leaves the reset with no observable.
-          const reason = `No distinct colored seed for ${id}: a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`
+          const reason = changed
+            ? `Open: the ${channel === "bg" ? "background" : "text"} colour we set first (SGR ${setup}) read the same as the default, so we cannot tell whether the reset to default worked.`
+            : `Open: our test could not read the ${channel === "bg" ? "background" : "text"} colour we set first (SGR ${setup}), so we cannot tell whether the reset to default worked.`
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, state)
         }
         if (resetColor === undefined) {
@@ -990,7 +1040,10 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.hidden",
     "\x1b[8m",
     (cell) => (cell.hidden == null ? null : cell.hidden === true),
-    (cell) => (cell.hidden == null ? "cell.hidden field not exposed" : null),
+    (cell) =>
+      cell.hidden == null
+        ? "Open: our adapter for this library does not read hidden text from its screen cells yet, so our test cannot see hidden text."
+        : null,
     { require: [8] },
     "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
   ),
@@ -1008,7 +1061,10 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.overline",
     "\x1b[53m",
     (cell) => (cell.overline == null ? null : cell.overline === true),
-    (cell) => (cell.overline == null ? "cell.overline field not exposed" : null),
+    (cell) =>
+      cell.overline == null
+        ? "Open: our adapter for this library does not read overline from its screen cells yet, so our test cannot see overline."
+        : null,
     { require: [53] },
   ),
 
@@ -1037,7 +1093,9 @@ export const sgrProbes: ProbeDefinition[] = [
           "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults"
         const framed = default4.char === "A" && target5.char === "X" && default5.char === "B" && target4.char === "Y"
         if (framed && target5.underlineColor == null && target4.underlineColor == null) {
-          return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+          return (
+            underlineColorUnknownArm(ctx, "5;1", expected, state) ?? notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+          )
         }
         if (
           default4.char !== "A" ||
@@ -1091,7 +1149,7 @@ export const sgrProbes: ProbeDefinition[] = [
   {
     ...probe(
       "sgr.underline-color-reset",
-      (ctx) => {
+      withUnhandledSgrReport("sgr.underline-color-reset", "\x1b[59m", (ctx) => {
         ctx.feed("\x1b[4m\x1b[59mC\x1b[58;2;255;0;128mX\x1b[59mY")
         const baseline = ctx.getCell(0, 0)
         const before = ctx.getCell(0, 1)
@@ -1101,8 +1159,21 @@ export const sgrProbes: ProbeDefinition[] = [
           "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color"
         const framed = baseline.char === "C" && before.char === "X" && after.char === "Y"
         if (framed && before.underlineColor == null) {
+          // libvterm 0.3.3 has no SGR 59 report, and the same-run arm shows SGR 58 does not work there, so the
+          // reset has nothing to act on (@cto routes-32 section 1). Any other identity keeps today's record.
+          const version = ctx.runtimeIdentity?.engineVersion
+          if (
+            ctx.backendName === "libvterm" &&
+            version === "0.3.3" &&
+            underlineColorUnknownArm(ctx, "2;1;2;3", expected, state) !== undefined
+          ) {
+            return declaredUntestableResult(`${LIBVTERM_RESET_NO_SETUP} Library version: ${version}.`, state)
+          }
           // A missing prerequisite, not a missing control (@cto batch7 A-F5).
-          return notTestedResult("SGR 59 setup cell exposes no explicit underline color", state)
+          return notTestedResult(
+            "Open: after we set an underline colour (SGR 58), the screen cell showed none, so the setup did not show and the reset cannot be tested.",
+            state,
+          )
         }
         if (
           baseline.char !== "C" ||
@@ -1134,7 +1205,7 @@ export const sgrProbes: ProbeDefinition[] = [
           return parserStateResult(null, expected, state, "Reset-state color readback changed representation")
         }
         return parserStateResult(sameRgb(baseline.underlineColor, after.underlineColor), expected, state)
-      },
+      }),
       sgrTermReadback(
         "sgr.underline-color-reset",
         "\x1b[59m",

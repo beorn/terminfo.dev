@@ -313,14 +313,14 @@ for (const scenario of [
           featureId === "extensions.osc10-fg-color" ? 10 : featureId === "extensions.osc11-bg-color" ? 11 : 12
         const colour = featureId !== "extensions.osc0-icon-title" && scenario.name === "ghostty-native"
         const reason = colour
-          ? `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`
+          ? `Open: the colour query (OSC ${slot}) got no answer before setting a colour or after resetting it. The set-colour control did work, but it cannot show the original default`
           : scenario.name === "alacritty"
             ? "DECRPM reply to CSI ? 2026 $ p"
-            : "OSC 0 lacks a deciding observation for icon label (CSI 20 t): timeout"
+            : "Open: asking for the icon name (CSI 20 t, a short window name) got no answer within our wait, and no reply control worked in this test. With these readings, our test cannot tell whether OSC 0 set both names."
         const testReason = colour
           ? `${reason}, so this run cannot decide it`
           : scenario.name === "alacritty"
-            ? "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it"
+            ? "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works."
             : reason
         return {
           featureId,
@@ -2264,7 +2264,9 @@ test("real vterm Sixel storage sharpens the TODO reason without deciding a rende
     const source = createLibProbeSource(value, undefined, undefined, undefined)
     const definition = registryDefinitions(["extensions.sixel"])[0]!
     const result = definition.lib!(source)
-    expect(result.note).toBe("payload retained at row/col; no raster; cell geometry unmeasured")
+    expect(result.note).toBe(
+      "Open: our test cannot check the image, for two reasons. The library stores the image data at the right screen position, but drawing it is the app's job; and our test does not measure the character cell size needed to check the image's size.",
+    )
     expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
     expect(result.tests).toMatchObject([{ status: "probe-todo" }])
     expect(result.observation).toBeUndefined()
@@ -3294,7 +3296,7 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   }
   expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
     status: "probe-todo",
-    reason: expect.stringContaining("adapter binding libvterm applicationKeypad"),
+    reason: "Open: our libvterm adapter cannot read the application keypad mode yet.",
   })
 })
 
@@ -3714,7 +3716,7 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
   expect(batch.results.map((row) => row.featureId)).toEqual(ids)
   for (const row of batch.results) {
     expect(row.status).toBe("probe-todo")
-    expect(row.reason).toContain("mouse-encoding extension unavailable")
+    expect(row.reason).toBe("Open: our vt100 adapter has no hook for sending mouse events yet.")
     expect(row.criterionBranch).toBeUndefined()
     expect(row.tests?.some((test) => test.id === "review" || test.reviewRef !== undefined)).not.toBe(true)
     expect(JSON.parse(batch.rawReplies[row.featureId]!)).toEqual({ mouseEncoding: false })
@@ -4015,7 +4017,16 @@ test.each([
     // Published DEC adapters lack that reader; other silent resets keep their review and raw query.
     const unhandledReportIds =
       engine === "libvterm" || (OWNED_LAYOUT && (engine === "vt100" || engine === "vt220"))
-        ? ["extensions.osc113-reset-pointer-fg", "extensions.osc114-reset-pointer-bg"]
+        ? [
+            "extensions.osc104-reset-palette",
+            "extensions.osc110-reset-fg",
+            "extensions.osc111-reset-bg",
+            "extensions.osc112-reset-cursor",
+            "extensions.osc113-reset-pointer-fg",
+            "extensions.osc114-reset-pointer-bg",
+            "extensions.osc30001-color-stack-push",
+            "extensions.osc30101-color-stack-pop",
+          ]
         : []
     expect(batch.observations).toEqual([
       ...cellWitnessIds.map((featureId) =>
@@ -4062,10 +4073,28 @@ test.each([
           raw: expect.stringMatching(/^\x1b\[\?[0-9;]+c$/),
         })
       }
+      const noObservableByFeature: Record<string, string> = {
+        "extensions.osc104-reset-palette":
+          "Open: the colour query (OSC 4) did not confirm the colour we set, leaving the reset (OSC 104) with no verified setup",
+        "extensions.osc110-reset-fg":
+          "Open: the colour query (OSC 10) did not confirm the colour we set, leaving the reset (OSC 110) with no verified setup",
+        "extensions.osc111-reset-bg":
+          "Open: the colour query (OSC 11) did not confirm the colour we set, leaving the reset (OSC 111) with no verified setup",
+        "extensions.osc112-reset-cursor":
+          "Open: the colour query (OSC 12) did not confirm the colour we set, leaving the reset (OSC 112) with no verified setup",
+        "extensions.osc113-reset-pointer-fg":
+          "Open: the colour query (OSC 13) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen",
+        "extensions.osc114-reset-pointer-bg":
+          "Open: the colour query (OSC 14) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen",
+        "extensions.osc30001-color-stack-push":
+          "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
+        "extensions.osc30101-color-stack-pop":
+          "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
+      }
       expect(batch.notTested, result.featureId).toContainEqual({
         featureId: result.featureId,
         reason: "no-semantic-observable",
-        noObservable: expect.stringMatching(/answered nothing|did not answer/),
+        noObservable: noObservableByFeature[result.featureId],
         rawReplyRef: result.featureId,
       })
       expect(result.tests, result.featureId).toContainEqual(
@@ -5659,7 +5688,8 @@ function expectTitleSetupReview(batch: Awaited<ReturnType<typeof collectBatch>>)
         {
           id: "review",
           status: "probe-todo",
-          reason: "Title setup was not observable, so this run cannot decide it",
+          reason:
+            "Open: this test first sets a window title, then tests whether the command under test changes it. We could not read the first title back, so this run cannot decide it",
         },
       ],
     })),

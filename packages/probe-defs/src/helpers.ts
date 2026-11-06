@@ -564,7 +564,8 @@ export const SEMANTIC_PROMPT_SOURCE_REVIEW = "semantic-prompt-source-review"
  * control in this run showed the same observation path can report the state, so the cell stays PROBE TODO (rule 4).
  * Source code never decides it; a probe owner adds the same-path control per feature.
  */
-export const NO_SAME_PATH_CONTROL = "observation not decided: no same-path control in this run"
+export const NO_SAME_PATH_CONTROL =
+  "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result."
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as
@@ -1245,8 +1246,9 @@ const UNHANDLED_CSI_CELLS: ReadonlySet<string> = new Set([
  * The CSI arm's control (@cto 2026-11-05 07:37 status): SGR 1 must add no report entry while the same
  * cell reader shows bold applied, then the target must add exactly one entry carrying the code its own
  * sequence produces ("5m", "9m", "21m", "4:3m", "4:4m", "4:5m"). Anything else keeps the body's result.
+ * sgr.underline-color-reset calls it directly for "59m" (@cto routes-32 section 1, 23:02 PST Nov 5 2026).
  */
-function withUnhandledSgrReport(
+export function withUnhandledSgrReport(
   id: string,
   sequence: string,
   body: (ctx: LibProbeSource) => ProbeCallbackResult,
@@ -1305,7 +1307,7 @@ export function sgrProbe(
           const field = id === "sgr.faint" ? "dim" : id.slice("sgr.".length)
           const prerequisite =
             SGR_ATTRIBUTE_READER_ABSENCE[`${ctx.backendName}:${ctx.runtimeIdentity?.engineVersion}:${field}`]
-          const missingReader = `cell.${field} is unreported; ${prerequisite ? `${prerequisite}; ` : ""}no qualified SGR m alternative in this run`
+          const missingReader = `Open: our test could not read ${field} from the screen cells and found no qualified alternative in this run.${prerequisite ? ` ${prerequisite}.` : ""}`
           // The reply is used only after this same SGR m reader reports the bold control.
           // A facility-wide DECRQSS/DECSTBM answer does not qualify it (#32318).
           if (readback && ctx.queryWithSentinelOutcome) {
@@ -1379,7 +1381,9 @@ export function sgrProbe(
               )
             }
             return notTestedResult(
-              `Underline reader did not distinguish the ${style} style control in this run`,
+              style === "double" && styleControl.char === "D" && styleControl.underline === "single"
+                ? "Open: our test tells underline styles apart by comparing with double underline, its control. On this library double underline read the same as plain underline, so this style cannot be judged yet."
+                : `Open: our test compares underline styles with a ${style}-underline control, but that control did not read as ${style} underline, so this style cannot be judged yet.`,
               styleState,
             )
           }
@@ -1809,7 +1813,7 @@ export function headlessDecrpmArm(
           return osInputReviewResult(
             `DECRPM reply to CSI ? ${modeNum} $ p`,
             state,
-            "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
+            "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works.",
           )
         }
         const insertBindingGap = modeNum === 4 && (insertBefore === null || insertAfter === null)
@@ -1867,7 +1871,7 @@ export function headlessDecrpmArm(
       return osInputReviewResult(
         `DECRPM reply to CSI ? ${modeNum} $ p`,
         state,
-        "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
+        "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works.",
       )
     }
     return { ...decrpmResult(ps, modeNum), response: JSON.stringify(state) }
@@ -1901,9 +1905,16 @@ function modeStateReadback(ctx: LibProbeSource, number: number, key: string, pri
       otherReset === otherBefore &&
       otherUnknown === otherBefore
     const facet = number === 1 ? "key encoding unmeasured" : "presentation unmeasured"
+    const label = key === "applicationCursor" ? "cursor-keys" : key === "reverseVideo" ? "reverse-video" : key
     const note = qualified
       ? `${key} state measured; ${facet}`
-      : `${key} public-state set/reset or independence control unavailable`
+      : initial !== false || set !== true || reset !== false || unknown !== false
+        ? `Open: setting and resetting ${label} mode did not give the expected readings.`
+        : otherBefore === null || otherSet === null || otherReset === null || otherUnknown === null
+          ? key === "applicationCursor"
+            ? "Open: cursor-keys mode set and reset as expected, but our adapter returns no on/off state for reverse video on this library, and reverse video is the second mode we use to show the two modes are independent."
+            : `Open: ${label} mode set and reset as expected, but the second mode we use to show they are independent cannot be read here.`
+          : `Open: the second mode changed while we set or reset ${label} mode, so this test cannot show they are independent.`
     return {
       ...parserStateResult(qualified ? true : null, `${key} state measured; ${facet}`, state, note),
       ...(!qualified && { tests: [{ id: "criterion", status: "probe-todo" as const, reason: note }] }),
@@ -2260,6 +2271,20 @@ export function declaredUntestableResult(reason: string, state: object): NotTest
     criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
     tests: [{ id: DECLARED_UNTESTABLE_TEST, status: "untestable", reason }],
   }
+}
+
+/** Shared declared-absent viewport branch; callers retain their actuator contradiction check. */
+export function productViewportAbsenceResult(ctx: LibProbeSource, reason: string, state: object): ProbeCallbackResult {
+  const version = ctx.runtimeIdentity?.engineVersion
+  if (
+    !(
+      (ctx.backendName === "libvterm" && version === "0.3.3") ||
+      (ctx.backendName === "wezterm" && version === "0.1.0-fork.5")
+    )
+  ) {
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, "scrollback viewport scroll control", state)
+  }
+  return declaredUntestableResult(`${reason} Library version: ${version}.`, state)
 }
 
 /** The only admitted route to Untestable, used by finalizeProbeResult and the run reader alike. */

@@ -123,7 +123,11 @@ test.each([
     NonNullable<(typeof modesProbes)[number]["lib"]>
   >
   expect(result.tests).toEqual([
-    { id: "criterion", status: "probe-todo", reason: "adapter binding scripted-engine applicationKeypad" },
+    {
+      id: "criterion",
+      status: "probe-todo",
+      reason: "Open: our scripted-engine adapter cannot read the application keypad mode yet.",
+    },
   ])
   expect(result.assertions ?? []).toEqual([])
 })
@@ -308,7 +312,11 @@ test.each(features.filter(({ number }) => number !== 1))(
         noObservable: expect.stringContaining(`CSI ? ${number} $ p`),
       })
       expect(result.tests, label).toMatchObject([
-        { id: "review", status: "probe-todo", reason: expect.stringMatching(/no DECRPM reply/) },
+        {
+          id: "review",
+          status: "probe-todo",
+          reason: expect.stringContaining("no usable reply to the mode query (DECRPM)"),
+        },
       ])
       expect(result.observation, label).toBeUndefined()
       expect(result.assertions, label).toBeUndefined()
