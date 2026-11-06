@@ -6311,7 +6311,7 @@ function appJobHandoff(
   // while the handled title command applies without adding an entry in this same cell's run.
   const reported = unhandledSequenceVerdict(
     ctx,
-    { feed: `\x1b]${target}\x07`, code: { kind: "osc", code: target.split(";")[0]! } },
+    { feed: `\x1b]${target}\x07`, code: { kind: "osc", code: target.replace(/;.*/, "") } },
     control,
     state,
   )
