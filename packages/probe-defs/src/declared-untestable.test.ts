@@ -14,6 +14,7 @@ import {
   isDeclaredUntestable,
   recordExecutedProbe,
   parserStateResult,
+  notTestedResult,
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
 import { withD2LibraryObservation } from "./extensions.ts"
@@ -747,7 +748,7 @@ describe("audited OSC interface absence", () => {
           id === "extensions.osc52-write" ? /ghostty-web 0\.4\.0.*app/i : /ghostty-web 0\.4\.0/i,
         ),
       })
-      const prior = { pass: false as const, note: "undecided existing callback" }
+      const prior = notTestedResult("undecided existing callback")
       const wrapped = withD2LibraryObservation({ ...definition, lib: () => prior }).lib!
       const identity = ghostty.runtimeIdentity as Extract<HeadlessRuntimeIdentity, { kind: "js" }>
       if (identity.kind !== "js" || identity.runtimeFormat !== "wasm" || identity.integrity.kind !== "source") {
