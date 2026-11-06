@@ -5040,6 +5040,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.sixel",
       (ctx) => {
+        const note = "Declared Sixel capability does not establish rendered pixels"
         if (ctx.getSixelImages) {
           ctx.feed("\x1b[1;1H")
           const before = ctx.getSixelImages()
@@ -5062,17 +5063,23 @@ export const extensionsProbes: ProbeDefinition[] = [
             secondImage?.data === secondData &&
             secondImage.row === 1 &&
             secondImage.col === 2
-          const note = retained
-            ? "Open: our test cannot check the image, for two reasons. The library stores the image data at the right screen position, but drawing it is the app's job; and our test does not measure the character cell size needed to check the image's size."
-            : "Sixel payload/position readback did not show new stored records; no raster; cell geometry unmeasured"
-          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, note, note, {
+          if (!retained) {
+            const staleNote =
+              "Sixel payload/position readback did not show new stored records; no raster; cell geometry unmeasured"
+            return reviewResult(HEADLESS_OBSERVABLE_REVIEW, staleNote, staleNote, {
+              declared: ctx.capabilities.sixel === true,
+              storage: { retained, before, first, secondBefore, second },
+            })
+          }
+          // Declared Untestable with retained payload in evidence (CTO phase2-ruling.md:41, #32485): the cell's check
+          // is rendered pixels and vterm renders none.
+          return declaredUntestableResult(note, {
             declared: ctx.capabilities.sixel === true,
             storage: { retained, before, first, secondBefore, second },
           })
         }
         // Declared Untestable for every library without Sixel storage (operator Nov 4 16:55): no library rasterises
-        // Sixel. The exception is the storage branch above (vterm), which keeps its observable review.
-        const note = "Declared Sixel capability does not establish rendered pixels"
+        // Sixel.
         return declaredUntestableResult(note, {
           declared: ctx.capabilities.sixel === true,
         })
