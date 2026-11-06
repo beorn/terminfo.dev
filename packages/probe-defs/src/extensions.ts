@@ -2900,7 +2900,15 @@ function kittyDisplayWithoutTransmit(code: string, imageNumber: number): ProbeCa
   )
 }
 
-/** Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window. */
+/**
+ * Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window.
+ *
+ * `silent` means the window answered nothing decidable — no matching reply and no refusal frame — not that the
+ * collector reported one particular shape of silence. The library arm asks its canonical graphics question when
+ * this is set, so keying it on `reason` would make the query count depend on whether the pass met a sentinel or a
+ * timeout; fresh-instance passes disagree on that, and headless-batch's repeated-consistency guard then grades a
+ * correct pair probe-invalid (32473, ghostty-native, natural run 2026-11-06T08-34).
+ */
 function allocationOutcomeResult(
   reply: TerminalQueryOutcome,
   imageNumber: number,
@@ -2929,7 +2937,7 @@ function allocationOutcomeResult(
     return {
       imageId: null,
       refusal: null,
-      silent: false,
+      silent: true,
       result: unansweredQuery(
         reply,
         "No matching image allocation reply; no image ownership or transmission conclusion",

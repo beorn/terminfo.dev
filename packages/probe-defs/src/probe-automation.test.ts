@@ -764,7 +764,9 @@ describe("zero-byte replies on a loaded artifact", () => {
       },
     })
     const result = probe("extensions.kitty-graphics.transmit").lib!(source)
-    expect(sent).toHaveLength(1)
+    // 32473: the transfer query plus the one canonical graphics question, both answered with this same raw.
+    // The guarantee this case protects is unchanged — nothing arrives, so nothing decides.
+    expect(sent).toHaveLength(2)
     if (raw === "") {
       expect(result.notTested).toEqual(ZERO_REPLY_TODO)
       expect(JSON.parse(result.response!)).toMatchObject({ queries: sent, replyBytes: 0 })
