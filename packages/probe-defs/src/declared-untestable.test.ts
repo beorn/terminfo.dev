@@ -498,6 +498,57 @@ describe("audited OSC interface absence", () => {
         : source,
     ),
   }
+  // The starting-colour exception needs this probe's seed, not only an audited identity.
+  // Existing D2 and generic colour cases do not combine those two facts.
+  test("Alacritty starting-colour declarations require an audited identity and verified seed", () => {
+    const stale = {
+      ...alacritty,
+      adapterSources: alacritty.adapterSources.map((source) =>
+        source.path === "packages/alacritty/native/src/lib.rs" ? { ...source, blobOid: "0".repeat(40) } : source,
+      ),
+    }
+    for (const [id, slot, resetCode] of [
+      ["extensions.osc10-fg-color", "10", "110"],
+      ["extensions.osc11-bg-color", "11", "111"],
+      ["extensions.osc12-cursor-color", "12", "112"],
+      ["extensions.osc4-palette", "4;0", "104;0"],
+    ] as const) {
+      for (const scenario of [
+        { label: "audited", identity: alacritty, seed: true },
+        { label: "public", identity: alacritty0110, seed: true },
+        { label: "stale", identity: stale, seed: true },
+        { label: "failed seed", identity: alacritty, seed: false },
+        { label: "initial positive", identity: alacritty, seed: true, initial: true },
+        { label: "other backend", identity: alacritty, seed: true, backend: "ghostty-native" },
+      ]) {
+        const query = `\x1b]${slot};?\x07`,
+          setter = `\x1b]${slot};rgb:aa/bb/cc\x07`
+        const reply = `\x1b]${slot};rgb:aaaa/bbbb/cccc\x07`,
+          reset = `\x1b]${resetCode}\x07`
+        let seeded = false
+        const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(
+          d2Source({
+            backendName: "backend" in scenario ? scenario.backend : "alacritty",
+            runtimeIdentity: scenario.identity,
+            feedCapture(sequence) {
+              if (sequence === setter) seeded = scenario.seed
+              if (sequence === reset) seeded = false
+              return sequence === query && (("initial" in scenario && scenario.initial) || seeded) ? reply : ""
+            },
+          }),
+        )
+        const declared = scenario.label === "audited" || scenario.label === "public"
+        expect(isDeclaredUntestable(result), `${id}: ${scenario.label}`).toBe(declared)
+        if (declared) {
+          expect(fold(id, result).status).toBe("untestable")
+          expect(result.hostRecipeCauses).toMatchObject([
+            { recipe: "color-request", cause: { kind: "observed", query } },
+          ])
+        }
+        if ("initial" in scenario && scenario.initial) expect(result.pass).toBe(true)
+      }
+    }
+  })
   const run = (backend: string, runtimeIdentity?: HeadlessRuntimeIdentity, extra: Partial<LibProbeSource> = {}) => {
     const definition = ALL_PROBES.find((probe) => probe.id === "extensions.notifications")!
     return definition.lib!({ ...library(backend), runtimeIdentity, ...extra })
