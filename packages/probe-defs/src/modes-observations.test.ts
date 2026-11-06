@@ -1216,7 +1216,7 @@ test.each([
   const recorded = recordExecutedProbe({
     featureId: id,
     attempt: { scope: "probe", startedAt: new Date().toISOString() },
-    observation: result.observation,
+    observation: result.observation ? { featureId: id, ...result.observation } : undefined,
     assertions: (result.assertions ?? []).map((assertion) => ({ featureId: id, ...assertion })),
     tests: result.tests,
   })
