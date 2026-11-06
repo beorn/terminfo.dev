@@ -6420,6 +6420,126 @@ test.runIf(OWNED_LAYOUT).each([
   }
 })
 
+// @failure The four approved SGR rejections stay Open behind nullable cells, or acquire a negative without a report/control.
+// @level l5
+// @consumer Registered SGR callbacks on the owned real engines; existing tests cover the original eight report cells.
+test.runIf(OWNED_LAYOUT).each([
+  { name: "vt100", create: createVt100Backend, type: "js", id: "sgr.overline" },
+  { name: "vt220", create: createVt220Backend, type: "js", id: "sgr.overline" },
+  { name: "vt100-rust", create: createVt100RustBackend, type: "native", id: "sgr.overline" },
+  { name: "vt100-rust", create: createVt100RustBackend, type: "native", id: "sgr.hidden" },
+] as const)("SGR nine report: $name $id", async ({ name, create, type, id }) => {
+  for (const fault of ["none", "report", "bold"] as const) {
+    const value = await create()
+    try {
+      await value.init({ cols: 80, rows: 24 })
+      const identity = await headlessIdentity.headlessRuntimeIdentity(name, `@termless/${name}`, type)
+      identity.adapterSources = headlessIdentity.readAdapterSources(name, value)
+      const source = createLibProbeSource(value, undefined, identity, undefined)
+      const candidate = {
+        ...source,
+        ...(fault === "report" ? { getUnhandledSequences: undefined } : {}),
+        ...(fault === "bold"
+          ? { getCell: (row: number, col: number) => ({ ...source.getCell(row, col), bold: false }) }
+          : {}),
+      }
+      const result = registryDefinitions([id])[0]!.lib!(candidate)
+      if (fault === "none") {
+        expect(result.observation, JSON.stringify(result)).toMatchObject({
+          outcome: "unsupported",
+          assertionType: "buffer_state",
+        })
+        expect(result.assertions?.some((assertion) => assertion.kind === "negative")).toBe(true)
+        expect(result.response).toContain(id === "sgr.hidden" ? "8m" : "53m")
+      } else {
+        expect(result.observation?.outcome, `${fault}: ${JSON.stringify(result)}`).not.toBe("unsupported")
+        expect(isDeclaredUntestable(result)).toBe(false)
+      }
+    } finally {
+      value.destroy()
+    }
+  }
+})
+
+// @failure A reviewed public-field absence stays Open, leaks to another identity, or overrides a real positive cell.
+// @level l5
+// @consumer Registered SGR callbacks on exact real library identities; nullable-reader unit tests omit these declared causes.
+test.runIf(OWNED_LAYOUT).each([
+  {
+    name: "alacritty",
+    create: createAlacrittyBackend,
+    type: "native",
+    id: "sgr.overline",
+    field: "overline",
+    reason: /alacritty_terminal 0\.26\.0.*no overline/,
+  },
+  {
+    name: "kitty",
+    create: createKittyBackend,
+    type: "python",
+    id: "sgr.overline",
+    field: "overline",
+    reason: /Kitty 0\.49\.2.*no overline/,
+  },
+  {
+    name: "kitty",
+    create: createKittyBackend,
+    type: "python",
+    id: "sgr.hidden",
+    field: "hidden",
+    reason: /Kitty 0\.49\.2.*no hidden/,
+  },
+  {
+    name: "libvterm",
+    create: resolveLibvterm,
+    type: "wasm",
+    id: "sgr.overline",
+    field: "overline",
+    reason: /libvterm 0\.3\.3.*no overline/,
+  },
+  {
+    name: "ghostty",
+    create: resolveGhosttyWasm,
+    type: "wasm",
+    id: "sgr.overline",
+    field: "overline",
+    reason: /ghostty-web 0\.4\.0.*public.*no overline/,
+  },
+] as const)("SGR nine absence: $name $id", async ({ name, create, type, id, field, reason }) => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-sgr-absence-"))
+  vi.stubEnv("KITTY_CONFIG_DIRECTORY", join(directory, "kitty"))
+  vi.stubEnv("XDG_CACHE_HOME", join(directory, "cache"))
+  try {
+    const value = await create()
+    try {
+      await value.init({ cols: 80, rows: 24 })
+      const identity = await headlessIdentity.headlessRuntimeIdentity(name, `@termless/${name}`, type)
+      identity.adapterSources = headlessIdentity.readAdapterSources(name, value)
+      const source = createLibProbeSource(value, undefined, identity, undefined)
+      const definition = registryDefinitions([id])[0]!
+      const result = definition.lib!(source)
+      expect(isDeclaredUntestable(result), JSON.stringify(result)).toBe(true)
+      expect(result.tests?.[0]?.reason).toMatch(reason)
+      if (name === "ghostty") expect(result.tests?.[0]?.reason).not.toMatch(/engine.*(lacks|does not support)/)
+      for (const runtimeIdentity of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
+        const unknown = definition.lib!({ ...source, runtimeIdentity })
+        expect(isDeclaredUntestable(unknown), JSON.stringify(unknown)).toBe(false)
+        expect(unknown.observation?.outcome).not.toBe("unsupported")
+      }
+      const measured = definition.lib!({
+        ...source,
+        getCell: (row, col) => ({ ...source.getCell(row, col), char: "X", [field]: true }),
+      })
+      expect(measured.observation, JSON.stringify(measured)).toMatchObject({ outcome: "supported" })
+    } finally {
+      value.destroy()
+    }
+  } finally {
+    vi.unstubAllEnvs()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // @failure The two ruled keypad interface absences remain Open, leak to another engine, or hide a real reader.
 // @level l1
 // @consumer Actual Kitty/WezTerm library callbacks through the production batch finalizer; old null tests cover libvterm only.
