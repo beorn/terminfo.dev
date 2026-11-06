@@ -100,6 +100,7 @@ function hasAuditedOscInterfaceAbsence(
     | "vterm-d2"
     | "osc-pass-through"
     | "ghostty-native-d2"
+    | "host-effect-h4"
     | "wezterm-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
@@ -132,6 +133,25 @@ function hasAuditedOscInterfaceAbsence(
       identity.engineVersion === "1.3.1" &&
       identity.provenance.sourceCommit === "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28" &&
       identity.provenance.lockSha256 === "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a"
+    )
+  }
+  if (cohort === "host-effect-h4") {
+    if (identity?.kind !== "native") return false
+    if (ctx.backendName === "ghostty-native") {
+      return (
+        identity.engineVersion === "1.3.1" &&
+        identity.loadedBinary.sha256 === "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd" &&
+        identity.provenance.sourceCommit === "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28" &&
+        identity.provenance.lockSha256 === "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a" &&
+        auditedAdapterSources(identity, "ghosttyNativeH4")
+      )
+    }
+    return (
+      ctx.backendName === "kitty" &&
+      identity.engineVersion === "0.49.2" &&
+      identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886" &&
+      identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
+      auditedAdapterSources(identity, "kittyH4")
     )
   }
   if (cohort === "wezterm-d2") {
@@ -6284,7 +6304,14 @@ function declaredD2InterfaceAbsence(
   id: string,
   table: Readonly<Record<string, string>>,
   backend: string,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-pass-through" | "ghostty-native-d2" | "wezterm-d2",
+  cohort:
+    | "osc-absence"
+    | "vt100-rust-d2"
+    | "vterm-d2"
+    | "osc-pass-through"
+    | "ghostty-native-d2"
+    | "wezterm-d2"
+    | "host-effect-h4",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
   options: { readonly genericReportIsObservable?: boolean } = {},
@@ -6309,6 +6336,7 @@ function declaredD2InterfaceAbsence(
 // CTO Kitty 16:50: shell3/reset2 already use the generic OSC report consumer.
 // These six uncovered routes use their own literal payload and the same canonical controls.
 const KITTY_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
+  "extensions.osc3008-context": { feed: "\x1b]3008;type=test\x07", code: { kind: "osc", code: "3008" } },
   "extensions.osc176-app-id": { feed: "\x1b]176;terminfo-test\x07", code: { kind: "osc", code: "176" } },
   "extensions.osc440-audio": { feed: "\x1b]440;bell.wav\x07", code: { kind: "osc", code: "440" } },
   "extensions.osc555-flash": { feed: "\x1b]555\x07", code: { kind: "osc", code: "555" } },
@@ -6440,19 +6468,44 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         (entry) => `WezTerm tattoy-wezterm-term 0.1.0-fork.5: ${entry}.`,
       )
       if (weztermDeclared) return weztermDeclared
+      if (
+        passThroughReason &&
+        kittyTarget &&
+        (ctx.backendName === "ghostty-native" ||
+          (ctx.backendName === "kitty" && definition.id === "extensions.osc3008-context"))
+      ) {
+        const declared = declaredD2InterfaceAbsence(
+          ctx,
+          lib,
+          definition.id,
+          OSC_PASS_THROUGH_DECLARATIONS,
+          ctx.backendName,
+          "host-effect-h4",
+          undefined,
+          () =>
+            ctx.backendName === "kitty"
+              ? "Kitty 0.49.2 hands the OSC 3008 text to the app; our bridge does not keep it and exposes no context effect to read."
+              : `Ghostty 1.3.1 native bridge exposes no public state, report or payload route for OSC ${kittyTarget.code.code} at this audited engine/bridge identity.`,
+          { genericReportIsObservable: ctx.backendName !== "kitty" },
+        )
+        if (declared) return declared
+      }
       const identity = ctx.runtimeIdentity
       const vt100Audited = hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")
       if (vt100Audited && reason) {
         return declaredUntestableResult(reason, { backend: ctx.backendName, runtimeIdentity: ctx.runtimeIdentity })
       }
-      const target = vt100Audited
-        ? vt100Target
-        : ctx.backendName === "kitty" &&
-            identity?.kind === "native" &&
-            identity.engineVersion === "0.49.2" &&
-            identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
-          ? kittyTarget
-          : undefined
+      const hostEffectReport = passThroughReason && ["vt100", "vt220", "ghostty"].includes(ctx.backendName)
+      const target = hostEffectReport
+        ? kittyTarget
+        : vt100Audited
+          ? vt100Target
+          : ctx.backendName === "kitty" &&
+              identity?.kind === "native" &&
+              identity.engineVersion === "0.49.2" &&
+              identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+            ? kittyTarget
+            : undefined
       if (!target) return lib(ctx)
       const result = lib(ctx)
       if (reportsDecidedOutcome(result)) return result
@@ -6472,6 +6525,16 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 cleanup: "\x1b[0m",
               },
           { featureId: definition.id, ...(result.response !== undefined && { body: result.response }) },
+          hostEffectReport
+            ? {
+                proves: { kind: "osc", code: "2" },
+                arm: () => ({
+                  feed: "\x1b[0m\x1b[1mC",
+                  applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
+                  cleanup: "\x1b[0m",
+                }),
+              }
+            : undefined,
         ) ?? result
       )
     },

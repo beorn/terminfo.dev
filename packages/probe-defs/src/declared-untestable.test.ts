@@ -166,6 +166,102 @@ describe("six pass-through OSC declarations", () => {
   })
 })
 
+describe("H-4 exact host-effect declarations", () => {
+  const ghosttyIdentity = {
+    kind: "native",
+    engineVersion: "1.3.1",
+    adapterVersion: "0.11.0",
+    termlessRevision: "10dbfe015d27357bac7f2337e2a828a5afe0ad97",
+    loadedBinary: {
+      path: "termless-ghostty-native.node",
+      sha256: "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd",
+    },
+    provenance: {
+      sha256: "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd",
+      sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+      buildHash: "a4404e07f3746b45a9a813fd0cda0aa4156e5753b75f1ecda66722abd4d68d1a",
+      toolchain: "zig 0.15.2",
+      lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+    },
+    adapterSources: [
+      { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
+      { path: "packages/ghostty-native/src/backend.ts", blobOid: "d15e83634be3aa1bf2df9b58eb2f6376af800808" },
+    ],
+  } satisfies HeadlessRuntimeIdentity
+  const kittyIdentity = {
+    kind: "native",
+    engineVersion: "0.49.2",
+    adapterVersion: "0.11.0",
+    termlessRevision: "10dbfe015d27357bac7f2337e2a828a5afe0ad97",
+    loadedBinary: {
+      path: "/nix/store/kitty/bin/kitty",
+      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+    },
+    provenance: {
+      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+      sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
+      buildHash: "e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e",
+      toolchain: "recorded Nix binary",
+      lockSha256: "af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef",
+    },
+    adapterSources: [
+      { path: "packages/kitty/src/index.ts", blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077" },
+      { path: "packages/kitty/src/backend.ts", blobOid: "4cfc0a1707e4c92211c501cd27d8e1944ebe66db" },
+      { path: "packages/kitty/build/bridge.py", blobOid: "c78e427917d4e22453414db76c4d52509cc8b82f" },
+      { path: "packages/kitty/build/layout.c", blobOid: "f58c0e943ad60daf20d54360184e039e16ff3826" },
+      { path: "packages/kitty/build/native-mode-layout.json", blobOid: "20b976ba87de032248a787fcb8b5adc64c640f07" },
+      {
+        path: "packages/kitty/build/native-mode-layout.receipt.json",
+        blobOid: "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
+      },
+    ],
+  } satisfies HeadlessRuntimeIdentity
+  const ids = [
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc555-flash",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+  ]
+
+  // @failure A reviewed no-observable cell stays TODO, or an unaudited identity inherits its declaration.
+  // @level l1
+  // @consumer Registered callbacks through the result finalizer; the generic Kitty report is not a payload store.
+  test.each([
+    ["ghostty-native", ghosttyIdentity, ids, /Ghostty.*no.*(state|report|route)/i],
+    ["kitty", kittyIdentity, ["extensions.osc3008-context"], /hands.*(text|payload).*bridge.*(not keep|drops)/i],
+  ] as const)("%s retains only its exact declaration", (backendName, runtimeIdentity, targets, reason) => {
+    for (const id of targets) {
+      const definition = ALL_PROBES.find((entry) => entry.id === id)!
+      const source = {
+        ...library(backendName),
+        runtimeIdentity,
+        getTitle: () => "",
+        feedCapture: () => "",
+        ...(backendName === "kitty" ? { getUnhandledSequences: () => [] } : {}),
+      }
+      const result = definition.lib!(source)
+      expect(isDeclaredUntestable(result), `${backendName}:${id}`).toBe(true)
+      expect(fold(id, result)).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
+      expect(result.observation).toBeUndefined()
+      for (const changed of [
+        { ...runtimeIdentity, loadedBinary: { ...runtimeIdentity.loadedBinary, sha256: "0".repeat(64) } },
+        {
+          ...runtimeIdentity,
+          adapterSources: runtimeIdentity.adapterSources.map((entry, index) =>
+            index === 1 ? { ...entry, blobOid: "0".repeat(40) } : entry,
+          ),
+        },
+      ]) {
+        const fallback = definition.lib!({ ...source, runtimeIdentity: changed })
+        expect(isDeclaredUntestable(fallback), `${backendName}:${id}:changed identity`).toBe(false)
+        expect(fold(id, fallback).status).toBe("probe-todo")
+      }
+    }
+  })
+})
+
 describe("WezTerm D2 audited interface absence", () => {
   const identity = {
     kind: "native",
