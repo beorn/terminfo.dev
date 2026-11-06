@@ -1565,17 +1565,19 @@ test("mouse probe preserves libvterm pixel rejection without sending cleanup inp
     const primary = new Error("libvterm mouse API has no native encoding for pixel coordinates")
     const feeds: string[] = []
     const events: LibMouseEvent[] = []
-    const ctx = libMouseSource(
-      {
-        encodeMouse() {
-          throw primary
+    const ctx: LibProbeSource = {
+      ...libMouseSource(
+        {
+          encodeMouse() {
+            throw primary
+          },
         },
-      },
-      feeds,
-      events,
-    )
-    ctx.backendName = "libvterm"
-    ctx.runtimeIdentity = runtimeIdentity
+        feeds,
+        events,
+      ),
+      backendName: "libvterm",
+      runtimeIdentity,
+    }
     let failure: unknown
     let result: ProbeCallbackResult | undefined
     try {
