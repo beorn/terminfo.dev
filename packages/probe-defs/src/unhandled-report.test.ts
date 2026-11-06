@@ -64,7 +64,10 @@ function reportingSource(spec: {
   }
 }
 
-const recordsOsc = (code: string) => ({ match: new RegExp(`\\x1b\\]${code}`), code: { kind: "osc" as const, code } })
+const recordsOsc = (code: string) => ({
+  match: new RegExp(`\\x1b\\]${code}(?=;|\\x07|\\x1b)`),
+  code: { kind: "osc" as const, code },
+})
 const recordsCsi = (code: string) => ({
   match: new RegExp(`\\x1b\\[${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
   code: { kind: "csi" as const, code },
@@ -107,11 +110,13 @@ test.each([
 
 describe("the unhandled report decides only state cells, and only with both controls", () => {
   test.each([
+    ["extensions.osc1-icon", "1"],
+    ["extensions.osc22-pointer", "22"],
     ["extensions.osc113-reset-pointer-fg", "113"],
     ["extensions.osc114-reset-pointer-bg", "114"],
     ["extensions.osc117-reset-highlight-bg", "117"],
     ["extensions.osc119-reset-highlight-fg", "119"],
-  ])("a colour-reset cell the library reports unhandled becomes Unsupported: %s", (id, code) => {
+  ])("a state cell the library reports unhandled becomes Unsupported: %s", (id, code) => {
     const source = reportingSource({ records: [recordsOsc(code)] })
     const result = probe(id).lib!(source)
     expect(result.observation?.outcome).toBe("unsupported")
@@ -256,6 +261,8 @@ describe("an engine that handles no OSC may qualify with a handled non-OSC contr
     })
 
   test.each([
+    ["extensions.osc1-icon", "1"],
+    ["extensions.osc22-pointer", "22"],
     ["extensions.osc133-a", "133"],
     ["extensions.osc133-p", "133"],
     ["extensions.osc633-a", "633"],
@@ -339,7 +346,7 @@ describe("the report arm decides italic and faint as well, and nothing outside i
   })
 })
 
-// Accepted D2 cut (Chief 6ef3debd) plus M-1 (CTO f23f1197): 44 controlled negatives;
+// Accepted D2 cut plus M-1:44 audited native negatives and the generic OSC22 report.
 // The released eleven-cell D2-U1 slice declares only the audited vt100 0.16.2 subject.
 // Independent input/code oracles were measured from the real addon before each
 // consumer extension; these cases exercise the registered callback boundary.
@@ -418,6 +425,7 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     ["extensions.osc7770-font-size", "\u001b]7770;?\u0007", "osc", "7770"],
     ["extensions.osc7777-font-window-size", "\u001b]7777;?\u0007", "osc", "7777"],
     ["extensions.osc99-kitty-notify", "\u001b]99;i=dev4-census:p=?;\u001b\\", "osc", "99"],
+    ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "osc", "22"],
   ] as const
   const declared = [
     "device.decrqss",

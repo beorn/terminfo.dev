@@ -354,3 +354,32 @@ describe("audited OSC interface absence", () => {
     ).toThrow("Cwd reader failed")
   })
 })
+
+// AC3: exact-version public API has no speed state; silence never establishes absence.
+// The existing mode tests lack a vt1000.13.1 declaration boundary.
+test.each([
+  ["vt100", "0.13.1", true],
+  ["vt100", "0.13.0", false],
+  ["vt100", "0.13.2", false],
+  ["vt100", undefined, false],
+  ["vt220", "0.13.1", false],
+  ["libvterm", "0.13.1", false],
+] as const)("DECSSCLS declaration is exact %s/%s", (backendName, engineVersion, declared) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === "modes.decsscls")!
+  let measured = false
+  const ctx = {
+    ...library(backendName),
+    runtimeIdentity: engineVersion ? { kind: "js", runtimeFormat: "js", engineVersion } : undefined,
+    getText: () => (measured ? "Q" : ""),
+    getTitle: () => "",
+    getCursor: () => ({ x: measured ? 1 : 0, y: 0, visible: true, style: null }),
+    getScrollback: () => ({ totalLines: 24, screenLines: 24, viewportOffset: 0 }),
+    feed: (sequence: string) => {
+      measured = sequence.includes("\x1b[9 pQ")
+    },
+  } as unknown as LibProbeSource
+  const result = definition.lib!(ctx)
+  expect(isDeclaredUntestable(result)).toBe(declared)
+  expect(fold(definition.id, result).status).toBe(declared ? "untestable" : "probe-todo")
+  if (declared) expect(result.tests?.[0]?.reason).toMatch(/VT100.*0\.13\.1.*speed/)
+})

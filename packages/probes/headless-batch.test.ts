@@ -5748,3 +5748,35 @@ test.each([false, true])("libvterm paste mode query measures and restores actual
     value.destroy()
   }
 })
+
+// AC4: these real adapters must reach the registered OSC consumer, including its
+// buffer_state assertion admission. Callback-only tests miss collector INVALID.
+test.each([["libvterm", resolveLibvterm]] as const)(
+  "%s OSC22 report crosses the real collector boundary",
+  async (engine, factory) => {
+    const batch = await collectBatch(factory, engine, registryDefinitions(["extensions.osc22-pointer"]))
+    expect(batch.results).toMatchObject([
+      {
+        featureId: "extensions.osc22-pointer",
+        status: "unsupported",
+        reason: "library reported this sequence as unhandled",
+      },
+    ])
+    expect(batch.observations).toMatchObject([{ assertionType: "buffer_state", outcome: "unsupported" }])
+  },
+)
+
+test.runIf(OWNED_LAYOUT).each([
+  ["vt100", resolveVt100],
+  ["vt220", resolveVt220],
+] as const)("%s OSC1 and OSC22 reports cross the real collector boundary", async (engine, factory) => {
+  const ids = ["extensions.osc1-icon", "extensions.osc22-pointer"]
+  const batch = await collectBatch(factory, engine, registryDefinitions(ids))
+  expect(batch.results).toHaveLength(2)
+  for (const result of batch.results) {
+    expect(result.status, result.featureId).toBe("unsupported")
+    expect(result.reason).toBe("library reported this sequence as unhandled")
+  }
+  expect(batch.observations).toHaveLength(2)
+  for (const observation of batch.observations) expect(observation.assertionType).toBe("buffer_state")
+})
