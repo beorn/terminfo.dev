@@ -98,23 +98,32 @@ function semanticSurfaceSource(mutations: readonly string[] = []) {
 
 // #32451: Kitty's absent B needs its working A reader, while the lifecycle requires A/C/D
 // and an inert unknown letter. Generic opposite-namespace controls miss this reader shape.
-test.each([
-  ["osc133-b", ["osc133-b-noop", "osc633-b-noop"], "unsupported"],
-  ["osc133-b", ["osc633-b-noop"], "supported"],
-  ["osc133-b", ["osc133-a-noop", "osc133-b-noop", "osc633-b-noop"], undefined],
-  ["osc133-b", ["wrong-input-mark"], undefined],
-  ["semantic-prompts", [], "supported"],
-  ["semantic-prompts", ["osc133-a-noop"], undefined],
-  ["semantic-prompts", ["osc133-c-noop"], undefined],
-  ["semantic-prompts", ["osc133-d-noop"], undefined],
-  ["semantic-prompts", ["unknown-mutates"], undefined],
-  ["semantic-prompts", ["cached-reader"], undefined],
-] as const)("Kitty %s with %j observes %s", (name, faults, outcome) => {
+// R3: a capable native reader must reach that same lifecycle; backend-name routing missed it.
+test.each(
+  (
+    [
+      ["osc133-b", ["osc133-b-noop", "osc633-b-noop"], "unsupported"],
+      ["osc133-b", ["osc633-b-noop"], "supported"],
+      ["osc133-b", ["osc133-a-noop", "osc133-b-noop", "osc633-b-noop"], undefined],
+      ["osc133-b", ["wrong-input-mark"], undefined],
+      ["semantic-prompts", [], "supported"],
+      ["semantic-prompts", ["osc133-a-noop"], undefined],
+      ["semantic-prompts", ["osc133-c-noop"], undefined],
+      ["semantic-prompts", ["osc133-d-noop"], undefined],
+      ["semantic-prompts", ["unknown-mutates"], undefined],
+      ["semantic-prompts", ["cached-reader"], undefined],
+    ] as const
+  ).flatMap((row) =>
+    (row[0] === "semantic-prompts" ? ["kitty", "ghostty-native"] : ["kitty"]).map(
+      (backendName) => [backendName, ...row] as const,
+    ),
+  ),
+)("%s %s with %j observes %s", (backendName, name, faults, outcome) => {
   const working = semanticSurfaceSource(faults)
   const cached = working.getSemanticMarks!()
   const source = {
     ...working,
-    backendName: "kitty",
+    backendName,
     feed(text: string) {
       working.feed(
         faults.some((fault) => fault === "unknown-mutates")
@@ -424,15 +433,16 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   }
 })
 
-// These readers cannot observe the whole claim; a richer shared fixture cannot promote them.
+// Without lifecycle capabilities, semantic prompts stay TODO. The capable lifecycle is covered above.
+// The OSC 633 readers cannot observe the whole claim, even with the richer shared fixture.
 // Reflow's real positive/negative/fault controls remain owned by packages/probes/headless-batch.test.ts.
 test.each(["semantic-prompts", "osc-633-vscode", "osc633-e"])(
-  "extensions.%s retains its explicit TODO with available shared readers",
+  "extensions.%s retains its explicit TODO without the required observables",
   (name) => {
     const probe = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!
     for (const [consumes, source] of [
       [false, inertLibProbeSource()],
-      [true, semanticSurfaceSource()],
+      ...(name === "semantic-prompts" ? [] : ([[true, semanticSurfaceSource()]] as const)),
     ] as const) {
       const result = probe.lib!(source)
       expect(result.tests, name).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))

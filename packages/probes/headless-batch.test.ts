@@ -50,6 +50,141 @@ import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, replyFailure } from "../pr
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
+// @failure A declared pointer-state reader is dropped or its buffer_state result is refused by collection.
+// @level l1
+// @consumer Existing backend -> source binding -> registered OSC22 callback -> finalizer; not an engine grade.
+test.each(["working", "target", "unknown", "restore", "inert"] as const)(
+  "R3 pointer reader %s crosses the collector with qualified controls",
+  async (fault) => {
+    const batch = await collectBatch(
+      async () => {
+        const value = createXtermBackend()
+        let shape = "text"
+        const feed = value.feed.bind(value)
+        value.feed = (bytes) => {
+          const text = new TextDecoder().decode(bytes)
+          const requested = /^\x1b\]22;([^\x07]+)\x07$/.exec(text)?.[1]
+          if (fault !== "inert" && requested) {
+            if (requested === "text" && !(fault === "restore" && shape === "pointer")) shape = "text"
+            if (requested === "wait") shape = "wait"
+            if (requested === "pointer" && fault !== "target") shape = "pointer"
+            if (requested === "terminfo-unknown-shape" && fault === "unknown") shape = "wait"
+          }
+          feed(bytes)
+        }
+        Object.assign(value, { getMouseShape: () => shape })
+        value.capabilities.extensions.add("mouse-shape")
+        return value
+      },
+      "xtermjs",
+      registryDefinitions(["extensions.osc22-pointer"]),
+    )
+    if (fault === "working") {
+      expect(batch.results).toMatchObject([{ status: "supported", assertionType: "buffer_state" }])
+      expect(batch.observations).toMatchObject([{ outcome: "supported", assertionType: "buffer_state" }])
+    } else if (fault === "target") {
+      expect(batch.results).toMatchObject([{ status: "unsupported", assertionType: "buffer_state" }])
+    } else {
+      expect(batch.results).toMatchObject([{ status: "probe-todo" }])
+      expect(batch.observations).toEqual([])
+    }
+  },
+)
+
+test("R3 pointer capability with a missing method fails loudly; undeclared readers remain unwired", () => {
+  const value = createXtermBackend({ cols: 80, rows: 24 })
+  try {
+    value.capabilities.extensions.add("mouse-shape")
+    expect(() => createLibProbeSource(value, undefined, undefined, undefined)).toThrow(
+      /declares mouse-shape without getMouseShape/,
+    )
+    value.capabilities.extensions.delete("mouse-shape")
+    Object.assign(value, { getMouseShape: () => "pointer" })
+    const result = registryDefinitions(["extensions.osc22-pointer"])[0]!.lib!(
+      createLibProbeSource(value, undefined, undefined, undefined),
+    )
+    expect(result.observation).toBeUndefined()
+  } finally {
+    value.destroy()
+  }
+})
+
+// @failure Rebuilt native readers work in isolation but fail the registered R3 callbacks or result finalizer.
+// @level l1
+// @consumer The actual owned Ghostty addon -> existing collector source -> twelve shipping library rows.
+test.runIf(OWNED_LAYOUT)(
+  "real Ghostty native R3 readers decide the twelve registered rows and measured collateral",
+  async () => {
+    const rows = [
+      ["extensions.osc133-a", "supported"],
+      ["extensions.osc133-b", "supported"],
+      ["extensions.osc133-c", "supported"],
+      ["extensions.osc133-d", "supported"],
+      ["extensions.osc133-p", "supported"],
+      ["extensions.semantic-prompts", "supported"],
+      ["extensions.osc22-pointer", "supported"],
+      ["extensions.kitty-graphics.display", "untestable"],
+      ["extensions.kitty-graphics.transmit", "untestable"],
+      ["extensions.osc52-write", "supported"],
+      ["extensions.osc52-read", "untestable"],
+      ["extensions.osc52-clipboard", "untestable"],
+      ["extensions.osc633-a", "unsupported"],
+      ["extensions.osc633-b", "unsupported"],
+      ["extensions.osc633-c", "unsupported"],
+      ["extensions.osc633-d", "unsupported"],
+      ["extensions.osc633-e", "untestable"],
+      ["extensions.osc633-p", "unsupported"],
+      ["extensions.osc-633-vscode", "untestable"],
+    ] as const
+    const backend = createGhosttyNativeBackend()
+    const runtimeIdentity = {
+      ...(await headlessIdentity.headlessRuntimeIdentity("ghostty-native", "@termless/ghostty-native", "native")),
+      adapterSources: headlessIdentity.readAdapterSources("ghostty-native", backend),
+    }
+    const clipboardReads: unknown[] = []
+    const definitions = registryDefinitions(rows.map(([id]) => id)).map((definition) => ({
+      ...definition,
+      lib: (ctx: LibProbeSource) => {
+        const query = ctx.queryWithSentinelOutcome?.bind(ctx)
+        return definition.lib!({
+          ...ctx,
+          runtimeIdentity,
+          ...(query && definition.id.startsWith("extensions.osc52-")
+            ? {
+                queryWithSentinelOutcome(sequence: string, pattern: RegExp) {
+                  const before = ctx.getClipboardState?.().pasteSelector
+                  const outcome = query(sequence, pattern)
+                  clipboardReads.push({
+                    id: definition.id,
+                    before,
+                    after: ctx.getClipboardState?.().pasteSelector,
+                    outcome,
+                  })
+                  return outcome
+                },
+              }
+            : {}),
+        })
+      },
+    }))
+    const batch = await collectBatch(async () => createGhosttyNativeBackend(), "ghostty-native", definitions)
+    expect(
+      batch.results.map(({ featureId, status }) => [featureId, status]),
+      JSON.stringify({ results: batch.results, clipboardReads }),
+    ).toEqual(rows)
+    expect(batch.results.filter((row) => row.status === "supported").map((row) => row.assertionType)).toEqual([
+      ...Array.from({ length: 7 }, () => "buffer_state"),
+      "query_reply",
+    ])
+    for (const id of ["extensions.osc52-read", "extensions.osc52-clipboard"]) {
+      expect(batch.results.find((row) => row.featureId === id)?.reason).toContain("passed to the app")
+    }
+    for (const id of ["extensions.kitty-graphics.display", "extensions.kitty-graphics.transmit"]) {
+      expect(batch.results.find((row) => row.featureId === id)?.reason).toContain("ghostty-vt forces oniguruma off")
+    }
+  },
+)
+
 // @failure WezTerm's stored cells, Kitty placement or clipboard callbacks never reach the shipping library arms.
 // @level l0
 // @consumer Existing WezTerm native backend -> headless source -> literal shipping probe callbacks.
