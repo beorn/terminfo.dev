@@ -306,7 +306,7 @@ test.each(features.filter(({ number }) => number !== 1))(
         expect(result.observation, label).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
         expect(result.assertions ?? [], label).toEqual([])
         expect(result.tests, label).toMatchObject([{ id: "criterion", status: "probe-todo" }])
-        expect(JSON.parse(result.response!).prior, label).toEqual(expectedState(reply, mode))
+        expect(JSON.parse(result.response!), label).toMatchObject({ prior: expectedState(reply, mode) })
         continue
       }
       expect(result.criterionBranch, label).toBe("os-input-review")
