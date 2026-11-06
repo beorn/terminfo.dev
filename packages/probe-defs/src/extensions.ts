@@ -5675,19 +5675,70 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscColorQueryProbe("extensions.osc19-highlight-fg", 19),
 
   // OSC 22 — pointer shape
-  // Kitty defines shape/status queries, but this callback only tests CPR.
-  // Visible pointer appearance also needs observation outside the cell grid.
-  probe(
-    "extensions.osc22-pointer",
-    noSamePathControl("\x1b]22;pointer\x07"),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]22;pointer\x07")
-      const pos = await ctx.queryCursorPosition()
-      return unmeasuredCellResult(pos, "OSC 22 pointer shape")
-    },
-    null,
-  ),
+  // Logical pointer state is queryable in the library; visible app appearance remains separate.
+  {
+    ...probe(
+      "extensions.osc22-pointer",
+      (ctx) => {
+        const undecided = () => noSamePathControl("\x1b]22;pointer\x07")(ctx)
+        if (ctx.backendName !== "kitty") return undecided()
+        const query = "\x1b]22;?__current__\x07"
+        const read = () => {
+          const raw = ctx.feedCapture(query)
+          return { raw, shape: /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u.exec(raw)?.[1] }
+        }
+        const initial = read()
+        if (initial.shape === undefined) return notTestedResult(NO_SAME_PATH_CONTROL, { query, initial })
+        const controlShape = initial.shape === "text" ? "wait" : "text"
+        const controlWrite = `\x1b]22;${controlShape}\x07`
+        const targetWrite = "\x1b]22;pointer\x07"
+        // Kitty reports its unset shape as "0"; an empty assignment restores that native default.
+        const restoreWrite = `\x1b]22;${initial.shape === "0" ? "" : initial.shape}\x07`
+        const readings: {
+          initial: typeof initial
+          control?: typeof initial
+          target?: typeof initial
+          restored?: typeof initial
+        } = { initial }
+        try {
+          ctx.feed(controlWrite)
+          readings.control = read()
+          if (readings.control.shape === controlShape) {
+            ctx.feed(targetWrite)
+            readings.target = read()
+          }
+        } finally {
+          ctx.feed(restoreWrite)
+          readings.restored = read()
+        }
+        const evidence = { query, controlWrite, targetWrite, restoreWrite, readings }
+        const target = readings.target?.shape
+        if (
+          readings.control?.shape !== controlShape ||
+          target === undefined ||
+          readings.restored?.shape !== initial.shape
+        ) {
+          return notTestedResult(NO_SAME_PATH_CONTROL, evidence)
+        }
+        return parserStateResult(
+          target === "pointer" ? true : target === controlShape ? false : null,
+          "OSC 22 pointer query reports pointer after a distinct same-path control and restores the incoming shape",
+          evidence,
+          undefined,
+          undefined,
+          "query_reply",
+        )
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]22;pointer\x07")
+        const pos = await ctx.queryCursorPosition()
+        return unmeasuredCellResult(pos, "OSC 22 pointer shape")
+      },
+      null,
+    ),
+    libAssertionType: "query_reply",
+  },
 
   // Query capabilities without displaying a notification or requiring desktop access.
   {
@@ -6075,15 +6126,27 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "OSC 710 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
 }
 
+// CTO Kitty 16:50: shell3/reset2 already use the generic OSC report consumer.
+// These six uncovered routes use their own literal payload and the same canonical controls.
+const KITTY_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
+  "extensions.osc176-app-id": { feed: "\x1b]176;terminfo-test\x07", code: { kind: "osc", code: "176" } },
+  "extensions.osc440-audio": { feed: "\x1b]440;bell.wav\x07", code: { kind: "osc", code: "440" } },
+  "extensions.osc555-flash": { feed: "\x1b]555\x07", code: { kind: "osc", code: "555" } },
+  "extensions.osc666-termprop": { feed: "\x1b]666;test-prop=value\x07", code: { kind: "osc", code: "666" } },
+  "extensions.osc710-font-normal": { feed: "\x1b]710;monospace\x07", code: { kind: "osc", code: "710" } },
+  "modes.decsscls": { feed: "\x1b[9 p", code: { kind: "csi", code: " p" } },
+}
+
 /** One registry consumer; other subjects and decided results retain their existing path. */
-export function withVt100RustD2Observation(definition: ProbeDefinition): ProbeDefinition {
+export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
-  const target = VT100_RUST_D2_NEGATIVES[definition.id]
+  const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]
+  const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
-  if (!lib || (!target && !reason)) return definition
+  if (!lib || (!vt100Target && !kittyTarget && !reason)) return definition
   return {
     ...definition,
-    ...(target && definition.libAssertionType === "query_reply"
+    ...(vt100Target && definition.libAssertionType === "query_reply"
       ? {
           libAssertionType: {
             when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
@@ -6094,12 +6157,22 @@ export function withVt100RustD2Observation(definition: ProbeDefinition): ProbeDe
         }
       : {}),
     lib(ctx) {
-      if (!hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")) return lib(ctx)
-      if (reason) {
+      const identity = ctx.runtimeIdentity
+      const vt100Audited = hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")
+      if (vt100Audited && reason) {
         return declaredUntestableResult(reason, { backend: ctx.backendName, runtimeIdentity: ctx.runtimeIdentity })
       }
+      const target = vt100Audited
+        ? vt100Target
+        : ctx.backendName === "kitty" &&
+            identity?.kind === "native" &&
+            identity.engineVersion === "0.49.2" &&
+            identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+          ? kittyTarget
+          : undefined
+      if (!target) return lib(ctx)
       const result = lib(ctx)
-      if (!target || reportsDecidedOutcome(result)) return result
+      if (reportsDecidedOutcome(result)) return result
       const cursor = ctx.getCursor()
       return (
         unhandledSequenceVerdict(
