@@ -172,6 +172,32 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(sameBuild.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
   })
 
+  // Actual retained history includes complete envelopes whose collection file is absent.
+  // Newest-only tests never encounter that older input; history must name the gap, never erase it or score zero.
+  it.each(["missing collection", "missing rollups"])(
+    "keeps %s in older history visible without preventing the current reading",
+    (failure) => {
+      const parent = runsDir()
+      if (failure === "missing collection") {
+        run(parent, OLD, { complete: true })
+      } else {
+        const older = collection(parent, OLD)
+        delete (older.summary as Partial<typeof older.summary>).rollups
+        older.save()
+      }
+      collection(parent, PARTIAL)
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", parent)
+      const page = loadFullProjectData()
+      expect(page.working?.run.id).toBe(PARTIAL)
+      expect(page.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+      expect(page.workingHistory?.[0]?.unreadable?.reason).toContain(
+        failure === "missing collection" ? "headless/collection.json" : "complete run requires per-engine rollups",
+      )
+      expect(page.workingHistory?.[0]?.unreadable?.reason).not.toContain(parent)
+      expect(page.workingHistory?.[0]?.contexts).toEqual([])
+    },
+  )
+
   it("reads older retained probe history after a newer hourly run exists without admitting its raw results", () => {
     const fixture = collection()
     const selection = newestCompleteRun(fixture.parent)

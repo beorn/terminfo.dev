@@ -402,8 +402,8 @@ export interface WorkingView {
   label: typeof RAW_LABEL
   rule: string
   run: { id: string; startedAt: string; newestCaptureAt: string; suites: string[] }
-  /** The loud banner when this build cannot read the run's suite; `contexts` is then empty. */
-  unreadable?: LoadedWorkingRun["unreadable"]
+  /** A suite or retained-input gap is visible without inventing context counts. */
+  unreadable?: Pick<NonNullable<LoadedWorkingRun["unreadable"]>, "reason" | "banner">
   contexts: WorkingContext[]
   unmeasured: LoadedWorkingRun["unmeasured"]
 }
@@ -526,9 +526,35 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
   const { projection } = loadCurrentResults(contentDir)
   const reviewed = compatibilitySubjects(projection, contentDir)
   // Keep the small page views across loaders, not every historical capture's full evidence payload.
-  const views = selections.map((selection) =>
-    composeWorkingView(projection, reviewed, loadedSiteWorkingRun(selection, selection.id === newest.id)),
-  )
+  const views = selections.map((selection): WorkingView => {
+    try {
+      return composeWorkingView(projection, reviewed, loadedSiteWorkingRun(selection, selection.id === newest.id))
+    } catch (error) {
+      // A reader diagnostic naming this older collection is an input gap, not zero results.
+      // Newest-run failures and errors outside that input still propagate unchanged.
+      if (selection.id === newest.id || !(error instanceof Error)) throw error
+      const missingInput =
+        "code" in error &&
+        error.code === "ENOENT" &&
+        "path" in error &&
+        typeof error.path === "string" &&
+        error.path.startsWith(selection.dir + sep)
+      if (!missingInput && !error.message.startsWith(selection.dir + sep)) {
+        throw error
+      }
+      const reason = error.message.replaceAll(selection.dir, selection.id)
+      const banner = `Retained collection ${selection.id} has unreadable input; results and counts are unavailable.`
+      console.warn(`terminfo-site: WARNING ${banner} (${reason})`)
+      return {
+        label: RAW_LABEL,
+        rule: "Missing retained inputs are not zero results and do not change accepted answers.",
+        run: { id: selection.id, startedAt: selection.startedAt, newestCaptureAt: "not read", suites: [] },
+        contexts: [],
+        unmeasured: [],
+        unreadable: { banner, reason },
+      }
+    }
+  })
   cache.set(newest.dir, views)
   return views
 }
