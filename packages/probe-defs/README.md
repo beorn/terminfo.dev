@@ -848,8 +848,10 @@ new comparison or support conclusion.
 The app exit/1047/insert-mode rows declare character readback and use that same region oracle.
 Exit and 1047 paint primary then alternate markers; leaving the alternate is compared with a plainly
 painted primary reference. Text reads use the existing character change criterion; pixel reads retain
-their declared freshness checks. An unqualified entry leaves any failed exit roundtrip as named PROBE TODO,
-never an exit negative. A restored primary marker still leaves exact 1047 clear-on-exit and 1049 saved
+their declared freshness checks. An unqualified entry leaves a failed exit-only 1049 roundtrip as named
+PROBE TODO, never an exit negative. Whole-mode 47/1047 rows instead retain a measured failed primary-marker
+roundtrip as Unsupported, whichever half failed; unmeasured secondary facets cannot rescue that failure.
+A restored primary marker still leaves 47 next-entry persistence, exact 1047 clear-on-exit and 1049 saved
 cursor/scrollback unmeasured. Same-1047 re-entry does not prove clearing. IRM keeps its query-first
 positives and recognized negatives; only an undecided query reaches the existing insertion fixture.
 

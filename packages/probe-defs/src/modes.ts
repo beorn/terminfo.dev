@@ -166,11 +166,10 @@ async function primaryRestoreCapture(
           ? "Primary-marker roundtrip does not measure exact alternate-buffer clear-on-exit; same-1047 re-entry cannot establish it"
           : "Single alternate-screen roundtrip does not measure alternate contents surviving the next entry",
   }
-  if (
-    mode !== 47 &&
-    result.observation &&
-    result.tests?.some((test) => test.id === "primary-marker-restored" && test.status === "unsupported")
-  ) {
+  const failedRestoration = result.tests?.find(
+    (test) => test.id === "primary-marker-restored" && test.status === "unsupported",
+  )
+  if (mode === 1049 && result.observation && failedRestoration) {
     // Distinct painted markers do not independently establish entry into another buffer.
     // Without that prerequisite the failed roundtrip cannot be attributed to exit.
     return {
@@ -207,7 +206,13 @@ async function primaryRestoreCapture(
       observed: result.response ?? "",
     })
     result.tests.push({ id: "alternate-marker-control", status: "supported", assertionRefs: [1] })
-    result.tests.push(remainingFacets)
+    if (failedRestoration) {
+      const reason = `After a ?${mode} round trip the primary marker was not restored`
+      failedRestoration.reason = reason
+      if (result.observation) result.observation.note = reason
+    } else {
+      result.tests.push(remainingFacets)
+    }
   }
   return result
 }

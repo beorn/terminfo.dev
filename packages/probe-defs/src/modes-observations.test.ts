@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
-import { isDeclaredUntestable, NO_SAME_PATH_CONTROL } from "./helpers.ts"
+import { isDeclaredUntestable, NO_SAME_PATH_CONTROL, recordExecutedProbe } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
@@ -1201,16 +1201,36 @@ test.each(ALT_SWAP)("%s stays inconclusive on an undersized grid or an unavailab
 })
 
 // A painted alternate marker distinguishes frames, but it does not qualify buffer entry.
-// Existing positive roundtrips cannot catch attribution of an unqualified entry failure to exit.
+// Exit-only 1049 stays pending; a failed whole-mode 47/1047 roundtrip cannot be
+// rescued by its unmeasured secondary facet (#31743, CTO ccfc864a).
 test.each([
-  ["modes.alt-screen.exit", "pixels"],
-  ["modes.alt-screen.exit", "text-cells"],
-  ["modes.altscreen-1047", "pixels"],
-  ["modes.altscreen-1047", "text-cells"],
-] as const)("%s keeps an exit-negative pending when entry is not qualified on %s", async (id, kind) => {
+  ["modes.alt-screen.exit", "pixels", 1049],
+  ["modes.alt-screen.exit", "text-cells", 1049],
+  ["modes.altscreen-47", "pixels", 47],
+  ["modes.altscreen-1047", "pixels", 1047],
+  ["modes.altscreen-1047", "text-cells", 1047],
+] as const)("%s negative roundtrip on %s keeps mode %d's criterion", async (id, kind, mode) => {
   const definition = modesProbes.find((entry) => entry.id === id)
   if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
   const result = await definition.term(captureSource(24, 80, [], [], true, kind, false))
+  const recorded = recordExecutedProbe({
+    featureId: id,
+    attempt: { scope: "probe", startedAt: new Date().toISOString() },
+    observation: result.observation,
+    assertions: (result.assertions ?? []).map((assertion) => ({ featureId: id, ...assertion })),
+    tests: result.tests,
+  })
+  expect(recorded.status).toBe(mode === 1049 ? "probe-todo" : "unsupported")
+  if (mode !== 1049) {
+    const reason = `After a ?${mode} round trip the primary marker was not restored`
+    expect(recorded.reason).toBe(reason)
+    expect(result.tests).toEqual([
+      { id: "primary-marker-restored", status: "unsupported", assertionRefs: [0], reason },
+      { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
+    ])
+    expect(result.assertions).toMatchObject([{ kind: "negative" }, { kind: "positive" }])
+    return
+  }
   expect(result.observation?.outcome).not.toBe("unsupported")
   expect(result.tests?.some((row) => row.status === "unsupported")).not.toBe(true)
   expect(result.tests).toEqual(
