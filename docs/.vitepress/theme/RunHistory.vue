@@ -12,6 +12,7 @@ const context = computed(() => contexts.value.find((row) => row.contextKey === c
 const cells = computed(() => Object.entries(context.value?.states ?? {}).filter(([id]) => !props.featureId || id === props.featureId))
 </script>
 
+<template>
 <section id="run-history" class="run-history">
   <h2>Retained run history — raw, unreviewed</h2>
   <p>Each collection keeps its original probe statuses and receipts. These results do not change accepted answers, scores or completion. Missing or untrusted inputs remain visible.</p>
@@ -53,6 +54,7 @@ const cells = computed(() => Object.entries(context.value?.states ?? {}).filter(
     <p v-else>No matching context was recorded in this collection.</p>
   </template>
 </section>
+</template>
 
 <style scoped>
 .run-history { margin: 2rem 0; padding-top: 1rem; border-top: 1px solid var(--vp-c-divider); }
