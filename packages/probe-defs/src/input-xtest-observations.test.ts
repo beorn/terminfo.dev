@@ -79,7 +79,7 @@ test.each([2, 3] as const)("native MOK %i qualifies unchanged bytes with cursor-
   }
 })
 
-// Native MOK needs a controlled transition, not merely an extended key report.
+// Native MOK needs a controlled raw or logical transition, not merely an extended key report.
 // App-input fixtures and declaration checks cannot catch a vacuous native encoder.
 test.each([
   ["input.modify-other-keys", 2],
@@ -146,7 +146,7 @@ test.each([
       }
       const result = probe(id).lib!(ctx)
       const outcome =
-        behavior === "working" || behavior === "control-change"
+        behavior === "working" || behavior === "control-change" || behavior === "equivalent"
           ? "supported"
           : behavior === "wrong"
             ? "unsupported"
