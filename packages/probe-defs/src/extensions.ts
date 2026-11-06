@@ -1014,9 +1014,23 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         }
         if (indexed) cells.before = paint(0, "D")
         const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
+        const alacrittyReset =
+          ctx.backendName === "alacritty" &&
+          index === undefined &&
+          [10, 11, 12].includes(setCode) &&
+          resetCode === setCode + 100 &&
+          hasAuditedOscInterfaceAbsence(ctx)
+        let unknownRaw: string | undefined
         const capture = (write: string) => {
           const response = ctx.feedCapture(write)
           controls.push({ write, response })
+          const read = write === query ? replyPattern.exec(response)?.[1] : undefined
+          if (alacrittyReset && unknownRaw === undefined && read && sameRgbText(read, seededCurrentColor)) {
+            const unknown = "\x1b]7110\x07"
+            controls.push({ write: unknown, response: ctx.feedCapture(unknown) })
+            unknownRaw = ctx.feedCapture(query)
+            controls.push({ write: query, response: unknownRaw })
+          }
           if (indexed && write === `\x1b]4;0;${seededCurrentColor}\x07`) cells.seeded = paint(1, "S")
           if (indexed && write === reset) {
             cells.same = globalThis.structuredClone(ctx.getCell(0, 1))
@@ -1083,6 +1097,19 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           )
         }
         if (control.verified && resetRaw === "" && restoredRaw === "") {
+          const unknown = unknownRaw === undefined ? undefined : replyPattern.exec(unknownRaw)?.[1]
+          if (alacrittyReset && unknown && sameRgbText(unknown, seededCurrentColor)) {
+            return answer(
+              parserStateResult(
+                true,
+                `OSC ${resetCode} restores the initial silent default after a verified seed; unknown OSC 7110 preserves the seed`,
+                state,
+                undefined,
+                undefined,
+                "query_reply",
+              ),
+            )
+          }
           return answer(
             colorReadbackReviewResult(
               `Open: setting a colour worked, but our adapter cannot read back the default after the reset (OSC ${resetCode}), leaving the reset itself unseen`,
@@ -6601,6 +6628,14 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
 // Operator D2, exact alacritty_terminal 0.26.0 / VTE 0.15.0 API read:
 // The audited dispatcher and event API expose no criterion-bearing state for these sequences.
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
+  "extensions.osc0-icon-title":
+    "Alacritty alacritty_terminal 0.26.0 stores the OSC 0 title but keeps no icon label, so no public icon state, reply or typed event exists.",
+  "extensions.osc1-icon":
+    "Alacritty alacritty_terminal 0.26.0 sends OSC 1 to a debug log and keeps no icon label, so no public state, reply or typed event exists.",
+  "extensions.osc22-pointer":
+    "Alacritty alacritty_terminal 0.26.0 sends OSC 22 to an empty default method, so no public pointer state, reply or typed event exists.",
+  "extensions.osc633-p":
+    "Alacritty alacritty_terminal 0.26.0 sends OSC 633 P to a debug log, so no public property state, reply or typed event exists.",
   "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
   "modes.decsscls": "CSI 9 SP p (DECSSCLS) scroll-speed state",
   // CTO b6a3c019: blink is handled and dropped, so this entry states its own cause and renders verbatim.
@@ -7246,17 +7281,21 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         (source, id) =>
           id === "extensions.osc9-progress"
             ? typeof source.getProgress === "function"
-            : id === "extensions.osc777-notify"
-              ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
-              : id.startsWith("extensions.osc133") ||
-                  id.startsWith("extensions.osc633") ||
-                  id === "extensions.osc-633-vscode" ||
-                  id === "extensions.semantic-prompts"
-                ? typeof source.getSemanticMarks === "function"
-                : false,
+            : id === "extensions.osc0-icon-title" || id === "extensions.osc1-icon"
+              ? typeof source.getIconLabel === "function"
+              : id === "extensions.osc633-p"
+                ? typeof source.getCwd === "function"
+                : id === "extensions.osc777-notify"
+                  ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
+                  : id.startsWith("extensions.osc133") ||
+                      id.startsWith("extensions.osc633") ||
+                      id === "extensions.osc-633-vscode" ||
+                      id === "extensions.semantic-prompts"
+                    ? typeof source.getSemanticMarks === "function"
+                    : false,
         (entry) =>
-          // Blink is handled and dropped, not unhandled, so its entry carries the whole reviewed sentence.
-          definition.id === "sgr.blink"
+          // Handled or debug-only commands carry their precise cause rather than the unhandled template.
+          entry.startsWith("Alacritty ")
             ? entry
             : `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${
                 definition.id === "editing.decsace" || definition.id === "modes.decsscls" ? "CSI" : "OSC"
