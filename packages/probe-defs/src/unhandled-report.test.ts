@@ -73,6 +73,32 @@ const recordsCsi = (code: string) => ({
   code: { kind: "csi" as const, code },
 })
 
+// @failure H-4's numeric rejection reports remain TODO, or a failed handled control invents a negative.
+// @level l2
+// @consumer The registered host-effect callbacks, with the existing report/control fixture.
+test.each(["vt100", "vt220", "ghostty"])("H-4 %s uses its exact report and an applied control", (backendName) => {
+  for (const [id, code] of [
+    ["extensions.osc176-app-id", "176"],
+    ["extensions.osc3008-context", "3008"],
+    ["extensions.osc440-audio", "440"],
+    ["extensions.osc555-flash", "555"],
+    ["extensions.osc666-termprop", "666"],
+    ["extensions.osc710-font-normal", "710"],
+  ] as const) {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    const titleApplies = backendName === "ghostty"
+    const records = titleApplies ? [recordsOsc(code)] : [recordsOsc("2"), recordsOsc(code)]
+    const result = definition.lib!({ ...reportingSource({ records, titleApplies }), backendName })
+    expect(result.observation, `${backendName}:${id}`).toMatchObject({ outcome: "unsupported" })
+    expect(JSON.parse(result.response!)).toMatchObject({ unhandled: { target: { kind: "osc", code } } })
+    const failedControl = definition.lib!({
+      ...reportingSource({ records, titleApplies: false, boldApplies: false }),
+      backendName,
+    })
+    expect(failedControl.observation?.outcome, `${backendName}:${id}:failed control`).not.toBe("unsupported")
+  }
+})
+
 // DEC1: registered callbacks must feed one own command after the prior arm; a mouse pair
 // or an ignored control cannot turn an otherwise undecided feature into a negative.
 test.each([
