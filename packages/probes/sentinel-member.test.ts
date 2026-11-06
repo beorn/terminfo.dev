@@ -871,9 +871,14 @@ test.each(["changed", "unavailable"] as const)(
 
 // Same adapter/version/capabilities without the independent measurement cannot qualify.
 // H1/H2/H4/H6: explicit native-input unit fixture; no actual native engine qualification.
-test.each(["observed", "source-audited", "unimplemented", "missing", "error", "withheld"] as const)(
-  "retains and validates %s host custody before checkpointing the callback",
-  async (mode) => {
+test.each([
+  ...(["observed", "source-audited", "unimplemented", "missing", "error", "withheld"] as const).map((mode) => ({
+    backendName: "alacritty",
+    mode,
+  })),
+  { backendName: "ghostty-native", mode: "unrecorded" as const },
+  { backendName: "vt100-rust", mode: "unrecorded" as const },
+])("retains existing host custody scope for $backendName / $mode", async ({ backendName, mode }) => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true)
     if (mode === "withheld") vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
     const query = "\x1b]10;?\x07",
@@ -903,7 +908,7 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "w
       source: { kind: "live" },
       runId: "host-run",
       sourceRevision: "1".repeat(40),
-      intendedSubject: { kind: "lib", id: "scripted-native" },
+      intendedSubject: { kind: "lib", id: backendName },
       manifest: {
         schemaVersion: 4,
         probeHash: "host-suite",
@@ -925,7 +930,7 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "w
         })
         return backend
       },
-      "scripted-native",
+      backendName,
       [
         {
           id,
@@ -964,6 +969,14 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "w
       runtime,
     )
     const retained = JSON.parse(batch.rawReplies[`collector.hostRecipes.${id}`] ?? "null")
+    if (mode === "unrecorded") {
+      expect(retained).toBeNull()
+      const decision = JSON.parse(batch.rawReplies["collector.replyPath"]!).decisions[id]
+      expect(decision).toMatchObject({ member: false, runtimeIdentity: { kind: "native" } })
+      expect(decision).not.toHaveProperty("hostRecipes")
+      expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+      return
+    }
     expect(retained).toMatchObject({
       runId: draft.runId,
       captures: [{ query, response: "", error: null }],

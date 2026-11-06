@@ -220,7 +220,7 @@ Raw replies and observed payloads do not embed
 runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
 uses the loaded binary digest, while wrapper repository/tree metadata remains provenance.
 
-Headless collection checks declared-versus-loaded native SHA before probes and collects observed
+Headless collection checks loaded native artifacts against their receipts before probes and collects observed
 buffers and replies. A silence-dependent cell with no same-path control is PROBE TODO with the
 no-control reason and its raw response. Hourly measurement calls the existing `collectHeadlessRuns`
 entry point and reads its `collection.json` through the canonical run parser, without importing review selection.
@@ -612,8 +612,10 @@ A recipe probe takes the host route when its measured runtime is native, and tak
 otherwise. A callback-owned TODO keeps its reason and tests
 and does not repeat; control findings remain in raw metadata. The existing identity owner still measures
 each initialized callback instance; a changed or unavailable identity prevents its callback.
-Per-feature decisions retain that instance's identity. Native decisions retain their host recipes and
-query/cause records; the reader requires every decision's recipe binding when any is present.
+Per-feature decisions retain that instance's identity. The existing Alacritty, Kitty and WezTerm cohort
+retains host recipes and query/cause records; a private collector list preserves this validation scope.
+Ghostty Native and vt100-rust keep the native route without these records. The reader requires every
+decision's recipe binding when any is present.
 Historical native declarations still trigger the same strict validation, without rewriting stored runs.
 `collector.replyPath` retains measured identity and decisions; no adapter delivery declaration or comparer
 authorizes a silence-based negative. Adapter source and native artifact receipt checks remain independent.

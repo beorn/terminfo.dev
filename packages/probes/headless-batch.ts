@@ -780,6 +780,8 @@ async function collectPass(
       const hostRecipes = probe.libHostRecipes ?? []
       const nativeHostRoute = initializedRuntime?.identity.kind === "native"
       const usesHostRoute = hostRecipes.length > 0 && nativeHostRoute
+      // Preserve the existing strict-capture cohort independently of native routing.
+      const recordsHostRecipes = nativeHostRoute && ["alacritty", "kitty", "wezterm"].includes(backendName)
       const decision = {
         member: pass?.control === true && !usesHostRoute,
         reason: usesHostRoute
@@ -799,11 +801,11 @@ async function collectPass(
         member: decision.member && !identityChanged,
         reason,
         ...(initializedRuntime && { runtimeIdentity: initializedRuntime.identity }),
-        ...(nativeHostRoute && { hostRecipes }),
+        ...(recordsHostRecipes && { hostRecipes }),
       }
       batch.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
       if (identityChanged) throw new Error(reason)
-      if (nativeHostRoute) {
+      if (recordsHostRecipes) {
         if (!draft) throw new Error("Native host recipe capture requires the actual run draft")
         hostRecord = { runId: draft.runId, captures: [], causes: [] }
       }
