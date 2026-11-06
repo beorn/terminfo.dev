@@ -98,6 +98,12 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/alacritty/native/src/lib.rs": "23b6874c921b03ab2ae99bfec61cd9f00b8cb5a8",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
+  alacritty0110: {
+    "packages/alacritty/src/index.ts": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
+    "packages/alacritty/src/backend.ts": "9ee6e4044b2a084b7181552362b7ee76f234dc14",
+    "packages/alacritty/native/src/lib.rs": "23b6874c921b03ab2ae99bfec61cd9f00b8cb5a8",
+    "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
+  },
   wezterm: {
     "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
     "packages/wezterm/src/backend.ts": "4b376877280d09535bc67a6f99fc5d68b40529e3",
