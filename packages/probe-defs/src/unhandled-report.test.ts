@@ -346,8 +346,8 @@ describe("the report arm decides italic and faint as well, and nothing outside i
   })
 })
 
-// Accepted D2 cut (Chief 6ef3debd) plus M-1 (CTO f23f1197): 44 controlled negatives;
-// the 12 proposed declarations remain on their prior paths pending policy wording.
+// Accepted D2 cut plus M-1:44 audited native negatives and the generic OSC22 report.
+// The11 remaining proposed declarations retain their prior paths pending policy wording.
 // Independent input/code oracles were measured from the real addon before each
 // consumer extension; these cases exercise the registered callback boundary.
 describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
