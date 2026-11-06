@@ -340,7 +340,7 @@ describe("the report arm decides italic and faint as well, and nothing outside i
 })
 
 // Accepted D2 cut (Chief 6ef3debd) plus M-1 (CTO f23f1197): 44 controlled negatives;
-// the 12 proposed declarations remain on their prior paths pending policy wording.
+// The released eleven-cell D2-U1 slice declares only the audited vt100 0.16.2 subject.
 // Independent input/code oracles were measured from the real addon before each
 // consumer extension; these cases exercise the registered callback boundary.
 describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
@@ -425,7 +425,6 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     "device.xtgetxres",
     "extensions.kitty-graphics",
     "extensions.kitty-graphics.transmit",
-    "extensions.osc22-pointer",
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
     "extensions.osc440-audio",
@@ -453,10 +452,13 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     }
   })
 
-  test.each(declared)("%s stays outside the negative-only cut while declaration policy is held", (id) => {
+  // The released eleven-cell D2 slice declares only this audited 0.16.2 subject.
+  // Negative-only coverage could not prove the declaration or retain its versioned reason.
+  test.each(declared)("%s declares Untestable only for the audited vt100 0.16.2 subject", (id) => {
     const lib = definition(id).lib!
     const result = lib({ ...inertLibProbeSource(), backendName: "vt100-rust", runtimeIdentity: identity })
-    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(JSON.stringify(result)).toContain("vt100 0.16.2")
     expect(result.observation?.outcome).not.toBe("unsupported")
     for (const overrides of [
       { runtimeIdentity: undefined },
@@ -517,14 +519,16 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     }
   })
 
-  test("a decided reply survives the report and OSC52 read is neither declared nor negative", () => {
+  test("a decided reply survives the report and reader-owned OSC cells stay outside declarations", () => {
     const target = source("\x1b[6n", "csi", "6n", {
       feedCapture: () => "\x1b[3;5R",
       getCursor: () => ({ x: 4, y: 2, visible: true, style: null }),
     })
     expect(definition("cursor.position-report").lib!(target).observation?.outcome).toBe("supported")
-    const result = definition("extensions.osc52-read").lib!(target)
-    expect(isDeclaredUntestable(result)).toBe(false)
-    expect(JSON.stringify(result)).not.toContain(REASON)
+    for (const id of ["extensions.osc22-pointer", "extensions.osc52-read"]) {
+      const result = definition(id).lib!(target)
+      expect(isDeclaredUntestable(result)).toBe(false)
+      expect(JSON.stringify(result)).not.toContain(REASON)
+    }
   })
 })
