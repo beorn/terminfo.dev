@@ -1318,6 +1318,21 @@ export function sgrProbe(
           const styleControl = ctx.getCell(0, 2)
           const styleState = { ...state, styleControl, input: { ...state.input, styleControl: styleControlInput } }
           if (styleControl.char !== "D" || styleControl.underline !== style) {
+            if (
+              (id === "sgr.underline.curly" || id === "sgr.underline.dotted" || id === "sgr.underline.dashed") &&
+              (ctx.backendName === "vt100" || ctx.backendName === "vt220") &&
+              ctx.runtimeIdentity?.engineVersion === "0.13.1" &&
+              cell.underline === false &&
+              styleControl.char === "D" &&
+              styleControl.underline === false
+            ) {
+              return parserStateResult(
+                false,
+                `${id}: the colon form left X plain with a qualified single underline control`,
+                styleState,
+                `${ctx.backendName} 0.13.1: ordinary SGR 4 sets the public underline flag; this colon form leaves it off and the cell has no style field`,
+              )
+            }
             return notTestedResult(
               `Underline reader did not distinguish the ${style} style control in this run`,
               styleState,

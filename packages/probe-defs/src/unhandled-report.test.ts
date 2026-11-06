@@ -5,8 +5,8 @@
  *   exactly one entry carrying its code. Without both, the row keeps today's TODO naming what
  *   failed; a missing member keeps today's meaning and never becomes Supported.
  *
- * @failure The report is allowed to decide a delivery cell. OSC 7 / OSC 633 P / OSC 9 / OSC 777
- *   are Supported because their payload reaches the host, so the report must not touch them.
+ * @failure A report replaces a real payload reader, or a number-only OSC 777 report cannot
+ *   decide rejection. Existing payload-reader contracts retain their own deciding path.
  *
  * @failure The report is allowed to decide an SGR cell outside the six the appendix names.
  * @level l2
@@ -112,6 +112,7 @@ describe("the unhandled report decides only state cells, and only with both cont
   test.each([
     ["extensions.osc1-icon", "1"],
     ["extensions.osc22-pointer", "22"],
+    ["extensions.osc777-notify", "777"],
     ["extensions.osc113-reset-pointer-fg", "113"],
     ["extensions.osc114-reset-pointer-bg", "114"],
     ["extensions.osc117-reset-highlight-bg", "117"],
@@ -185,16 +186,11 @@ describe("the unhandled report decides only state cells, and only with both cont
     expect(JSON.stringify(result)).not.toContain(REASON)
   })
 
-  test("a delivery cell is never decided by the report", () => {
+  test("delivery cells outside the report consumer keep their own paths", () => {
     const source = reportingSource({
       records: [recordsOsc("7"), recordsOsc("9"), recordsOsc("633"), recordsOsc("777")],
     })
-    for (const id of [
-      "extensions.osc7-cwd",
-      "extensions.osc9-progress",
-      "extensions.osc633-p",
-      "extensions.osc777-notify",
-    ]) {
+    for (const id of ["extensions.osc7-cwd", "extensions.osc9-progress", "extensions.osc633-p"]) {
       const result = probe(id).lib!(source)
       expect(JSON.stringify(result)).not.toContain(REASON)
     }
@@ -271,11 +267,6 @@ describe("an engine that handles no OSC may qualify with a handled non-OSC contr
     ["extensions.osc777-notify", "777"],
   ])("a cell the engine reports unhandled becomes Unsupported: %s", (id, code) => {
     const result = probe(id).lib!(decLike([code]))
-    // osc777-notify is a delivery cell and must keep its own path even under the fallback.
-    if (id === "extensions.osc777-notify") {
-      expect(JSON.stringify(result)).not.toContain(REASON)
-      return
-    }
     expect(result.observation?.outcome).toBe("unsupported")
     expect(JSON.stringify(result)).toContain(REASON)
   })

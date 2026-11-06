@@ -2480,11 +2480,14 @@ const modeDefinitions: ProbeDefinition[] = [
       "modes.decsscls",
       (ctx) => {
         // Exact public Screen0.13.1 has no speed getter or speed key in getMode.
-        // No DEC citation establishes this feature on a VT100; do not invent an engine reader.
+        // No DEC citation establishes this feature on a VT100/VT220; do not invent an engine reader.
         // Existing registry report consumers retain their own deciding path for other engines.
-        if (ctx.backendName === "vt100" && ctx.runtimeIdentity?.engineVersion === "0.13.1") {
+        if (
+          (ctx.backendName === "vt100" || ctx.backendName === "vt220") &&
+          ctx.runtimeIdentity?.engineVersion === "0.13.1"
+        ) {
           return declaredUntestableResult(
-            "VT100.js 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.",
+            `${ctx.backendName === "vt100" ? "VT100.js" : "VT220.js"} 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
             { backendName: ctx.backendName, engineVersion: ctx.runtimeIdentity.engineVersion },
           )
         }
