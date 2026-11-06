@@ -4165,6 +4165,7 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
     "extensions.osc633-c",
     "extensions.osc633-d",
     "extensions.osc633-e",
+    "extensions.osc633-p",
     "extensions.osc777-notify",
     "extensions.osc9-progress",
     "extensions.semantic-prompts",
@@ -4178,7 +4179,7 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
     expect(row.status, row.featureId).toBe("unsupported")
     expect(JSON.stringify(row), row.featureId).toContain("library reported this sequence as unhandled")
   }
-  // Blink, the three colon underline forms and the two delivery cells keep the baseline result exactly.
+  // Blink, the three colon underline forms and the remaining delivery cell keep the baseline result exactly.
   const still = (batch: Awaited<ReturnType<typeof collectBatch>>, keep: (id: string) => boolean) =>
     rows(batch).filter((row) => keep(row.featureId))
   const unchanged = (id: string) => !expectedMoves.includes(id)
@@ -4188,7 +4189,6 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
       .map((row) => row.featureId)
       .sort(),
   ).toEqual([
-    "extensions.osc633-p",
     "extensions.osc7-cwd",
     "sgr.blink",
     "sgr.underline.curly",
@@ -5842,4 +5842,55 @@ test.runIf(OWNED_LAYOUT).each([
   }
   expect(batch.observations).toHaveLength(2)
   for (const observation of batch.observations) expect(observation.assertionType).toBe("buffer_state")
+})
+
+// NR-C: scalar-only reporting misses colour payload lists, while setup rejection
+// must declare the dependent claim Untestable rather than grade the target.
+test.runIf(OWNED_LAYOUT).each([
+  ["vt100", resolveVt100],
+  ["vt220", resolveVt220],
+] as const)("%s DEC colour and setup reports decide the approved nineteen cells", async (engine, factory) => {
+  const negatives = [
+    "sgr.fg.standard",
+    "sgr.bg.standard",
+    "sgr.fg.bright",
+    "sgr.bg.bright",
+    "sgr.fg.default",
+    "sgr.bg.default",
+    "extensions.osc2-title",
+    "sgr.fg.256",
+    "sgr.bg.256",
+    "sgr.fg.truecolor",
+    "sgr.bg.truecolor",
+    "extensions.truecolor",
+    "extensions.osc633-p",
+  ]
+  const absences = [
+    "erase.el-with-attrs",
+    "device.xtwinops-22",
+    "device.xtwinops-23",
+    "modes.alt-screen.exit",
+    "sgr.selective-reset.italic",
+    "editing.decsace",
+  ]
+  const ids = [...negatives, ...absences]
+  const adapterPackage = `@termless/${engine}`
+  const identity = await headlessIdentity.headlessRuntimeIdentity(engine, adapterPackage, "js")
+  const definitions = registryDefinitions(ids).map((definition) => ({
+    ...definition,
+    lib: (ctx: LibProbeSource) => definition.lib!({ ...ctx, runtimeIdentity: identity }),
+  }))
+  const batch = await collectBatch(factory, engine, definitions)
+  expect(batch.results.map(({ featureId, status }) => [featureId, status])).toEqual(
+    ids.map((id) => [id, negatives.includes(id) ? "unsupported" : "untestable"]),
+  )
+  for (const result of batch.results) {
+    if (negatives.includes(result.featureId)) {
+      expect(result.reason, result.featureId).toBe("library reported this sequence as unhandled")
+    } else {
+      expect(result.tests, result.featureId).toEqual([
+        expect.objectContaining({ id: "declared-untestable", status: "untestable" }),
+      ])
+    }
+  }
 })
