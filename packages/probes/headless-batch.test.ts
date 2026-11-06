@@ -3903,7 +3903,7 @@ test.runIf(OWNED_LAYOUT)("real Ghostty palette-stack reports decide exactly the 
   for (const [featureId, code] of [
     [ids[0]!, "#P"],
     [ids[1]!, "#Q"],
-  ]) {
+  ] as const) {
     expect(JSON.parse(batch.rawReplies[featureId]!)).toMatchObject({
       unhandled: { control: "\x1b[?7l", target: { kind: "csi", code }, added: [{ kind: "csi", code }] },
     })
