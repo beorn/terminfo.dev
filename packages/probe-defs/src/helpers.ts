@@ -1436,7 +1436,9 @@ export function sgrProbe(
             if (
               (id === "sgr.underline.curly" || id === "sgr.underline.dotted" || id === "sgr.underline.dashed") &&
               (ctx.backendName === "vt100" || ctx.backendName === "vt220") &&
-              (ctx.runtimeIdentity?.engineVersion === "0.13.1" || ctx.runtimeIdentity?.engineVersion === "0.13.2") &&
+              (ctx.runtimeIdentity?.engineVersion === "0.13.1" ||
+                ctx.runtimeIdentity?.engineVersion === "0.13.2" ||
+                ctx.runtimeIdentity?.engineVersion === "0.14.0") &&
               cell.underline === false &&
               styleControl.char === "D" &&
               styleControl.underline === false

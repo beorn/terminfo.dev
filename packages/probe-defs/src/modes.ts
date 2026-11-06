@@ -2521,7 +2521,9 @@ const modeDefinitions: ProbeDefinition[] = [
         // Existing registry report consumers retain their own deciding path for other engines.
         if (
           (ctx.backendName === "vt100" || ctx.backendName === "vt220") &&
-          (ctx.runtimeIdentity?.engineVersion === "0.13.1" || ctx.runtimeIdentity?.engineVersion === "0.13.2")
+          (ctx.runtimeIdentity?.engineVersion === "0.13.1" ||
+            ctx.runtimeIdentity?.engineVersion === "0.13.2" ||
+            ctx.runtimeIdentity?.engineVersion === "0.14.0")
         ) {
           return declaredUntestableResult(
             `${ctx.backendName === "vt100" ? "VT100.js" : "VT220.js"} exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,

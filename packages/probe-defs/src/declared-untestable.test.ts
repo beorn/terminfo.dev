@@ -1011,6 +1011,8 @@ describe("audited OSC interface absence", () => {
     ["vt220", vtIdentity("vt220", "5162719d063ab59d2905d588df3e127d38b110d1", "0.13.1")],
     ["vt100", vtIdentity("vt100", "ce4a64f5517083815ce02892d3f6458ef1128906", "0.13.2")],
     ["vt220", vtIdentity("vt220", "232e7bd71913340475d283b313f67a4e624057be", "0.13.2")],
+    ["vt100", vtIdentity("vt100", "e94b7948e9ad7871d57addfb23f0e9cc57dc6928", "0.14.0")],
+    ["vt220", vtIdentity("vt220", "f11c935e06882887a41a9cc8e7bbb0fc6aa7b209", "0.14.0")],
   ] as const
   const readerSubjects = [["vt100", vt100], ...current] as const
   const alacritty = {
@@ -1640,11 +1642,15 @@ describe("audited OSC interface absence", () => {
 test.each([
   ["vt100", "0.13.1", true],
   ["vt100", "0.13.2", true],
+  ["vt100", "0.14.0", true],
+  ["vt100", "0.14.1", false],
   ["vt100", "0.13.0", false],
   ["vt100", "0.13.3", false],
   ["vt100", undefined, false],
   ["vt220", "0.13.1", true],
   ["vt220", "0.13.2", true],
+  ["vt220", "0.14.0", true],
+  ["vt220", "0.14.1", false],
   ["vt220", "0.13.0", false],
   ["vt220", "0.13.3", false],
   ["libvterm", "0.13.1", false],

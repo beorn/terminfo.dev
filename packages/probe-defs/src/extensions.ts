@@ -265,7 +265,9 @@ export function hasAuditedOscInterfaceAbsence(
       (tree === "ce4a64f5517083815ce02892d3f6458ef1128906" ||
         tree === "232e7bd71913340475d283b313f67a4e624057be" ||
         tree === "60088603eff12a69d1c810fa2ee699a821e29d0f" ||
-        tree === "0db06083bfe1f65e53f556469c45983789e0d272"))
+        tree === "0db06083bfe1f65e53f556469c45983789e0d272")) ||
+    (identity.engineVersion === "0.14.0" &&
+      (tree === "e94b7948e9ad7871d57addfb23f0e9cc57dc6928" || tree === "f11c935e06882887a41a9cc8e7bbb0fc6aa7b209"))
   )
 }
 
@@ -7350,7 +7352,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         const result = lib(ctx)
         if (reportsDecidedOutcome(result)) return result
         if (decsace) {
-          return ctx.runtimeIdentity?.engineVersion === "0.13.1" || ctx.runtimeIdentity?.engineVersion === "0.13.2"
+          return ctx.runtimeIdentity?.engineVersion === "0.13.1" ||
+            ctx.runtimeIdentity?.engineVersion === "0.13.2" ||
+            ctx.runtimeIdentity?.engineVersion === "0.14.0"
             ? declaredUntestableResult(
                 `${ctx.backendName} exposes no DECSACE extent state or effect reader through its public Screen API.`,
                 { backend: ctx.backendName, engineVersion: ctx.runtimeIdentity.engineVersion },

@@ -430,7 +430,10 @@ in `extensions.ts` checks exact clean source trees or native provenance and
 adapter blobs. Changed or unknown profiles remain PROBE TODO. This declares
 public-interface absence, not DEC hardware or desktop-notification support.
 OSC 7 uses that same identity qualifier when its Cwd reader is absent, with its
-own working-directory interface-absence reason. A supplied Cwd reader always
+own working-directory interface-absence reason. The shared 0.14.0 release retains
+these audited absences at clean VT100 tree `e94b7948e9ad7871d57addfb23f0e9cc57dc6928`
+and VT220 tree `f11c935e06882887a41a9cc8e7bbb0fc6aa7b209`; their source APIs are unchanged.
+A supplied Cwd reader always
 runs the existing measured criterion; a missing reader on any other identity
 remains PROBE TODO.
 
@@ -471,7 +474,7 @@ rejection of the setup itself with the passing SGR 1 control makes the dependent
 in that run. Target rejection, a version literal, a failed control or missing report cannot establish
 that prerequisite absence. Existing decided results retain precedence.
 Without the qualified setup report, those five dependent claims remain PROBE TODO.
-DECSACE alone is declared Untestable at DEC engine 0.13.1, whose public Screen API has no extent state/effect reader; other
+DECSACE alone is declared Untestable at DEC engine 0.13.1, 0.13.2 and 0.14.0, whose public Screen API has no extent state/effect reader; other
 versions retain the existing criterion. VT220 bold selective reset remains outside this slice.
 
 Operator D2 and the November 5 11:16 ruling add 34 cells; the M-1 scope adds ten state cells,
