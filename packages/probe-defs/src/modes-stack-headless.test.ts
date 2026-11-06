@@ -216,6 +216,46 @@ const MODE = ["modes.xtsave", "modes.xtrestore"] as const
 const COLOR = ["modes.xtpushcolors", "modes.xtpopcolors"] as const
 const ALL = [...SGR, ...MODE, ...COLOR] as const
 
+// The public buffer is absolute, and clearing the screen can grow its retained history.
+// Existing zero-history cases cannot catch a probe reading an old row instead of its controls.
+test.each([...COLOR, ...MODE])("%s qualifies active cells while retained history grows", (id) => {
+  for (const outcome of ["supported", "unsupported", "probe-todo"] as const) {
+    const screen = fakeScreen({
+      colorStack: outcome !== "unsupported",
+      modeStack: outcome !== "unsupported",
+      osc4: outcome !== "probe-todo",
+      wrapOff: outcome !== "probe-todo",
+    })
+    let history = 2
+    const source: LibProbeSource = {
+      ...screen.context,
+      feed(sequence) {
+        screen.context.feed(sequence)
+        history += sequence.split("\x1b[2J").length - 1
+      },
+      getScrollback() {
+        const state = screen.context.getScrollback()
+        return { ...state, totalLines: state.screenLines + history }
+      },
+      getCell(row, col) {
+        return row < history
+          ? { char: "H", fg: null, bold: false, italic: false }
+          : screen.context.getCell(row - history, col)
+      },
+    }
+    const result = headless(id)(source)
+    if (outcome === "probe-todo") {
+      expect(result.observation).toBeUndefined()
+      expect(result.notTested?.reason).toBe("no-semantic-observable")
+    } else {
+      expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
+      expect(result.pass).toBe(outcome === "supported")
+    }
+    expect(screen.depth()).toBe(0)
+    expect(screen.wrap()).toBe(true)
+  }
+})
+
 // CTO d0f854d5: a calibrated bold-only reader may witness the joint negative,
 // but cannot witness the positive italic clause. Existing cases require both attributes.
 test.each(SGR)("%s qualifies a limited reader only for the observed joint negative", (id) => {
