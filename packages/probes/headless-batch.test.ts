@@ -2659,22 +2659,26 @@ test("real vterm mark observations survive the registered batch producer", async
   )
 })
 
-// @failure Raw Sixel storage is promoted to rendering support, or the partial reason claims storage from a stale reader.
+// @failure Raw Sixel storage is promoted to rendering support, or a stale storage reader is declared Untestable.
 // @level l1
 // @consumer The Sixel rendering cell, with its separately retained storage facet.
-test("real vterm Sixel storage sharpens the TODO reason without deciding a rendering probe result", () => {
+test("real vterm Sixel storage reads Untestable with retained payload while a stale reader stays PROBE TODO", () => {
   const value = createVtermBackend({ cols: 80, rows: 24 })
   try {
     const source = createLibProbeSource(value, undefined, undefined, undefined)
     const definition = registryDefinitions(["extensions.sixel"])[0]!
     const result = definition.lib!(source)
-    expect(result.note).toBe(
-      "Open: our test cannot check the image, for two reasons. The library stores the image data at the right screen position, but drawing it is the app's job; and our test does not measure the character cell size needed to check the image's size.",
-    )
+    expect(result.note).toBe("Declared Sixel capability does not establish rendered pixels")
     expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-    expect(result.tests).toMatchObject([{ status: "probe-todo" }])
+    expect(result.tests).toEqual([
+      {
+        id: "declared-untestable",
+        status: "untestable",
+        reason: "Declared Sixel capability does not establish rendered pixels",
+      },
+    ])
     expect(result.observation).toBeUndefined()
-    expect(JSON.parse(result.response!)).toMatchObject({ storage: { retained: true } })
+    expect(JSON.parse(result.response!)).toMatchObject({ declared: true, storage: { retained: true } })
     vi.spyOn(source, "getSixelImages").mockReturnValue([])
     const stale = definition.lib!(source)
     expect(stale.tests).toMatchObject([{ status: "probe-todo" }])
