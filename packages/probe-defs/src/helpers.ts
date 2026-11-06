@@ -87,7 +87,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   libvtermR1: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
     "packages/libvterm/src/backend.ts": "fff111feabbcf729b6a071c33db2365b55706e7f",
-    "packages/libvterm/src/wasm-bindings.ts": "8ddc939fc0e79737b59181a6b110c63e3fde63f1",
+    "packages/libvterm/src/wasm-bindings.ts": "a983fb2cd6fc9a97c0d035a3a4bccb967f0bcfd4",
     "packages/libvterm/wasm/libvterm.js": "35ae07fbdb0fc67ee1a73477fe53ea6cff89a985",
     "src/terminal/key-mapping.ts": "a687ff18768ae42b315f689122bcef07244b036e",
   },
