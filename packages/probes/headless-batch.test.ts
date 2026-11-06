@@ -4055,10 +4055,10 @@ function registryDefinitions(ids: readonly string[]): ProbeDefinition[] {
   })
 }
 
-// @failure Real palette-stack warnings never reach registered, canonical collector decisions.
-// @consumer Owned Ghostty web two-cell collector; hosted source-siblings resolves an older published adapter.
-test.runIf(OWNED_LAYOUT)("real Ghostty palette-stack reports decide exactly the two registered cells", async () => {
-  const ids = ["modes.xtpushcolors", "modes.xtpopcolors"]
+// @failure Real CSI warnings never reach registered, canonical collector decisions.
+// @consumer Owned Ghostty web palette-stack, DECSACE and DECSSCLS collector; hosted resolves an older adapter.
+test.runIf(OWNED_LAYOUT)("real Ghostty CSI reports decide exactly the registered cells", async () => {
+  const ids = ["modes.xtpushcolors", "modes.xtpopcolors", "editing.decsace", "modes.decsscls"]
   const measured = await resolveGhosttyWasm()
   measured.init({ cols: 80, rows: 24 })
   const identity = await headlessIdentity.headlessRuntimeIdentity("ghostty", "@termless/ghostty", "wasm")
@@ -4085,9 +4085,15 @@ test.runIf(OWNED_LAYOUT)("real Ghostty palette-stack reports decide exactly the 
   for (const [featureId, code] of [
     [ids[0]!, "#P"],
     [ids[1]!, "#Q"],
+    [ids[2]!, "*2x"],
+    [ids[3]!, " p"],
   ] as const) {
     expect(JSON.parse(batch.rawReplies[featureId]!)).toMatchObject({
-      unhandled: { control: "\x1b[?7l", target: { kind: "csi", code }, added: [{ kind: "csi", code }] },
+      unhandled: {
+        control: featureId.startsWith("modes.xt") ? "\x1b[?7l" : "\x1b[0m\x1b[1mC",
+        target: { kind: "csi", code },
+        added: [{ kind: "csi", code }],
+      },
     })
   }
   // Removing only the new producer records must lose both conclusions; native effects stay real.
@@ -4101,7 +4107,7 @@ test.runIf(OWNED_LAYOUT)("real Ghostty palette-stack reports decide exactly the 
     return value
   }
   const missing = await collectBatch(withoutCsi, "ghostty", registryDefinitions(ids), undefined, undefined, runtime)
-  expect(missing.results.map(({ status }) => status)).toEqual(["probe-todo", "probe-todo"])
+  expect(missing.results.map(({ status }) => status)).toEqual(ids.map(() => "probe-todo"))
 })
 
 // @failure Ghostty's repeated allocator/rejection reports fail to decide their scalar reset code, or shell reports are lost.

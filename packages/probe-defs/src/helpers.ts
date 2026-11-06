@@ -66,6 +66,12 @@ export const ADAPTER_SOURCE_AUDITS = {
     // Historical cohort retained for existing API/reply and source-review consumers.
     "packages/ghostty/src/backend.ts": "560146d5f929f31a8f973f809d97f91cf0e23fd6",
   },
+  ghosttyCsiNrg: {
+    "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
+    "packages/ghostty/src/backend.ts": "8203731b757c607354fd4ab41500bb39a4feda09",
+    "packages/ghostty/src/load-native.ts": "56f1eb8218a5d450635d8ab7ff0ec507eddd960c",
+    "vendor/ghostty-web/dist/ghostty-web.js": "dc4d7cab5e0629d17d352cf114a4ffee91aed890",
+  },
   libvterm: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
     "packages/libvterm/src/backend.ts": "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00",
