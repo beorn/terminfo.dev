@@ -188,12 +188,15 @@ describe("app-job handoffs", () => {
     const ids = [...hosts, ...(backend === "xterm" ? metadata : ["extensions.osc777-notify"])]
     for (const id of ids) {
       const lib = ALL_PROBES.find((probe) => probe.id === id)!.lib!
-      expect(fold(id, lib({ ...reporting(backend), runtimeIdentity: identity })), id).toMatchObject({
+      expect(
+        fold(id, lib({ ...reporting(backend), runtimeIdentity: source(backend, identity).runtimeIdentity })),
+        id,
+      ).toMatchObject({
         status: "untestable",
         reason: tapReason,
       })
       for (const changed of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
-        const result = lib({ ...reporting(backend), runtimeIdentity: changed })
+        const result = lib({ ...reporting(backend), runtimeIdentity: source(backend, changed).runtimeIdentity })
         expect(isDeclaredUntestable(result), id).toBe(false)
         expect(result.observation?.outcome, id).not.toBe("supported")
       }

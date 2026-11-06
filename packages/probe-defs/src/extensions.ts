@@ -94,13 +94,7 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 // version carrying the same backend name. Real readers take precedence at each caller.
 function hasAuditedOscInterfaceAbsence(
   ctx: LibProbeSource,
-  cohort:
-    | "osc-absence"
-    | "vt100-rust-d2"
-    | "vterm-d2"
-    | "osc-tap"
-    | "ghostty-native-d2"
-    | "wezterm-d2" = "osc-absence",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-tap" | "ghostty-native-d2" | "wezterm-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
   if (cohort === "osc-tap") {
