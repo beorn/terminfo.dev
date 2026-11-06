@@ -17,7 +17,7 @@ import {
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
 import { withD2LibraryObservation } from "./extensions.ts"
-import { inertLibProbeSource, libProbeSource } from "./testing/group-harness.ts"
+import { libProbeSource, inertLibProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { HeadlessRuntimeIdentity, LibProbeSource, NotTestedCoverageResult, ProbeCallbackResult } from "./types.ts"
 
@@ -46,12 +46,13 @@ const library = (backendName = "alacritty"): LibProbeSource =>
     reset: () => {},
   }) as unknown as LibProbeSource
 
-// @failure The operator's Nov 5 pass-through declaration stays TODO, loses its exact reason,
-// or leaks onto an unreviewed engine. Earlier declarations cover none of these eighteen cells.
+// @failure Phase 1 treats a generic OSC hook as support, or declares a report handoff without
+// both same-run controls. The old H-1 tests covered only identity declarations, not the thirteen
+// formerly Supported cells or report qualification. Typed-store contracts remain in headless-batch.
 // @level l1
-// @consumer ALL_PROBES library callbacks through the shipping result finalizer; no test-only seam.
-describe("pass-through declarations", () => {
-  const ids = [
+// @consumer ALL_PROBES library callbacks through the shipping result finalizer.
+describe("app-job handoffs", () => {
+  const hosts = [
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
     "extensions.osc440-audio",
@@ -59,8 +60,16 @@ describe("pass-through declarations", () => {
     "extensions.osc666-termprop",
     "extensions.osc710-font-normal",
   ] as const
-  const reason =
-    "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
+  const metadata = [
+    "extensions.notifications",
+    "extensions.osc7-cwd",
+    "extensions.osc777-notify",
+    "extensions.osc633-p",
+  ] as const
+  const tapReason =
+    "Untestable (passed to the app): this command is the app's job, and the library hands it to the app through a hook that receives every OSC command."
+  const reportReason =
+    "Untestable (passed to the app): this command is the app's job. The library reports that it does not handle it and hands its text to the app."
   // NR-H: the existing six-OSC cases do not cover these fourteen xterm.js cells.
   const xtermIds = [
     "editing.decsace",
@@ -80,6 +89,8 @@ describe("pass-through declarations", () => {
   ] as const
   const csiReason =
     "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it."
+  const nrHReason =
+    "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
   // Engine identities from the 20:34 natural run, also measured directly by CTO at 21:01.
   const subjects = [
     [
@@ -131,6 +142,7 @@ describe("pass-through declarations", () => {
   const baseCell = libProbeSource(createSemanticSurface()).getCell(0, 0)
   const source = (backend: string, identity: unknown) =>
     ({
+      ...inertLibProbeSource(),
       ...library(backend),
       runtimeIdentity: identity,
       feedCapture: () => "",
@@ -153,7 +165,7 @@ describe("pass-through declarations", () => {
     const result = definition.lib!(source("xterm", identity))
     expect(fold(id, result)).toMatchObject({
       status: "untestable",
-      reason: id === "editing.decsace" ? csiReason : reason,
+      reason: id === "editing.decsace" ? csiReason : nrHReason,
     })
     expect(result.observation).toBeUndefined()
     for (const unknown of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
@@ -169,54 +181,99 @@ describe("pass-through declarations", () => {
     for (const [backend, otherIdentity] of subjects.slice(1)) {
       const other = definition.lib!(source(backend, otherIdentity))
       // Five pre-existing vterm D2 declarations remain; none gains the NR-H pass-through reason.
-      expect(fold(id, other).reason).not.toBe(id === "editing.decsace" ? csiReason : reason)
+      expect(fold(id, other).reason).not.toBe(id === "editing.decsace" ? csiReason : nrHReason)
     }
   })
 
-  test.each(subjects)(
-    "%s finalizes exactly the six declarations even with a generic numeric report",
-    (backend, identity) => {
-      for (const id of ids) {
-        const lib = ALL_PROBES.find((probe) => probe.id === id)!.lib!
-        for (const getUnhandledSequences of [undefined, () => []]) {
-          const result = lib({ ...source(backend, identity), getUnhandledSequences })
-          expect(fold(id, result), id).toMatchObject({ status: "untestable", reason })
-          expect(isDeclaredUntestable(result), id).toBe(true)
-          expect(result.observation, id).toBeUndefined()
-          expect(result.assertions, id).toBeUndefined()
+  const reporting = (
+    backend: string,
+    recordsMadeUp = true,
+    appliesTitle = true,
+    recordsTitle = false,
+  ): LibProbeSource => {
+    const report: { kind: "osc"; code: string }[] = []
+    let title = ""
+    let cwd: string | null = null
+    const notifications: string[] = []
+    const payloads: string[] = []
+    return {
+      ...source(backend, undefined),
+      getTitle: () => title,
+      getCwd: () => cwd,
+      getNotifications: () => [...notifications],
+      getOsc777Payloads: () => [...payloads],
+      getUnhandledSequences: () => [...report],
+      feed: (text) => {
+        const osc = /\x1b\](\d+)(?:;([^\x07]*))?\x07/.exec(text)
+        if (osc?.[1] === "7") cwd = osc[2] || null
+        if (osc?.[1] === "633" && osc[2]?.startsWith("P;Cwd=")) cwd = osc[2].slice(6) || null
+        if (osc?.[1] === "9") notifications.push(osc[2] ?? "")
+        if (osc?.[1] === "777") payloads.push(osc[2] ?? "")
+        if (osc?.[1] === "2") {
+          if (appliesTitle) title = osc[2] ?? ""
+          if (recordsTitle) report.push({ kind: "osc", code: "2" })
+        } else if (osc?.[1] && (osc[1] !== "9999" || recordsMadeUp)) {
+          report.push({ kind: "osc", code: osc[1] })
         }
-      }
-    },
-  )
-
-  test.each(subjects)(
-    "%s keeps unreviewed identities and other features on their existing path",
-    (backend, identity) => {
-      for (const id of ids) {
-        const lib = ALL_PROBES.find((probe) => probe.id === id)!.lib!
-        for (const unknown of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
-          expect(isDeclaredUntestable(lib(source(backend, unknown))), id).toBe(false)
-        }
-      }
-      const notify = ALL_PROBES.find((probe) => probe.id === "extensions.osc777-notify")!.lib!
-      expect(isDeclaredUntestable(notify(source(backend, identity)))).toBe(false)
-    },
-  )
-
-  test.each(subjects)("%s preserves a decided result and never declares another backend", (backend, identity) => {
-    const decided: ProbeCallbackResult = {
-      pass: true,
-      observation: { outcome: "supported", assertionType: "buffer_state" },
+      },
     }
-    const definition = ALL_PROBES.find((probe) => probe.id === ids[0])!
-    const wrapped = withD2LibraryObservation({ ...definition, lib: () => decided })
-    expect(wrapped.lib!(source(backend, identity))).toBe(decided)
+  }
+
+  test.each(["libvterm", "vt100-rust"])(
+    "%s uses the run, not an engine declaration, for all ten app jobs",
+    (backend) => {
+      for (const id of [...hosts, ...metadata]) {
+        const lib = ALL_PROBES.find((probe) => probe.id === id)!.lib!
+        const result = lib(reporting(backend))
+        expect(fold(id, result), id).toMatchObject({ status: "untestable", reason: reportReason })
+        expect(isDeclaredUntestable(result), id).toBe(true)
+        for (const ctx of [
+          reporting(backend, false),
+          reporting(backend, true, false),
+          reporting(backend, true, true, true),
+        ]) {
+          const undecided = lib(ctx)
+          expect(isDeclaredUntestable(undecided), id).toBe(false)
+          expect(undecided.observation?.outcome, id).not.toBe("supported")
+        }
+      }
+    },
+  )
+
+  test.each(subjects.slice(0, 2))("%s declares only its tap paths at exact engine identity", (backend, identity) => {
+    const ids = [...hosts, ...(backend === "xterm" ? metadata : ["extensions.osc777-notify"])]
+    for (const id of ids) {
+      const lib = ALL_PROBES.find((probe) => probe.id === id)!.lib!
+      expect(
+        fold(id, lib({ ...reporting(backend), runtimeIdentity: source(backend, identity).runtimeIdentity })),
+        id,
+      ).toMatchObject({
+        status: "untestable",
+        reason: tapReason,
+      })
+      for (const changed of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
+        const result = lib({ ...reporting(backend), runtimeIdentity: source(backend, changed).runtimeIdentity })
+        expect(isDeclaredUntestable(result), id).toBe(false)
+        expect(result.observation?.outcome, id).not.toBe("supported")
+      }
+    }
+  })
+
+  test("the report verdict for library-job features stays in its existing home", () => {
+    const id = "extensions.osc113-reset-pointer-fg"
+    const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(reporting("libvterm"))
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(isDeclaredUntestable(result)).toBe(false)
+  })
+
+  test("an unlisted library keeps its prior path", () => {
     const prior: ProbeCallbackResult = {
       pass: false,
       notTested: { reason: "no-semantic-observable", noObservable: "prior undecided result" },
     }
-    const other = withD2LibraryObservation({ ...definition, lib: () => prior })
-    expect(other.lib!(source("other-library", identity))).toBe(prior)
+    const definition = ALL_PROBES.find((probe) => probe.id === hosts[0])!
+    const wrapped = withD2LibraryObservation({ ...definition, lib: () => prior })
+    expect(wrapped.lib!(source("other-library", undefined))).toBe(prior)
   })
 })
 
