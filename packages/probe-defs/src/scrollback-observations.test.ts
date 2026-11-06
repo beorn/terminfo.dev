@@ -487,29 +487,32 @@ test.each([
   ["wezterm", "0.1.0-fork.5"],
 ])("viewport absence is declared only at the ruled %s %s identity", (backendName, engineVersion) => {
   const fixture = viewportSource()
-  fixture.source.backendName = backendName
-  fixture.source.runtimeIdentity =
-    backendName === "libvterm"
-      ? { ...historyRuntime, engineVersion }
-      : {
-          kind: "native",
-          engineVersion,
-          adapterVersion: "fixture",
-          termlessRevision: "fixture-revision",
-          loadedBinary: { path: "/fixtures/wezterm.node", sha256: "fixture" },
-          provenance: {
-            sha256: "fixture",
-            sourceCommit: "fixture",
-            lockSha256: "fixture",
-            buildHash: "fixture",
-            toolchain: "fixture",
+  const source: LibProbeSource = {
+    ...fixture.source,
+    backendName,
+    runtimeIdentity:
+      backendName === "libvterm"
+        ? { ...historyRuntime, engineVersion }
+        : {
+            kind: "native",
+            engineVersion,
+            adapterVersion: "fixture",
+            termlessRevision: "fixture-revision",
+            loadedBinary: { path: "/fixtures/wezterm.node", sha256: "fixture" },
+            provenance: {
+              sha256: "fixture",
+              sourceCommit: "fixture",
+              lockSha256: "fixture",
+              buildHash: "fixture",
+              toolchain: "fixture",
+            },
           },
-        }
+  }
   const declared = { available: false as const, reason: "Library has no product viewport" }
-  fixture.source.capabilities.productViewport = declared
-  expect(viewportProbe()(fixture.source).observation?.outcome).toBe("inconclusive")
-  delete fixture.source.scrollViewport
-  const result = viewportProbe()(fixture.source)
+  source.capabilities.productViewport = declared
+  expect(viewportProbe()(source).observation?.outcome).toBe("inconclusive")
+  delete source.scrollViewport
+  const result = viewportProbe()(source)
   expect(result.tests).toContainEqual(
     expect.objectContaining({
       status: "untestable",

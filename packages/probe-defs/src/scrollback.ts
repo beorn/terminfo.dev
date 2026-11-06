@@ -10,7 +10,6 @@ import {
   parserStateResult,
   replyFailure,
   notTestedResult,
-  reviewResult,
   productViewportAbsenceResult,
   tooSmall,
   validSize,
