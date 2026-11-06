@@ -2385,16 +2385,11 @@ export const SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES: ReadonlySet<string> = new Set
 ])
 
 /**
- * The qualified WASM artifact per libvterm history cohort, keyed as in ADAPTER_SOURCE_AUDITS. A rebuilt adapter
- * adds a cohort here rather than editing a grading literal in the review, and each key names the review's own
- * source citation (31386/32220).
+ * Historical libvterm profiles without a retained-history reader, keyed as in ADAPTER_SOURCE_AUDITS.
+ * Reader-bearing builds use the measured history criterion, rather than inheriting this absence review.
+ * Each key names the review's own source citation (31386/32220).
  */
 const LIBVTERM_HISTORY_ARTIFACTS = {
-  libvtermR1: {
-    engineVersion: "0.3.3",
-    adapterVersion: "0.11.0",
-    wasmSha256: "dc625308fc5fff78884820c696651f60d3e5cfd1c2c650797eabe84ff5855955",
-  },
   libvterm3b7c0232: {
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
@@ -2418,7 +2413,7 @@ const LIBVTERM_HISTORY_ARTIFACTS = {
 export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult | undefined {
   const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
   if (!identity || identity.kind !== "js" || identity.runtimeFormat !== "wasm") return undefined
-  const cohort = (["libvtermR1", "libvterm3b7c0232", "libvterm712298af", "libvterm"] as const).find((key) =>
+  const cohort = (["libvterm3b7c0232", "libvterm712298af", "libvterm"] as const).find((key) =>
     auditedAdapterSources(ctx.runtimeIdentity, key),
   )
   if (cohort === undefined) return undefined
