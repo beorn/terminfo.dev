@@ -2060,7 +2060,12 @@ test.skipIf(!isKittyAvailable())(
         : ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
         const umbrella = registryDefinitions([id])[0]!.lib!(source)
         expect(umbrella.tests, id).toEqual([
-          { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
+          {
+            id: "criterion",
+            status: "probe-todo",
+            reason:
+              "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+          },
         ])
         expect(umbrella.observation, id).toBeUndefined()
       }
@@ -3965,10 +3970,10 @@ test.runIf(OWNED_LAYOUT)("real Ghostty palette-stack reports decide exactly the 
   expect(missing.results.map(({ status }) => status)).toEqual(["probe-todo", "probe-todo"])
 })
 
-// @failure Ghostty's allocator-plus-rejection pair is mistaken for one unhandled report, or shell reports are lost.
+// @failure Ghostty's repeated allocator/rejection reports fail to decide their scalar reset code, or shell reports are lost.
 // @consumer Owned monorepo Ghostty WASM collector; published Termless does not yet expose this report reader.
 test.runIf(OWNED_LAYOUT)(
-  "real Ghostty web decides seven shell report cells but leaves allocator-limited resets undecided",
+  "real Ghostty web decides seven shell report cells and allocator-limited resets by their reports",
   async () => {
     const negatives = [
       "extensions.osc633-a",
@@ -3988,14 +3993,14 @@ test.runIf(OWNED_LAYOUT)(
     const batch = await collectBatch(resolveGhosttyWasm, "ghostty", registryDefinitions([...negatives, ...resets]))
     expect(batch.results).toHaveLength(11)
     for (const result of batch.results) {
-      expect(result.status, result.featureId).toBe(negatives.includes(result.featureId) ? "unsupported" : "probe-todo")
+      expect(result.status, result.featureId).toBe("unsupported")
     }
     expect(
       batch.observations
         .filter((row) => row.outcome === "unsupported")
         .map((row) => row.featureId)
         .sort(),
-    ).toEqual([...negatives].sort())
+    ).toEqual([...negatives, ...resets].sort())
   },
 )
 
@@ -4244,13 +4249,7 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
     still(variant, unchanged)
       .map((row) => row.featureId)
       .sort(),
-  ).toEqual([
-    "extensions.osc7-cwd",
-    "sgr.blink",
-    "sgr.underline.curly",
-    "sgr.underline.dashed",
-    "sgr.underline.dotted",
-  ])
+  ).toEqual(["extensions.osc7-cwd", "sgr.blink", "sgr.underline.curly", "sgr.underline.dashed", "sgr.underline.dotted"])
   expect(JSON.stringify(still(variant, unchanged))).not.toContain("library reported this sequence as unhandled")
 })
 
