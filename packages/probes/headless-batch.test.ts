@@ -4042,9 +4042,9 @@ test.each([
 // @failure @cto's DEC Case 2 ruling R3 (09:00) corrected this test's own claim: a fake that records only
 //   OSC says nothing about the SGR ids it lists. A VT100-shaped report - OSC entries for every terminated
 //   OSC, one numeric SGR entry per operand the engine drops, nothing for a colon group - must move exactly
-//   the twelve shell cells, the four named colour resets, OSC 777 notify and four numeric SGR cells (faint 2m, italic
+//   the twelve shell cells, the four named colour resets, OSC 777 notify, OSC 9 progress and four numeric SGR cells (faint 2m, italic
 //   3m, strikethrough 9m, double underline 21m), and nothing else: blink (5) is in the engine's handled
-//   list, the three colon underline forms record nothing, and the three delivery cells are never decided by
+//   list, the three colon underline forms record nothing, and the two delivery cells are never decided by
 //   the report. @dev/8 Case 2 consumer: 32369.
 //   Owned layout only: this boundary needs the linked @termless/vt100 generation. Hosted unit packs
 //   @termless/core from source-siblings.json but takes registry @termless/vt100 0.10.2, whose vt100.js
@@ -4157,6 +4157,7 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
     "extensions.osc633-d",
     "extensions.osc633-e",
     "extensions.osc777-notify",
+    "extensions.osc9-progress",
     "extensions.semantic-prompts",
     "sgr.faint",
     "sgr.italic",
@@ -4168,7 +4169,7 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
     expect(row.status, row.featureId).toBe("unsupported")
     expect(JSON.stringify(row), row.featureId).toContain("library reported this sequence as unhandled")
   }
-  // Blink, the three colon underline forms and the three delivery cells keep the baseline result exactly.
+  // Blink, the three colon underline forms and the two delivery cells keep the baseline result exactly.
   const still = (batch: Awaited<ReturnType<typeof collectBatch>>, keep: (id: string) => boolean) =>
     rows(batch).filter((row) => keep(row.featureId))
   const unchanged = (id: string) => !expectedMoves.includes(id)
@@ -4180,7 +4181,6 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
   ).toEqual([
     "extensions.osc633-p",
     "extensions.osc7-cwd",
-    "extensions.osc9-progress",
     "sgr.blink",
     "sgr.underline.curly",
     "sgr.underline.dashed",

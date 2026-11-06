@@ -5431,7 +5431,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => {
         // Without a progress reader, feed the ConEmu form only; consumption alone does not measure progress.
         const readProgress = ctx.getProgress
-        if (!readProgress) return noSamePathControl("\x1b]9;4;1;50\x07")(ctx)
+        if (!readProgress) {
+          return unhandledOscReportResult(ctx, "\x1b]9;4;1;50\x07", noSamePathControl("\x1b]9;4;1;50\x07")(ctx))
+        }
         const read = () => {
           const report = readProgress.call(ctx)
           return report && { state: report.state, value: report.value }
