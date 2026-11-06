@@ -1846,8 +1846,8 @@ test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings stay PROBE TOD
       expect(result.criterionBranch, id).toBeUndefined()
       expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
       expect(tracking, id).toBe(false)
-      if (engine === "alacritty" && id === "input.pixel-mouse") {
-        expect(feeds.at(-1), id).toBe("\x1b[?1006;1016l")
+      if (engine === "alacritty") {
+        expect(feeds.at(-1), id).toBe(`\x1b[?1006;${id === "input.pixel-mouse" ? 1016 : 1015}l`)
         expect(JSON.parse(result.response!), id).toMatchObject({ controlReset: "", controlSet: "", targetAfter: "" })
         continue
       }
