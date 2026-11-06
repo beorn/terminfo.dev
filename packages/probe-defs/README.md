@@ -58,8 +58,8 @@ must add one or more new entries all carrying that command's code. Explicit mult
 still require their exact ordered list. Its cleanup reset follows the verdict. No source identity
 selects either criterion.
 
-Alacritty's pixel-mouse arm instead qualifies the engine's DECRQM reader: mode1006 must
-change from Ps2 after reset to Ps1 after set, while unknown9999 and target1016 before/after
+Alacritty's pixel-mouse and urxvt-mouse arms instead qualify the engine's DECRQM reader: mode1006 must
+change from Ps2 after reset to Ps1 after set, while unknown9999 and target1016 or1015 before/after
 set answer Ps0. That controlled target negative reads Unsupported; a missing or inconsistent
 control stays PROBE TODO. Both mouse encoding modes reset on exit. The existing audited
 Alacritty declaration route also covers DECSACE's CSI extent, OSC9;4 progress without a

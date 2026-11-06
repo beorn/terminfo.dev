@@ -832,8 +832,9 @@ function mouseEncodingLib(
   ctx: LibProbeSource,
   kind: "pixel" | "urxvt" | "x10" | "button" | "click" | "wheel",
 ): ProbeCallbackResult {
-  if (kind === "pixel" && ctx.backendName === "alacritty") {
+  if ((kind === "pixel" || kind === "urxvt") && ctx.backendName === "alacritty") {
     // NR-D: qualify the engine's DECRQM reader, independently of Termless's shared encoder.
+    const target = kind === "pixel" ? 1016 : 1015
     const read = (mode: number) => ctx.feedCapture(`\x1b[?${mode}$p`)
     try {
       ctx.feed("\x1b[?1006l")
@@ -841,22 +842,21 @@ function mouseEncodingLib(
       ctx.feed("\x1b[?1006h")
       const controlSet = read(1006)
       const unknown = read(9999)
-      const targetBefore = read(1016)
-      ctx.feed("\x1b[?1016h")
-      const targetAfter = read(1016)
+      const targetBefore = read(target)
+      ctx.feed(`\x1b[?${target}h`)
+      const targetAfter = read(target)
       const observed = { controlReset, controlSet, unknown, targetBefore, targetAfter }
       const ps = (mode: number, reply: string) => decrpmPs(decrpmReplyPattern(mode).exec(reply)?.[1])
       if (
         ps(1006, controlReset) !== 2 ||
         ps(1006, controlSet) !== 1 ||
         ps(9999, unknown) !== 0 ||
-        ps(1016, targetBefore) !== 0 ||
-        ps(1016, targetAfter) !== 0
+        ps(target, targetBefore) !== 0 ||
+        ps(target, targetAfter) !== 0
       ) {
         return notTestedResult(NO_SAME_PATH_CONTROL, observed)
       }
-      const note =
-        "DECRQM 1016 stays unrecognized after set; the same reader moves mode 1006 from reset to set and reports unknown 9999 as unrecognized"
+      const note = `DECRQM ${target} stays unrecognized after set; the same reader moves mode 1006 from reset to set and reports unknown 9999 as unrecognized`
       const response = JSON.stringify(observed)
       return {
         pass: false,
@@ -867,13 +867,16 @@ function mouseEncodingLib(
           {
             assertionType: "query_reply",
             kind: "negative",
-            expected: "pixel-coordinate mode 1016 recognized after set",
+            expected:
+              kind === "pixel"
+                ? "pixel-coordinate mode 1016 recognized after set"
+                : "urxvt mouse mode 1015 recognized after set",
             observed: response,
           },
         ],
       }
     } finally {
-      ctx.feed("\x1b[?1006;1016l")
+      ctx.feed(`\x1b[?1006;${target}l`)
     }
   }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
@@ -931,10 +934,7 @@ function mouseEncodingLib(
     if (kind === "button") encode({ ...event, x: 3, action: "press" })
     const report = encode(event)
     const observed = { tracking: enabled, negativeControl, report }
-    if (
-      (kind === "pixel" || kind === "urxvt") &&
-      (ctx.backendName === "alacritty" || ctx.backendName === "vt100-rust")
-    ) {
+    if ((kind === "pixel" || kind === "urxvt") && ctx.backendName === "vt100-rust") {
       // A former source-negative site: shared encoder bytes are instrument output, not engine evidence (#32246).
       return notTestedResult(NO_SAME_PATH_CONTROL, observed)
     }

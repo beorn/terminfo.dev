@@ -6008,6 +6008,22 @@ test.runIf(OWNED_LAYOUT).each([
   }
 })
 
+// @failure A real Alacritty mode reader is bypassed or a shared encoder grades urxvt mouse support.
+// @consumer The registered urxvt callback through the production collector and native Alacritty reader.
+test.runIf(OWNED_LAYOUT)("real Alacritty reads urxvt mouse Unsupported from its controlled mode query", async () => {
+  const id = "input.urxvt-mouse"
+  const batch = await collectBatch(async () => createAlacrittyBackend(), "alacritty", registryDefinitions([id]))
+  expect(batch.results).toMatchObject([{ featureId: id, status: "unsupported", assertionType: "query_reply" }])
+  expect(JSON.parse(batch.rawReplies[id]!)).toEqual({
+    controlReset: "\x1b[?1006;2$y",
+    controlSet: "\x1b[?1006;1$y",
+    unknown: "\x1b[?9999;0$y",
+    targetBefore: "\x1b[?1015;0$y",
+    targetAfter: "\x1b[?1015;0$y",
+  })
+  expect(batch.assertions).toMatchObject([{ featureId: id, kind: "negative", assertionType: "query_reply" }])
+})
+
 // @cto 8c79b122: each engine's own report decides OSC 8. Hosted CI resolves published vt100 and vt220, which have no
 // report and stay TODO, so this reads the owned layout only.
 test.runIf(OWNED_LAYOUT).each([
