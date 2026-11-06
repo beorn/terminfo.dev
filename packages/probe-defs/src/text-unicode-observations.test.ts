@@ -80,6 +80,29 @@ function byId(id: string) {
   return { term: probe.term, lib: probe.lib }
 }
 
+// Retained history must not replace the active text control; zero-history cases miss this regression.
+test.each(["text.newline", "text.wrap"])("%s reads the active screen above retained history", (id) => {
+  const base = libProbeSource(createSemanticSurface({ cols: 80, rows: 24 }))
+  let history = 1
+  const source: LibProbeSource = {
+    ...base,
+    feed(sequence) {
+      base.feed(sequence)
+      history += sequence.split("\x1b[2J").length - 1
+    },
+    getScrollback() {
+      const state = base.getScrollback()
+      return { ...state, totalLines: state.screenLines + history }
+    },
+    getCell(row, col) {
+      return row < history ? { ...base.getCell(0, col), char: "H" } : base.getCell(row - history, col)
+    },
+  }
+  const result = byId(id).lib(source)
+  expect(result.pass).toBe(true)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+})
+
 /** Sequential CPR fixture: each call returns the next scripted reply, null once exhausted. */
 function cursorQueue(...positions: Array<{ row: number; col: number } | null>) {
   let index = 0

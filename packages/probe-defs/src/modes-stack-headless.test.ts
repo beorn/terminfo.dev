@@ -218,15 +218,18 @@ const ALL = [...SGR, ...MODE, ...COLOR] as const
 
 // The public buffer is absolute, and clearing the screen can grow its retained history.
 // Existing zero-history cases cannot catch a probe reading an old row instead of its controls.
-test.each([...COLOR, ...MODE])("%s qualifies active cells while retained history grows", (id) => {
+test.each([...COLOR, ...MODE, ...SGR])("%s qualifies active cells while retained history grows", (id) => {
   for (const outcome of ["supported", "unsupported", "probe-todo"] as const) {
     const screen = fakeScreen({
+      rows: 24,
+      sgrStack: outcome !== "unsupported",
+      attributes: outcome !== "probe-todo",
       colorStack: outcome !== "unsupported",
       modeStack: outcome !== "unsupported",
       osc4: outcome !== "probe-todo",
       wrapOff: outcome !== "probe-todo",
     })
-    let history = 2
+    let history = 1
     const source: LibProbeSource = {
       ...screen.context,
       feed(sequence) {
