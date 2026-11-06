@@ -61,7 +61,7 @@ async function backend() {
 // absent control, or silent reader must not acquire Supported, and the incoming shape must survive.
 // @level l5
 // @consumer Kitty library extensions.osc22-pointer, through the production reply transport
-test.runIf(OWNED_LAYOUT)(
+test.runIf(OWNED_LAYOUT && isKittyAvailable())(
   "Kitty OSC22 uses controlled native pointer replies and restores its incoming shape",
   () => {
     const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc22-pointer")!
@@ -113,7 +113,7 @@ test.runIf(OWNED_LAYOUT)(
 // or used outside the literal Kitty cohort. Each candidate must qualify its own payload.
 // @level l5
 // @consumer Kitty D2 state/rejection cells through collectBatch; held cells retain TODO
-test.runIf(OWNED_LAYOUT)(
+test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvailable())(
   "Kitty report qualifies its eleven literal candidates while delivered OSC9 stays unreported",
   async () => {
     const directory = mkdtempSync(join(tmpdir(), "terminfo-kitty-report-"))
