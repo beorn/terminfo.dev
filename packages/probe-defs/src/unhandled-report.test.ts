@@ -665,18 +665,13 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
     expect(leakedDecsscls.observation?.outcome).toBe("unsupported")
   })
 
-  test("OSC 133 start marks, held host-effect cells and default osc-absence probes stay outside vterm-d2", () => {
+  // The six pass-through OSCs are now declared separately in declared-untestable.test.ts.
+  test("OSC 133 start marks and default osc-absence probes stay outside vterm-d2", () => {
     for (const id of [
       "extensions.osc133-a",
       "extensions.osc133-b",
       "extensions.osc133-c",
       "extensions.osc133-p",
-      "extensions.osc176-app-id",
-      "extensions.osc3008-context",
-      "extensions.osc440-audio",
-      "extensions.osc555-flash",
-      "extensions.osc666-termprop",
-      "extensions.osc710-font-normal",
       "extensions.osc7-cwd",
       "extensions.notifications",
     ]) {

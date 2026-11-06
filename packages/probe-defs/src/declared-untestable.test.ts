@@ -156,7 +156,10 @@ describe("six pass-through OSC declarations", () => {
     const definition = ALL_PROBES.find((probe) => probe.id === ids[0])!
     const wrapped = withD2LibraryObservation({ ...definition, lib: () => decided })
     expect(wrapped.lib!(source(backend, identity))).toBe(decided)
-    const prior: ProbeCallbackResult = { pass: false, note: "prior undecided result" }
+    const prior: ProbeCallbackResult = {
+      pass: false,
+      notTested: { reason: "no-semantic-observable", noObservable: "prior undecided result" },
+    }
     const other = withD2LibraryObservation({ ...definition, lib: () => prior })
     expect(other.lib!(source("other-library", identity))).toBe(prior)
   })
