@@ -4023,7 +4023,7 @@ test.each([
         noSetup ? "headless-observable-review" : "color-readback-review",
       )
       expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
-      const retained = JSON.parse(batch.rawReplies[result.featureId]!)
+      const retained = JSON.parse(batch.rawReplies[result.featureId]!) as { body: string }
       const raw = (noSetup ? JSON.parse(retained.body) : retained) as {
         query: string
         originalRaw?: string

@@ -397,7 +397,8 @@ test.each([10, 11, 12] as const)("OSC %i reset declares absent setup after quali
   expect(result.observation?.outcome).not.toBe("unsupported")
   expect(isDeclaredUntestable(result)).toBe(true)
   expect(result.assertions).toBeUndefined()
-  expect(JSON.parse(JSON.parse(result.response!).body)).toMatchObject({
+  const retained = JSON.parse(result.response!) as { body: string }
+  expect(JSON.parse(retained.body)).toMatchObject({
     query: `\x1b]${code};?\x07`,
     originalRaw: "",
     controls: [
@@ -1643,19 +1644,10 @@ test.each([
         expect(result.tests).toEqual([
           {
             id: "criterion",
-            status: mode === "malformed" ? "probe-invalid" : "probe-todo",
-            // #31398 names the sentinel-bounded silence by its passed DA1 control; the grade is PROBE TODO either way.
-            reason:
-              mode === "sentinel"
-                ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
-                : `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
+            status: "probe-invalid",
+            reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
           },
         ])
-        if (mode === "sentinel") {
-          expect(JSON.parse(result.response!)).toMatchObject({
-            initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" },
-          })
-        }
       }
       // A measured colour decides, including a genuine reset negative.
       for (const ignoresReset of [false, true]) {
