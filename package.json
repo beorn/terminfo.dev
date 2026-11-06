@@ -53,7 +53,7 @@
     "@terminfo/run-parser": "workspace:*",
     "@termless/xtermjs": "0.10.2",
     "@vue/server-renderer": "3.5.43",
-    "oxfmt": "0.71.0",
+    "oxfmt": "0.76.0",
     "terminfo.dev": "workspace:*",
     "vitepress": "1.6.4",
     "vitepress-enrich": "0.5.0",
