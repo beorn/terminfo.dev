@@ -4,19 +4,24 @@ import type { WorkingContext, WorkingView } from "../../data/working-runs"
 import { evidenceStatus } from "./evidence-status"
 
 const props = defineProps<{ history: WorkingView[]; featureId?: string; subjects?: Array<Pick<WorkingContext, "engine" | "kind">> }>()
-const collectionId = ref(props.history.at(-1)?.run.id ?? "")
+const matches = (row: WorkingContext) => !props.subjects || props.subjects.some(subject => subject.engine === row.engine && subject.kind === row.kind)
+const collectionId = ref([...props.history].reverse().find(view => view.contexts.some(matches) || (view.unreadable && (!props.subjects || props.subjects.some(subject => subject.kind === "lib" ? !view.run.id.startsWith("apps/") : view.run.id.startsWith(`apps/${subject.engine}/`)))))?.run.id ?? props.history.at(-1)?.run.id ?? "")
 const selected = computed(() => props.history.find((view) => view.run.id === collectionId.value))
 const contexts = computed(() => selected.value?.contexts.filter((row) => !props.subjects || props.subjects.some(subject => subject.engine === row.engine && subject.kind === row.kind)) ?? [])
 const contextKey = ref(contexts.value[0]?.contextKey ?? "")
 const context = computed(() => contexts.value.find((row) => row.contextKey === contextKey.value))
 const cells = computed(() => Object.entries(context.value?.states ?? {}).filter(([id]) => !props.featureId || id === props.featureId))
 const kindLabel = (kind: string) => kind === "lib" ? "Library" : kind === "mux" ? "Multiplexer" : kind === "term" ? "Application" : kind
+const gaps = computed(() => props.history.flatMap(view => view.unmeasured).filter(gap => !props.subjects || props.subjects.some(subject => gap.engine === subject.engine || (subject.kind !== "lib" && gap.engine.startsWith(subject.engine + "/")))))
 </script>
 
 <template>
 <section id="run-history" class="run-history">
   <h2>Retained run history — raw, unreviewed</h2>
   <p>Each collection keeps its original probe statuses and receipts. These results do not change accepted answers, scores or completion. Missing or untrusted inputs remain visible.</p>
+  <ul v-if="gaps.length">
+    <li v-for="gap in gaps" :key="gap.engine"><code>{{ gap.engine }}</code>: {{ gap.status }} — {{ gap.reason }}</li>
+  </ul>
   <label>Collection
     <select v-model="collectionId">
       <option v-for="view in history" :key="view.run.id" :value="view.run.id">{{ view.run.startedAt }} · {{ view.run.id }}{{ view.unreadable ? ' · unreadable' : '' }}</option>

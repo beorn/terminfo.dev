@@ -25,6 +25,7 @@ import {
   workingCell,
   workingRunStamp,
   siteWorkingHistory,
+  siteWorkingView,
   type LoadedWorkingRun,
 } from "../docs/data/working-runs.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
@@ -148,6 +149,113 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(loaded.runs[0]?.results).toHaveLength(273)
     expect(loaded.runs[0]?.runId).toBe("a22f06ca-2505-4c0d-a518-b0b01f8bbe76")
   })
+
+  // App passes use a different envelope; the library-only fixtures cannot catch dropping them,
+  // conflating OS contexts, inventing comparable pairs, or letting app stores alter newest-only output.
+  function appCollection(instrument: string, os: string, name = OLD) {
+    const parent = join(instrument, "apps", "ghostty", os, "runs")
+    mkdirSync(parent, { recursive: true })
+    const dir = run(parent, name, { complete: true })
+    const passDir = join(dir, "pass-fixture")
+    mkdirSync(passDir)
+    const rawPath = join(passDir, "capture.json")
+    const original = JSON.parse(
+      readFileSync(join(root, "content/probes-apps/ghostty-1.3.1-linux-3d1eb75c5fa11383e3a6327d32a2c1a0.json"), "utf8"),
+    )
+    // Only OS routing varies here; this is not a claim to have measured a Mac runtime.
+    original.subject.os = os
+    writeFileSync(rawPath, JSON.stringify(original))
+    const captured = loadRawCapture(rawPath, { root, catalogIds })
+    writeFileSync(
+      join(passDir, "pass.json"),
+      JSON.stringify({
+        complete: true,
+        probeHash: original.probeHash,
+        sourceRevision: original.sourceRevision,
+        contexts: [{ context: { id: "ghostty", kind: "term", os }, status: "classified", rawRun: rawPath }],
+        errors: [],
+      }),
+    )
+    writeFileSync(
+      join(dir, "summary.json"),
+      JSON.stringify({
+        complete: true,
+        expectedEngines: [`ghostty/${os}`],
+        presentEngines: [`ghostty/${os}`],
+        missingEngines: [],
+        refused: [],
+        rollups: {
+          [`ghostty/${os}`]: rollupTerminalStatuses(
+            Object.fromEntries(captured.results!.map((result) => [result.featureId, result.status])),
+            catalogIds,
+          ),
+        },
+        moved: { since: join(parent, OLD), moves: [] },
+      }),
+    )
+    return { dir, rawPath, original }
+  }
+
+  it("retains app pass contexts and named store gaps without changing the newest-only view", () => {
+    const instrument = runsDir()
+    const libraries = join(instrument, "runs")
+    mkdirSync(libraries)
+    collection(libraries)
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
+    const before = JSON.stringify(siteWorkingView(join(root, "content")))
+    const linux = appCollection(instrument, "linux")
+    appCollection(instrument, "linux", PARTIAL)
+    appCollection(instrument, "macos")
+    const history = siteWorkingHistory(join(root, "content"))!
+    const apps = history.flatMap((view) => view.contexts).filter((context) => context.kind === "term")
+    expect(apps).toHaveLength(3)
+    expect(new Set(apps.map((context) => context.contextKey)).size).toBe(2)
+    expect(apps.some((context) => context.contextKey.includes('"macos"'))).toBe(true)
+    expect(apps.find((context) => context.contextKey.includes('"macos"'))?.reviewedContextKey).toBeNull()
+    expect(apps.find((context) => context.contextKey.includes('"linux"'))).toMatchObject({
+      runId: linux.original.runId,
+      measuredAt: linux.original.measuredAt,
+      sha256: createHash("sha256").update(readFileSync(linux.rawPath)).digest("hex"),
+      states: { "text.basic": "supported" },
+      cells: [],
+    })
+    expect(apps.every((context) => context.changes === undefined)).toBe(true)
+    expect(apps.some((context) => context.changeQualification?.includes("not comparable"))).toBe(true)
+    expect(
+      history
+        .flatMap((view) => view.unmeasured)
+        .some(
+          (gap) =>
+            gap.engine === "kitty/linux" && gap.reason.includes(join(instrument, "apps", "kitty", "linux", "runs")),
+        ),
+    ).toBe(true)
+    expect(JSON.stringify(siteWorkingView(join(root, "content")))).toBe(before)
+  })
+
+  it.each(["untrusted suite", "multiple passes"])(
+    "keeps an app collection with %s visible and uncounted",
+    (failure) => {
+      const instrument = runsDir()
+      const libraries = join(instrument, "runs")
+      mkdirSync(libraries)
+      collection(libraries)
+      const app = appCollection(instrument, "linux")
+      if (failure === "untrusted suite") {
+        app.original.probeHash = app.original.suiteId = "aaaaaaaaaaaa"
+        writeFileSync(app.rawPath, JSON.stringify(app.original))
+      } else {
+        mkdirSync(join(app.dir, "pass-second"))
+        copyFileSync(join(app.dir, "pass-fixture", "pass.json"), join(app.dir, "pass-second", "pass.json"))
+      }
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
+      const unavailable = siteWorkingHistory(join(root, "content"))!.find(
+        (view) =>
+          view.unreadable && view.unreadable.reason.includes(failure === "untrusted suite" ? "aaaaaaaaaaaa" : "pass"),
+      )
+      expect(unavailable?.contexts).toEqual([])
+      expect(unavailable?.unreadable?.banner).toContain("unavailable")
+    },
+  )
 
   // Accepted history requirement: page data retains older complete collections automatically.
   // The existing manual reopen test cannot detect a newest-only page loader.
