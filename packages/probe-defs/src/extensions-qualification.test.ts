@@ -9,7 +9,7 @@ import { inputProbes } from "./input.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
 import { replayTermProbeSource } from "./testing/group-harness.ts"
-import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL } from "./helpers.ts"
+import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, isDeclaredUntestable } from "./helpers.ts"
 import type { HeadlessRuntimeIdentity, TermProbeSource, LibProbeSource } from "./types.ts"
 
 // Callback intent is distinct from producer formatting: malformed bytes must never opt into
@@ -389,15 +389,15 @@ test.each([10, 11, 12] as const)("OSC %i reset reviews a verified control instea
   expect(JSON.stringify(result)).toContain("reset produced neither the baseline nor the verified seed")
 })
 
-test.each([10, 11, 12] as const)("OSC %i reset keeps silent set-and-verify readback undecided", (code) => {
+test.each([10, 11, 12] as const)("OSC %i reset declares absent setup after qualified silent set-and-verify", (code) => {
   const source = silentHostSlot(code, "", "")
   const result = callback(`extensions.osc${code + 100}-reset-${{ 10: "fg", 11: "bg", 12: "cursor" }[code]}`).lib!(
     source,
   )
   expect(result.observation?.outcome).not.toBe("unsupported")
-  expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
+  expect(isDeclaredUntestable(result)).toBe(true)
   expect(result.assertions).toBeUndefined()
-  expect(JSON.parse(result.response!)).toMatchObject({
+  expect(JSON.parse(JSON.parse(result.response!).body)).toMatchObject({
     query: `\x1b]${code};?\x07`,
     originalRaw: "",
     controls: [
@@ -1581,20 +1581,20 @@ test.each([
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
     {
-      id: "criterion",
-      status: "probe-todo",
-      reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
+      id: "declared-untestable",
+      status: "untestable",
+      reason: `Untestable (no setup): OSC ${setCode} colour setup does not work on this library, so this command has nothing to act on.`,
     },
   ])
 })
 
-// #32246: a silent or sentinel-bounded initial highlight query is an unanswered prerequisite reading, so it is TEST
-// TODO for every engine identity (@cto 0db5ad54); a malformed reply stays PROBE INVALID, and a measured colour decides.
+// Phase 2b refines #32246: qualified silence declares no setup; missing control
+// stays Open. Malformed replies stay PROBE INVALID and measured colours decide.
 test.each([
   ["extensions.osc117-reset-highlight-bg", 17, 117],
   ["extensions.osc119-reset-highlight-fg", 19, 119],
 ] as const)(
-  "%s keeps a silent highlight query PROBE TODO without overriding real replies",
+  "%s distinguishes absent setup from missing control without overriding real replies",
   (id, setCode, resetCode) => {
     const definition = callback(id)
     const query = `\x1b]${setCode};?\x07`
@@ -1625,6 +1625,10 @@ test.each([
         expect(calls).toEqual([query])
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
+        if (mode === "sentinel") {
+          expect(isDeclaredUntestable(result)).toBe(true)
+          continue
+        }
         expect(result.criterionBranch).toBeUndefined()
         if (mode === "silent") {
           expect(result).toEqual({

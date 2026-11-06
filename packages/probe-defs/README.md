@@ -27,7 +27,12 @@ does not establish Untestable. Without explicit tests, a diagnostic or a conclus
 missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
 to PROBE INVALID. The one route to Untestable is the operator's Nov 4 16:55 declaration: a probe's own library arm returns declaredUntestableResult with its reason, and isDeclaredUntestable is the only form the finalizer and the run reader admit (@cto ruling 2026-11-04). The operator's Nov 4 D1 APPLY extends that declaration to OSC720 on the libvterm 0.3.3 and WezTerm Screen 0.1.0-fork.5 library subjects, whose public interfaces expose history without their own scrolling window. Any other untestable test folds to PROBE TODO.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
-OSC 17 or 19 supplies no initial colour, the callback records a named PROBE TODO; broken or untrustworthy
+OSC 17 or 19 supplies no initial colour, the library callback checks the existing unhandled report first.
+For the approved reset/colour-stack no-setup route, a silent setup query with its own qualified DA1
+control and no target report returns the existing declared Untestable result with the no-setup cause.
+A missing control or ambiguous target report stays Open; verified seeded-colour effects keep their
+existing result. This route adds no post-collection classification or dependency on another cell.
+Other missing initial readings record a named PROBE TODO; broken or untrustworthy
 measurement remains PROBE INVALID. Silence alone does not establish Unsupported.
 The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
 The `FeatureResultDisplayState` value `inconclusive` denotes Untestable (reached only by the declared route above), `error` denotes PROBE INVALID and `untested` denotes
@@ -167,8 +172,9 @@ Library `cell.hidden: null` means conceal is not reported; missing cell observab
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO
 when no clipboard-state witness is wired; a read negative cannot measure the write.
-Reset, colour-stack and Kitty transfer/display effects likewise stay PROBE TODO when their
-readback is silent, even if DA1 answers. Effect absence needs an answered same-probe state
+Reset and colour-stack effects use the approved no-setup declaration above only when their own
+setup query is silent, its control answers and no target report exists. Kitty transfer/display and
+other silent effect readings stay PROBE TODO even if DA1 answers. Effect absence needs an answered same-probe state
 control and an observed comparison. Existing own-state readers and answered unchanged-state
 comparisons continue to decide results; query features retain their own reply criteria.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target

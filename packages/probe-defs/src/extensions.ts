@@ -32,6 +32,7 @@ import {
   cancelReplyFailure,
   reviewResult,
   declaredUntestableResult,
+  isDeclaredUntestable,
   auditedAdapterSources,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
@@ -618,6 +619,26 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
  */
 const HIGHLIGHT_TEST_COLOURS = ["3030/6060/9090", "9090/3030/6060", "6060/9090/3030"] as const
 
+function noColorSetupResult(
+  ctx: LibProbeSource,
+  sequence: string,
+  setCode: number,
+  query: TerminalQueryOutcome | undefined,
+  result: ProbeCallbackResult,
+): ProbeCallbackResult {
+  const reported = unhandledOscReportResult(ctx, sequence, result)
+  if (reportsDecidedOutcome(reported) || !query || !sentinelSilenceResult(query, `OSC ${setCode} colour setup`)) {
+    return reported
+  }
+  const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
+  // A duplicate or otherwise unqualified report is still a report, not absent setup.
+  if (ctx.getUnhandledSequences?.().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
+  return declaredUntestableResult(
+    `Untestable (no setup): OSC ${setCode} colour setup does not work on this library, so this command has nothing to act on.`,
+    { query, body: reported.response },
+  )
+}
+
 /**
  * A highlight-colour RESET decides only against the colour the run started from — "the default" is
  * not a known constant. So: query the initial value, set a known colour and confirm the terminal
@@ -862,9 +883,15 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
       initialSentinel = ctx.queryWithSentinelOutcome(query, replyPattern)
       silence = sentinelSilenceResult(initialSentinel, `Complete OSC ${setCode} color reply`)
       if (silence && !hostColorSlot && !highlightColorSlot) {
-        return colorReadbackReviewResult(
-          `OSC ${setCode} query did not answer, so OSC ${resetCode} reset has no effect readback`,
-          { query, initialSentinel },
+        return noColorSetupResult(
+          ctx,
+          `\x1b]${resetCode}\x07`,
+          setCode,
+          initialSentinel,
+          colorReadbackReviewResult(
+            `OSC ${setCode} query did not answer, so OSC ${resetCode} reset has no effect readback`,
+            { query, initialSentinel },
+          ),
         )
       }
     }
@@ -879,7 +906,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         // not parse are data the probe cannot trust: PROBE INVALID (@cto 0db5ad54 refined rule 4, #32246).
         const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`
         if (originalRaw === "" && initialSentinel?.reason === "sentinel") {
-          return {
+          return noColorSetupResult(ctx, `\x1b]${resetCode}\x07`, setCode, initialSentinel, {
             pass: false,
             response: JSON.stringify({ query, originalRaw, initialSentinel }),
             tests: [
@@ -889,7 +916,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
                 reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
               },
             ],
-          }
+          })
         }
         return {
           pass: false,
@@ -1045,10 +1072,21 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
             )
           }
           return answer(
-            colorReadbackReviewResult(
-              `OSC ${setCode} set-and-verify query did not answer, so OSC ${resetCode} reset has no effect readback`,
-              state,
-            ),
+            index === undefined
+              ? noColorSetupResult(
+                  ctx,
+                  reset,
+                  setCode,
+                  initialSentinel,
+                  colorReadbackReviewResult(
+                    `OSC ${setCode} set-and-verify query did not answer, so OSC ${resetCode} reset has no effect readback`,
+                    state,
+                  ),
+                )
+              : colorReadbackReviewResult(
+                  `OSC ${setCode} set-and-verify query did not answer, so OSC ${resetCode} reset has no effect readback`,
+                  state,
+                ),
           )
         }
         if (control.setterRaw === "" && control.seededRaw === "" && resetRaw === "" && restoredRaw === "") {
@@ -1146,7 +1184,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
   return (ctx) => {
     const result = body(ctx)
     // Case 1 names exactly the ledger's four colour-reset cells; every other reset keeps its own body.
-    if (!UNHANDLED_REPORT_COLOUR_RESETS.includes(String(resetCode))) return result
+    if (isDeclaredUntestable(result) || !UNHANDLED_REPORT_COLOUR_RESETS.includes(String(resetCode))) return result
     const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
     return unhandledOscReportResult(ctx, reset, result)
   }
@@ -1913,10 +1951,16 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         sentinelSilenceResult(initialReadback, "Complete OSC 10 foreground color reply") &&
         ctx.runtimeIdentity?.kind !== "native"
       ) {
-        return colorReadbackReviewResult("OSC 10 query did not answer, so the colour-stack effect has no readback", {
-          query: foregroundQuery,
+        return noColorSetupResult(
+          ctx,
+          ownSequence,
+          10,
           initialReadback,
-        })
+          colorReadbackReviewResult("OSC 10 query did not answer, so the colour-stack effect has no readback", {
+            query: foregroundQuery,
+            initialReadback,
+          }),
+        )
       }
     }
     let result: ProbeCallbackResult | undefined

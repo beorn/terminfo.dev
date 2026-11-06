@@ -112,6 +112,66 @@ function context(overrides: Partial<LibProbeSource>): LibProbeSource {
   }
 }
 
+// Phase 2b: the setup query's own qualified silence can declare no setup. Existing
+// seed/reset cases do not cover missing controls or ambiguous unhandled reports.
+test.each([
+  "extensions.osc110-reset-fg",
+  "extensions.osc111-reset-bg",
+  "extensions.osc112-reset-cursor",
+  "extensions.osc113-reset-pointer-fg",
+  "extensions.osc114-reset-pointer-bg",
+  "extensions.osc117-reset-highlight-bg",
+  "extensions.osc119-reset-highlight-fg",
+  "extensions.osc30001-color-stack-push",
+  "extensions.osc30101-color-stack-pop",
+])("%s declares no setup only after its own control and report", (id) => {
+  const code = /osc(\d+)/.exec(id)![1]!
+  const setup = Number(code) > 1000 ? 10 : Number(code) - 100
+  for (const arm of ["qualified", "timeout", "missing-facts", "malformed", "reported", "duplicate"] as const) {
+    const entries: Array<{ kind: "osc"; code: string }> = []
+    let title = ""
+    const raw = arm === "timeout" ? "" : `${arm === "malformed" ? "junk" : ""}\x1b[?1;2c`
+    const result = probe(id).lib!(
+      context({
+        queryWithSentinelOutcome(sequence) {
+          expect(sequence).toBe(`\x1b]${setup};?\x07`)
+          return {
+            match: null,
+            reason: arm === "timeout" ? "timeout" : "sentinel",
+            raw,
+            rawBase64: btoa(raw),
+            ...(arm !== "missing-facts" && arm !== "timeout" && { sentinel: { atMs: 1, graceMs: 250 } }),
+          }
+        },
+        feed(sequence) {
+          const nextTitle = /^\x1b\]2;([^\x07]+)\x07$/.exec(sequence)?.[1]
+          if (nextTitle) title = nextTitle
+          if ((arm === "reported" || arm === "duplicate") && sequence.startsWith(`\x1b]${code}`)) {
+            entries.push({ kind: "osc", code })
+            if (arm === "duplicate") entries.push({ kind: "osc", code })
+          }
+        },
+        getTitle: () => title,
+        getUnhandledSequences: () => entries.slice(),
+      }),
+    )
+    expect(isDeclaredUntestable(result), `${id}: ${arm}`).toBe(arm === "qualified")
+    if (arm === "qualified") {
+      expect(result.tests).toMatchObject([
+        {
+          reason: `Untestable (no setup): OSC ${setup} colour setup does not work on this library, so this command has nothing to act on.`,
+        },
+      ])
+      expect(result.response).toContain("sentinel")
+    } else if (arm === "reported") {
+      expect(result.observation?.outcome).toBe("unsupported")
+    } else {
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+    }
+  }
+})
+
 function terminalSource(overrides: Partial<TermProbeSource>): TermProbeSource {
   return {
     kind: "live",
@@ -3912,7 +3972,8 @@ describe("partial probe automation candidates", () => {
         )
         expect(calls).toEqual([c.expected])
         expect(empty.hostRecipeCauses).toBeUndefined()
-        expect(empty.criterionBranch).toBe("color-readback-review")
+        expect(empty.criterionBranch).toBe(qualified ? "headless-observable-review" : "color-readback-review")
+        expect(isDeclaredUntestable(empty)).toBe(qualified)
       }
     }
   })
