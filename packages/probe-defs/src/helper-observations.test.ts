@@ -800,7 +800,7 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
       before: { bold: true, dim: true, italic: true },
       after: { bold: false, dim: false, italic: true },
       erasedSentinel: { bold: false, dim: false, italic: false },
-      unshown: "bold and dim and italic",
+      unshown: "bold and dim and italic and underline",
     },
     {
       id: "sgr.selective-reset.underline",
@@ -876,10 +876,20 @@ test.each([
   ["sgr.reset", { bold: true, underline: "single" }, {}, "supported", "italic"],
   ["sgr.selective-reset.bold", { bold: true, italic: true }, { italic: true }, "supported", "dim"],
   ["sgr.selective-reset.bold", { dim: true, italic: true }, { italic: true }, "supported", "bold"],
-  ["sgr.selective-reset.bold", { italic: true }, { italic: true }, "todo", "bold and dim"],
-  ["sgr.selective-reset.bold", { bold: true }, {}, "todo", "dim and italic"],
+  ["sgr.selective-reset.bold", { italic: true }, { italic: true }, "todo", "bold and dim and underline"],
+  ["sgr.selective-reset.bold", { bold: true }, {}, "todo", "dim and italic and underline"],
   ["sgr.selective-reset.italic", { bold: true }, { bold: true }, "todo", "italic"],
   ["sgr.selective-reset.bold", { bold: true, italic: true }, { bold: true, italic: true }, "unsupported", "dim"],
+  // C16 (@cto routes-48): an engine that exposes neither dim nor italic, like vt220 0.13.1, still
+  // decides the bold reset when SGR 22 keeps underline.
+  ["sgr.selective-reset.bold", { bold: true, underline: true }, { underline: true }, "supported", "dim and italic"],
+  [
+    "sgr.selective-reset.bold",
+    { bold: true, underline: true },
+    { bold: true, underline: true },
+    "unsupported",
+    "dim and italic",
+  ],
 ] as const)("%s grades setup %o reset to %o on the measured attributes: %s", (id, before, after, outcome, unshown) => {
   const probe = sgrProbes.find((item) => item.id === id)
   if (!probe?.lib) throw new Error(`missing ${id} callback`)

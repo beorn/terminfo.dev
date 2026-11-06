@@ -5303,7 +5303,7 @@ export const extensionsProbes: ProbeDefinition[] = [
                   ]
                 : []),
             ]
-            return notTestedResult(
+            const undecided = notTestedResult(
               `Open: ${missing.join("; ")}. With these readings, our test cannot tell whether OSC 0 set both names.`,
               {
                 ...state,
@@ -5315,6 +5315,12 @@ export const extensionsProbes: ProbeDefinition[] = [
                 titleReason,
               },
             )
+            // DEC-additions-five N-TITLE (@cto routes-48): vt100 and vt220 have no title or icon
+            // reader at all, and their own report carries OSC 0. The report decides only with its
+            // same-run OSC 2 and SGR 1 controls; every other engine keeps its prior reading.
+            return ctx.backendName === "vt100" || ctx.backendName === "vt220"
+              ? unhandledOscReportResult(ctx, `\x1b]0;${OSC0_PAYLOAD}\x07`, undecided)
+              : undecided
           }
           const result = osc0IconTitleResult(
             iconLabel,
@@ -6927,6 +6933,13 @@ const DEC_COLOUR_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSeq
   "sgr.fg.default": { feed: "\x1b[39m", code: { kind: "csi", code: "39m" } },
   "sgr.bg.default": { feed: "\x1b[49m", code: { kind: "csi", code: "49m" } },
   "extensions.osc2-title": { feed: "\x1b]2;Test Title\x07", code: { kind: "osc", code: "2" } },
+  // DEC-additions-five N-5522 (@cto routes-48): vt100 and vt220 report the OSC 5522 command itself and
+  // add nothing for the mode query, so the command's own code is the deciding entry. The payload is a
+  // representative write; the report carries the code, not the payload.
+  "extensions.osc5522-clipboard": {
+    feed: "\x1b]5522;type=write;dGVybWluZm8=\x07",
+    code: { kind: "osc", code: "5522" },
+  },
   "sgr.fg.256": {
     feed: "\x1b[38;5;173m\x1b[0m",
     codes: [

@@ -676,7 +676,7 @@ test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
     )
     expect(result.notTested).toEqual({
       reason: "no-semantic-observable",
-      noObservable: `Open: ${id.endsWith("bold") ? "dim and italic" : "italic"} did not show during setup, so our test cannot check the combined reset.`,
+      noObservable: `Open: ${id.endsWith("bold") ? "dim and italic and underline" : "italic"} did not show during setup, so our test cannot check the combined reset.`,
     })
     expect(result.pass).toBe(false)
     expect(result.observation).toBeUndefined()

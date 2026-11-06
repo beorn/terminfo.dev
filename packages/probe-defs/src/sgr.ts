@@ -533,6 +533,9 @@ function measuredReset(
   reset: string,
   set: readonly ResetAttribute[],
   preserve: readonly ResetAttribute[],
+  // "any": one shown preserved attribute is enough witness. The bold cell uses it because SGR 22
+  // keeps underline on an engine that exposes neither dim nor italic (criterion C16, routes-48).
+  preserveMode: "all" | "any" = "all",
 ): ProbeCallbackResult {
   ctx.feed(`C${setup}X${reset}Y`)
   const baseline = ctx.getCell(0, 0)
@@ -558,8 +561,10 @@ function measuredReset(
   }
   const unshown = attributes.filter((attribute) => !shown(attribute))
   const cleared = set.filter(shown).every((attribute) => measuredAttribute(after, attribute) === false)
-  const retained = preserve.filter(shown).every((attribute) => measuredAttribute(after, attribute) === true)
-  if (cleared && retained && (!set.some(shown) || !preserve.every(shown))) {
+  const shownPreserve = preserve.filter(shown)
+  const retained = shownPreserve.every((attribute) => measuredAttribute(after, attribute) === true)
+  const preserveObserved = preserveMode === "any" ? shownPreserve.length > 0 : preserve.every(shown)
+  if (cleared && retained && (!set.some(shown) || !preserveObserved)) {
     return notTestedResult(
       `Open: ${unshown.join(" and ")} did not show during setup, so our test cannot check the combined reset.`,
       state,
@@ -633,11 +638,21 @@ function resetProbe(
   reset: string,
   set: readonly ResetAttribute[],
   preserve: readonly ResetAttribute[] = [],
+  // A library-only shape: the app readback keeps the shared setup, because its DECRQSS criterion
+  // names those exact parameters.
+  libArm?: {
+    readonly setup: string
+    readonly preserve: readonly ResetAttribute[]
+    readonly preserveMode?: "all" | "any"
+  },
 ): ProbeDefinition {
   return {
     ...probe(
       id,
-      (ctx) => measuredReset(ctx, id, setup, reset, set, preserve),
+      (ctx) =>
+        libArm
+          ? measuredReset(ctx, id, libArm.setup, reset, set, libArm.preserve, libArm.preserveMode ?? "all")
+          : measuredReset(ctx, id, setup, reset, set, preserve),
       sgrTermReadback(
         id,
         reset,
@@ -1239,7 +1254,11 @@ export const sgrProbes: ProbeDefinition[] = [
 
   // ── Selective resets ──
 
-  resetProbe("sgr.selective-reset.bold", "\x1b[1;2;3m", "\x1b[22m", ["bold", "dim"], ["italic"]),
+  resetProbe("sgr.selective-reset.bold", "\x1b[1;2;3m", "\x1b[22m", ["bold", "dim"], ["italic"], {
+    setup: "\x1b[1;2;3;4m",
+    preserve: ["italic", "underline"],
+    preserveMode: "any",
+  }),
 
   resetProbe("sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", ["underline"], ["bold"]),
 
