@@ -33,7 +33,7 @@ A successful capture does not itself establish the visual effect; only a same-ru
 
 ## Untestable, PROBE TODO and PROBE INVALID
 
-**Untestable** has no current route: no result reaches it until a per-kind declaration exists. **PROBE TODO** means required work remains, including an unattempted probe or a missing observable. **PROBE INVALID** means an attempted test broke or could not produce a valid result; it describes the test, not the terminal.
+**Untestable** carries an explicit reason: **passed to the app**, **no way**, or **no setup**. A generic hook can pass an app-job command to the app without implementing its effect; real library state or a typed notification store can still establish Supported. A tap on a library-job command may instead say **no way to tell**, and an effect the library keeps nothing of its own for may say **app**. Missing controls or an undeclared engine identity stay PROBE TODO. **PROBE TODO** means required work remains, including an unattempted probe or a missing observable. **PROBE INVALID** means an attempted test broke or could not produce a valid result; it describes the test, not the terminal.
 
 - **PROBE INVALID: no usable reply** or **PROBE INVALID: no reply in time** — the query was attempted, but no result arrived before the deadline and no documented negative response established Unsupported.
 - **PROBE INVALID: the reply was not in the expected form** — we cannot derive a Supported or Unsupported probe result from a reply we cannot parse.
@@ -48,7 +48,7 @@ A successful capture does not itself establish the visual effect; only a same-ru
 
 - **PROBE TODO: no reviewed evidence** — an old result without evidence does not establish a current status.
 - **PROBE INVALID: the test did not complete** — this describes the attempt, not the terminal.
-- **Untestable** — this context has no observable that can measure the feature. No current route reaches it.
+- **Untestable** — the admitted result names why this context cannot decide the feature: passed to the app, no way, or no setup.
 - **PROBE TODO** — no attempt covers this feature in the selected run. This does not mean Unsupported.
 - **PROBE TODO: no reviewed run for this terminal yet** — see [Contribute a run](/how-it-works/contribute-a-run).
 

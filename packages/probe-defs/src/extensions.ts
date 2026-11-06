@@ -94,10 +94,10 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 // version carrying the same backend name. Real readers take precedence at each caller.
 function hasAuditedOscInterfaceAbsence(
   ctx: LibProbeSource,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-pass-through" | "wezterm-d2" = "osc-absence",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-tap" | "wezterm-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
-  if (cohort === "osc-pass-through") {
+  if (cohort === "osc-tap") {
     // Operator Nov 5 / CTO 4ab79b2f: these are engine identities. Adapter-only
     // releases do not change the library's generic pass-through behavior.
     if (ctx.backendName === "vterm") return hasAuditedOscInterfaceAbsence(ctx, "vterm-d2")
@@ -111,13 +111,7 @@ function hasAuditedOscInterfaceAbsence(
           "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="
       )
     }
-    return (
-      ctx.backendName === "libvterm" &&
-      identity?.kind === "js" &&
-      identity.runtimeFormat === "wasm" &&
-      identity.engineVersion === "0.3.3" &&
-      identity.loadedBinary.sha256 === "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0"
-    )
+    return false
   }
   if (cohort === "wezterm-d2") {
     return (
@@ -6185,17 +6179,83 @@ const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
   "extensions.osc710-font-normal": "OSC 710 font selection",
 }
 
-// Operator 20:59 / CTO 9182ff20: all six and made-up OSC 9999 take the same
-// generic hook; payload delivery is not execution of these host commands.
-const OSC_PASS_THROUGH_REASON =
-  "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
-const OSC_PASS_THROUGH_DECLARATIONS: Readonly<Record<string, string>> = {
-  "extensions.osc176-app-id": OSC_PASS_THROUGH_REASON,
-  "extensions.osc3008-context": OSC_PASS_THROUGH_REASON,
-  "extensions.osc440-audio": OSC_PASS_THROUGH_REASON,
-  "extensions.osc555-flash": OSC_PASS_THROUGH_REASON,
-  "extensions.osc666-termprop": OSC_PASS_THROUGH_REASON,
-  "extensions.osc710-font-normal": OSC_PASS_THROUGH_REASON,
+// The default is the library's job. CTO's phase-1 rule assigns these ten to the app.
+const APP_JOB_OSCS: Readonly<Record<string, { readonly code: string; readonly feed: string }>> = {
+  "extensions.notifications": { code: "9", feed: "\x1b]9;terminfo-notification\x07" },
+  "extensions.osc777-notify": { code: "777", feed: "\x1b]777;notify;terminfo-title;terminfo-body\x07" },
+  "extensions.osc7-cwd": { code: "7", feed: "\x1b]7;file://localhost/terminfo-cwd\x07" },
+  "extensions.osc633-p": { code: "633", feed: "\x1b]633;P;Cwd=/terminfo-cwd\x07" },
+  "extensions.osc176-app-id": { code: "176", feed: "\x1b]176;terminfo-test\x07" },
+  "extensions.osc3008-context": { code: "3008", feed: "\x1b]3008;start=id=terminfo-test\x07" },
+  "extensions.osc440-audio": { code: "440", feed: "\x1b]440;bell.wav\x07" },
+  "extensions.osc555-flash": { code: "555", feed: "\x1b]555\x07" },
+  "extensions.osc666-termprop": { code: "666", feed: "\x1b]666;test-prop=value\x07" },
+  "extensions.osc710-font-normal": { code: "710", feed: "\x1b]710;monospace\x07" },
+}
+
+const LIBRARY_OSC_HOOKS: Readonly<
+  Record<string, { readonly kind: "report" | "tap" | "typed" | "none"; readonly typed?: readonly string[] }>
+> = {
+  libvterm: { kind: "report" },
+  "vt100-rust": { kind: "report" },
+  xterm: { kind: "tap" },
+  vterm: { kind: "tap", typed: ["extensions.notifications", "extensions.osc7-cwd", "extensions.osc633-p"] },
+  ghostty: { kind: "typed" },
+  "ghostty-native": { kind: "typed" },
+  wezterm: { kind: "typed" },
+  kitty: { kind: "typed" },
+  vt100: { kind: "none" },
+  vt220: { kind: "none" },
+  alacritty: { kind: "none" },
+}
+
+/** Only generic handoffs use this rule; typed stores and library-job reports keep their existing paths. */
+function appJobHandoff(ctx: LibProbeSource, featureId: string): ProbeCallbackResult | undefined {
+  const target = APP_JOB_OSCS[featureId]
+  const hook = LIBRARY_OSC_HOOKS[ctx.backendName]
+  if (!target || !hook || hook.kind === "none" || hook.kind === "typed" || hook.typed?.includes(featureId)) {
+    return undefined
+  }
+  const state = { featureId, backend: ctx.backendName, runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity) }
+  if (hook.kind === "tap") {
+    if (!hasAuditedOscInterfaceAbsence(ctx, "osc-tap")) {
+      return notTestedResult("Generic OSC tap: this engine identity has no passed-to-the-app declaration", state)
+    }
+    return declaredUntestableResult(
+      "Untestable (passed to the app): this command is the app's job, and the library hands it to the app through a hook that receives every OSC command.",
+      state,
+    )
+  }
+  const control = {
+    feed: `\x1b]2;${UNHANDLED_OSC_CONTROL_TITLE}\x07`,
+    applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
+  }
+  // Keep the existing report reader. Both this command and a made-up command must be reported,
+  // while the handled title command applies without adding an entry in this same cell's run.
+  const reported = unhandledSequenceVerdict(
+    ctx,
+    { feed: target.feed, code: { kind: "osc", code: target.code } },
+    control,
+    state,
+  )
+  const madeUp =
+    reported &&
+    unhandledSequenceVerdict(
+      ctx,
+      { feed: "\x1b]9999;terminfo-handoff-control\x07", code: { kind: "osc", code: "9999" } },
+      control,
+      state,
+    )
+  if (!reported || !madeUp) {
+    return notTestedResult(
+      "Generic OSC report: the command, made-up OSC and handled title controls did not qualify in this run",
+      state,
+    )
+  }
+  return declaredUntestableResult(
+    "Untestable (passed to the app): this command is the app's job. The library reports that it does not handle it and hands its text to the app.",
+    { ...state, report: reported.response, madeUp: madeUp.response },
+  )
 }
 
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6209,18 +6269,6 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.transmit":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
-  "extensions.osc176-app-id":
-    "OSC 176 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc3008-context":
-    "OSC 3008 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc440-audio":
-    "OSC 440 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc555-flash":
-    "OSC 555 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc666-termprop":
-    "OSC 666 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc710-font-normal":
-    "OSC 710 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
 }
 
 const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6246,19 +6294,14 @@ function declaredD2InterfaceAbsence(
   id: string,
   table: Readonly<Record<string, string>>,
   backend: string,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-pass-through" | "wezterm-d2",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-tap" | "wezterm-d2",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
-  options: { readonly genericReportIsObservable?: boolean } = {},
 ): ProbeCallbackResult | undefined {
   const entry = table[id]
   if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined
   const result = lib(ctx)
-  if (
-    (options.genericReportIsObservable !== false && typeof ctx.getUnhandledSequences === "function") ||
-    hasReader(ctx, id) ||
-    reportsDecidedOutcome(result)
-  ) {
+  if (typeof ctx.getUnhandledSequences === "function" || hasReader(ctx, id) || reportsDecidedOutcome(result)) {
     return result
   }
   return declaredUntestableResult(formatReason(entry), {
@@ -6309,12 +6352,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
-  const passThroughReason = OSC_PASS_THROUGH_DECLARATIONS[definition.id]
+  const appJob = APP_JOB_OSCS[definition.id]
   const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
-  if (
-    !lib ||
-    (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason && !passThroughReason && !weztermAbsence)
-  ) {
+  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason && !appJob && !weztermAbsence)) {
     return definition
   }
   return {
@@ -6330,19 +6370,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
-      const passThroughDeclared = declaredD2InterfaceAbsence(
-        ctx,
-        lib,
-        definition.id,
-        OSC_PASS_THROUGH_DECLARATIONS,
-        ctx.backendName,
-        "osc-pass-through",
-        undefined,
-        undefined,
-        // libvterm's numeric report is the same generic hook, not a command effect.
-        { genericReportIsObservable: false },
-      )
-      if (passThroughDeclared) return passThroughDeclared
+      const handoff = appJobHandoff(ctx, definition.id)
+      if (handoff) return handoff
       const alacrittyDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
