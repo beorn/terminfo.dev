@@ -42,6 +42,14 @@ PROBE TODO; `supported` and `unsupported` retain their corresponding labels. Do 
 
 No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A probe result comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is PROBE TODO with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. PROBE INVALID means the probe or harness broke or got data it cannot trust. Untestable has the explicit route above; otherwise a probe whose setup has no observable for every subject of a kind reads PROBE TODO, and source never sets it per engine. A probe never implements the feature itself.
 
+Kitty graphics display can also read stored placement when a library exposes
+`getCellImageCount`. After its own image allocation, the probe witnesses an
+empty placement cell, an unknown image's placement leaving it empty,
+then the allocated image attached to that cell. This decides a silent placement
+as Supported through buffer state; it does not claim rendered pixels. Missing
+or inconsistent controls remain PROBE TODO. Existing placement acknowledgements
+retain their query-reply criterion.
+
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
 SGR attribute negatives require a rendered target and a same-run bold cell control. Underline style negatives require both exact `single` readback and a non-single style other than the target reading back as itself: curly for the double target, double for the other targets. Missing nullable attributes and on/off readers normalized to `single` stay open. Bright/indexed colour negatives require an ordinary-red control on the same colour reader and targets unchanged from the neutral baseline; different nondefault colours remain inconclusive. Existing positive effects witness their own reader. When an attribute field is unreported, a DECRQSS alternative qualifies only after this probe reads a status-1 SGR `m` bold control; a facility or DECSTBM reply does not qualify it. The exact issued input strings and control/target evidence are retained together. These library controls do not change app-arm criteria.

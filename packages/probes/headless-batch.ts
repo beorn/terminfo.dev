@@ -11,6 +11,7 @@ import {
   type OscMetadataExtension,
   type SemanticMarkExtension,
   type CellSemanticTypeExtension,
+  type CellImageCountExtension,
   type SixelStorageExtension,
   type TerminalBackend,
   type WarningExtension,
@@ -409,6 +410,15 @@ export function createLibProbeSource(
     declaresSemanticCells && typeof semanticCells.getCellSemanticType === "function"
       ? semanticCells.getCellSemanticType.bind(backend)
       : undefined
+  const declaresCellImages = backend.capabilities.extensions.has("cell-images")
+  const cellImages = backend as Partial<CellImageCountExtension>
+  if (declaresCellImages && typeof cellImages.getCellImageCount !== "function") {
+    throw new Error(`${backend.name} declares cell-images without getCellImageCount`)
+  }
+  const readCellImageCount =
+    declaresCellImages && typeof cellImages.getCellImageCount === "function"
+      ? cellImages.getCellImageCount.bind(backend)
+      : undefined
   const readClipboardState =
     typeof backend.getClipboardState === "function" ? backend.getClipboardState.bind(backend) : undefined
   const declaresMouseEncoding = backend.capabilities.extensions.has("mouse-encoding")
@@ -452,6 +462,7 @@ export function createLibProbeSource(
     getUnhandledSequences: readUnhandledSequences,
     getSemanticMarks: readSemanticMarks,
     getCellSemanticType: readCellSemanticType,
+    getCellImageCount: readCellImageCount,
     getSixelImages: readSixelImages,
     getClipboardState: readClipboardState,
     feed(text) {

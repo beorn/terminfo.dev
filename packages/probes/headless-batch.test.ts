@@ -50,32 +50,81 @@ import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, replyFailure } from "../pr
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
-// @failure WezTerm's real cell types or enabled Kitty handler never reach the six approved R2 library arms.
+// @failure WezTerm's stored cells, Kitty placement or clipboard callbacks never reach the shipping library arms.
 // @level l0
 // @consumer Existing WezTerm native backend -> headless source -> literal shipping probe callbacks.
+test.runIf(OWNED_LAYOUT)("real WezTerm readers expose semantic cells, image placement and clipboard writes", () => {
+  for (const id of [
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-p",
+    "extensions.kitty-graphics.transmit",
+    "extensions.kitty-graphics.display",
+    "extensions.osc52-write",
+  ]) {
+    const value = createWeztermBackend()
+    try {
+      value.init({ cols: 80, rows: 24, pixelGeometry: { cellWidth: 10, cellHeight: 20 } })
+      expect(feedCapture(value, "\x1b[6n", undefined)).toBe("\x1b[1;1R")
+      const source = createLibProbeSource(value, { graceMs: 0, onSentinel() {} }, undefined, undefined)
+      const definition = ALL_PROBES.find((probe) => probe.id === id)
+      if (!definition?.lib) throw new Error(`Missing WezTerm library arm ${id}`)
+      const result = definition.lib(source)
+      expect.soft(result.observation?.outcome, `${id}: ${JSON.stringify(result)}`).toBe("supported")
+      if (id === "extensions.kitty-graphics.display") {
+        expect.soft(result.observation?.assertionType).toBe("buffer_state")
+        expect.soft(result.note).toContain("pixels were not tested")
+      }
+    } finally {
+      value.destroy()
+    }
+  }
+})
+
+// Native positive coverage cannot detect an inert reader or report-only admission of a silent transfer.
+// @failure A constant image count, a lost placement, or a report without image state receives Supported.
+// @level l0
+// @consumer The Kitty display library arm through the real WezTerm parser.
 test.runIf(OWNED_LAYOUT)(
-  "real WezTerm R2 exposes semantic cells and transmit while silent display stays undecided",
+  "WezTerm image placement requires a changing reader and an inert unknown-image control",
   () => {
-    for (const id of [
-      "extensions.osc133-a",
-      "extensions.osc133-b",
-      "extensions.osc133-c",
-      "extensions.osc133-p",
-      "extensions.kitty-graphics.transmit",
-      "extensions.kitty-graphics.display",
-    ]) {
+    for (const fault of ["zero", "one", "placement", "report-only"] as const) {
       const value = createWeztermBackend()
       try {
         value.init({ cols: 80, rows: 24, pixelGeometry: { cellWidth: 10, cellHeight: 20 } })
-        expect(feedCapture(value, "\x1b[6n", undefined)).toBe("\x1b[1;1R")
         const source = createLibProbeSource(value, { graceMs: 0, onSentinel() {} }, undefined, undefined)
-        const definition = ALL_PROBES.find((probe) => probe.id === id)
-        if (!definition?.lib) throw new Error(`Missing R2 library arm ${id}`)
-        const result = definition.lib(source)
-        if (id === "extensions.kitty-graphics.display") {
-          expect(result.notTested, JSON.stringify(result)).toMatchObject({ reason: "no-semantic-observable" })
-          expect(result.observation).toBeUndefined()
-        } else expect.soft(result.observation?.outcome, `${id}: ${JSON.stringify(result)}`).toBe("supported")
+        let transferWasSilent = false
+        const controlled: LibProbeSource = {
+          ...source,
+          getCellImageCount:
+            fault === "report-only"
+              ? undefined
+              : fault === "zero"
+                ? () => 0
+                : fault === "one"
+                  ? () => 1
+                  : source.getCellImageCount,
+          getUnhandledSequences: fault === "report-only" ? () => [] : source.getUnhandledSequences,
+          queryWithSentinelOutcome(sequence, pattern) {
+            const silentTransfer = fault === "report-only" && sequence.includes("a=t,")
+            const outcome = source.queryWithSentinelOutcome!(
+              silentTransfer
+                ? sequence.replace("a=t,", "a=d,")
+                : fault === "placement"
+                  ? sequence.replace("a=p,", "a=d,")
+                  : sequence,
+              pattern,
+            )
+            if (silentTransfer) transferWasSilent = outcome.match === null && outcome.reason === "sentinel"
+            return outcome
+          },
+        }
+        const definition = ALL_PROBES.find((probe) => probe.id === "extensions.kitty-graphics.display")!
+        const result = definition.lib!(controlled)
+        expect(result.observation?.outcome, `${fault}: ${JSON.stringify(result)}`).not.toBe("supported")
+        expect(result.notTested, `${fault}: ${JSON.stringify(result)}`).toBeDefined()
+        if (fault === "report-only") expect(transferWasSilent).toBe(true)
       } finally {
         value.destroy()
       }
