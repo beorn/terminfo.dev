@@ -17,7 +17,7 @@ Its [vocabulary and current code](packages/probe-defs/README.md#vocabulary-and-c
 ## Author loop
 
 Work on one probe. Use the five result labels and terminal progress tiers defined in the probe-system model; catalog coverage and color depth are separate concepts.
-Put new slice tests in `packages/probes/headless-batch-<slice>.test.ts`; edit `headless-batch.test.ts` only to change an existing assertion.
+Put new slice tests in `packages/probes/headless-batch-<slice>.test.ts`; edit `headless-batch.test.ts` only to change an existing assertion. Tests calling `headlessRuntimeIdentity` require `test.runIf(OWNED_LAYOUT)` from `fixtures/owned-layout.fixture.ts`, including source-sibling engines: the identity helper requires the owned vterm checkout.
 For authorized headless work, run the changed probe IDs across the eleven configured library backends and the owning two-sided checks.
 Before Yrd submission, record expected result moves for each of the eleven configured library backends.
 A change gated to one backend and an exact identity needs no collector: the next hourly run proves it. Any other change runs the full collector from the owned dev-repo worktree root with `@in -- bun run --cwd vendor/terminfo.dev probe termless --all`, records the actual per-library diff, and reconciles mismatches before submitting.
