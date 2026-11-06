@@ -642,7 +642,7 @@ describe("audited OSC interface absence", () => {
   // public image path is declared instead of being routed to a reader (CTO 8be19f1f).
   // @level l1
   // @consumer ALL_PROBES library callbacks folded by the shipping result finalizer
-  test("the image no-way pair folds only at each exact audited identity", () => {
+  test("audited image and Ghostty web absences fold only at each exact identity", () => {
     const xterm = {
       kind: "js" as const,
       runtimeFormat: "js" as const,
@@ -720,6 +720,49 @@ describe("audited OSC interface absence", () => {
           reason: expect.stringMatching(reason),
         })
         expect(result.assertions, label).toBeUndefined()
+      }
+    }
+    // NR-G: existing image rows cannot catch missing shell/icon/pointer/clipboard
+    // declarations, an engine-cohort leak, or a declaration replacing an actual reader.
+    const ghostty = subjects.find(([name]) => name === "ghostty")![1] as LibProbeSource
+    const ghosttyIds = [
+      "extensions.osc133-a",
+      "extensions.osc133-b",
+      "extensions.osc133-c",
+      "extensions.osc133-d",
+      "extensions.semantic-prompts",
+      "extensions.osc0-icon-title",
+      "extensions.osc1-icon",
+      "extensions.osc22-pointer",
+      "extensions.osc52-clipboard",
+      "extensions.osc52-write",
+    ]
+    for (const id of ghosttyIds) {
+      const definition = ALL_PROBES.find((entry) => entry.id === id)!
+      const result = definition.lib!(ghostty)
+      expect.soft(isDeclaredUntestable(result), id).toBe(true)
+      expect.soft(fold(id, result), id).toMatchObject({
+        status: "untestable",
+        reason: expect.stringMatching(id === "extensions.osc52-write" ? /ghostty-web 0\.4\.0.*app/i : /ghostty-web 0\.4\.0/i),
+      })
+      const prior = { pass: false, note: "undecided existing callback" }
+      const wrapped = withD2LibraryObservation({ ...definition, lib: () => prior }).lib!
+      const identity = ghostty.runtimeIdentity as Extract<HeadlessRuntimeIdentity, { kind: "js" }>
+      if (identity.kind !== "js" || identity.runtimeFormat !== "wasm" || identity.integrity.kind !== "source") {
+        throw new Error("Expected the existing Ghostty web audited source fixture")
+      }
+      for (const changed of [
+        { runtimeIdentity: { ...identity, engineVersion: "0.4.1" } },
+        { runtimeIdentity: { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "different" } } },
+        { runtimeIdentity: { ...identity, integrity: { ...identity.integrity, treeOid: "different" } } },
+        { runtimeIdentity: { ...identity, integrity: { ...identity.integrity, cleanTree: false } } },
+        { backendName: "ghostty-native" },
+      ]) {
+        expect(wrapped({ ...ghostty, ...changed } as LibProbeSource), id).toBe(prior)
+      }
+      for (const pass of [true, false]) {
+        const decided = parserStateResult(pass, "existing measured reader", { pass })
+        expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(ghostty), id).toBe(decided)
       }
     }
     // The declaration follows the identity, not the backend name alone.

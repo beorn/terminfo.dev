@@ -2,7 +2,7 @@
  * @failure A state cell is graded Unsupported from the library's unhandled-sequence report without
  *   both same-run controls the ruling requires (@cto 2026-11-05 07:25 appendix, Case 1): a handled
  *   sequence must add no entry AND its own reader must show it applied, and the target must add
- *   exactly one entry carrying its code. Without both, the row keeps today's TODO naming what
+ *   one or more entries all carrying its code. Without both, the row keeps today's TODO naming what
  *   failed; a missing member keeps today's meaning and never becomes Supported.
  *
  * @failure A report replaces a real payload reader, or a number-only OSC 777 report cannot
@@ -213,13 +213,15 @@ test.each([
   ["modes.xtpushcolors", "#P"],
 ])("%s requires its exact report and a working mode control", (id, code) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
-  const result = definition.lib!(reportingSource({ records: [recordsCsi(code)] }))
-  expect(result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
-  expect(JSON.parse(result.response!), id).toMatchObject({ unhandled: { target: { kind: "csi", code } } })
+  for (const count of [1, 2]) {
+    const result = definition.lib!(reportingSource({ records: Array.from({ length: count }, () => recordsCsi(code)) }))
+    expect(result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+    expect(JSON.parse(result.response!), id).toMatchObject({ unhandled: { target: { kind: "csi", code } } })
+  }
   for (const spec of [
     { records: [recordsCsi(code)], modeApplies: false },
     { records: [recordsCsi(code), recordsCsi("?7l")] },
-    { records: [recordsCsi(code), recordsCsi(code)] },
+    { records: [recordsCsi(code), recordsCsi("?9998h")] },
     { records: [recordsCsi("?9998h")] },
   ]) {
     expect(definition.lib!(reportingSource(spec)).observation?.outcome, id).not.toBe("unsupported")
@@ -241,10 +243,18 @@ describe("the unhandled report decides only state cells, and only with both cont
     ["extensions.osc117-reset-highlight-bg", "117"],
     ["extensions.osc119-reset-highlight-fg", "119"],
   ])("a state cell the library reports unhandled becomes Unsupported: %s", (id, code) => {
-    const source = reportingSource({ records: [recordsOsc(code)] })
-    const result = probe(id).lib!(source)
-    expect(result.observation?.outcome).toBe("unsupported")
-    expect(JSON.stringify(result)).toContain(REASON)
+    // NR-G: Ghostty web emits two entries for one rejected colour command. Existing
+    // single-entry cases missed that refusal; a mixed code must still never decide it.
+    for (const count of [1, 2, 3]) {
+      const source = reportingSource({ records: Array.from({ length: count }, () => recordsOsc(code)) })
+      const result = probe(id).lib!(source)
+      expect(result.observation?.outcome, `${id}: ${count} matching reports`).toBe("unsupported")
+      expect(JSON.stringify(result)).toContain(REASON)
+    }
+    const wrong = { ...recordsOsc(code), code: { kind: "osc" as const, code: "9999" } }
+    const mixed = probe(id).lib!(reportingSource({ records: [recordsOsc(code), wrong] }))
+    expect(mixed.observation?.outcome).not.toBe("unsupported")
+    expect(JSON.stringify(mixed)).not.toContain(REASON)
   })
 
   test("the two umbrella shell cells reach the report arm too", () => {
