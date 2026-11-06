@@ -894,8 +894,24 @@ describe("audited OSC interface absence", () => {
     ] satisfies Partial<LibProbeSource>[]) {
       expect(isDeclaredUntestable(notify(d2Source(extra)))).toBe(false)
     }
-    for (const id of ["sgr.blink", "extensions.osc22-pointer", "extensions.osc1-icon", "modes.decsscls"]) {
+    // routes-16 rows 9 and 10 make DECSSCLS and blink declared at alacritty_terminal 0.26.0, so the
+    // unclear set narrows to the two with no reviewed absence, and the new pair follows the identity.
+    for (const id of ["extensions.osc22-pointer", "extensions.osc1-icon"]) {
       expect(isDeclaredUntestable(ALL_PROBES.find((probe) => probe.id === id)!.lib!(d2Source())), id).toBe(false)
+    }
+    const decsscls = ALL_PROBES.find((probe) => probe.id === "modes.decsscls")!.lib!
+    const decssclsResult = decsscls(d2Source())
+    expect(isDeclaredUntestable(decssclsResult)).toBe(true)
+    expect(fold("modes.decsscls", decssclsResult)).toMatchObject({
+      status: "untestable",
+      reason: expect.stringMatching(/CSI 9 SP p \(DECSSCLS\) scroll-speed state.*this CSI has no handler/i),
+    })
+    for (const extra of [
+      { runtimeIdentity: { ...alacritty, engineVersion: "0.26.1" } },
+      { backendName: "kitty" },
+      { runtimeIdentity: undefined },
+    ] satisfies Partial<LibProbeSource>[]) {
+      expect(isDeclaredUntestable(decsscls(d2Source(extra)))).toBe(false)
     }
     const semantic = ALL_PROBES.find((probe) => probe.id === "extensions.osc133-a")!.lib!
     expect(isDeclaredUntestable(semantic(d2Source({ getSemanticMarks: () => [] })))).toBe(false)

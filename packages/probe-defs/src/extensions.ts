@@ -6476,6 +6476,7 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
 // The audited dispatcher and event API expose no criterion-bearing state for these sequences.
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
   "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
+  "modes.decsscls": "CSI 9 SP p (DECSSCLS) scroll-speed state",
   "extensions.osc9-progress": "OSC 9;4 progress state",
   "input.kitty-click-events": "OSC 133 click-events prompt state (mouse encoding is supplied by Termless)",
   "extensions.osc777-notify": "OSC 777 notification payloads",
@@ -6514,6 +6515,12 @@ const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
     backend: "xterm",
     reason:
       "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it.",
+  },
+  // xterm.js 6.0.0 registers only " " A and " " q for the " " intermediate, so CSI 9 SP p takes the same tap.
+  "modes.decsscls": {
+    backend: "xterm",
+    reason:
+      "Untestable: the library hands this command to the app through registerCsiHandler, registering only DECSCUSR's two space handlers, and does nothing with it.",
   },
   "extensions.osc9-progress": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
   "extensions.osc133-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
@@ -6823,6 +6830,8 @@ const WEZTERM_D2_ABSENCES: Readonly<Record<string, string>> = {
   "editing.decsace": "DECSACE has no handler; its only trace is an opt-in log-facade line, off in this embedding",
   "extensions.osc52-read":
     "OSC 52 QuerySelection has a recognized empty handler arm and emits no clipboard query reply",
+  "extensions.osc52-clipboard":
+    "OSC 52 QuerySelection has a recognized empty handler arm and emits no clipboard query reply, so the write cannot round trip to the app",
   "extensions.osc133-d": "OSC 133 D has a recognized empty handler arm and retains no command-exit status",
   "extensions.semantic-prompts":
     "OSC 133 D retains no command-exit status, so the public semantic marks cannot expose a complete prompt-command cycle",
@@ -7024,7 +7033,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 ? typeof source.getSemanticMarks === "function"
                 : false,
         (entry) =>
-          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${definition.id === "editing.decsace" ? "CSI" : "OSC"} has no handler or public rejection report.`,
+          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${
+            definition.id === "editing.decsace" || definition.id === "modes.decsscls" ? "CSI" : "OSC"
+          } has no handler or public rejection report.`,
       )
       if (alacrittyDeclared) return alacrittyDeclared
       // CTO 8be19f1f: the Kitty image pair. No reader is passed because none of these libraries
