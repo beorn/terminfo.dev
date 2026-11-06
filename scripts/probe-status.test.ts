@@ -169,7 +169,11 @@ describe("the real catalog", () => {
     }
     expect(ALL_PROBES.find((entry) => entry.id === "extensions.font-ligatures")?.termAssertionType).toBe("screenshot")
     // The library arm now measures mouse encoding through its declared extension (#31798 C5).
-    expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.libAssertionType).toBe("input_bytes")
+    // A library that reports the sequence unhandled records buffer_state instead (NR-A).
+    expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.libAssertionType).toMatchObject({
+      then: ["input_bytes", "buffer_state"],
+      otherwise: ["input_bytes"],
+    })
     expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.termAssertionType).toBe("input_bytes")
     expect(probeStatusOf("input.kitty-click-events", features)).toBe("automated")
   })
