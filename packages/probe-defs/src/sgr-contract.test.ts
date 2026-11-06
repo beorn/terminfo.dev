@@ -308,7 +308,8 @@ test("a row reading overline is notTested when the bit is null, bound when prese
   expect(omitted.satisfies).toBe(false)
   expect(probe.lib?.(omittedSource).notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "cell.overline field not exposed",
+    noObservable:
+      "Open: our adapter for this library does not read overline from its screen cells yet, so our test cannot see overline.",
   })
 })
 
@@ -317,7 +318,7 @@ test("a row reading overline is notTested when the bit is null, bound when prese
  * (#32318). Missing observables or a failed control remain open; source never decides support.
  */
 const underlineColorUnexposed =
-  "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
+  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it."
 const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   id: string,
   mutation: string,
@@ -578,11 +579,11 @@ test.each([
   }
   expectNoSamePathTodo(
     probe.lib!(source),
-    `cell.${field} is unreported; ${prerequisite}; no qualified SGR m alternative in this run`,
+    `Open: our test could not read ${field} from the screen cells and found no qualified alternative in this run. ${prerequisite}.`,
   )
   expectNoSamePathTodo(
     probe.lib!({ ...source, runtimeIdentity: { ...source.runtimeIdentity, engineVersion: "unreviewed" } }),
-    `cell.${field} is unreported; no qualified SGR m alternative in this run`,
+    `Open: our test could not read ${field} from the screen cells and found no qualified alternative in this run.`,
   )
   const measured = probe.lib!({ ...source, getCell: (row, col) => surface.getCell(row, col) })
   expect(measured.observation?.outcome).toBe("supported")
@@ -601,7 +602,7 @@ test.each([
   const surface = createSemanticSurface()
   const unreported = libProbeSource(surface)
   unreported.getCell = (row, col) => ({ ...surface.getCell(row, col), [field]: null })
-  const missingReader = `cell.${field} is unreported; no qualified SGR m alternative in this run`
+  const missingReader = `Open: our test could not read ${field} from the screen cells and found no qualified alternative in this run.`
   expectNoSamePathTodo(probe.lib!(unreported), missingReader)
   const missing = run(null)
   expectNoSamePathTodo(missing, missingReader)
@@ -632,7 +633,8 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
     if (id === "sgr.underline-color-reset") {
       expect(result.notTested).toEqual({
         reason: "no-semantic-observable",
-        noObservable: "SGR 59 setup cell exposes no explicit underline color",
+        noObservable:
+          "Open: after we set an underline colour (SGR 58), the screen cell showed none, so the setup did not show and the reset cannot be tested.",
       })
     } else {
       expect(result.criterionBranch).toBe("headless-observable-review")
@@ -640,7 +642,10 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
         expect.objectContaining({
           id: "review",
           status: "probe-todo",
-          reason: expect.stringContaining("distinct colored seed"),
+          reason:
+            id === "sgr.fg.default"
+              ? "Open: the text colour we set first (SGR 31) read the same as the default, so we cannot tell whether the reset to default worked."
+              : "Open: the background colour we set first (SGR 42) read the same as the default, so we cannot tell whether the reset to default worked.",
         }),
       )
     }
@@ -671,7 +676,7 @@ test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
     )
     expect(result.notTested).toEqual({
       reason: "no-semantic-observable",
-      noObservable: `compound reset not decided: ${id.endsWith("bold") ? "dim and italic" : "italic"} not shown at setup; a reset needs at least one shown set facet and every preserved facet shown`,
+      noObservable: `Open: ${id.endsWith("bold") ? "dim and italic" : "italic"} did not show during setup, so our test cannot check the combined reset.`,
     })
     expect(result.pass).toBe(false)
     expect(result.observation).toBeUndefined()
