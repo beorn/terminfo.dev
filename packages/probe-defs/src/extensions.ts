@@ -211,7 +211,8 @@ export function hasAuditedOscInterfaceAbsence(
       identity.integrity.cleanTree &&
       identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
       (identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007" ||
-        identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537")
+        identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537" ||
+        identity.integrity.treeOid === "2f8787fb9931137d79d49f531789f15786582e99")
     )
   }
   if (identity?.kind === "native") {
@@ -248,7 +249,10 @@ export function hasAuditedOscInterfaceAbsence(
     (identity.engineVersion === "0.13.0" &&
       (tree === "2a2536134a2a45982cfd27f892fe71e5078a8730" || tree === "96b1a890bf64164af924b48e7d84d3d5f6e91617")) ||
     (identity.engineVersion === "0.13.1" &&
-      (tree === "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" || tree === "5162719d063ab59d2905d588df3e127d38b110d1"))
+      (tree === "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" ||
+        tree === "5162719d063ab59d2905d588df3e127d38b110d1" ||
+        tree === "88cb477d36fd9978f25516d244bc37d00d4cef61" ||
+        tree === "7adec6da7d8092900e2beb3b6b8b32434e1e2b8c"))
   )
 }
 
