@@ -1538,30 +1538,59 @@ test.each([
   },
 )
 
-// The libvterm pixel guard rejects before native input; existing stateful cases do not cover that refusal.
+// The reviewed engine refusal declares only at its exact WASM; unknown input errors stay loud.
+// Existing stateful cases do not cover this refusal or its cleanup before native input.
 test("mouse probe preserves libvterm pixel rejection without sending cleanup input", () => {
-  const primary = new Error("libvterm mouse API has no native encoding for pixel coordinates")
-  const feeds: string[] = []
-  const events: LibMouseEvent[] = []
-  const ctx = libMouseSource(
-    {
-      encodeMouse() {
-        throw primary
-      },
+  const reviewed = {
+    kind: "js",
+    runtimeFormat: "wasm",
+    engineVersion: "0.3.3",
+    adapterVersion: "0.11.0",
+    termlessRevision: "fixture",
+    resolvedPath: "/fixture/libvterm/index.ts",
+    integrity: { kind: "registry", lockIntegrity: "fixture" },
+    loadedBinary: {
+      path: "/fixture/libvterm.wasm",
+      sha256: "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0",
     },
-    feeds,
-    events,
-  )
-  let failure: unknown
-  try {
-    probe("input.pixel-mouse").lib!(ctx)
-  } catch (error) {
-    failure = error
+  } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
+  for (const runtimeIdentity of [
+    undefined,
+    reviewed,
+    {
+      ...reviewed,
+      loadedBinary: { ...reviewed.loadedBinary, sha256: "0".repeat(64) },
+    },
+  ]) {
+    const primary = new Error("libvterm mouse API has no native encoding for pixel coordinates")
+    const feeds: string[] = []
+    const events: LibMouseEvent[] = []
+    const ctx = libMouseSource(
+      {
+        encodeMouse() {
+          throw primary
+        },
+      },
+      feeds,
+      events,
+    )
+    ctx.backendName = "libvterm"
+    ctx.runtimeIdentity = runtimeIdentity
+    let failure: unknown
+    let result: ProbeCallbackResult | undefined
+    try {
+      result = probe("input.pixel-mouse").lib!(ctx)
+    } catch (error) {
+      failure = error
+    }
+    if (runtimeIdentity === reviewed) {
+      expect(failure).toBeUndefined()
+      expect(isDeclaredUntestable(result ?? {})).toBe(true)
+    } else expect(failure).toBe(primary)
+    expect(events).toEqual([{ x: 4, y: 2, pixel: { x: 40, y: 24 }, button: "left", action: "press" }])
+    const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
+    expect(feeds).toEqual([reset, reset])
   }
-  expect(failure).toBe(primary)
-  expect(events).toEqual([{ x: 4, y: 2, pixel: { x: 40, y: 24 }, button: "left", action: "press" }])
-  const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
-  expect(feeds).toEqual([reset, reset])
 })
 
 test("mouse probe releases a held target and retains target plus reset failures", () => {
