@@ -2722,15 +2722,57 @@ function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackR
   })
 }
 
+function kittyGraphicsRefused(response: string, code: string): ProbeCallbackResult {
+  const note = `library refused the canonical graphics query: ${code}`
+  return {
+    pass: false,
+    response,
+    note,
+    observation: { outcome: "unsupported", assertionType: "query_reply", note },
+    assertions: [
+      {
+        assertionType: "query_reply" as const,
+        kind: "negative",
+        expected: "The canonical Kitty graphics query is acknowledged rather than refused",
+        observed: response,
+      },
+    ],
+  }
+}
+
+/** A Kitty graphics ERROR frame in this run's reply window: an explicit refusal, not an absence. */
+function kittyGraphicsRefusalCode(raw: string): string | null {
+  const frame = /\x1b_G[^;\x1b]*;([A-Z][A-Z0-9]{2,})\x1b\\/.exec(raw)
+  return frame ? (frame[1] ?? null) : null
+}
+
+/**
+ * Display cannot be observed when transmit was refused in the same run: the library answered the
+ * canonical query with an error, so there is no image for the display cell to place.
+ */
+function kittyDisplayWithoutTransmit(code: string, imageNumber: number): ProbeCallbackResult {
+  return declaredUntestableResult(
+    `Untestable (no setup): Kitty graphics transmit is refused by this library (${code}), so the display cell has no image to place`,
+    { imageNumber, refusal: code },
+  )
+}
+
 /** Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window. */
 function allocationOutcomeResult(
   reply: TerminalQueryOutcome,
   imageNumber: number,
-): { imageId: number | null; result: ProbeCallbackResult } {
+): { imageId: number | null; refusal: string | null; result: ProbeCallbackResult } {
   if (!reply.match) {
     if (reply.reason === "sentinel") {
+      // A refusal decides; silence does not. Only a graphics ERROR frame in the same window moves
+      // this cell off "not observed", because a library that refuses the query has answered it.
+      const refusal = kittyGraphicsRefusalCode(reply.raw)
+      if (refusal) {
+        return { imageId: null, refusal, result: kittyGraphicsRefused(reply.raw, refusal) }
+      }
       return {
         imageId: null,
+        refusal: null,
         result: notTestedResult("No image allocation readback; DA1 does not observe image transmission", {
           imageNumber,
           readback: reply,
@@ -2739,6 +2781,7 @@ function allocationOutcomeResult(
     }
     return {
       imageId: null,
+      refusal: null,
       result: unansweredQuery(
         reply,
         "No matching image allocation reply; no image ownership or transmission conclusion",
@@ -2746,7 +2789,7 @@ function allocationOutcomeResult(
     }
   }
   const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
-  return { ...uploaded, result: { ...uploaded.result, response: reply.raw } }
+  return { ...uploaded, refusal: null, result: { ...uploaded.result, response: reply.raw } }
 }
 
 function placementRequest(imageId: number): string {
@@ -2801,6 +2844,9 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
               imageNumber,
             )
             imageId = uploaded.imageId
+            if (uploaded.refusal && display) {
+              return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
+            }
             if (!imageId || !display) return uploaded.result
             const placement = ctx.queryWithSentinelOutcome(
               placementRequest(imageId),
@@ -2826,6 +2872,9 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
             imageNumber,
           )
           imageId = uploaded.imageId
+          if (uploaded.refusal && display) {
+            return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
+          }
           if (!imageId || !display) return uploaded.result
           const placement = await ctx.queryWithSentinelOutcome(
             placementRequest(imageId),

@@ -1342,6 +1342,39 @@ test("a kitty allocation reply that echoes another image number does not qualify
   }
 })
 
+test("an explicit graphics refusal decides transmit and leaves display with no setup", async () => {
+  // CTO 8be19f1f: vterm answers the canonical graphics query with ENOTSUP in the same run, while
+  // DA1 still answers. A refusal is an answer, so it decides the row; silence alone never does.
+  const refused = (sequence: string, pattern: RegExp) => {
+    const imageNumber = /I=(\d+)/.exec(sequence)?.[1] ?? "0"
+    const raw = `\x1b_Gi=${imageNumber};ENOTSUP\x1b\\\x1b[?62;22c`
+    return {
+      match: pattern.exec(raw),
+      reason: "sentinel" as const,
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+      sentinel: { atMs: 3, graceMs: 250 },
+    }
+  }
+  const transmit = callback("extensions.kitty-graphics.transmit")
+  const transmitResult = await transmit.term!({
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => refused(sequence, pattern),
+    write: () => undefined,
+  } as unknown as TermProbeSource)
+  expect(transmitResult.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+  expect(transmitResult.note).toBe("library refused the canonical graphics query: ENOTSUP")
+  expect(transmitResult.assertions).toMatchObject([{ kind: "negative" }])
+
+  const display = callback("extensions.kitty-graphics.display")
+  const displayResult = await display.term!({
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => refused(sequence, pattern),
+    write: () => undefined,
+  } as unknown as TermProbeSource)
+  expect(displayResult.tests?.[0]).toMatchObject({ status: "untestable" })
+  expect(displayResult.tests?.[0]?.reason).toMatch(/^Untestable \(no setup\): .*transmit.*refused.*ENOTSUP/u)
+  expect(JSON.stringify(displayResult)).not.toMatch(/no image allocation readback/iu)
+})
+
 // 31377: the refusal specimen is retained run772ff2a6/suite9cc61ebe4417, including its DA1 window.
 // A correlated refusal proves recognition but does not accept the canonical direct RGB query.
 test.each([
