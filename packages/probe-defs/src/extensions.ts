@@ -6314,7 +6314,7 @@ function declaredD2InterfaceAbsence(
   const entry =
     typeof declaration === "string"
       ? declaration
-      : declaration?.backend === ctx.backendName
+      : declaration !== undefined && declaration.backend === ctx.backendName
         ? declaration.reason
         : undefined
   if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined

@@ -128,13 +128,18 @@ describe("pass-through declarations", () => {
       },
     ],
   ] as const
+  const baseCell = libProbeSource(createSemanticSurface()).getCell(0, 0)
   const source = (backend: string, identity: unknown) =>
     ({
       ...library(backend),
       runtimeIdentity: identity,
       feedCapture: () => "",
       getTitle: () => "",
-      getCell: (row: number, col: number) => ({ char: ["abcdefgh", "ijklmnop"][row]?.[col] ?? " ", inverse: false }),
+      getCell: (row: number, col: number) => ({
+        ...baseCell,
+        char: ["abcdefgh", "ijklmnop"][row]?.[col] ?? " ",
+        inverse: false,
+      }),
       getMode: () => null,
       getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
     }) as LibProbeSource
