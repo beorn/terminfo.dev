@@ -6621,6 +6621,18 @@ const GHOSTTY_WEB_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 }
 
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "input.button-event-mouse":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.pixel-mouse":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.x10-mouse":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.xtest-click":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.xtest-wheel":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.urxvt-mouse":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
   "extensions.osc0-icon-title":
     "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 updates the window title but ignores icon names and keeps no icon label.",
   "extensions.osc10-fg-color":

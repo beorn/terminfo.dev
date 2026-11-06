@@ -369,25 +369,27 @@ for (const scenario of [
       const expected = scenario.ids.map((featureId) => {
         const slot =
           featureId === "extensions.osc10-fg-color" ? 10 : featureId === "extensions.osc11-bg-color" ? 11 : 12
-        const colour = featureId !== "extensions.osc0-icon-title" && scenario.name === "ghostty-native"
-        const status = scenario.name === "alacritty" ? "supported" : "probe-todo"
-        const reason = colour
-          ? `Open: the colour query (OSC ${slot}) got no answer before setting a colour or after resetting it. The set-colour control did work, but it cannot show the original default`
+        const nativeDeclaration = scenario.name === "ghostty-native"
+        const colour = slot === 10 ? "foreground" : slot === 11 ? "background" : "cursor"
+        const status = nativeDeclaration ? "untestable" : scenario.name === "alacritty" ? "supported" : "probe-todo"
+        const reason = nativeDeclaration
+          ? featureId === "extensions.osc0-icon-title"
+            ? "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 updates the window title but ignores icon names and keeps no icon label."
+            : `Untestable (app): the app supplies Ghostty's initial ${colour} colour. This headless library starts without one; a colour set later can be read, but it does not reveal the app's default.`
           : scenario.name === "alacritty"
             ? "buffered effect measured; rendered tearing unmeasured"
             : "Open: asking for the icon name (CSI 20 t, a short window name) got no answer within our wait, and no reply control worked in this test. With these readings, our test cannot tell whether OSC 0 set both names."
-        const testReason = colour ? `${reason}, so this run cannot decide it` : reason
         return {
           featureId,
           status,
           reason,
-          criterionBranch: colour ? "color-readback-review" : undefined,
+          criterionBranch: nativeDeclaration ? HEADLESS_OBSERVABLE_REVIEW : undefined,
           rawReplyRef: featureId,
           tests: [
             {
-              id: colour ? "review" : "criterion",
+              id: nativeDeclaration ? "declared-untestable" : "criterion",
               status,
-              reason: testReason,
+              reason,
               rawReplyRef: featureId,
             },
           ],
