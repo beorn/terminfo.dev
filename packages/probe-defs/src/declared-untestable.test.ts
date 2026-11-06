@@ -626,6 +626,33 @@ describe("audited OSC interface absence", () => {
         { ...library("xterm"), feedCapture: () => "", getTitle: () => "", runtimeIdentity: xterm },
         /@xterm\/headless 6\.0\.0.*APC, PM and SOS/i,
       ],
+      [
+        "ghostty",
+        {
+          ...library("ghostty"),
+          feedCapture: () => "",
+          getTitle: () => "",
+          runtimeIdentity: {
+            kind: "js" as const,
+            runtimeFormat: "wasm" as const,
+            adapterVersion: "0.10.2",
+            termlessRevision: "2f73fc28027b7d483e504e08edc64d1837935816",
+            engineVersion: "0.4.0",
+            loadedBinary: {
+              path: "vendor/termless/vendor/ghostty-web/ghostty-vt.wasm",
+              sha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
+            },
+            integrity: {
+              kind: "source" as const,
+              repository: "git@github.com:beorn/termless.git",
+              revision: "2f73fc28027b7d483e504e08edc64d1837935816",
+              treeOid: "ad3571a518e9e672e102eb83becc2caa03b9ffc3",
+              cleanTree: true,
+            },
+          },
+        },
+        /ghostty-web 0\.4\.0.*no public image store or APC callback/i,
+      ],
     ] as const
     for (const [name, source, reason] of subjects) {
       for (const id of ["extensions.kitty-graphics.display", "extensions.kitty-graphics.transmit"]) {
