@@ -542,18 +542,19 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
 })
 
 describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
+  const sourceIntegrity = {
+    kind: "source" as const,
+    revision: "7b39f49e8a6bc03ce695c5ab7c143c2cc7379eb0",
+    treeOid: "3d58d29a8265aafd928e0736dde6723e2bac2007",
+    cleanTree: true,
+    repository: "git@github.com:beorn/vterm.git",
+  }
   const identity: HeadlessRuntimeIdentity = {
     kind: "js",
     runtimeFormat: "js",
     enginePackage: "@beorn/vterm",
     engineVersion: "0.13.1",
-    integrity: {
-      kind: "source",
-      sourceCommit: "7b39f49e8a6bc03ce695c5ab7c143c2cc7379eb0",
-      treeOid: "3d58d29a8265aafd928e0736dde6723e2bac2007",
-      cleanTree: true,
-      repository: "git@github.com:beorn/vterm.git",
-    },
+    integrity: sourceIntegrity,
   }
   const declared = [
     "modes.decsscls",
@@ -578,7 +579,7 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
       ...base,
       backendName: "vterm",
       runtimeIdentity: identity,
-      getSemanticMarks: () => [{ type: "prompt", row: 0, col: 0 }],
+      getSemanticMarks: () => [{ type: "prompt", startRow: 0, startCol: 0 }],
       capabilities: {
         ...base.capabilities,
         semanticPrompts: true,
@@ -604,19 +605,19 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
       {
         runtimeIdentity: {
           ...identity,
-          integrity: { ...identity.integrity, treeOid: "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" },
+          integrity: { ...sourceIntegrity, treeOid: "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" },
         },
       },
       {
         runtimeIdentity: {
           ...identity,
-          integrity: { ...identity.integrity, cleanTree: false },
+          integrity: { ...sourceIntegrity, cleanTree: false },
         },
       },
       {
         runtimeIdentity: {
           ...identity,
-          integrity: { ...identity.integrity, repository: "https://example.invalid/vterm.git" },
+          integrity: { ...sourceIntegrity, repository: "https://example.invalid/vterm.git" },
         },
       },
       {
