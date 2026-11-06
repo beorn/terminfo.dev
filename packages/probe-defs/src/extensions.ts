@@ -177,13 +177,17 @@ export function hasAuditedOscInterfaceAbsence(
       ctx.backendName === "wezterm" &&
       identity?.kind === "native" &&
       identity.engineVersion === "0.1.0-fork.5" &&
-      identity.provenance.lockSha256 === "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58" &&
-      ((identity.loadedBinary.sha256 === "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186" &&
-        identity.provenance.sourceCommit === "f8f48853438f5fb6c43abbbb081162506d14f167" &&
-        (auditedAdapterSources(identity, "wezterm") || auditedAdapterSources(identity, "wezterm0110"))) ||
-        (identity.loadedBinary.sha256 === "74adefb8d3579e58480130efa7672b6c3d2d9006aa2f897bde52791ccf7c1eeb" &&
-          identity.provenance.sourceCommit === "e4d7316cd1f187be48f3c44087e60dad0f785159" &&
-          auditedAdapterSources(identity, "weztermSemanticCells")))
+      ((identity.provenance.lockSha256 === "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58" &&
+        ((identity.loadedBinary.sha256 === "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186" &&
+          identity.provenance.sourceCommit === "f8f48853438f5fb6c43abbbb081162506d14f167" &&
+          (auditedAdapterSources(identity, "wezterm") || auditedAdapterSources(identity, "wezterm0110"))) ||
+          (identity.loadedBinary.sha256 === "74adefb8d3579e58480130efa7672b6c3d2d9006aa2f897bde52791ccf7c1eeb" &&
+            identity.provenance.sourceCommit === "e4d7316cd1f187be48f3c44087e60dad0f785159" &&
+            auditedAdapterSources(identity, "weztermSemanticCells")))) ||
+        (identity.provenance.lockSha256 === "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886" &&
+          identity.loadedBinary.sha256 === "cce8a7d931bf7694891067b4b64062d64df853e7c23e5054521cf5c98a7f67b6" &&
+          identity.provenance.sourceCommit === "1ee22567769a6aa27765e76eafb675e1d7197cef" &&
+          auditedAdapterSources(identity, "weztermClipboardImages")))
     )
   }
   if (cohort === "vt100-rust-d2") {
@@ -213,8 +217,11 @@ export function hasAuditedOscInterfaceAbsence(
     return (
       identity.engineVersion === "0.26.0" &&
       identity.provenance.lockSha256 === "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497" &&
-      identity.provenance.sourceCommit === "6e497eb0310dd6747dfce240fc241e12c07d0615" &&
-      (auditedAdapterSources(identity, "alacritty23b6874c") || auditedAdapterSources(identity, "alacritty0110"))
+      ((identity.provenance.sourceCommit === "6e497eb0310dd6747dfce240fc241e12c07d0615" &&
+        (auditedAdapterSources(identity, "alacritty23b6874c") || auditedAdapterSources(identity, "alacritty0110"))) ||
+        (identity.provenance.sourceCommit === "84b7450963908738cc75e934bb1e4d6f71d00810" &&
+          identity.loadedBinary.sha256 === "1f8b691a60fe07da6dd1a12307a5a1c753b730dde76a7e13e77d0dd770c94757" &&
+          auditedAdapterSources(identity, "alacrittyClipboardReads")))
     )
   }
   if (
@@ -3072,8 +3079,38 @@ function placementRequest(imageId: number): string {
 }
 
 /** Live's reading of a placement outcome, shared by both arms (#30554). */
-function placementOutcomeResult(placement: TerminalQueryOutcome, imageId: number): ProbeCallbackResult {
+function placementOutcomeResult(
+  placement: TerminalQueryOutcome,
+  imageId: number,
+  cells?: {
+    row: number
+    col: number
+    before: number
+    unknown: number
+    after: number
+    unknownImageId: number
+    control: TerminalQueryOutcome
+  },
+): ProbeCallbackResult {
   if (!placement.match && placement.reason === "sentinel") {
+    if (cells) {
+      const state = { imageId, ...cells, readback: placement }
+      if (
+        cells.before === 0 &&
+        cells.unknown === 0 &&
+        Number.isSafeInteger(cells.after) &&
+        cells.after > 0 &&
+        (cells.control.reason === "sentinel" || (cells.control.match && cells.control.match[2] !== "OK"))
+      ) {
+        return parserStateResult(
+          true,
+          "An unknown image leaves the cell empty; the allocated image attaches to that cell",
+          state,
+          "Image placement stored in the cell; visible pixels were not tested",
+        )
+      }
+      return notTestedResult("Image placement or unknown-image cell control did not qualify", state)
+    }
     return notTestedResult("No placement readback or image-state observation; DA1 does not observe display", {
       imageId,
       readback: placement,
@@ -3135,11 +3172,30 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
               return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
             }
             if (!imageId || !display) return uploaded.result
+            const readImages = ctx.getCellImageCount?.bind(ctx)
+            let cells: Omit<NonNullable<Parameters<typeof placementOutcomeResult>[2]>, "after"> | undefined
+            if (readImages) {
+              const cursor = ctx.getCursor()
+              const scrollback = ctx.getScrollback()
+              const row = scrollback.totalLines - scrollback.screenLines + cursor.y
+              const col = cursor.x
+              const before = readImages(row, col)
+              const unknownImageId = imageId === 0xffffffff ? 0xfffffffe : 0xffffffff
+              const control = ctx.queryWithSentinelOutcome(
+                placementRequest(unknownImageId),
+                kittyReplyFrame({ i: String(unknownImageId) }),
+              )
+              cells = { row, col, before, unknown: readImages(row, col), unknownImageId, control }
+            }
             const placement = ctx.queryWithSentinelOutcome(
               placementRequest(imageId),
               kittyReplyFrame({ i: String(imageId) }),
             )
-            return placementOutcomeResult(placement, imageId)
+            return placementOutcomeResult(
+              placement,
+              imageId,
+              cells && readImages ? { ...cells, after: readImages(cells.row, cells.col) } : undefined,
+            )
           }
           const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber)), imageNumber)
           imageId = uploaded.imageId
@@ -3175,7 +3231,14 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
       },
       "query_reply",
     ),
-    libAssertionType: "query_reply",
+    libAssertionType: display
+      ? {
+          when: (source) =>
+            typeof source.getCellImageCount === "function" || typeof source.getUnhandledSequences === "function",
+          then: ["query_reply", "buffer_state"],
+          otherwise: ["query_reply"],
+        }
+      : "query_reply",
   }
 }
 
@@ -3334,15 +3397,16 @@ function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackRes
 }
 
 /**
- * #32091: an engine that reports its clipboard permission option (Termless kitty) ran the read under it. Name it on the
- * result, since kitty's own default (read-clipboard-ask) would hold the read for a human instead of answering.
+ * Name the engine-reported permission under which the read ran, including how its default differs.
  */
 function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResult): ProbeCallbackResult {
   const control = typeof ctx.getClipboardState === "function" ? ctx.getClipboardState().control : undefined
   // Only a measured observation carries the note; a not-tested result keeps its own reason.
   const observation = result.observation
   if (control === undefined || observation === undefined) return result
-  const note = `read under harness-supplied clipboard_control ${control.join(" ")}; kitty's default read-clipboard-ask asks a human before answering a read`
+  const note = control.includes("osc52=CopyPaste")
+    ? "read under harness-supplied osc52=CopyPaste; Alacritty's default OnlyCopy disables clipboard reads"
+    : `read under harness-supplied clipboard_control ${control.join(" ")}; kitty's default read-clipboard-ask asks a human before answering a read`
   const join = (prior: string | undefined) => (prior ? `${prior}; ${note}` : note)
   return { ...result, note: join(result.note), observation: { ...observation, note: join(observation.note) } }
 }
@@ -6622,6 +6686,7 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.kitty-keyboard.report-text": { feed: "\u001b[>25u", code: { kind: "csi", code: ">25u" } },
   "input.csi-u": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
   "input.pixel-mouse": { feed: "\u001b[?1016h", code: { kind: "csi", code: "?1016h" } },
+  "input.urxvt-mouse": { feed: "\u001b[?1015h", code: { kind: "csi", code: "?1015h" } },
   "input.kitty-click-events": { feed: "\u001b]133;A;click_events=1\u0007", code: { kind: "osc", code: "133" } },
 }
 
