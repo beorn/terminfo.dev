@@ -340,7 +340,7 @@ describe("the report arm decides italic and faint as well, and nothing outside i
 })
 
 // Accepted D2 cut (Chief 6ef3debd) plus M-1 (CTO f23f1197): 44 controlled negatives;
-// the 12 proposed declarations remain on their prior paths pending policy wording.
+// The released twelve-cell D2-U1 slice declares only the audited vt100 0.16.2 subject.
 // Independent input/code oracles were measured from the real addon before each
 // consumer extension; these cases exercise the registered callback boundary.
 describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
@@ -453,10 +453,13 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     }
   })
 
-  test.each(declared)("%s stays outside the negative-only cut while declaration policy is held", (id) => {
+  // The released twelve-cell D2 slice declares only this audited 0.16.2 subject.
+  // Negative-only coverage could not prove the declaration or retain its versioned reason.
+  test.each(declared)("%s declares Untestable only for the audited vt100 0.16.2 subject", (id) => {
     const lib = definition(id).lib!
     const result = lib({ ...inertLibProbeSource(), backendName: "vt100-rust", runtimeIdentity: identity })
-    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(JSON.stringify(result)).toContain("vt100 0.16.2")
     expect(result.observation?.outcome).not.toBe("unsupported")
     for (const overrides of [
       { runtimeIdentity: undefined },
