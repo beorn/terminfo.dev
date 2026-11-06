@@ -6294,7 +6294,14 @@ function declaredD2InterfaceAbsence(
   id: string,
   table: Readonly<Record<string, string>>,
   backend: string,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-pass-through" | "ghostty-native-d2" | "wezterm-d2" | "host-effect-h4",
+  cohort:
+    | "osc-absence"
+    | "vt100-rust-d2"
+    | "vterm-d2"
+    | "osc-pass-through"
+    | "ghostty-native-d2"
+    | "wezterm-d2"
+    | "host-effect-h4",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
   options: { readonly genericReportIsObservable?: boolean } = {},
