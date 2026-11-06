@@ -552,8 +552,10 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
   const identity: HeadlessRuntimeIdentity = {
     kind: "js",
     runtimeFormat: "js",
-    enginePackage: "@beorn/vterm",
+    adapterVersion: "0.10.2",
+    termlessRevision: "ce3e783b6536df0cc4e0a11d4567f1cdd96bafee",
     engineVersion: "0.13.1",
+    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     integrity: sourceIntegrity,
   }
   const declared = [
