@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
-import { NO_SAME_PATH_CONTROL } from "./helpers.ts"
+import { isDeclaredUntestable, NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
@@ -1357,8 +1357,9 @@ function stackStateSource(
   frames: ObservationFrame[],
   target: Record<string, string>,
   identicalReferences = false,
+  fresh = true,
 ) {
-  const source = captureSource(24, 80, writes, frames)
+  const source = captureSource(24, 80, writes, frames, fresh)
   const witness = source.capture!
   source.capture = async (request) => {
     const { label } = request
@@ -1476,21 +1477,73 @@ test.each(
   },
 )
 
-// Native Screen #31742: identical palette references must keep the oracle's reason and all fixtures.
-test.each(["modes.xtpushcolors", "modes.xtpopcolors"])("%s retains non-separating fixture diagnostics", async (id) => {
+// #31742: only a painted, unchanged palette has no setup; failed paint and SGR stay Open.
+test.each(
+  ["modes.xtpushcolors", "modes.xtpopcolors", "modes.xtpushsgr", "modes.xtpopsgr"].flatMap((id) =>
+    [
+      ["equal references with paint", true, true] as const,
+      ["equal references without paint", true, false] as const,
+      ["different references", false, true] as const,
+    ].map(([name, equal, fresh]) => [id, name, equal, fresh] as const),
+  ),
+)("%s with %s keeps the observed applicability boundary", async (id, _name, equal, fresh) => {
   const definition = modesProbes.find((item) => item.id === id)
   if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
   const frames: ObservationFrame[] = []
-  const result = await definition.term(stackStateSource([], frames, {}, true))
-  expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
-  expect(result.observation?.frames).toEqual(frames)
-  expect(frames.filter((frame) => frame.label.endsWith("post-sequence target"))).toHaveLength(3)
-  for (const fixture of ["POP fixture", "PUSH fixture (earlier contrast)", "PUSH fixture (persisted contrast)"]) {
-    const reason = `${id} ${fixture}: the ignored-attribute frame and the expected frame read the same cells, so this run cannot separate them`
-    expect(result.tests?.[0]?.reason).toContain(reason)
-    expect(result.observation?.note).toContain(reason)
+  let now = 0
+  const clock = fresh ? undefined : vi.spyOn(Date, "now").mockImplementation(() => (now += 10_000))
+  let result: ProbeCallbackResult
+  try {
+    result = await definition.term(
+      stackStateSource([], frames, { "POP fixture": "restored", "PUSH fixture": "restored" }, equal, fresh),
+    )
+  } finally {
+    clock?.mockRestore()
   }
+  const noSetup = id.includes("colors") && equal && fresh
+  expect(isDeclaredUntestable(result)).toBe(noSetup)
+  if (noSetup) {
+    expect(result.tests).toMatchObject([{ status: "untestable", reason: expect.stringContaining("OSC 4") }])
+    expect(result.observation?.note).toContain("blue and green")
+  } else if (equal || !fresh) {
+    expect(result.tests).toMatchObject([{ status: "probe-todo" }])
+  } else {
+    expect(result.observation?.outcome).toBe("supported")
+  }
+  if (fresh) expect(result.observation?.frames).toEqual(frames)
 })
+
+test.each(["modes.xtpushcolors", "modes.xtpopcolors", "modes.xtpushsgr", "modes.xtpopsgr"])(
+  "%s paints X at least two empty cells away from the compared Y",
+  async (id) => {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const surface = createSemanticSurface({ cols: 80, rows: 24 })
+    const source = stackStateSource([], [], { "POP fixture": "restored", "PUSH fixture": "restored" })
+    const write = source.write.bind(source)
+    source.write = (bytes) => {
+      write(bytes)
+      surface.feed(bytes)
+    }
+    const capture = source.capture!
+    let targets = 0
+    source.capture = async (request) => {
+      if (request.label.endsWith("post-sequence target")) {
+        if (!request.cells) throw new Error("Target crop missing")
+        const row = request.cells.top - 1
+        const y = request.cells.left - 1
+        expect(surface.getCell(row, y).char).toBe("Y")
+        const xs = Array.from({ length: 80 }, (_, col) => col).filter((col) => surface.getCell(row, col).char === "X")
+        expect(xs).toHaveLength(1)
+        expect(Math.abs(xs[0]! - y)).toBeGreaterThanOrEqual(3)
+        targets++
+      }
+      return capture(request)
+    }
+    await definition.term(source)
+    expect(targets).toBeGreaterThanOrEqual(2)
+  },
+)
 
 // #31904 R3f capture arm: the headless arm's three fixtures (@cto 009e40cd, 4e804806).
 test.each([

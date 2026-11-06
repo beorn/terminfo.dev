@@ -349,7 +349,8 @@ function trackedStack(ctx: TermProbeSource, push: string, pop: string): { ctx: T
  * - POP fixture: bold, push, reset, italic X, pop, Y. Bold Y is restored, italic Y persisted.
  * - PUSH fixture: bold, italic, push, reset, X, pop, Y. Bold-and-italic Y is restored, bold Y the
  *   earlier state, plain Y persisted.
- * The seed is a blank region, distinct from every Y the fixtures can leave.
+ * X is separated from Y by two empty cells so its antialiased edge never enters Y's crop; the
+ * cursor returns to Y's cell after the pop. The seed is distinct from every Y the fixtures leave.
  */
 async function xtSgrStackCapture(ctx: TermProbeSource, operation: "push" | "pop"): Promise<ProbeCallbackResult> {
   const id = operation === "push" ? "modes.xtpushsgr" : "modes.xtpopsgr"
@@ -366,7 +367,7 @@ async function xtSgrStackCapture(ctx: TermProbeSource, operation: "push" | "pop"
       minRows: 5,
       minCols: 6,
       seed: reset,
-      edit: `${reset}\x1b[3;3H${edit}Y\x1b[0m`,
+      edit: `${reset}\x1b[3;1H${edit}\x1b[3;4HY\x1b[0m`,
       expected: paintY(restored),
       ignored: paintY(ignored),
       discriminator: { signal: "y-restored", expected: "change" },
@@ -465,12 +466,14 @@ async function xtModeSaveCapture(ctx: TermProbeSource, operation: "push" | "pop"
 /**
  * Color-stack capture (#31904): the headless arm's two fixtures, read from the pixels of Y alone.
  * Y is printed through palette index 1 after the pop and read before any later palette change; X
- * is outside the compared cell, because a correct pop may recolor it (turn362).
+ * is separated from Y by two empty cells, because a correct pop may recolor it and its antialiased
+ * edge must not enter Y's crop. The cursor returns to Y's cell after the pop.
  * - POP fixture: blue, push, green, X, pop, Y. Blue Y is restored, green Y persisted.
  * - PUSH fixture: blue, magenta, push, green, X, pop, Y. Magenta Y is restored, blue Y the earlier
  *   state, green Y persisted.
  * The references paint Y through the same index, so a run whose OSC 4 does not move the index
- * leaves expected and contrast equal and the oracle declines it by name.
+ * leaves expected and contrast equal. When every fixture also has a moved paint witness, the
+ * palette has no setup; an absent witness remains Open before this applicability reading.
  */
 async function xtColorStackCapture(ctx: TermProbeSource, operation: "push" | "pop"): Promise<ProbeCallbackResult> {
   const id = operation === "push" ? "modes.xtpushcolors" : "modes.xtpopcolors"
@@ -491,14 +494,14 @@ async function xtColorStackCapture(ctx: TermProbeSource, operation: "push" | "po
       minRows: 4,
       minCols: 8,
       seed: reset,
-      edit: `${reset}${before}\x1b[#P${GREEN}\x1b[1;1H\x1b[38;5;1mX\x1b[#Q\x1b[38;5;1mY\x1b[0m`,
+      edit: `${reset}${before}\x1b[#P${GREEN}\x1b[1;5H\x1b[38;5;1mX\x1b[#Q\x1b[1;2H\x1b[38;5;1mY\x1b[0m`,
       expected: paintY(restored),
       ignored: paintY(ignored),
       discriminator: { signal: "palette-y-restored", expected: "change" },
       cleanup: "\x1b]104\x07",
       timeoutMs: DEFAULT_TIMEOUT_MS,
     })
-    return await captureStackRow(
+    const result = await captureStackRow(
       stack.ctx,
       operation,
       id,
@@ -506,6 +509,38 @@ async function xtColorStackCapture(ctx: TermProbeSource, operation: "push" | "po
       spec(BLUE, BLUE, GREEN),
       (contrast) => spec(`${BLUE}${MAGENTA}`, MAGENTA, contrast === "earlier" ? BLUE : GREEN),
     )
+    const observation = result.observation
+    const frames = observation?.frames
+    if (!observation || !frames) return result
+    const noSetup = ["POP fixture", "PUSH fixture (earlier contrast)", "PUSH fixture (persisted contrast)"].every(
+      (fixture) => {
+        const digest = (suffix: string) => {
+          const frame = frames.find((candidate) => candidate.label === `${id} ${fixture}: ${suffix}`)
+          return frame && frameDigests(frame).cells
+        }
+        const expected = digest("expected frame")
+        const ignored = digest("ignored-attribute frame")
+        const baseline = digest("post-sequence target — baseline")
+        const witness = digest("post-sequence target — paint witness")
+        return (
+          expected !== undefined &&
+          expected === ignored &&
+          baseline !== undefined &&
+          witness !== undefined &&
+          baseline !== witness
+        )
+      },
+    )
+    if (!noSetup) return result
+    const reason =
+      "Untestable: this app does not apply OSC 4, so the palette cannot change and a push or pop has nothing to show; blue and green paint the same in this run."
+    const declared = declaredUntestableResult(reason, { frames })
+    return {
+      ...result,
+      criterionBranch: declared.criterionBranch,
+      tests: declared.tests,
+      observation: { ...observation, note: reason },
+    }
   } finally {
     if (stack.open()) ctx.write("\x1b[#Q")
     ctx.write("\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
