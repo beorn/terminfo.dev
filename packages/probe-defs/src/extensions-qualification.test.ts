@@ -9,7 +9,7 @@ import { inputProbes } from "./input.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
 import { replayTermProbeSource } from "./testing/group-harness.ts"
-import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL } from "./helpers.ts"
+import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, isDeclaredUntestable } from "./helpers.ts"
 import type { HeadlessRuntimeIdentity, TermProbeSource, LibProbeSource } from "./types.ts"
 
 // Callback intent is distinct from producer formatting: malformed bytes must never opt into
@@ -389,15 +389,16 @@ test.each([10, 11, 12] as const)("OSC %i reset reviews a verified control instea
   expect(JSON.stringify(result)).toContain("reset produced neither the baseline nor the verified seed")
 })
 
-test.each([10, 11, 12] as const)("OSC %i reset keeps silent set-and-verify readback undecided", (code) => {
+test.each([10, 11, 12] as const)("OSC %i reset declares absent setup after qualified silent set-and-verify", (code) => {
   const source = silentHostSlot(code, "", "")
   const result = callback(`extensions.osc${code + 100}-reset-${{ 10: "fg", 11: "bg", 12: "cursor" }[code]}`).lib!(
     source,
   )
   expect(result.observation?.outcome).not.toBe("unsupported")
-  expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
+  expect(isDeclaredUntestable(result)).toBe(true)
   expect(result.assertions).toBeUndefined()
-  expect(JSON.parse(result.response!)).toMatchObject({
+  const retained = JSON.parse(result.response!) as { body: string }
+  expect(JSON.parse(retained.body)).toMatchObject({
     query: `\x1b]${code};?\x07`,
     originalRaw: "",
     controls: [
@@ -1375,6 +1376,34 @@ test("an explicit graphics refusal decides transmit and leaves display with no s
   expect(JSON.stringify(displayResult)).not.toMatch(/no image allocation readback/iu)
 })
 
+test.each(["sentinel", "timeout"] as const)(
+  "the library arm asks its canonical graphics question whether the silence reads as a %s",
+  async (reason) => {
+    // 32473: ghostty-native's natural run 2026-11-06T08-34 met the timeout shape in pass 1 and the sentinel
+    // shape in passes 2-3, so the query count differed across fresh-instance passes and both image cells graded
+    // probe-invalid. The count must not depend on which silence the collector reports.
+    const asked: string[] = []
+    const source = {
+      queryWithSentinelOutcome: (sequence: string, _pattern: RegExp) => {
+        asked.push(sequence)
+        return reason === "sentinel"
+          ? {
+              match: null,
+              reason: "sentinel" as const,
+              raw: "\x1b[?62;22c",
+              rawBase64: Buffer.from("\x1b[?62;22c").toString("base64"),
+              sentinel: { atMs: 3, graceMs: 250 },
+            }
+          : { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+      },
+      write: () => undefined,
+    } as unknown as LibProbeSource
+    const result = callback("extensions.kitty-graphics.transmit").lib!(source)
+    expect(asked.filter((sequence) => sequence.includes("a=q"))).toHaveLength(1)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  },
+)
+
 // 31377: the refusal specimen is retained run772ff2a6/suite9cc61ebe4417, including its DA1 window.
 // A correlated refusal proves recognition but does not accept the canonical direct RGB query.
 test.each([
@@ -1614,20 +1643,20 @@ test.each([
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
     {
-      id: "criterion",
-      status: "probe-todo",
-      reason: `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`,
+      id: "declared-untestable",
+      status: "untestable",
+      reason: `Untestable (no setup): OSC ${setCode} colour setup does not work on this library, so this command has nothing to act on.`,
     },
   ])
 })
 
-// #32246: a silent or sentinel-bounded initial highlight query is an unanswered prerequisite reading, so it is TEST
-// TODO for every engine identity (@cto 0db5ad54); a malformed reply stays PROBE INVALID, and a measured colour decides.
+// Phase 2b refines #32246: qualified silence declares no setup; missing control
+// stays Open. Malformed replies stay PROBE INVALID and measured colours decide.
 test.each([
   ["extensions.osc117-reset-highlight-bg", 17, 117],
   ["extensions.osc119-reset-highlight-fg", 19, 119],
 ] as const)(
-  "%s keeps a silent highlight query PROBE TODO without overriding real replies",
+  "%s distinguishes absent setup from missing control without overriding real replies",
   (id, setCode, resetCode) => {
     const definition = callback(id)
     const query = `\x1b]${setCode};?\x07`
@@ -1658,6 +1687,10 @@ test.each([
         expect(calls).toEqual([query])
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
+        if (mode === "sentinel") {
+          expect(isDeclaredUntestable(result)).toBe(true)
+          continue
+        }
         expect(result.criterionBranch).toBeUndefined()
         if (mode === "silent") {
           expect(result).toEqual({
@@ -1672,19 +1705,10 @@ test.each([
         expect(result.tests).toEqual([
           {
             id: "criterion",
-            status: mode === "malformed" ? "probe-invalid" : "probe-todo",
-            // #31398 names the sentinel-bounded silence by its passed DA1 control; the grade is PROBE TODO either way.
-            reason:
-              mode === "sentinel"
-                ? `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`
-                : `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
+            status: "probe-invalid",
+            reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
           },
         ])
-        if (mode === "sentinel") {
-          expect(JSON.parse(result.response!)).toMatchObject({
-            initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" },
-          })
-        }
       }
       // A measured colour decides, including a genuine reset negative.
       for (const ignoresReset of [false, true]) {

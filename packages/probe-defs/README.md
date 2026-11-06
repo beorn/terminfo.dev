@@ -25,15 +25,22 @@ The [writer and finalizer](src/helpers.ts) fold explicit tests and diagnostics i
 a supported observation can still have a failed or pending required test; an inconclusive observation alone
 does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named
 missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
-to PROBE INVALID. The one route to Untestable is the operator's Nov 4 16:55 declaration: a probe's own library arm returns declaredUntestableResult with its reason, and isDeclaredUntestable is the only form the finalizer and the run reader admit (@cto ruling 2026-11-04). The operator's Nov 4 D1 APPLY extends that declaration to OSC720 on the libvterm 0.3.3 and WezTerm Screen 0.1.0-fork.5 library subjects, whose public interfaces expose history without their own scrolling window. Any other untestable test folds to PROBE TODO.
+to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclaredUntestable` is the only form the finalizer and run reader admit. Its reason names the cause: **passed to the app**, **no way**, or **no setup** (and the more specific **no way to tell** or **app** where applicable). The operator's per-kind declarations remain, including OSC720 on libvterm and WezTerm, whose libraries keep history without their own scrolling window. Any other untestable test folds to PROBE TODO.
+
+For library results, a feature is the library's job unless the app-job table in [extensions.ts](src/extensions.ts) assigns it to the app. A real state reading or typed notification store can establish Supported. A generic handoff of an app-job command is Untestable (passed to the app), even when its payload is intact. Libvterm and vt100-rust qualify their report in this cell's run: a made-up OSC and the target are reported, while a handled title command applies without a report. Xterm.js and vterm.js generic taps require their declared engine identity; a different engine identity remains Open. Missing report controls also remain Open. Library-job negatives keep `unhandledSequenceVerdict`; these are Unsupported when the library reports the target with its same-run controls.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
-OSC 17 or 19 supplies no initial colour, the callback records a named PROBE TODO; broken or untrustworthy
+OSC 17 or 19 supplies no initial colour, the library callback checks the existing unhandled report first.
+For the approved reset/colour-stack no-setup route, a silent setup query with its own qualified DA1
+control and no target report returns the existing declared Untestable result with the no-setup cause.
+A missing control or ambiguous target report stays Open; verified seeded-colour effects keep their
+existing result. This route adds no post-collection classification or dependency on another cell.
+Other missing initial readings record a named PROBE TODO; broken or untrustworthy
 measurement remains PROBE INVALID. Silence alone does not establish Unsupported.
 The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
 The `FeatureResultDisplayState` value `inconclusive` denotes Untestable (reached only by the declared route above), `error` denotes PROBE INVALID and `untested` denotes
 PROBE TODO; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
 
-No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A probe result comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is PROBE TODO with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. PROBE INVALID means the probe or harness broke or got data it cannot trust. Untestable has one route, the declaration above; otherwise a probe whose setup has no observable for every subject of a kind reads PROBE TODO, and source never sets it per engine. A probe never implements the feature itself.
+No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A probe result comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is PROBE TODO with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. PROBE INVALID means the probe or harness broke or got data it cannot trust. Untestable has the explicit route above; otherwise a probe whose setup has no observable for every subject of a kind reads PROBE TODO, and source never sets it per engine. A probe never implements the feature itself.
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
@@ -185,8 +192,9 @@ Library `cell.hidden: null` means conceal is not reported; missing cell observab
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO
 when no clipboard-state witness is wired; a read negative cannot measure the write.
-Reset, colour-stack and Kitty transfer/display effects likewise stay PROBE TODO when their
-readback is silent, even if DA1 answers. Effect absence needs an answered same-probe state
+Reset and colour-stack effects use the approved no-setup declaration above only when their own
+setup query is silent, its control answers and no target report exists. Kitty transfer/display and
+other silent effect readings stay PROBE TODO even if DA1 answers. Effect absence needs an answered same-probe state
 control and an observed comparison. Existing own-state readers and answered unchanged-state
 comparisons continue to decide results; query features retain their own reply criteria.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
@@ -391,6 +399,10 @@ control would itself be the target. Indexed colours use the probe's own `38;5;17
 with SGR 0 cleanup; direct RGB and the truecolor extension use `38;2;17;97;201` / `48;2;17;97;201`.
 The engines report each unhandled operand in order; handled operands do not create entries.
 OSC 633 P's number-only rejection also decides Unsupported: its payload was not delivered.
+On VT100.js, the OSC52 clipboard roundtrip and write arms also consult this existing OSC
+report verdict after an undecided body. An exact own OSC52 write rejection and the
+same-run handled control establish Unsupported; the read arm and other libraries retain
+their existing criteria. A decided clipboard reader always takes precedence.
 
 For EL with background attributes, XTWINOPS 22/23, alternate-screen exit and italic selective reset,
 rejection of the setup itself with the passing SGR 1 control makes the dependent claim Untestable

@@ -25,24 +25,28 @@ import { parserStateResult, recordExecutedProbe } from "./helpers.ts"
 const REASON = "library reported this sequence as unhandled"
 
 // A report or declaration cannot replace a deciding callback supplied by the registry.
-test.each(["sgr.fg.256", "extensions.osc2-title", "device.xtwinops-22", "editing.decsace"])(
-  "%s retains its existing measured reader outcome",
-  (id) => {
-    for (const pass of [true, false]) {
-      const definition = withD2LibraryObservation({
-        id,
-        lib: () => parserStateResult(pass, "existing measured reader", { measured: pass }),
-        term: null,
-      })
-      const source = reportingSource({ records: [recordsOsc("2"), recordsCsi("38;5;173m")] })
-      Object.assign(source, { backendName: "vt100", runtimeIdentity: { kind: "js", engineVersion: "0.13.1" } })
-      const result = definition.lib!(source)
-      expect(result.observation?.outcome).toBe(pass ? "supported" : "unsupported")
-      expect(isDeclaredUntestable(result)).toBe(false)
-      expect(JSON.stringify(result)).not.toContain(REASON)
-    }
-  },
-)
+test.each([
+  "sgr.fg.256",
+  "extensions.osc2-title",
+  "device.xtwinops-22",
+  "editing.decsace",
+  "extensions.osc52-clipboard",
+  "extensions.osc52-write",
+])("%s retains its existing measured reader outcome", (id) => {
+  for (const pass of [true, false]) {
+    const definition = withD2LibraryObservation({
+      id,
+      lib: () => parserStateResult(pass, "existing measured reader", { measured: pass }),
+      term: null,
+    })
+    const source = reportingSource({ records: [recordsOsc("2"), recordsOsc("52"), recordsCsi("38;5;173m")] })
+    Object.assign(source, { backendName: "vt100", runtimeIdentity: { kind: "js", engineVersion: "0.13.1" } })
+    const result = definition.lib!(source)
+    expect(result.observation?.outcome).toBe(pass ? "supported" : "unsupported")
+    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(JSON.stringify(result)).not.toContain(REASON)
+  }
+})
 
 // NR-C: existing scalar cases cannot catch partial, reordered or extra reports.
 test.each([
@@ -164,6 +168,27 @@ const recordsCsi = (code: string) => ({
   match: new RegExp(`\\x1b\\[${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
   code: { kind: "csi" as const, code },
 })
+
+// Route 2: the clipboard is outside the library, but its own parser rejection
+// can decide the write. Missing controls and the unqueued subjects stay on their prior path.
+test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
+  "%s VT100 rejection needs its own report and the existing handled control",
+  (id) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    const source = reportingSource({ records: [recordsOsc("2"), recordsOsc("52")], titleApplies: false })
+    Object.assign(source, { backendName: "vt100" })
+    expect(definition.lib!(source).observation?.outcome).toBe("unsupported")
+    for (const overrides of [
+      { backendName: "vt220" },
+      { getUnhandledSequences: undefined },
+      { getCell: inertLibProbeSource().getCell },
+    ]) {
+      const control = reportingSource({ records: [recordsOsc("2"), recordsOsc("52")], titleApplies: false })
+      Object.assign(control, { backendName: "vt100", ...overrides })
+      expect(JSON.stringify(definition.lib!(control))).not.toContain(REASON)
+    }
+  },
+)
 
 // @failure H-4's numeric rejection reports remain TODO, or a failed handled control invents a negative.
 // @level l2
@@ -579,12 +604,6 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     "extensions.kitty-graphics",
     "extensions.kitty-graphics.display",
     "extensions.kitty-graphics.transmit",
-    "extensions.osc176-app-id",
-    "extensions.osc3008-context",
-    "extensions.osc440-audio",
-    "extensions.osc555-flash",
-    "extensions.osc666-termprop",
-    "extensions.osc710-font-normal",
   ] as const
   const definition = (id: string) => ALL_PROBES.find((p) => p.id === id)!
   const source = (feed: string, kind: "osc" | "csi", code: string, overrides: Partial<LibProbeSource> = {}) => ({
@@ -606,7 +625,8 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     }
   })
 
-  // The released eleven-cell D2 slice declares only this audited 0.16.2 subject.
+  // The five remaining D2 interface absences declare only this audited 0.16.2 subject.
+  // The six app-job OSCs moved to run-derived controls in declared-untestable.test.ts.
   // Negative-only coverage could not prove the declaration or retain its versioned reason.
   test.each(declared)("%s declares Untestable only for the audited vt100 0.16.2 subject", (id) => {
     const lib = definition(id).lib!
@@ -927,7 +947,7 @@ describe("Ghostty native 1.3.1 D2 six-cell interface-absence declarations", () =
     expect(result.observation?.outcome).toBe("unsupported")
   })
 
-  test("OSC 22, host effects and shell cells remain outside the six declarations", () => {
+  test("R3 readers and unaudited host effects remain outside native D2 declarations", () => {
     for (const id of [
       "extensions.osc22-pointer",
       "extensions.osc176-app-id",
@@ -937,7 +957,8 @@ describe("Ghostty native 1.3.1 D2 six-cell interface-absence declarations", () =
       "extensions.osc666-termprop",
       "extensions.osc710-font-normal",
       "extensions.osc133-a",
-      "editing.decsace",
+      "extensions.osc133-d",
+      "extensions.semantic-prompts",
     ]) {
       expect(isDeclaredUntestable(definition(id).lib!(nativeSource()))).toBe(false)
     }

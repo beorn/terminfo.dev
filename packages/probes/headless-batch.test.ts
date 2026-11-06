@@ -59,6 +59,64 @@ async function backend() {
   return createXtermBackend()
 }
 
+// @failure The approved nine mode observations stay TODO despite a controlled report, public state or effect.
+// @level l5
+// @consumer Registered mode callbacks on the owned real engines; prior tests cover only DECRPM and two state opt-ins.
+test.runIf(OWNED_LAYOUT).each([
+  { name: "vt100", create: createVt100Backend, type: "js", id: "modes.decsclm", number: 4, expected: "unsupported" },
+  { name: "vt220", create: createVt220Backend, type: "js", id: "modes.decsclm", number: 4, expected: "unsupported" },
+  ...[
+    { id: "modes.bracketed-paste", number: 2004 },
+    { id: "modes.mouse-tracking", number: 1000 },
+    { id: "modes.mouse-all", number: 1003 },
+    { id: "modes.mouse-sgr", number: 1006 },
+    { id: "modes.utf8-mouse-1005", number: 1005 },
+    { id: "modes.application-cursor", number: 1 },
+  ].map((row) => ({
+    name: "vt100-rust",
+    create: createVt100RustBackend,
+    type: "native" as const,
+    ...row,
+    expected: "supported",
+  })),
+  {
+    name: "alacritty",
+    create: createAlacrittyBackend,
+    type: "native",
+    id: "modes.synchronized-output",
+    number: 2026,
+    expected: "supported",
+  },
+] as const)("controlled modes: $name $id", async ({ name, create, type, id, number, expected }) => {
+  const value = await create()
+  try {
+    await value.init({ cols: 80, rows: 24 })
+    const identity = await headlessIdentity.headlessRuntimeIdentity(name, `@termless/${name}`, type)
+    identity.adapterSources = headlessIdentity.readAdapterSources(name, value)
+    const source = createLibProbeSource(value, undefined, identity, undefined)
+    const definition = registryDefinitions([id])[0]!
+    const result = definition.lib!(source)
+    expect(result.observation, result.response ?? result.note).toMatchObject({
+      outcome: expected,
+      assertionType: "buffer_state",
+    })
+    expect(
+      result.assertions?.some((assertion) => assertion.kind === (expected === "supported" ? "positive" : "negative")),
+    ).toBe(true)
+    if (expected === "supported") {
+      const disabled = definition.lib!({
+        ...source,
+        feed(text) {
+          source.feed(text.replaceAll(`\x1b[?${number}h`, ""))
+        },
+      })
+      expect(disabled.observation?.outcome, disabled.response ?? disabled.note).not.toBe("supported")
+    }
+  } finally {
+    value.destroy()
+  }
+})
+
 // @failure OSC22's library arm checks CPR instead of its pointer query; a target no-op,
 // absent control, or silent reader must not acquire Supported, and the incoming shape must survive.
 // @level l5
@@ -146,8 +204,8 @@ test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvai
         "extensions.osc710-font-normal",
         "modes.decsscls",
       ]
-      const held = ["extensions.osc133-b", "extensions.semantic-prompts"]
-      const ids = [...candidates, ...held, "extensions.osc3008-context"]
+      const semantic = ["extensions.osc133-b", "extensions.semantic-prompts"]
+      const ids = [...candidates, ...semantic, "extensions.osc3008-context"]
       const draft = initializeRunDraft({
         source: { kind: "live" },
         runId: "kitty-d2-report-fixture",
@@ -181,7 +239,9 @@ test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvai
             ? "unsupported"
             : result.featureId === "extensions.osc3008-context"
               ? "untestable"
-              : "probe-todo",
+              : result.featureId === "extensions.osc133-b"
+                ? "unsupported"
+                : "supported",
         )
         if (candidates.includes(result.featureId)) {
           expect(result.reason).toBe("library reported this sequence as unhandled")
@@ -247,7 +307,7 @@ function afterReplyControl(factory: typeof backend): typeof backend {
   }
 }
 
-// @failure Reply qualification replaces an engine's own review, or repeats a callback that cannot yield a negative.
+// @failure Reply qualification replaces native observations or repeats a callback that yields no controlled negative.
 // @level l1
 // @consumer Real Ghostty-native colour/icon callbacks and Alacritty synchronized-output through collectBatch
 for (const scenario of [
@@ -270,7 +330,7 @@ for (const scenario of [
   },
 ]) {
   test.skipIf(!OWNED_LAYOUT || !scenario.available)(
-    `preserves ${scenario.name} native reviews without fresh-instance repeats`,
+    `preserves ${scenario.name} native observations without fresh-instance repeats`,
     async () => {
       const measured = await scenario.create()
       measured.init({ cols: 80, rows: 24 })
@@ -312,30 +372,23 @@ for (const scenario of [
         const slot =
           featureId === "extensions.osc10-fg-color" ? 10 : featureId === "extensions.osc11-bg-color" ? 11 : 12
         const colour = featureId !== "extensions.osc0-icon-title" && scenario.name === "ghostty-native"
+        const status = scenario.name === "alacritty" ? "supported" : "probe-todo"
         const reason = colour
           ? `Open: the colour query (OSC ${slot}) got no answer before setting a colour or after resetting it. The set-colour control did work, but it cannot show the original default`
           : scenario.name === "alacritty"
-            ? "DECRPM reply to CSI ? 2026 $ p"
+            ? "buffered effect measured; rendered tearing unmeasured"
             : "Open: asking for the icon name (CSI 20 t, a short window name) got no answer within our wait, and no reply control worked in this test. With these readings, our test cannot tell whether OSC 0 set both names."
-        const testReason = colour
-          ? `${reason}, so this run cannot decide it`
-          : scenario.name === "alacritty"
-            ? "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works."
-            : reason
+        const testReason = colour ? `${reason}, so this run cannot decide it` : reason
         return {
           featureId,
-          status: "probe-todo",
+          status,
           reason,
-          criterionBranch: colour
-            ? "color-readback-review"
-            : scenario.name === "alacritty"
-              ? "os-input-review"
-              : undefined,
+          criterionBranch: colour ? "color-readback-review" : undefined,
           rawReplyRef: featureId,
           tests: [
             {
-              id: colour || scenario.name === "alacritty" ? "review" : "criterion",
-              status: "probe-todo",
+              id: colour ? "review" : "criterion",
+              status,
               reason: testReason,
               rawReplyRef: featureId,
             },
@@ -1726,28 +1779,30 @@ test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a probe-t
   }
 })
 
-// @failure #32307: completed public OSC callbacks were not wired to the existing probe source, leaving real777 TODO.
+// @failure A generic tap payload is graded Supported without an engine declaration, or payload forwarding is lost.
 // @level l1
 // @consumer extensions.osc777-notify through the real vterm and xterm adapters and existing source forwarding.
 test.each([
   ["vterm", createVtermBackend],
   ["xterm", createXtermBackend],
-] as const)("%s OSC777 payloads reach the qualified probe with prior history", (_name, create) => {
+] as const)("%s OSC777 tap keeps payloads but cannot decide support without an engine declaration", (_name, create) => {
   const value = create({ cols: 80, rows: 24 })
   try {
     const source = createLibProbeSource(value, undefined, undefined, undefined)
     source.feed("\x1b]777;preexec\x07")
     const definition = registryDefinitions(["extensions.osc777-notify"])[0]!
     const result = definition.lib!(source)
-    expect(result.notTested).toBeUndefined()
-    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+    expect(result.notTested?.noObservable).toContain("engine identity")
+    expect(result.observation).toBeUndefined()
+    source.feed("\x1b]777;terminfo-777-control\x07")
+    source.feed("\x1b]777;notify;terminfo-777-title-A;terminfo-777-body-A\x07")
+    source.feed("\x1b]777;notify;terminfo-777-title-B;terminfo-777-body-B\x07")
     const expected = [
       "preexec",
       "terminfo-777-control",
       "notify;terminfo-777-title-A;terminfo-777-body-A",
       "notify;terminfo-777-title-B;terminfo-777-body-B",
     ]
-    expect((JSON.parse(result.response!) as { second: string[] }).second).toEqual(expected)
     expect(source.getOsc777Payloads!()).toEqual(expected)
   } finally {
     value.destroy()
@@ -1951,7 +2006,7 @@ test.for(["semantic-marks", "sixel-storage"] as const)(
 // @failure The native WezTerm mouse bridge is not reached by the registered callbacks, or an unbound path is graded.
 // @level l5
 // @consumer Real native WezTerm through the production collector's per-probe backend/source boundary.
-test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide five cells and retain two unbound paths", () => {
+test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide six cells and retain one unbound path", () => {
   for (const [id, outcome] of [
     ["input.xtest-click", "supported"],
     ["input.xtest-wheel", "supported"],
@@ -1959,7 +2014,7 @@ test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide five cells and r
     ["input.x10-mouse", "unsupported"],
     ["input.urxvt-mouse", "unsupported"],
     ["input.pixel-mouse", null],
-    ["input.kitty-click-events", null],
+    ["input.kitty-click-events", "unsupported"],
   ] as const) {
     // collectBatch likewise constructs and initializes one fresh backend inside its per-probe loop.
     const value = createWeztermBackend({ cols: 80, rows: 24 })
@@ -2054,12 +2109,24 @@ test.skipIf(!isKittyAvailable())(
         expect(marks.first.at(-1), id).toEqual({ type, startRow: 0, startCol: 0 })
         expect(marks.second.at(-1), id).toEqual({ type, startRow: 1, startCol: 2 })
       }
-      // Full semantic lifecycle remains TODO. Owned Kitty now rejects this OSC633 payload explicitly.
-      for (const id of OWNED_LAYOUT
-        ? ["extensions.semantic-prompts"]
-        : ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
-        const umbrella = registryDefinitions([id])[0]!.lib!(source)
-        expect(umbrella.tests, id).toEqual([
+      const umbrella = registryDefinitions(["extensions.semantic-prompts"])[0]!.lib!(source)
+      expect(umbrella.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      const lifecycle = JSON.parse(umbrella.response!) as {
+        prompt: unknown[]
+        output: unknown[]
+        end: unknown[]
+        unknown: unknown[]
+      }
+      expect(lifecycle.prompt.at(-1)).toEqual({ type: "prompt", startRow: 0, startCol: 0 })
+      expect(lifecycle.output.at(-1)).toEqual({ type: "output", startRow: 1, startCol: 2 })
+      expect(lifecycle.end.at(-1)).toEqual({ type: "command-end", rawStatus: "17" })
+      expect(lifecycle.unknown).toEqual(lifecycle.end)
+      if (OWNED_LAYOUT) {
+        expect(registryDefinitions(["extensions.osc-633-vscode"])[0]!.lib!(source).observation).toMatchObject({
+          outcome: "unsupported",
+        })
+      } else {
+        expect(registryDefinitions(["extensions.osc-633-vscode"])[0]!.lib!(source).tests).toEqual([
           {
             id: "criterion",
             status: "probe-todo",
@@ -2067,12 +2134,6 @@ test.skipIf(!isKittyAvailable())(
               "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
           },
         ])
-        expect(umbrella.observation, id).toBeUndefined()
-      }
-      if (OWNED_LAYOUT) {
-        expect(registryDefinitions(["extensions.osc-633-vscode"])[0]!.lib!(source).observation).toMatchObject({
-          outcome: "unsupported",
-        })
       }
       const cached = source.getSemanticMarks!()
       const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
@@ -2311,7 +2372,7 @@ test("cwd readback errors propagate after restoring the original metadata", asyn
 // 31299: callback-only assertions miss a typed source review that the capture parser rejects.
 // Keep the real registered callback, pinned identity fixture, adapter, collector and parser on one path.
 test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-highlight-fg"])(
-  "%s reads PROBE TODO, never a source review, through the actual collector",
+  "%s reads the no-setup declaration through the actual collector and parser",
   async (id) => {
     const definition = ALL_PROBES.find((entry) => entry.id === id)!
     // Source-audit input, not an attestation of this runner's checkout. Standalone CI has no owned siblings.
@@ -2392,11 +2453,11 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
     expect(parsed.results).toMatchObject([
       {
         featureId: id,
-        status: "probe-todo",
-        tests: [{ id: "criterion", status: "probe-todo" }],
+        status: "untestable",
+        tests: [{ id: "declared-untestable", status: "untestable" }],
       },
     ])
-    expect(parsed.results?.[0]?.criterionBranch).toBeUndefined()
+    expect(parsed.results?.[0]?.criterionBranch).toBe("headless-observable-review")
   },
 )
 
@@ -4016,7 +4077,7 @@ test.each([
     expect(batch.results).toHaveLength(COLOR_READBACK_IDS.length)
     // On xtermjs, extensions.osc104-reset-palette is decided via the indexed-cell witness
     // (_core._inputHandler.onColor events; #31735, @cto 863bef67), while the 7 default/stack
-    // queries remain silent and request color-readback-review.
+    // queries remain silent and now declare no setup after their own control.
     const cellWitnessIds = engine === "xtermjs" ? ["extensions.osc104-reset-palette"] : []
     // libvterm and the owned DEC adapters report the two pointer resets as unhandled.
     // Published DEC adapters lack that reader; other silent resets keep their review and raw query.
@@ -4060,10 +4121,14 @@ test.each([
         expect(result.criterionBranch, result.featureId).toBeUndefined()
         continue
       }
-      expect(result.status, result.featureId).toBe("probe-todo")
-      expect(result.criterionBranch, result.featureId).toBe("color-readback-review")
+      const noSetup = engine === "xtermjs"
+      expect(result.status, result.featureId).toBe(noSetup ? "untestable" : "probe-todo")
+      expect(result.criterionBranch, result.featureId).toBe(
+        noSetup ? "headless-observable-review" : "color-readback-review",
+      )
       expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
-      const raw = JSON.parse(batch.rawReplies[result.featureId]!) as {
+      const retained = JSON.parse(batch.rawReplies[result.featureId]!) as { body: string }
+      const raw = (noSetup ? JSON.parse(retained.body) : retained) as {
         query: string
         originalRaw?: string
         initialSentinel?: unknown
@@ -4099,11 +4164,17 @@ test.each([
       expect(batch.notTested, result.featureId).toContainEqual({
         featureId: result.featureId,
         reason: "no-semantic-observable",
-        noObservable: noObservableByFeature[result.featureId],
+        noObservable: noSetup
+          ? expect.stringMatching(/Untestable \(no setup\):/)
+          : noObservableByFeature[result.featureId],
         rawReplyRef: result.featureId,
       })
       expect(result.tests, result.featureId).toContainEqual(
-        expect.objectContaining({ id: "review", status: "probe-todo", rawReplyRef: result.featureId }),
+        expect.objectContaining({
+          id: noSetup ? "declared-untestable" : "review",
+          status: noSetup ? "untestable" : "probe-todo",
+          rawReplyRef: result.featureId,
+        }),
       )
     }
   },
@@ -4959,14 +5030,13 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     adapterType: "js",
   })
   expect(batch.ungradedDiagnostics).toEqual({})
-  // #32246: the pending OSC 52 rows stay PROBE TODO and carry no source branch or typed negative.
+  // Route 2: the audited xterm OSC 52 writes declare an app handoff without a typed observation.
   expect(batch.results).toMatchObject([
     { featureId: ids[0], status: "supported", assertionType: "buffer_state" },
-    { featureId: ids[1], status: "probe-todo" },
-    { featureId: ids[2], status: "probe-todo" },
+    { featureId: ids[1], status: "untestable", criterionBranch: "headless-observable-review" },
+    { featureId: ids[2], status: "untestable", criterionBranch: "headless-observable-review" },
   ])
   for (const row of batch.results.slice(1)) {
-    expect(row, row.featureId).not.toHaveProperty("criterionBranch")
     expect(row, row.featureId).not.toHaveProperty("assertionType")
   }
   const captured: CapturedRunDraft = {
@@ -4994,15 +5064,14 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     parseRun("qualified-unit.capture.json", JSON.stringify(value), ids, new Map([[manifest.probeHash, manifest]]))
   expect(read(captured).results).toEqual(batch.results)
   expect(read(finalizeCollectedDraft(captured)).results).toEqual(batch.results)
-  // The parser-level-rejection rule is gone with the source answers (#32246): a PROBE TODO row that claims a type
-  // stays PROBE TODO, never an Unsupported probe result.
+  // A stray type cannot turn the app handoff declaration into a measured verdict.
   const mislabeled = structuredClone(captured)
   for (const result of mislabeled.results.slice(1)) result.assertionType = "query_reply"
   for (const assertion of mislabeled.assertions.filter((entry) => entry.featureId !== ids[0])) {
     assertion.assertionType = "query_reply"
   }
   const relabeled = read(mislabeled).results
-  expect(relabeled?.slice(1).map((row) => row.status)).toEqual(["probe-todo", "probe-todo"])
+  expect(relabeled?.slice(1).map((row) => row.status)).toEqual(["untestable", "untestable"])
   // The OSC 52 rows carry no state assertion any more (#32246); the measured OSC 0 snapshot keeps the check.
   const invalidState = structuredClone(captured)
   const stateAssertion = invalidState.assertions.find((entry) => entry.featureId === ids[0])!
@@ -5847,6 +5916,24 @@ test.each([
   },
 )
 
+// @cto routes-32 sections 3 and 4: the real engines decide slice C's measured kitty-click rows.
+test.runIf(OWNED_LAYOUT).each([
+  ["vt100", async () => createVt100Backend(), "library reported this sequence as unhandled"],
+  ["vt220", async () => createVt220Backend(), "library reported this sequence as unhandled"],
+  ["wezterm", async () => createWeztermBackend(), "kitty-click-events:1"],
+] as const)("real %s reads input.kitty-click-events Unsupported", async (name, create, evidence) => {
+  const value = await create()
+  value.init({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const result = registryDefinitions(["input.kitty-click-events"])[0]!.lib!(source)
+    expect(result.observation?.outcome, name).toBe("unsupported")
+    expect(JSON.stringify(result), name).toContain(evidence)
+  } finally {
+    value.destroy()
+  }
+})
+
 // NR-A, @cto 947dcd40 slice A: the real engine's own reports decide these rows; the identity is the audited subject.
 // Hosted resolves the published adapter, which is not that subject.
 test.runIf(OWNED_LAYOUT)(
@@ -5959,6 +6046,18 @@ test.runIf(OWNED_LAYOUT).each([
   }
   expect(batch.observations).toHaveLength(2)
   for (const observation of batch.observations) expect(observation.assertionType).toBe("buffer_state")
+})
+
+// Route 2: the real collector must admit the report's buffer_state assertion
+// for these query_reply definitions; callback-only tests cannot catch that boundary.
+test.runIf(OWNED_LAYOUT)("VT100 OSC52 write reports cross the real collector boundary", async () => {
+  const ids = ["extensions.osc52-clipboard", "extensions.osc52-write"]
+  const batch = await collectBatch(resolveVt100, "vt100", registryDefinitions(ids))
+  expect(batch.results.map(({ featureId, status }) => [featureId, status])).toEqual(
+    ids.map((id) => [id, "unsupported"]),
+  )
+  for (const result of batch.results) expect(result.reason).toBe("library reported this sequence as unhandled")
+  expect(batch.observations.map(({ assertionType }) => assertionType)).toEqual(["buffer_state", "buffer_state"])
 })
 
 // NR-C: scalar-only reporting misses colour payload lists, while setup rejection

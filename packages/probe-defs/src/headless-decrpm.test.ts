@@ -1,5 +1,5 @@
 /**
- * @failure A DECRQM mode feature's headless arm grades without the engine's own DECRPM reply, reads that reply with a second parser, or counts the adapter's getMode value as evidence.
+ * @failure A DECRQM mode feature ignores the engine's DECRPM reply or grades silent replies from uncontrolled state.
  * @level l2
  * @consumer Headless capture rows for the seven DECRQM mode features (#30543, @cto ruling b5987212).
  * @reach Runs each registry definition's termless callback against a scripted context, and the shared parser directly.
@@ -219,7 +219,7 @@ const features = [
   { id: "modes.focus-tracking", number: 1004, mode: "focusTracking" },
   { id: "modes.mouse-sgr", number: 1006, mode: "sgrMouse" },
   { id: "modes.mouse-all", number: 1003, mode: "mouseTracking" },
-  { id: "modes.utf8-mouse-1005", number: 1005, mode: null },
+  { id: "modes.utf8-mouse-1005", number: 1005, mode: "utf8Mouse" },
 ] as const
 
 function headless(id: string): NonNullable<LibProbeSource extends infer _ ? (ctx: LibProbeSource) => unknown : never> {
@@ -300,12 +300,19 @@ test.each(features)("$id grades the engine's DECRPM reply exactly as the app arm
 })
 
 test.each(features.filter(({ number }) => number !== 1))(
-  "$id routes a missing or foreign DECRPM reply to review, keeping getMode as context only",
+  "$id keeps missing or foreign DECRPM replies undecided without controlled state",
   ({ id, number, mode }) => {
     const arm = headless(id)
     for (const reply of ["", "\x1b[?25;1$y\x1b[?6c", `\x1b[?${number === 1 ? 2004 : 1};1$y`]) {
       const result = arm(context(reply, true, [], [])) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
       const label = `${id}: ${JSON.stringify(reply)}`
+      if (number !== 1004) {
+        expect(result.observation, label).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+        expect(result.assertions ?? [], label).toEqual([])
+        expect(result.tests, label).toMatchObject([{ id: "criterion", status: "probe-todo" }])
+        expect(JSON.parse(result.response!), label).toMatchObject({ prior: expectedState(reply, mode) })
+        continue
+      }
       expect(result.criterionBranch, label).toBe("os-input-review")
       expect(result.notTested, label).toEqual({
         reason: "no-semantic-observable",

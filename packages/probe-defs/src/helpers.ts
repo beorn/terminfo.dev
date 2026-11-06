@@ -66,11 +66,6 @@ export const ADAPTER_SOURCE_AUDITS = {
     // Historical cohort retained for existing API/reply and source-review consumers.
     "packages/ghostty/src/backend.ts": "560146d5f929f31a8f973f809d97f91cf0e23fd6",
   },
-  ghostty42e84af1: {
-    "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
-    // Underline-colour ABI readback (termless 2f73fc28); current receipt and parser audits bind WASM 42e84af1.
-    "packages/ghostty/src/backend.ts": "19d45e37b36c0d6fc8d69ae6215ece9db173351c",
-  },
   libvterm: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
     "packages/libvterm/src/backend.ts": "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00",
@@ -1722,8 +1717,8 @@ export function decrpmModeProbe(
  * graded by the same decrpmResult as the app arm, whenever the adapter delivers one.
  * Default callers retain getMode as context only. The six-mode requireReadback opt-in requires the
  * engine's set/reset reply pair and independently agreeing adapter reads; a binding gap stays TODO.
- * Only the two stateReadback callers may use controlled public state when that reply is absent.
- * The branch keys on the observed reply, never on an engine name.
+ * Only the eight stateReadback callers may use controlled public state or effect when that reply is absent.
+ * The reply stays primary; the synchronized-output effect arm is scoped to Alacritty.
  */
 export function headlessDecrpmArm(
   modeNum: number,
@@ -1807,7 +1802,9 @@ export function headlessDecrpmArm(
           }
         }
         if (setPs === null) {
-          if (args[2]?.stateReadback) return modeStateReadback(ctx, modeNum, key, state)
+          if (args[2]?.stateReadback && (modeNum !== 2026 || ctx.backendName === "alacritty")) {
+            return modeStateReadback(ctx, modeNum, key, state)
+          }
           return osInputReviewResult(
             `DECRPM reply to CSI ? ${modeNum} $ p`,
             state,
@@ -1878,21 +1875,78 @@ export function headlessDecrpmArm(
 
 /** The opted-in state criterion applies only after the existing DECRPM reader found no reply. */
 function modeStateReadback(ctx: LibProbeSource, number: number, key: string, prior: object): ProbeCallbackResult {
-  const otherKey = key === "applicationCursor" ? "reverseVideo" : "applicationCursor"
+  if (number === 2026 && ctx.backendName === "alacritty") {
+    const expected = "synchronized output defers X until reset; ordinary and unknown-mode writes appear immediately"
+    try {
+      ctx.feed("\x1b[?2026l\x1b[1;1H\x1b[2KA")
+      const ordinary = ctx.getCell(0, 0).char
+      const initial = ctx.getCell(0, 1).char
+      ctx.feed("\x1b[?2026hX")
+      const during = ctx.getCell(0, 1).char
+      ctx.feed("\x1b[?2026l")
+      const after = ctx.getCell(0, 1).char
+      ctx.feed("\x1b[?9999hY")
+      const unknown = ctx.getCell(0, 2).char
+      const qualified =
+        ordinary === "A" && isBlank(initial) && after === "X" && unknown === "Y" && (isBlank(during) || during === "X")
+      return parserStateResult(
+        qualified ? isBlank(during) : null,
+        expected,
+        { prior, ordinary, initial, during, after, unknown },
+        qualified
+          ? "buffered effect measured; rendered tearing unmeasured"
+          : "ordinary output, reset or unknown-mode control did not qualify",
+      )
+    } finally {
+      ctx.feed("\x1b[?2026l")
+    }
+  }
+  const otherKey =
+    key === "applicationCursor"
+      ? ctx.getMode("reverseVideo") === null
+        ? "applicationKeypad"
+        : "reverseVideo"
+      : "applicationCursor"
   const otherBefore = ctx.getMode(otherKey)
+  const encoding = number === 1005 || number === 1006
+  const mouseBefore = encoding ? ctx.getMode("mouseTracking") : null
+  const encoded: (number[] | null)[] = []
+  const read = () => {
+    if (!encoding) return ctx.getMode(key)
+    const bytes = ctx.encodeMouse?.({ x: number === 1005 ? 95 : 1, y: 1, button: "left", action: "press" })
+    encoded.push(bytes ? Array.from(bytes) : null)
+    if (!bytes) return null
+    const actual = Array.from(bytes).join(",")
+    const enabled = number === 1005 ? "27,91,77,32,194,128,34" : "27,91,60,48,59,50,59,50,77"
+    const disabled = number === 1005 ? "27,91,77,32,128,34" : "27,91,77,32,34,34"
+    return actual === enabled ? true : actual === disabled ? false : null
+  }
   try {
+    if (encoding) ctx.feed("\x1b[?1000h")
     ctx.feed(`\x1b[?${number}l`)
-    const initial = ctx.getMode(key)
+    const initial = read()
     ctx.feed(`\x1b[?${number}h`)
-    const set = ctx.getMode(key)
+    const set = read()
     const otherSet = ctx.getMode(otherKey)
     ctx.feed(`\x1b[?${number}l`)
-    const reset = ctx.getMode(key)
+    const reset = read()
     const otherReset = ctx.getMode(otherKey)
     ctx.feed("\x1b[?9999h")
-    const unknown = ctx.getMode(key)
+    const unknown = read()
     const otherUnknown = ctx.getMode(otherKey)
-    const state = { prior, initial, set, reset, unknown, otherBefore, otherSet, otherReset, otherUnknown }
+    const state = {
+      prior,
+      initial,
+      set,
+      reset,
+      unknown,
+      otherKey,
+      otherBefore,
+      otherSet,
+      otherReset,
+      otherUnknown,
+      ...(encoding && { encoded }),
+    }
     const qualified =
       initial === false &&
       set === true &&
@@ -1919,6 +1973,7 @@ function modeStateReadback(ctx: LibProbeSource, number: number, key: string, pri
     }
   } finally {
     ctx.feed(`\x1b[?${number}l`)
+    if (encoding && mouseBefore === false) ctx.feed("\x1b[?1000l")
   }
 }
 
@@ -2801,6 +2856,7 @@ export function recordCollectionFailure(
 
 /** Only these own commands may use the existing measured-report criterion. */
 const UNHANDLED_MODE_COMMANDS: Readonly<Record<string, string>> = {
+  "modes.decsclm": "?4h",
   "input.pixel-mouse": "?1016h",
   "input.urxvt-mouse": "?1015h",
   "input.x10-mouse": "?9h",

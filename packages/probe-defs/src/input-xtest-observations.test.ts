@@ -1853,6 +1853,8 @@ test.each([
     "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
   ],
   ["xtermjs", "unsupported", null],
+  // @cto routes-32 section 4: its encoder is the library's own Terminal::mouse_event, so the test runs.
+  ["wezterm", "unsupported", null],
 ] as const)(
   "input.kitty-click-events library arm on %s: shared-encoder limit reads %s",
   (backendName, expected, noObservable) => {

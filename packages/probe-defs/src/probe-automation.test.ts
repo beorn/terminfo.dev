@@ -112,6 +112,68 @@ function context(overrides: Partial<LibProbeSource>): LibProbeSource {
   }
 }
 
+// Phase 2b: the setup query's own qualified silence can declare no setup. Existing
+// seed/reset cases do not cover missing controls or ambiguous unhandled reports.
+test.each([
+  "extensions.osc110-reset-fg",
+  "extensions.osc111-reset-bg",
+  "extensions.osc112-reset-cursor",
+  "extensions.osc113-reset-pointer-fg",
+  "extensions.osc114-reset-pointer-bg",
+  "extensions.osc117-reset-highlight-bg",
+  "extensions.osc119-reset-highlight-fg",
+  "extensions.osc30001-color-stack-push",
+  "extensions.osc30101-color-stack-pop",
+])("%s declares no setup only after its own control and report", (id) => {
+  const code = /osc(\d+)/.exec(id)![1]!
+  const setup = Number(code) > 1000 ? 10 : Number(code) - 100
+  for (const arm of ["qualified", "timeout", "missing-facts", "malformed", "reported", "duplicate"] as const) {
+    const entries: Array<{ kind: "osc"; code: string }> = []
+    let title = ""
+    const raw = arm === "timeout" ? "" : `${arm === "malformed" ? "junk" : ""}\x1b[?1;2c`
+    const result = probe(id).lib!(
+      context({
+        queryWithSentinelOutcome(sequence) {
+          expect(sequence).toBe(`\x1b]${setup};?\x07`)
+          return {
+            match: null,
+            reason: arm === "timeout" ? "timeout" : "sentinel",
+            raw,
+            rawBase64: btoa(raw),
+            ...(arm !== "missing-facts" && arm !== "timeout" && { sentinel: { atMs: 1, graceMs: 250 } }),
+          }
+        },
+        feed(sequence) {
+          const nextTitle = /^\x1b\]2;([^\x07]+)\x07$/.exec(sequence)?.[1]
+          if (nextTitle) title = nextTitle
+          if ((arm === "reported" || arm === "duplicate") && sequence.startsWith(`\x1b]${code}`)) {
+            entries.push({ kind: "osc", code })
+            if (arm === "duplicate") entries.push({ kind: "osc", code })
+          }
+        },
+        getTitle: () => title,
+        getUnhandledSequences: () => entries.slice(),
+      }),
+    )
+    expect(isDeclaredUntestable(result), `${id}: ${arm}`).toBe(arm === "qualified")
+    if (arm === "qualified") {
+      expect(result.tests).toMatchObject([
+        {
+          reason: `Untestable (no setup): OSC ${setup} colour setup does not work on this library, so this command has nothing to act on.`,
+        },
+      ])
+      expect(result.response).toContain("sentinel")
+    } else if (arm === "reported") {
+      // Report-first opt-ins have their own verdict tests. This route must not
+      // declare no setup or opt additional commands into that separate policy.
+      expect(result.observation?.outcome).not.toBe("supported")
+    } else {
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+    }
+  }
+})
+
 function terminalSource(overrides: Partial<TermProbeSource>): TermProbeSource {
   return {
     kind: "live",
@@ -358,7 +420,7 @@ describe("qualified clipboard roundtrip", () => {
       lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
     },
   } as const
-  test("the qualified OSC 0 declaration inspects presence without I/O; clipboard declares query_reply", () => {
+  test("OSC 0 and clipboard declarations inspect reader presence without I/O", () => {
     const unavailable = () => {
       throw new Error("declaration performed I/O")
     }
@@ -373,9 +435,15 @@ describe("qualified clipboard roundtrip", () => {
     const declaration = probe("extensions.osc0-icon-title").libAssertionType
     if (declaration === null || typeof declaration !== "object") throw new Error("Missing qualified OSC 0")
     expect(declaration.when(source)).toBe(true)
-    // No source audit qualifies the clipboard declarations any more (#32246): they declare the query reply alone.
+    // No source audit grades clipboard results (#32246). A present report member
+    // additionally admits its buffer_state assertion, without calling any reader.
     for (const id of ["extensions.osc52-clipboard", "extensions.osc52-write"]) {
-      expect(probe(id).libAssertionType, id).toBe("query_reply")
+      const clipboard = probe(id).libAssertionType
+      if (clipboard === null || typeof clipboard !== "object") throw new Error("Missing report declaration")
+      expect(clipboard.when(source), id).toBe(false)
+      expect(clipboard.otherwise, id).toEqual(["query_reply"])
+      expect(clipboard.when({ ...source, getUnhandledSequences: unavailable }), id).toBe(true)
+      expect(clipboard.then, id).toEqual(["query_reply", "buffer_state"])
     }
   })
   test.each(
@@ -696,7 +764,9 @@ describe("zero-byte replies on a loaded artifact", () => {
       },
     })
     const result = probe("extensions.kitty-graphics.transmit").lib!(source)
-    expect(sent).toHaveLength(1)
+    // 32473: the transfer query plus the one canonical graphics question, both answered with this same raw.
+    // The guarantee this case protects is unchanged — nothing arrives, so nothing decides.
+    expect(sent).toHaveLength(2)
     if (raw === "") {
       expect(result.notTested).toEqual(ZERO_REPLY_TODO)
       expect(JSON.parse(result.response!)).toMatchObject({ queries: sent, replyBytes: 0 })
@@ -3934,7 +4004,8 @@ describe("partial probe automation candidates", () => {
         )
         expect(calls).toEqual([c.expected])
         expect(empty.hostRecipeCauses).toBeUndefined()
-        expect(empty.criterionBranch).toBe("color-readback-review")
+        expect(empty.criterionBranch).toBe(qualified ? "headless-observable-review" : "color-readback-review")
+        expect(isDeclaredUntestable(empty)).toBe(qualified)
       }
     }
   })

@@ -32,6 +32,7 @@ import {
   cancelReplyFailure,
   reviewResult,
   declaredUntestableResult,
+  isDeclaredUntestable,
   productViewportAbsenceResult,
   auditedAdapterSources,
   sameRgb as sameRgbCells,
@@ -93,20 +94,20 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 // The OSC 7/9 public-interface census qualifies these exact sources, not every
 // version carrying the same backend name. Real readers take precedence at each caller.
-function hasAuditedOscInterfaceAbsence(
+export function hasAuditedOscInterfaceAbsence(
   ctx: LibProbeSource,
   cohort:
     | "osc-absence"
     | "vt100-rust-d2"
     | "vterm-d2"
-    | "osc-pass-through"
+    | "osc-tap"
     | "ghostty-native-d2"
     | "host-effect-h4"
     | "wezterm-d2"
     | "ghostty-web-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
-  if (cohort === "osc-pass-through") {
+  if (cohort === "osc-tap") {
     // Operator Nov 5 / CTO 4ab79b2f: these are engine identities. Adapter-only
     // releases do not change the library's generic pass-through behavior.
     if (ctx.backendName === "vterm") return hasAuditedOscInterfaceAbsence(ctx, "vterm-d2")
@@ -120,13 +121,7 @@ function hasAuditedOscInterfaceAbsence(
           "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="
       )
     }
-    return (
-      ctx.backendName === "libvterm" &&
-      identity?.kind === "js" &&
-      identity.runtimeFormat === "wasm" &&
-      identity.engineVersion === "0.3.3" &&
-      identity.loadedBinary.sha256 === "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0"
-    )
+    return false
   }
   if (cohort === "ghostty-web-d2") {
     // CTO 8be19f1f: the web build is a different engine from Ghostty native, so it carries its own
@@ -637,6 +632,30 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
  */
 const HIGHLIGHT_TEST_COLOURS = ["3030/6060/9090", "9090/3030/6060", "6060/9090/3030"] as const
 
+function noColorSetupResult(
+  ctx: LibProbeSource,
+  sequence: string,
+  setCode: number,
+  query: TerminalQueryOutcome | undefined,
+  result: ProbeCallbackResult,
+): ProbeCallbackResult {
+  const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
+  const reported =
+    code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code) ? unhandledOscReportResult(ctx, sequence, result) : result
+  if (reportsDecidedOutcome(reported) || !query || !sentinelSilenceResult(query, `OSC ${setCode} colour setup`)) {
+    return reported
+  }
+  // A duplicate or otherwise unqualified report is still a report, not absent setup.
+  if (ctx.getUnhandledSequences) {
+    ctx.feed(sequence)
+    if (ctx.getUnhandledSequences().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
+  }
+  return declaredUntestableResult(
+    `Untestable (no setup): OSC ${setCode} colour setup does not work on this library, so this command has nothing to act on.`,
+    { query, body: reported.response },
+  )
+}
+
 /**
  * A highlight-colour RESET decides only against the colour the run started from — "the default" is
  * not a known constant. So: query the initial value, set a known colour and confirm the terminal
@@ -881,9 +900,15 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
       initialSentinel = ctx.queryWithSentinelOutcome(query, replyPattern)
       silence = sentinelSilenceResult(initialSentinel, `Complete OSC ${setCode} color reply`)
       if (silence && !hostColorSlot && !highlightColorSlot) {
-        return colorReadbackReviewResult(
-          `Open: the colour query (OSC ${setCode}) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen`,
-          { query, initialSentinel },
+        return noColorSetupResult(
+          ctx,
+          `\x1b]${resetCode}\x07`,
+          setCode,
+          initialSentinel,
+          colorReadbackReviewResult(
+            `Open: the colour query (OSC ${setCode}) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen`,
+            { query, initialSentinel },
+          ),
         )
       }
     }
@@ -898,7 +923,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         // not parse are data the probe cannot trust: PROBE INVALID (@cto 0db5ad54 refined rule 4, #32246).
         const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`
         if (originalRaw === "" && initialSentinel?.reason === "sentinel") {
-          return {
+          return noColorSetupResult(ctx, `\x1b]${resetCode}\x07`, setCode, initialSentinel, {
             pass: false,
             response: JSON.stringify({ query, originalRaw, initialSentinel }),
             tests: [
@@ -908,7 +933,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
                 reason: `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`,
               },
             ],
-          }
+          })
         }
         return {
           pass: false,
@@ -1064,10 +1089,21 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
             )
           }
           return answer(
-            colorReadbackReviewResult(
-              `Open: the colour query (OSC ${setCode}) did not confirm the colour we set, leaving the reset (OSC ${resetCode}) with no verified setup`,
-              state,
-            ),
+            index === undefined
+              ? noColorSetupResult(
+                  ctx,
+                  reset,
+                  setCode,
+                  initialSentinel,
+                  colorReadbackReviewResult(
+                    `Open: the colour query (OSC ${setCode}) did not confirm the colour we set, leaving the reset (OSC ${resetCode}) with no verified setup`,
+                    state,
+                  ),
+                )
+              : colorReadbackReviewResult(
+                  `Open: the colour query (OSC ${setCode}) did not confirm the colour we set, leaving the reset (OSC ${resetCode}) with no verified setup`,
+                  state,
+                ),
           )
         }
         if (control.setterRaw === "" && control.seededRaw === "" && resetRaw === "" && restoredRaw === "") {
@@ -1165,7 +1201,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
   return (ctx) => {
     const result = body(ctx)
     // Case 1 names the ledger's eight colour-reset cells (2a adds 104, 110, 111, 112); every other reset keeps its own body.
-    if (!UNHANDLED_REPORT_COLOUR_RESETS.includes(String(resetCode))) return result
+    if (isDeclaredUntestable(result) || !UNHANDLED_REPORT_COLOUR_RESETS.includes(String(resetCode))) return result
     const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
     return unhandledOscReportResult(ctx, reset, result)
   }
@@ -1586,6 +1622,57 @@ function promptMarkBody(
   sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
 ): ProbeCallbackResult {
   ctx.feed("\x1b[1;1H")
+  if (ctx.backendName === "kitty" && sourceReview?.probeId === "extensions.semantic-prompts") {
+    const declared =
+      ctx.capabilities.extensions.has("semantic-marks") && ctx.capabilities.extensions.has("semantic-command-end")
+    const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
+    if (!readMarks) {
+      return notTestedResult("OSC 133 lifecycle requires the declared prompt/output and command-end reader", {
+        declared,
+      })
+    }
+    const before = readMarks()
+    const feeds = ["\x1b]133;A\x07", "\x1b[2;3H\x1b]133;C\x07", "\x1b]133;D;17\x07", "\x1b]133;Z\x07"] as const
+    ctx.feed(feeds[0])
+    const prompt = readMarks()
+    ctx.feed(feeds[1])
+    const output = readMarks()
+    ctx.feed(feeds[2])
+    const end = readMarks()
+    ctx.feed(feeds[3])
+    const unknown = readMarks()
+    const promptMark = prompt[before.length]
+    const outputMark = output[prompt.length]
+    const endMark = end[output.length]
+    const supported =
+      prompt.length === before.length + 1 &&
+      promptMark?.type === "prompt" &&
+      promptMark.startRow === 0 &&
+      promptMark.startCol === 0 &&
+      output.length === prompt.length + 1 &&
+      outputMark?.type === "output" &&
+      outputMark.startRow === 1 &&
+      outputMark.startCol === 2 &&
+      end.length === output.length + 1 &&
+      endMark?.type === "command-end" &&
+      endMark.rawStatus === "17" &&
+      before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(prompt[index])) &&
+      prompt.every((mark, index) => JSON.stringify(mark) === JSON.stringify(output[index])) &&
+      output.every((mark, index) => JSON.stringify(mark) === JSON.stringify(end[index])) &&
+      JSON.stringify(end) === JSON.stringify(unknown)
+    const state = { feeds, before, prompt, output, end, unknown }
+    ctx.feed("\x1b[1;1H")
+    return supported
+      ? parserStateResult(
+          true,
+          "OSC 133 appends prompt, output and command-end marks; an unknown letter adds nothing",
+          state,
+        )
+      : notTestedResult(
+          "OSC 133 lifecycle did not retain fresh prompt/output/end marks and an inert unknown letter",
+          state,
+        )
+  }
   const osc633End = sourceReview?.probeId === "extensions.osc633-d"
   const home = ctx.getCursor()
   const markType = sourceReview?.markType
@@ -1593,6 +1680,8 @@ function promptMarkBody(
   const readerKey = markType ? "semantic-marks" : commandEnd ? "semantic-command-end" : undefined
   const declared = readerKey !== undefined && ctx.capabilities.extensions.has(readerKey)
   const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
+  const kittyInput = ctx.backendName === "kitty" && sourceReview?.probeId === "extensions.osc133-b"
+  const controlMarkType = kittyInput ? "prompt" : markType
   if (osc633End && !readMarks) {
     const reason = 'Open: our adapter for this library cannot read the shell\'s "command finished" mark.'
     return {
@@ -1604,14 +1693,25 @@ function promptMarkBody(
     readMarks && (osc633End || commandEnd || markType)
       ? (() => {
           const before = readMarks()
-          const namespace =
-            osc633End || sourceReview?.selector === 633 || sourceReview?.probeId === "extensions.osc133-p" ? 133 : 633
-          const selector = commandEnd ? "D" : markType === "prompt" ? "A" : markType === "command" ? "B" : "C"
+          const namespace = kittyInput
+            ? 133
+            : osc633End || sourceReview?.selector === 633 || sourceReview?.probeId === "extensions.osc133-p"
+              ? 133
+              : 633
+          const selector = commandEnd
+            ? "D"
+            : controlMarkType === "prompt"
+              ? "A"
+              : controlMarkType === "command"
+                ? "B"
+                : "C"
           ctx.feed(`\x1b]${namespace};${selector}${commandEnd ? ";0" : ""}\x07`)
           const first = readMarks()
+          if (kittyInput) ctx.feed("\x1b[2;3H")
           ctx.feed(`\x1b]${namespace};${selector}${commandEnd ? ";17" : ""}\x07`)
           const second = readMarks()
-          return { before, first, second }
+          if (kittyInput) ctx.feed("\x1b[1;1H")
+          return { before, first, second, ...(kittyInput && { feeds: ["\x1b]133;A\x07", "\x1b[2;3H\x1b]133;A\x07"] }) }
         })()
       : undefined
   let readerQualified = false
@@ -1622,8 +1722,15 @@ function promptMarkBody(
     const qualified =
       first.length === before.length + 1 &&
       second.length === first.length + 1 &&
-      firstControl?.type === (commandEnd ? "command-end" : markType) &&
-      secondControl?.type === (commandEnd ? "command-end" : markType) &&
+      firstControl?.type === (commandEnd ? "command-end" : controlMarkType) &&
+      secondControl?.type === (commandEnd ? "command-end" : controlMarkType) &&
+      (!kittyInput ||
+        (firstControl?.type === "prompt" &&
+          firstControl.startRow === 0 &&
+          firstControl.startCol === 0 &&
+          secondControl?.type === "prompt" &&
+          secondControl.startRow === 1 &&
+          secondControl.startCol === 2)) &&
       (!commandEnd ||
         (firstControl?.type === "command-end" &&
           firstControl.rawStatus === "0" &&
@@ -1786,6 +1893,18 @@ function promptMarkBody(
     if (!result.pass && !readerQualified) {
       return notTestedResult(NO_SAME_PATH_CONTROL, { endControl, observed: result.response })
     }
+    if (
+      kittyInput &&
+      !result.pass &&
+      (JSON.stringify(before) !== JSON.stringify(first) ||
+        JSON.stringify(first) !== JSON.stringify(secondBefore) ||
+        JSON.stringify(secondBefore) !== JSON.stringify(second))
+    ) {
+      return notTestedResult("OSC 133 B changed the semantic reader without the requested input mark", {
+        endControl,
+        observed: result.response,
+      })
+    }
     return result
   }
   if (declared) {
@@ -1826,7 +1945,7 @@ const UNHANDLED_REPORT_COLOUR_RESETS: readonly string[] = ["104", "110", "111", 
  * path reports and handles nothing, so SGR 1 with a bold cell may qualify the control instead, with the
  * fallback reading its own baseline.
  */
-function unhandledOscReportResult(
+export function unhandledOscReportResult(
   ctx: LibProbeSource,
   sequence: string,
   result: ProbeCallbackResult,
@@ -1933,12 +2052,18 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         sentinelSilenceResult(initialReadback, "Complete OSC 10 foreground color reply") &&
         ctx.runtimeIdentity?.kind !== "native"
       ) {
-        return colorReadbackReviewResult(
-          "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
-          {
-            query: foregroundQuery,
-            initialReadback,
-          },
+        return noColorSetupResult(
+          ctx,
+          ownSequence,
+          10,
+          initialReadback,
+          colorReadbackReviewResult(
+            "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
+            {
+              query: foregroundQuery,
+              initialReadback,
+            },
+          ),
         )
       }
     }
@@ -2775,7 +2900,15 @@ function kittyDisplayWithoutTransmit(code: string, imageNumber: number): ProbeCa
   )
 }
 
-/** Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window. */
+/**
+ * Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window.
+ *
+ * `silent` means the window answered nothing decidable — no matching reply and no refusal frame — not that the
+ * collector reported one particular shape of silence. The library arm asks its canonical graphics question when
+ * this is set, so keying it on `reason` would make the query count depend on whether the pass met a sentinel or a
+ * timeout; fresh-instance passes disagree on that, and headless-batch's repeated-consistency guard then grades a
+ * correct pair probe-invalid (32473, ghostty-native, natural run 2026-11-06T08-34).
+ */
 function allocationOutcomeResult(
   reply: TerminalQueryOutcome,
   imageNumber: number,
@@ -2804,7 +2937,7 @@ function allocationOutcomeResult(
     return {
       imageId: null,
       refusal: null,
-      silent: false,
+      silent: true,
       result: unansweredQuery(
         reply,
         "No matching image allocation reply; no image ownership or transmission conclusion",
@@ -3337,6 +3470,8 @@ const NO_LIBRARY_PASTE_ENCODER: Readonly<Record<string, string>> = {
     "vt100 0.16.2 exports Parser and Screen with public Screen::bracketed_paste() state and input-mode serialization, but no paste or bracketed-paste encoder",
   xterm:
     "@xterm/headless 6.0.0 exports Terminal and public modes.bracketedPasteMode state; input() takes already encoded bytes and onData reports output; it has no paste or bracketed-paste encoder",
+  ghostty:
+    "Untestable: ghostty-web 0.4.0 exports no paste encoder. Its exports are the terminal and render-state calls only.",
 }
 
 /** Observe the same library instance's native paste encoder; no OS clipboard or injected framing. */
@@ -3344,7 +3479,7 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   const encodePaste = ctx.encodePaste
   if (!encodePaste) {
     const declared = NO_LIBRARY_PASTE_ENCODER[ctx.backendName]
-    if (declared) {
+    if (declared && (ctx.backendName !== "ghostty" || hasAuditedOscInterfaceAbsence(ctx, "ghostty-web-d2"))) {
       return declaredUntestableResult(declared, { backend: ctx.backendName, encodePaste: false })
     }
     const reason =
@@ -4927,20 +5062,25 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.semantic-prompts",
-      // Case 1's twelfth shell cell: the umbrella lifecycle read falls to the library's own report.
+      // Kitty reads its approved prompt/output/end lifecycle; other libraries retain the report arm.
       (ctx) =>
-        unhandledOscReportResult(ctx, "\x1b]133;A\x07", {
-          pass: false,
-          note: "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
-          tests: [
-            {
-              id: "criterion",
-              status: "probe-todo" as const,
-              reason:
-                "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
-            },
-          ],
-        }),
+        ctx.backendName === "kitty"
+          ? promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 lifecycle readback", {
+              probeId: "extensions.semantic-prompts",
+              selector: 133,
+            })
+          : unhandledOscReportResult(ctx, "\x1b]133;A\x07", {
+              pass: false,
+              note: "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+              tests: [
+                {
+                  id: "criterion",
+                  status: "probe-todo" as const,
+                  reason:
+                    "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+                },
+              ],
+            }),
       () => {
         const note = "No shell prompt integration metadata or behavior readback for OSC 133"
         return Promise.resolve<ProbeCallbackResult>({
@@ -6363,19 +6503,12 @@ const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
   "extensions.osc710-font-normal": "OSC 710 font selection",
 }
 
-// Operator 20:59 / CTO 9182ff20: all six and made-up OSC 9999 take the same
-// generic hook; payload delivery is not execution of these host commands.
+// NR-H library-job declarations retain their separately reviewed xterm parser-hook reasons.
 const OSC_PASS_THROUGH_REASON =
   "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
 const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
   Record<string, string | { readonly backend: string; readonly reason: string }>
 > = {
-  "extensions.osc176-app-id": OSC_PASS_THROUGH_REASON,
-  "extensions.osc3008-context": OSC_PASS_THROUGH_REASON,
-  "extensions.osc440-audio": OSC_PASS_THROUGH_REASON,
-  "extensions.osc555-flash": OSC_PASS_THROUGH_REASON,
-  "extensions.osc666-termprop": OSC_PASS_THROUGH_REASON,
-  "extensions.osc710-font-normal": OSC_PASS_THROUGH_REASON,
   // NR-H: xterm.js 6.0.0's logger is not a report; retain the reviewed parser-hook wording.
   "editing.decsace": {
     backend: "xterm",
@@ -6397,6 +6530,126 @@ const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
   "extensions.osc-633-vscode": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
 }
 
+// The default is the library's job. Phase 1 assigns ten commands to the app;
+// the OSC 52 follow-on assigns clipboard/write only on the audited xterm route.
+const APP_JOB_OSCS: Readonly<Record<string, string>> = {
+  "extensions.osc52-clipboard": "52;c;dGVybWluZm8=",
+  "extensions.osc52-write": "52;c;dGVybWluZm8=",
+  "extensions.notifications": "9;terminfo-notification",
+  "extensions.osc777-notify": "777;notify;terminfo-title;terminfo-body",
+  "extensions.osc7-cwd": "7;file://localhost/terminfo-cwd",
+  "extensions.osc633-p": "633;P;Cwd=/terminfo-cwd",
+  "extensions.osc176-app-id": "176;terminfo-test",
+  "extensions.osc3008-context": "3008;start=id=terminfo-test",
+  "extensions.osc440-audio": "440;bell.wav",
+  "extensions.osc555-flash": "555",
+  "extensions.osc666-termprop": "666;test-prop=value",
+  "extensions.osc710-font-normal": "710;monospace",
+}
+
+const LIBRARY_OSC_HOOKS: Readonly<
+  Record<
+    string,
+    {
+      readonly kind: "report" | "tap" | "typed" | "none"
+      readonly typed?: readonly string[]
+      readonly handoff?: string
+    }
+  >
+> = {
+  libvterm: { kind: "report" },
+  "vt100-rust": { kind: "report" },
+  xterm: { kind: "tap" },
+  vterm: { kind: "tap", typed: ["extensions.notifications", "extensions.osc7-cwd", "extensions.osc633-p"] },
+  ghostty: { kind: "typed" },
+  "ghostty-native": { kind: "typed" },
+  wezterm: { kind: "typed" },
+  kitty: { kind: "typed", handoff: "extensions.osc3008-context" },
+  vt100: { kind: "none" },
+  vt220: { kind: "none" },
+  alacritty: { kind: "none" },
+}
+
+/** Only generic handoffs use this rule; typed stores and library-job reports keep their existing paths. */
+function appJobHandoff(
+  ctx: LibProbeSource,
+  featureId: string,
+  lib: (ctx: LibProbeSource) => ProbeCallbackResult,
+): ProbeCallbackResult | undefined {
+  if (
+    (featureId === "extensions.osc52-clipboard" || featureId === "extensions.osc52-write") &&
+    ctx.backendName !== "xterm"
+  ) {
+    return undefined
+  }
+  const target = APP_JOB_OSCS[featureId]
+  const hook = LIBRARY_OSC_HOOKS[ctx.backendName]
+  if (
+    !target ||
+    !hook ||
+    hook.kind === "none" ||
+    (hook.kind === "typed" && hook.handoff !== featureId) ||
+    hook.typed?.includes(featureId)
+  ) {
+    return undefined
+  }
+  const state = { featureId, backend: ctx.backendName, runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity) }
+  if (hook.kind === "typed") {
+    // H-4's typed OSC 3008 callback hands off text that this exact bridge does not keep.
+    return declaredD2InterfaceAbsence(
+      ctx,
+      lib,
+      featureId,
+      APP_JOB_OSCS,
+      "kitty",
+      "host-effect-h4",
+      undefined,
+      () =>
+        "Kitty 0.49.2 hands the OSC 3008 text to the app; our bridge does not keep it and exposes no context effect to read.",
+      { genericReportIsObservable: false },
+    )
+  }
+  if (hook.kind === "tap") {
+    if (!hasAuditedOscInterfaceAbsence(ctx, "osc-tap")) {
+      return notTestedResult("Generic OSC tap: this engine identity has no passed-to-the-app declaration", state)
+    }
+    return declaredUntestableResult(
+      "Untestable (passed to the app): this command is the app's job, and the library hands it to the app through a hook that receives every OSC command.",
+      state,
+    )
+  }
+  const control = {
+    feed: `\x1b]2;${UNHANDLED_OSC_CONTROL_TITLE}\x07`,
+    applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
+  }
+  // Keep the existing report reader. Both this command and a made-up command must be reported,
+  // while the handled title command applies without adding an entry in this same cell's run.
+  const reported = unhandledSequenceVerdict(
+    ctx,
+    { feed: `\x1b]${target}\x07`, code: { kind: "osc", code: target.replace(/;.*/, "") } },
+    control,
+    state,
+  )
+  const madeUp =
+    reported &&
+    unhandledSequenceVerdict(
+      ctx,
+      { feed: "\x1b]9999;terminfo-handoff-control\x07", code: { kind: "osc", code: "9999" } },
+      control,
+      state,
+    )
+  if (!reported || !madeUp) {
+    return notTestedResult(
+      "Generic OSC report: the command, made-up OSC and handled title controls did not qualify in this run",
+      state,
+    )
+  }
+  return declaredUntestableResult(
+    "Untestable (passed to the app): this command is the app's job. The library reports that it does not handle it and hands its text to the app.",
+    { ...state, report: reported.response, madeUp: madeUp.response },
+  )
+}
+
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "device.decrqss":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public DCS callback, response writer or device.decrqss result state",
@@ -6410,18 +6663,6 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.display":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
-  "extensions.osc176-app-id":
-    "OSC 176 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc3008-context":
-    "OSC 3008 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc440-audio":
-    "OSC 440 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc555-flash":
-    "OSC 555 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc666-termprop":
-    "OSC 666 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc710-font-normal":
-    "OSC 710 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
 }
 
 const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6502,6 +6743,20 @@ const GHOSTTY_WEB_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 }
 
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "editing.decsace":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no DECSACE handler or character-attribute extent state.",
+  "extensions.osc633-a":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc633-b":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc633-c":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc633-d":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc633-e":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc-633-vscode":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
   "extensions.osc1-icon": "Ghostty 1.3.1 parses OSC 1 and ignores it. No icon state or action follows.",
   "extensions.osc113-reset-pointer-fg":
     "Ghostty 1.3.1 parses OSC 113 and does nothing with it. It keeps no pointer colour.",
@@ -6512,6 +6767,8 @@ const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.osc119-reset-highlight-fg":
     "Ghostty 1.3.1 parses OSC 119 and does nothing with it. It keeps no highlight colour.",
   "modes.decsscls": "Ghostty 1.3.1 has no handler for this sequence and no scroll-speed state.",
+  "input.kitty-click-events":
+    "Untestable: Ghostty 1.3.1 core stores click_events, but only Surface acts on a click, and Surface is the app.",
 }
 
 function declaredD2InterfaceAbsence(
@@ -6524,7 +6781,7 @@ function declaredD2InterfaceAbsence(
     | "osc-absence"
     | "vt100-rust-d2"
     | "vterm-d2"
-    | "osc-pass-through"
+    | "osc-tap"
     | "ghostty-native-d2"
     | "wezterm-d2"
     | "ghostty-web-d2"
@@ -6656,6 +6913,7 @@ const DEC_SETUP_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSequ
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
+  const decClipboard = definition.id === "extensions.osc52-clipboard" || definition.id === "extensions.osc52-write"
   const decTarget = DEC_COLOUR_REPORTS[definition.id]
   const decSetup = DEC_SETUP_REPORTS[definition.id]
   const decsace = definition.id === "editing.decsace"
@@ -6665,6 +6923,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
   const passThroughReason = OSC_PASS_THROUGH_DECLARATIONS[definition.id]
+  const appJob = APP_JOB_OSCS[definition.id]
   const ghosttyNativeReason = GHOSTTY_NATIVE_D2_DECLARATIONS[definition.id]
   const ghosttyWebReason = GHOSTTY_WEB_D2_DECLARATIONS[definition.id]
   const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
@@ -6675,7 +6934,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
     VT220_IMAGE_D2_DECLARATIONS[definition.id]
   if (
     !lib ||
-    (!decTarget &&
+    (!decClipboard &&
+      !decTarget &&
       !decSetup &&
       !decsace &&
       !vt100Target &&
@@ -6683,6 +6943,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       !reason &&
       !absence &&
       !vtermReason &&
+      !appJob &&
       !passThroughReason &&
       !ghosttyNativeReason &&
       !ghosttyWebReason &&
@@ -6693,7 +6954,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   }
   return {
     ...definition,
-    ...(vt100Target && (definition.libAssertionType === "query_reply" || definition.libAssertionType === "input_bytes")
+    ...((vt100Target || decClipboard) &&
+    (definition.libAssertionType === "query_reply" || definition.libAssertionType === "input_bytes")
       ? {
           // A report verdict records buffer_state; the probe's own arm keeps its type.
           libAssertionType: {
@@ -6705,6 +6967,11 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
+      const handoff = appJobHandoff(ctx, definition.id, lib)
+      if (handoff) return handoff
+      if (ctx.backendName === "vt100" && decClipboard) {
+        return unhandledOscReportResult(ctx, "\x1b]52;c;dGVybWluZm8=\x07", lib(ctx))
+      }
       if ((ctx.backendName === "vt100" || ctx.backendName === "vt220") && (decTarget || decSetup || decsace)) {
         const result = lib(ctx)
         if (reportsDecidedOutcome(result)) return result
@@ -6749,10 +7016,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         definition.id,
         OSC_PASS_THROUGH_DECLARATIONS,
         ctx.backendName,
-        "osc-pass-through",
+        "osc-tap",
         undefined,
         undefined,
-        // libvterm's numeric report is the same generic hook, not a command effect.
         { genericReportIsObservable: false },
       )
       if (passThroughDeclared) return passThroughDeclared
@@ -6805,7 +7071,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         definition.id,
         XTERM_IMAGE_D2_DECLARATIONS,
         "xterm",
-        "osc-pass-through",
+        "osc-tap",
       )
       if (xtermImageDeclared) return xtermImageDeclared
       const vt100ImageDeclared = declaredD2InterfaceAbsence(
@@ -6873,25 +7139,17 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         (entry) => `WezTerm tattoy-wezterm-term 0.1.0-fork.5: ${entry}.`,
       )
       if (weztermDeclared) return weztermDeclared
-      if (
-        passThroughReason &&
-        kittyTarget &&
-        (ctx.backendName === "ghostty-native" ||
-          (ctx.backendName === "kitty" && definition.id === "extensions.osc3008-context"))
-      ) {
+      if (appJob && kittyTarget && ctx.backendName === "ghostty-native") {
         const declared = declaredD2InterfaceAbsence(
           ctx,
           lib,
           definition.id,
-          OSC_PASS_THROUGH_DECLARATIONS,
-          ctx.backendName,
+          APP_JOB_OSCS,
+          "ghostty-native",
           "host-effect-h4",
           undefined,
           () =>
-            ctx.backendName === "kitty"
-              ? "Kitty 0.49.2 hands the OSC 3008 text to the app; our bridge does not keep it and exposes no context effect to read."
-              : `Ghostty 1.3.1 native bridge exposes no public state, report or payload route for OSC ${kittyTarget.code.code} at this audited engine/bridge identity.`,
-          { genericReportIsObservable: ctx.backendName !== "kitty" },
+            `Ghostty 1.3.1 native bridge exposes no public state, report or payload route for OSC ${kittyTarget.code.code} at this audited engine/bridge identity.`,
         )
         if (declared) return declared
       }
@@ -6900,7 +7158,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       if (vt100Audited && reason) {
         return declaredUntestableResult(reason, { backend: ctx.backendName, runtimeIdentity: ctx.runtimeIdentity })
       }
-      const hostEffectReport = passThroughReason && ["vt100", "vt220", "ghostty"].includes(ctx.backendName)
+      const hostEffectReport = appJob && ["vt100", "vt220", "ghostty"].includes(ctx.backendName)
       const target = hostEffectReport
         ? kittyTarget
         : vt100Audited
