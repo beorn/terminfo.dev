@@ -7273,16 +7273,26 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         return declaredUntestableResult(reason, { backend: ctx.backendName, runtimeIdentity: ctx.runtimeIdentity })
       }
       const hostEffectReport = appJob && ["vt100", "vt220", "ghostty"].includes(ctx.backendName)
+      const ghosttyCsiReport =
+        ctx.backendName === "ghostty" &&
+        (decsace || definition.id === "modes.decsscls") &&
+        hasAuditedOscInterfaceAbsence(ctx, "ghostty-web-d2") &&
+        auditedAdapterSources(identity, "ghosttyCsiNrg")
       const target = hostEffectReport
         ? kittyTarget
-        : vt100Audited
-          ? vt100Target
-          : ctx.backendName === "kitty" &&
-              identity?.kind === "native" &&
-              identity.engineVersion === "0.49.2" &&
-              identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
-            ? kittyTarget
-            : undefined
+        : ghosttyCsiReport && vt100Target
+          ? {
+              ...vt100Target,
+              code: { kind: "csi" as const, code: decsace ? "*2x" : " p" },
+            }
+          : vt100Audited
+            ? vt100Target
+            : ctx.backendName === "kitty" &&
+                identity?.kind === "native" &&
+                identity.engineVersion === "0.49.2" &&
+                identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+              ? kittyTarget
+              : undefined
       if (!target) return lib(ctx)
       const result = lib(ctx)
       if (reportsDecidedOutcome(result)) return result
