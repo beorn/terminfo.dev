@@ -6770,8 +6770,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       ? {
           // A report verdict records buffer_state; the probe's own arm keeps its type.
           libAssertionType: {
-            when: (source: Pick<LibProbeSource, "getUnhandledSequences" | "backendName">) =>
-              typeof source.getUnhandledSequences === "function" && (!decClipboard || source.backendName === "vt100"),
+            when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
+              typeof source.getUnhandledSequences === "function",
             then: [definition.libAssertionType, "buffer_state"] as const,
             otherwise: [definition.libAssertionType] as const,
           },
