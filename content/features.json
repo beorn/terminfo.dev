@@ -1901,7 +1901,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTWINOPS subcode 16 queries the dimensions of a single character cell in pixels. The query is <code>CSI 16 t</code>; the response is <code>CSI 6 ; height ; width t</code>. This is the canonical xterm-style equivalent of OSC 1337 ; ReportCellSize and is essential for any protocol that needs to render images at a precise cell-aligned size.\n\nUnlike OSC 1337 (an iTerm2 extension), CSI 16 t is part of the broader XTWINOPS spec and is supported by xterm, Ghostty, Kitty, WezTerm, foot, Contour, and many others. Applications should prefer this query when targeting modern terminals that follow xterm conventions.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. <code>CSI 16 t</code> is answered from the window's <code>ypixel</code>/<code>xpixel</code> (input.c:2083-2088): conditional, and zero metrics do not meet the positive oracle.",
-    "probe": "Send <code>\\x1b[16t</code>, verify response matches <code>CSI 6 ; H ; W t</code>.",
+    "probe": "Send <code>\\x1b[16t</code>, verify response matches <code>CSI 6 ; H ; W t</code> with positive height and width.",
     "sequence": "ESC [ 16 t"
   },
   "device.xtwinops-18": {

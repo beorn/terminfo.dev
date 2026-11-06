@@ -1793,6 +1793,43 @@ test.each(geometryReplies)("$id keeps a complete zero geometry reply PROBE TODO 
   expect(callback(id).lib!(ctx).observation?.outcome).toBe("supported")
 })
 
+// #32476 (NC-R3b + routes-16 row 5): on the audited vterm 0.13.1 engine identity, complete 0;0 and 0;0;0 cell-size
+// replies with a same-run DA1 control grade unsupported; without DA1 or on a drifted identity they stay PROBE TODO.
+test.each(geometryReplies)(
+  "$id grades vterm 0.13.1 zero cell-size reply with same-run DA1 control unsupported",
+  ({ id, raw }) => {
+    const vterm0131Runtime = {
+      ...geometryRuntime,
+      engineVersion: "0.13.1",
+      integrity: {
+        ...geometryRuntime.integrity,
+        revision: "7b39f49e8a6bc03ce695c5ab7c143c2cc7379eb0",
+        treeOid: "3d58d29a8265aafd928e0736dde6723e2bac2007",
+        cleanTree: true,
+      },
+    } as const
+    const ctx = {
+      backendName: "vterm",
+      feedCapture: () => raw,
+      runtimeIdentity: vterm0131Runtime,
+    } as unknown as LibProbeSource
+    const result = callback(id).lib!(ctx)
+    expect(result.pass).toBe(false)
+    expect(result.notTested).toBeUndefined()
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(result.assertions).toMatchObject([{ assertionType: "query_reply", kind: "negative", observed: raw }])
+
+    const withoutDa1 = raw.replace(/\x1b\[\?[0-9;]+c$/, "")
+    const noControl = callback(id).lib!({
+      backendName: "vterm",
+      feedCapture: () => withoutDa1,
+      runtimeIdentity: vterm0131Runtime,
+    } as unknown as LibProbeSource)
+    expect(noControl.notTested?.reason).toBe("no-semantic-observable")
+    expect(noControl.observation).toBeUndefined()
+  },
+)
+
 // #31398/#32246: without an icon-label reader, OSC 1 keeps the original stimulus and title state as PROBE TODO for every
 // identity; no source citation reads the title change as a negative.
 test("OSC 1 without an icon-label reader keeps the stimulus and title state as PROBE TODO for every identity", () => {

@@ -1142,3 +1142,49 @@ test.each(geometryReplies)(
     expect(callback(id).headless(ctx).observation?.outcome).toBe("supported")
   },
 )
+
+// #32476 (NC-R3b): on the audited vterm 0.13.1 engine identity, complete 4;0;0 and 6;0;0 replies with a same-run DA1
+// control grade unsupported; without the DA1 control or at a drifted identity they remain PROBE TODO.
+test.each(geometryReplies)(
+  "$id grades vterm 0.13.1 zero geometry reply with same-run DA1 control unsupported",
+  ({ id, raw }) => {
+    const vterm0131Runtime = {
+      ...geometryRuntime,
+      engineVersion: "0.13.1",
+      integrity: {
+        ...geometryRuntime.integrity,
+        revision: "7b39f49e8a6bc03ce695c5ab7c143c2cc7379eb0",
+        treeOid: "3d58d29a8265aafd928e0736dde6723e2bac2007",
+        cleanTree: true,
+      },
+    } as const
+    for (const sentinel of [false, true]) {
+      const ctx = {
+        backendName: "vterm",
+        feedCapture: () => raw,
+        runtimeIdentity: vterm0131Runtime,
+        ...(sentinel && {
+          queryWithSentinelOutcome: () => ({
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+            reason: "sentinel",
+            match: null,
+          }),
+        }),
+      } as unknown as LibProbeSource
+      const result = callback(id).headless(ctx)
+      expect(result.pass).toBe(false)
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+      expect(result.assertions).toMatchObject([{ assertionType: "query_reply", kind: "negative", observed: raw }])
+    }
+    const withoutDa1 = raw.replace(/\x1b\[\?[0-9;]+c$/, "")
+    const noControl = callback(id).headless({
+      backendName: "vterm",
+      feedCapture: () => withoutDa1,
+      runtimeIdentity: vterm0131Runtime,
+    } as unknown as LibProbeSource)
+    expect(noControl.notTested?.reason).toBe("no-semantic-observable")
+    expect(noControl.observation).toBeUndefined()
+  },
+)

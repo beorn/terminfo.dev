@@ -793,8 +793,28 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
             (id === "extensions.osc776-cell-size" &&
               /^\x1b\]776;0;0;0\x1b\\(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
           if (id === "extensions.osc1337-cellsize" || id === "extensions.osc776-cell-size") {
-            // #32246: a zero geometry reply has no same-path control in this run, so it stays PROBE TODO.
+            // #32476 (NC-R3b + routes-16 row 5): vterm.js 0.13.1 replies 0;0 / 0;0;0 while DA1 answers in the same run.
             if (zeroGeometry && result.observation?.outcome === "inconclusive") {
+              if (hasAuditedOscInterfaceAbsence(ctx, "vterm-d2") && sentinelAnswer(raw) !== null) {
+                const note =
+                  id === "extensions.osc1337-cellsize"
+                    ? "vterm.js 0.13.1 has no cell pixel-size metrics and replied 0;0 while DA1 answered in the same run"
+                    : "vterm.js 0.13.1 has no font cell metrics and replied 0;0;0 (0;0) while DA1 answered in the same run"
+                return {
+                  pass: false,
+                  response: raw,
+                  note,
+                  observation: { outcome: "unsupported", assertionType: "query_reply", note },
+                  assertions: [
+                    {
+                      assertionType: "query_reply" as const,
+                      kind: "negative",
+                      expected,
+                      observed: raw,
+                    },
+                  ],
+                }
+              }
               return notTestedResult(NO_SAME_PATH_CONTROL, { query: query, raw })
             }
           }

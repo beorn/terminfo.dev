@@ -1,4 +1,5 @@
 import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
+import { hasAuditedOscInterfaceAbsence } from "./extensions.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   probe,
@@ -176,8 +177,28 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
         (spec.id === "device.xtwinops-14" && /^\x1b\[4;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw)) ||
         (spec.id === "device.xtwinops-16" && /^\x1b\[6;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
       if (spec.id === "device.xtwinops-14" || spec.id === "device.xtwinops-16") {
-        // #32246: a zero geometry reply has no same-path control in this run, so it stays PROBE TODO.
+        // #32476 (NC-R3b): vterm.js 0.13.1 replies 4;0;0 / 6;0;0 while DA1 answers in the same run.
         if (zeroGeometry && result.observation?.outcome === "inconclusive") {
+          if (hasAuditedOscInterfaceAbsence(ctx, "vterm-d2") && sentinelAnswer(raw) !== null) {
+            const note =
+              spec.id === "device.xtwinops-14"
+                ? "vterm.js 0.13.1 has no window pixel-size input and replied 4;0;0 while DA1 answered in the same run"
+                : "vterm.js 0.13.1 has no cell pixel-size input and replied 6;0;0 while DA1 answered in the same run"
+            return {
+              pass: false,
+              response: raw,
+              note,
+              observation: { outcome: "unsupported", assertionType: "query_reply", note },
+              assertions: [
+                {
+                  assertionType: "query_reply" as const,
+                  kind: "negative",
+                  expected: spec.expected,
+                  observed: raw,
+                },
+              ],
+            }
+          }
           return notTestedResult(NO_SAME_PATH_CONTROL, { query: spec.query, raw })
         }
       }

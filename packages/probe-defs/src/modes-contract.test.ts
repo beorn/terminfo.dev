@@ -582,6 +582,46 @@ test.each([
   }
 })
 
+// #32476 (N-XTSAVE): on the audited vterm 0.13.1 engine identity, saving DECAWM on and saving DECAWM off restore the
+// same value (DECAWM off, because screen.ts:2949 treats CSI ? Pm s and r as reset), so modes.xtsave grades unsupported.
+test("vterm 0.13.1 grades modes.xtsave unsupported when saving on and saving off restore DECAWM off", () => {
+  const probe = modesProbes.find((entry) => entry.id === "modes.xtsave")!
+  const vterm0131Runtime = {
+    kind: "js" as const,
+    adapterVersion: "0.10.2",
+    termlessRevision: "3d58d29a8265aafd928e0736dde6723e2bac2007",
+    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+    integrity: {
+      kind: "source" as const,
+      repository: "git@github.com:beorn/vterm.git",
+      revision: "7b39f49e8a6bc03ce695c5ab7c143c2cc7379eb0",
+      treeOid: "3d58d29a8265aafd928e0736dde6723e2bac2007",
+      cleanTree: true,
+    },
+    runtimeFormat: "js" as const,
+    engineVersion: "0.13.1",
+  }
+  const base = libProbeSource(createSemanticSurface({ mutations: ["xtrestore-always-off"] }))
+  const result = probe.lib!({ ...base, backendName: "vterm", runtimeIdentity: vterm0131Runtime })
+  expect(result.pass).toBe(false)
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(result.observation?.assertionType).toBe("buffer_state")
+  expect(result.note).toContain("screen.ts:2949")
+  expect(result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
+
+  const driftedBase = libProbeSource(createSemanticSurface({ mutations: ["xtrestore-always-off"] }))
+  const drifted = probe.lib!({
+    ...driftedBase,
+    backendName: "vterm",
+    runtimeIdentity: {
+      ...vterm0131Runtime,
+      integrity: { ...vterm0131Runtime.integrity, treeOid: "f".repeat(40) },
+    },
+  })
+  expect(drifted.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  expect(drifted.observation).toBeUndefined()
+})
+
 // #31904 R3e: the palette-stack rows split the same way as R3d (@cto 6e4f7300).
 test.each([
   ["xtpushcolors-stale", "modes.xtpushcolors", "unsupported", "push saved no current snapshot"],

@@ -8,6 +8,7 @@ import type {
   LibProbeSource,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
+import { hasAuditedOscInterfaceAbsence } from "./extensions.ts"
 import {
   activeScreenRow,
   probe,
@@ -710,16 +711,25 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
     // A restore that returns off after on was saved fails the pop claim itself, but hides any save
     // behind it, so only the restore row is negative (@cto 972a8462).
     if (stayed(control) && stayed(onControl)) {
-      return operation === "pop"
-        ? parserStateResult(false, expected, state, "restore returned DECAWM off after on was saved")
-        : stackStateResult(
-            {
-              pass: null,
-              note: "Open: a save can only be seen by restoring it, and restoring always turned line wrap off, whatever we saved, so the restore cannot show whether the save worked.",
-            },
-            expected,
-            state,
-          )
+      if (operation === "pop") {
+        return parserStateResult(false, expected, state, "restore returned DECAWM off after on was saved")
+      }
+      if (hasAuditedOscInterfaceAbsence(ctx, "vterm-d2")) {
+        return parserStateResult(
+          false,
+          expected,
+          state,
+          "saving DECAWM on and saving DECAWM off restored the same value (DECAWM off); vterm screen.ts:2949 treats CSI ? Pm s and r as reset",
+        )
+      }
+      return stackStateResult(
+        {
+          pass: null,
+          note: "Open: a save can only be seen by restoring it, and restoring always turned line wrap off, whatever we saved, so the restore cannot show whether the save worked.",
+        },
+        expected,
+        state,
+      )
     }
     const verdict = decideStackOperation(operation, pop, push)
     const note =
