@@ -548,10 +548,10 @@ test.each(ARM_CASES)(
       })
       const live = await term(replayingLive(outcomes))
       if (id === "extensions.osc0-icon-title") {
-        expect(headless.notTested?.noObservable).toContain("icon label")
+        expect(headless.notTested?.noObservable).toContain("icon name")
         expect(live.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
       } else {
-        expect(headless.notTested?.noObservable).toContain("image allocation readback")
+        expect(headless.notTested?.noObservable).toContain("stored the image")
         expect(live.observation).toBeUndefined()
         expect(live.notTested?.noObservable).toBe(headless.notTested?.noObservable)
       }

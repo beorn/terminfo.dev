@@ -44,7 +44,7 @@ const headlessObservableFeatures = [
   ],
   [
     "extensions.osc8",
-    "Adapter (runtime identity unavailable) exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable",
+    "Open: our adapter for this library version does not read a link's address back (OSC 8; Adapter (runtime identity unavailable))",
     { chars: [..."ALINKZ"], links: Array.from({ length: 6 }, () => ({ reported: false })) },
   ],
   [
@@ -152,7 +152,8 @@ test("modes.decsclm retains missing DECRPM coverage and measured state as PROBE 
     {
       id: "review",
       status: "probe-todo",
-      reason: "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
+      reason:
+        "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works.",
     },
   ])
   expect(result.observation).toBeUndefined()
@@ -186,20 +187,20 @@ const headlessStateFeatures = [
     "sgr.underline.color",
     ["A", "B", "X"],
     "sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
-    "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color",
+    "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it.",
   ],
   [
     "sgr.underline-color-indexed",
     ["A", "X", "B", "Y"],
     "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
-    "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color",
+    "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it.",
   ],
   // Seedless SGR59/default-color cases are named TODOs, covered by sgr-contract.test.ts.
   [
     "sgr.selective-reset.italic",
     ["C", "X", "Y"],
     "sgr.selective-reset.italic: measured setup attributes clear on Y and unrelated attributes remain set",
-    "compound reset not decided: italic and bold not shown at setup; a reset needs at least one shown set facet and every preserved facet shown",
+    "Open: italic and bold did not show during setup, so our test cannot check the combined reset.",
   ],
   [
     "sgr.fg.standard",
@@ -229,7 +230,7 @@ const headlessStateFeatures = [
     "erase.el-with-attrs",
     ["X", "X", "X", "X", "X"],
     null, // Unpainted setup cannot establish an erase claim.
-    "PreconditionFailed: precondition failed: seed cells not painted (expected bg at",
+    "Test broken: the background colour we painted before the test did not show (expected it on 5 screen cells, read none).",
   ],
   [
     "editing.decsace",
@@ -354,10 +355,8 @@ test("the 9 headless C154 semantic-mark features emit named coverage only after 
         id: "review",
         status: "probe-todo",
         reason: noObservable
-          ? "OSC 133 P / 633 E consumed; no property or command-line observer exists in this run"
-          : expect.stringMatching(
-              /OSC 133 \/ 633 mark was consumed but this run has no qualified declared mark or zone reader/,
-            ),
+          ? "Open: the library did not print the shell property and command-line marks (OSC 133 P, 633 E) as text, but our test cannot read them back."
+          : "Open: the shell's prompt mark (OSC 133 / 633) did not show up on screen as stray text, but our test has no way to read marks back, so we cannot tell whether the library kept it.",
       },
     ])
     expect(JSON.parse(result.response ?? "{}"), id).toEqual({
