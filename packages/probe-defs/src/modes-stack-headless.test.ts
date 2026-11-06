@@ -239,7 +239,7 @@ test.each([...COLOR, ...MODE])("%s qualifies active cells while retained history
       },
       getCell(row, col) {
         return row < history
-          ? { char: "H", fg: null, bold: false, italic: false }
+          ? { ...screen.context.getCell(0, col), char: "H", fg: null, bold: false, italic: false }
           : screen.context.getCell(row - history, col)
       },
     }
