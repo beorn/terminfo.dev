@@ -6053,7 +6053,7 @@ test.runIf(OWNED_LAYOUT).each([
 // NR-A, @cto 947dcd40 slice A: the real engine's own reports decide these rows; the identity is the audited subject.
 // Hosted resolves the published adapter, which is not that subject.
 test.runIf(OWNED_LAYOUT)(
-  "real vt100-rust reports the eleven NR-A targets unhandled and declares Kitty display",
+  "real vt100-rust reports NR-A and urxvt targets unhandled and declares Kitty display",
   async () => {
     const identity: HeadlessRuntimeIdentity = {
       kind: "native",
@@ -6087,6 +6087,7 @@ test.runIf(OWNED_LAYOUT)(
       "extensions.kitty-keyboard.report-text",
       "input.csi-u",
       "input.pixel-mouse",
+      "input.urxvt-mouse",
       "input.kitty-click-events",
     ]
     const read = async (id: string) => {

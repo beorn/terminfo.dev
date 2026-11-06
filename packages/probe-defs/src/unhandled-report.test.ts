@@ -643,6 +643,7 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     ["extensions.kitty-keyboard.report-text", "\u001b[>25u", "csi", ">25u"],
     ["input.csi-u", "\u001b[>1u", "csi", ">1u"],
     ["input.pixel-mouse", "\u001b[?1016h", "csi", "?1016h"],
+    ["input.urxvt-mouse", "\u001b[?1015h", "csi", "?1015h"],
     ["input.kitty-click-events", "\u001b]133;A;click_events=1\u0007", "osc", "133"],
   ] as const
   const declared = [
