@@ -501,7 +501,8 @@ Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration c
 
 The `vterm` D2 slice shares the same private helper (`declaredD2InterfaceAbsence`)
 with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source trees
-`3d58d29a8265aafd928e0736dde6723e2bac2007` and `656da900d83e7c41af13b7ca679f8e1e31481537`) to declare nine exact-version
+`3d58d29a8265aafd928e0736dde6723e2bac2007`, `656da900d83e7c41af13b7ca679f8e1e31481537`,
+and `2f8787fb9931137d79d49f531789f15786582e99`) to declare nine exact-version
 public-interface absences: `modes.decsscls`, `extensions.osc9-progress`,
 `extensions.osc22-pointer`, `extensions.osc133-d`, `extensions.osc633-d`,
 `extensions.osc633-e`, `extensions.semantic-prompts`,
