@@ -65,7 +65,7 @@ test.each(["working", "target", "unknown", "restore", "inert"] as const)(
           const text = new TextDecoder().decode(bytes)
           const requested = /^\x1b\]22;([^\x07]+)\x07$/.exec(text)?.[1]
           if (fault !== "inert" && requested) {
-            if (requested === "text" && fault !== "restore") shape = "text"
+            if (requested === "text" && !(fault === "restore" && shape === "pointer")) shape = "text"
             if (requested === "wait") shape = "wait"
             if (requested === "pointer" && fault !== "target") shape = "pointer"
             if (requested === "terminfo-unknown-shape" && fault === "unknown") shape = "wait"
