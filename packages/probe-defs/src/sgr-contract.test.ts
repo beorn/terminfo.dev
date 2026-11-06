@@ -460,6 +460,62 @@ test.each(
   },
 )
 
+// DEC 0.13.1 exposes a boolean, not normalized hidden styles.
+// Existing generic style-control tests do not exercise the versioned plain-cell exception.
+test.each(
+  (["vt100", "vt220"] as const).flatMap((backend) =>
+    (
+      [
+        ["sgr.underline.curly", "underline-curly-noop"],
+        ["sgr.underline.dotted", "underline-dotted-noop"],
+        ["sgr.underline.dashed", "underline-dashed-noop"],
+      ] as const
+    ).map(([id, mutation]) => [backend, id, mutation] as const),
+  ),
+)("%s 0.13.1 decides %s from a controlled public boolean", (backend, id, mutation) => {
+  const definition = sgrProbes.find((entry) => entry.id === id)!
+  const source = (backendName: string = backend, engineVersion = "0.13.1") => {
+    const surface = createSemanticSurface({ mutations: [mutation, "underline-double-noop"] })
+    return {
+      ...libProbeSource(surface),
+      // DEC's adapter maps its real boolean directly: an off flag is false, not an unreported null.
+      getCell: (row: number, col: number) => ({
+        ...surface.getCell(row, col),
+        underline: surface.getCell(row, col).underline ? ("single" as const) : (false as const),
+      }),
+      backendName,
+      runtimeIdentity: {
+        kind: "js" as const,
+        runtimeFormat: "js" as const,
+        engineVersion,
+        adapterVersion: "test",
+        termlessRevision: "fixture",
+        resolvedPath: "/fixture/engine",
+        integrity: { kind: "registry" as const, lockIntegrity: "fixture" },
+      },
+    }
+  }
+  const result = definition.lib!(source())
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(JSON.stringify(result)).toContain(
+    `${backend} 0.13.1: ordinary SGR 4 sets the public underline flag; this colon form leaves it off and the cell has no style field`,
+  )
+  for (const changed of [source(backend, "0.13.2"), source("another-backend")]) {
+    expect(definition.lib!(changed).observation?.outcome).not.toBe("unsupported")
+  }
+  // A normalized single target, failed single control, or missing D marker proves no negative.
+  for (const [col, patch] of [
+    [0, { underline: "single" as const }],
+    [1, { underline: false as const }],
+    [2, { char: "" }],
+  ] as const) {
+    const changed = source()
+    const read = changed.getCell
+    changed.getCell = (row, x) => ({ ...read(row, x), ...(x === col ? patch : {}) })
+    expect(definition.lib!(changed).observation?.outcome).not.toBe("unsupported")
+  }
+})
+
 // One negative assertion, on bold: the table above is the positive proof for all 32 rows; this only
 // pins that an inert cell is not satisfied. It is deliberately NOT a per-row negative suite, because
 // the other rows carry no speculative negative (@dev/10 2026-10-09).

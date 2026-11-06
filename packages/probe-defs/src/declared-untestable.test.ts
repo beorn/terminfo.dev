@@ -572,13 +572,15 @@ describe("audited OSC interface absence", () => {
 })
 
 // AC3: exact-version public API has no speed state; silence never establishes absence.
-// The existing mode tests lack a vt1000.13.1 declaration boundary.
+// The existing mode tests lack the two DEC0.13.1 declaration boundaries.
 test.each([
   ["vt100", "0.13.1", true],
   ["vt100", "0.13.0", false],
   ["vt100", "0.13.2", false],
   ["vt100", undefined, false],
-  ["vt220", "0.13.1", false],
+  ["vt220", "0.13.1", true],
+  ["vt220", "0.13.0", false],
+  ["vt220", "0.13.2", false],
   ["libvterm", "0.13.1", false],
 ] as const)("DECSSCLS declaration is exact %s/%s", (backendName, engineVersion, declared) => {
   const definition = ALL_PROBES.find((entry) => entry.id === "modes.decsscls")!
@@ -597,5 +599,9 @@ test.each([
   const result = definition.lib!(ctx)
   expect(isDeclaredUntestable(result)).toBe(declared)
   expect(fold(definition.id, result).status).toBe(declared ? "untestable" : "probe-todo")
-  if (declared) expect(result.tests?.[0]?.reason).toMatch(/VT100.*0\.13\.1.*speed/)
+  if (declared) {
+    expect(result.tests?.[0]?.reason).toBe(
+      `${backendName === "vt100" ? "VT100.js" : "VT220.js"} 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
+    )
+  }
 })

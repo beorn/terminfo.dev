@@ -5827,7 +5827,10 @@ export const extensionsProbes: ProbeDefinition[] = [
             expected: `OSC 777 notify adds exactly one parsed toast with title ${toast.title} and body ${toast.body}`,
           })
         }
-        if (!readPayloads) return noSamePathControl("\x1b]777;notify;test;body\x07")(ctx)
+        if (!readPayloads) {
+          const sequence = "\x1b]777;notify;test;body\x07"
+          return unhandledOscReportResult(ctx, sequence, noSamePathControl(sequence)(ctx))
+        }
         const read = () => [...readPayloads.call(ctx)]
         // Grading rule 2: a non-notify control must read back verbatim on this reader before any Unsupported (@cto cd6b67d9).
         const before = read()
