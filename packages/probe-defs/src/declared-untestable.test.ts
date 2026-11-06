@@ -13,8 +13,10 @@ import {
   declaredUntestableResult,
   isDeclaredUntestable,
   recordExecutedProbe,
+  parserStateResult,
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
+import { withD2LibraryObservation } from "./extensions.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { HeadlessRuntimeIdentity, LibProbeSource, NotTestedCoverageResult, ProbeCallbackResult } from "./types.ts"
@@ -43,6 +45,126 @@ const library = (backendName = "alacritty"): LibProbeSource =>
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     reset: () => {},
   }) as unknown as LibProbeSource
+
+describe("WezTerm D2 audited interface absence", () => {
+  const identity = {
+    kind: "native",
+    adapterVersion: "0.10.2",
+    termlessRevision: "f540232e22ba0ccb4005dba5ba2d8de10cb129c5",
+    engineVersion: "0.1.0-fork.5",
+    loadedBinary: {
+      path: "termless-wezterm.node",
+      sha256: "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186",
+    },
+    provenance: {
+      sha256: "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186",
+      sourceCommit: "f8f48853438f5fb6c43abbbb081162506d14f167",
+      lockSha256: "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58",
+      buildHash: "b490366abcd4d04090a9d45b2f9d8e298408d3c38f3d195d1744d0e487fb443f",
+      toolchain: "audited native fixture",
+    },
+    adapterSources: [
+      { path: "packages/wezterm/src/index.ts", blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0" },
+      { path: "packages/wezterm/src/backend.ts", blobOid: "4b376877280d09535bc67a6f99fc5d68b40529e3" },
+      { path: "packages/wezterm/native/src/lib.rs", blobOid: "69a9d1ebc4fd86d46c131a378a9d897cdd6824b3" },
+      { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
+    ],
+  } satisfies HeadlessRuntimeIdentity
+  const source = (extra: Partial<LibProbeSource> = {}): LibProbeSource => {
+    let parsedMarker = false
+    return {
+      ...library("wezterm"),
+      runtimeIdentity: identity,
+      feedCapture: () => "",
+      getTitle: () => "",
+      // Existing DECSSCLS parser-consumption control passes; presentation speed remains unobserved.
+      feed: (sequence) => {
+        parsedMarker = sequence.includes("\x1b[9 pQ")
+      },
+      getText: () => (parsedMarker ? "Q" : ""),
+      getCursor: () => ({ x: parsedMarker ? 1 : 0, y: 0, visible: true, style: null }),
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+      ...extra,
+    }
+  }
+  const targets = [
+    ["extensions.osc113-reset-pointer-fg", /empty handler.*public palette.*query reply.*PaletteChanged/],
+    ["extensions.osc114-reset-pointer-bg", /empty handler.*public palette.*query reply.*PaletteChanged/],
+    ["extensions.osc22-pointer", /no handler.*opt-in log.*off/],
+    ["modes.decsscls", /no handler.*opt-in log.*off/],
+    ["extensions.osc176-app-id", /OSC 176.*no host route/],
+    ["extensions.osc3008-context", /OSC 3008.*no host route/],
+    ["extensions.osc440-audio", /OSC 440.*no host route/],
+    ["extensions.osc555-flash", /OSC 555.*no host route/],
+    ["extensions.osc666-termprop", /OSC 666.*no host route/],
+    ["extensions.osc710-font-normal", /OSC 710.*no host route/],
+  ] as const
+
+  // @failure The exact approved WezTerm cohort retains TODO or invents an observation.
+  // @level l1
+  // @consumer Shipping library callbacks and result finalizer, using audited native fixtures only.
+  test.each(targets)("%s declares its specific public-interface absence", (id, reason) => {
+    const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(source())
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(fold(id, result)).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+  })
+
+  test("the public 0.11.0 adapter retains the ten audited interface absences", () => {
+    const runtimeIdentity = {
+      ...identity,
+      adapterVersion: "0.11.0",
+      termlessRevision: "10dbfe015d27357bac7f2337e2a828a5afe0ad97",
+      adapterSources: identity.adapterSources.map((entry) =>
+        entry.path === "packages/wezterm/src/backend.ts"
+          ? { ...entry, blobOid: "e7b9d32395b3209ef48247c2e3d7f7f21cbd10a6" }
+          : entry,
+      ),
+    }
+    for (const [id, reason] of targets) {
+      const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(source({ runtimeIdentity }))
+      expect(fold(id, result), id).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
+    }
+  })
+
+  test("unqualified runtime identities keep the ten cells TODO", () => {
+    for (const runtimeIdentity of [
+      undefined,
+      { ...identity, engineVersion: "0.1.0-fork.6" },
+      { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+      { ...identity, provenance: { ...identity.provenance, sourceCommit: "0".repeat(40) } },
+      { ...identity, provenance: { ...identity.provenance, lockSha256: "0".repeat(64) } },
+      {
+        ...identity,
+        adapterSources: identity.adapterSources.map((entry, i) =>
+          i === 1 ? { ...entry, blobOid: "0".repeat(40) } : entry,
+        ),
+      },
+    ]) {
+      for (const [id] of targets) {
+        const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(source({ runtimeIdentity }))
+        expect(fold(id, result).status, id).toBe("probe-todo")
+      }
+    }
+  })
+
+  test("real reports and decided results retain their original result", () => {
+    for (const [id] of targets) {
+      const definition = ALL_PROBES.find((probe) => probe.id === id)!
+      expect(isDeclaredUntestable(definition.lib!(source({ getUnhandledSequences: () => [] })))).toBe(false)
+      const decided = parserStateResult(true, "retained original reader result", { value: "fixture" })
+      expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source())).toBe(decided)
+    }
+  })
+
+  test("the WezTerm identity cannot declare absences on another backend", () => {
+    for (const [id] of targets) {
+      const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(source({ backendName: "unlisted" }))
+      expect(fold(id, result).status, id).toBe("probe-todo")
+    }
+  })
+})
 
 // The operator's Nov 4 16:55 decision, part A: each feature's reason, written once in its own probe.
 const declared = [

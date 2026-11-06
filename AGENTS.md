@@ -19,7 +19,7 @@ Its [vocabulary and current code](packages/probe-defs/README.md#vocabulary-and-c
 Work on one probe. Use the five result labels and terminal progress tiers defined in the probe-system model; catalog coverage and color depth are separate concepts.
 For authorized headless work, run the changed probe IDs across the eleven configured library backends and the owning two-sided checks.
 Before Yrd submission, record expected result moves for each of the eleven configured library backends.
-On the source branch, run the full collector from the owned dev-repo worktree root with `@in -- bun run --cwd vendor/terminfo.dev admin probe termless --all`, record the actual per-library diff, and reconcile mismatches before submitting.
+A change gated to one backend and an exact identity needs no collector: the next hourly run proves it. Any other change runs the full collector from the owned dev-repo worktree root with `@in -- bun run --cwd vendor/terminfo.dev probe termless --all`, records the actual per-library diff, and reconciles mismatches before submitting.
 After merge, verify that the next hourly run's per-library diff matches the submitted expectation.
 A do-nothing fake never reads Supported; a working fake reads Supported and loses it when only that feature is disabled.
 Read the changed results and retained reasons, obtain one peer review, then deliver through the configured Yrd queue.
