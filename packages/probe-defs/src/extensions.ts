@@ -98,13 +98,13 @@ function hasAuditedOscInterfaceAbsence(
     | "osc-absence"
     | "vt100-rust-d2"
     | "vterm-d2"
-    | "osc-pass-through"
+    | "osc-tap"
     | "ghostty-native-d2"
     | "host-effect-h4"
     | "wezterm-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
-  if (cohort === "osc-pass-through") {
+  if (cohort === "osc-tap") {
     // Operator Nov 5 / CTO 4ab79b2f: these are engine identities. Adapter-only
     // releases do not change the library's generic pass-through behavior.
     if (ctx.backendName === "vterm") return hasAuditedOscInterfaceAbsence(ctx, "vterm-d2")
@@ -118,13 +118,7 @@ function hasAuditedOscInterfaceAbsence(
           "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="
       )
     }
-    return (
-      ctx.backendName === "libvterm" &&
-      identity?.kind === "js" &&
-      identity.runtimeFormat === "wasm" &&
-      identity.engineVersion === "0.3.3" &&
-      identity.loadedBinary.sha256 === "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0"
-    )
+    return false
   }
   if (cohort === "ghostty-native-d2") {
     return (
@@ -6294,19 +6288,12 @@ const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
   "extensions.osc710-font-normal": "OSC 710 font selection",
 }
 
-// Operator 20:59 / CTO 9182ff20: all six and made-up OSC 9999 take the same
-// generic hook; payload delivery is not execution of these host commands.
+// NR-H library-job declarations retain their separately reviewed xterm parser-hook reasons.
 const OSC_PASS_THROUGH_REASON =
   "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
 const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
   Record<string, string | { readonly backend: string; readonly reason: string }>
 > = {
-  "extensions.osc176-app-id": OSC_PASS_THROUGH_REASON,
-  "extensions.osc3008-context": OSC_PASS_THROUGH_REASON,
-  "extensions.osc440-audio": OSC_PASS_THROUGH_REASON,
-  "extensions.osc555-flash": OSC_PASS_THROUGH_REASON,
-  "extensions.osc666-termprop": OSC_PASS_THROUGH_REASON,
-  "extensions.osc710-font-normal": OSC_PASS_THROUGH_REASON,
   // NR-H: xterm.js 6.0.0's logger is not a report; retain the reviewed parser-hook wording.
   "editing.decsace": {
     backend: "xterm",
@@ -6328,6 +6315,117 @@ const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
   "extensions.osc-633-vscode": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
 }
 
+// The default is the library's job. CTO's phase-1 rule assigns these ten to the app.
+const APP_JOB_OSCS: Readonly<Record<string, string>> = {
+  "extensions.notifications": "9;terminfo-notification",
+  "extensions.osc777-notify": "777;notify;terminfo-title;terminfo-body",
+  "extensions.osc7-cwd": "7;file://localhost/terminfo-cwd",
+  "extensions.osc633-p": "633;P;Cwd=/terminfo-cwd",
+  "extensions.osc176-app-id": "176;terminfo-test",
+  "extensions.osc3008-context": "3008;start=id=terminfo-test",
+  "extensions.osc440-audio": "440;bell.wav",
+  "extensions.osc555-flash": "555",
+  "extensions.osc666-termprop": "666;test-prop=value",
+  "extensions.osc710-font-normal": "710;monospace",
+}
+
+const LIBRARY_OSC_HOOKS: Readonly<
+  Record<
+    string,
+    {
+      readonly kind: "report" | "tap" | "typed" | "none"
+      readonly typed?: readonly string[]
+      readonly handoff?: string
+    }
+  >
+> = {
+  libvterm: { kind: "report" },
+  "vt100-rust": { kind: "report" },
+  xterm: { kind: "tap" },
+  vterm: { kind: "tap", typed: ["extensions.notifications", "extensions.osc7-cwd", "extensions.osc633-p"] },
+  ghostty: { kind: "typed" },
+  "ghostty-native": { kind: "typed" },
+  wezterm: { kind: "typed" },
+  kitty: { kind: "typed", handoff: "extensions.osc3008-context" },
+  vt100: { kind: "none" },
+  vt220: { kind: "none" },
+  alacritty: { kind: "none" },
+}
+
+/** Only generic handoffs use this rule; typed stores and library-job reports keep their existing paths. */
+function appJobHandoff(
+  ctx: LibProbeSource,
+  featureId: string,
+  lib: (ctx: LibProbeSource) => ProbeCallbackResult,
+): ProbeCallbackResult | undefined {
+  const target = APP_JOB_OSCS[featureId]
+  const hook = LIBRARY_OSC_HOOKS[ctx.backendName]
+  if (
+    !target ||
+    !hook ||
+    hook.kind === "none" ||
+    (hook.kind === "typed" && hook.handoff !== featureId) ||
+    hook.typed?.includes(featureId)
+  ) {
+    return undefined
+  }
+  const state = { featureId, backend: ctx.backendName, runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity) }
+  if (hook.kind === "typed") {
+    // H-4's typed OSC 3008 callback hands off text that this exact bridge does not keep.
+    return declaredD2InterfaceAbsence(
+      ctx,
+      lib,
+      featureId,
+      APP_JOB_OSCS,
+      "kitty",
+      "host-effect-h4",
+      undefined,
+      () =>
+        "Kitty 0.49.2 hands the OSC 3008 text to the app; our bridge does not keep it and exposes no context effect to read.",
+      { genericReportIsObservable: false },
+    )
+  }
+  if (hook.kind === "tap") {
+    if (!hasAuditedOscInterfaceAbsence(ctx, "osc-tap")) {
+      return notTestedResult("Generic OSC tap: this engine identity has no passed-to-the-app declaration", state)
+    }
+    return declaredUntestableResult(
+      "Untestable (passed to the app): this command is the app's job, and the library hands it to the app through a hook that receives every OSC command.",
+      state,
+    )
+  }
+  const control = {
+    feed: `\x1b]2;${UNHANDLED_OSC_CONTROL_TITLE}\x07`,
+    applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
+  }
+  // Keep the existing report reader. Both this command and a made-up command must be reported,
+  // while the handled title command applies without adding an entry in this same cell's run.
+  const reported = unhandledSequenceVerdict(
+    ctx,
+    { feed: `\x1b]${target}\x07`, code: { kind: "osc", code: target.replace(/;.*/, "") } },
+    control,
+    state,
+  )
+  const madeUp =
+    reported &&
+    unhandledSequenceVerdict(
+      ctx,
+      { feed: "\x1b]9999;terminfo-handoff-control\x07", code: { kind: "osc", code: "9999" } },
+      control,
+      state,
+    )
+  if (!reported || !madeUp) {
+    return notTestedResult(
+      "Generic OSC report: the command, made-up OSC and handled title controls did not qualify in this run",
+      state,
+    )
+  }
+  return declaredUntestableResult(
+    "Untestable (passed to the app): this command is the app's job. The library reports that it does not handle it and hands its text to the app.",
+    { ...state, report: reported.response, madeUp: madeUp.response },
+  )
+}
+
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "device.decrqss":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public DCS callback, response writer or device.decrqss result state",
@@ -6341,18 +6439,6 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.display":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
-  "extensions.osc176-app-id":
-    "OSC 176 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc3008-context":
-    "OSC 3008 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc440-audio":
-    "OSC 440 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc555-flash":
-    "OSC 555 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc666-termprop":
-    "OSC 666 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
-  "extensions.osc710-font-normal":
-    "OSC 710 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
 }
 
 const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6399,7 +6485,7 @@ function declaredD2InterfaceAbsence(
     | "osc-absence"
     | "vt100-rust-d2"
     | "vterm-d2"
-    | "osc-pass-through"
+    | "osc-tap"
     | "ghostty-native-d2"
     | "wezterm-d2"
     | "host-effect-h4",
@@ -6487,6 +6573,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
   const passThroughReason = OSC_PASS_THROUGH_DECLARATIONS[definition.id]
+  const appJob = APP_JOB_OSCS[definition.id]
   const ghosttyNativeReason = GHOSTTY_NATIVE_D2_DECLARATIONS[definition.id]
   const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
   if (
@@ -6496,6 +6583,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       !reason &&
       !absence &&
       !vtermReason &&
+      !appJob &&
       !passThroughReason &&
       !ghosttyNativeReason &&
       !weztermAbsence)
@@ -6516,16 +6604,17 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
+      const handoff = appJobHandoff(ctx, definition.id, lib)
+      if (handoff) return handoff
       const passThroughDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
         definition.id,
         OSC_PASS_THROUGH_DECLARATIONS,
         ctx.backendName,
-        "osc-pass-through",
+        "osc-tap",
         undefined,
         undefined,
-        // libvterm's numeric report is the same generic hook, not a command effect.
         { genericReportIsObservable: false },
       )
       if (passThroughDeclared) return passThroughDeclared
@@ -6582,25 +6671,17 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         (entry) => `WezTerm tattoy-wezterm-term 0.1.0-fork.5: ${entry}.`,
       )
       if (weztermDeclared) return weztermDeclared
-      if (
-        passThroughReason &&
-        kittyTarget &&
-        (ctx.backendName === "ghostty-native" ||
-          (ctx.backendName === "kitty" && definition.id === "extensions.osc3008-context"))
-      ) {
+      if (appJob && kittyTarget && ctx.backendName === "ghostty-native") {
         const declared = declaredD2InterfaceAbsence(
           ctx,
           lib,
           definition.id,
-          OSC_PASS_THROUGH_DECLARATIONS,
-          ctx.backendName,
+          APP_JOB_OSCS,
+          "ghostty-native",
           "host-effect-h4",
           undefined,
           () =>
-            ctx.backendName === "kitty"
-              ? "Kitty 0.49.2 hands the OSC 3008 text to the app; our bridge does not keep it and exposes no context effect to read."
-              : `Ghostty 1.3.1 native bridge exposes no public state, report or payload route for OSC ${kittyTarget.code.code} at this audited engine/bridge identity.`,
-          { genericReportIsObservable: ctx.backendName !== "kitty" },
+            `Ghostty 1.3.1 native bridge exposes no public state, report or payload route for OSC ${kittyTarget.code.code} at this audited engine/bridge identity.`,
         )
         if (declared) return declared
       }
@@ -6609,7 +6690,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       if (vt100Audited && reason) {
         return declaredUntestableResult(reason, { backend: ctx.backendName, runtimeIdentity: ctx.runtimeIdentity })
       }
-      const hostEffectReport = passThroughReason && ["vt100", "vt220", "ghostty"].includes(ctx.backendName)
+      const hostEffectReport = appJob && ["vt100", "vt220", "ghostty"].includes(ctx.backendName)
       const target = hostEffectReport
         ? kittyTarget
         : vt100Audited
