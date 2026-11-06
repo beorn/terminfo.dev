@@ -57,6 +57,138 @@ async function backend() {
   return createXtermBackend()
 }
 
+// @failure OSC22's library arm checks CPR instead of its pointer query; a target no-op,
+// absent control, or silent reader must not acquire Supported, and the incoming shape must survive.
+// @level l5
+// @consumer Kitty library extensions.osc22-pointer, through the production reply transport
+test.runIf(OWNED_LAYOUT && isKittyAvailable())(
+  "Kitty OSC22 uses controlled native pointer replies and restores its incoming shape",
+  () => {
+    const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc22-pointer")!
+    for (const [fault, initial] of [
+      ["none", "0"],
+      ["none", "text"],
+      ["none", "pointer"],
+      ["none", "wait"],
+      ["target", "wait"],
+      ["control", "wait"],
+      ["silence", "wait"],
+    ] as const) {
+      const value = createKittyBackend({ cols: 80, rows: 24 })
+      try {
+        const source = createLibProbeSource(value, undefined, undefined, undefined)
+        source.feed(`\x1b]22;${initial === "0" ? "" : initial}\x07`)
+        const feed = source.feed.bind(source)
+        const capture = source.feedCapture.bind(source)
+        const controlled: LibProbeSource = {
+          ...source,
+          feed(text) {
+            if (fault === "target" && text === "\x1b]22;pointer\x07") return
+            if (fault === "control" && text === "\x1b]22;text\x07") return
+            feed(text)
+          },
+          feedCapture(text) {
+            const raw = capture(text)
+            return fault === "silence" ? "" : raw
+          },
+        }
+        const result = definition.lib!(controlled)
+        if (fault === "none" || fault === "target") {
+          expect(result.observation?.outcome, JSON.stringify(result)).toBe(
+            fault === "none" ? "supported" : "unsupported",
+          )
+        } else {
+          expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+        }
+        expect(capture("\x1b]22;?__current__\x07")).toBe(`\x1b]22;${initial}\x1b\\`)
+      } finally {
+        value.destroy()
+      }
+    }
+  },
+  20_000,
+)
+
+// @failure A native rejection is mistaken for host delivery, lost at collector binding,
+// or used outside the literal Kitty cohort. Each candidate must qualify its own payload.
+// @level l5
+// @consumer Kitty D2 state/rejection cells through collectBatch; held cells retain TODO
+test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvailable())(
+  "Kitty report qualifies its eleven literal candidates while delivered OSC9 stays unreported",
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-kitty-report-"))
+    vi.stubEnv("KITTY_CONFIG_DIRECTORY", join(directory, "kitty"))
+    vi.stubEnv("XDG_CACHE_HOME", join(directory, "cache"))
+    try {
+      const identity = await headlessIdentity.headlessRuntimeIdentity("kitty", "@termless/kitty", "native")
+      const value = createKittyBackend({ cols: 80, rows: 24 })
+      try {
+        identity.adapterSources = headlessIdentity.readAdapterSources("kitty", value)
+        const source = createLibProbeSource(value, undefined, identity, undefined)
+        source.feed("\x1b]9;terminfo-delivery-control\x07")
+        expect(source.getUnhandledSequences!()).toEqual([])
+        expect(source.getNotifications!()).toContain("terminfo-delivery-control")
+      } finally {
+        value.destroy()
+      }
+      const candidates = [
+        "extensions.osc633-b",
+        "extensions.osc633-e",
+        "extensions.osc-633-vscode",
+        "extensions.osc113-reset-pointer-fg",
+        "extensions.osc114-reset-pointer-bg",
+        "extensions.osc176-app-id",
+        "extensions.osc440-audio",
+        "extensions.osc555-flash",
+        "extensions.osc666-termprop",
+        "extensions.osc710-font-normal",
+        "modes.decsscls",
+      ]
+      const held = ["extensions.osc133-b", "extensions.semantic-prompts", "extensions.osc3008-context"]
+      const ids = [...candidates, ...held]
+      const draft = initializeRunDraft({
+        source: { kind: "live" },
+        runId: "kitty-d2-report-fixture",
+        sourceRevision: "a".repeat(40),
+        intendedSubject: { kind: "lib", id: "kitty" },
+        manifest: {
+          schemaVersion: 4,
+          probeHash: "kitty-d2-report-fixture",
+          adapterVersion: "fixture",
+          catalogIds: ids,
+          probes: { term: [], mux: [], lib: ids },
+        },
+      })
+      const batch = await collectBatch(
+        async () => createKittyBackend(),
+        "kitty",
+        registryDefinitions(ids),
+        draft,
+        undefined,
+        {
+          identity,
+          adapterPackage: "@termless/kitty",
+          adapterType: "native",
+          adapterPath: fileURLToPath(import.meta.resolve("@termless/kitty")),
+        },
+      )
+      expect(batch.results).toHaveLength(14)
+      for (const result of batch.results) {
+        expect(result.status, JSON.stringify(result)).toBe(
+          candidates.includes(result.featureId) ? "unsupported" : "probe-todo",
+        )
+        if (candidates.includes(result.featureId)) {
+          expect(result.reason).toBe("library reported this sequence as unhandled")
+        }
+      }
+    } finally {
+      vi.unstubAllEnvs()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+  60_000,
+)
+
 // D2's callback-only tests missed this collector boundary: a truthful parser
 // rejection was invalidated by the registered query-only assertion declaration.
 // This fixture tests declaration admission, not a native engine or its verdict.
@@ -1907,13 +2039,20 @@ test.skipIf(!isKittyAvailable())("Kitty semantic readers witness fresh starts an
       expect(marks.first.at(-1), id).toEqual({ type, startRow: 0, startCol: 0 })
       expect(marks.second.at(-1), id).toEqual({ type, startRow: 1, startCol: 2 })
     }
-    // The umbrella callbacks stay PROBE TODO until a full-lifecycle reader exists (b5fecd017, #32247).
-    for (const id of ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
+    // Full semantic lifecycle remains TODO. Owned Kitty now rejects this OSC633 payload explicitly.
+    for (const id of OWNED_LAYOUT
+      ? ["extensions.semantic-prompts"]
+      : ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
       const umbrella = registryDefinitions([id])[0]!.lib!(source)
       expect(umbrella.tests, id).toEqual([
         { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
       ])
       expect(umbrella.observation, id).toBeUndefined()
+    }
+    if (OWNED_LAYOUT) {
+      expect(registryDefinitions(["extensions.osc-633-vscode"])[0]!.lib!(source).observation).toMatchObject({
+        outcome: "unsupported",
+      })
     }
     const cached = source.getSemanticMarks!()
     const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
