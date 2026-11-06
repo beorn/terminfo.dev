@@ -1726,28 +1726,30 @@ test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a probe-t
   }
 })
 
-// @failure #32307: completed public OSC callbacks were not wired to the existing probe source, leaving real777 TODO.
+// @failure A generic tap payload is graded Supported without an engine declaration, or payload forwarding is lost.
 // @level l1
 // @consumer extensions.osc777-notify through the real vterm and xterm adapters and existing source forwarding.
 test.each([
   ["vterm", createVtermBackend],
   ["xterm", createXtermBackend],
-] as const)("%s OSC777 payloads reach the qualified probe with prior history", (_name, create) => {
+] as const)("%s OSC777 tap keeps payloads but cannot decide support without an engine declaration", (_name, create) => {
   const value = create({ cols: 80, rows: 24 })
   try {
     const source = createLibProbeSource(value, undefined, undefined, undefined)
     source.feed("\x1b]777;preexec\x07")
     const definition = registryDefinitions(["extensions.osc777-notify"])[0]!
     const result = definition.lib!(source)
-    expect(result.notTested).toBeUndefined()
-    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+    expect(result.notTested?.noObservable).toContain("engine identity")
+    expect(result.observation).toBeUndefined()
+    source.feed("\x1b]777;terminfo-777-control\x07")
+    source.feed("\x1b]777;notify;terminfo-777-title-A;terminfo-777-body-A\x07")
+    source.feed("\x1b]777;notify;terminfo-777-title-B;terminfo-777-body-B\x07")
     const expected = [
       "preexec",
       "terminfo-777-control",
       "notify;terminfo-777-title-A;terminfo-777-body-A",
       "notify;terminfo-777-title-B;terminfo-777-body-B",
     ]
-    expect((JSON.parse(result.response!) as { second: string[] }).second).toEqual(expected)
     expect(source.getOsc777Payloads!()).toEqual(expected)
   } finally {
     value.destroy()
@@ -2060,7 +2062,12 @@ test.skipIf(!isKittyAvailable())(
         : ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
         const umbrella = registryDefinitions([id])[0]!.lib!(source)
         expect(umbrella.tests, id).toEqual([
-          { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
+          {
+            id: "criterion",
+            status: "probe-todo",
+            reason:
+              "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+          },
         ])
         expect(umbrella.observation, id).toBeUndefined()
       }
@@ -4244,13 +4251,7 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
     still(variant, unchanged)
       .map((row) => row.featureId)
       .sort(),
-  ).toEqual([
-    "extensions.osc7-cwd",
-    "sgr.blink",
-    "sgr.underline.curly",
-    "sgr.underline.dashed",
-    "sgr.underline.dotted",
-  ])
+  ).toEqual(["extensions.osc7-cwd", "sgr.blink", "sgr.underline.curly", "sgr.underline.dashed", "sgr.underline.dotted"])
   expect(JSON.stringify(still(variant, unchanged))).not.toContain("library reported this sequence as unhandled")
 })
 
