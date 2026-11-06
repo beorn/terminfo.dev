@@ -57,6 +57,58 @@ async function backend() {
   return createXtermBackend()
 }
 
+// @failure OSC22's library arm checks CPR instead of its pointer query; a target no-op,
+// absent control, or silent reader must not acquire Supported, and the incoming shape must survive.
+// @level l5
+// @consumer Kitty library extensions.osc22-pointer, through the production reply transport
+test.runIf(OWNED_LAYOUT)(
+  "Kitty OSC22 uses controlled native pointer replies and restores its incoming shape",
+  () => {
+    const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc22-pointer")!
+    for (const [fault, initial] of [
+      ["none", "0"],
+      ["none", "text"],
+      ["none", "pointer"],
+      ["none", "wait"],
+      ["target", "wait"],
+      ["control", "wait"],
+      ["silence", "wait"],
+    ] as const) {
+      const value = createKittyBackend({ cols: 80, rows: 24 })
+      try {
+        const source = createLibProbeSource(value, undefined, undefined, undefined)
+        source.feed(`\x1b]22;${initial === "0" ? "" : initial}\x07`)
+        const feed = source.feed.bind(source)
+        const capture = source.feedCapture.bind(source)
+        const controlled: LibProbeSource = {
+          ...source,
+          feed(text) {
+            if (fault === "target" && text === "\x1b]22;pointer\x07") return
+            if (fault === "control" && text === "\x1b]22;text\x07") return
+            feed(text)
+          },
+          feedCapture(text) {
+            const raw = capture(text)
+            return fault === "silence" ? "" : raw
+          },
+        }
+        const result = definition.lib!(controlled)
+        if (fault === "none" || fault === "target") {
+          expect(result.observation?.outcome, JSON.stringify(result)).toBe(
+            fault === "none" ? "supported" : "unsupported",
+          )
+        } else {
+          expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+        }
+        expect(capture("\x1b]22;?__current__\x07")).toBe(`\x1b]22;${initial}\x1b\\`)
+      } finally {
+        value.destroy()
+      }
+    }
+  },
+  20_000,
+)
+
 // D2's callback-only tests missed this collector boundary: a truthful parser
 // rejection was invalidated by the registered query-only assertion declaration.
 // This fixture tests declaration admission, not a native engine or its verdict.

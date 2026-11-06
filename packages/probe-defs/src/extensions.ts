@@ -5673,19 +5673,70 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscColorQueryProbe("extensions.osc19-highlight-fg", 19),
 
   // OSC 22 — pointer shape
-  // Kitty defines shape/status queries, but this callback only tests CPR.
-  // Visible pointer appearance also needs observation outside the cell grid.
-  probe(
-    "extensions.osc22-pointer",
-    noSamePathControl("\x1b]22;pointer\x07"),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]22;pointer\x07")
-      const pos = await ctx.queryCursorPosition()
-      return unmeasuredCellResult(pos, "OSC 22 pointer shape")
-    },
-    null,
-  ),
+  // Logical pointer state is queryable in the library; visible app appearance remains separate.
+  {
+    ...probe(
+      "extensions.osc22-pointer",
+      (ctx) => {
+        const undecided = () => noSamePathControl("\x1b]22;pointer\x07")(ctx)
+        if (ctx.backendName !== "kitty") return undecided()
+        const query = "\x1b]22;?__current__\x07"
+        const read = () => {
+          const raw = ctx.feedCapture(query)
+          return { raw, shape: /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u.exec(raw)?.[1] }
+        }
+        const initial = read()
+        if (initial.shape === undefined) return notTestedResult(NO_SAME_PATH_CONTROL, { query, initial })
+        const controlShape = initial.shape === "text" ? "wait" : "text"
+        const controlWrite = `\x1b]22;${controlShape}\x07`
+        const targetWrite = "\x1b]22;pointer\x07"
+        // Kitty reports its unset shape as "0"; an empty assignment restores that native default.
+        const restoreWrite = `\x1b]22;${initial.shape === "0" ? "" : initial.shape}\x07`
+        const readings: {
+          initial: typeof initial
+          control?: typeof initial
+          target?: typeof initial
+          restored?: typeof initial
+        } = { initial }
+        try {
+          ctx.feed(controlWrite)
+          readings.control = read()
+          if (readings.control.shape === controlShape) {
+            ctx.feed(targetWrite)
+            readings.target = read()
+          }
+        } finally {
+          ctx.feed(restoreWrite)
+          readings.restored = read()
+        }
+        const evidence = { query, controlWrite, targetWrite, restoreWrite, readings }
+        const target = readings.target?.shape
+        if (
+          readings.control?.shape !== controlShape ||
+          target === undefined ||
+          readings.restored?.shape !== initial.shape
+        ) {
+          return notTestedResult(NO_SAME_PATH_CONTROL, evidence)
+        }
+        return parserStateResult(
+          target === "pointer" ? true : target === controlShape ? false : null,
+          "OSC 22 pointer query reports pointer after a distinct same-path control and restores the incoming shape",
+          evidence,
+          undefined,
+          undefined,
+          "query_reply",
+        )
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]22;pointer\x07")
+        const pos = await ctx.queryCursorPosition()
+        return unmeasuredCellResult(pos, "OSC 22 pointer shape")
+      },
+      null,
+    ),
+    libAssertionType: "query_reply",
+  },
 
   // Query capabilities without displaying a notification or requiring desktop access.
   {

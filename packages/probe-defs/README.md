@@ -85,6 +85,12 @@ reply prefix. XTWINOPS 14 (`CSI 14 t`) reports text-area pixels; the outer-windo
 query is `CSI 14;2 t`. These criteria establish query replies, without measuring
 palette push/pop effects or graphics capabilities.
 
+The Kitty library OSC 22 pointer criterion uses its existing `?__current__` reply:
+read the incoming shape, qualify a distinct shape control, set `pointer`, read it
+back, and restore the incoming shape. Missing replies or an unqualified control
+retain PROBE TODO. Other libraries retain their existing path; the app criterion
+still requires pointer appearance outside the cell grid.
+
 The XTWINOPS 22/23 library callbacks run separate pop and push fixtures. The pop
 fixture saves title A, sets B and restores A; the push fixture sets A then B,
 saves, sets C and restores B. They retain the incoming title plus each fixture's
