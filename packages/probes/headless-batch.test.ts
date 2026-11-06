@@ -173,8 +173,9 @@ test.runIf(OWNED_LAYOUT)(
       expect(result.status, JSON.stringify(result)).toBe(
         candidates.includes(result.featureId) ? "unsupported" : "probe-todo",
       )
-      if (candidates.includes(result.featureId))
+      if (candidates.includes(result.featureId)) {
         expect(result.reason).toBe("library reported this sequence as unhandled")
+      }
     }
   },
   60_000,
