@@ -328,6 +328,72 @@ describe("H-4 exact host-effect declarations", () => {
       { path: "packages/ghostty-native/src/backend.ts", blobOid: "d15e83634be3aa1bf2df9b58eb2f6376af800808" },
     ],
   } satisfies HeadlessRuntimeIdentity
+  const ghosttyR3Identity = {
+    ...ghosttyIdentity,
+    termlessRevision: "1e61d17c546139386a9ab78abeaa753660d3e93c",
+    loadedBinary: {
+      ...ghosttyIdentity.loadedBinary,
+      sha256: "bb0c0c6a34997fc4850756e095d1ae978fb9fa046d87eb91847d9e0e6bdfb207",
+    },
+    provenance: {
+      ...ghosttyIdentity.provenance,
+      sha256: "bb0c0c6a34997fc4850756e095d1ae978fb9fa046d87eb91847d9e0e6bdfb207",
+      buildHash: "83a45eb6571bf3d44a3cf8d0b5fdd5b1941d742ca5e33fd2bf6f142f7d7451fb",
+    },
+    adapterSources: [
+      { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
+      { path: "packages/ghostty-native/src/backend.ts", blobOid: "9bda39988b0af9c66fcc342ca477cf9daab2f5ac" },
+    ],
+  } satisfies HeadlessRuntimeIdentity
+  const ghosttyR372efIdentity = {
+    ...ghosttyR3Identity,
+    termlessRevision: "dfa25540d38b2a098189810e015d8e3ebf5c8552",
+    adapterSources: [
+      { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
+      { path: "packages/ghostty-native/src/backend.ts", blobOid: "72ef06ecf72f2509c097aff3260914d098ff010a" },
+    ],
+  } satisfies HeadlessRuntimeIdentity
+  // @failure A native build with library-forced graphics disabled stays TODO or an enabled build borrows its absence.
+  // @level l1
+  // @consumer The two registered native image callbacks and shipping result fold; older image cohorts omit native.
+  test.each(["extensions.kitty-graphics.display", "extensions.kitty-graphics.transmit"])(
+    "R3 native %s declares only the actual disabled library build",
+    (id) => {
+      const definition = ALL_PROBES.find((entry) => entry.id === id)!
+      const source: LibProbeSource = {
+        ...library("ghostty-native"),
+        runtimeIdentity: ghosttyIdentity,
+        capabilities: { ...library().capabilities, kittyGraphics: false },
+        feedCapture: () => "",
+      }
+      expect(fold(id, definition.lib!(source))).toMatchObject({
+        status: "untestable",
+        reason: expect.stringMatching(/ghostty-vt.*forces oniguruma off.*kitty_graphics off/),
+      })
+      for (const extra of [
+        { capabilities: { ...source.capabilities, kittyGraphics: true } },
+        { runtimeIdentity: undefined },
+        { backendName: "ghostty" },
+        { runtimeIdentity: { ...ghosttyIdentity, engineVersion: "unreviewed" } },
+        {
+          runtimeIdentity: {
+            ...ghosttyIdentity,
+            provenance: { ...ghosttyIdentity.provenance, lockSha256: "0".repeat(64) },
+          },
+        },
+      ]) {
+        expect(isDeclaredUntestable(definition.lib!({ ...source, ...extra }))).toBe(false)
+      }
+      for (const outcome of ["supported", "unsupported"] as const) {
+        const decided: ProbeCallbackResult = {
+          pass: outcome === "supported",
+          observation: { outcome, assertionType: "query_reply" },
+        }
+        expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source)).toBe(decided)
+      }
+    },
+  )
+
   // @failure NR-I's seven reviewed cells stay TODO or leak onto an unaudited engine.
   // @level l1
   // @consumer Registered library callbacks and the shipping finalizer; prior native cohorts omit these seven.
@@ -539,6 +605,8 @@ describe("H-4 exact host-effect declarations", () => {
   // @consumer Registered callbacks through the result finalizer; the generic Kitty report is not a payload store.
   test.each([
     ["ghostty-native", ghosttyIdentity, ids, /Ghostty.*no.*(state|report|route)/i],
+    ["ghostty-native", ghosttyR3Identity, ids, /Ghostty.*no.*(state|report|route)/i],
+    ["ghostty-native", ghosttyR372efIdentity, ids, /Ghostty.*no.*(state|report|route)/i],
     ["kitty", kittyIdentity, ["extensions.osc3008-context"], /hands.*(text|payload).*bridge.*(not keep|drops)/i],
   ] as const)("%s retains only its exact declaration", (backendName, runtimeIdentity, targets, reason) => {
     for (const id of targets) {
@@ -556,6 +624,17 @@ describe("H-4 exact host-effect declarations", () => {
       expect(result.observation).toBeUndefined()
       for (const changed of [
         { ...runtimeIdentity, loadedBinary: { ...runtimeIdentity.loadedBinary, sha256: "0".repeat(64) } },
+        ...(backendName === "ghostty-native"
+          ? [
+              {
+                ...runtimeIdentity,
+                adapterSources:
+                  runtimeIdentity === ghosttyIdentity
+                    ? ghosttyR3Identity.adapterSources
+                    : ghosttyIdentity.adapterSources,
+              },
+            ]
+          : []),
         {
           ...runtimeIdentity,
           adapterSources: runtimeIdentity.adapterSources.map((entry, index) =>
@@ -593,6 +672,8 @@ describe("H-4 exact host-effect declarations", () => {
   test.each([
     ["kitty", kittyIdentity, "input.kitty-click-events", /Window/],
     ["ghostty-native", ghosttyIdentity, "input.kitty-click-events", /Surface/],
+    ["ghostty-native", ghosttyR3Identity, "input.kitty-click-events", /Surface/],
+    ["ghostty-native", ghosttyR372efIdentity, "input.kitty-click-events", /Surface/],
     ["ghostty", ghosttyWebIdentity, "input.kitty-click-events", /WASM/],
     ["ghostty", ghosttyWebIdentity, "extensions.clipboard-paste", /paste encoder/],
   ] as const)("slice C: %s %s declares only at its exact identity", (backendName, runtimeIdentity, id, reason) => {
@@ -821,13 +902,48 @@ test.each(declared)("%s library arm reads Untestable with its declared reason", 
   expect(folded.reason).toMatch(reason)
 })
 
-// The exceptions named inside their probes stay as they are: vterm's stored Sixel payload keeps its review, and
-// XTEST key injection is declared only for the six libraries with no public key encoder (CTO 47010d76, #32428).
-test("vterm's Sixel storage arm and the encoder-exporting XTEST arms are not declared and stay PROBE TODO", () => {
+// CTO phase2-ruling.md:41 (#32485): vterm's Sixel storage arm reads Untestable with the same rendered-pixels reason
+// as the other ten libraries while preserving its retained payload in evidence; an unretained storage reader and the
+// encoder-exporting XTEST arms stay PROBE TODO (CTO 47010d76, #32428).
+test("vterm's retained Sixel storage arm reads Untestable while unretained storage and encoder-exporting XTEST stay PROBE TODO", () => {
   const sixel = ALL_PROBES.find((probe) => probe.id === "extensions.sixel")!.lib!
-  const stored = sixel({ ...library("vterm"), getSixelImages: () => [] } as unknown as LibProbeSource)
-  expect(isDeclaredUntestable(stored)).toBe(false)
-  expect(fold("extensions.sixel", stored).status).toBe("probe-todo")
+  const images: { data: string; row: number; col: number }[] = []
+  let row = 0
+  let col = 0
+  const retained = sixel({
+    ...library("vterm"),
+    feed: (data: string) => {
+      const cup = /\x1b\[(\d+);(\d+)H/.exec(data)
+      if (cup) {
+        row = Number(cup[1]) - 1
+        col = Number(cup[2]) - 1
+      }
+      const dcs = /\x1bPq(.*)\x1b\\/.exec(data)
+      if (dcs) images.push({ data: dcs[1]!, row, col })
+    },
+    getSixelImages: () => [...images],
+  } as unknown as LibProbeSource)
+  expect(isDeclaredUntestable(retained)).toBe(true)
+  expect(fold("extensions.sixel", retained)).toMatchObject({
+    status: "untestable",
+    reason: "Declared Sixel capability does not establish rendered pixels",
+  })
+  expect(JSON.parse(retained.response!)).toMatchObject({
+    declared: true,
+    storage: {
+      retained: true,
+      before: [],
+      first: [{ data: "#1;2;100;0;0~", row: 0, col: 0 }],
+      secondBefore: [{ data: "#1;2;100;0;0~", row: 0, col: 0 }],
+      second: [
+        { data: "#1;2;100;0;0~", row: 0, col: 0 },
+        { data: "#2;2;0;100;0!2~", row: 1, col: 2 },
+      ],
+    },
+  })
+  const unretained = sixel({ ...library("vterm"), getSixelImages: () => [] } as unknown as LibProbeSource)
+  expect(isDeclaredUntestable(unretained)).toBe(false)
+  expect(fold("extensions.sixel", unretained).status).toBe("probe-todo")
   const xtest = ALL_PROBES.find((probe) => probe.id === "input.xtest-key")!.lib!
   for (const backendName of ["libvterm"]) {
     const result = xtest(library(backendName)) as ProbeCallbackResult
@@ -890,9 +1006,11 @@ describe("audited OSC interface absence", () => {
     ["vt220", vtIdentity("vt220", "dee664e0e0554a5465a0c78cf760f437a360b0f2", "0.12.0")],
     ["vt100", vt100IgnoredReport],
     ["vt220", vt220IgnoredReport],
-    // DEC1 re-audit at the final 0.13.1 package trees: reports add no CWD or notification interface.
+    // DEC1 re-audit at the final 0.13.1 and 0.13.2 package trees: reports add no CWD or notification interface.
     ["vt100", vtIdentity("vt100", "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d", "0.13.1")],
     ["vt220", vtIdentity("vt220", "5162719d063ab59d2905d588df3e127d38b110d1", "0.13.1")],
+    ["vt100", vtIdentity("vt100", "ce4a64f5517083815ce02892d3f6458ef1128906", "0.13.2")],
+    ["vt220", vtIdentity("vt220", "232e7bd71913340475d283b313f67a4e624057be", "0.13.2")],
   ] as const
   const readerSubjects = [["vt100", vt100], ...current] as const
   const alacritty = {
@@ -998,7 +1116,7 @@ describe("audited OSC interface absence", () => {
           getTitle: () => "",
           runtimeIdentity: vtIdentity("vt100", "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d", "0.13.1"),
         },
-        /vt100\.js 0\.13\.1.*strict DEC VT100/i,
+        /vt100\.js exposes.*strict DEC VT100/i,
       ],
       [
         "vt220",
@@ -1008,7 +1126,7 @@ describe("audited OSC interface absence", () => {
           getTitle: () => "",
           runtimeIdentity: vtIdentity("vt220", "5162719d063ab59d2905d588df3e127d38b110d1", "0.13.1"),
         },
-        /vt220\.js 0\.13\.1.*sixel\/Kitty graphics deliberately absent/i,
+        /vt220\.js exposes.*sixel\/Kitty graphics deliberately absent/i,
       ],
       [
         "xterm",
@@ -1521,12 +1639,14 @@ describe("audited OSC interface absence", () => {
 // The existing mode tests lack the two DEC0.13.1 declaration boundaries.
 test.each([
   ["vt100", "0.13.1", true],
+  ["vt100", "0.13.2", true],
   ["vt100", "0.13.0", false],
-  ["vt100", "0.13.2", false],
+  ["vt100", "0.13.3", false],
   ["vt100", undefined, false],
   ["vt220", "0.13.1", true],
+  ["vt220", "0.13.2", true],
   ["vt220", "0.13.0", false],
-  ["vt220", "0.13.2", false],
+  ["vt220", "0.13.3", false],
   ["libvterm", "0.13.1", false],
 ] as const)("DEC declarations are exact %s/%s", (backendName, engineVersion, declared) => {
   for (const id of ["modes.decsscls", "editing.decsace"]) {
@@ -1551,7 +1671,7 @@ test.each([
     )
     if (declared && id === "modes.decsscls") {
       expect(result.tests?.[0]?.reason).toBe(
-        `${backendName === "vt100" ? "VT100.js" : "VT220.js"} 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
+        `${backendName === "vt100" ? "VT100.js" : "VT220.js"} exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
       )
     }
   }

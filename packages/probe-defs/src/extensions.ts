@@ -158,10 +158,13 @@ export function hasAuditedOscInterfaceAbsence(
     if (ctx.backendName === "ghostty-native") {
       return (
         identity.engineVersion === "1.3.1" &&
-        identity.loadedBinary.sha256 === "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd" &&
         identity.provenance.sourceCommit === "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28" &&
         identity.provenance.lockSha256 === "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a" &&
-        auditedAdapterSources(identity, "ghosttyNativeH4")
+        ((identity.loadedBinary.sha256 === "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd" &&
+          auditedAdapterSources(identity, "ghosttyNativeH4")) ||
+          (identity.loadedBinary.sha256 === "bb0c0c6a34997fc4850756e095d1ae978fb9fa046d87eb91847d9e0e6bdfb207" &&
+            (auditedAdapterSources(identity, "ghosttyNativeR3") ||
+              auditedAdapterSources(identity, "ghosttyNativeR372ef06ec"))))
       )
     }
     return (
@@ -169,7 +172,7 @@ export function hasAuditedOscInterfaceAbsence(
       identity.engineVersion === "0.49.2" &&
       identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886" &&
       identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
-      auditedAdapterSources(identity, "kittyH4")
+      (auditedAdapterSources(identity, "kittyH4") || auditedAdapterSources(identity, "kittyPixel"))
     )
   }
   if (cohort === "wezterm-d2") {
@@ -187,7 +190,11 @@ export function hasAuditedOscInterfaceAbsence(
         (identity.provenance.lockSha256 === "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886" &&
           identity.loadedBinary.sha256 === "cce8a7d931bf7694891067b4b64062d64df853e7c23e5054521cf5c98a7f67b6" &&
           identity.provenance.sourceCommit === "1ee22567769a6aa27765e76eafb675e1d7197cef" &&
-          auditedAdapterSources(identity, "weztermClipboardImages")))
+          auditedAdapterSources(identity, "weztermClipboardImages")) ||
+        (identity.provenance.lockSha256 === "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886" &&
+          identity.loadedBinary.sha256 === "ff7d2eb1021ac1a5629a151ea4b2b6f510312af36245377dc92ffb56508ca746" &&
+          identity.provenance.sourceCommit === "17d0ee52ebdfdfc4589d453cd6bed8a8af96fa2e" &&
+          auditedAdapterSources(identity, "weztermPixelMouse")))
     )
   }
   if (cohort === "vt100-rust-d2") {
@@ -206,13 +213,15 @@ export function hasAuditedOscInterfaceAbsence(
       ctx.backendName === "vterm" &&
       identity?.kind === "js" &&
       identity.runtimeFormat === "js" &&
-      identity.engineVersion === "0.13.1" &&
       identity.integrity.kind === "source" &&
       identity.integrity.cleanTree &&
       identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
-      (identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007" ||
-        identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537" ||
-        identity.integrity.treeOid === "2f8787fb9931137d79d49f531789f15786582e99")
+      ((identity.engineVersion === "0.13.1" &&
+        (identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007" ||
+          identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537")) ||
+        (identity.engineVersion === "0.13.2" &&
+          (identity.integrity.treeOid === "8eae12c15ce34e7e3b6c86a005990f1bb0f53af5" ||
+            identity.integrity.treeOid === "3cca402276f5d6b3e4ee9030f7b5e6d5be75667e")))
     )
   }
   if (identity?.kind === "native") {
@@ -249,10 +258,12 @@ export function hasAuditedOscInterfaceAbsence(
     (identity.engineVersion === "0.13.0" &&
       (tree === "2a2536134a2a45982cfd27f892fe71e5078a8730" || tree === "96b1a890bf64164af924b48e7d84d3d5f6e91617")) ||
     (identity.engineVersion === "0.13.1" &&
-      (tree === "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" ||
-        tree === "5162719d063ab59d2905d588df3e127d38b110d1" ||
-        tree === "88cb477d36fd9978f25516d244bc37d00d4cef61" ||
-        tree === "7adec6da7d8092900e2beb3b6b8b32434e1e2b8c"))
+      (tree === "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" || tree === "5162719d063ab59d2905d588df3e127d38b110d1")) ||
+    (identity.engineVersion === "0.13.2" &&
+      (tree === "ce4a64f5517083815ce02892d3f6458ef1128906" ||
+        tree === "232e7bd71913340475d283b313f67a4e624057be" ||
+        tree === "60088603eff12a69d1c810fa2ee699a821e29d0f" ||
+        tree === "0db06083bfe1f65e53f556469c45983789e0d272"))
   )
 }
 
@@ -810,8 +821,8 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
               if (hasAuditedOscInterfaceAbsence(ctx, "vterm-d2") && sentinelAnswer(raw) !== null) {
                 const note =
                   id === "extensions.osc1337-cellsize"
-                    ? "vterm.js 0.13.1 has no cell pixel-size metrics and replied 0;0 while DA1 answered in the same run"
-                    : "vterm.js 0.13.1 has no font cell metrics and replied 0;0;0 (0;0) while DA1 answered in the same run"
+                    ? "vterm.js has no cell pixel-size metrics and replied 0;0 while DA1 answered in the same run"
+                    : "vterm.js has no font cell metrics and replied 0;0;0 (0;0) while DA1 answered in the same run"
                 return {
                   pass: false,
                   response: raw,
@@ -1753,7 +1764,11 @@ function promptMarkBody(
     }
   }
   ctx.feed("\x1b[1;1H")
-  if (ctx.backendName === "kitty" && sourceReview?.probeId === "extensions.semantic-prompts") {
+  if (
+    sourceReview?.probeId === "extensions.semantic-prompts" &&
+    ctx.capabilities.extensions.has("semantic-marks") &&
+    ctx.capabilities.extensions.has("semantic-command-end")
+  ) {
     const declared =
       ctx.capabilities.extensions.has("semantic-marks") && ctx.capabilities.extensions.has("semantic-command-end")
     const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
@@ -3456,7 +3471,7 @@ function clipboardPasteHandoff(ctx: LibProbeSource, before: string | undefined):
   )
 }
 
-/** Read silence is conclusive only on a collector-qualified, ordered reply path. */
+/** A read negative needs a qualified reply path; a fresh typed app handoff does not grade reply support. */
 function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const pasteBefore = ctx.getClipboardState?.().pasteSelector
@@ -3464,7 +3479,8 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
-    const handoff = silence !== null ? clipboardPasteHandoff(ctx, pasteBefore) : null
+    const empty = silence !== null || (outcome.reason === "timeout" && outcome.raw === "")
+    const handoff = empty ? clipboardPasteHandoff(ctx, pasteBefore) : null
     if (handoff) return handoff
     return withClipboardControlNote(
       ctx,
@@ -5032,6 +5048,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.sixel",
       (ctx) => {
+        const note = "Declared Sixel capability does not establish rendered pixels"
         if (ctx.getSixelImages) {
           ctx.feed("\x1b[1;1H")
           const before = ctx.getSixelImages()
@@ -5054,17 +5071,23 @@ export const extensionsProbes: ProbeDefinition[] = [
             secondImage?.data === secondData &&
             secondImage.row === 1 &&
             secondImage.col === 2
-          const note = retained
-            ? "Open: our test cannot check the image, for two reasons. The library stores the image data at the right screen position, but drawing it is the app's job; and our test does not measure the character cell size needed to check the image's size."
-            : "Sixel payload/position readback did not show new stored records; no raster; cell geometry unmeasured"
-          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, note, note, {
+          if (!retained) {
+            const staleNote =
+              "Sixel payload/position readback did not show new stored records; no raster; cell geometry unmeasured"
+            return reviewResult(HEADLESS_OBSERVABLE_REVIEW, staleNote, staleNote, {
+              declared: ctx.capabilities.sixel === true,
+              storage: { retained, before, first, secondBefore, second },
+            })
+          }
+          // Declared Untestable with retained payload in evidence (CTO phase2-ruling.md:41, #32485): the cell's check
+          // is rendered pixels and vterm renders none.
+          return declaredUntestableResult(note, {
             declared: ctx.capabilities.sixel === true,
             storage: { retained, before, first, secondBefore, second },
           })
         }
         // Declared Untestable for every library without Sixel storage (operator Nov 4 16:55): no library rasterises
-        // Sixel. The exception is the storage branch above (vterm), which keeps its observable review.
-        const note = "Declared Sixel capability does not establish rendered pixels"
+        // Sixel.
         return declaredUntestableResult(note, {
           declared: ctx.capabilities.sixel === true,
         })
@@ -5278,9 +5301,9 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.semantic-prompts",
-      // Kitty reads its approved prompt/output/end lifecycle; other libraries retain the report arm.
+      // A declared start/end reader qualifies the lifecycle; other libraries retain the report arm.
       (ctx) =>
-        ctx.backendName === "kitty"
+        ctx.capabilities.extensions.has("semantic-marks") && ctx.capabilities.extensions.has("semantic-command-end")
           ? promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 lifecycle readback", {
               probeId: "extensions.semantic-prompts",
               selector: 133,
@@ -6254,6 +6277,49 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc22-pointer",
       (ctx) => {
+        if (ctx.capabilities.extensions.has("mouse-shape") && typeof ctx.getMouseShape === "function") {
+          const read = ctx.getMouseShape.bind(ctx)
+          const initial = read()
+          const controlShape = initial === "text" ? "wait" : "text"
+          const secondShape = controlShape === "text" ? "wait" : "text"
+          const readings: {
+            initial: string
+            control?: string
+            second?: string
+            target?: string
+            unknown?: string
+            restored?: string
+          } = { initial }
+          try {
+            ctx.feed(`\x1b]22;${controlShape}\x07`)
+            readings.control = read()
+            ctx.feed(`\x1b]22;${secondShape}\x07`)
+            readings.second = read()
+            if (readings.control === controlShape && readings.second === secondShape) {
+              ctx.feed("\x1b]22;pointer\x07")
+              readings.target = read()
+              ctx.feed("\x1b]22;terminfo-unknown-shape\x07")
+              readings.unknown = read()
+            }
+          } finally {
+            ctx.feed(`\x1b]22;${initial}\x07`)
+            readings.restored = read()
+          }
+          if (
+            readings.control !== controlShape ||
+            readings.second !== secondShape ||
+            readings.target === undefined ||
+            readings.unknown !== readings.target ||
+            readings.restored !== initial
+          ) {
+            return notTestedResult(NO_SAME_PATH_CONTROL, { controlShape, secondShape, readings })
+          }
+          return parserStateResult(
+            readings.target === "pointer" ? true : readings.target === secondShape ? false : null,
+            "OSC 22 changes logical pointer state after two accepted controls; an unknown name is inert and the initial state is restored",
+            { controlShape, secondShape, readings },
+          )
+        }
         const undecided = () =>
           unhandledOscReportResult(ctx, "\x1b]22;pointer\x07", noSamePathControl("\x1b]22;pointer\x07")(ctx))
         if (ctx.backendName !== "kitty") return undecided()
@@ -6313,8 +6379,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       null,
     ),
     libAssertionType: {
-      when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
-        typeof source.getUnhandledSequences === "function",
+      when: (source: Pick<LibProbeSource, "getUnhandledSequences" | "getMouseShape" | "capabilities">) =>
+        typeof source.getUnhandledSequences === "function" ||
+        (source.capabilities.extensions.has("mouse-shape") && typeof source.getMouseShape === "function"),
       then: ["query_reply", "buffer_state"],
       otherwise: ["query_reply"],
     },
@@ -6908,23 +6975,23 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 
 const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "modes.decsscls":
-    "vterm.js 0.13.1 exposes Screen, Snapshot and TerminalModes, but no public DECSSCLS scroll-speed state, getter or unhandled-sequence report",
+    "vterm.js exposes Screen, Snapshot and TerminalModes, but no public DECSSCLS scroll-speed state, getter or unhandled-sequence report",
   "extensions.osc9-progress":
-    "vterm.js 0.13.1 exposes getNotifications() and tapParser(), but no public OSC 9;4 progress state, getter or unhandled-sequence report",
+    "vterm.js exposes getNotifications() and tapParser(), but no public OSC 9;4 progress state, getter or unhandled-sequence report",
   "extensions.osc22-pointer":
-    "vterm.js 0.13.1 exposes pointerFgColor and pointerBgColor on Snapshot, but no public OSC 22 pointer-shape state, query reply or unhandled-sequence report",
+    "vterm.js exposes pointerFgColor and pointerBgColor on Snapshot, but no public OSC 22 pointer-shape state, query reply or unhandled-sequence report",
   "extensions.osc133-d":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc633-d":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc633-e":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;E command-line or nonce state; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;E command-line or nonce state; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.semantic-prompts":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc-633-vscode":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
   "input.kitty-click-events":
-    "vterm.js 0.13.1 drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
+    "vterm.js drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
 }
 
 // CTO 8be19f1f: five libraries expose no public image path, so their Kitty display and transmit
@@ -6947,16 +7014,16 @@ const XTERM_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 
 const VT100_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.kitty-graphics.display":
-    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+    "vt100.js exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.transmit":
-    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+    "vt100.js exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
 }
 
 const VT220_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.kitty-graphics.display":
-    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+    "vt220.js exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.transmit":
-    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+    "vt220.js exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
 }
 
 const GHOSTTY_WEB_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6984,6 +7051,10 @@ const GHOSTTY_WEB_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 }
 
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "Untestable (no way): Ghostty 1.3.1 ghostty-vt forces oniguruma off (src/build/GhosttyZig.zig:19-25), which forces kitty_graphics off (src/terminal/build_options.zig:37-46). The loaded native binary reports graphics disabled; our build does not choose this.",
+  "extensions.kitty-graphics.transmit":
+    "Untestable (no way): Ghostty 1.3.1 ghostty-vt forces oniguruma off (src/build/GhosttyZig.zig:19-25), which forces kitty_graphics off (src/terminal/build_options.zig:37-46). The loaded native binary reports graphics disabled; our build does not choose this.",
   "input.button-event-mouse":
     "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
   "input.pixel-mouse":
@@ -7271,9 +7342,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         const result = lib(ctx)
         if (reportsDecidedOutcome(result)) return result
         if (decsace) {
-          return ctx.runtimeIdentity?.engineVersion === "0.13.1"
+          return ctx.runtimeIdentity?.engineVersion === "0.13.1" || ctx.runtimeIdentity?.engineVersion === "0.13.2"
             ? declaredUntestableResult(
-                `${ctx.backendName} 0.13.1 exposes no DECSACE extent state or effect reader through its public Screen API.`,
+                `${ctx.backendName} exposes no DECSACE extent state or effect reader through its public Screen API.`,
                 { backend: ctx.backendName, engineVersion: ctx.runtimeIdentity.engineVersion },
               )
             : result
@@ -7337,8 +7408,10 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         "ghostty-native",
         "ghostty-native-d2",
         (source, id) =>
-          (id === "extensions.osc1-icon" || id === "extensions.osc0-icon-title") &&
-          typeof source.getIconLabel === "function",
+          id === "extensions.kitty-graphics.display" || id === "extensions.kitty-graphics.transmit"
+            ? source.capabilities.kittyGraphics !== false
+            : (id === "extensions.osc1-icon" || id === "extensions.osc0-icon-title") &&
+              typeof source.getIconLabel === "function",
       )
       if (ghosttyNativeDeclared) return ghosttyNativeDeclared
       const alacrittyDeclared = declaredD2InterfaceAbsence(

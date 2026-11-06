@@ -37,10 +37,27 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
     "packages/ghostty-native/src/backend.ts": "d15e83634be3aa1bf2df9b58eb2f6376af800808",
   },
+  // R3's qualified native rebuild retains the earlier H4 adapter cohort above.
+  ghosttyNativeR3: {
+    "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+    "packages/ghostty-native/src/backend.ts": "9bda39988b0af9c66fcc342ca477cf9daab2f5ac",
+  },
+  ghosttyNativeR372ef06ec: {
+    "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+    "packages/ghostty-native/src/backend.ts": "72ef06ecf72f2509c097aff3260914d098ff010a",
+  },
   kittyH4: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
     "packages/kitty/src/backend.ts": "4cfc0a1707e4c92211c501cd27d8e1944ebe66db",
     "packages/kitty/build/bridge.py": "c78e427917d4e22453414db76c4d52509cc8b82f",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
+    "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
+  },
+  kittyPixel: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "e62a355791eb48369620caa44fe60a989a7c2501",
+    "packages/kitty/build/bridge.py": "473d25a335c4e739f915a254625607f617ed9d1e",
     "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
     "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
     "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
@@ -158,6 +175,12 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
     "packages/wezterm/src/backend.ts": "ce6d42d0617e899e608232f472b15d7185729d3b",
     "packages/wezterm/native/src/lib.rs": "924186a9a828d5545997086b424a20ea08f2b737",
+    "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
+  },
+  weztermPixelMouse: {
+    "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
+    "packages/wezterm/src/backend.ts": "f88f15399ccff55caafbdc1f6ec0fb0ed70335a5",
+    "packages/wezterm/native/src/lib.rs": "78ee118e3ae1ada92196bceb4c19022cffa9e474",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   vt100Rust: {
@@ -1235,8 +1258,9 @@ export type SgrCaptureFixture = Readonly<{ sequence: string; sample: string; row
 /** A probe-owned pixel capture, for an attribute one control/target pair cannot show (sgr.blink, #31812). */
 export type SgrCapture = (ctx: TermProbeSource, fixture: SgrCaptureFixture) => Promise<ProbeCallbackResult>
 
-// Diagnostic prerequisites only: these checked public types do not expose the null attribute.
-// A matching runtime version binds the audit; this table never decides a support result (#32329).
+// These checked public types do not expose the null attribute. A matching engine version binds
+// the audit. The approved hidden/overline no-observable arms declare no way; other entries remain
+// diagnostic prerequisites and never decide support (#32329, CTO open14 rows1–9).
 const SGR_ATTRIBUTE_READER_ABSENCE: Readonly<Record<string, string>> = {
   "vt100:0.10.1:dim": "vt100.js 0.10.1 public ScreenCell has no dim field",
   "vt100:0.10.1:italic": "vt100.js 0.10.1 public ScreenCell has no italic field",
@@ -1247,19 +1271,28 @@ const SGR_ATTRIBUTE_READER_ABSENCE: Readonly<Record<string, string>> = {
   "alacritty:0.26.0:blink": "alacritty_terminal 0.26.0 public term::cell::Flags has no blink flag",
   "vt100-rust:0.16.2:blink": "vt100 0.16.2 public Cell has no blink reader",
   "vt100-rust:0.16.2:strikethrough": "vt100 0.16.2 public Cell has no strikethrough reader",
+  "alacritty:0.26.0:overline": "alacritty_terminal 0.26.0 public term::cell::Flags has no overline flag",
+  "kitty:0.49.2:overline": "Kitty 0.49.2 public cursor has no overline field or SGR 53 reader",
+  "kitty:0.49.2:hidden": "Kitty 0.49.2 public cursor has no hidden field or SGR 8 reader",
+  "libvterm:0.3.3:overline":
+    "libvterm 0.3.3 public VTermScreenCellAttrs has no overline attribute; SGR 53 has only a debug log, not a public rejection report",
+  "ghostty:0.4.0:overline":
+    "ghostty-web 0.4.0 public CellFlags has no overline bit; this web cell interface cannot expose the attribute",
 }
 
 /**
  * The only SGR cells a library's own unhandled report may move (@cto 2026-11-05 07:25 appendix and
  * 07:38 addendum, Case 1; faint and italic added by the 09:00 Case 2 ruling R2): blink, faint, italic,
- * strikethrough and the four underline styles. Every other SGR cell keeps its own reader's path, so no
- * unnamed row can move.
+ * strikethrough and the four underline styles; CTO open14 rows1–4 adds hidden and overline.
+ * Every other SGR cell keeps its own reader's path, so no unnamed row can move.
  */
 const UNHANDLED_CSI_CELLS: ReadonlySet<string> = new Set([
   "sgr.blink",
   "sgr.faint",
   "sgr.italic",
   "sgr.strikethrough",
+  "sgr.hidden",
+  "sgr.overline",
   "sgr.underline.double",
   "sgr.underline.curly",
   "sgr.underline.dotted",
@@ -1315,7 +1348,18 @@ export function sgrProbe(
       const cell = ctx.getCell(0, 0)
       if (cell.char === "X") {
         const noObservable = noObservableWhen?.(cell)
-        if (noObservable) return notTestedResult(noObservable, cell)
+        if (noObservable) {
+          const absence =
+            SGR_ATTRIBUTE_READER_ABSENCE[
+              `${ctx.backendName}:${ctx.runtimeIdentity?.engineVersion}:${id.slice("sgr.".length)}`
+            ]
+          return absence
+            ? declaredUntestableResult(`Untestable: no way: ${absence}.`, {
+                cell,
+                runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
+              })
+            : notTestedResult(noObservable, cell)
+        }
       }
       const measured = cell.char === "X" && check(cell) === true
       if (sourceReviewReason !== undefined && cell.char === "X") {
@@ -1392,7 +1436,7 @@ export function sgrProbe(
             if (
               (id === "sgr.underline.curly" || id === "sgr.underline.dotted" || id === "sgr.underline.dashed") &&
               (ctx.backendName === "vt100" || ctx.backendName === "vt220") &&
-              ctx.runtimeIdentity?.engineVersion === "0.13.1" &&
+              (ctx.runtimeIdentity?.engineVersion === "0.13.1" || ctx.runtimeIdentity?.engineVersion === "0.13.2") &&
               cell.underline === false &&
               styleControl.char === "D" &&
               styleControl.underline === false
@@ -1401,7 +1445,7 @@ export function sgrProbe(
                 false,
                 `${id}: the colon form left X plain with a qualified single underline control`,
                 styleState,
-                `${ctx.backendName} 0.13.1: ordinary SGR 4 sets the public underline flag; this colon form leaves it off and the cell has no style field`,
+                `${ctx.backendName}: ordinary SGR 4 sets the public underline flag; this colon form leaves it off and the cell has no style field`,
               )
             }
             return notTestedResult(

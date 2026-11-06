@@ -57,6 +57,12 @@ Every former source-review or source-negative site now returns PROBE TODO with a
 
 SGR attribute negatives require a rendered target and a same-run bold cell control. Underline style negatives require both exact `single` readback and a non-single style other than the target reading back as itself: curly for the double target, double for the other targets. Missing nullable attributes and on/off readers normalized to `single` stay open. Bright/indexed colour negatives require an ordinary-red control on the same colour reader and targets unchanged from the neutral baseline; different nondefault colours remain inconclusive. Existing positive effects witness their own reader. When an attribute field is unreported, a DECRQSS alternative qualifies only after this probe reads a status-1 SGR `m` bold control; a facility or DECSTBM reply does not qualify it. The exact issued input strings and control/target evidence are retained together. These library controls do not change app-arm criteria.
 
+Hidden and overline also use the existing controlled rejection report after an undecided cell reading.
+Their five reviewed public-field absences use the existing engine-version/attribute table and declare
+Untestable (no way) only when that field is null. A positive cell reading takes precedence; an
+unreviewed identity stays Open. Ghostty web's overline reason names its public cell interface, not
+the native engine's capability.
+
 Headless DEC-mode queries use the existing sentinel reader when the collector has qualified reply delivery.
 Their retained captures include the target query and its separate DA1 control. DA1 responsiveness proves
 transport only: without the criterion's own DECRPM reply, these mode results retain their named PROBE TODO.
@@ -228,6 +234,9 @@ Engines exposing both kinds declare both keys. Start and end probes use their re
 declarations; a command-end-only reader never decides positional start support.
 OSC133D requires two newly appended entries carrying distinct injected raw statuses,
 stable earlier history and the existing cell/cursor consumption controls.
+The full OSC133 lifecycle uses the same reader when both start and end capabilities
+are declared: fresh prompt/output/end records, unchanged earlier history and an inert
+unknown letter must agree in the same run. A backend name alone selects no lifecycle.
 The reader does not expose bounded zones. Sixel records contain raw payloads and
 DCS start positions; storage does not establish raster rendering or cell geometry.
 
@@ -238,6 +247,22 @@ type transition, inert Z and retained earlier cells. A target no-op is Unsupport
 only when another handled letter moves the type; failed controls remain Open.
 Coordinates follow `getCell`; invalid coordinates throw. This reader supplies no
 mark history or command end and cannot decide OSC133 D or the full lifecycle.
+
+The optional `mouse-shape` reader exposes the library's current logical pointer
+shape, separately from text-caret style. OSC22 reads two accepted shape controls,
+the pointer target and an inert unknown name, then restores the initial shape.
+This path records `buffer_state`; existing Kitty query and library report paths
+retain their own criteria. A declared capability with no callable method is a
+binding failure, not a feature result.
+
+An OSC52 read with a newly witnessed typed paste selector and no reply is an app
+handoff, including a timeout with zero raw bytes. A timeout alone, an already set
+selector, another selector or unmatched reply bytes retain the prior result.
+
+The native Ghostty image pair declares Untestable only for the reviewed source/lock
+and an actual disabled `kittyGraphics` reading. The pinned ghostty-vt library forces
+oniguruma off and therefore compiles Kitty graphics out; an enabled build or an
+existing decided reply retains its original probe path.
 
 The library alternate-scroll, reverse-video, synchronized-output,
 colour-scheme-reporting and DECSCLM cells use the existing DECRPM helper's opt-in
@@ -476,8 +501,8 @@ Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration c
 
 The `vterm` D2 slice shares the same private helper (`declaredD2InterfaceAbsence`)
 with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source trees
-`3d58d29a8265aafd928e0736dde6723e2bac2007`, `656da900d83e7c41af13b7ca679f8e1e31481537`,
-and `2f8787fb9931137d79d49f531789f15786582e99`) to declare nine exact-version
+`3d58d29a8265aafd928e0736dde6723e2bac2007` and `656da900d83e7c41af13b7ca679f8e1e31481537`, and `vterm.js 0.13.2`, clean source trees
+`8eae12c15ce34e7e3b6c86a005990f1bb0f53af5` and `3cca402276f5d6b3e4ee9030f7b5e6d5be75667e`) to declare nine exact-version
 public-interface absences: `modes.decsscls`, `extensions.osc9-progress`,
 `extensions.osc22-pointer`, `extensions.osc133-d`, `extensions.osc633-d`,
 `extensions.osc633-e`, `extensions.semantic-prompts`,

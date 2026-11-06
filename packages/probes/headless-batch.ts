@@ -6,6 +6,7 @@ import {
   type HyperlinkExtension,
   type DefaultColorsExtension,
   type MouseEncodingExtension,
+  type MouseShapeExtension,
   type PasteEncodingExtension,
   type KeyEncodingExtension,
   type OscMetadataExtension,
@@ -421,6 +422,15 @@ export function createLibProbeSource(
       : undefined
   const readClipboardState =
     typeof backend.getClipboardState === "function" ? backend.getClipboardState.bind(backend) : undefined
+  const declaresMouseShape = backend.capabilities.extensions.has("mouse-shape")
+  const mouseShape = backend as Partial<MouseShapeExtension>
+  if (declaresMouseShape && typeof mouseShape.getMouseShape !== "function") {
+    throw new Error(`${backend.name} declares mouse-shape without getMouseShape`)
+  }
+  const readMouseShape =
+    declaresMouseShape && typeof mouseShape.getMouseShape === "function"
+      ? mouseShape.getMouseShape.bind(backend)
+      : undefined
   const declaresMouseEncoding = backend.capabilities.extensions.has("mouse-encoding")
   const candidateEncodeMouse = (backend as Partial<MouseEncodingExtension>).encodeMouse
   if (declaresMouseEncoding && typeof candidateEncodeMouse !== "function") {
@@ -465,6 +475,7 @@ export function createLibProbeSource(
     getCellImageCount: readCellImageCount,
     getSixelImages: readSixelImages,
     getClipboardState: readClipboardState,
+    getMouseShape: readMouseShape,
     feed(text) {
       backend.feed(encoder.encode(text))
     },

@@ -131,6 +131,141 @@ test.runIf(OWNED_LAYOUT).each(["healthy", "seed", "reset", "unknown"] as const)(
   },
 )
 
+// @failure A declared pointer-state reader is dropped or its buffer_state result is refused by collection.
+// @level l1
+// @consumer Existing backend -> source binding -> registered OSC22 callback -> finalizer; not an engine grade.
+test.each(["working", "target", "unknown", "restore", "inert"] as const)(
+  "R3 pointer reader %s crosses the collector with qualified controls",
+  async (fault) => {
+    const batch = await collectBatch(
+      async () => {
+        const value = createXtermBackend()
+        let shape = "text"
+        const feed = value.feed.bind(value)
+        value.feed = (bytes) => {
+          const text = new TextDecoder().decode(bytes)
+          const requested = /^\x1b\]22;([^\x07]+)\x07$/.exec(text)?.[1]
+          if (fault !== "inert" && requested) {
+            if (requested === "text" && !(fault === "restore" && shape === "pointer")) shape = "text"
+            if (requested === "wait") shape = "wait"
+            if (requested === "pointer" && fault !== "target") shape = "pointer"
+            if (requested === "terminfo-unknown-shape" && fault === "unknown") shape = "wait"
+          }
+          feed(bytes)
+        }
+        Object.assign(value, { getMouseShape: () => shape })
+        value.capabilities.extensions.add("mouse-shape")
+        return value
+      },
+      "xtermjs",
+      registryDefinitions(["extensions.osc22-pointer"]),
+    )
+    if (fault === "working") {
+      expect(batch.results).toMatchObject([{ status: "supported", assertionType: "buffer_state" }])
+      expect(batch.observations).toMatchObject([{ outcome: "supported", assertionType: "buffer_state" }])
+    } else if (fault === "target") {
+      expect(batch.results).toMatchObject([{ status: "unsupported", assertionType: "buffer_state" }])
+    } else {
+      expect(batch.results).toMatchObject([{ status: "probe-todo" }])
+      expect(batch.observations).toEqual([])
+    }
+  },
+)
+
+test("R3 pointer capability with a missing method fails loudly; undeclared readers remain unwired", () => {
+  const value = createXtermBackend({ cols: 80, rows: 24 })
+  try {
+    value.capabilities.extensions.add("mouse-shape")
+    expect(() => createLibProbeSource(value, undefined, undefined, undefined)).toThrow(
+      /declares mouse-shape without getMouseShape/,
+    )
+    value.capabilities.extensions.delete("mouse-shape")
+    Object.assign(value, { getMouseShape: () => "pointer" })
+    const result = registryDefinitions(["extensions.osc22-pointer"])[0]!.lib!(
+      createLibProbeSource(value, undefined, undefined, undefined),
+    )
+    expect(result.observation).toBeUndefined()
+  } finally {
+    value.destroy()
+  }
+})
+
+// @failure Rebuilt native readers work in isolation but fail the registered R3 callbacks or result finalizer.
+// @level l1
+// @consumer The actual owned Ghostty addon -> existing collector source -> twelve shipping library rows.
+test.runIf(OWNED_LAYOUT)(
+  "real Ghostty native R3 readers decide the twelve registered rows and measured collateral",
+  async () => {
+    const rows = [
+      ["extensions.osc133-a", "supported"],
+      ["extensions.osc133-b", "supported"],
+      ["extensions.osc133-c", "supported"],
+      ["extensions.osc133-d", "supported"],
+      ["extensions.osc133-p", "supported"],
+      ["extensions.semantic-prompts", "supported"],
+      ["extensions.osc22-pointer", "supported"],
+      ["extensions.kitty-graphics.display", "untestable"],
+      ["extensions.kitty-graphics.transmit", "untestable"],
+      ["extensions.osc52-write", "supported"],
+      ["extensions.osc52-read", "untestable"],
+      ["extensions.osc52-clipboard", "untestable"],
+      ["extensions.osc633-a", "unsupported"],
+      ["extensions.osc633-b", "unsupported"],
+      ["extensions.osc633-c", "unsupported"],
+      ["extensions.osc633-d", "unsupported"],
+      ["extensions.osc633-e", "untestable"],
+      ["extensions.osc633-p", "unsupported"],
+      ["extensions.osc-633-vscode", "untestable"],
+    ] as const
+    const backend = createGhosttyNativeBackend()
+    const runtimeIdentity = {
+      ...(await headlessIdentity.headlessRuntimeIdentity("ghostty-native", "@termless/ghostty-native", "native")),
+      adapterSources: headlessIdentity.readAdapterSources("ghostty-native", backend),
+    }
+    const clipboardReads: unknown[] = []
+    const definitions = registryDefinitions(rows.map(([id]) => id)).map((definition) => ({
+      ...definition,
+      lib: (ctx: LibProbeSource) => {
+        const query = ctx.queryWithSentinelOutcome?.bind(ctx)
+        return definition.lib!({
+          ...ctx,
+          runtimeIdentity,
+          ...(query && definition.id.startsWith("extensions.osc52-")
+            ? {
+                queryWithSentinelOutcome(sequence: string, pattern: RegExp) {
+                  const before = ctx.getClipboardState?.().pasteSelector
+                  const outcome = query(sequence, pattern)
+                  clipboardReads.push({
+                    id: definition.id,
+                    before,
+                    after: ctx.getClipboardState?.().pasteSelector,
+                    outcome,
+                  })
+                  return outcome
+                },
+              }
+            : {}),
+        })
+      },
+    }))
+    const batch = await collectBatch(async () => createGhosttyNativeBackend(), "ghostty-native", definitions)
+    expect(
+      batch.results.map(({ featureId, status }) => [featureId, status]),
+      JSON.stringify({ results: batch.results, clipboardReads }),
+    ).toEqual(rows)
+    expect(batch.results.filter((row) => row.status === "supported").map((row) => row.assertionType)).toEqual([
+      ...Array.from({ length: 7 }, () => "buffer_state"),
+      "query_reply",
+    ])
+    for (const id of ["extensions.osc52-read", "extensions.osc52-clipboard"]) {
+      expect(batch.results.find((row) => row.featureId === id)?.reason).toContain("passed to the app")
+    }
+    for (const id of ["extensions.kitty-graphics.display", "extensions.kitty-graphics.transmit"]) {
+      expect(batch.results.find((row) => row.featureId === id)?.reason).toContain("ghostty-vt forces oniguruma off")
+    }
+  },
+)
+
 // @failure WezTerm's stored cells, Kitty placement or clipboard callbacks never reach the shipping library arms.
 // @level l0
 // @consumer Existing WezTerm native backend -> headless source -> literal shipping probe callbacks.
@@ -2204,28 +2339,26 @@ test.for(["semantic-marks", "sixel-storage"] as const)(
   },
 )
 
-// @failure The native WezTerm mouse bridge is not reached by the registered callbacks, or an unbound path is graded.
+// @failure The native WezTerm mouse bridge is not reached by the registered callbacks, or reported bytes are ignored.
 // @level l5
 // @consumer Real native WezTerm through the production collector's per-probe backend/source boundary.
-test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide six cells and retain one unbound path", () => {
+test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide all seven cells", () => {
   for (const [id, outcome] of [
     ["input.xtest-click", "supported"],
     ["input.xtest-wheel", "supported"],
     ["input.button-event-mouse", "supported"],
     ["input.x10-mouse", "unsupported"],
     ["input.urxvt-mouse", "unsupported"],
-    ["input.pixel-mouse", null],
+    ["input.pixel-mouse", "supported"],
     ["input.kitty-click-events", "unsupported"],
   ] as const) {
     // collectBatch likewise constructs and initializes one fresh backend inside its per-probe loop.
-    const value = createWeztermBackend({ cols: 80, rows: 24 })
+    const value = createWeztermBackend({ cols: 80, rows: 24, pixelGeometry: { cellWidth: 10, cellHeight: 20 } })
     try {
       const result = registryDefinitions([id])[0]!.lib!(createLibProbeSource(value, undefined, undefined, undefined))
-      if (outcome === null) {
-        expect(result.notTested, id).toBeDefined()
-        expect(result.observation, id).toBeUndefined()
-      } else {
-        expect(result.observation, id).toMatchObject({ outcome, assertionType: "input_bytes" })
+      expect(result.observation, id).toMatchObject({ outcome, assertionType: "input_bytes" })
+      if (id === "input.pixel-mouse") {
+        expect(JSON.parse(result.response!)).toMatchObject({ negativeControl: null, report: "\x1b[<0;41;25M" })
       }
     } finally {
       value.destroy()
@@ -2524,22 +2657,26 @@ test("real vterm mark observations survive the registered batch producer", async
   )
 })
 
-// @failure Raw Sixel storage is promoted to rendering support, or the partial reason claims storage from a stale reader.
+// @failure Raw Sixel storage is promoted to rendering support, or a stale storage reader is declared Untestable.
 // @level l1
 // @consumer The Sixel rendering cell, with its separately retained storage facet.
-test("real vterm Sixel storage sharpens the TODO reason without deciding a rendering probe result", () => {
+test("real vterm Sixel storage reads Untestable with retained payload while a stale reader stays PROBE TODO", () => {
   const value = createVtermBackend({ cols: 80, rows: 24 })
   try {
     const source = createLibProbeSource(value, undefined, undefined, undefined)
     const definition = registryDefinitions(["extensions.sixel"])[0]!
     const result = definition.lib!(source)
-    expect(result.note).toBe(
-      "Open: our test cannot check the image, for two reasons. The library stores the image data at the right screen position, but drawing it is the app's job; and our test does not measure the character cell size needed to check the image's size.",
-    )
+    expect(result.note).toBe("Declared Sixel capability does not establish rendered pixels")
     expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-    expect(result.tests).toMatchObject([{ status: "probe-todo" }])
+    expect(result.tests).toEqual([
+      {
+        id: "declared-untestable",
+        status: "untestable",
+        reason: "Declared Sixel capability does not establish rendered pixels",
+      },
+    ])
     expect(result.observation).toBeUndefined()
-    expect(JSON.parse(result.response!)).toMatchObject({ storage: { retained: true } })
+    expect(JSON.parse(result.response!)).toMatchObject({ declared: true, storage: { retained: true } })
     vi.spyOn(source, "getSixelImages").mockReturnValue([])
     const stale = definition.lib!(source)
     expect(stale.tests).toMatchObject([{ status: "probe-todo" }])
@@ -3812,7 +3949,7 @@ test("formerly audited Vterm input cells record PROBE TODO coverage through the 
   expect(parsed.results).toEqual(batch.results)
   expect(parsed.assertions).toEqual([])
   const vtermKeyEncoderAbsence =
-    "vterm.js 0.13.1 exports createVtermScreen and its Screen byte parser and state readers, and no key-event-to-byte encoder"
+    "vterm.js exports createVtermScreen and its Screen byte parser and state readers, and no key-event-to-byte encoder"
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results).toHaveLength(ids.length)
   expect(batch.notTested).toEqual([
@@ -6417,6 +6554,126 @@ test.runIf(OWNED_LAYOUT).each([
         expect.objectContaining({ id: "declared-untestable", status: "untestable" }),
       ])
     }
+  }
+})
+
+// @failure The four approved SGR rejections stay Open behind nullable cells, or acquire a negative without a report/control.
+// @level l5
+// @consumer Registered SGR callbacks on the owned real engines; existing tests cover the original eight report cells.
+test.runIf(OWNED_LAYOUT).each([
+  { name: "vt100", create: createVt100Backend, type: "js", id: "sgr.overline" },
+  { name: "vt220", create: createVt220Backend, type: "js", id: "sgr.overline" },
+  { name: "vt100-rust", create: createVt100RustBackend, type: "native", id: "sgr.overline" },
+  { name: "vt100-rust", create: createVt100RustBackend, type: "native", id: "sgr.hidden" },
+] as const)("SGR nine report: $name $id", async ({ name, create, type, id }) => {
+  for (const fault of ["none", "report", "bold"] as const) {
+    const value = await create()
+    try {
+      await value.init({ cols: 80, rows: 24 })
+      const identity = await headlessIdentity.headlessRuntimeIdentity(name, `@termless/${name}`, type)
+      identity.adapterSources = headlessIdentity.readAdapterSources(name, value)
+      const source = createLibProbeSource(value, undefined, identity, undefined)
+      const candidate = {
+        ...source,
+        ...(fault === "report" ? { getUnhandledSequences: undefined } : {}),
+        ...(fault === "bold"
+          ? { getCell: (row: number, col: number) => ({ ...source.getCell(row, col), bold: false }) }
+          : {}),
+      }
+      const result = registryDefinitions([id])[0]!.lib!(candidate)
+      if (fault === "none") {
+        expect(result.observation, JSON.stringify(result)).toMatchObject({
+          outcome: "unsupported",
+          assertionType: "buffer_state",
+        })
+        expect(result.assertions?.some((assertion) => assertion.kind === "negative")).toBe(true)
+        expect(result.response).toContain(id === "sgr.hidden" ? "8m" : "53m")
+      } else {
+        expect(result.observation?.outcome, `${fault}: ${JSON.stringify(result)}`).not.toBe("unsupported")
+        expect(isDeclaredUntestable(result)).toBe(false)
+      }
+    } finally {
+      value.destroy()
+    }
+  }
+})
+
+// @failure A reviewed public-field absence stays Open, leaks to another identity, or overrides a real positive cell.
+// @level l5
+// @consumer Registered SGR callbacks on exact real library identities; nullable-reader unit tests omit these declared causes.
+test.runIf(OWNED_LAYOUT).each([
+  {
+    name: "alacritty",
+    create: createAlacrittyBackend,
+    type: "native",
+    id: "sgr.overline",
+    field: "overline",
+    reason: /alacritty_terminal 0\.26\.0.*no overline/,
+  },
+  {
+    name: "kitty",
+    create: createKittyBackend,
+    type: "python",
+    id: "sgr.overline",
+    field: "overline",
+    reason: /Kitty 0\.49\.2.*no overline/,
+  },
+  {
+    name: "kitty",
+    create: createKittyBackend,
+    type: "python",
+    id: "sgr.hidden",
+    field: "hidden",
+    reason: /Kitty 0\.49\.2.*no hidden/,
+  },
+  {
+    name: "libvterm",
+    create: resolveLibvterm,
+    type: "wasm",
+    id: "sgr.overline",
+    field: "overline",
+    reason: /libvterm 0\.3\.3.*no overline/,
+  },
+  {
+    name: "ghostty",
+    create: resolveGhosttyWasm,
+    type: "wasm",
+    id: "sgr.overline",
+    field: "overline",
+    reason: /ghostty-web 0\.4\.0.*public.*no overline/,
+  },
+] as const)("SGR nine absence: $name $id", async ({ name, create, type, id, field, reason }) => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-sgr-absence-"))
+  vi.stubEnv("KITTY_CONFIG_DIRECTORY", join(directory, "kitty"))
+  vi.stubEnv("XDG_CACHE_HOME", join(directory, "cache"))
+  try {
+    const value = await create()
+    try {
+      await value.init({ cols: 80, rows: 24 })
+      const identity = await headlessIdentity.headlessRuntimeIdentity(name, `@termless/${name}`, type)
+      identity.adapterSources = headlessIdentity.readAdapterSources(name, value)
+      const source = createLibProbeSource(value, undefined, identity, undefined)
+      const definition = registryDefinitions([id])[0]!
+      const result = definition.lib!(source)
+      expect(isDeclaredUntestable(result), JSON.stringify(result)).toBe(true)
+      expect(result.tests?.[0]?.reason).toMatch(reason)
+      if (name === "ghostty") expect(result.tests?.[0]?.reason).not.toMatch(/engine.*(lacks|does not support)/)
+      for (const runtimeIdentity of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
+        const unknown = definition.lib!({ ...source, runtimeIdentity })
+        expect(isDeclaredUntestable(unknown), JSON.stringify(unknown)).toBe(false)
+        expect(unknown.observation?.outcome).not.toBe("unsupported")
+      }
+      const measured = definition.lib!({
+        ...source,
+        getCell: (row, col) => ({ ...source.getCell(row, col), char: "X", [field]: true }),
+      })
+      expect(measured.observation, JSON.stringify(measured)).toMatchObject({ outcome: "supported" })
+    } finally {
+      value.destroy()
+    }
+  } finally {
+    vi.unstubAllEnvs()
+    rmSync(directory, { recursive: true, force: true })
   }
 })
 
