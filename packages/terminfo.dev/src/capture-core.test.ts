@@ -10,7 +10,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { command, retain } from "./capture-core.ts"
+import { command, finishCapture, retain } from "./capture-core.ts"
 
 const directories: string[] = []
 afterEach(() => {
@@ -24,6 +24,50 @@ function directory(): string {
 }
 
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
+
+// The predecoded frame is already the pixel authority. These cases catch a second decoder
+// dependency and wrong stride/extent; command/retention tests do not exercise finalization.
+const PNG_STUB = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0])
+const FRAME_RGBA = Uint8Array.from({ length: 48 }, (_, index) => index)
+
+test.each(["png", "xwd"] as const)("capture finalizer crops the decoded %s frame and keeps its recipe", async (format) => {
+  const input = {
+    directory: directory(),
+    onRetained: () => {},
+    source: { bytes: format === "png" ? PNG_STUB : Buffer.from("retained XWD"), format, width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB,
+    decoded: { width: 4, height: 3, rgba: FRAME_RGBA },
+    origin: { origin: { x: 0, y: 0 }, basis: "measured fixture" },
+    trace: {},
+    checkpoint: {
+      featureId: "crop-fixture", role: "target" as const, label: "two rows",
+      cells: { top: 2, left: 2, bottom: 3, right: 3 },
+      pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 4, textHeight: 3 },
+    },
+  }
+  const result = await finishCapture(input)
+  const expected = Buffer.from([20, 21, 22, 23, 24, 25, 26, 27, 36, 37, 38, 39, 40, 41, 42, 43])
+  expect(result.frame.regionDigest).toBe(`sha256:${digest(expected)}`)
+  expect(result.frame.regionRectangle).toEqual({ x: 1, y: 1, width: 2, height: 2 })
+  expect(result.trace.cropCommand).toEqual(["magick", `${format}:-`, "-crop", "2x2+1+1", "+repage", "-depth", "8", "rgba:-"])
+  expect(result.trace.reproduceRegion).toContain("-crop 2x2+1+1 +repage -depth 8 rgba:- | sha256sum")
+  const moved = await finishCapture({ ...input, checkpoint: { ...input.checkpoint, cells: { top: 2, left: 3, bottom: 3, right: 4 } } })
+  expect(moved.frame.regionDigest).not.toBe(result.frame.regionDigest)
+})
+
+test.each([
+  { width: 3, height: 3, rgba: FRAME_RGBA },
+  { width: 4, height: 2, rgba: FRAME_RGBA },
+  { width: 4, height: 3, rgba: FRAME_RGBA.subarray(0, 47) },
+])("capture finalizer rejects decoded extent or byte-length mismatch: $width x $height", async (decoded) => {
+  await expect(finishCapture({
+    directory: directory(), onRetained: () => {},
+    source: { bytes: PNG_STUB, format: "png", width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB, decoded,
+    origin: { origin: { x: 0, y: 0 }, basis: "measured fixture" }, trace: {},
+    checkpoint: { featureId: "mismatch-fixture", role: "target", label: "mismatched decoded frame" },
+  })).rejects.toThrow(/Decoded capture.*source/)
+})
 
 test.each<{
   name: string

@@ -318,6 +318,11 @@ export async function finishCapture(input: {
     )
   }
   const decoded = predecoded ?? (await decodeCapture({ source, featureId, deadline }))
+  if (decoded.width !== width || decoded.height !== height || decoded.rgba.byteLength !== width * height * 4) {
+    throw new Error(
+      `Decoded capture for ${featureId} is ${decoded.width}x${decoded.height} with ${decoded.rgba.byteLength} bytes; source is ${width}x${height} with ${width * height * 4} depth-8 RGBA bytes`,
+    )
+  }
   const pixelsDigest = `sha256:${digest(Buffer.from(decoded.rgba.buffer, decoded.rgba.byteOffset, decoded.rgba.byteLength))}`
   let regionDigest: string | undefined
   let regionRectangle: CaptureRectangle | undefined
@@ -345,8 +350,13 @@ export async function finishCapture(input: {
       "8",
       "rgba:-",
     ]
-    const cropped = await command("magick", cropCommand, original)
     const cropExpected = rectangle.width * rectangle.height * 4
+    const cropped = Buffer.alloc(cropExpected)
+    const rowBytes = rectangle.width * 4
+    for (let row = 0; row < rectangle.height; row++) {
+      const start = ((rectangle.y + row) * width + rectangle.x) * 4
+      cropped.set(decoded.rgba.subarray(start, start + rowBytes), row * rowBytes)
+    }
     if (cropped.length !== cropExpected) {
       throw new Error(
         `Cropped capture for ${featureId} is ${cropped.length} bytes; ${JSON.stringify(rectangle)} at depth 8 rgba is ${cropExpected}`,
