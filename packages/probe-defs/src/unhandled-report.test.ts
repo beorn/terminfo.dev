@@ -297,11 +297,11 @@ describe("the report arm decides italic and faint as well, and nothing outside i
   })
 })
 
-// Accepted D2 cut (Chief 6ef3debd): exactly these 34 controlled negatives;
+// Accepted D2 cut (Chief 6ef3debd) plus M-1 (CTO f23f1197): 44 controlled negatives;
 // the 12 proposed declarations remain on their prior paths pending policy wording.
-// The independent input/code oracle was measured from the real addon before the
-// consumer existed (4966 census); existing tests exercise none of these 46 IDs.
-describe("vt100-rust D2 at the ALL_PROBES consumer", () => {
+// Independent input/code oracles were measured from the real addon before each
+// consumer extension; these cases exercise the registered callback boundary.
+describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
   const identity: HeadlessRuntimeIdentity = {
     kind: "native",
     engineVersion: "0.16.2",
@@ -349,6 +349,17 @@ describe("vt100-rust D2 at the ALL_PROBES consumer", () => {
     ["extensions.sixel-da1", "\u001b[c", "csi", "0c"],
     ["extensions.sixel-geometry-report", "\u001b[?2;1;0S", "csi", "?2;1;0S"],
     ["modes.decsscls", "\u001b[9 p", "csi", " 9p"],
+    // M-1 inputs/codes were measured independently on the exact native addon.
+    ["modes.alt-scroll-1007", "\u001b[?1007h", "csi", "?1007h"],
+    ["modes.color-scheme-reporting", "\u001b[?2031h", "csi", "?2031h"],
+    ["modes.decsclm", "\u001b[?4h", "csi", "?4h"],
+    ["modes.reverse-video", "\u001b[?5h", "csi", "?5h"],
+    ["modes.synchronized-output", "\u001b[?2026h", "csi", "?2026h"],
+    ["modes.xtpushcolors", "\u001b[#P", "csi", "#0P"],
+    ["modes.xtpopcolors", "\u001b[#Q", "csi", "#0Q"],
+    ["modes.xtrestore", "\u001b[?7r", "csi", "?7r"],
+    ["modes.xtsave", "\u001b[?7s", "csi", "?7s"],
+    ["modes.focus-tracking", "\u001b[?1004h", "csi", "?1004h"],
     ["extensions.osc10-fg-color", "\u001b]10;?\u0007", "osc", "10"],
     ["extensions.osc11-bg-color", "\u001b]11;?\u0007", "osc", "11"],
     ["extensions.osc12-cursor-color", "\u001b]12;?\u0007", "osc", "12"],
