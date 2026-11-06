@@ -6214,13 +6214,34 @@ const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
 // generic hook; payload delivery is not execution of these host commands.
 const OSC_PASS_THROUGH_REASON =
   "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
-const OSC_PASS_THROUGH_DECLARATIONS: Readonly<Record<string, string>> = {
+const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
+  Record<string, string | { readonly backend: string; readonly reason: string }>
+> = {
   "extensions.osc176-app-id": OSC_PASS_THROUGH_REASON,
   "extensions.osc3008-context": OSC_PASS_THROUGH_REASON,
   "extensions.osc440-audio": OSC_PASS_THROUGH_REASON,
   "extensions.osc555-flash": OSC_PASS_THROUGH_REASON,
   "extensions.osc666-termprop": OSC_PASS_THROUGH_REASON,
   "extensions.osc710-font-normal": OSC_PASS_THROUGH_REASON,
+  // NR-H: xterm.js 6.0.0's logger is not a report; retain the reviewed parser-hook wording.
+  "editing.decsace": {
+    backend: "xterm",
+    reason:
+      "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it.",
+  },
+  "extensions.osc9-progress": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-b": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-c": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-d": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-p": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.semantic-prompts": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-b": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-c": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-d": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-e": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc-633-vscode": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
 }
 
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6282,14 +6303,20 @@ function declaredD2InterfaceAbsence(
   ctx: LibProbeSource,
   lib: (ctx: LibProbeSource) => ProbeCallbackResult,
   id: string,
-  table: Readonly<Record<string, string>>,
+  table: Readonly<Record<string, string | { readonly backend: string; readonly reason: string }>>,
   backend: string,
   cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-pass-through" | "ghostty-native-d2" | "wezterm-d2",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
   options: { readonly genericReportIsObservable?: boolean } = {},
 ): ProbeCallbackResult | undefined {
-  const entry = table[id]
+  const declaration = table[id]
+  const entry =
+    typeof declaration === "string"
+      ? declaration
+      : declaration?.backend === ctx.backendName
+        ? declaration.reason
+        : undefined
   if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined
   const result = lib(ctx)
   if (
