@@ -4217,13 +4217,7 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
     still(variant, unchanged)
       .map((row) => row.featureId)
       .sort(),
-  ).toEqual([
-    "extensions.osc7-cwd",
-    "sgr.blink",
-    "sgr.underline.curly",
-    "sgr.underline.dashed",
-    "sgr.underline.dotted",
-  ])
+  ).toEqual(["extensions.osc7-cwd", "sgr.blink", "sgr.underline.curly", "sgr.underline.dashed", "sgr.underline.dotted"])
   expect(JSON.stringify(still(variant, unchanged))).not.toContain("library reported this sequence as unhandled")
 })
 

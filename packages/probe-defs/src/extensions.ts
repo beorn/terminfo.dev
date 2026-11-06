@@ -6823,7 +6823,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         definition.id,
         XTERM_IMAGE_D2_DECLARATIONS,
         "xterm",
-        "osc-pass-through",
+        "osc-tap",
       )
       if (xtermImageDeclared) return xtermImageDeclared
       const vt100ImageDeclared = declaredD2InterfaceAbsence(
