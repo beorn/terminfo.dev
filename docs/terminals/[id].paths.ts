@@ -144,7 +144,7 @@ export default {
           versions: JSON.stringify(versions),
           otherRuns: JSON.stringify(otherRuns),
           ...(workingHistory &&
-            selected && {
+            selected?.subject && {
               workingHistory: JSON.stringify(
                 workingHistoryFor(workingHistory, { engine: selected.subject.id, kind: selected.subject.kind }),
               ),

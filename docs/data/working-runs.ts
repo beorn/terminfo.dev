@@ -570,7 +570,7 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
         const moves = receipt.moves
         if (
           !moves.every(
-            (move) =>
+            (move): move is Record<"engine" | "feature" | "from" | "to" | "comparison", string> =>
               record(move) &&
               ["engine", "feature", "from", "to", "comparison"].every((key) => typeof move[key] === "string"),
           )
