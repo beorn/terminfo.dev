@@ -17,7 +17,7 @@ import {
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
 import { withD2LibraryObservation } from "./extensions.ts"
-import { libProbeSource } from "./testing/group-harness.ts"
+import { inertLibProbeSource, libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { HeadlessRuntimeIdentity, LibProbeSource, NotTestedCoverageResult, ProbeCallbackResult } from "./types.ts"
 
@@ -288,12 +288,13 @@ describe("WezTerm D2 audited interface absence", () => {
   } satisfies HeadlessRuntimeIdentity
   const source = (extra: Partial<LibProbeSource> = {}): LibProbeSource => {
     let parsedMarker = false
+    const blank = inertLibProbeSource().getCell(0, 0)
     return {
       ...library("wezterm"),
       runtimeIdentity: identity,
       feedCapture: () => "",
       getTitle: () => "",
-      getCell: (row, col) => ({ char: ["abcdefgh", "ijklmnop"][row]?.[col] ?? " ", inverse: false }),
+      getCell: (row, col) => ({ ...blank, char: ["abcdefgh", "ijklmnop"][row]?.[col] ?? " " }),
       // Existing DECSSCLS parser-consumption control passes; presentation speed remains unobserved.
       feed: (sequence) => {
         parsedMarker = sequence.includes("\x1b[9 pQ")
