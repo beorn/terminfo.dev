@@ -61,7 +61,7 @@ const baseCell = {
 }
 
 const underlineColorUnexposed =
-  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it. [cell.underlineColor]"
+  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it."
 
 // @failure Missing reset readback is interpreted as a measured reset (null becomes !null).
 // @level l0
@@ -570,7 +570,8 @@ test("unexposed overline and default conceal flags cannot establish negative sup
       expect(result.observation, id).toBeUndefined()
       expect(result.notTested, id).toEqual({
         reason: "no-semantic-observable",
-        noObservable: "Open: this library's screen cells have no overline field, so our test cannot see overline. [cell.overline]",
+        noObservable:
+          "Open: our adapter for this library does not read overline from its screen cells yet, so our test cannot see overline.",
       })
     } else expectNoSamePathTodo(result, id)
     expect(JSON.parse(result.response ?? ""), id).toMatchObject({ char: "X" })
@@ -580,7 +581,11 @@ test("unexposed overline and default conceal flags cannot establish negative sup
     expect(measured.assertions, id).toMatchObject([{ kind: "positive" }])
     if (id === "sgr.hidden") {
       const unexposed = probe.lib(headless({ getCell: () => ({ ...baseCell, hidden: null }) }))
-      expectNoSamePathTodo(unexposed, id, "Open: this library's screen cells have no hidden-text field, so our test cannot see hidden text. [cell.hidden]")
+      expectNoSamePathTodo(
+        unexposed,
+        id,
+        "Open: our adapter for this library does not read hidden text from its screen cells yet, so our test cannot see hidden text.",
+      )
       expect(JSON.parse(unexposed.response ?? ""), id).toMatchObject({ char: "X", hidden: null })
     }
   }
@@ -701,7 +706,8 @@ test("underline color reset needs both an observed colored before cell and defau
   // The missing coloured seed is a missing prerequisite with its own cause (@cto batch7 A-F5).
   expect(missingBefore.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "Open: after we set an underline colour (SGR 58), the screen cell showed none, so there is nothing for the reset (SGR 59) to clear.",
+    noObservable:
+      "Open: after we set an underline colour (SGR 58), the screen cell showed none, so the setup did not show and the reset cannot be tested.",
   })
 
   const missingAfter = probe.lib(
@@ -853,7 +859,7 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
     expectNoSamePathTodo(
       unobservedSetup,
       id,
-      `compound reset not decided: ${unshown} not shown at setup; a reset needs at least one shown set facet and every preserved facet shown`,
+      `Open: ${unshown} did not show during setup, so our test cannot check the combined reset.`,
     )
     if (erasedSentinel) {
       const lost = read(erasedSentinel)
@@ -886,7 +892,7 @@ test.each([
     expectNoSamePathTodo(
       result,
       id,
-      `compound reset not decided: ${unshown} not shown at setup; a reset needs at least one shown set facet and every preserved facet shown`,
+      `Open: ${unshown} did not show during setup, so our test cannot check the combined reset.`,
     )
   } else {
     expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
@@ -1084,7 +1090,14 @@ test("SGR 39 and 49 restore the measured default, including concrete RGB default
     expect(uncalibrated?.notTested, id).toMatchObject({ reason: "no-semantic-observable" })
     expect(uncalibrated?.criterionBranch, id).toBe("headless-observable-review")
     expect(uncalibrated?.tests, id).toEqual([
-      { id: "review", status: "probe-todo", reason: expect.stringContaining("setup cell") },
+      {
+        id: "review",
+        status: "probe-todo",
+        reason:
+          channel === "fg"
+            ? "Open: the text colour we set first (SGR 31) read the same as the default, so we cannot tell whether the reset to default worked."
+            : "Open: the background colour we set first (SGR 42) read the same as the default, so we cannot tell whether the reset to default worked.",
+      },
     ])
     expect(uncalibrated?.observation, id).toBeUndefined()
     expect(uncalibrated?.assertions, id).toBeUndefined()

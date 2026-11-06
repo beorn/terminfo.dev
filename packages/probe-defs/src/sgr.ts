@@ -248,7 +248,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
  * PROBE TODO), never a negative (#30701, @cto ruling C: PROBE TODO only where the cell field is missing).
  */
 const UNDERLINE_COLOR_UNEXPOSED =
-  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it. [cell.underlineColor]"
+  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it."
 
 /**
  * Keep DECRQSS for state-only claims. Registered colour/reset visual claims use their owned pixel
@@ -990,7 +990,10 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.hidden",
     "\x1b[8m",
     (cell) => (cell.hidden == null ? null : cell.hidden === true),
-    (cell) => (cell.hidden == null ? "Open: this library's screen cells have no hidden-text field, so our test cannot see hidden text. [cell.hidden]" : null),
+    (cell) =>
+      cell.hidden == null
+        ? "Open: our adapter for this library does not read hidden text from its screen cells yet, so our test cannot see hidden text."
+        : null,
     { require: [8] },
     "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
   ),
@@ -1008,7 +1011,10 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.overline",
     "\x1b[53m",
     (cell) => (cell.overline == null ? null : cell.overline === true),
-    (cell) => (cell.overline == null ? "Open: this library's screen cells have no overline field, so our test cannot see overline. [cell.overline]" : null),
+    (cell) =>
+      cell.overline == null
+        ? "Open: our adapter for this library does not read overline from its screen cells yet, so our test cannot see overline."
+        : null,
     { require: [53] },
   ),
 
@@ -1102,7 +1108,10 @@ export const sgrProbes: ProbeDefinition[] = [
         const framed = baseline.char === "C" && before.char === "X" && after.char === "Y"
         if (framed && before.underlineColor == null) {
           // A missing prerequisite, not a missing control (@cto batch7 A-F5).
-          return notTestedResult("Open: after we set an underline colour (SGR 58), the screen cell showed none, so there is nothing for the reset (SGR 59) to clear.", state)
+          return notTestedResult(
+            "Open: after we set an underline colour (SGR 58), the screen cell showed none, so the setup did not show and the reset cannot be tested.",
+            state,
+          )
         }
         if (
           baseline.char !== "C" ||

@@ -1018,7 +1018,7 @@ test.each([
     expect(result.criterionBranch).toBeUndefined()
     expect(result.notTested).toEqual({
       reason: "no-semantic-observable",
-      noObservable: `Open: our test cannot read the mouse pointer colour (OSC ${setCode}). On this library it can only read text, background and cursor colours, so it cannot check the reset (OSC ${resetCode}).`,
+      noObservable: `Open: our test cannot read the mouse pointer colour (OSC ${setCode}). On this library it can only read text, background and cursor colours.`,
     })
     expect(result.tests).toBeUndefined()
     expect(result.observation).toBeUndefined()
@@ -1098,7 +1098,7 @@ test.each(appResetProbes)(
     expect(noReply.writes, id).toEqual([])
     expect(noReply.result.observation, id).toBeUndefined()
     expect(noReply.result.notTested?.reason, id).toBe("no-semantic-observable")
-    expect(noReply.result.notTested?.noObservable, id).toContain("reset has no effect readback")
+    expect(noReply.result.notTested?.noObservable, id).toContain("reset itself stays unseen")
     expect(noReply.result.assertions, id).toBeUndefined()
   },
 )
@@ -1520,7 +1520,7 @@ test.each([
       expect(result.tests?.[0]?.status).toBe(missingBaseline ? "probe-todo" : "probe-invalid")
       expect(result.tests?.[0]?.reason).toContain(
         missingBaseline
-          ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
+          ? `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`
           : ["initial highlight colour is unknown", "known colour was not read back", "did not answer after"][stage]!,
       )
       if (raw === "") expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
@@ -1583,7 +1583,7 @@ test.each([
     {
       id: "criterion",
       status: "probe-todo",
-      reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
+      reason: `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`,
     },
   ])
 })
@@ -1643,7 +1643,7 @@ test.each([
             // #31398 names the sentinel-bounded silence by its passed DA1 control; the grade is PROBE TODO either way.
             reason:
               mode === "sentinel"
-                ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
+                ? `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`
                 : `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
           },
         ])

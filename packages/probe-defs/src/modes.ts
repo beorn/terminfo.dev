@@ -185,7 +185,8 @@ async function primaryRestoreCapture(
         {
           id: "entry-qualified",
           status: "probe-todo",
-          reason: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
+          reason:
+            "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
         },
         remainingFacets,
       ],
@@ -441,7 +442,7 @@ async function xtModeSaveCapture(ctx: TermProbeSource, operation: "push" | "pop"
       note:
         operation === "pop"
           ? "restore returned DECAWM off after on was saved"
-          : "Open: restoring always turned line wrap off, whatever we saved, so nothing shows whether the save worked.",
+          : "Open: a save can only be seen by restoring it, and restoring always turned line wrap off, whatever we saved, so the restore cannot show whether the save worked.",
     })
   }
   const verdict = decideStackOperation(operation, pop, push)
@@ -708,7 +709,10 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
       return operation === "pop"
         ? parserStateResult(false, expected, state, "restore returned DECAWM off after on was saved")
         : stackStateResult(
-            { pass: null, note: "Open: restoring always turned line wrap off, whatever we saved, so nothing shows whether the save worked." },
+            {
+              pass: null,
+              note: "Open: a save can only be seen by restoring it, and restoring always turned line wrap off, whatever we saved, so the restore cannot show whether the save worked.",
+            },
             expected,
             state,
           )
@@ -768,7 +772,10 @@ function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): P
       !reads(calibration.green, COLOR_STACK_GREEN) ||
       !reads(calibration.magenta, COLOR_STACK_MAGENTA)
     ) {
-      return notTestedResult("Open: changing a palette colour with OSC 4 did not change the colour the cell reads, so our test cannot see the palette stack.", calibration)
+      return notTestedResult(
+        "Open: changing a palette colour (OSC 4) did not change the colour the screen cell shows, so our test cannot see whether saving and restoring the palette works.",
+        calibration,
+      )
     }
     const fixture = (before: string) => {
       ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${before}`)
@@ -968,7 +975,10 @@ function altScreenRoundtrip(
       if (phase === "exit") {
         // An unqualified entry is a missing prerequisite for the exit: PROBE TODO, and source never decides it
         // (#32246, @cto batch7 A-F1 and 84e7b78b).
-        return notTestedResult("Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.", state)
+        return notTestedResult(
+          "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
+          state,
+        )
       }
       return parserStateResult(
         false,
@@ -1916,7 +1926,11 @@ const modeDefinitions: ProbeDefinition[] = [
         }
         const reason =
           setMode === null || resetMode === null
-            ? `Open: our ${ctx.backendName} adapter cannot read the application keypad mode yet.`
+            ? ctx.backendName === "kitty"
+              ? "Open: our Kitty adapter has no hook yet for application keypad mode (where the number keypad sends its own codes)."
+              : ctx.backendName === "wezterm"
+                ? "Open: our WezTerm adapter has no hook yet for application keypad mode (where the number keypad sends its own codes)."
+                : `Open: our ${ctx.backendName} adapter cannot read the application keypad mode yet.`
             : `DECKPAM state pair: set ${setMode}, reset ${resetMode}`
         const note = `${reason}; ${facet}`
         return {

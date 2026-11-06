@@ -128,7 +128,8 @@ test.each([
   expect(result.observation?.outcome).not.toBe("unsupported")
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
+    noObservable:
+      "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
   })
   expect(source.feedCapture("\x1b[c")).toMatch(/^\x1b\[\?[0-9;]+c$/u)
 })
@@ -163,7 +164,7 @@ test.each(["control", "target"])("OSC 52 missing %s cannot establish support", (
     reason: "no-semantic-observable",
     noObservable:
       missing === "control"
-        ? "Open: our test has no control for this feature in this run, so the observations do not decide the result."
+        ? "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result."
         : "control OSC 52 c write recorded but the probe write was not; same-run observations disagree",
   })
 })
@@ -182,7 +183,8 @@ test.each(["osc133-a", "osc133-b", "osc133-c", "osc133-d", "osc633-a", "osc633-b
     expect(result.observation?.outcome).not.toBe("unsupported")
     expect(result.notTested).toEqual({
       reason: "no-semantic-observable",
-      noObservable: "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
+      noObservable:
+        "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
     })
     expect(source.feedCapture("\x1b[c")).toMatch(/^\x1b\[\?[0-9;]+c$/u)
   },
@@ -1271,7 +1273,12 @@ test.each([
   const result = umbrella.lib!(makeSource())
   expect(result.pass).toBe(false)
   expect(result.tests).toEqual([
-    { id: "criterion", status: "probe-todo", reason: "Open: this library shows only part of the cycle from prompt to command end with exit status, so our test cannot see the whole cycle." },
+    {
+      id: "criterion",
+      status: "probe-todo",
+      reason:
+        "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+    },
   ])
   expect(result.observation?.outcome).not.toBe("supported")
 })

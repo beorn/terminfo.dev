@@ -64,12 +64,13 @@ test.each([
       expect(result.assertions ?? []).toEqual([])
       const unread = definition.lib({
         ...source,
-        getMode: (name) => name === "applicationCursor" ? null : enabled,
+        getMode: (name) => (name === "applicationCursor" ? null : enabled),
       })
       expect(unread.tests).toContainEqual({
         id: "criterion",
         status: "probe-todo",
-        reason: "Open: reverse-video mode set and reset as expected, but the second mode we use to show they are independent cannot be read here.",
+        reason:
+          "Open: reverse-video mode set and reset as expected, but the second mode we use to show they are independent cannot be read here.",
       })
     } else if (ps === null) {
       expect(result.criterionBranch, `${id}: silence`).toBe("os-input-review")
@@ -77,7 +78,8 @@ test.each([
         {
           id: "review",
           status: "probe-todo",
-          reason: "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
+          reason:
+            "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works.",
         },
       ])
       expect(result.assertions ?? []).toEqual([])
@@ -1006,7 +1008,8 @@ test("1049 exit after an unqualified entry is PROBE TODO: the entry is a missing
   const result = definition.lib!(context)
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
+    noObservable:
+      "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
   })
   expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
@@ -1040,7 +1043,8 @@ test("1049 exit after an unqualified entry is PROBE TODO, and source never decid
   const result = definition.lib!(withRuntimeIdentity(audited.context, VT100_SOURCE_IDENTITY))
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
+    noObservable:
+      "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
   })
   expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
@@ -1214,11 +1218,14 @@ test.each([
       expect.objectContaining({
         id: "entry-qualified",
         status: "probe-todo",
-        reason: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
+        reason:
+          "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
       }),
     ]),
   )
-  expect(result.observation?.note).toBe("Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.")
+  expect(result.observation?.note).toBe(
+    "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
+  )
 })
 
 test("alt-screen exit capture frames the primary, alternate and restored buffers", async () => {

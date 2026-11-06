@@ -688,14 +688,19 @@ describe("window-operation qualification", () => {
 
   // A title setup that reads back wrong decides neither operation: no observation, the headless observable review.
   const UNOBSERVABLE_TITLE_SETUP = {
-    note: "Title setup was not observable",
-    notTested: { reason: "no-semantic-observable", noObservable: "Title setup was not observable" },
+    note: "Open: this test first sets a window title, then tests whether the command under test changes it. We could not read the first title back",
+    notTested: {
+      reason: "no-semantic-observable",
+      noObservable:
+        "Open: this test first sets a window title, then tests whether the command under test changes it. We could not read the first title back",
+    },
     criterionBranch: "headless-observable-review",
     tests: [
       {
         id: "review",
         status: "probe-todo",
-        reason: "Title setup was not observable, so this run cannot decide it",
+        reason:
+          "Open: this test first sets a window title, then tests whether the command under test changes it. We could not read the first title back, so this run cannot decide it",
       },
     ],
   }
@@ -1110,7 +1115,8 @@ test.each(geometryReplies)(
         const result = callback(id).headless(ctx)
         expect(result.notTested).toEqual({
           reason: "no-semantic-observable",
-          noObservable: "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
+          noObservable:
+            "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
         })
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
@@ -1126,7 +1132,7 @@ test.each(geometryReplies)(
     // Silence is PROBE TODO for lack of a control (@cto batch7 A-F4); a partial or foreign reply keeps its reading.
     const silent = { feedCapture: () => "", runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
     expect(callback(id).headless(silent).notTested?.noObservable).toBe(
-      "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
+      "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
     )
     for (const reply of [raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
       const ctx = { feedCapture: () => reply, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource

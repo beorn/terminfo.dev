@@ -531,7 +531,8 @@ export const SEMANTIC_PROMPT_SOURCE_REVIEW = "semantic-prompt-source-review"
  * control in this run showed the same observation path can report the state, so the cell stays PROBE TODO (rule 4).
  * Source code never decides it; a probe owner adds the same-path control per feature.
  */
-export const NO_SAME_PATH_CONTROL = "Open: our test has no control for this feature in this run, so the observations do not decide the result."
+export const NO_SAME_PATH_CONTROL =
+  "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result."
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as
@@ -1272,7 +1273,7 @@ export function sgrProbe(
           const field = id === "sgr.faint" ? "dim" : id.slice("sgr.".length)
           const prerequisite =
             SGR_ATTRIBUTE_READER_ABSENCE[`${ctx.backendName}:${ctx.runtimeIdentity?.engineVersion}:${field}`]
-          const missingReader = `Open: this library's screen cells do not report ${field}, and nothing else in our test shows it. [cell.${field}; ${prerequisite ? `${prerequisite}; ` : ""}no qualified SGR m alternative]`
+          const missingReader = `Open: our test could not read ${field} from the screen cells and found no qualified alternative in this run.${prerequisite ? ` ${prerequisite}.` : ""}`
           // The reply is used only after this same SGR m reader reports the bold control.
           // A facility-wide DECRQSS/DECSTBM answer does not qualify it (#32318).
           if (readback && ctx.queryWithSentinelOutcome) {
@@ -1346,7 +1347,9 @@ export function sgrProbe(
               )
             }
             return notTestedResult(
-              `Underline reader did not distinguish the ${style} style control in this run`,
+              style === "double" && styleControl.char === "D" && styleControl.underline === "single"
+                ? "Open: our test tells underline styles apart by comparing with double underline, its control. On this library double underline read the same as plain underline, so this style cannot be judged yet."
+                : `Open: our test compares underline styles with a ${style}-underline control, but that control did not read as ${style} underline, so this style cannot be judged yet.`,
               styleState,
             )
           }
@@ -1776,7 +1779,7 @@ export function headlessDecrpmArm(
           return osInputReviewResult(
             `DECRPM reply to CSI ? ${modeNum} $ p`,
             state,
-            "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
+            "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works.",
           )
         }
         const insertBindingGap = modeNum === 4 && (insertBefore === null || insertAfter === null)
@@ -1834,7 +1837,7 @@ export function headlessDecrpmArm(
       return osInputReviewResult(
         `DECRPM reply to CSI ? ${modeNum} $ p`,
         state,
-        "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
+        "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works.",
       )
     }
     return { ...decrpmResult(ps, modeNum), response: JSON.stringify(state) }
@@ -1874,7 +1877,9 @@ function modeStateReadback(ctx: LibProbeSource, number: number, key: string, pri
       : initial !== false || set !== true || reset !== false || unknown !== false
         ? `Open: setting and resetting ${label} mode did not give the expected readings.`
         : otherBefore === null || otherSet === null || otherReset === null || otherUnknown === null
-          ? `Open: ${label} mode set and reset as expected, but the second mode we use to show they are independent cannot be read here.`
+          ? key === "applicationCursor"
+            ? "Open: cursor-keys mode set and reset as expected, but our adapter returns no on/off state for reverse video on this library, and reverse video is the second mode we use to show the two modes are independent."
+            : `Open: ${label} mode set and reset as expected, but the second mode we use to show they are independent cannot be read here.`
           : `Open: the second mode changed while we set or reset ${label} mode, so this test cannot show they are independent.`
     return {
       ...parserStateResult(qualified ? true : null, `${key} state measured; ${facet}`, state, note),

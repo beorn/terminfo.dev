@@ -270,9 +270,9 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
   }
   if (!on[target].bytes.length || !discriminator || before !== after) {
     const reason = !on[target].bytes.length
-      ? "Open: the modify-other-keys test received no target key bytes."
+      ? "Open: with modify-other-keys on (the setting that makes keys like Ctrl+Enter send their own codes), the test key sent no bytes, so there is nothing to compare with the setting off."
       : !discriminator
-        ? "Open: the modify-other-keys test has no key that distinguishes a reset from leaving the mode on."
+        ? "Open: our test has no key that sends different codes with modify-other-keys (the setting that makes keys like Ctrl+Enter send their own codes) on and off, so it cannot tell a reset from no change."
         : "Open: after resetting modify-other-keys, the target key bytes differed from those with the mode off."
     return notTestedResult(reason, observed)
   }
@@ -837,9 +837,14 @@ function mouseEncodingLib(
   kind: "pixel" | "urxvt" | "x10" | "button" | "click" | "wheel",
 ): ProbeCallbackResult {
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
-    return notTestedResult(`Open: our ${ctx.backendName} adapter has no hook for sending mouse events yet.`, {
-      mouseEncoding: false,
-    })
+    return notTestedResult(
+      ctx.backendName === "ghostty-native"
+        ? "Open: our adapter for Ghostty's native library has no hook for sending mouse events yet."
+        : `Open: our ${ctx.backendName} adapter has no hook for sending mouse events yet.`,
+      {
+        mouseEncoding: false,
+      },
+    )
   }
   const encodeMouse = ctx.encodeMouse.bind(ctx)
   const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
@@ -930,10 +935,21 @@ function mouseEncodingLib(
     if (error instanceof Error && error.message.startsWith("mouse encoding unavailable:")) {
       // Named binding refusals reject the gesture before native button input is accepted.
       held = undefined
-      return notTestedResult(`Open: our ${ctx.backendName} adapter cannot use the library's mouse-event encoder. [${error.message}; #31297]`, {
-        mouseEncoding: true,
-        unavailable: error.message,
-      })
+      return notTestedResult(
+        kind === "pixel" &&
+          ctx.backendName === "kitty" &&
+          error.message === "mouse encoding unavailable: Kitty pixel-coordinate path is not bound"
+          ? "Open: our Kitty adapter does not connect Kitty's function for mouse positions in pixels."
+          : kind === "pixel" &&
+              ctx.backendName === "wezterm" &&
+              error.message === "mouse encoding unavailable: WezTerm pixel-coordinate path is not bound"
+            ? "Open: our WezTerm adapter does not connect WezTerm's function for mouse positions in pixels."
+            : `Open: our ${ctx.backendName} adapter cannot use the library's mouse-event encoder. [${error.message}; #31297]`,
+        {
+          mouseEncoding: true,
+          unavailable: error.message,
+        },
+      )
     }
     throw error
   } finally {
@@ -974,7 +990,7 @@ const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
     {
       branch: HEADLESS_OBSERVABLE_REVIEW,
       limit:
-        "Open: Ghostty's core reads the click-to-move setting for a prompt, but its web build does not pass it on, and our test has no pointer to click with. [OSC 133 click_events; osc.zig; ghostty-wasm-api.patch; #30936]",
+        'Open: two things block this. Our test has no mouse pointer to click with, and the web build of Ghostty we test does not pass on the "click to move the cursor in a prompt" setting, though Ghostty\'s native library reads it.',
       noObservable:
         "WASM binding does not forward OSC 133 click_events and headless library context has no pointer surface",
     },
@@ -985,14 +1001,20 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   const expected =
     "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
   if (ctx.backendName === "kitty") {
-    return notTestedResult("Open: Kitty's mouse-event function does not reach the click-in-a-prompt path, so our test cannot click a prompt. [send_mouse_event]", {
-      storedClickEvents: false,
-    })
+    return notTestedResult(
+      "Open: our test sends clicks through Kitty's mouse-event function, which never reaches the code that handles clicks in a shell prompt, so the test cannot click a prompt.",
+      {
+        storedClickEvents: false,
+      },
+    )
   }
   if (ctx.backendName === "wezterm") {
-    return notTestedResult("Open: WezTerm's mouse-event function does not reach the click-in-a-prompt path, so our test cannot click a prompt. [mouse_event]", {
-      storedClickEvents: false,
-    })
+    return notTestedResult(
+      "Open: our test sends clicks through WezTerm's mouse-event function, which never reaches the code that handles clicks in a shell prompt, so the test cannot click a prompt.",
+      {
+        storedClickEvents: false,
+      },
+    )
   }
   if (ctx.backendName === "vterm") {
     return notTestedResult(NO_SAME_PATH_CONTROL, { storedClickEvents: false })

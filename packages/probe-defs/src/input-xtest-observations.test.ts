@@ -115,7 +115,12 @@ test.each([
         encodeKey(event) {
           if (behavior === "noop" || (behavior === "broken" && event.key === "a")) return new Uint8Array()
           let bytes = event.key === "ArrowUp" ? "\x1b[A" : event.ctrl ? "\x01" : event.key
-          if ((behavior === "control-change" || behavior === "broken-reset") && event.key === "a" && event.ctrl && mode === level) {
+          if (
+            (behavior === "control-change" || behavior === "broken-reset") &&
+            event.key === "a" &&
+            event.ctrl &&
+            mode === level
+          ) {
             bytes = "\x1b[27;5;97~"
           }
           if (event.key === "i") {
@@ -125,8 +130,8 @@ test.each([
               ((behavior === "working" || behavior === "wrong") && mode === level) ||
               behavior === "constant" ||
               behavior === "equivalent" ||
-              behavior === "control-change"
-              || (behavior === "broken-reset" && seenEnabled)
+              behavior === "control-change" ||
+              (behavior === "broken-reset" && seenEnabled)
             ) {
               const modifier = event.ctrl ? 5 : 1
               bytes = form === "tilde" ? `\x1b[27;${modifier};105~` : `\x1b[105;${modifier}u`
@@ -167,9 +172,13 @@ test.each([
         expect(observed.on.ctrlI.event).toEqual({ key: "i", ctrl: true })
         expect(result.assertions?.some((entry) => entry.kind === "positive")).toBe(true)
       } else if (behavior === "missing-target") {
-        expect(result.notTested?.noObservable).toBe("Open: the modify-other-keys test received no target key bytes.")
+        expect(result.notTested?.noObservable).toBe(
+          "Open: with modify-other-keys on (the setting that makes keys like Ctrl+Enter send their own codes), the test key sent no bytes, so there is nothing to compare with the setting off.",
+        )
       } else if (behavior === "broken-reset") {
-        expect(result.notTested?.noObservable).toBe("Open: after resetting modify-other-keys, the target key bytes differed from those with the mode off.")
+        expect(result.notTested?.noObservable).toBe(
+          "Open: after resetting modify-other-keys, the target key bytes differed from those with the mode off.",
+        )
       } else if (!outcome) {
         expect(result.notTested?.noObservable).toMatch(/control|unchanged|discriminator/)
       }
@@ -285,7 +294,7 @@ test.each(["input.xtest-key", "extensions.clipboard-paste"])(
   "%s retains its named missing library input observation",
   (id) => {
     const definition = [...inputProbes, ...extensionsProbes].find((entry) => entry.id === id)!
-    const result = definition.lib!({ kind: "live" } as LibProbeSource)
+    const result = definition.lib!({ kind: "live", backendName: "scripted-model" } as LibProbeSource)
     expect(result.observation).toBeUndefined()
     expect(result.criterionBranch).toBe(id === "extensions.clipboard-paste" ? "paste-encoding" : "os-input-review")
     expect(result.tests).toEqual([
@@ -294,7 +303,7 @@ test.each(["input.xtest-key", "extensions.clipboard-paste"])(
         status: "probe-todo",
         reason:
           id === "extensions.clipboard-paste"
-            ? expect.stringContaining("paste-encoding extension unavailable; native paste interface not observed")
+            ? "Open: our scripted-model adapter has no hook for sending pastes, and our test has not tried the library's own paste function."
             : "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
       },
     ])
@@ -480,7 +489,7 @@ test.each(xtestIds)("%s is not tested without an OS XTEST adapter", async (id) =
     noObservable:
       id === "input.xtest-key"
         ? expect.stringMatching(/XTEST|OS-level/i)
-        : "adapter binding scripted-model: mouse-encoding extension unavailable",
+        : "Open: our scripted-model adapter has no hook for sending mouse events yet.",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -980,7 +989,7 @@ test("input.pixel-mouse is not tested without an OS XTEST adapter", async () => 
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "adapter binding scripted-model: mouse-encoding extension unavailable",
+    noObservable: "Open: our scripted-model adapter has no hook for sending mouse events yet.",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -1147,7 +1156,7 @@ test("input.urxvt-mouse is not tested without an OS XTEST adapter", async () => 
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "adapter binding scripted-model: mouse-encoding extension unavailable",
+    noObservable: "Open: our scripted-model adapter has no hook for sending mouse events yet.",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -1245,7 +1254,7 @@ test("input.x10-mouse is not tested without an OS XTEST adapter", async () => {
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "adapter binding scripted-model: mouse-encoding extension unavailable",
+    noObservable: "Open: our scripted-model adapter has no hook for sending mouse events yet.",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -1343,7 +1352,7 @@ test("input.button-event-mouse is not tested without an OS XTEST adapter", async
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "adapter binding scripted-model: mouse-encoding extension unavailable",
+    noObservable: "Open: our scripted-model adapter has no hook for sending mouse events yet.",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -1534,7 +1543,9 @@ test.each([
       expect(result.notTested?.noObservable).toContain("mouse encoding unavailable: pixel input is not bound")
       expect(result.observation).toBeUndefined()
     } else if (dead) {
-      expect(result.notTested?.noObservable).toBe("Open: our test has no control for this feature in this run, so the observations do not decide the result.")
+      expect(result.notTested?.noObservable).toBe(
+        "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
+      )
       expect(result.observation).toBeUndefined()
     } else if (id === "input.x10-mouse") {
       expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
@@ -1826,12 +1837,20 @@ test.each([
   [
     "ghostty",
     "not-tested",
-    "Open: Ghostty's core reads the click-to-move setting for a prompt, but its web build does not pass it on, and our test has no pointer to click with. [OSC 133 click_events; osc.zig; ghostty-wasm-api.patch; #30936]",
+    'Open: two things block this. Our test has no mouse pointer to click with, and the web build of Ghostty we test does not pass on the "click to move the cursor in a prompt" setting, though Ghostty\'s native library reads it.',
   ],
   // A former source-negative site: PROBE TODO with no same-path control, never a source citation (#32246).
-  ["alacritty", "not-tested", "Open: our test has no control for this feature in this run, so the observations do not decide the result."],
+  [
+    "alacritty",
+    "not-tested",
+    "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
+  ],
   // A former source-negative site: PROBE TODO with no same-path control, never a source citation (#32246).
-  ["vt100-rust", "not-tested", "Open: our test has no control for this feature in this run, so the observations do not decide the result."],
+  [
+    "vt100-rust",
+    "not-tested",
+    "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
+  ],
   ["xtermjs", "unsupported", null],
 ] as const)(
   "input.kitty-click-events library arm on %s: shared-encoder limit reads %s",
@@ -1961,7 +1980,7 @@ const qualifiedSharedEncoderIdentities = [
 
 test.each(qualifiedSharedEncoderIdentities)(
   "input.kitty-click-events library arm on %s: a formerly qualified identity (%s) and a stale one read the same PROBE TODO",
-  (backendName, citationMarker, identity, stale) => {
+  (backendName, _citationMarker, identity, stale) => {
     let modesOn = false
     const source = (runtimeIdentity: unknown): LibProbeSource => {
       const base = libMouseSource({
@@ -1990,8 +2009,12 @@ test.each(qualifiedSharedEncoderIdentities)(
     }
     expect(staleResult).toEqual(formerlyQualified)
     // Ghostty keeps its shared-encoder coverage limit; the former source-negative engines name no citation.
-    if (backendName === "ghostty") expect(formerlyQualified.note).toContain(citationMarker)
-    else expect(formerlyQualified.note).toBe("Open: our test has no control for this feature in this run, so the observations do not decide the result.")
+    if (backendName === "ghostty")
+      expect(formerlyQualified.note).toContain("the web build of Ghostty we test does not pass on")
+    else
+      expect(formerlyQualified.note).toBe(
+        "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
+      )
   },
 )
 
@@ -2108,10 +2131,11 @@ test.each(
   expect(result).toEqual({
     pass: false,
     response: JSON.stringify(id === "input.kitty-click-events" ? { storedClickEvents: false } : { input: false }),
-    note: "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
+    note: "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
     notTested: {
       reason: "no-semantic-observable",
-      noObservable: "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
+      noObservable:
+        "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
     },
   })
 })
