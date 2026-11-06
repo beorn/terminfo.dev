@@ -230,8 +230,8 @@ test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
 // Six libraries export no public key-event encoder: their input.xtest-key cell is declared Untestable (operator Nov 4
 // 16:55), and its reason names the missing export.
 test.each([
-  ["vt100", /vt100\.js 0\.10\.1 exports createVt100Screen/],
-  ["vt220", /vt220\.js 0\.10\.1 exports createVt220Screen/],
+  ["vt100", /vt100\.js exports createVt100Screen/],
+  ["vt220", /vt220\.js exports createVt220Screen/],
   ["vterm", /vterm\.js exports createVtermScreen/],
   ["xterm", /@xterm\/headless 6\.0\.0 exports Terminal/],
   ["alacritty", /alacritty_terminal 0\.26\.0 exposes/],
