@@ -383,8 +383,9 @@ OSC 633 P's number-only rejection also decides Unsupported: its payload was not 
 For EL with background attributes, XTWINOPS 22/23, alternate-screen exit and italic selective reset,
 rejection of the setup itself with the passing SGR 1 control makes the dependent claim Untestable
 in that run. Target rejection, a version literal, a failed control or missing report cannot establish
-that prerequisite absence. Existing decided results retain precedence. DECSACE alone is declared
-Untestable at DEC engine 0.13.1, whose public Screen API has no extent state/effect reader; other
+that prerequisite absence. Existing decided results retain precedence.
+Without the qualified setup report, those five dependent claims remain PROBE TODO.
+DECSACE alone is declared Untestable at DEC engine 0.13.1, whose public Screen API has no extent state/effect reader; other
 versions retain the existing criterion. VT220 bold selective reset remains outside this slice.
 
 Operator D2 and the November 5 11:16 ruling add 34 cells; the M-1 scope adds ten state cells,

@@ -6506,6 +6506,12 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
             { setup: target.feed, report: reported.response },
           )
         }
+        if (decSetup) {
+          return notTestedResult(
+            `${definition.id}: setup rejection with a handled SGR 1 control was not qualified in this run`,
+            { setup: target.feed, body: result },
+          )
+        }
         return reported ?? result
       }
       const passThroughDeclared = declaredD2InterfaceAbsence(

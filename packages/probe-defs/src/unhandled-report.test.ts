@@ -15,13 +15,34 @@
  */
 import { describe, expect, test } from "vitest"
 
-import { extensionsProbes } from "./extensions.ts"
+import { extensionsProbes, withD2LibraryObservation } from "./extensions.ts"
 import { sgrProbes } from "./sgr.ts"
 import { ALL_PROBES, isDeclaredUntestable } from "./index.ts"
 import { inertLibProbeSource } from "./testing/group-harness.ts"
 import type { HeadlessRuntimeIdentity, LibProbeSource, UnhandledSequence } from "./types.ts"
+import { parserStateResult, recordExecutedProbe } from "./helpers.ts"
 
 const REASON = "library reported this sequence as unhandled"
+
+// A report or declaration cannot replace a deciding callback supplied by the registry.
+test.each(["sgr.fg.256", "extensions.osc2-title", "device.xtwinops-22", "editing.decsace"])(
+  "%s retains its existing measured reader outcome",
+  (id) => {
+    for (const pass of [true, false]) {
+      const definition = withD2LibraryObservation({
+        id,
+        lib: () => parserStateResult(pass, "existing measured reader", { measured: pass }),
+        term: null,
+      })
+      const source = reportingSource({ records: [recordsOsc("2"), recordsCsi("38;5;173m")] })
+      Object.assign(source, { backendName: "vt100", runtimeIdentity: { kind: "js", engineVersion: "0.13.1" } })
+      const result = definition.lib!(source)
+      expect(result.observation?.outcome).toBe(pass ? "supported" : "unsupported")
+      expect(isDeclaredUntestable(result)).toBe(false)
+      expect(JSON.stringify(result)).not.toContain(REASON)
+    }
+  },
+)
 
 // NR-C: existing scalar cases cannot catch partial, reordered or extra reports.
 test.each([
@@ -82,6 +103,15 @@ test.each([
     const result = definition.lib!(source)
     expect(isDeclaredUntestable(result)).toBe(false)
     expect(result.observation?.outcome).not.toBe("unsupported")
+    const recorded = recordExecutedProbe({
+      featureId: id,
+      attempt: { scope: "probe", startedAt: "2026-11-06T06:54:00Z" },
+      assertions: [],
+      ...(result.notTested ? { coverage: { featureId: id, rawReplyRef: id, ...result.notTested } } : {}),
+      ...(result.tests ? { tests: result.tests } : {}),
+      ...(result.criterionBranch ? { criterionBranch: result.criterionBranch } : {}),
+    })
+    expect(recorded.status).toBe("probe-todo")
   }
 })
 

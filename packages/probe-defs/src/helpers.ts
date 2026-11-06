@@ -439,7 +439,7 @@ export function reportsDecidedOutcome(result: ProbeCallbackResult): boolean {
 /**
  * Case 1 consumer (@cto 2026-11-05 07:25 appendix): a library's own unhandled report decides a STATE cell
  * Unsupported only when the same run proves both controls on the same reader — a handled sequence adds no
- * entry and its own reader shows it applied, then the target adds exactly one entry carrying its exact code.
+ * entry and its own reader shows it applied, then the target adds its exact code or approved ordered list.
  * Anything else returns undefined, so the calling probe keeps its undecided branch; a source without the
  * member never reaches here, which keeps today's exact path (missing evidence, never a negative).
  *
@@ -448,7 +448,7 @@ export function reportsDecidedOutcome(result: ProbeCallbackResult): boolean {
  * with a handled non-OSC sequence — SGR 1 and bold — only in the same run that shows the OSC 2 control
  * added exactly one entry carrying `fallback.proves` while the title stayed unapplied: the engine reports
  * the OSC path and handles none of it. The fallback then reads its own baseline, so the control's entry is
- * never counted against the target's one-entry delta. A Case 1 engine whose title read answered never
+ * never counted against the target's exact delta. A Case 1 engine whose title read answered never
  * reaches it, and every report length is compared exactly, so a bounded history that rolled decides
  * nothing rather than a wrong grade.
  */

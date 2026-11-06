@@ -960,8 +960,9 @@ test.each([
     } as unknown as LibProbeSource
     const result = definition.lib!(ctx)
     expect(isDeclaredUntestable(result)).toBe(declared)
+    // This DECSACE fixture has no measured frames; a version miss keeps that invalid criterion.
     expect(fold(definition.id, result).status).toBe(
-      declared ? "untestable" : fold(id, definition.lib!({ ...ctx, runtimeIdentity: undefined })).status,
+      declared ? "untestable" : id === "editing.decsace" ? "probe-invalid" : "probe-todo",
     )
     if (declared && id === "modes.decsscls") {
       expect(result.tests?.[0]?.reason).toBe(
