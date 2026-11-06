@@ -34,6 +34,9 @@ For the approved reset/colour-stack no-setup route, a silent setup query with it
 control and no target report returns the existing declared Untestable result with the no-setup cause.
 A missing control or ambiguous target report stays Open; verified seeded-colour effects keep their
 existing result. This route adds no post-collection classification or dependency on another cell.
+Alacritty's audited OSC 110/111/112 route compares its initial silent default with a verified
+seeded colour reply: unknown OSC 7110 must preserve that seed, then the reset must restore
+the initial silence. Those same-run query replies establish Supported without inventing a default RGB value.
 Other missing initial readings record a named PROBE TODO; broken or untrustworthy
 measurement remains PROBE INVALID. Silence alone does not establish Unsupported.
 The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
@@ -41,6 +44,14 @@ The `FeatureResultDisplayState` value `inconclusive` denotes Untestable (reached
 PROBE TODO; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
 
 No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A probe result comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is PROBE TODO with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. PROBE INVALID means the probe or harness broke or got data it cannot trust. Untestable has the explicit route above; otherwise a probe whose setup has no observable for every subject of a kind reads PROBE TODO, and source never sets it per engine. A probe never implements the feature itself.
+
+Kitty graphics display can also read stored placement when a library exposes
+`getCellImageCount`. After its own image allocation, the probe witnesses an
+empty placement cell, an unknown image's placement leaving it empty,
+then the allocated image attached to that cell. This decides a silent placement
+as Supported through buffer state; it does not claim rendered pixels. Missing
+or inconsistent controls remain PROBE TODO. Existing placement acknowledgements
+retain their query-reply criterion.
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
@@ -470,8 +481,8 @@ an already decided result or an unknown profile retains its original path.
 Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration cut.
 
 The `vterm` D2 slice shares the same private helper (`declaredD2InterfaceAbsence`)
-with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source tree
-`3d58d29a8265aafd928e0736dde6723e2bac2007`) to declare nine exact-version
+with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source trees
+`3d58d29a8265aafd928e0736dde6723e2bac2007` and `656da900d83e7c41af13b7ca679f8e1e31481537`) to declare nine exact-version
 public-interface absences: `modes.decsscls`, `extensions.osc9-progress`,
 `extensions.osc22-pointer`, `extensions.osc133-d`, `extensions.osc633-d`,
 `extensions.osc633-e`, `extensions.semantic-prompts`,
