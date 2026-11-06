@@ -51,7 +51,7 @@ const inputDefinitions: ProbeDefinition[] = [
         const declared = NO_LIBRARY_KEY_ENCODER[ctx.backendName]
         if (declared) return declaredUntestableResult(`OS-level XTEST key injection: ${declared}`, { input: false })
         if (ctx.encodeKey) return xtestKeyLib(ctx.encodeKey)
-        return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true)
+        return headlessXtestReview("key injection", true)
       },
       xtestKey,
       "input_bytes",
@@ -125,6 +125,8 @@ const NO_LIBRARY_KEY_ENCODER: Readonly<Record<string, string>> = {
     "vt100.js 0.10.1 exports createVt100Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
   vt220:
     "vt220.js 0.10.1 exports createVt220Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
+  vterm:
+    "vterm.js 0.13.1 exports createVtermScreen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
   xterm:
     "@xterm/headless 6.0.0 exports Terminal, whose input() takes already encoded bytes, and no public key-event encoder",
   alacritty:
@@ -161,8 +163,6 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
   if (reason) {
     return declaredUntestableResult(reason, { keyEncoder: ctx.encodeKey !== undefined, requestedLevel: level })
   }
-  const excluded = vtermNoSamePathControl(ctx, { input: false })
-  if (excluded) return excluded
   const encode = ctx.encodeKey
   if (!encode) {
     return notTestedResult("Native key-encoding route is not qualified for this library", { keyEncoder: false })
@@ -271,7 +271,12 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
     }
   }
   if (!on[target].bytes.length || !discriminator || before !== after) {
-    return notTestedResult("Native MOK target unchanged or reset discriminator unavailable", observed)
+    const reason = !on[target].bytes.length
+      ? "Open: with modify-other-keys on (the setting that makes keys like Ctrl+Enter send their own codes), the test key sent no bytes, so there is nothing to compare with the setting off."
+      : !discriminator
+        ? "Open: our test has no key that sends different codes with modify-other-keys (the setting that makes keys like Ctrl+Enter send their own codes) on and off, so it cannot tell a reset from no change."
+        : "Open: after resetting modify-other-keys, the target key bytes differed from those with the mode off."
+    return notTestedResult(reason, observed)
   }
   const expected = `Native modifyOtherKeys ${level} codepoint 105 modifier ${level === 2 ? 5 : 1} after same-path controls`
   const result =
@@ -291,14 +296,6 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
       ...(result.assertions ?? []),
     ],
   }
-}
-
-/**
- * The former vterm source-negative input sites (@cto 9fad23d7, #32246): no control in this run shows the same input
- * path can report the state, so the cell stays PROBE TODO; source code never decides it.
- */
-function vtermNoSamePathControl(ctx: LibProbeSource, state: object): ProbeCallbackResult | undefined {
-  return ctx.backendName === "vterm" ? notTestedResult(NO_SAME_PATH_CONTROL, state) : undefined
 }
 
 async function deliveryControl(
@@ -878,9 +875,14 @@ function mouseEncodingLib(
     }
   }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
-    return notTestedResult(`adapter binding ${ctx.backendName}: mouse-encoding extension unavailable`, {
-      mouseEncoding: false,
-    })
+    return notTestedResult(
+      ctx.backendName === "ghostty-native"
+        ? "Open: our adapter for Ghostty's native library has no hook for sending mouse events yet."
+        : `Open: our ${ctx.backendName} adapter has no hook for sending mouse events yet.`,
+      {
+        mouseEncoding: false,
+      },
+    )
   }
   const encodeMouse = ctx.encodeMouse.bind(ctx)
   const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
@@ -971,10 +973,21 @@ function mouseEncodingLib(
     if (error instanceof Error && error.message.startsWith("mouse encoding unavailable:")) {
       // Named binding refusals reject the gesture before native button input is accepted.
       held = undefined
-      return notTestedResult(`${ctx.backendName}: ${error.message}; #31297`, {
-        mouseEncoding: true,
-        unavailable: error.message,
-      })
+      return notTestedResult(
+        kind === "pixel" &&
+          ctx.backendName === "kitty" &&
+          error.message === "mouse encoding unavailable: Kitty pixel-coordinate path is not bound"
+          ? "Open: our Kitty adapter does not connect Kitty's function for mouse positions in pixels."
+          : kind === "pixel" &&
+              ctx.backendName === "wezterm" &&
+              error.message === "mouse encoding unavailable: WezTerm pixel-coordinate path is not bound"
+            ? "Open: our WezTerm adapter does not connect WezTerm's function for mouse positions in pixels."
+            : `Open: our ${ctx.backendName} adapter cannot use the library's mouse-event encoder. [${error.message}; #31297]`,
+        {
+          mouseEncoding: true,
+          unavailable: error.message,
+        },
+      )
     }
     throw error
   } finally {
@@ -1015,7 +1028,7 @@ const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
     {
       branch: HEADLESS_OBSERVABLE_REVIEW,
       limit:
-        "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554 into prompt_start.click_events (:74), while the WASM binding does not forward click_events (termless 2719cfd ghostty-wasm-api.patch:624-627) and a headless library run has no pointer surface; #30936",
+        'Open: two things block this. Our test has no mouse pointer to click with, and the web build of Ghostty we test does not pass on the "click to move the cursor in a prompt" setting, though Ghostty\'s native library reads it.',
       noObservable:
         "WASM binding does not forward OSC 133 click_events and headless library context has no pointer surface",
     },
@@ -1026,14 +1039,20 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   const expected =
     "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
   if (ctx.backendName === "kitty") {
-    return notTestedResult("Kitty send_mouse_event does not bind Window's prompt click_events pointer path", {
-      storedClickEvents: false,
-    })
+    return notTestedResult(
+      "Open: our test sends clicks through Kitty's mouse-event function, which never reaches the code that handles clicks in a shell prompt, so the test cannot click a prompt.",
+      {
+        storedClickEvents: false,
+      },
+    )
   }
   if (ctx.backendName === "wezterm") {
-    return notTestedResult("WezTerm mouse_event does not bind a prompt click_events path", {
-      storedClickEvents: false,
-    })
+    return notTestedResult(
+      "Open: our test sends clicks through WezTerm's mouse-event function, which never reaches the code that handles clicks in a shell prompt, so the test cannot click a prompt.",
+      {
+        storedClickEvents: false,
+      },
+    )
   }
   if (ctx.backendName === "vterm") {
     return notTestedResult(NO_SAME_PATH_CONTROL, { storedClickEvents: false })
@@ -1048,7 +1067,7 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
     return notTestedResult(sharedEncoderClickEventsLimit.limit, { storedClickEvents: false })
   }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
-    return notTestedResult("library mouse-event encoding (undeclared mouse-encoding extension)", {
+    return notTestedResult("Open: our adapter for this library has no declared way to send mouse events.", {
       mouseEncoding: false,
     })
   }

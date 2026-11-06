@@ -1018,7 +1018,7 @@ test.each([
     expect(result.criterionBranch).toBeUndefined()
     expect(result.notTested).toEqual({
       reason: "no-semantic-observable",
-      noObservable: `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support is not observable on this reader`,
+      noObservable: `Open: our test cannot read the mouse pointer colour (OSC ${setCode}). On this library it can only read text, background and cursor colours.`,
     })
     expect(result.tests).toBeUndefined()
     expect(result.observation).toBeUndefined()
@@ -1098,7 +1098,7 @@ test.each(appResetProbes)(
     expect(noReply.writes, id).toEqual([])
     expect(noReply.result.observation, id).toBeUndefined()
     expect(noReply.result.notTested?.reason, id).toBe("no-semantic-observable")
-    expect(noReply.result.notTested?.noObservable, id).toContain("reset has no effect readback")
+    expect(noReply.result.notTested?.noObservable, id).toContain("reset itself stays unseen")
     expect(noReply.result.assertions, id).toBeUndefined()
   },
 )
@@ -1342,6 +1342,39 @@ test("a kitty allocation reply that echoes another image number does not qualify
   }
 })
 
+test("an explicit graphics refusal decides transmit and leaves display with no setup", async () => {
+  // CTO 8be19f1f: vterm answers the canonical graphics query with ENOTSUP in the same run, while
+  // DA1 still answers. A refusal is an answer, so it decides the row; silence alone never does.
+  const refused = (sequence: string, pattern: RegExp) => {
+    const imageNumber = /I=(\d+)/.exec(sequence)?.[1] ?? "0"
+    const raw = `\x1b_Gi=${imageNumber};ENOTSUP\x1b\\\x1b[?62;22c`
+    return {
+      match: pattern.exec(raw),
+      reason: "sentinel" as const,
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+      sentinel: { atMs: 3, graceMs: 250 },
+    }
+  }
+  const transmit = callback("extensions.kitty-graphics.transmit")
+  const transmitResult = await transmit.term!({
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => refused(sequence, pattern),
+    write: () => undefined,
+  } as unknown as TermProbeSource)
+  expect(transmitResult.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+  expect(transmitResult.note).toBe("library refused the canonical graphics query: ENOTSUP")
+  expect(transmitResult.assertions).toMatchObject([{ kind: "negative" }])
+
+  const display = callback("extensions.kitty-graphics.display")
+  const displayResult = await display.term!({
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => refused(sequence, pattern),
+    write: () => undefined,
+  } as unknown as TermProbeSource)
+  expect(displayResult.tests?.[0]).toMatchObject({ status: "untestable" })
+  expect(displayResult.tests?.[0]?.reason).toMatch(/^Untestable \(no setup\): .*transmit.*refused.*ENOTSUP/u)
+  expect(JSON.stringify(displayResult)).not.toMatch(/no image allocation readback/iu)
+})
+
 // 31377: the refusal specimen is retained run772ff2a6/suite9cc61ebe4417, including its DA1 window.
 // A correlated refusal proves recognition but does not accept the canonical direct RGB query.
 test.each([
@@ -1520,7 +1553,7 @@ test.each([
       expect(result.tests?.[0]?.status).toBe(missingBaseline ? "probe-todo" : "probe-invalid")
       expect(result.tests?.[0]?.reason).toContain(
         missingBaseline
-          ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
+          ? `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`
           : ["initial highlight colour is unknown", "known colour was not read back", "did not answer after"][stage]!,
       )
       if (raw === "") expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
@@ -1583,7 +1616,7 @@ test.each([
     {
       id: "criterion",
       status: "probe-todo",
-      reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
+      reason: `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`,
     },
   ])
 })
@@ -1643,7 +1676,7 @@ test.each([
             // #31398 names the sentinel-bounded silence by its passed DA1 control; the grade is PROBE TODO either way.
             reason:
               mode === "sentinel"
-                ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
+                ? `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`
                 : `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
           },
         ])

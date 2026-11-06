@@ -681,10 +681,16 @@ export function regionReadbackProbe(
             }),
           )
           if (painted.size > 0 && gridMatch(before, unpainted)) {
-            const read = before.map((cells) =>
-              cells.map((cell) => ({ char: cell.char, bg: cell.bg, inverse: cell.inverse })),
-            )
-            const reason = `PreconditionFailed: precondition failed: seed cells not painted (expected ${[...painted].join(" and ")} at ${JSON.stringify({ region: row.region, cells: row.before })}, read ${JSON.stringify(read)})`
+            const paintedCells = row.before
+              .flat()
+              .filter(
+                (cell) =>
+                  typeof cell !== "string" && (cell.attributes.bg !== undefined || cell.attributes.inverse === true),
+              ).length
+            const styles = [...painted]
+              .map((style) => (style === "bg" ? "background colour" : "inverse style"))
+              .join(" and ")
+            const reason = `Test broken: the ${styles} we painted before the test did not show (expected it on ${paintedCells} screen cells, read none).`
             return {
               pass: false,
               response: JSON.stringify({ before: responseGrid(before, row.before) }),

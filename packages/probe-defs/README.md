@@ -363,14 +363,30 @@ remains PROBE TODO.
 
 An engine's own unhandled-sequence report (`getUnhandledSequences`) decides a state or reply cell
 Unsupported only with same-run controls: a handled sequence adds no entry while its own reader
-shows it applied, then the target adds exactly one entry carrying its exact code. Every length is
+shows it applied, then the target adds its exact code or an explicitly named ordered list of codes.
+List length, kind, code and order must all match; no prefix, sorting or deduplication qualifies. Every length is
 compared exactly, so a bounded history that rolled decides nothing rather than a wrong grade. The
 primary control is OSC 2 with the title reader; an engine that handles no OSC — VT100.js and
 VT220.js — reports OSC 2 as an ignored entry and never sets the title, and that same run lets SGR 1
 with a bold cell qualify instead. Only the named shell, colour-reset and eight SGR cells (blink,
 faint, italic, strikethrough and the four underline styles) may move; delivery cells, a decided
 outcome, a missing member and any other code keep their own path, except for the exact vt100-rust
-cohort below.
+cohort below and the following DEC colour/setup slice.
+
+On VT100.js and VT220.js, standard, bright and default foreground/background colours and OSC 2 use
+their own one-entry report with the handled SGR 1/bold control. OSC 2 never uses an OSC fallback whose
+control would itself be the target. Indexed colours use the probe's own `38;5;173` / `48;5;173` payload
+with SGR 0 cleanup; direct RGB and the truecolor extension use `38;2;17;97;201` / `48;2;17;97;201`.
+The engines report each unhandled operand in order; handled operands do not create entries.
+OSC 633 P's number-only rejection also decides Unsupported: its payload was not delivered.
+
+For EL with background attributes, XTWINOPS 22/23, alternate-screen exit and italic selective reset,
+rejection of the setup itself with the passing SGR 1 control makes the dependent claim Untestable
+in that run. Target rejection, a version literal, a failed control or missing report cannot establish
+that prerequisite absence. Existing decided results retain precedence.
+Without the qualified setup report, those five dependent claims remain PROBE TODO.
+DECSACE alone is declared Untestable at DEC engine 0.13.1, whose public Screen API has no extent state/effect reader; other
+versions retain the existing criterion. VT220 bold selective reset remains outside this slice.
 
 Operator D2 and the November 5 11:16 ruling add 34 cells; the M-1 scope adds ten state cells,
 for 44 only at the audited vt100 crate 0.16.2 native provenance and adapter profile.
@@ -408,10 +424,11 @@ Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration c
 
 The `vterm` D2 slice shares the same private helper (`declaredD2InterfaceAbsence`)
 with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source tree
-`3d58d29a8265aafd928e0736dde6723e2bac2007`) to declare seven exact-version
-public-interface absences: `modes.decsscls`, `extensions.osc22-pointer`,
-`extensions.osc133-d`, `extensions.osc633-d`, `extensions.osc633-e`,
-`extensions.semantic-prompts`, and `extensions.osc-633-vscode`. Because `vterm`
+`3d58d29a8265aafd928e0736dde6723e2bac2007`) to declare nine exact-version
+public-interface absences: `modes.decsscls`, `extensions.osc9-progress`,
+`extensions.osc22-pointer`, `extensions.osc133-d`, `extensions.osc633-d`,
+`extensions.osc633-e`, `extensions.semantic-prompts`,
+`extensions.osc-633-vscode`, and `input.kitty-click-events`. Because `vterm`
 exposes `getSemanticMarks` for start zones (`extensions.osc133-a`, `b`, and `c`
 stay Supported; `extensions.osc133-p` stays Unsupported), reader precedence
 checks the `semantic-command-end` capability alongside `getUnhandledSequences`
