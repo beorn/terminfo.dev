@@ -637,7 +637,10 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
     return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Measured grid needs two rows and two columns")
   }
   const xs = "X".repeat(ctx.cols)
-  const overflow = () => ({ last: ctx.getCell(0, ctx.cols - 1), next: ctx.getCell(1, 0) })
+  const overflow = () => ({
+    last: ctx.getCell(activeScreenRow(ctx, 0), ctx.cols - 1),
+    next: ctx.getCell(activeScreenRow(ctx, 1), 0),
+  })
   const wrapped = (frame: ReturnType<typeof overflow>) => frame.last.char === "X" && frame.next.char === "!"
   const stayed = (frame: ReturnType<typeof overflow>) => frame.last.char === "!" && frame.next.char !== "!"
   const OFF = "\x1b[?7l"
@@ -754,7 +757,7 @@ function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): P
   try {
     const calibrate = (set: string) => {
       ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${set}\x1b[38;5;1mA`)
-      return ctx.getCell(0, 0)
+      return ctx.getCell(activeScreenRow(ctx, 0), 0)
     }
     const calibration = { blue: calibrate(BLUE), green: calibrate(GREEN), magenta: calibrate(MAGENTA) }
     const reads = (cell: StackCell, rgb: typeof COLOR_STACK_BLUE) =>
@@ -776,7 +779,7 @@ function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): P
       pushed = false
       if (popOutput.length > 0) return popOutput
       ctx.feed("\x1b[38;5;1mY\x1b[0m")
-      return { x: ctx.getCell(0, 0), y: ctx.getCell(0, 1) }
+      return { x: ctx.getCell(activeScreenRow(ctx, 0), 0), y: ctx.getCell(activeScreenRow(ctx, 0), 1) }
     }
     const popCells = fixture(BLUE)
     if (typeof popCells === "string") return stackOutputResult(popCells)
