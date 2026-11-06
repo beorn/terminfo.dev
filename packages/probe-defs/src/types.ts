@@ -814,6 +814,8 @@ export interface LibProbeSource {
   )[]
   /** Actual stored type at getCell coordinates, declared by semantic-cells; never mark history. */
   getCellSemanticType?(row: number, col: number): "prompt" | "input" | "output"
+  /** Current logical pointer shape from the library, declared by mouse-shape; not text-caret style. */
+  getMouseShape?(): string
   /** Copied raw payloads and DCS start positions, without raster rendering or cell geometry. */
   getSixelImages?(): readonly {
     readonly data: string

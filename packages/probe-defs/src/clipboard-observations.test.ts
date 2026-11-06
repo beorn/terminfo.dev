@@ -24,6 +24,7 @@ const CLIPBOARD_HANDOFF_REASON =
 function clipboardHandoffSource(options: {
   readonly selection: "absent-to-c" | "absent-to-p" | "always-c" | "never-set"
   readonly replies?: boolean
+  readonly silence?: "sentinel" | "timeout" | "timeout-with-bytes"
 }) {
   let selector: string | undefined = options.selection === "always-c" ? "c" : undefined
   let asked = 0
@@ -44,8 +45,13 @@ function clipboardHandoffSource(options: {
           }
         : {
             match: null,
-            reason: "sentinel" as const,
-            raw: "\x1b[?62;22c",
+            reason: options.silence?.startsWith("timeout") ? ("timeout" as const) : ("sentinel" as const),
+            raw:
+              options.silence === "timeout"
+                ? ""
+                : options.silence === "timeout-with-bytes"
+                  ? "partial"
+                  : "\x1b[?62;22c",
             rawBase64: "",
             sentinel: { atMs: 3, graceMs: 250 },
           }
@@ -55,26 +61,29 @@ function clipboardHandoffSource(options: {
   return { source, asked: () => asked }
 }
 
-test.each(["extensions.osc52-read", "extensions.osc52-clipboard"])(
-  "%s reads passed to the app when the engine's own paste selector goes absent -> c",
-  (id) => {
-    const callback = ALL_PROBES.find((item) => item.id === id)!.lib!
-    const handoff = clipboardHandoffSource({ selection: "absent-to-c" })
-    const result = callback(handoff.source)
-    expect(handoff.asked()).toBeGreaterThan(0)
-    expect(result.tests?.[0]).toMatchObject({ status: "untestable", reason: CLIPBOARD_HANDOFF_REASON })
-    // Only the absent -> c movement witnesses the handoff: already set, never set, another selector and
-    // an engine that answers all keep the existing verdict.
-    for (const control of [
-      clipboardHandoffSource({ selection: "always-c" }).source,
-      clipboardHandoffSource({ selection: "never-set" }).source,
-      clipboardHandoffSource({ selection: "absent-to-p" }).source,
-      clipboardHandoffSource({ selection: "absent-to-c", replies: true }).source,
-    ]) {
-      expect(callback(control).tests?.[0]?.status, id).not.toBe("untestable")
-    }
-  },
-)
+// R3: an observed typed request remains a handoff when the app-owned DA1 sentinel never answers.
+test.each(
+  ["extensions.osc52-read", "extensions.osc52-clipboard"].flatMap((id) =>
+    (["sentinel", "timeout"] as const).map((silence) => [id, silence] as const),
+  ),
+)("%s reads passed to the app on %s when the engine's own paste selector goes absent -> c", (id, silence) => {
+  const callback = ALL_PROBES.find((item) => item.id === id)!.lib!
+  const handoff = clipboardHandoffSource({ selection: "absent-to-c", silence })
+  const result = callback(handoff.source)
+  expect(handoff.asked()).toBeGreaterThan(0)
+  expect(result.tests?.[0]).toMatchObject({ status: "untestable", reason: CLIPBOARD_HANDOFF_REASON })
+  // Only the absent -> c movement witnesses the handoff: already set, never set, another selector and
+  // an engine that answers all keep the existing verdict.
+  for (const control of [
+    clipboardHandoffSource({ selection: "always-c", silence }).source,
+    clipboardHandoffSource({ selection: "never-set", silence }).source,
+    clipboardHandoffSource({ selection: "absent-to-p", silence }).source,
+    clipboardHandoffSource({ selection: "absent-to-c", replies: true, silence }).source,
+    clipboardHandoffSource({ selection: "absent-to-c", silence: "timeout-with-bytes" }).source,
+  ]) {
+    expect(callback(control).tests?.[0]?.status, id).not.toBe("untestable")
+  }
+})
 
 function writeProbe() {
   const probe = ALL_PROBES.find((item) => item.id === "extensions.osc52-write")

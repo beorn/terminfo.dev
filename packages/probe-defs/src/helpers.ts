@@ -37,6 +37,11 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
     "packages/ghostty-native/src/backend.ts": "d15e83634be3aa1bf2df9b58eb2f6376af800808",
   },
+  // R3's qualified native rebuild retains the earlier H4 adapter cohort above.
+  ghosttyNativeR3: {
+    "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+    "packages/ghostty-native/src/backend.ts": "9bda39988b0af9c66fcc342ca477cf9daab2f5ac",
+  },
   kittyH4: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
     "packages/kitty/src/backend.ts": "4cfc0a1707e4c92211c501cd27d8e1944ebe66db",
