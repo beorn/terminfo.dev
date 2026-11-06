@@ -113,7 +113,7 @@ function hasAuditedOscInterfaceAbsence(
       identity.engineVersion === "0.26.0" &&
       identity.provenance.lockSha256 === "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497" &&
       identity.provenance.sourceCommit === "6e497eb0310dd6747dfce240fc241e12c07d0615" &&
-      auditedAdapterSources(identity, "alacritty23b6874c")
+      (auditedAdapterSources(identity, "alacritty23b6874c") || auditedAdapterSources(identity, "alacritty0110"))
     )
   }
   if (

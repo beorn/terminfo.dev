@@ -247,6 +247,15 @@ describe("audited OSC interface absence", () => {
     ).toThrow("reader failed")
   })
 
+  const alacritty0110 = {
+    ...alacritty,
+    adapterVersion: "0.11.0",
+    adapterSources: alacritty.adapterSources.map((source) =>
+      source.path === "packages/alacritty/src/backend.ts"
+        ? { ...source, blobOid: "9ee6e4044b2a084b7181552362b7ee76f234dc14" }
+        : source,
+    ),
+  }
   const run = (backend: string, runtimeIdentity?: HeadlessRuntimeIdentity, extra: Partial<LibProbeSource> = {}) => {
     const definition = ALL_PROBES.find((probe) => probe.id === "extensions.notifications")!
     return definition.lib!({ ...library(backend), runtimeIdentity, ...extra })
@@ -260,6 +269,7 @@ describe("audited OSC interface absence", () => {
     ["vt220", vt220Release],
     ...current,
     ["alacritty", alacritty],
+    ["alacritty", alacritty0110],
   ] as const)("%s's audited source declares notification absence without a measured assertion", (backend, identity) => {
     let feeds = 0
     const result = run(backend, identity, {
