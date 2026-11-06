@@ -538,8 +538,9 @@ function loadAppWorkingRun(
     (name) => name.startsWith("pass-") && statSync(join(selection.dir, name)).isDirectory(),
   )
   const [passName] = passes
-  if (passes.length !== 1 || passName === undefined)
+  if (passes.length !== 1 || passName === undefined) {
     throw new Error(`${selection.dir}: expected one retained pass; found ${passes.length}`)
+  }
   const path = join(selection.dir, passName, "pass.json")
   const pass = parseJsonStrict(path, readFileSync(path, "utf8"))
   if (!record(pass) || !Array.isArray(pass.contexts)) throw new Error(`${path}: missing retained contexts`)
