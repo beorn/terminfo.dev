@@ -6538,9 +6538,61 @@ const WEZTERM_D2_ABSENCES: Readonly<Record<string, string>> = {
     "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
 }
 
+// CTO21:07 Slice C: only these DEC cells gain report routes. Lists are the
+// reports from each probe's own payload, not a substituted compound control.
+const DEC_COLOUR_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSequenceVerdict>[1]>> = {
+  "sgr.fg.standard": { feed: "\x1b[31m", code: { kind: "csi", code: "31m" } },
+  "sgr.bg.standard": { feed: "\x1b[41m", code: { kind: "csi", code: "41m" } },
+  "sgr.fg.bright": { feed: "\x1b[91m", code: { kind: "csi", code: "91m" } },
+  "sgr.bg.bright": { feed: "\x1b[101m", code: { kind: "csi", code: "101m" } },
+  "sgr.fg.default": { feed: "\x1b[39m", code: { kind: "csi", code: "39m" } },
+  "sgr.bg.default": { feed: "\x1b[49m", code: { kind: "csi", code: "49m" } },
+  "extensions.osc2-title": { feed: "\x1b]2;Test Title\x07", code: { kind: "osc", code: "2" } },
+  "sgr.fg.256": {
+    feed: "\x1b[38;5;173m\x1b[0m",
+    codes: [
+      { kind: "csi", code: "38m" },
+      { kind: "csi", code: "173m" },
+    ],
+  },
+  "sgr.bg.256": {
+    feed: "\x1b[48;5;173m\x1b[0m",
+    codes: [
+      { kind: "csi", code: "48m" },
+      { kind: "csi", code: "173m" },
+    ],
+  },
+  "sgr.fg.truecolor": {
+    feed: "\x1b[38;2;17;97;201m",
+    codes: ["38m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
+  },
+  "sgr.bg.truecolor": {
+    feed: "\x1b[48;2;17;97;201m",
+    codes: ["48m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
+  },
+  "extensions.truecolor": {
+    feed: "\x1b[38;2;17;97;201m",
+    codes: ["38m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
+  },
+  "extensions.osc633-p": { feed: "\x1b]633;P;Cwd=/terminfo-633-cwd-A\x07", code: { kind: "osc", code: "633" } },
+}
+
+// Rejection of the prerequisite makes the dependent claim untestable in THIS
+// run. Versions never stand in for this setup report (CTO ruling6).
+const DEC_SETUP_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSequenceVerdict>[1]>> = {
+  "erase.el-with-attrs": { feed: "\x1b[42m", code: { kind: "csi", code: "42m" } },
+  "device.xtwinops-22": { feed: "\x1b]2;pushed-title\x07", code: { kind: "osc", code: "2" } },
+  "device.xtwinops-23": { feed: "\x1b]2;pushed-title\x07", code: { kind: "osc", code: "2" } },
+  "modes.alt-screen.exit": { feed: "\x1b[?1049h", code: { kind: "csi", code: "?1049h" } },
+  "sgr.selective-reset.italic": { feed: "\x1b[3m", code: { kind: "csi", code: "3m" } },
+}
+
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
+  const decTarget = DEC_COLOUR_REPORTS[definition.id]
+  const decSetup = DEC_SETUP_REPORTS[definition.id]
+  const decsace = definition.id === "editing.decsace"
   const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]
   const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
@@ -6557,7 +6609,10 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
     GHOSTTY_WEB_IMAGE_D2_DECLARATIONS[definition.id]
   if (
     !lib ||
-    (!vt100Target &&
+    (!decTarget &&
+      !decSetup &&
+      !decsace &&
+      !vt100Target &&
       !kittyTarget &&
       !reason &&
       !absence &&
@@ -6583,6 +6638,44 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
+      if ((ctx.backendName === "vt100" || ctx.backendName === "vt220") && (decTarget || decSetup || decsace)) {
+        const result = lib(ctx)
+        if (reportsDecidedOutcome(result)) return result
+        if (decsace) {
+          return ctx.runtimeIdentity?.engineVersion === "0.13.1"
+            ? declaredUntestableResult(
+                `${ctx.backendName} 0.13.1 exposes no DECSACE extent state or effect reader through its public Screen API.`,
+                { backend: ctx.backendName, engineVersion: ctx.runtimeIdentity.engineVersion },
+              )
+            : result
+        }
+        const target = decTarget ?? decSetup
+        if (!target) return result
+        const cursor = ctx.getCursor()
+        const reported = unhandledSequenceVerdict(
+          ctx,
+          target,
+          {
+            feed: "\x1b[0m\x1b[1mC",
+            applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
+            cleanup: "\x1b[0m",
+          },
+          { featureId: definition.id, ...(result.response !== undefined && { body: result.response }) },
+        )
+        if (decSetup && reported) {
+          return declaredUntestableResult(
+            `${definition.id}: the library reported its setup sequence as unhandled; the dependent effect cannot be observed in this run.`,
+            { setup: target.feed, report: reported.response },
+          )
+        }
+        if (decSetup) {
+          return notTestedResult(
+            `${definition.id}: setup rejection with a handled SGR 1 control was not qualified in this run`,
+            { setup: target.feed, body: result },
+          )
+        }
+        return reported ?? result
+      }
       const passThroughDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,

@@ -1129,26 +1129,31 @@ test.each([
   ["vt220", "0.13.0", false],
   ["vt220", "0.13.2", false],
   ["libvterm", "0.13.1", false],
-] as const)("DECSSCLS declaration is exact %s/%s", (backendName, engineVersion, declared) => {
-  const definition = ALL_PROBES.find((entry) => entry.id === "modes.decsscls")!
-  let measured = false
-  const ctx = {
-    ...library(backendName),
-    runtimeIdentity: engineVersion ? { kind: "js", runtimeFormat: "js", engineVersion } : undefined,
-    getText: () => (measured ? "Q" : ""),
-    getTitle: () => "",
-    getCursor: () => ({ x: measured ? 1 : 0, y: 0, visible: true, style: null }),
-    getScrollback: () => ({ totalLines: 24, screenLines: 24, viewportOffset: 0 }),
-    feed: (sequence: string) => {
-      measured = sequence.includes("\x1b[9 pQ")
-    },
-  } as unknown as LibProbeSource
-  const result = definition.lib!(ctx)
-  expect(isDeclaredUntestable(result)).toBe(declared)
-  expect(fold(definition.id, result).status).toBe(declared ? "untestable" : "probe-todo")
-  if (declared) {
-    expect(result.tests?.[0]?.reason).toBe(
-      `${backendName === "vt100" ? "VT100.js" : "VT220.js"} 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
+] as const)("DEC declarations are exact %s/%s", (backendName, engineVersion, declared) => {
+  for (const id of ["modes.decsscls", "editing.decsace"]) {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    let measured = false
+    const ctx = {
+      ...library(backendName),
+      runtimeIdentity: engineVersion ? { kind: "js", runtimeFormat: "js", engineVersion } : undefined,
+      getText: () => (measured ? "Q" : ""),
+      getTitle: () => "",
+      getCursor: () => ({ x: measured ? 1 : 0, y: 0, visible: true, style: null }),
+      getScrollback: () => ({ totalLines: 24, screenLines: 24, viewportOffset: 0 }),
+      feed: (sequence: string) => {
+        measured = sequence.includes("\x1b[9 pQ")
+      },
+    } as unknown as LibProbeSource
+    const result = definition.lib!(ctx)
+    expect(isDeclaredUntestable(result)).toBe(declared)
+    // This DECSACE fixture has no measured frames; a version miss keeps that invalid criterion.
+    expect(fold(definition.id, result).status).toBe(
+      declared ? "untestable" : id === "editing.decsace" ? "probe-invalid" : "probe-todo",
     )
+    if (declared && id === "modes.decsscls") {
+      expect(result.tests?.[0]?.reason).toBe(
+        `${backendName === "vt100" ? "VT100.js" : "VT220.js"} 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
+      )
+    }
   }
 })
