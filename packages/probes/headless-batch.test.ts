@@ -50,6 +50,87 @@ import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, replyFailure } from "../pr
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
+// @failure Alacritty's controlled resets stay TODO, declared absences disappear, or a broken reset control reads Supported.
+// @level l5
+// @consumer Seven shipping callbacks through the real native adapter and qualified collector boundary.
+test.runIf(OWNED_LAYOUT).each(["healthy", "seed", "reset", "unknown"] as const)(
+  "real Alacritty seven retain qualified decisions with %s controls",
+  async (fault) => {
+    const ids = [
+      "extensions.osc110-reset-fg",
+      "extensions.osc111-reset-bg",
+      "extensions.osc112-reset-cursor",
+      ...(fault === "healthy"
+        ? ["extensions.osc0-icon-title", "extensions.osc1-icon", "extensions.osc22-pointer", "extensions.osc633-p"]
+        : []),
+    ]
+    const measured = createAlacrittyBackend()
+    measured.init({ cols: 80, rows: 24 })
+    const identity = await headlessIdentity.headlessRuntimeIdentity("alacritty", "@termless/alacritty", "native")
+    try {
+      identity.adapterSources = headlessIdentity.readAdapterSources("alacritty", measured)
+    } finally {
+      measured.destroy()
+    }
+    const runtime = {
+      identity,
+      adapterPackage: "@termless/alacritty",
+      adapterType: "native",
+      adapterPath: fileURLToPath(import.meta.resolve("@termless/alacritty")),
+    }
+    headlessIdentity.verifyAdapterSources("alacritty", runtime)
+    const batch = await collectBatch(
+      async () => {
+        const value = createAlacrittyBackend()
+        const feed = value.feed.bind(value)
+        value.feed = (data) => {
+          const text = Buffer.from(data).toString("utf8")
+          const changed =
+            fault === "seed"
+              ? text.replace(/\x1b\]1[012];rgb:[^\x07]*\x07/g, "\x1b]7110\x07")
+              : fault === "reset"
+                ? text.replace(/\x1b\]11[012]\x07/g, "\x1b]7110\x07")
+                : fault === "unknown"
+                  ? text.replace(/\x1b\]7110\x07/g, "\x1b]110\x07\x1b]111\x07\x1b]112\x07")
+                  : text
+          feed(Buffer.from(changed, "utf8"))
+        }
+        return value
+      },
+      "alacritty",
+      registryDefinitions(ids),
+      {
+        runId: `alacritty-seven-${fault}`,
+        rawReplies: {},
+        results: ids.map((featureId) => ({ featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [] })),
+      },
+      undefined,
+      runtime,
+    )
+    expect(batch.results).toHaveLength(ids.length)
+    for (const result of batch.results) {
+      const reset = ids.indexOf(result.featureId) < 3
+      expect
+        .soft(result.status, JSON.stringify(result))
+        .toBe(
+          fault === "healthy" ? (reset ? "supported" : "untestable") : fault === "reset" ? "unsupported" : "probe-todo",
+        )
+      if (fault === "healthy" && reset) {
+        expect
+          .soft(batch.assertions.filter((assertion) => assertion.featureId === result.featureId))
+          .toMatchObject([{ assertionType: "query_reply", kind: "positive" }])
+        expect.soft(JSON.parse(batch.rawReplies[result.featureId]!)).toMatchObject({
+          controls: expect.arrayContaining([{ write: "\x1b]7110\x07", response: "" }]),
+        })
+      }
+      if (fault === "healthy" && !reset) {
+        expect.soft(JSON.stringify(result)).toContain("Alacritty")
+        expect.soft(JSON.stringify(result)).toMatch(/no public|no .*flag|no .*label/)
+      }
+    }
+  },
+)
+
 // @failure WezTerm's stored cells, Kitty placement or clipboard callbacks never reach the shipping library arms.
 // @level l0
 // @consumer Existing WezTerm native backend -> headless source -> literal shipping probe callbacks.

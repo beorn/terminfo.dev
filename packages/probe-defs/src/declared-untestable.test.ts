@@ -919,7 +919,7 @@ describe("audited OSC interface absence", () => {
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
   } satisfies HeadlessRuntimeIdentity
-  // Operator D2's independently reviewed literal23; four unclear Alacritty rows are excluded.
+  // Original Operator D2 literal23; the routes-48 additions are checked separately below.
   const alacrittyD2 = [
     "extensions.osc777-notify",
     "extensions.osc133-a",
@@ -1111,10 +1111,10 @@ describe("audited OSC interface absence", () => {
     }
   })
 
-  // @failure An absence declaration leaks to an unknown profile, unclear cell or available public reader.
+  // @failure An absence declaration leaks to an unknown profile or available public reader.
   // @level l1
   // @consumer The conditional declaration route used by the headless collector
-  test("Alacritty D2 preserves unknown identities, four unclear cells and public readers", () => {
+  test("Alacritty D2 qualifies the four approved absences and preserves unknown identities and public readers", () => {
     const notify = ALL_PROBES.find((probe) => probe.id === "extensions.osc777-notify")!.lib!
     for (const extra of [
       { runtimeIdentity: undefined },
@@ -1127,10 +1127,25 @@ describe("audited OSC interface absence", () => {
     ] satisfies Partial<LibProbeSource>[]) {
       expect(isDeclaredUntestable(notify(d2Source(extra)))).toBe(false)
     }
-    // routes-16 rows 9 and 10 make DECSSCLS and blink declared at alacritty_terminal 0.26.0, so the
-    // unclear set narrows to the two with no reviewed absence, and the new pair follows the identity.
-    for (const id of ["extensions.osc22-pointer", "extensions.osc1-icon"]) {
-      expect(isDeclaredUntestable(ALL_PROBES.find((probe) => probe.id === id)!.lib!(d2Source())), id).toBe(false)
+    for (const id of [
+      "extensions.osc0-icon-title",
+      "extensions.osc1-icon",
+      "extensions.osc22-pointer",
+      "extensions.osc633-p",
+    ]) {
+      const probe = ALL_PROBES.find((probe) => probe.id === id)!.lib!
+      expect(isDeclaredUntestable(probe(d2Source())), id).toBe(true)
+      expect(isDeclaredUntestable(probe(d2Source({ runtimeIdentity: undefined }))), id).toBe(false)
+      expect(
+        isDeclaredUntestable(probe(d2Source({ runtimeIdentity: { ...alacritty, engineVersion: "0.26.1" } }))),
+        id,
+      ).toBe(false)
+      if (id === "extensions.osc0-icon-title" || id === "extensions.osc1-icon") {
+        expect(isDeclaredUntestable(probe(d2Source({ getIconLabel: () => "public icon" }))), id).toBe(false)
+      }
+      if (id === "extensions.osc633-p") {
+        expect(isDeclaredUntestable(probe(d2Source({ getCwd: () => "/public/cwd" }))), id).toBe(false)
+      }
     }
     const decsscls = ALL_PROBES.find((probe) => probe.id === "modes.decsscls")!.lib!
     const decssclsResult = decsscls(d2Source())
