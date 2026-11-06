@@ -621,7 +621,11 @@ describe("audited OSC interface absence", () => {
         },
         /vt220\.js 0\.13\.1.*sixel\/Kitty graphics deliberately absent/i,
       ],
-      ["xterm", { ...library("xterm"), feedCapture: () => "", getTitle: () => "", runtimeIdentity: xterm }, /@xterm\/headless 6\.0\.0.*APC, PM and SOS/i],
+      [
+        "xterm",
+        { ...library("xterm"), feedCapture: () => "", getTitle: () => "", runtimeIdentity: xterm },
+        /@xterm\/headless 6\.0\.0.*APC, PM and SOS/i,
+      ],
     ] as const
     for (const [name, source, reason] of subjects) {
       for (const id of ["extensions.kitty-graphics.display", "extensions.kitty-graphics.transmit"]) {
