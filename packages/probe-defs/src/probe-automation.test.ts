@@ -431,7 +431,7 @@ describe("qualified clipboard roundtrip", () => {
           id: "criterion",
           status: "probe-todo",
           reason:
-            "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
+            "Open: our test cannot see the clipboard. Asking for it back (OSC 52) got no answer, and nothing else in our test watches the clipboard.",
         },
       ])
       snapshots.push(result.response!)
@@ -2389,7 +2389,7 @@ describe("Kitty protocol detection", () => {
       expect(result.assertions).toBeUndefined()
       if (expected === "probe-todo") {
         expect(result.tests?.[0]?.reason).toBe(
-          "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed.",
+          "Open: to see whether the library recognises OSC 5522, our test first needs full replies to the related mode queries (DECRPM) in this run, and none came.",
         )
         expect(JSON.parse(result.response!)).toMatchObject({
           detection: da1,
@@ -2640,7 +2640,7 @@ describe("Kitty protocol detection", () => {
             id: "criterion",
             status: "probe-todo",
             reason:
-              "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
+              "Open: our test cannot see the clipboard. Asking for it back (OSC 52) got no answer, and nothing else in our test watches the clipboard.",
           },
         ])
       }

@@ -1260,7 +1260,7 @@ export function sgrProbe(
           const field = id === "sgr.faint" ? "dim" : id.slice("sgr.".length)
           const prerequisite =
             SGR_ATTRIBUTE_READER_ABSENCE[`${ctx.backendName}:${ctx.runtimeIdentity?.engineVersion}:${field}`]
-          const missingReader = `cell.${field} is unreported; ${prerequisite ? `${prerequisite}; ` : ""}no qualified SGR m alternative in this run`
+          const missingReader = `Open: this library's screen cells do not report ${field}, and nothing else in our test shows it. [cell.${field}; ${prerequisite ? `${prerequisite}; ` : ""}no qualified SGR m alternative]`
           // The reply is used only after this same SGR m reader reports the bold control.
           // A facility-wide DECRQSS/DECSTBM answer does not qualify it (#32318).
           if (readback && ctx.queryWithSentinelOutcome) {
@@ -1841,9 +1841,14 @@ function modeStateReadback(ctx: LibProbeSource, number: number, key: string, pri
       otherReset === otherBefore &&
       otherUnknown === otherBefore
     const facet = number === 1 ? "key encoding unmeasured" : "presentation unmeasured"
+    const label = key === "applicationCursor" ? "cursor-keys" : key === "reverseVideo" ? "reverse-video" : key
     const note = qualified
       ? `${key} state measured; ${facet}`
-      : `${key} public-state set/reset or independence control unavailable`
+      : initial !== false || set !== true || reset !== false || unknown !== false
+        ? `Open: setting and resetting ${label} mode did not give the expected readings.`
+        : otherBefore === null || otherSet === null || otherReset === null || otherUnknown === null
+          ? `Open: ${label} mode set and reset as expected, but the second mode we use to show they are independent cannot be read here.`
+          : `Open: the second mode changed while we set or reset ${label} mode, so this test cannot show they are independent.`
     return {
       ...parserStateResult(qualified ? true : null, `${key} state measured; ${facet}`, state, note),
       ...(!qualified && { tests: [{ id: "criterion", status: "probe-todo" as const, reason: note }] }),

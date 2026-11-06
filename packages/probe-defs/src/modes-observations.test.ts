@@ -60,8 +60,17 @@ test.each([
     if (ps === null && mode === 5) {
       // This fake aliases every mode to enabled, so DEC1's other-flag control fails.
       expect(result.observation?.outcome).toBe("inconclusive")
-      expect(result.note).toContain("independence control unavailable")
+      expect(result.note).toContain("the second mode changed")
       expect(result.assertions ?? []).toEqual([])
+      const unread = definition.lib({
+        ...source,
+        getMode: (name) => name === "applicationCursor" ? null : enabled,
+      })
+      expect(unread.tests).toContainEqual({
+        id: "criterion",
+        status: "probe-todo",
+        reason: "Open: reverse-video mode set and reset as expected, but the second mode we use to show they are independent cannot be read here.",
+      })
     } else if (ps === null) {
       expect(result.criterionBranch, `${id}: silence`).toBe("os-input-review")
       expect(result.tests, `${id}: silence`).toEqual([
@@ -89,7 +98,7 @@ test.each([
       ])
       expect(JSON.parse(result.response!)).toMatchObject({ setReply: reply, resetReply })
     }
-    expect(queries).toEqual([`\x1b[?${mode}$p`, `\x1b[?${mode}$p`])
+    expect(queries).toEqual(Array.from({ length: ps === null && mode === 5 ? 4 : 2 }, () => `\x1b[?${mode}$p`))
     // Exact source reviews use buffer_state; real replies above retain their
     // query_reply observation and assertions through the dynamic declaration.
     expect(definition.libAssertionType).toBeUndefined()

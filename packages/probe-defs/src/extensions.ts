@@ -825,7 +825,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
             ctx.getDefaultColors
           ) {
             return notTestedResult(
-              `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support is not observable on this reader`,
+              `Open: our test cannot read the mouse pointer colour (OSC ${setCode}). On this library it can only read text, background and cursor colours, so it cannot check the reset (OSC ${resetCode}).`,
               { query, originalRaw, defaultColors: ctx.getDefaultColors() },
             )
           }
@@ -2938,7 +2938,7 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const empty = readNegative || raw === ""
   const writeUnobservable = readNegative && typeof ctx.getClipboardState !== "function"
   const reason =
-    "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired."
+    "Open: our test cannot see the clipboard. Asking for it back (OSC 52) got no answer, and nothing else in our test watches the clipboard."
   const result: ProbeCallbackResult = writeUnobservable
     ? { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
     : headlessClipboardResult(empty ? "" : raw, nonce)
@@ -3175,7 +3175,7 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
     if (declared) {
       return declaredUntestableResult(declared, { backend: ctx.backendName, encodePaste: false })
     }
-    const reason = `${ctx.backendName}: paste-encoding extension unavailable; native paste interface not observed`
+    const reason = `Open: our ${ctx.backendName} adapter has no hook for sending pastes, and our test has not tried the library's own paste function.`
     return reviewResult("paste-encoding", reason, reason, { backend: ctx.backendName, encodePaste: false })
   }
   const samples: { phase: string; text: string; bytes: number[]; raw: string }[] = []
@@ -5557,7 +5557,7 @@ export const extensionsProbes: ProbeDefinition[] = [
               response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
               if (allSilent) {
                 const reason =
-                  "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed."
+                  "Open: to see whether the library recognises OSC 5522, our test first needs full replies to the related mode queries (DECRPM) in this run, and none came."
                 return {
                   pass: false,
                   response,

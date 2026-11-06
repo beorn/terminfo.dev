@@ -1018,7 +1018,7 @@ test.each([
     expect(result.criterionBranch).toBeUndefined()
     expect(result.notTested).toEqual({
       reason: "no-semantic-observable",
-      noObservable: `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support is not observable on this reader`,
+      noObservable: `Open: our test cannot read the mouse pointer colour (OSC ${setCode}). On this library it can only read text, background and cursor colours, so it cannot check the reset (OSC ${resetCode}).`,
     })
     expect(result.tests).toBeUndefined()
     expect(result.observation).toBeUndefined()

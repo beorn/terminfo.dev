@@ -269,7 +269,12 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
     }
   }
   if (!on[target].bytes.length || !discriminator || before !== after) {
-    return notTestedResult("Native MOK target unchanged or reset discriminator unavailable", observed)
+    const reason = !on[target].bytes.length
+      ? "Open: the modify-other-keys test received no target key bytes."
+      : !discriminator
+        ? "Open: the modify-other-keys test has no key that distinguishes a reset from leaving the mode on."
+        : "Open: after resetting modify-other-keys, the target key bytes differed from those with the mode off."
+    return notTestedResult(reason, observed)
   }
   const expected = `Native modifyOtherKeys ${level} codepoint 105 modifier ${level === 2 ? 5 : 1} after same-path controls`
   const result =
@@ -832,7 +837,7 @@ function mouseEncodingLib(
   kind: "pixel" | "urxvt" | "x10" | "button" | "click" | "wheel",
 ): ProbeCallbackResult {
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
-    return notTestedResult(`adapter binding ${ctx.backendName}: mouse-encoding extension unavailable`, {
+    return notTestedResult(`Open: our ${ctx.backendName} adapter has no hook for sending mouse events yet.`, {
       mouseEncoding: false,
     })
   }
@@ -911,7 +916,7 @@ function mouseEncodingLib(
     if (error instanceof Error && error.message.startsWith("mouse encoding unavailable:")) {
       // Named binding refusals reject the gesture before native button input is accepted.
       held = undefined
-      return notTestedResult(`${ctx.backendName}: ${error.message}; #31297`, {
+      return notTestedResult(`Open: our ${ctx.backendName} adapter cannot use the library's mouse-event encoder. [${error.message}; #31297]`, {
         mouseEncoding: true,
         unavailable: error.message,
       })
@@ -955,7 +960,7 @@ const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
     {
       branch: HEADLESS_OBSERVABLE_REVIEW,
       limit:
-        "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554 into prompt_start.click_events (:74), while the WASM binding does not forward click_events (termless 2719cfd ghostty-wasm-api.patch:624-627) and a headless library run has no pointer surface; #30936",
+        "Open: Ghostty's core reads the click-to-move setting for a prompt, but its web build does not pass it on, and our test has no pointer to click with. [OSC 133 click_events; osc.zig; ghostty-wasm-api.patch; #30936]",
       noObservable:
         "WASM binding does not forward OSC 133 click_events and headless library context has no pointer surface",
     },

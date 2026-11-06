@@ -576,7 +576,7 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
     if (id === "sgr.underline-color-reset") {
       expect(result.notTested).toEqual({
         reason: "no-semantic-observable",
-        noObservable: "SGR 59 setup cell exposes no explicit underline color",
+        noObservable: "Open: after we set an underline colour (SGR 58), the screen cell showed none, so there is nothing for the reset (SGR 59) to clear.",
       })
     } else {
       expect(result.criterionBranch).toBe("headless-observable-review")

@@ -558,7 +558,7 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
     const control = readBXY()
     if (!charsIntact(control) || !boldOnly(control.b) || control.x.bold !== false || control.y.bold !== true) {
       return notTestedResult(
-        "bold and italic cell attributes in the headless readback (control frame not calibrated)",
+        "Open: the control, which should show bold and italic before the test, did not read correctly, so this result cannot be trusted yet.",
         { control },
       )
     }
@@ -768,7 +768,7 @@ function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): P
       !reads(calibration.green, COLOR_STACK_GREEN) ||
       !reads(calibration.magenta, COLOR_STACK_MAGENTA)
     ) {
-      return notTestedResult("OSC 4 redefinition of palette index 1 reflected in the headless cell colors", calibration)
+      return notTestedResult("Open: changing a palette colour with OSC 4 did not change the colour the cell reads, so our test cannot see the palette stack.", calibration)
     }
     const fixture = (before: string) => {
       ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${before}`)
@@ -1916,7 +1916,7 @@ const modeDefinitions: ProbeDefinition[] = [
         }
         const reason =
           setMode === null || resetMode === null
-            ? `adapter binding ${ctx.backendName} applicationKeypad`
+            ? `Open: our ${ctx.backendName} adapter cannot read the application keypad mode yet.`
             : `DECKPAM state pair: set ${setMode}, reset ${resetMode}`
         const note = `${reason}; ${facet}`
         return {
