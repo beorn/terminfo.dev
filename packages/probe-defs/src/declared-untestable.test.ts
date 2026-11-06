@@ -50,7 +50,7 @@ const library = (backendName = "alacritty"): LibProbeSource =>
 // or leaks onto an unreviewed engine. Earlier declarations cover none of these eighteen cells.
 // @level l1
 // @consumer ALL_PROBES library callbacks through the shipping result finalizer; no test-only seam.
-describe("six pass-through OSC declarations", () => {
+describe("pass-through declarations", () => {
   const ids = [
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
@@ -61,6 +61,25 @@ describe("six pass-through OSC declarations", () => {
   ] as const
   const reason =
     "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
+  // NR-H: the existing six-OSC cases do not cover these fourteen xterm.js cells.
+  const xtermIds = [
+    "editing.decsace",
+    "extensions.osc9-progress",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.semantic-prompts",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc-633-vscode",
+  ] as const
+  const csiReason =
+    "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it."
   // Engine identities from the 20:34 natural run, also measured directly by CTO at 21:01.
   const subjects = [
     [
@@ -109,15 +128,50 @@ describe("six pass-through OSC declarations", () => {
       },
     ],
   ] as const
+  const baseCell = libProbeSource(createSemanticSurface()).getCell(0, 0)
   const source = (backend: string, identity: unknown) =>
     ({
       ...library(backend),
       runtimeIdentity: identity,
       feedCapture: () => "",
       getTitle: () => "",
+      getCell: (row: number, col: number) => ({
+        ...baseCell,
+        char: ["abcdefgh", "ijklmnop"][row]?.[col] ?? " ",
+        inverse: false,
+      }),
       getMode: () => null,
       getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
     }) as LibProbeSource
+
+  // @failure NR-H stays TODO, leaks to another engine/version, or replaces a decided observation.
+  // @level l1
+  // @consumer Shipping probe callbacks and finalizer; the prior six-OSC set misses all NR-H cells.
+  test.each(xtermIds)("xterm declares %s only at its reviewed identity", (id) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    const identity = subjects[0][1]
+    const result = definition.lib!(source("xterm", identity))
+    expect(fold(id, result)).toMatchObject({
+      status: "untestable",
+      reason: id === "editing.decsace" ? csiReason : reason,
+    })
+    expect(result.observation).toBeUndefined()
+    for (const unknown of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
+      expect(isDeclaredUntestable(definition.lib!(source("xterm", unknown)))).toBe(false)
+    }
+    const decided: ProbeCallbackResult = {
+      pass: true,
+      observation: { outcome: "supported", assertionType: "buffer_state" },
+    }
+    expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source("xterm", identity))).toBe(
+      decided,
+    )
+    for (const [backend, otherIdentity] of subjects.slice(1)) {
+      const other = definition.lib!(source(backend, otherIdentity))
+      // Five pre-existing vterm D2 declarations remain; none gains the NR-H pass-through reason.
+      expect(fold(id, other).reason).not.toBe(id === "editing.decsace" ? csiReason : reason)
+    }
+  })
 
   test.each(subjects)(
     "%s finalizes exactly the six declarations even with a generic numeric report",
