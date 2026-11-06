@@ -131,6 +131,11 @@ back, and restore the incoming shape. Missing replies or an unqualified control
 retain PROBE TODO. Other libraries retain their existing path; the app criterion
 still requires pointer appearance outside the cell grid.
 
+xterm.js 6.0.0's existing engine-and-lock-qualified `osc-tap` route declares OSC22
+Untestable (no way to tell): there is no OSC22 handler, and the parser tap observes
+handled and unknown commands alike. A tap does not establish pointer support.
+Deciding observations retain precedence; other engine identities remain unchanged.
+
 Kitty 0.49.2's own parser rejection can decide the scoped OSC 176/440/555/666/710
 cells after their individual payload adds one or more matching reports and a handled
 OSC 2 title control adds none. Delivered OSC 9 remains separate and adds no rejection.

@@ -6808,6 +6808,12 @@ const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
   Record<string, string | { readonly backend: string; readonly reason: string }>
 > = {
   // NR-H: xterm.js 6.0.0's logger is not a report; retain the reviewed parser-hook wording.
+  // NC-R3b: the generic parser tap cannot distinguish an implemented pointer feature.
+  "extensions.osc22-pointer": {
+    backend: "xterm",
+    reason:
+      "Untestable (no way to tell): xterm.js 6.0.0 registers no OSC 22 handler; its only hook is a parser tap that fires for handled and unknown sequences alike.",
+  },
   "editing.decsace": {
     backend: "xterm",
     reason:
