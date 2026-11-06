@@ -240,6 +240,25 @@ export default {
       })
     }
 
+    // History uses declared physical subjects even when no reviewed run exists. A selected
+    // library route stays library-only; an application's declared parsers remain separate kinds.
+    for (const page of pages) {
+      const selected = data.selectedByBackend[page.params.backendId ?? ""]?.selected.subject
+      const id = selected?.id ?? page.params.backendId ?? ""
+      const terminal = terminalsData[id]
+      const subjects = selected
+        ? [{ engine: selected.id, kind: selected.kind }]
+        : terminal && !terminal.historical
+          ? [{ engine: id, kind: terminal.kind }]
+          : []
+      if (terminal && !terminal.historical && selected?.kind !== "lib") {
+        for (const engine of terminal.headlessBackends ?? []) subjects.push({ engine, kind: "lib" })
+      }
+      page.params.historySubjects = JSON.stringify(
+        [...new Map(subjects.map((subject) => [`${subject.kind}:${subject.engine}`, subject])).values()],
+      )
+    }
+
     // A page id is a public URL: VitePress writes one file per id, so two backends minting
     // the same id silently publishes one terminal's run under another's name. Refuse the
     // build and name both backends instead (28047).

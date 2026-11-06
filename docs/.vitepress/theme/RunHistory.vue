@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
-import type { WorkingView } from "../../data/working-runs"
+import type { WorkingContext, WorkingView } from "../../data/working-runs"
 import { evidenceStatus } from "./evidence-status"
 
-const props = defineProps<{ history: WorkingView[]; featureId?: string; engine?: string; kind?: string }>()
+const props = defineProps<{ history: WorkingView[]; featureId?: string; subjects?: Array<Pick<WorkingContext, "engine" | "kind">> }>()
 const collectionId = ref(props.history.at(-1)?.run.id ?? "")
 const selected = computed(() => props.history.find((view) => view.run.id === collectionId.value))
-const contexts = computed(() => selected.value?.contexts.filter((row) => (!props.engine || row.engine === props.engine) && (!props.kind || row.kind === props.kind)) ?? [])
+const contexts = computed(() => selected.value?.contexts.filter((row) => !props.subjects || props.subjects.some(subject => subject.engine === row.engine && subject.kind === row.kind)) ?? [])
 const contextKey = ref(contexts.value[0]?.contextKey ?? "")
 const context = computed(() => contexts.value.find((row) => row.contextKey === contextKey.value))
 const cells = computed(() => Object.entries(context.value?.states ?? {}).filter(([id]) => !props.featureId || id === props.featureId))
+const kindLabel = (kind: string) => kind === "lib" ? "Library" : kind === "mux" ? "Multiplexer" : kind === "term" ? "Application" : kind
 </script>
 
 <template>
@@ -31,11 +32,11 @@ const cells = computed(() => Object.entries(context.value?.states ?? {}).filter(
     <template v-else-if="contexts.length">
       <label>Recorded context
         <select v-model="contextKey">
-          <option v-for="row in contexts" :key="row.contextKey" :value="row.contextKey">{{ row.engine }} {{ row.version }} · {{ row.contextKey }}</option>
+          <option v-for="row in contexts" :key="row.contextKey" :value="row.contextKey">{{ kindLabel(row.kind) }}: {{ row.engine }} {{ row.version }} · {{ row.contextKey }}</option>
         </select>
       </label>
       <template v-if="context">
-        <p><strong>{{ context.engine }} {{ context.version }}</strong>; original capture <code>{{ context.runId }}</code>; measured {{ context.measuredAt }}; suite <code>{{ context.suiteId }}</code>; source <code>{{ context.sourceRevision }}</code>; capture SHA-256 <code>{{ context.sha256 }}</code>; identity {{ context.identity }}.</p>
+        <p><strong>{{ kindLabel(context.kind) }}: {{ context.engine }} {{ context.version }}</strong>; original capture <code>{{ context.runId }}</code>; measured {{ context.measuredAt }}; suite <code>{{ context.suiteId }}</code>; source <code>{{ context.sourceRevision }}</code>; capture SHA-256 <code>{{ context.sha256 }}</code>; identity {{ context.identity }}.</p>
         <p>Raw Supported / graded features: {{ context.counts.supported }} / {{ context.positions }}. Environment groups are ungraded; shown-but-not-counted and reference results retain the existing rollup treatment.</p>
         <p v-if="context.changeBaseline">Recorded comparison baseline: <code>{{ context.changeBaseline }}</code>.</p>
         <p>{{ context.changeQualification }}</p>

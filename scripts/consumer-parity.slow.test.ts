@@ -1088,6 +1088,11 @@ describe("selected-run consumer parity", () => {
         complete: false,
       })
       expect(terminal?.params).toMatchObject({ total: "264", yes: "1", no: "1" })
+      // Raw history names declared physical subjects without entering these reviewed counts.
+      expect(JSON.parse(terminal?.params.historySubjects ?? "[]")).toEqual([
+        { engine: "kitty", kind: "term" },
+        { engine: "kitty", kind: "lib" },
+      ])
       expect(terminal?.params.runSha256).toBeUndefined()
       expect(terminal?.params.generated).toBeUndefined()
       expect(terminal?.params.analysisDate).toContain(fixture.measuredAt)
@@ -1578,6 +1583,13 @@ it("does not name a subject with no current run on the site", () => {
       expect(page?.params.id).toBe(slug)
       expect(page?.params.total).toBe("")
       expect(page?.params.runSha256).toBeUndefined()
+      expect(JSON.parse(page?.params.historySubjects ?? "[]")).toContainEqual({
+        engine: "ghostty-native",
+        kind: "lib",
+      })
+      if (backendId === "ghostty") {
+        expect(JSON.parse(page?.params.historySubjects ?? "[]")).toContainEqual({ engine: "ghostty", kind: "term" })
+      }
     }
     // Non-vacuity control: when the same named subject IS current, the site does name it. Without
     // this, "absent" could mean the fixture never reaches the resolver at all.
