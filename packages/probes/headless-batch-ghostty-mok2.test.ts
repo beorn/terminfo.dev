@@ -45,10 +45,11 @@ test.runIf(OWNED_LAYOUT).each(["ignores-mode", "ignores-reset"] as const)(
         if (candidate === "real") {
           expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
           expect(result.observation?.note).toMatch(/Ctrl\+a stays \[1\].*xterm.*level 2/)
-          const observed = JSON.parse(result.response!)
-          expect(observed.off.ctrlI.text).toBe("\x1b[105;5u")
-          expect(observed.on.ctrlI.text).toBe("\x1b[27;5;105~")
-          expect(observed.reset.ctrlI.text).toBe(observed.off.ctrlI.text)
+          expect(JSON.parse(result.response!)).toMatchObject({
+            off: { ctrlI: { text: "\x1b[105;5u" } },
+            on: { ctrlI: { text: "\x1b[27;5;105~" } },
+            reset: { ctrlI: { text: "\x1b[105;5u" } },
+          })
         } else {
           expect(result.observation?.outcome, JSON.stringify(result)).not.toBe("supported")
         }
