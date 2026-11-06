@@ -404,10 +404,10 @@ with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source tree
 public-interface absences: `modes.decsscls`, `extensions.osc22-pointer`,
 `extensions.osc133-d`, `extensions.osc633-d`, `extensions.osc633-e`,
 `extensions.semantic-prompts`, and `extensions.osc-633-vscode`. Because `vterm`
-exposes `getSemanticMarks` for start zones (`extensions.osc133-a`, `b`, `c`, `p`
-stay Supported), reader precedence checks the `semantic-command-end` capability
-alongside `getUnhandledSequences` and decided outcomes; the six host-effect OSCs
-stay held.
+exposes `getSemanticMarks` for start zones (`extensions.osc133-a`, `b`, and `c`
+stay Supported; `extensions.osc133-p` stays Unsupported), reader precedence
+checks the `semantic-command-end` capability alongside `getUnhandledSequences`
+and decided outcomes; the six host-effect OSCs stay held.
 
 The twelve proposed Untestable declarations remain outside this negative-only cut pending
 operator wording approval: DECRQSS, XTGETTCAP, XTGETXRES, the Kitty graphics query/transmit
