@@ -291,7 +291,7 @@ test.each([
     title: ((replies as Record<string, string>)[TITLE_QUERY] ?? "") + "\x1b[?1;2c",
   })
   if (outcome === "probe-todo") {
-    expect(result.notTested?.noObservable).toContain("OSC 0 lacks a deciding observation")
+    expect(result.notTested?.noObservable).toContain("our test cannot tell whether OSC 0 set both names")
     expect(result.observation).toBeUndefined()
     expect(result.assertions?.some(({ kind }) => kind === "negative")).not.toBe(true)
   }

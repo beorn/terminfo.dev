@@ -869,7 +869,7 @@ test("background erase measures a blank target that carries the seeded backgroun
       id: "criterion",
       status: "probe-invalid",
       reason: expect.stringContaining(
-        "PreconditionFailed: precondition failed: seed cells not painted (expected bg at",
+        "Test broken: the background colour we painted before the test did not show (expected it on 5 screen cells, read none).",
       ),
     },
   ])
