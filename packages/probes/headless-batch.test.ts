@@ -6296,6 +6296,9 @@ test.runIf(OWNED_LAYOUT).each([
 test.runIf(OWNED_LAYOUT).each(["kitty", "wezterm"] as const)(
   "real %s application keypad declares only the audited public-reader absence",
   async (engine) => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-keypad-"))
+    vi.stubEnv("KITTY_CONFIG_DIRECTORY", join(directory, "kitty"))
+    vi.stubEnv("XDG_CACHE_HOME", join(directory, "cache"))
     const id = "modes.application-keypad"
     const identity = await headlessIdentity.headlessRuntimeIdentity(engine, `@termless/${engine}`, "native")
     const definition = registryDefinitions([id])[0]!
