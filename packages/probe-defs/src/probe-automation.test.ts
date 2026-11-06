@@ -164,7 +164,9 @@ test.each([
       ])
       expect(result.response).toContain("sentinel")
     } else if (arm === "reported") {
-      expect(result.observation?.outcome).toBe("unsupported")
+      // Report-first opt-ins have their own verdict tests. This route must not
+      // declare no setup or opt additional commands into that separate policy.
+      expect(result.observation?.outcome).not.toBe("supported")
     } else {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")

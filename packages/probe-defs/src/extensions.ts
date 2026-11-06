@@ -626,13 +626,18 @@ function noColorSetupResult(
   query: TerminalQueryOutcome | undefined,
   result: ProbeCallbackResult,
 ): ProbeCallbackResult {
-  const reported = unhandledOscReportResult(ctx, sequence, result)
+  const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
+  const reported = code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code)
+    ? unhandledOscReportResult(ctx, sequence, result)
+    : result
   if (reportsDecidedOutcome(reported) || !query || !sentinelSilenceResult(query, `OSC ${setCode} colour setup`)) {
     return reported
   }
-  const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
   // A duplicate or otherwise unqualified report is still a report, not absent setup.
-  if (ctx.getUnhandledSequences?.().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
+  if (ctx.getUnhandledSequences) {
+    ctx.feed(sequence)
+    if (ctx.getUnhandledSequences().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
+  }
   return declaredUntestableResult(
     `Untestable (no setup): OSC ${setCode} colour setup does not work on this library, so this command has nothing to act on.`,
     { query, body: reported.response },
