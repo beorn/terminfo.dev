@@ -137,7 +137,9 @@ function hasAuditedOscInterfaceAbsence(
     (identity.engineVersion === "0.12.0" &&
       (tree === "5486c34f7fc6bbd10284ea68a504eec2c38a061f" || tree === "dee664e0e0554a5465a0c78cf760f437a360b0f2")) ||
     (identity.engineVersion === "0.13.0" &&
-      (tree === "2a2536134a2a45982cfd27f892fe71e5078a8730" || tree === "96b1a890bf64164af924b48e7d84d3d5f6e91617"))
+      (tree === "2a2536134a2a45982cfd27f892fe71e5078a8730" || tree === "96b1a890bf64164af924b48e7d84d3d5f6e91617")) ||
+    (identity.engineVersion === "0.13.1" &&
+      (tree === "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" || tree === "5162719d063ab59d2905d588df3e127d38b110d1"))
   )
 }
 

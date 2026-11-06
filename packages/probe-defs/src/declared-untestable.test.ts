@@ -134,6 +134,9 @@ describe("audited OSC interface absence", () => {
     ["vt220", vtIdentity("vt220", "dee664e0e0554a5465a0c78cf760f437a360b0f2", "0.12.0")],
     ["vt100", vt100IgnoredReport],
     ["vt220", vt220IgnoredReport],
+    // DEC1 re-audit at the final 0.13.1 package trees: reports add no CWD or notification interface.
+    ["vt100", vtIdentity("vt100", "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d", "0.13.1")],
+    ["vt220", vtIdentity("vt220", "5162719d063ab59d2905d588df3e127d38b110d1", "0.13.1")],
   ] as const
   const readerSubjects = [["vt100", vt100], ...current] as const
   const alacritty = {
@@ -219,6 +222,8 @@ describe("audited OSC interface absence", () => {
     ],
     ["0.12 with the 0.13 VT100 tree", "vt100", { ...vt100IgnoredReport, engineVersion: "0.12.0" }],
     ["0.12 with the 0.13 VT220 tree", "vt220", { ...vt220IgnoredReport, engineVersion: "0.12.0" }],
+    ["0.13.1 with the 0.13 VT100 tree", "vt100", { ...vt100IgnoredReport, engineVersion: "0.13.1" }],
+    ["0.13.1 with the 0.13 VT220 tree", "vt220", { ...vt220IgnoredReport, engineVersion: "0.13.1" }],
     ...current.flatMap(([backend, identity]): [string, string, HeadlessRuntimeIdentity][] => [
       [`0.11 with the ${identity.engineVersion} ${backend} tree`, backend, { ...identity, engineVersion: "0.11.0" }],
       [
