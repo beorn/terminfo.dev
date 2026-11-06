@@ -6299,11 +6299,12 @@ function declaredD2InterfaceAbsence(
   ) {
     return result
   }
-  return declaredUntestableResult(formatReason(entry), {
+  const declared = declaredUntestableResult(formatReason(entry), {
     backend: ctx.backendName,
     featureId: id,
     runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
   })
+  return result.hostRecipeCauses ? { ...declared, hostRecipeCauses: result.hostRecipeCauses } : declared
 }
 
 // CTO Kitty 16:50: shell3/reset2 already use the generic OSC report consumer.
@@ -6337,6 +6338,19 @@ const WEZTERM_D2_ABSENCES: Readonly<Record<string, string>> = {
     "OSC 666 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
   "extensions.osc710-font-normal":
     "OSC 710 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "editing.decsace": "DECSACE has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc52-read":
+    "OSC 52 QuerySelection has a recognized empty handler arm and emits no clipboard query reply",
+  "extensions.osc133-d": "OSC 133 D has a recognized empty handler arm and retains no command-exit status",
+  "extensions.semantic-prompts":
+    "OSC 133 D retains no command-exit status, so the public semantic marks cannot expose a complete prompt-command cycle",
+  "extensions.osc633-a": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc633-b": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc633-c": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc633-d": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc633-e": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc-633-vscode":
+    "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
 }
 
 /** One registry consumer; other subjects and decided results retain their existing path. */
