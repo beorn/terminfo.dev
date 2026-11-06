@@ -135,10 +135,10 @@ export function hasAuditedOscInterfaceAbsence(
       identity?.kind === "js" &&
       identity.runtimeFormat === "wasm" &&
       identity.engineVersion === "0.4.0" &&
-      identity.loadedBinary.sha256 === "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de" &&
+      identity.loadedBinary.sha256 === "aaf8ce18ad92e98b1233d85b5f71043aceccf3abbc75dea07e1c704cd3ae690a" &&
       identity.integrity.kind === "source" &&
       identity.integrity.repository === "git@github.com:beorn/termless.git" &&
-      identity.integrity.treeOid === "ad3571a518e9e672e102eb83becc2caa03b9ffc3" &&
+      identity.integrity.treeOid === "5b2708cb4ee7b99b0a80c8970ec13c7ac673cbe4" &&
       identity.integrity.cleanTree
     )
   }

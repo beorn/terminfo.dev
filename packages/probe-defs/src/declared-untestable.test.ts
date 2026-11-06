@@ -325,14 +325,14 @@ describe("H-4 exact host-effect declarations", () => {
       kind: "source",
       repository: "git@github.com:beorn/termless.git",
       revision: "10dbfe015d27357bac7f2337e2a828a5afe0ad97",
-      treeOid: "ad3571a518e9e672e102eb83becc2caa03b9ffc3",
+      treeOid: "5b2708cb4ee7b99b0a80c8970ec13c7ac673cbe4",
       cleanTree: true,
     },
     runtimeFormat: "wasm",
     engineVersion: "0.4.0",
     loadedBinary: {
       path: "ghostty-web/ghostty-vt.wasm",
-      sha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
+      sha256: "aaf8ce18ad92e98b1233d85b5f71043aceccf3abbc75dea07e1c704cd3ae690a",
     },
   } as unknown as HeadlessRuntimeIdentity
   test.each([
@@ -731,13 +731,13 @@ describe("audited OSC interface absence", () => {
             engineVersion: "0.4.0",
             loadedBinary: {
               path: "vendor/termless/vendor/ghostty-web/ghostty-vt.wasm",
-              sha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
+              sha256: "aaf8ce18ad92e98b1233d85b5f71043aceccf3abbc75dea07e1c704cd3ae690a",
             },
             integrity: {
               kind: "source" as const,
               repository: "git@github.com:beorn/termless.git",
               revision: "2f73fc28027b7d483e504e08edc64d1837935816",
-              treeOid: "ad3571a518e9e672e102eb83becc2caa03b9ffc3",
+              treeOid: "5b2708cb4ee7b99b0a80c8970ec13c7ac673cbe4",
               cleanTree: true,
             },
           },
