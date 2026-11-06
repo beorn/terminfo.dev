@@ -532,3 +532,144 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     }
   })
 })
+
+describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
+  const identity: HeadlessRuntimeIdentity = {
+    kind: "js",
+    runtimeFormat: "js",
+    enginePackage: "@beorn/vterm",
+    engineVersion: "0.13.1",
+    integrity: {
+      kind: "source",
+      sourceCommit: "7b39f49e8a6bc03ce695c5ab7c143c2cc7379eb0",
+      treeOid: "3d58d29a8265aafd928e0736dde6723e2bac2007",
+      cleanTree: true,
+      repository: "git@github.com:beorn/vterm.git",
+    },
+  }
+  const declared = [
+    "modes.decsscls",
+    "extensions.osc22-pointer",
+    "extensions.osc133-d",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.semantic-prompts",
+    "extensions.osc-633-vscode",
+  ] as const
+  const shellDeclared = new Set([
+    "extensions.osc133-d",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.semantic-prompts",
+    "extensions.osc-633-vscode",
+  ])
+  const definition = (id: string) => ALL_PROBES.find((p) => p.id === id)!
+  const vtermSource = (overrides: Partial<LibProbeSource> = {}): LibProbeSource => {
+    const base = inertLibProbeSource()
+    return {
+      ...base,
+      backendName: "vterm",
+      runtimeIdentity: identity,
+      getSemanticMarks: () => [{ type: "prompt", row: 0, col: 0 }],
+      capabilities: {
+        ...base.capabilities,
+        semanticPrompts: true,
+        extensions: new Set(["semantic-marks"]),
+      },
+      ...overrides,
+    }
+  }
+
+  test.each(declared)("%s declares Untestable only for the audited vterm 0.13.1 subject", (id) => {
+    const lib = definition(id).lib!
+    const result = lib(vtermSource())
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(JSON.stringify(result)).toContain("vterm.js 0.13.1")
+    if (shellDeclared.has(id)) {
+      expect(JSON.stringify(result)).toContain("generic parser tap")
+    }
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    for (const overrides of [
+      { runtimeIdentity: undefined },
+      { backendName: "vt100" },
+      { runtimeIdentity: { ...identity, engineVersion: "0.13.0" } },
+      {
+        runtimeIdentity: {
+          ...identity,
+          integrity: { ...identity.integrity, treeOid: "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" },
+        },
+      },
+      {
+        runtimeIdentity: {
+          ...identity,
+          integrity: { ...identity.integrity, cleanTree: false },
+        },
+      },
+      {
+        runtimeIdentity: {
+          ...identity,
+          integrity: { ...identity.integrity, repository: "https://example.invalid/vterm.git" },
+        },
+      },
+      {
+        runtimeIdentity: {
+          ...identity,
+          integrity: { kind: "registry" as const, lockIntegrity: "unreviewed" as const },
+        },
+      },
+    ]) {
+      expect(isDeclaredUntestable(lib(vtermSource(overrides)))).toBe(false)
+    }
+  })
+
+  test("command-end capability, unhandled-sequence report and decided outcomes take precedence", () => {
+    const base = vtermSource()
+    for (const id of declared) {
+      const lib = definition(id).lib!
+      expect(
+        isDeclaredUntestable(
+          lib(
+            vtermSource({
+              capabilities: {
+                ...base.capabilities,
+                extensions: new Set(["semantic-marks", "semantic-command-end"]),
+              },
+            }),
+          ),
+        ),
+      ).toBe(false)
+      expect(isDeclaredUntestable(lib(vtermSource({ getUnhandledSequences: () => [] })))).toBe(false)
+    }
+    let leaked = false
+    const leakedDecsscls = definition("modes.decsscls").lib!(
+      vtermSource({
+        feed: (input) => {
+          if (input === "\x1b[9 pQ") leaked = true
+        },
+        getText: () => (leaked ? "9 pQ" : ""),
+        getCursor: () => ({ x: leaked ? 4 : 0, y: 0, visible: true, style: null }),
+      }),
+    )
+    expect(isDeclaredUntestable(leakedDecsscls)).toBe(false)
+    expect(leakedDecsscls.observation?.outcome).toBe("unsupported")
+  })
+
+  test("OSC 133 start marks, held host-effect cells and default osc-absence probes stay outside vterm-d2", () => {
+    for (const id of [
+      "extensions.osc133-a",
+      "extensions.osc133-b",
+      "extensions.osc133-c",
+      "extensions.osc133-p",
+      "extensions.osc176-app-id",
+      "extensions.osc3008-context",
+      "extensions.osc440-audio",
+      "extensions.osc555-flash",
+      "extensions.osc666-termprop",
+      "extensions.osc710-font-normal",
+      "extensions.osc7-cwd",
+      "extensions.notifications",
+    ]) {
+      expect(isDeclaredUntestable(definition(id).lib!(vtermSource()))).toBe(false)
+    }
+  })
+})
