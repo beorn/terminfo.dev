@@ -353,6 +353,12 @@ jobs:
           // Set the fresh runner's preference before launch: iTerm treats trailing YES as a file to run.
           const policy = run('startup policy', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'OpenNoWindowsAtStartup', '-bool', 'true']);
           if (policy.status !== 0) throw new Error(`iTerm2 startup policy failed (${policy.status})`);
+          // This job measures an explicitly consented transfer/display policy, not user defaults.
+          // Both settings and their outcomes remain in the retained launcher.log.
+          const consent = run('transfer consent policy', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'NoSyncSuppressDownloadConfirmation', '-bool', 'true']);
+          if (consent.status !== 0) throw new Error(`iTerm2 transfer consent policy failed (${consent.status})`);
+          const selection = run('transfer consent selection', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'NoSyncSuppressDownloadConfirmation_selection', '-int', '0']);
+          if (selection.status !== 0) throw new Error(`iTerm2 transfer consent selection failed (${selection.status})`);
           const opened = run('open', '/usr/bin/open', ['-a', bundle, '--args', command], 10000);
           if (opened.status !== 0) throw new Error(`iTerm2 open failed (${opened.status})`);
           ITERM_STARTUP

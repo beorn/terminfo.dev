@@ -374,7 +374,7 @@ test("nine fresh Mac jobs bootstrap the shared producer before checkout and coll
   }
 })
 
-test("iTerm startup writes its window policy before launch, passes one quoted command and refuses unqualified results", async () => {
+test("iTerm startup records window and transfer consent policies before launch and refuses unqualified results", async () => {
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
   const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
     .run as string
@@ -390,19 +390,22 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
       { status: 1, stdout: "" },
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
+      { status: 0, stdout: "" },
+      { status: 0, stdout: "" },
     ]
     const spawnSync = vi.fn((_file, _args, _options) => ({
       stderr: "",
       ...results[spawnSync.mock.calls.length - 1],
       ...overrides[spawnSync.mock.calls.length - 1],
     }))
+    const stdout = { write: vi.fn() }
     const execute = () =>
       new Function("require", "process", startup)(() => ({ spawnSync }), {
         argv: ["node", "-", bundle, command],
-        stdout: { write: vi.fn() },
+        stdout,
         stderr: { write: vi.fn() },
       })
-    return { execute, spawnSync }
+    return { execute, spawnSync, stdout }
   }
   const success = run()
   success.execute()
@@ -411,10 +414,29 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
     ["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", `${bundle}/Contents/Info.plist`]],
     ["/usr/bin/pgrep", ["-x", "iTerm2"]],
     ["/usr/bin/defaults", ["write", "com.googlecode.iterm2", "OpenNoWindowsAtStartup", "-bool", "true"]],
+    ["/usr/bin/defaults", ["write", "com.googlecode.iterm2", "NoSyncSuppressDownloadConfirmation", "-bool", "true"]],
+    [
+      "/usr/bin/defaults",
+      ["write", "com.googlecode.iterm2", "NoSyncSuppressDownloadConfirmation_selection", "-int", "0"],
+    ],
     ["/usr/bin/open", ["-a", bundle, "--args", command]],
   ])
+  // The retained launch log must disclose the configured permission state.
+  const policies = success.stdout.write.mock.calls.map(([line]) => JSON.parse(line)).slice(4, 6)
+  expect(policies).toMatchObject([
+    {
+      name: "transfer consent policy",
+      args: ["write", "com.googlecode.iterm2", "NoSyncSuppressDownloadConfirmation", "-bool", "true"],
+      status: 0,
+    },
+    {
+      name: "transfer consent selection",
+      args: ["write", "com.googlecode.iterm2", "NoSyncSuppressDownloadConfirmation_selection", "-int", "0"],
+      status: 0,
+    },
+  ])
   expect(success.spawnSync.mock.calls.map(([, , options]) => options)).toEqual([
-    ...Array.from({ length: 4 }, () =>
+    ...Array.from({ length: 6 }, () =>
       expect.objectContaining({ timeout: 5000, killSignal: "SIGKILL", maxBuffer: 262144 }),
     ),
     expect.objectContaining({ timeout: 10000, killSignal: "SIGKILL", maxBuffer: 262144 }),
@@ -427,8 +449,12 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
     [2, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "pgrep"],
     [3, { status: 1 }, "startup policy"],
     [3, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "startup policy"],
-    [4, { status: 1 }, "open"],
-    [4, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
+    [4, { status: 1 }, "transfer consent policy"],
+    [4, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent policy"],
+    [5, { status: 1 }, "transfer consent selection"],
+    [5, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent selection"],
+    [6, { status: 1 }, "open"],
+    [6, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
   ] as const) {
     const failure = run({ [index]: result })
     expect(failure.execute).toThrow(diagnostic)
