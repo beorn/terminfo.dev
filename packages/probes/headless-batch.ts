@@ -10,6 +10,7 @@ import {
   type KeyEncodingExtension,
   type OscMetadataExtension,
   type SemanticMarkExtension,
+  type CellSemanticTypeExtension,
   type SixelStorageExtension,
   type TerminalBackend,
   type WarningExtension,
@@ -399,6 +400,15 @@ export function createLibProbeSource(
     hasExtension<SixelStorageExtension>(backend, "sixel-storage") && typeof backend.getSixelImages === "function"
       ? backend.getSixelImages.bind(backend)
       : undefined
+  const declaresSemanticCells = backend.capabilities.extensions.has("semantic-cells")
+  const semanticCells = backend as Partial<CellSemanticTypeExtension>
+  if (declaresSemanticCells && typeof semanticCells.getCellSemanticType !== "function") {
+    throw new Error(`${backend.name} declares semantic-cells without getCellSemanticType`)
+  }
+  const readCellSemanticType =
+    declaresSemanticCells && typeof semanticCells.getCellSemanticType === "function"
+      ? semanticCells.getCellSemanticType.bind(backend)
+      : undefined
   const readClipboardState =
     typeof backend.getClipboardState === "function" ? backend.getClipboardState.bind(backend) : undefined
   const declaresMouseEncoding = backend.capabilities.extensions.has("mouse-encoding")
@@ -441,6 +451,7 @@ export function createLibProbeSource(
     getToasts: readToasts,
     getUnhandledSequences: readUnhandledSequences,
     getSemanticMarks: readSemanticMarks,
+    getCellSemanticType: readCellSemanticType,
     getSixelImages: readSixelImages,
     getClipboardState: readClipboardState,
     feed(text) {
