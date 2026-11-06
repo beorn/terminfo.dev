@@ -381,6 +381,122 @@ describe("H-4 exact host-effect declarations", () => {
     expect(wrapped.lib!({ ...source, getUnhandledSequences: () => [] })).toBe(prior)
   })
 
+  // @failure The seven app-request rows stay TODO, leak to another build, or replace an available reading.
+  // @level l1
+  // @consumer Registered library callbacks and finalizer; the original NR-I set contains none of these rows.
+  test.each([
+    "extensions.osc0-icon-title",
+    "extensions.osc10-fg-color",
+    "extensions.osc11-bg-color",
+    "extensions.osc12-cursor-color",
+    "device.primary-da",
+    "device.xtwinops-14",
+    "extensions.sixel-da1",
+  ])("native app-request %s retains the ruled cause and existing readings", (id) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    const source: LibProbeSource = {
+      ...library("ghostty-native"),
+      runtimeIdentity: ghosttyIdentity,
+      feedCapture: () => "",
+      getTitle: () => "",
+    }
+    const result = definition.lib!(source)
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(fold(id, result)).toMatchObject({
+      status: "untestable",
+      reason: expect.stringContaining(
+        id === "extensions.osc0-icon-title" ? "Untestable (no way):" : "Untestable (app):",
+      ),
+    })
+    expect(result.observation).toBeUndefined()
+    for (const runtimeIdentity of [
+      undefined,
+      { ...ghosttyIdentity, engineVersion: "unreviewed" },
+      { ...ghosttyIdentity, provenance: { ...ghosttyIdentity.provenance, sourceCommit: "0".repeat(40) } },
+      { ...ghosttyIdentity, provenance: { ...ghosttyIdentity.provenance, lockSha256: "0".repeat(64) } },
+    ]) {
+      expect(isDeclaredUntestable(definition.lib!({ ...source, runtimeIdentity }))).toBe(false)
+    }
+    for (const outcome of ["supported", "unsupported"] as const) {
+      const decided: ProbeCallbackResult = {
+        pass: outcome === "supported",
+        observation: { outcome, assertionType: "query_reply" },
+      }
+      expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source)).toBe(decided)
+    }
+    const prior: ProbeCallbackResult = {
+      pass: false,
+      notTested: { reason: "no-semantic-observable", noObservable: "prior undecided result" },
+    }
+    const wrapped = withD2LibraryObservation({ ...definition, lib: () => prior })
+    expect(wrapped.lib!({ ...source, backendName: "other-library" })).toBe(prior)
+    expect(wrapped.lib!({ ...source, getUnhandledSequences: () => [] })).toBe(prior)
+    if (id === "extensions.osc0-icon-title") {
+      expect(wrapped.lib!({ ...source, getIconLabel: () => "" })).toBe(prior)
+    }
+    const colour = /osc(10|11|12)-/.exec(id)?.[1]
+    if (colour) {
+      const positive = definition.lib!({
+        ...source,
+        feedCapture: () => `\x1b]${colour};rgb:1111/2222/3333\x07`,
+      })
+      expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+      expect(isDeclaredUntestable(positive)).toBe(false)
+    }
+  })
+
+  // @failure The six mouse rows retain an adapter-shaped TODO instead of the reviewed library limitation.
+  // @level l1
+  // @consumer Registered callbacks and finalizer; prior declaration cohorts omit these mouse reports.
+  test.each([
+    "input.button-event-mouse",
+    "input.pixel-mouse",
+    "input.x10-mouse",
+    "input.xtest-click",
+    "input.xtest-wheel",
+    "input.urxvt-mouse",
+  ])("native mouse %s declares only the reviewed library and preserves decided results", (id) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    const source: LibProbeSource = {
+      ...library("ghostty-native"),
+      runtimeIdentity: ghosttyIdentity,
+      feedCapture: () => "",
+      getMode: () => null,
+    }
+    const result = definition.lib!(source)
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(fold(id, result)).toMatchObject({
+      status: "untestable",
+      reason:
+        "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+    })
+    expect(result.observation).toBeUndefined()
+    for (const runtimeIdentity of [
+      undefined,
+      { ...ghosttyIdentity, engineVersion: "unreviewed" },
+      { ...ghosttyIdentity, provenance: { ...ghosttyIdentity.provenance, sourceCommit: "0".repeat(40) } },
+      { ...ghosttyIdentity, provenance: { ...ghosttyIdentity.provenance, lockSha256: "0".repeat(64) } },
+    ]) {
+      const fallback = definition.lib!({ ...source, runtimeIdentity })
+      expect(isDeclaredUntestable(fallback)).toBe(false)
+      expect(fold(id, fallback).status).toBe("probe-todo")
+    }
+    for (const outcome of ["supported", "unsupported"] as const) {
+      const decided: ProbeCallbackResult = {
+        pass: outcome === "supported",
+        observation: { outcome, assertionType: "input_bytes" },
+      }
+      expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source)).toBe(decided)
+    }
+    const prior: ProbeCallbackResult = {
+      pass: false,
+      notTested: { reason: "no-semantic-observable", noObservable: "prior undecided result" },
+    }
+    const wrapped = withD2LibraryObservation({ ...definition, lib: () => prior })
+    expect(wrapped.lib!({ ...source, backendName: "other-library" })).toBe(prior)
+    expect(wrapped.lib!({ ...source, getUnhandledSequences: () => [] })).toBe(prior)
+  })
+
   const kittyIdentity = {
     kind: "native",
     engineVersion: "0.49.2",

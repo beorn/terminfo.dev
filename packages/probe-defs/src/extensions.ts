@@ -6822,6 +6822,32 @@ const GHOSTTY_WEB_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 }
 
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "input.button-event-mouse":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.pixel-mouse":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.x10-mouse":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.xtest-click":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.xtest-wheel":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "input.urxvt-mouse":
+    "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
+  "extensions.osc0-icon-title":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 updates the window title but ignores icon names and keeps no icon label.",
+  "extensions.osc10-fg-color":
+    "Untestable (app): the app supplies Ghostty's initial foreground colour. This headless library starts without one; a colour set later can be read, but it does not reveal the app's default.",
+  "extensions.osc11-bg-color":
+    "Untestable (app): the app supplies Ghostty's initial background colour. This headless library starts without one; a colour set later can be read, but it does not reveal the app's default.",
+  "extensions.osc12-cursor-color":
+    "Untestable (app): the app supplies Ghostty's initial cursor colour. This headless library starts without one; a colour set later can be read, but it does not reveal the app's default.",
+  "device.primary-da":
+    "Untestable (app): Ghostty supplies the primary device-attributes reply (DA1) in its app. The headless library hands the request to the app.",
+  "device.xtwinops-14":
+    "Untestable (app): this query asks for the app's text-area size in pixels. Ghostty hands the size request to the app; the headless library has no pixel dimensions.",
+  "extensions.sixel-da1":
+    "Untestable (app): this test checks the DA1 reply for sixel advertising. Ghostty hands the DA1 request to the app, which supplies the reply.",
   "editing.decsace":
     "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no DECSACE handler or character-attribute extent state.",
   "extensions.osc633-a":
@@ -7115,7 +7141,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         GHOSTTY_NATIVE_D2_DECLARATIONS,
         "ghostty-native",
         "ghostty-native-d2",
-        (source, id) => id === "extensions.osc1-icon" && typeof source.getIconLabel === "function",
+        (source, id) =>
+          (id === "extensions.osc1-icon" || id === "extensions.osc0-icon-title") &&
+          typeof source.getIconLabel === "function",
       )
       if (ghosttyNativeDeclared) return ghosttyNativeDeclared
       const alacrittyDeclared = declaredD2InterfaceAbsence(
