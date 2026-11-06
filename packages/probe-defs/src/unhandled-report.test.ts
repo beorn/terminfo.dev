@@ -111,6 +111,7 @@ test.each([
 describe("the unhandled report decides only state cells, and only with both controls", () => {
   test.each([
     ["extensions.osc1-icon", "1"],
+    ["extensions.osc9-progress", "9"],
     ["extensions.osc22-pointer", "22"],
     ["extensions.osc113-reset-pointer-fg", "113"],
     ["extensions.osc114-reset-pointer-bg", "114"],
@@ -191,13 +192,30 @@ describe("the unhandled report decides only state cells, and only with both cont
     })
     for (const id of [
       "extensions.osc7-cwd",
-      "extensions.osc9-progress",
+      "extensions.notifications",
       "extensions.osc633-p",
       "extensions.osc777-notify",
     ]) {
       const result = probe(id).lib!(source)
       expect(JSON.stringify(result)).not.toContain(REASON)
     }
+  })
+
+  test("an existing progress reader wins over an unhandled OSC 9 report", () => {
+    let progress: { state: number; value: number | null } | null = null
+    const source: LibProbeSource = {
+      ...reportingSource({ records: [recordsOsc("9")] }),
+      getProgress: () => progress,
+      feed: (text) => {
+        const match = /\x1b\]9;4;(\d+)(?:;(\d+))?\x07/.exec(text)
+        if (match) {
+          progress = { state: Number(match[1]), value: match[2] === undefined ? null : Number(match[2]) }
+        }
+      },
+    }
+    const result = probe("extensions.osc9-progress").lib!(source)
+    expect(result.observation?.outcome).toBe("supported")
+    expect(JSON.stringify(result)).not.toContain(REASON)
   })
 })
 
@@ -262,17 +280,19 @@ describe("an engine that handles no OSC may qualify with a handled non-OSC contr
 
   test.each([
     ["extensions.osc1-icon", "1"],
+    ["extensions.osc9-progress", "9"],
     ["extensions.osc22-pointer", "22"],
     ["extensions.osc133-a", "133"],
     ["extensions.osc133-p", "133"],
     ["extensions.osc633-a", "633"],
     ["extensions.semantic-prompts", "133"],
     ["extensions.osc113-reset-pointer-fg", "113"],
+    ["extensions.notifications", "9"],
     ["extensions.osc777-notify", "777"],
   ])("a cell the engine reports unhandled becomes Unsupported: %s", (id, code) => {
     const result = probe(id).lib!(decLike([code]))
-    // osc777-notify is a delivery cell and must keep its own path even under the fallback.
-    if (id === "extensions.osc777-notify") {
+    // notifications and osc777-notify are delivery cells and must keep their own path even under the fallback.
+    if (id === "extensions.notifications" || id === "extensions.osc777-notify") {
       expect(JSON.stringify(result)).not.toContain(REASON)
       return
     }
@@ -425,6 +445,7 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     ["extensions.osc7770-font-size", "\u001b]7770;?\u0007", "osc", "7770"],
     ["extensions.osc7777-font-window-size", "\u001b]7777;?\u0007", "osc", "7777"],
     ["extensions.osc99-kitty-notify", "\u001b]99;i=dev4-census:p=?;\u001b\\", "osc", "99"],
+    ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "osc", "9"],
     ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "osc", "22"],
   ] as const
   const declared = [
