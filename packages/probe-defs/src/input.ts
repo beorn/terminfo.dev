@@ -230,10 +230,12 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
   const before = logical(off[target].text),
     active = logical(on[target].text),
     after = logical(reset[target].text)
-  const discriminator = (["ctrlA", "ctrlI", "i"] as const).some(
-    (name) =>
-      logical(off[name].text) !== logical(on[name].text) && logical(off[name].text) === logical(reset[name].text),
-  )
+  const discriminator =
+    (off[target].text !== on[target].text && off[target].text === reset[target].text) ||
+    (["ctrlA", "ctrlI", "i"] as const).some(
+      (name) =>
+        logical(off[name].text) !== logical(on[name].text) && logical(off[name].text) === logical(reset[name].text),
+    )
   if (!discriminator) {
     const cursorPasses = (control: ReturnType<typeof cursorControl>) =>
       control.on.text === "\x1bOA" && control.off.text === "\x1b[A"
@@ -287,6 +289,12 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
       : unsupportedInteraction(`modify-other-keys-${level}:native`, expected, observed)
   return {
     ...result,
+    observation: {
+      ...result.observation,
+      ...(level === 2 && off.ctrlA.text === on.ctrlA.text && off.ctrlA.text === reset.ctrlA.text
+        ? { note: `Ctrl+a stays ${JSON.stringify(off.ctrlA.bytes)} off/on/reset; xterm's level 2 changes it.` }
+        : {}),
+    },
     assertions: [
       {
         assertionType: "input_bytes" as const,
