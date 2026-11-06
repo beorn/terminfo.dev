@@ -3124,15 +3124,16 @@ function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackRes
 }
 
 /**
- * #32091: an engine that reports its clipboard permission option (Termless kitty) ran the read under it. Name it on the
- * result, since kitty's own default (read-clipboard-ask) would hold the read for a human instead of answering.
+ * Name the engine-reported permission under which the read ran, including how its default differs.
  */
 function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResult): ProbeCallbackResult {
   const control = typeof ctx.getClipboardState === "function" ? ctx.getClipboardState().control : undefined
   // Only a measured observation carries the note; a not-tested result keeps its own reason.
   const observation = result.observation
   if (control === undefined || observation === undefined) return result
-  const note = `read under harness-supplied clipboard_control ${control.join(" ")}; kitty's default read-clipboard-ask asks a human before answering a read`
+  const note = control.includes("osc52=CopyPaste")
+    ? "read under harness-supplied osc52=CopyPaste; Alacritty's default OnlyCopy disables clipboard reads"
+    : `read under harness-supplied clipboard_control ${control.join(" ")}; kitty's default read-clipboard-ask asks a human before answering a read`
   const join = (prior: string | undefined) => (prior ? `${prior}; ${note}` : note)
   return { ...result, note: join(result.note), observation: { ...observation, note: join(observation.note) } }
 }

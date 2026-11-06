@@ -23,6 +23,8 @@ it("declares the pixel geometry every engine is initialized with, and no other h
 it("declares the clipboard read permission only from an engine-reported control that grants it", () => {
   const control = ["write-clipboard", "write-primary", "read-clipboard", "read-primary"]
   expect(declaredHostInputs(control)["clipboard-read-permission"]).toBe(`clipboard_control ${control.join(" ")}`)
+  expect(declaredHostInputs(["osc52=CopyPaste"])["clipboard-read-permission"]).toBe("osc52=CopyPaste")
+  expect(declaredHostInputs(["osc52=OnlyCopy"])["clipboard-read-permission"]).toBe("not-supplied")
   const asks = ["write-clipboard", "write-primary", "read-clipboard-ask", "read-primary-ask"]
   expect(declaredHostInputs(asks)["clipboard-read-permission"]).toBe("not-supplied")
   expect(declaredHostInputs()["clipboard-read-permission"]).toBe("not-supplied")

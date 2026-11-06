@@ -14,13 +14,15 @@ export const HEADLESS_TERMINAL = {
 /**
  * The host inputs collector.collectionAttempt declares supplied, read from the same object every engine is initialized
  * with, so the record and the engine's input cannot disagree. A clipboard read permission is supplied only when the
- * loaded engine itself reports a clipboard_control that grants it (Termless kitty, #32091); the collector passes that
+ * loaded engine itself reports an option that grants it (Kitty clipboard_control or Alacritty osc52); the collector passes that
  * engine-reported control, never a value of its own.
  */
 export function declaredHostInputs(clipboardControl?: readonly string[]): Record<HostInputName, string> {
-  const readPermission = clipboardControl?.includes("read-clipboard")
-    ? `clipboard_control ${clipboardControl.join(" ")}`
-    : "not-supplied"
+  const readPermission = clipboardControl?.includes("osc52=CopyPaste")
+    ? "osc52=CopyPaste"
+    : clipboardControl?.includes("read-clipboard")
+      ? `clipboard_control ${clipboardControl.join(" ")}`
+      : "not-supplied"
   return Object.fromEntries(
     HOST_INPUT_NAMES.map((name) => [
       name,
