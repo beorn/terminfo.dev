@@ -130,15 +130,17 @@ function hasAuditedOscInterfaceAbsence(
   if (cohort === "ghostty-web-d2") {
     // CTO 8be19f1f: the web build is a different engine from Ghostty native, so it carries its own
     // gate. WASM binary and vendored tree together, because either alone admits another build.
+    // Values measured 2026-11-06 from the natural run under root 656126a2117 and from the
+    // collector read. The previous pair appears in no live run, so the gate could not fire (#32443).
     return (
       ctx.backendName === "ghostty" &&
       identity?.kind === "js" &&
       identity.runtimeFormat === "wasm" &&
       identity.engineVersion === "0.4.0" &&
-      identity.loadedBinary.sha256 === "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de" &&
+      identity.loadedBinary.sha256 === "aaf8ce18ad92e98b1233d85b5f71043aceccf3abbc75dea07e1c704cd3ae690a" &&
       identity.integrity.kind === "source" &&
       identity.integrity.repository === "git@github.com:beorn/termless.git" &&
-      identity.integrity.treeOid === "ad3571a518e9e672e102eb83becc2caa03b9ffc3" &&
+      identity.integrity.treeOid === "5b2708cb4ee7b99b0a80c8970ec13c7ac673cbe4" &&
       identity.integrity.cleanTree
     )
   }
@@ -2785,18 +2787,19 @@ function kittyDisplayWithoutTransmit(code: string, imageNumber: number): ProbeCa
 function allocationOutcomeResult(
   reply: TerminalQueryOutcome,
   imageNumber: number,
-): { imageId: number | null; refusal: string | null; result: ProbeCallbackResult } {
+): { imageId: number | null; refusal: string | null; silent: boolean; result: ProbeCallbackResult } {
   if (!reply.match) {
     if (reply.reason === "sentinel") {
       // A refusal decides; silence does not. Only a graphics ERROR frame in the same window moves
       // this cell off "not observed", because a library that refuses the query has answered it.
       const refusal = kittyGraphicsRefusalCode(reply.raw)
       if (refusal) {
-        return { imageId: null, refusal, result: kittyGraphicsRefused(reply.raw, refusal) }
+        return { imageId: null, refusal, silent: false, result: kittyGraphicsRefused(reply.raw, refusal) }
       }
       return {
         imageId: null,
         refusal: null,
+        silent: true,
         result: notTestedResult(
           "Open: our test cannot see whether the library stored the image. The device reply (DA) that does come back says nothing about images.",
           {
@@ -2809,6 +2812,7 @@ function allocationOutcomeResult(
     return {
       imageId: null,
       refusal: null,
+      silent: false,
       result: unansweredQuery(
         reply,
         "No matching image allocation reply; no image ownership or transmission conclusion",
@@ -2816,7 +2820,7 @@ function allocationOutcomeResult(
     }
   }
   const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
-  return { ...uploaded, refusal: null, result: { ...uploaded.result, response: reply.raw } }
+  return { ...uploaded, refusal: null, silent: false, result: { ...uploaded.result, response: reply.raw } }
 }
 
 function placementRequest(imageId: number): string {
@@ -2866,11 +2870,23 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         let imageId: number | null = null
         try {
           if (ctx.queryWithSentinelOutcome) {
+            // The library arm's own transfer request is a=t, and a library that answers only a=q stays
+            // silent on it. When that silent read decides nothing, one same-run canonical query asks
+            // whether graphics is refused at all: an ERROR frame decides, continued silence does not.
             const uploaded = allocationOutcomeResult(
               ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber)),
               imageNumber,
             )
             imageId = uploaded.imageId
+            if (uploaded.silent) {
+              const graphics = ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)
+              const refusal = kittyGraphicsRefusalCode(graphics.raw)
+              if (refusal) {
+                return display
+                  ? kittyDisplayWithoutTransmit(refusal, imageNumber)
+                  : kittyGraphicsRefused(graphics.raw, refusal)
+              }
+            }
             if (uploaded.refusal && display) {
               return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
             }
@@ -6789,6 +6805,10 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         VT100_IMAGE_D2_DECLARATIONS,
         "vt100",
         "osc-absence",
+        undefined,
+        undefined,
+        // The generic report lists OSC and CSI only, never APC, so it cannot speak to an image command.
+        { genericReportIsObservable: false },
       )
       if (vt100ImageDeclared) return vt100ImageDeclared
       const vt220ImageDeclared = declaredD2InterfaceAbsence(
@@ -6798,6 +6818,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         VT220_IMAGE_D2_DECLARATIONS,
         "vt220",
         "osc-absence",
+        undefined,
+        undefined,
+        { genericReportIsObservable: false },
       )
       if (vt220ImageDeclared) return vt220ImageDeclared
       const ghosttyWebImageDeclared = declaredD2InterfaceAbsence(
@@ -6807,6 +6830,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         GHOSTTY_WEB_IMAGE_D2_DECLARATIONS,
         "ghostty",
         "ghostty-web-d2",
+        undefined,
+        undefined,
+        { genericReportIsObservable: false },
       )
       if (ghosttyWebImageDeclared) return ghosttyWebImageDeclared
       const vtermDeclared = declaredD2InterfaceAbsence(
