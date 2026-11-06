@@ -763,7 +763,7 @@ export type Interpretation = HistoricalInterpretation
  * an OSC command number, or the library's own normalized CSI values with the final byte ("5m", "4:3m", "?5m").
  */
 export interface UnhandledSequence {
-  readonly kind: "osc" | "csi"
+  readonly kind: "osc" | "csi" | "apc"
   readonly code: string
 }
 

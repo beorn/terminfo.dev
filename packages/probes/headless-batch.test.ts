@@ -5938,6 +5938,37 @@ test.each([["libvterm", resolveLibvterm]] as const)(
   },
 )
 
+// R1: native callback tests cannot catch a registry route that still declares
+// these cells unreadable, or rejects buffer_state at collector admission.
+test.runIf(OWNED_LAYOUT)("libvterm R1 rejection reports decide the exact six registered cells", async () => {
+  const ids = [
+    "modes.xtpushcolors",
+    "modes.xtpopcolors",
+    "modes.decsscls",
+    "editing.decsace",
+    "extensions.kitty-graphics.display",
+    "extensions.kitty-graphics.transmit",
+  ]
+  const batch = await collectBatch(resolveLibvterm, "libvterm", registryDefinitions(ids))
+  expect(batch.results).toHaveLength(ids.length)
+  for (const result of batch.results) {
+    const noWay = ["modes.xtpushcolors", "modes.xtpopcolors", "editing.decsace"].includes(result.featureId)
+    expect(result.status, result.featureId).toBe(noWay ? "untestable" : "unsupported")
+    if (noWay) {
+      expect(result.reason).toBe(
+        "libvterm 0.3.3 drops CSI with intermediate # or * in on_csi before its public fallback, and has no other hook.",
+      )
+    } else {
+      expect(result.reason, result.featureId).toBe("library reported this sequence as unhandled")
+    }
+  }
+  expect(batch.observations).toHaveLength(3)
+  for (const observation of batch.observations) {
+    expect(observation.assertionType).toBe("buffer_state")
+    expect(observation.outcome).toBe("unsupported")
+  }
+})
+
 test.runIf(OWNED_LAYOUT).each([
   ["vt100", resolveVt100],
   ["vt220", resolveVt220],
