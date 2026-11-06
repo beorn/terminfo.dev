@@ -127,7 +127,7 @@ test.each([
 ])("%s declares no setup only after its own control and report", (id) => {
   const code = /osc(\d+)/.exec(id)![1]!
   const setup = Number(code) > 1000 ? 10 : Number(code) - 100
-  for (const arm of ["qualified", "timeout", "missing-facts", "malformed", "reported", "duplicate"] as const) {
+  for (const arm of ["qualified", "timeout", "missing-facts", "malformed", "reported", "mixed"] as const) {
     const entries: Array<{ kind: "osc"; code: string }> = []
     let title = ""
     const raw = arm === "timeout" ? "" : `${arm === "malformed" ? "junk" : ""}\x1b[?1;2c`
@@ -146,9 +146,9 @@ test.each([
         feed(sequence) {
           const nextTitle = /^\x1b\]2;([^\x07]+)\x07$/.exec(sequence)?.[1]
           if (nextTitle) title = nextTitle
-          if ((arm === "reported" || arm === "duplicate") && sequence.startsWith(`\x1b]${code}`)) {
+          if ((arm === "reported" || arm === "mixed") && sequence.startsWith(`\x1b]${code}`)) {
             entries.push({ kind: "osc", code })
-            if (arm === "duplicate") entries.push({ kind: "osc", code })
+            if (arm === "mixed") entries.push({ kind: "osc", code: "9999" })
           }
         },
         getTitle: () => title,
