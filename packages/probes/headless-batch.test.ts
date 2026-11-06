@@ -3905,7 +3905,7 @@ test.runIf(OWNED_LAYOUT)("real Ghostty palette-stack reports decide exactly the 
     [ids[1]!, "#Q"],
   ]) {
     expect(JSON.parse(batch.rawReplies[featureId]!)).toMatchObject({
-      unhandled: { control: "\x1b[0m\x1b[1mC", target: { kind: "csi", code }, added: [{ kind: "csi", code }] },
+      unhandled: { control: "\x1b[?7l", target: { kind: "csi", code }, added: [{ kind: "csi", code }] },
     })
   }
   // Removing only the new producer records must lose both conclusions; native effects stay real.
