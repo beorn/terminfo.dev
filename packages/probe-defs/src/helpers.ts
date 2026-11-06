@@ -48,7 +48,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   kittyPixel: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
     "packages/kitty/src/backend.ts": "e62a355791eb48369620caa44fe60a989a7c2501",
-    "packages/kitty/build/bridge.py": "1b9aea8f58ca9bb1fc98b3c09cdf08d2a0ceba65",
+    "packages/kitty/build/bridge.py": "473d25a335c4e739f915a254625607f617ed9d1e",
     "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
     "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
     "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
