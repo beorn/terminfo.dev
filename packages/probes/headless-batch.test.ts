@@ -112,7 +112,7 @@ test.runIf(OWNED_LAYOUT && isKittyAvailable())(
 // @failure A native rejection is mistaken for host delivery, lost at collector binding,
 // or used outside the literal Kitty cohort. Each candidate must qualify its own payload.
 // @level l5
-// @consumer Kitty D2 state/rejection cells through collectBatch; held cells retain TODO
+// @consumer Kitty D2 rejection and H-4 context cells through collectBatch; undeclared cells retain TODO
 test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvailable())(
   "Kitty report qualifies its eleven literal candidates while delivered OSC9 stays unreported",
   async () => {
@@ -144,8 +144,8 @@ test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvai
         "extensions.osc710-font-normal",
         "modes.decsscls",
       ]
-      const held = ["extensions.osc133-b", "extensions.semantic-prompts", "extensions.osc3008-context"]
-      const ids = [...candidates, ...held]
+      const held = ["extensions.osc133-b", "extensions.semantic-prompts"]
+      const ids = [...candidates, ...held, "extensions.osc3008-context"]
       const draft = initializeRunDraft({
         source: { kind: "live" },
         runId: "kitty-d2-report-fixture",
@@ -175,10 +175,19 @@ test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvai
       expect(batch.results).toHaveLength(14)
       for (const result of batch.results) {
         expect(result.status, JSON.stringify(result)).toBe(
-          candidates.includes(result.featureId) ? "unsupported" : "probe-todo",
+          candidates.includes(result.featureId)
+            ? "unsupported"
+            : result.featureId === "extensions.osc3008-context"
+              ? "untestable"
+              : "probe-todo",
         )
         if (candidates.includes(result.featureId)) {
           expect(result.reason).toBe("library reported this sequence as unhandled")
+        }
+        if (result.featureId === "extensions.osc3008-context") {
+          expect(result.reason).toBe(
+            "Kitty 0.49.2 hands the OSC 3008 text to the app; our bridge does not keep it and exposes no context effect to read.",
+          )
         }
       }
     } finally {
