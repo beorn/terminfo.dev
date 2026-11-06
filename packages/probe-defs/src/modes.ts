@@ -1933,6 +1933,15 @@ const modeDefinitions: ProbeDefinition[] = [
             ],
           }
         }
+        if (setMode === null || resetMode === null) {
+          const absence =
+            ctx.backendName === "kitty" && hasAuditedOscInterfaceAbsence(ctx, "host-effect-h4")
+              ? "Untestable (no way): Kitty 0.49.2 handles DECKPAM/DECKPNM only in the GUI; its public Screen has no keypad-state reader, and encode_key_for_tty has no keypad input."
+              : hasAuditedOscInterfaceAbsence(ctx, "wezterm-d2")
+                ? "Untestable (no way): WezTerm tattoy-wezterm-term 0.1.0-fork.5 stores application_keypad privately, with no public keypad-state reader; KeyCodeEncodeModes has no keypad field."
+                : undefined
+          if (absence) return declaredUntestableResult(absence, { setMode, resetMode })
+        }
         const reason =
           setMode === null || resetMode === null
             ? ctx.backendName === "kitty"

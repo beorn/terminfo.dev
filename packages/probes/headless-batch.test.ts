@@ -6419,3 +6419,54 @@ test.runIf(OWNED_LAYOUT).each([
     }
   }
 })
+
+// @failure The two ruled keypad interface absences remain Open, leak to another engine, or hide a real reader.
+// @level l1
+// @consumer Actual Kitty/WezTerm library callbacks through the production batch finalizer; old null tests cover libvterm only.
+test.runIf(OWNED_LAYOUT).each(["kitty", "wezterm"] as const)(
+  "real %s application keypad declares only the audited public-reader absence",
+  async (engine) => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-keypad-"))
+    vi.stubEnv("KITTY_CONFIG_DIRECTORY", join(directory, "kitty"))
+    vi.stubEnv("XDG_CACHE_HOME", join(directory, "cache"))
+    const id = "modes.application-keypad"
+    const identity = await headlessIdentity.headlessRuntimeIdentity(engine, `@termless/${engine}`, "native")
+    const definition = registryDefinitions([id])[0]!
+    const batch = await collectBatch(
+      async () => {
+        const value = engine === "kitty" ? createKittyBackend() : createWeztermBackend()
+        identity.adapterSources = headlessIdentity.readAdapterSources(engine, value)
+        return value
+      },
+      engine,
+      [
+        {
+          ...definition,
+          lib(ctx) {
+            const source = { ...ctx, runtimeIdentity: identity }
+            for (const runtimeIdentity of [undefined, { ...identity, engineVersion: "0.0.0" }]) {
+              const result = definition.lib!({ ...source, runtimeIdentity })
+              expect(isDeclaredUntestable(result)).toBe(false)
+              expect(result.tests?.[0]?.status).toBe("probe-todo")
+            }
+            let reads = 0
+            expect(definition.lib!({ ...source, getMode: () => reads++ === 0 }).observation?.outcome).toBe("supported")
+            return definition.lib!(source)
+          },
+        },
+      ],
+    )
+    expect(batch.results).toMatchObject([
+      {
+        featureId: id,
+        status: "untestable",
+        reason: expect.stringMatching(
+          engine === "kitty" ? /Kitty 0\.49\.2.*GUI.*no keypad/ : /WezTerm.*private.*no public.*keypad/,
+        ),
+      },
+    ])
+    expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ setMode: null, resetMode: null })
+    expect(batch.observations).toEqual([])
+    expect(batch.assertions).toEqual([])
+  },
+)
