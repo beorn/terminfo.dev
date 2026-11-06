@@ -398,6 +398,18 @@ Alacritty's public events provide no rejection report. A supplied real reader,
 an already decided result or an unknown profile retains its original path.
 Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration cut.
 
+WezTerm D2 uses the same private registry helper with a separate `wezterm-d2`
+cohort: native tattoy-wezterm-term 0.1.0-fork.5, audited binary, source, lock and
+four adapter blobs. It declares ten public-interface absences: pointer resets
+OSC 113/114, OSC 22 pointer shape, DECSSCLS presentation speed, and the six host
+effects OSC 176/3008/440/555/666/710. Resets 113/114 have recognized empty handler
+arms, no pointer colours in the public palette and no query reply; their
+`PaletteChanged` event carries no value. OSC 22 and DECSSCLS have no handler;
+their opt-in log-facade trace is off in this embedding. The six host-effect
+reasons state that the public library has no host delivery route. Public reports
+and already decided results win; unknown identities retain their original path.
+The default OSC-absence cohort and every other library retain their existing paths.
+
 The twelve proposed Untestable declarations remain outside this negative-only cut pending
 operator wording approval: DECRQSS, XTGETTCAP, XTGETXRES, the Kitty graphics query/transmit
 cells, and OSC 22, 176, 3008, 440, 555, 666 and 710 retain their prior paths. OSC52 read also
