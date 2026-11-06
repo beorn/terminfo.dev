@@ -38,6 +38,9 @@ App palette-stack captures also declare Untestable (no setup) when all three fix
 expected and ignored-reference cells behind changed paint witnesses: OSC 4 supplies no palette change
 to push or pop. A missing paint witness stays Open; differing references retain the normal stack
 decision. This branch belongs only to the palette capture, not the shared visual oracle or SGR stack.
+App `reset.method` also uses the declared Untestable route: it has no `reset()` method or equivalent
+state readback, so the backend-only criterion has no App measurement path. This arm writes no terminal
+bytes; RIS remains a separate feature and the library reset callback keeps its measured criterion.
 Alacritty's audited OSC 110/111/112 route compares its initial silent default with a verified
 seeded colour reply: unknown OSC 7110 must preserve that seed, then the reset must restore
 the initial silence. Those same-run query replies establish Supported without inventing a default RGB value.

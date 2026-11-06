@@ -2,6 +2,7 @@ import type { ProbeDefinition } from "./types.ts"
 import { captureRegionCallbackResult, type RegionReadback } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
+  declaredUntestableResult,
   decrpmReading,
   HEADLESS_OBSERVABLE_REVIEW,
   notTestedResult,
@@ -449,11 +450,7 @@ export const resetProbes: ProbeDefinition[] = [
       },
       () => {
         const note = "The app context has no reset() method or equivalent state readback"
-        return Promise.resolve({
-          pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
-        })
+        return Promise.resolve(declaredUntestableResult(note, {}))
       },
     ),
   },

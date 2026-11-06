@@ -9,6 +9,7 @@ import {
   decrpmModeProbe,
   cursorProbe,
   parserStateResult,
+  recordExecutedProbe,
   NO_SAME_PATH_CONTROL,
   sgrProbe,
   unmeasuredCellResult,
@@ -135,7 +136,7 @@ function terminal(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
   }
 }
 
-test("app reset observations require a measured effect and leave unmeasurable reset paths inconclusive", async () => {
+test("app resets require measured effects and declare the backend-only reset method Untestable", async () => {
   const find = (id: string) => {
     const definition = resetProbes.find((entry) => entry.id === id)
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
@@ -215,12 +216,23 @@ test("app reset observations require a measured effect and leave unmeasurable re
   expect(method).toMatchObject({
     tests: [
       expect.objectContaining({
-        status: "probe-todo",
+        status: "untestable",
         reason: "The app context has no reset() method or equivalent state readback",
       }),
     ],
   })
   expect(methodWrites).toEqual([])
+  const recorded = recordExecutedProbe({
+    featureId: "reset.method",
+    attempt: { scope: "probe", startedAt: "2026-11-06T22:00:00.000Z" },
+    coverage: method.notTested && { featureId: "reset.method", ...method.notTested },
+    assertions: [],
+    tests: method.tests,
+    criterionBranch: method.criterionBranch,
+    rawReplyRef: "reset.method",
+  })
+  expect(recorded.status).toBe("untestable")
+  expect(recorded.tests[0]?.attempt.scope).toBe("probe")
 })
 
 // #30701 (@cto ruling C): the headless reset arms grade what the cells and modes expose. An adapter
