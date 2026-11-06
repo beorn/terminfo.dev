@@ -4102,10 +4102,10 @@ test.runIf(OWNED_LAYOUT)("real Ghostty palette-stack reports decide exactly the 
   expect(missing.results.map(({ status }) => status)).toEqual(["probe-todo", "probe-todo"])
 })
 
-// @failure Ghostty's allocator-plus-rejection pair is mistaken for one unhandled report, or shell reports are lost.
+// @failure Ghostty's repeated allocator/rejection reports fail to decide their scalar reset code, or shell reports are lost.
 // @consumer Owned monorepo Ghostty WASM collector; published Termless does not yet expose this report reader.
 test.runIf(OWNED_LAYOUT)(
-  "real Ghostty web decides seven shell report cells but leaves allocator-limited resets undecided",
+  "real Ghostty web decides seven shell report cells and allocator-limited resets by their reports",
   async () => {
     const negatives = [
       "extensions.osc633-a",
@@ -4125,14 +4125,14 @@ test.runIf(OWNED_LAYOUT)(
     const batch = await collectBatch(resolveGhosttyWasm, "ghostty", registryDefinitions([...negatives, ...resets]))
     expect(batch.results).toHaveLength(11)
     for (const result of batch.results) {
-      expect(result.status, result.featureId).toBe(negatives.includes(result.featureId) ? "unsupported" : "probe-todo")
+      expect(result.status, result.featureId).toBe("unsupported")
     }
     expect(
       batch.observations
         .filter((row) => row.outcome === "unsupported")
         .map((row) => row.featureId)
         .sort(),
-    ).toEqual([...negatives].sort())
+    ).toEqual([...negatives, ...resets].sort())
   },
 )
 

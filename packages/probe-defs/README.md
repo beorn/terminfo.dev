@@ -54,7 +54,8 @@ reset false, set true, reset false, an unknown mode leaves the state unchanged, 
 flag stays unchanged throughout. Cursor-key encoding and reverse-video presentation remain unmeasured.
 The seventeen DEC1 mode/mouse definitions also consult the existing unhandled report after an
 undecided prior arm. DECAWM off must read false and add no entry, then one exact own command
-must add exactly one matching entry. Its cleanup reset follows the verdict. No source identity
+must add one or more new entries all carrying that command's code. Explicit multi-code targets
+still require their exact ordered list. Its cleanup reset follows the verdict. No source identity
 selects either criterion.
 
 Alacritty's pixel-mouse arm instead qualifies the engine's DECRQM reader: mode1006 must
@@ -114,7 +115,7 @@ retain PROBE TODO. Other libraries retain their existing path; the app criterion
 still requires pointer appearance outside the cell grid.
 
 Kitty 0.49.2's own parser rejection can decide the scoped OSC 176/440/555/666/710
-cells after their individual payload adds exactly one matching report and a handled
+cells after their individual payload adds one or more matching reports and a handled
 OSC 2 title control adds none. Delivered OSC 9 remains separate and adds no rejection.
 DECSSCLS uses the reported modifier-plus-final code ` p`, without rebuilding a parameter,
 and a same-run bold control. The existing D2 registry consumer supplies these six routes;
@@ -130,7 +131,16 @@ Unsupported with `push/pop round trip does not restore`. This does not identify
 which primitive is missing. Failed title controls retain the named PROBE TODO cause.
 OSC 0 remains a conjunction: a controlled title failure disproves it, while title
 success alone cannot prove an unobserved icon clause. Both clauses must be observed
-for Supported; a complete exact-payload reply remains positive evidence.
+for Supported; a complete exact-payload reply remains positive evidence. Where the icon half
+is an audited declared absence, the combined feature reads Untestable with that cause.
+
+The existing Ghostty web declaration cohort uses engine0.4.0 plus its measured WASM digest
+and clean source tree, independently of adapter version. It also covers OSC133a–d and the
+semantic lifecycle, OSC0's icon half, OSC1, OSC22 and the OSC52 round trip as public-interface
+absences. OSC52 write is the app's job: the package parses it but drops the clipboard request.
+Existing public readers, measured results and genuine rejection reports keep precedence.
+Its eight colour-reset refusals use the shared scalar report verdict: one or more new entries
+must all carry the target code after the unchanged handled-title control. Silence decides nothing.
 
 The XTPUSHSGR/XTPOPSGR library callbacks retain both real post-pop fixtures.
 When the reader cannot calibrate italic, a passing bold on/off control and both

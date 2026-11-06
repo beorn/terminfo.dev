@@ -2005,7 +2005,7 @@ const UNHANDLED_REPORT_COLOUR_RESETS: readonly string[] = ["104", "110", "111", 
  * Case 1 consumer, OSC arm (@cto 2026-11-05 07:25 appendix, conditions 3 and 5): the library's own
  * unhandled report decides a state cell Unsupported only where the body left the cell undecided, and
  * only when the same run shows a handled OSC 2 adding no report entry while the title reader reports
- * it applied, then the target adding exactly one entry carrying its number. A decided outcome is
+ * it applied, then the target adding one or more entries all carrying its number. A decided outcome is
  * returned untouched, and a source without the member keeps today's exact path.
  *
  * Case 2 (@cto 09:00 plan ruling R1): an engine that handles no OSC — VT100.js, VT220.js — reports the
@@ -6797,7 +6797,24 @@ const VT220_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
 }
 
-const GHOSTTY_WEB_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+const GHOSTTY_WEB_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.osc133-a":
+    "ghostty-web 0.4.0 exposes no public OSC 133 prompt-start state, semantic-mark reader or report",
+  "extensions.osc133-b":
+    "ghostty-web 0.4.0 exposes no public OSC 133 input-start state, semantic-mark reader or report",
+  "extensions.osc133-c":
+    "ghostty-web 0.4.0 exposes no public OSC 133 output-start state, semantic-mark reader or report",
+  "extensions.osc133-d": "ghostty-web 0.4.0 exposes no public OSC 133 command-end state, exit status or report",
+  "extensions.semantic-prompts":
+    "ghostty-web 0.4.0 exposes no public prompt, output or command-end semantic state or report for the shell lifecycle",
+  "extensions.osc0-icon-title":
+    "ghostty-web 0.4.0 keeps the window title but no icon label, so the icon half of OSC 0 has no public state, reply or report",
+  "extensions.osc1-icon": "ghostty-web 0.4.0 ignores OSC 1 and exposes no icon-label state, reply or report",
+  "extensions.osc22-pointer": "ghostty-web 0.4.0 exposes no public OSC 22 pointer-shape state, reply or report",
+  "extensions.osc52-clipboard":
+    "ghostty-web 0.4.0 exposes no clipboard state export, callback hook or query reply for the OSC 52 round trip",
+  "extensions.osc52-write":
+    "ghostty-web 0.4.0 parses OSC 52 but its package handler drops the request because WASM has no clipboard; the app owns clipboard writes",
   "extensions.kitty-graphics.display":
     "ghostty-web 0.4.0 exposes Ghostty, GhosttyTerminal and CanvasRenderer, and its only Kitty surface is setKittyFlags with KittyKeyFlags, the keyboard protocol; its WebAssembly export interface carries no image, sixel or graphics entry, so it has no public image store or APC callback",
   "extensions.kitty-graphics.transmit":
@@ -6994,13 +7011,13 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const passThroughReason = OSC_PASS_THROUGH_DECLARATIONS[definition.id]
   const appJob = APP_JOB_OSCS[definition.id]
   const ghosttyNativeReason = GHOSTTY_NATIVE_D2_DECLARATIONS[definition.id]
+  const ghosttyWebReason = GHOSTTY_WEB_D2_DECLARATIONS[definition.id]
   const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
   const imageDeclared =
     ALACRITTY_IMAGE_D2_DECLARATIONS[definition.id] ??
     XTERM_IMAGE_D2_DECLARATIONS[definition.id] ??
     VT100_IMAGE_D2_DECLARATIONS[definition.id] ??
-    VT220_IMAGE_D2_DECLARATIONS[definition.id] ??
-    GHOSTTY_WEB_IMAGE_D2_DECLARATIONS[definition.id]
+    VT220_IMAGE_D2_DECLARATIONS[definition.id]
   if (
     !lib ||
     (!decClipboard &&
@@ -7015,6 +7032,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       !appJob &&
       !passThroughReason &&
       !ghosttyNativeReason &&
+      !ghosttyWebReason &&
       !weztermAbsence &&
       !imageDeclared)
   ) {
@@ -7167,18 +7185,25 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         { genericReportIsObservable: false },
       )
       if (vt220ImageDeclared) return vt220ImageDeclared
-      const ghosttyWebImageDeclared = declaredD2InterfaceAbsence(
+      const ghosttyWebDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
         definition.id,
-        GHOSTTY_WEB_IMAGE_D2_DECLARATIONS,
+        GHOSTTY_WEB_D2_DECLARATIONS,
         "ghostty",
         "ghostty-web-d2",
-        undefined,
+        (source, id) =>
+          id.startsWith("extensions.osc133") || id === "extensions.semantic-prompts"
+            ? typeof source.getSemanticMarks === "function"
+            : id === "extensions.osc0-icon-title" || id === "extensions.osc1-icon"
+              ? typeof source.getIconLabel === "function"
+              : id === "extensions.osc52-clipboard" || id === "extensions.osc52-write"
+                ? typeof source.getClipboardState === "function"
+                : false,
         undefined,
         { genericReportIsObservable: false },
       )
-      if (ghosttyWebImageDeclared) return ghosttyWebImageDeclared
+      if (ghosttyWebDeclared) return ghosttyWebDeclared
       const vtermDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
