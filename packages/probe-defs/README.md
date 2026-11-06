@@ -29,7 +29,12 @@ to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclare
 
 For library results, a feature is the library's job unless the app-job table in [extensions.ts](src/extensions.ts) assigns it to the app. A real state reading or typed notification store can establish Supported. A generic handoff of an app-job command is Untestable (passed to the app), even when its payload is intact. Libvterm and vt100-rust qualify their report in this cell's run: a made-up OSC and the target are reported, while a handled title command applies without a report. Xterm.js and vterm.js generic taps require their declared engine identity; a different engine identity remains Open. Missing report controls also remain Open. Library-job negatives keep `unhandledSequenceVerdict`; these are Unsupported when the library reports the target with its same-run controls.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
-OSC 17 or 19 supplies no initial colour, the callback records a named PROBE TODO; broken or untrustworthy
+OSC 17 or 19 supplies no initial colour, the library callback checks the existing unhandled report first.
+For the approved reset/colour-stack no-setup route, a silent setup query with its own qualified DA1
+control and no target report returns the existing declared Untestable result with the no-setup cause.
+A missing control or ambiguous target report stays Open; verified seeded-colour effects keep their
+existing result. This route adds no post-collection classification or dependency on another cell.
+Other missing initial readings record a named PROBE TODO; broken or untrustworthy
 measurement remains PROBE INVALID. Silence alone does not establish Unsupported.
 The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
 The `FeatureResultDisplayState` value `inconclusive` denotes Untestable (reached only by the declared route above), `error` denotes PROBE INVALID and `untested` denotes
@@ -177,8 +182,9 @@ Library `cell.hidden: null` means conceal is not reported; missing cell observab
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO
 when no clipboard-state witness is wired; a read negative cannot measure the write.
-Reset, colour-stack and Kitty transfer/display effects likewise stay PROBE TODO when their
-readback is silent, even if DA1 answers. Effect absence needs an answered same-probe state
+Reset and colour-stack effects use the approved no-setup declaration above only when their own
+setup query is silent, its control answers and no target report exists. Kitty transfer/display and
+other silent effect readings stay PROBE TODO even if DA1 answers. Effect absence needs an answered same-probe state
 control and an observed comparison. Existing own-state readers and answered unchanged-state
 comparisons continue to decide results; query features retain their own reply criteria.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
