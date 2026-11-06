@@ -10,12 +10,13 @@ set -euo pipefail
 PROBE_BATCH_TIMEOUT_SECONDS=900
 
 # Calibrate the source face independently of the terminal. A missing proof is a named tool gap,
-# never an engine grade. The private fontconfig has exactly one immutable file to prevent fallback.
+# never an engine grade. The private fontconfig pins the regular face and its style companions,
+# so attribute fixtures can render bold/italic without opening unrelated font fallback.
 prepare_font_control() {
   local output=$1 family=$2
   shift 2
   local font='' font_sha='' matched='' pin='' config='' version='' reason='' status=probe-todo proof_state=absent
-  local sample='!= -> => <= ==' args
+  local sample='!= -> => <= ==' args style styled_font
   mkdir -p "$output/font-source"
   : > "$output/font-on.json"
   : > "$output/font-off.json"
@@ -32,6 +33,12 @@ prepare_font_control() {
     font_sha=$(sha256sum "$font" | cut -d ' ' -f 1)
     pin="$output/font-source/face.ttf"
     ln -s "$font" "$pin"
+    # Keep the calibrated regular face, but do not flatten every styled cell to it (#31742).
+    # Resolve companions before exporting the private config, while the declared family is visible.
+    for style in Bold Italic 'Bold Italic'; do
+      styled_font=$(fc-match -f '%{file}\n' "$family:style=$style" 2>> "$output/font-control.stderr")
+      ln -s "$(readlink -f "$styled_font")" "$output/font-source/${style// /-}.ttf"
+    done
     config="$output/fontconfig.xml"
     printf '<fontconfig><dir>%s</dir><cachedir>%s</cachedir></fontconfig>\n' \
       "$output/font-source" "$output/font-cache" > "$config"

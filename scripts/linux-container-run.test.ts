@@ -117,6 +117,11 @@ function fontControl(scenario: "capable" | "positions-only" | "missing" | "faile
   const font = join(root, "JetBrainsMono-Regular.ttf"),
     log = join(root, "hb-args.txt")
   writeFileSync(font, "synthetic exact font bytes; not a font-capability claim")
+  const styledFonts = ["Bold", "Italic", "BoldItalic"].map((style) => {
+    const path = join(root, `JetBrainsMono-${style}.ttf`)
+    writeFileSync(path, `synthetic ${style} font bytes; not a font-capability claim`)
+    return path
+  })
   const executable = (name: string, body: string) => {
     const path = join(bin, name)
     writeFileSync(path, `#!/usr/bin/bash\n${body}\n`)
@@ -125,6 +130,11 @@ function fontControl(scenario: "capable" | "positions-only" | "missing" | "faile
   executable(
     "fc-match",
     String.raw`
+case "$*" in
+  *':style=Bold Italic'*) printf '%s\n' "$FIXTURE_FONT_BOLD_ITALIC"; exit 0;;
+  *':style=Bold'*) printf '%s\n' "$FIXTURE_FONT_BOLD"; exit 0;;
+  *':style=Italic'*) printf '%s\n' "$FIXTURE_FONT_ITALIC"; exit 0;;
+esac
 for arg in "$@"; do
   case "$arg" in
     *'%{family}'*'%{file}'*) printf 'JetBrains Mono | %s\n' "$FIXTURE_FONT"; exit 0;;
@@ -168,10 +178,19 @@ printf '%s' "$FONTCONFIG_FILE" > "$output/exported-fontconfig.txt"
     ],
     {
       encoding: "utf8",
-      env: { ...process.env, PATH: bin, FIXTURE_FONT: font, FIXTURE_HB_LOG: log, FIXTURE_SCENARIO: scenario },
+      env: {
+        ...process.env,
+        PATH: bin,
+        FIXTURE_FONT: font,
+        FIXTURE_FONT_BOLD: styledFonts[0],
+        FIXTURE_FONT_ITALIC: styledFonts[1],
+        FIXTURE_FONT_BOLD_ITALIC: styledFonts[2],
+        FIXTURE_HB_LOG: log,
+        FIXTURE_SCENARIO: scenario,
+      },
     },
   )
-  return { result, output, font, args, log }
+  return { result, output, font, styledFonts, args, log }
 }
 
 it("font control retains capable glyph IDs, exact font hash and the actual private launch pin", () => {
@@ -195,7 +214,12 @@ it("font control retains capable glyph IDs, exact font hash and the actual priva
   expect(xml).not.toContain("<include")
   const fontDirs = [...xml.matchAll(/<dir(?:\s[^>]*)?>([^<]+)<\/dir>/g)].map((match) => match[1]!)
   expect(fontDirs).toHaveLength(1)
-  expect(readdirSync(fontDirs[0]!)).toEqual([receipt.launch.path.split("/").at(-1)])
+  // Native #31742: a Regular-only directory made bold/italic controls paint as plain.
+  // Preserve the calibrated Regular face while exposing its same-family style companions.
+  const pinnedFaces = readdirSync(fontDirs[0]!).map((name) => realpathSync(join(fontDirs[0]!, name)))
+  expect(new Set(pinnedFaces)).toEqual(
+    new Set([fixture.font, ...fixture.styledFonts].map((path) => realpathSync(path))),
+  )
   expect(receipt.harfbuzz.version).toContain("fixture-version")
   expect(fontGlyphIds(receipt.harfbuzz.on)).toEqual([501])
   expect(fontGlyphIds(receipt.harfbuzz.off)).toEqual([17])
