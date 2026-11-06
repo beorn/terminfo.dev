@@ -1178,12 +1178,16 @@ export function parseRun(
     typeof raw.rawReplies["collector.replyPath"] === "string"
   ) {
     const replyPath = parseJsonStrict(`${path}: collector.replyPath`, raw.rawReplies["collector.replyPath"])
-    if (
+    const legacyNativeDeclaration =
       object(replyPath) &&
       object(replyPath.declaration) &&
       object(replyPath.declaration.engine) &&
       replyPath.declaration.engine.kind === "native"
-    ) {
+    const hasHostRecipes =
+      object(replyPath) &&
+      object(replyPath.decisions) &&
+      Object.values(replyPath.decisions).some((decision) => object(decision) && Array.isArray(decision.hostRecipes))
+    if (object(replyPath) && (legacyNativeDeclaration || hasHostRecipes)) {
       if (!object(replyPath.decisions)) fail(path, "host recipe: missing per-feature decisions")
       for (const [featureId, decision] of Object.entries(replyPath.decisions)) {
         if (!catalog.has(featureId) || !object(decision) || !Array.isArray(decision.hostRecipes)) {
