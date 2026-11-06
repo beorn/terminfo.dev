@@ -1667,7 +1667,7 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 
   // Bracketed paste
-  decrpmModeProbe("modes.bracketed-paste", 2004, headlessDecrpmArm(2004, "bracketedPaste")),
+  decrpmModeProbe("modes.bracketed-paste", 2004, headlessDecrpmArm(2004, "bracketedPaste", { stateReadback: true })),
 
   // Application cursor keys
   decrpmModeProbe("modes.application-cursor", 1, headlessDecrpmArm(1, "applicationCursor", { stateReadback: true })),
@@ -1705,7 +1705,7 @@ const modeDefinitions: ProbeDefinition[] = [
   }),
 
   // Mouse tracking
-  decrpmModeProbe("modes.mouse-tracking", 1000, headlessDecrpmArm(1000, "mouseTracking")),
+  decrpmModeProbe("modes.mouse-tracking", 1000, headlessDecrpmArm(1000, "mouseTracking", { stateReadback: true })),
 
   // Focus tracking
   decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
@@ -1726,10 +1726,10 @@ const modeDefinitions: ProbeDefinition[] = [
     ...decrpmModeProbe(
       "modes.synchronized-output",
       2026,
-      headlessDecrpmArm(2026, "syncOutput", { requireReadback: true }),
+      headlessDecrpmArm(2026, "syncOutput", { requireReadback: true, stateReadback: true }),
       true,
     ),
-    libAssertionType: "query_reply",
+    libAssertionType: undefined,
   },
 
   // Origin mode
@@ -1888,10 +1888,10 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 
   // SGR mouse encoding
-  decrpmModeProbe("modes.mouse-sgr", 1006, headlessDecrpmArm(1006, "sgrMouse")),
+  decrpmModeProbe("modes.mouse-sgr", 1006, headlessDecrpmArm(1006, "sgrMouse", { stateReadback: true })),
 
   // All-motion mouse tracking
-  decrpmModeProbe("modes.mouse-all", 1003, headlessDecrpmArm(1003, "mouseTracking")),
+  decrpmModeProbe("modes.mouse-all", 1003, headlessDecrpmArm(1003, "mouseTracking", { stateReadback: true })),
 
   // Application keypad: DECKPAM then KP_5 encoding (SS3 u vs 5)
   probe(
@@ -2191,7 +2191,7 @@ const modeDefinitions: ProbeDefinition[] = [
   ),
 
   // ?1005 — UTF-8 mouse encoding (legacy)
-  decrpmModeProbe("modes.utf8-mouse-1005", 1005, headlessDecrpmArm(1005)),
+  decrpmModeProbe("modes.utf8-mouse-1005", 1005, headlessDecrpmArm(1005, "utf8Mouse", { stateReadback: true })),
 
   // ?3 — DECCOLM 80/132 column switch, decided by cell state, 18t only corroborating (#31381, cee6d003)
   {
