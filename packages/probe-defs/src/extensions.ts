@@ -3231,6 +3231,7 @@ function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResu
 function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
+  const pasteBefore = ctx.getClipboardState?.().pasteSelector
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const query = "\x1b]52;c;?\x07"
   const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
@@ -3247,16 +3248,36 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const result: ProbeCallbackResult = writeUnobservable
     ? { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
     : headlessClipboardResult(empty ? "" : raw, nonce)
+  const handoff = empty ? clipboardPasteHandoff(ctx, pasteBefore) : null
+  if (handoff) return handoff
   return withClipboardControlNote(ctx, emptyNativeHostReply(ctx, { ...result, response: raw }, query, empty))
+}
+
+/**
+ * routes-16 row 1 (32472): vt100 0.16.2 hands an OSC 52 read to its `paste_from_clipboard` callback and
+ * keeps no clipboard of its own, so the read has no reply to grade. The witness the backend already
+ * exposes is the engine's own paste selector: absent before the read and "c" after it. A selector that
+ * was already set, or one that stays absent, proves nothing and keeps the existing inconclusive result.
+ */
+function clipboardPasteHandoff(ctx: LibProbeSource, before: string | undefined): ProbeCallbackResult | null {
+  const after = ctx.getClipboardState?.().pasteSelector
+  if (before !== undefined || after !== "c") return null
+  return declaredUntestableResult(
+    "Untestable (passed to the app): the library handed the clipboard read to its paste_from_clipboard callback; its paste selector went from absent to c in this run and the library keeps no clipboard of its own.",
+    { pasteSelector: { before: null, after } },
+  )
 }
 
 /** Read silence is conclusive only on a collector-qualified, ordered reply path. */
 function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
+  const pasteBefore = ctx.getClipboardState?.().pasteSelector
   ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
+    const handoff = silence !== null ? clipboardPasteHandoff(ctx, pasteBefore) : null
+    if (handoff) return handoff
     return withClipboardControlNote(
       ctx,
       emptyNativeHostReply(
@@ -3268,6 +3289,8 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
     )
   }
   const raw = ctx.feedCapture("\x1b]52;c;?\x07")
+  const handoff = raw === "" ? clipboardPasteHandoff(ctx, pasteBefore) : null
+  if (handoff) return handoff
   return withClipboardControlNote(
     ctx,
     emptyNativeHostReply(ctx, headlessClipboardResult(raw, nonce), "\x1b]52;c;?\x07", raw === ""),

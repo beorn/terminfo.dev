@@ -16,6 +16,55 @@ import {
 } from "./index.ts"
 import { recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
 
+test.each(["extensions.osc52-read", "extensions.osc52-clipboard"])(
+  "%s reads passed to the app when the engine's own paste selector goes absent -> c",
+  (id) => {
+    // routes-16 row 1 (32472): vt100 0.16.2 keeps no clipboard and hands the read to paste_from_clipboard,
+    // so the only witness is the backend's paste selector changing on this run's read.
+    let selector: string | undefined
+    let asked = 0
+    const source = {
+      feed: () => undefined,
+      feedCapture: () => "",
+      queryWithSentinelOutcome: () => {
+        asked += 1
+        selector = "c"
+        return {
+          match: null,
+          reason: "sentinel" as const,
+          raw: "\x1b[?62;22c",
+          rawBase64: "",
+          sentinel: { atMs: 3, graceMs: 250 },
+        }
+      },
+      getClipboardState: () => ({ writes: [], ...(selector === undefined ? {} : { pasteSelector: selector }) }),
+    } as unknown as LibProbeSource
+    const callback = ALL_PROBES.find((item) => item.id === id)!.lib!
+    const result = callback(source)
+    expect(asked).toBeGreaterThan(0)
+    expect(result.tests?.[0]).toMatchObject({ status: "untestable" })
+    expect(result.tests?.[0]?.reason).toMatch(/^Untestable \(passed to the app\): .*paste_from_clipboard/u)
+    // A selector that was already set proves nothing, and neither does one that never changes.
+    const alreadySet = {
+      ...source,
+      getClipboardState: () => ({ writes: [], pasteSelector: "c" }),
+    } as unknown as LibProbeSource
+    expect(callback(alreadySet).tests?.[0]?.status).not.toBe("untestable")
+    const neverSet = {
+      ...source,
+      queryWithSentinelOutcome: () => ({
+        match: null,
+        reason: "sentinel" as const,
+        raw: "\x1b[?62;22c",
+        rawBase64: "",
+        sentinel: { atMs: 3, graceMs: 250 },
+      }),
+      getClipboardState: () => ({ writes: [] }),
+    } as unknown as LibProbeSource
+    expect(callback(neverSet).tests?.[0]?.status).not.toBe("untestable")
+  },
+)
+
 function writeProbe() {
   const probe = ALL_PROBES.find((item) => item.id === "extensions.osc52-write")
   if (!probe?.term) throw new Error("OSC 52 write callback is missing")
