@@ -170,25 +170,26 @@ const recordsCsi = (code: string) => ({
 })
 
 // Route 2: the clipboard is outside the library, but its own parser rejection
-// can decide the write. Missing controls and the unqueued subjects stay on their prior path.
-test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
-  "%s VT100 rejection needs its own report and the existing handled control",
-  (id) => {
-    const definition = ALL_PROBES.find((entry) => entry.id === id)!
-    const source = reportingSource({ records: [recordsOsc("2"), recordsOsc("52")], titleApplies: false })
-    Object.assign(source, { backendName: "vt100" })
-    expect(definition.lib!(source).observation?.outcome).toBe("unsupported")
-    for (const overrides of [
-      { backendName: "vt220" },
-      { getUnhandledSequences: undefined },
-      { getCell: inertLibProbeSource().getCell },
-    ]) {
-      const control = reportingSource({ records: [recordsOsc("2"), recordsOsc("52")], titleApplies: false })
-      Object.assign(control, { backendName: "vt100", ...overrides })
-      expect(JSON.stringify(definition.lib!(control))).not.toContain(REASON)
-    }
-  },
-)
+// can decide the write. Missing controls and other subjects stay on their prior path.
+test.each(
+  ["extensions.osc52-clipboard", "extensions.osc52-write"].flatMap((id) =>
+    ["vt100", "vt220"].map((backendName) => [backendName, id] as const),
+  ),
+)("%s %s OSC52 rejection needs its own report and the existing handled control", (backendName, id) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)!
+  const source = reportingSource({ records: [recordsOsc("2"), recordsOsc("52")], titleApplies: false })
+  Object.assign(source, { backendName })
+  expect(definition.lib!(source).observation?.outcome).toBe("unsupported")
+  for (const overrides of [
+    { backendName: "vterm" },
+    { getUnhandledSequences: undefined },
+    { getCell: inertLibProbeSource().getCell },
+  ]) {
+    const control = reportingSource({ records: [recordsOsc("2"), recordsOsc("52")], titleApplies: false })
+    Object.assign(control, { backendName, ...overrides })
+    expect(JSON.stringify(definition.lib!(control))).not.toContain(REASON)
+  }
+})
 
 // @failure H-4's numeric rejection reports remain TODO, or a failed handled control invents a negative.
 // @level l2

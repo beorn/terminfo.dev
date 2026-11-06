@@ -397,7 +397,7 @@ control would itself be the target. Indexed colours use the probe's own `38;5;17
 with SGR 0 cleanup; direct RGB and the truecolor extension use `38;2;17;97;201` / `48;2;17;97;201`.
 The engines report each unhandled operand in order; handled operands do not create entries.
 OSC 633 P's number-only rejection also decides Unsupported: its payload was not delivered.
-On VT100.js, the OSC52 clipboard roundtrip and write arms also consult this existing OSC
+On VT100.js and VT220.js, the OSC52 clipboard roundtrip and write arms also consult this existing OSC
 report verdict after an undecided body. An exact own OSC52 write rejection and the
 same-run handled control establish Unsupported; the read arm and other libraries retain
 their existing criteria. A decided clipboard reader always takes precedence.
