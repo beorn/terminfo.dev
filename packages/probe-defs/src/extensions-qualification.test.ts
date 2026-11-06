@@ -1761,7 +1761,7 @@ test("OSC 1 without an icon-label reader keeps the stimulus and title state as P
 })
 
 // The native engines retain legacy encoding for unhandled 1015/1016. Shared encoder bytes cannot grade either
-// feature, so the cell is PROBE TODO with the observed report for every identity (#32246); it never reads Unsupported.
+// feature. Without an engine DECRQM control the cell stays PROBE TODO for every identity (#32246).
 test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings stay PROBE TODO for every identity", (engine) => {
   for (const id of ["input.pixel-mouse", "input.urxvt-mouse"]) {
     const definition = inputProbes.find((entry) => entry.id === id)!
@@ -1779,6 +1779,7 @@ test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings stay PROBE TOD
           if (text.includes("?1000h")) tracking = true
         },
         getMode: () => tracking,
+        feedCapture: () => "",
         encodeMouse: () => (tracking ? new TextEncoder().encode("\x1b[M %#") : null),
       } as unknown as LibProbeSource
       const result = definition.lib!(ctx)
@@ -1788,6 +1789,11 @@ test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings stay PROBE TOD
       expect(result.criterionBranch, id).toBeUndefined()
       expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
       expect(tracking, id).toBe(false)
+      if (engine === "alacritty" && id === "input.pixel-mouse") {
+        expect(feeds.at(-1), id).toBe("\x1b[?1006;1016l")
+        expect(JSON.parse(result.response!), id).toMatchObject({ controlReset: "", controlSet: "", targetAfter: "" })
+        continue
+      }
       expect(feeds.at(-1), id).toBe("\x1b[?9;1000;1002;1003;1005;1006;1015;1016l")
       expect(JSON.parse(result.response!), id).toMatchObject({
         report: "\x1b[M %#",

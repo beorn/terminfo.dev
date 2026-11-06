@@ -6441,13 +6441,13 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
           id === "extensions.osc9-progress"
             ? typeof source.getProgress === "function"
             : id === "extensions.osc777-notify"
-            ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
-            : id.startsWith("extensions.osc133") ||
-                id.startsWith("extensions.osc633") ||
-                id === "extensions.osc-633-vscode" ||
-                id === "extensions.semantic-prompts"
-              ? typeof source.getSemanticMarks === "function"
-              : false,
+              ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
+              : id.startsWith("extensions.osc133") ||
+                  id.startsWith("extensions.osc633") ||
+                  id === "extensions.osc-633-vscode" ||
+                  id === "extensions.semantic-prompts"
+                ? typeof source.getSemanticMarks === "function"
+                : false,
         (entry) =>
           `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${definition.id === "editing.decsace" ? "CSI" : "OSC"} has no handler or public rejection report.`,
       )

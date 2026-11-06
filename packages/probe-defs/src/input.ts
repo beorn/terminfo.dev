@@ -848,15 +848,30 @@ function mouseEncodingLib(
       const observed = { controlReset, controlSet, unknown, targetBefore, targetAfter }
       const ps = (mode: number, reply: string) => decrpmPs(decrpmReplyPattern(mode).exec(reply)?.[1])
       if (
-        ps(1006, controlReset) !== 2 || ps(1006, controlSet) !== 1 ||
-        ps(9999, unknown) !== 0 || ps(1016, targetBefore) !== 0 || ps(1016, targetAfter) !== 0
-      ) return notTestedResult(NO_SAME_PATH_CONTROL, observed)
-      const note = "DECRQM 1016 stays unrecognized after set; the same reader moves mode 1006 from reset to set and reports unknown 9999 as unrecognized"
+        ps(1006, controlReset) !== 2 ||
+        ps(1006, controlSet) !== 1 ||
+        ps(9999, unknown) !== 0 ||
+        ps(1016, targetBefore) !== 0 ||
+        ps(1016, targetAfter) !== 0
+      ) {
+        return notTestedResult(NO_SAME_PATH_CONTROL, observed)
+      }
+      const note =
+        "DECRQM 1016 stays unrecognized after set; the same reader moves mode 1006 from reset to set and reports unknown 9999 as unrecognized"
       const response = JSON.stringify(observed)
       return {
-        pass: false, response, note,
+        pass: false,
+        response,
+        note,
         observation: { outcome: "unsupported", assertionType: "query_reply", note },
-        assertions: [{ assertionType: "query_reply", kind: "negative", expected: "pixel-coordinate mode 1016 recognized after set", observed: response }],
+        assertions: [
+          {
+            assertionType: "query_reply",
+            kind: "negative",
+            expected: "pixel-coordinate mode 1016 recognized after set",
+            observed: response,
+          },
+        ],
       }
     } finally {
       ctx.feed("\x1b[?1006;1016l")
