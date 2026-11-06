@@ -213,12 +213,14 @@ export function hasAuditedOscInterfaceAbsence(
       ctx.backendName === "vterm" &&
       identity?.kind === "js" &&
       identity.runtimeFormat === "js" &&
-      identity.engineVersion === "0.13.1" &&
       identity.integrity.kind === "source" &&
       identity.integrity.cleanTree &&
       identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
-      (identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007" ||
-        identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537")
+      ((identity.engineVersion === "0.13.1" &&
+        (identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007" ||
+          identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537")) ||
+        (identity.engineVersion === "0.13.2" &&
+          identity.integrity.treeOid === "8eae12c15ce34e7e3b6c86a005990f1bb0f53af5"))
     )
   }
   if (identity?.kind === "native") {
@@ -255,7 +257,9 @@ export function hasAuditedOscInterfaceAbsence(
     (identity.engineVersion === "0.13.0" &&
       (tree === "2a2536134a2a45982cfd27f892fe71e5078a8730" || tree === "96b1a890bf64164af924b48e7d84d3d5f6e91617")) ||
     (identity.engineVersion === "0.13.1" &&
-      (tree === "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" || tree === "5162719d063ab59d2905d588df3e127d38b110d1"))
+      (tree === "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" || tree === "5162719d063ab59d2905d588df3e127d38b110d1")) ||
+    (identity.engineVersion === "0.13.2" &&
+      (tree === "ce4a64f5517083815ce02892d3f6458ef1128906" || tree === "232e7bd71913340475d283b313f67a4e624057be"))
   )
 }
 
@@ -813,8 +817,8 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
               if (hasAuditedOscInterfaceAbsence(ctx, "vterm-d2") && sentinelAnswer(raw) !== null) {
                 const note =
                   id === "extensions.osc1337-cellsize"
-                    ? "vterm.js 0.13.1 has no cell pixel-size metrics and replied 0;0 while DA1 answered in the same run"
-                    : "vterm.js 0.13.1 has no font cell metrics and replied 0;0;0 (0;0) while DA1 answered in the same run"
+                    ? "vterm.js has no cell pixel-size metrics and replied 0;0 while DA1 answered in the same run"
+                    : "vterm.js has no font cell metrics and replied 0;0;0 (0;0) while DA1 answered in the same run"
                 return {
                   pass: false,
                   response: raw,
@@ -6967,23 +6971,23 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 
 const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "modes.decsscls":
-    "vterm.js 0.13.1 exposes Screen, Snapshot and TerminalModes, but no public DECSSCLS scroll-speed state, getter or unhandled-sequence report",
+    "vterm.js exposes Screen, Snapshot and TerminalModes, but no public DECSSCLS scroll-speed state, getter or unhandled-sequence report",
   "extensions.osc9-progress":
-    "vterm.js 0.13.1 exposes getNotifications() and tapParser(), but no public OSC 9;4 progress state, getter or unhandled-sequence report",
+    "vterm.js exposes getNotifications() and tapParser(), but no public OSC 9;4 progress state, getter or unhandled-sequence report",
   "extensions.osc22-pointer":
-    "vterm.js 0.13.1 exposes pointerFgColor and pointerBgColor on Snapshot, but no public OSC 22 pointer-shape state, query reply or unhandled-sequence report",
+    "vterm.js exposes pointerFgColor and pointerBgColor on Snapshot, but no public OSC 22 pointer-shape state, query reply or unhandled-sequence report",
   "extensions.osc133-d":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc633-d":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc633-e":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;E command-line or nonce state; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;E command-line or nonce state; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.semantic-prompts":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc-633-vscode":
-    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+    "vterm.js exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
   "input.kitty-click-events":
-    "vterm.js 0.13.1 drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
+    "vterm.js drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
 }
 
 // CTO 8be19f1f: five libraries expose no public image path, so their Kitty display and transmit
@@ -7006,16 +7010,16 @@ const XTERM_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 
 const VT100_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.kitty-graphics.display":
-    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+    "vt100.js exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.transmit":
-    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+    "vt100.js exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
 }
 
 const VT220_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.kitty-graphics.display":
-    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+    "vt220.js exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.transmit":
-    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+    "vt220.js exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
 }
 
 const GHOSTTY_WEB_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -7334,9 +7338,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         const result = lib(ctx)
         if (reportsDecidedOutcome(result)) return result
         if (decsace) {
-          return ctx.runtimeIdentity?.engineVersion === "0.13.1"
+          return ctx.runtimeIdentity?.engineVersion === "0.13.1" || ctx.runtimeIdentity?.engineVersion === "0.13.2"
             ? declaredUntestableResult(
-                `${ctx.backendName} 0.13.1 exposes no DECSACE extent state or effect reader through its public Screen API.`,
+                `${ctx.backendName} exposes no DECSACE extent state or effect reader through its public Screen API.`,
                 { backend: ctx.backendName, engineVersion: ctx.runtimeIdentity.engineVersion },
               )
             : result

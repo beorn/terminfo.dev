@@ -1436,7 +1436,7 @@ export function sgrProbe(
             if (
               (id === "sgr.underline.curly" || id === "sgr.underline.dotted" || id === "sgr.underline.dashed") &&
               (ctx.backendName === "vt100" || ctx.backendName === "vt220") &&
-              ctx.runtimeIdentity?.engineVersion === "0.13.1" &&
+              (ctx.runtimeIdentity?.engineVersion === "0.13.1" || ctx.runtimeIdentity?.engineVersion === "0.13.2") &&
               cell.underline === false &&
               styleControl.char === "D" &&
               styleControl.underline === false
@@ -1445,7 +1445,7 @@ export function sgrProbe(
                 false,
                 `${id}: the colon form left X plain with a qualified single underline control`,
                 styleState,
-                `${ctx.backendName} 0.13.1: ordinary SGR 4 sets the public underline flag; this colon form leaves it off and the cell has no style field`,
+                `${ctx.backendName}: ordinary SGR 4 sets the public underline flag; this colon form leaves it off and the cell has no style field`,
               )
             }
             return notTestedResult(

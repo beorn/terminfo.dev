@@ -498,10 +498,11 @@ test.each(
   }
   const result = definition.lib!(source())
   expect(result.observation?.outcome).toBe("unsupported")
+  expect(definition.lib!(source(backend, "0.13.2")).observation?.outcome).toBe("unsupported")
   expect(JSON.stringify(result)).toContain(
-    `${backend} 0.13.1: ordinary SGR 4 sets the public underline flag; this colon form leaves it off and the cell has no style field`,
+    `${backend}: ordinary SGR 4 sets the public underline flag; this colon form leaves it off and the cell has no style field`,
   )
-  for (const changed of [source(backend, "0.13.2"), source("another-backend")]) {
+  for (const changed of [source(backend, "0.13.3"), source("another-backend")]) {
     expect(definition.lib!(changed).observation?.outcome).not.toBe("unsupported")
   }
   // A normalized single target, failed single control, or missing D marker proves no negative.

@@ -182,8 +182,8 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
           if (hasAuditedOscInterfaceAbsence(ctx, "vterm-d2") && sentinelAnswer(raw) !== null) {
             const note =
               spec.id === "device.xtwinops-14"
-                ? "vterm.js 0.13.1 has no window pixel-size input and replied 4;0;0 while DA1 answered in the same run"
-                : "vterm.js 0.13.1 has no cell pixel-size input and replied 6;0;0 while DA1 answered in the same run"
+                ? "vterm.js has no window pixel-size input and replied 4;0;0 while DA1 answered in the same run"
+                : "vterm.js has no cell pixel-size input and replied 6;0;0 while DA1 answered in the same run"
             return {
               pass: false,
               response: raw,

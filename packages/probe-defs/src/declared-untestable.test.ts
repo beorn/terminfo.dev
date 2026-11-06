@@ -1006,9 +1006,11 @@ describe("audited OSC interface absence", () => {
     ["vt220", vtIdentity("vt220", "dee664e0e0554a5465a0c78cf760f437a360b0f2", "0.12.0")],
     ["vt100", vt100IgnoredReport],
     ["vt220", vt220IgnoredReport],
-    // DEC1 re-audit at the final 0.13.1 package trees: reports add no CWD or notification interface.
+    // DEC1 re-audit at the final 0.13.1 and 0.13.2 package trees: reports add no CWD or notification interface.
     ["vt100", vtIdentity("vt100", "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d", "0.13.1")],
     ["vt220", vtIdentity("vt220", "5162719d063ab59d2905d588df3e127d38b110d1", "0.13.1")],
+    ["vt100", vtIdentity("vt100", "ce4a64f5517083815ce02892d3f6458ef1128906", "0.13.2")],
+    ["vt220", vtIdentity("vt220", "232e7bd71913340475d283b313f67a4e624057be", "0.13.2")],
   ] as const
   const readerSubjects = [["vt100", vt100], ...current] as const
   const alacritty = {
@@ -1114,7 +1116,7 @@ describe("audited OSC interface absence", () => {
           getTitle: () => "",
           runtimeIdentity: vtIdentity("vt100", "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d", "0.13.1"),
         },
-        /vt100\.js 0\.13\.1.*strict DEC VT100/i,
+        /vt100\.js exposes.*strict DEC VT100/i,
       ],
       [
         "vt220",
@@ -1124,7 +1126,7 @@ describe("audited OSC interface absence", () => {
           getTitle: () => "",
           runtimeIdentity: vtIdentity("vt220", "5162719d063ab59d2905d588df3e127d38b110d1", "0.13.1"),
         },
-        /vt220\.js 0\.13\.1.*sixel\/Kitty graphics deliberately absent/i,
+        /vt220\.js exposes.*sixel\/Kitty graphics deliberately absent/i,
       ],
       [
         "xterm",
@@ -1637,12 +1639,14 @@ describe("audited OSC interface absence", () => {
 // The existing mode tests lack the two DEC0.13.1 declaration boundaries.
 test.each([
   ["vt100", "0.13.1", true],
+  ["vt100", "0.13.2", true],
   ["vt100", "0.13.0", false],
-  ["vt100", "0.13.2", false],
+  ["vt100", "0.13.3", false],
   ["vt100", undefined, false],
   ["vt220", "0.13.1", true],
+  ["vt220", "0.13.2", true],
   ["vt220", "0.13.0", false],
-  ["vt220", "0.13.2", false],
+  ["vt220", "0.13.3", false],
   ["libvterm", "0.13.1", false],
 ] as const)("DEC declarations are exact %s/%s", (backendName, engineVersion, declared) => {
   for (const id of ["modes.decsscls", "editing.decsace"]) {
@@ -1667,7 +1671,7 @@ test.each([
     )
     if (declared && id === "modes.decsscls") {
       expect(result.tests?.[0]?.reason).toBe(
-        `${backendName === "vt100" ? "VT100.js" : "VT220.js"} 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
+        `${backendName === "vt100" ? "VT100.js" : "VT220.js"} exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
       )
     }
   }
