@@ -21,13 +21,19 @@ import { recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
 const CLIPBOARD_HANDOFF_REASON =
   "Untestable (passed to the app): the library sent no reply and handed this read to the app through its clipboard callback, seen in this run."
 
-function clipboardHandoffSource(options: { readonly selectorAfter: string | undefined; readonly replies?: boolean }) {
+function clipboardHandoffSource(options: {
+  readonly selection: "absent-to-c" | "absent-to-p" | "always-c" | "never-set"
+  readonly replies?: boolean
+}) {
+  let selector: string | undefined = options.selection === "always-c" ? "c" : undefined
   let asked = 0
   const source = {
     feed: () => undefined,
     feedCapture: () => "",
     queryWithSentinelOutcome: () => {
       asked += 1
+      if (options.selection === "absent-to-c") selector = "c"
+      if (options.selection === "absent-to-p") selector = "p"
       return options.replies
         ? {
             match: ["\x1b]52;c;dGVybWxlYXNz"],
@@ -44,10 +50,7 @@ function clipboardHandoffSource(options: { readonly selectorAfter: string | unde
             sentinel: { atMs: 3, graceMs: 250 },
           }
     },
-    getClipboardState: () => ({
-      writes: [],
-      ...(options.selectorAfter === undefined ? {} : { pasteSelector: options.selectorAfter }),
-    }),
+    getClipboardState: () => ({ writes: [], ...(selector === undefined ? {} : { pasteSelector: selector }) }),
   } as unknown as LibProbeSource
   return { source, asked: () => asked }
 }
@@ -56,17 +59,17 @@ test.each(["extensions.osc52-read", "extensions.osc52-clipboard"])(
   "%s reads passed to the app when the engine's own paste selector goes absent -> c",
   (id) => {
     const callback = ALL_PROBES.find((item) => item.id === id)!.lib!
-    const handoff = clipboardHandoffSource({ selectorAfter: "c" })
+    const handoff = clipboardHandoffSource({ selection: "absent-to-c" })
     const result = callback(handoff.source)
     expect(handoff.asked()).toBeGreaterThan(0)
     expect(result.tests?.[0]).toMatchObject({ status: "untestable", reason: CLIPBOARD_HANDOFF_REASON })
     // Only the absent -> c movement witnesses the handoff: already set, never set, another selector and
     // an engine that answers all keep the existing verdict.
     for (const control of [
-      clipboardHandoffSource({ selectorAfter: "c" }).source,
-      clipboardHandoffSource({ selectorAfter: undefined }).source,
-      clipboardHandoffSource({ selectorAfter: "p" }).source,
-      clipboardHandoffSource({ selectorAfter: "c", replies: true }).source,
+      clipboardHandoffSource({ selection: "always-c" }).source,
+      clipboardHandoffSource({ selection: "never-set" }).source,
+      clipboardHandoffSource({ selection: "absent-to-p" }).source,
+      clipboardHandoffSource({ selection: "absent-to-c", replies: true }).source,
     ]) {
       expect(callback(control).tests?.[0]?.status, id).not.toBe("untestable")
     }
