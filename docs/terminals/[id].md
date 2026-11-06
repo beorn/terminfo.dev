@@ -15,6 +15,7 @@ const p = params.value
 const categories = p.categories ? JSON.parse(p.categories) : []
 const defaultRun = data.selectedByBackend[p.backendId]?.selected
 const recordedRuns = JSON.parse(p.otherRuns || '[]')
+const workingHistory = JSON.parse(p.workingHistory || '[]')
 // Empty selection explicitly means composed context; run hashes select original documents only.
 const runSha = ref('')
 const selectedRun = computed(() => runSha.value ? recordedRuns.find(run => run.sha256 === runSha.value) : defaultRun)
@@ -234,6 +235,8 @@ const breadcrumbParent = (() => {
 </p>
 
 </div>
+
+<RunHistory v-if="workingHistory.length" :history="workingHistory" />
 
 <style>
 .backend-page {

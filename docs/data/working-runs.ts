@@ -20,7 +20,7 @@
  * - "Differs from reviewed" needs the same suite AND the same engine version and a different status.
  */
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
-import { dirname, join, resolve, sep } from "node:path"
+import { basename, dirname, join, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
 import {
   PROBE_STATUSES,
@@ -51,6 +51,8 @@ export interface WorkingRunSelection {
 
 export interface LoadedWorkingRun extends WorkingRunSelection {
   runs: LoadedRun[]
+  /** Existing hourly summary receipt, consumed only by private history presentation. */
+  changeRecord?: unknown
   /** Retained view shape; a complete collection must contain every requested engine. */
   unmeasured: Array<{ engine: string; status: string; reason: string }>
   /**
@@ -263,7 +265,7 @@ export function loadWorkingRun(
     }
     runs.push(run)
   }
-  return { ...selection, runs, unmeasured: [] }
+  return { ...selection, runs, unmeasured: [], ...(Object.hasOwn(summary, "moved") && { changeRecord: summary.moved }) }
 }
 
 /** The runs directory the site build reads, or undefined when the variable is unset or blank. */
@@ -396,6 +398,12 @@ export interface WorkingContext {
   cells: WorkingCell[]
   counts: TerminalStatusRollup["counts"]
   positions: TerminalStatusRollup["positions"]
+  /** Original receipts and recorded change captions, populated only in private history views. */
+  sha256?: string
+  identity?: LoadedRun["identity"]
+  changeBaseline?: string
+  changeQualification?: string
+  changes?: Record<string, string>
 }
 
 export interface WorkingView {
@@ -525,10 +533,78 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
   const selections = [...completeRunSelections(dir, newest.id)].reverse()
   const { projection } = loadCurrentResults(contentDir)
   const reviewed = compatibilitySubjects(projection, contentDir)
+  const earlier = new Map<string, WorkingView>()
+  const runtimeReceipts = new Map<string, Map<string, string | undefined>>()
   // Keep the small page views across loaders, not every historical capture's full evidence payload.
   const views = selections.map((selection): WorkingView => {
     try {
-      return composeWorkingView(projection, reviewed, loadedSiteWorkingRun(selection, selection.id === newest.id))
+      const loaded = loadedSiteWorkingRun(selection, selection.id === newest.id)
+      const view = composeWorkingView(projection, reviewed, loaded)
+      const fingerprints = new Map<string, string | undefined>()
+      for (const context of view.contexts) {
+        const original = loaded.runs.find((run) => run.subject.id === context.engine)
+        context.sha256 = original?.sha256
+        context.identity = original?.identity
+        fingerprints.set(context.contextKey, JSON.stringify(original?.runtimeIdentity))
+        const receipt = loaded.changeRecord
+        if (!record(receipt) || typeof receipt.since !== "string" || !Array.isArray(receipt.moves)) {
+          context.changeQualification = "No usable comparison receipt was recorded for this collection."
+          continue
+        }
+        const baseline = basename(receipt.since)
+        context.changeBaseline = baseline
+        const prior = earlier.get(baseline)?.contexts.find((candidate) => candidate.contextKey === context.contextKey)
+        const priorRuntime = runtimeReceipts.get(baseline)?.get(context.contextKey)
+        if (!prior) {
+          context.changeQualification = "The recorded baseline context is unavailable in this history reading."
+          continue
+        }
+        if (prior.suiteId !== context.suiteId || prior.version !== context.version) {
+          context.changeQualification = "Different suite or engine version; recorded moves are not comparable."
+          continue
+        }
+        if (priorRuntime === undefined || priorRuntime !== fingerprints.get(context.contextKey)) {
+          context.changeQualification = "Recorded runtime identity differs or is missing; moves are not comparable."
+          continue
+        }
+        const moves = receipt.moves
+        if (
+          !moves.every(
+            (move) =>
+              record(move) &&
+              ["engine", "feature", "from", "to", "comparison"].every((key) => typeof move[key] === "string"),
+          )
+        ) {
+          context.changeQualification = "The retained change receipt is malformed; comparison is unavailable."
+          continue
+        }
+        const ownMoves = moves.filter((move) => move.engine === context.engine)
+        if (
+          ownMoves.some(
+            (move) =>
+              prior.cells.find((cell) => cell.featureId === move.feature)?.raw.status !==
+                storedProbeStatus(move.from) ||
+              context.cells.find((cell) => cell.featureId === move.feature)?.raw.status !== storedProbeStatus(move.to),
+          )
+        ) {
+          context.changeQualification =
+            "The recorded change does not match the decoded captures; comparison is unavailable."
+          continue
+        }
+        context.changeQualification = `Same recorded context, suite, engine version and runtime identity; baseline capture ${prior.runId}, source ${prior.sourceRevision}. A recorded identity match is not runtime verification.`
+        context.changes = Object.fromEntries(
+          ownMoves.map((move) => [move.feature, `${move.from} → ${move.to} (${move.comparison})`]),
+        )
+      }
+      earlier.set(selection.id, view)
+      runtimeReceipts.set(selection.id, fingerprints)
+      if (view.unreadable) {
+        view.unreadable = {
+          ...view.unreadable,
+          reason: view.unreadable.reason.replaceAll(dir, "retained runs").replaceAll(REPO_ROOT, "source tree"),
+        }
+      }
+      return view
     } catch (error) {
       // A reader diagnostic naming this older collection is an input gap, not zero results.
       // Newest-run failures and errors outside that input still propagate unchanged.
@@ -557,4 +633,30 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
   })
   cache.set(newest.dir, views)
   return views
+}
+
+/** Existing page shapes, scoped before serialization; no page carries unrelated probe histories. */
+export function workingHistoryFor(
+  history: readonly WorkingView[],
+  scope: { engine?: string; kind?: string; featureId?: string; summaries?: boolean },
+): WorkingView[] {
+  return history.map((view) => ({
+    ...view,
+    contexts: view.contexts
+      .filter(
+        (context) =>
+          (scope.engine === undefined || context.engine === scope.engine) &&
+          (scope.kind === undefined || context.kind === scope.kind),
+      )
+      .map((context) => ({
+        ...context,
+        cells: scope.summaries
+          ? []
+          : context.cells.filter((cell) => scope.featureId === undefined || cell.featureId === scope.featureId),
+        ...(context.changes &&
+          scope.featureId !== undefined && {
+            changes: Object.fromEntries(Object.entries(context.changes).filter(([id]) => id === scope.featureId)),
+          }),
+      })),
+  }))
 }

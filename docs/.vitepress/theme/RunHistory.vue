@@ -1,0 +1,71 @@
+<script setup lang="ts">
+import { computed, ref } from "vue"
+import type { WorkingView } from "../../data/working-runs"
+import { evidenceStatus } from "./evidence-status"
+
+const props = defineProps<{ history: WorkingView[]; featureId?: string; summaryOnly?: boolean }>()
+const collectionId = ref(props.history.at(-1)?.run.id ?? "")
+const selected = computed(() => props.history.find((view) => view.run.id === collectionId.value))
+const contextKey = ref(props.history.at(-1)?.contexts[0]?.contextKey ?? "")
+const context = computed(() => selected.value?.contexts.find((row) => row.contextKey === contextKey.value) ?? selected.value?.contexts[0])
+const cells = computed(() => context.value?.cells.filter((cell) => !props.featureId || cell.featureId === props.featureId) ?? [])
+</script>
+
+<section id="run-history" class="run-history">
+  <h2>Retained run history — raw, unreviewed</h2>
+  <p>Each collection keeps its original probe statuses and receipts. These results do not change accepted answers, scores or completion. Missing or untrusted inputs remain visible.</p>
+  <label>Collection
+    <select v-model="collectionId">
+      <option v-for="view in history" :key="view.run.id" :value="view.run.id">{{ view.run.startedAt }} · {{ view.run.id }}{{ view.unreadable ? ' · unreadable' : '' }}</option>
+    </select>
+  </label>
+  <p>{{ history.length }} retained complete collections, oldest {{ history[0]?.run.startedAt }}, newest {{ history.at(-1)?.run.startedAt }}. Times are UTC.</p>
+  <template v-if="selected">
+    <p>Collection <code>{{ selected.run.id }}</code>; started {{ selected.run.startedAt }}; newest capture {{ selected.run.newestCaptureAt }}.</p>
+    <div v-if="selected.unreadable" class="danger custom-block">
+      <p><strong>{{ selected.unreadable.banner }}</strong></p>
+      <p>{{ selected.unreadable.reason }}</p>
+    </div>
+    <template v-else-if="summaryOnly">
+      <p>Choose a <a href="/terminals">terminal</a> or feature page for its retained per-probe history. Counts below use the shared graded-feature rollup; environment groups are excluded.</p>
+      <table>
+        <thead><tr><th>Context</th><th>Supported / graded features</th><th>Original capture</th></tr></thead>
+        <tbody><tr v-for="row in selected.contexts" :key="row.contextKey">
+          <td>{{ row.engine }} {{ row.version }}<br><code>{{ row.contextKey }}</code></td>
+          <td>{{ row.counts.supported }} / {{ row.positions }}</td>
+          <td><code>{{ row.runId }}</code><br>{{ row.measuredAt }}<br>suite <code>{{ row.suiteId }}</code><br>source <code>{{ row.sourceRevision }}</code></td>
+        </tr></tbody>
+      </table>
+    </template>
+    <template v-else-if="selected.contexts.length">
+      <label>Recorded context
+        <select v-model="contextKey">
+          <option v-for="row in selected.contexts" :key="row.contextKey" :value="row.contextKey">{{ row.engine }} {{ row.version }} · {{ row.contextKey }}</option>
+        </select>
+      </label>
+      <template v-if="context">
+        <p><strong>{{ context.engine }} {{ context.version }}</strong>; original capture <code>{{ context.runId }}</code>; measured {{ context.measuredAt }}; suite <code>{{ context.suiteId }}</code>; source <code>{{ context.sourceRevision }}</code>; capture SHA-256 <code>{{ context.sha256 }}</code>; identity {{ context.identity }}.</p>
+        <p>Raw Supported / graded features: {{ context.counts.supported }} / {{ context.positions }}. Environment groups are ungraded; shown-but-not-counted and reference results retain the existing rollup treatment.</p>
+        <p v-if="context.changeBaseline">Recorded comparison baseline: <code>{{ context.changeBaseline }}</code>.</p>
+        <p>{{ context.changeQualification }}</p>
+        <table v-if="cells.length">
+          <thead><tr><th>Probe</th><th>Recorded status</th><th>Recorded change from baseline</th></tr></thead>
+          <tbody><tr v-for="cell in cells" :key="cell.featureId">
+            <td><code>{{ cell.featureId }}</code></td>
+            <td>{{ evidenceStatus(cell.featureId, cell.raw.status).text }}</td>
+            <td>{{ context.changes === undefined ? 'Comparison unavailable' : context.changes[cell.featureId] ?? 'No recorded status change' }}</td>
+          </tr></tbody>
+        </table>
+        <p v-else>No probe result is recorded for this feature in this context.</p>
+      </template>
+    </template>
+    <p v-else>No matching context was recorded in this collection.</p>
+  </template>
+</section>
+
+<style scoped>
+.run-history { margin: 2rem 0; padding-top: 1rem; border-top: 1px solid var(--vp-c-divider); }
+label { display: block; margin: 1rem 0; }
+select { display: block; max-width: 100%; padding: .35rem; border: 1px solid var(--vp-c-divider); border-radius: 4px; background: var(--vp-c-bg); }
+code { overflow-wrap: anywhere; }
+</style>

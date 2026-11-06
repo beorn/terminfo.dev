@@ -24,6 +24,7 @@ import {
   selectedSiteWorkingRun,
   workingCell,
   workingRunStamp,
+  siteWorkingHistory,
   type LoadedWorkingRun,
 } from "../docs/data/working-runs.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
@@ -163,13 +164,50 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     const page = loadFullProjectData()
     expect(page.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
     expect(page.working?.run.id).toBe(PARTIAL)
-    expect(page.workingHistory?.every((entry) => entry.contexts[0]?.cells.length === 273)).toBe(true)
+    // Full preview carries receipts/counts; detail pages receive their own probe rows.
+    // Serializing every terminal/probe history into the preview was 83 MB on the real retained population.
+    expect(page.workingHistory?.every((entry) => entry.contexts[0]?.cells.length === 0)).toBe(true)
+    expect(siteWorkingHistory(join(root, "content"))?.every((entry) => entry.contexts[0]?.cells.length === 273)).toBe(
+      true,
+    )
     expect(acceptedCounts()).toBe(accepted)
 
     // A new collection completing mid-build belongs to the next build, not only some pages.
     collection(older.parent, WRITING)
     const sameBuild = loadFullProjectData()
     expect(sameBuild.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+  })
+
+  it("keeps the recorded comparison baseline separate from missing comparison evidence", () => {
+    const older = collection()
+    const newer = collection(older.parent, PARTIAL)
+    Object.assign(newer.summary, { moved: { since: older.dir, range: "recorded source range", moves: [] } })
+    newer.save()
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
+    const history = siteWorkingHistory(join(root, "content"))
+    const first = history?.[0]?.contexts[0] as { changeBaseline?: string; changes?: Record<string, string> } | undefined
+    const next = history?.[1]?.contexts[0] as typeof first
+    expect(first?.changes).toBeUndefined()
+    expect(next?.changeBaseline).toBe(OLD)
+    expect(next?.changes).toEqual({})
+  })
+
+  it("qualifies a recorded move that no longer matches the decoded captures", () => {
+    const older = collection()
+    const newer = collection(older.parent, PARTIAL)
+    Object.assign(newer.summary, {
+      moved: {
+        since: older.dir,
+        moves: [
+          { engine: "vterm", feature: "sgr.bold", from: "unsupported", to: "supported", comparison: "same-suite move" },
+        ],
+      },
+    })
+    newer.save()
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
+    const context = siteWorkingHistory(join(root, "content"))?.[1]?.contexts[0]
+    expect(context?.changes).toBeUndefined()
+    expect(context?.changeQualification).toContain("does not match")
   })
 
   // Actual retained history includes complete envelopes whose collection file is absent.

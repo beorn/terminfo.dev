@@ -10,6 +10,7 @@ import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 const { params } = useData()
 const p = params.value
+const workingHistory = JSON.parse(p.workingHistory || '[]')
 
 const backendResults = JSON.parse(p.backendResults)
 const featureTags = JSON.parse(p.featureTags || '[]')
@@ -166,6 +167,8 @@ function termTooltip(r) {
 </p>
 
 </div>
+
+<RunHistory v-if="workingHistory.length" :history="workingHistory" :feature-id="p.featureId" />
 
 <style>
 .feature-page {

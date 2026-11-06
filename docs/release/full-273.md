@@ -68,6 +68,8 @@ This page reads composed contexts with original stored sources on the required s
   </div>
 </div>
 
+<RunHistory v-if="data.workingHistory" :history="data.workingHistory" summary-only />
+
 ## Scope
 
 - **{{ data.catalogRows }} catalogue positions** across {{ data.contexts.length }} required contexts: **{{ data.gradedRows }} term features** plus **{{ data.environmentGroups }} environment groups** (manual by design).
