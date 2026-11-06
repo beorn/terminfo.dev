@@ -35,17 +35,24 @@ function reportingSource(spec: {
   records?: readonly { readonly match: RegExp; readonly code: UnhandledSequence }[]
   titleApplies?: boolean
   boldApplies?: boolean
+  modeApplies?: boolean
 }): LibProbeSource {
   const report: UnhandledSequence[] = []
   let title = ""
   let bold = false
+  let autoWrap = true
   const base = inertLibProbeSource()
   return {
     ...base,
     getUnhandledSequences: () => report.slice(),
     getTitle: () => title,
+    getMode: (name) => (name === "autoWrap" ? autoWrap : base.getMode(name)),
     getCell: () => ({ ...base.getCell(0, 0), bold }),
     feed: (text) => {
+      if (spec.modeApplies !== false) {
+        if (text === "\x1b[?7l") autoWrap = false
+        if (text === "\x1b[?7h") autoWrap = true
+      }
       const titleSet = /\x1b\]2;([^\x07]*)\x07/.exec(text)
       if (titleSet) {
         if (spec.titleApplies !== false) title = titleSet[1] ?? ""
@@ -119,6 +126,41 @@ describe("Ghostty's two palette-stack report consumers", () => {
       expect(JSON.stringify(result)).not.toContain(REASON)
     }
   })
+})
+
+// DEC1: registered callbacks must feed one own command after the prior arm; a mouse pair
+// or an ignored control cannot turn an otherwise undecided feature into a negative.
+test.each([
+  ["input.button-event-mouse", "?1002h"],
+  ["input.pixel-mouse", "?1016h"],
+  ["input.urxvt-mouse", "?1015h"],
+  ["input.x10-mouse", "?9h"],
+  ["input.xtest-click", "?1000h"],
+  ["input.xtest-wheel", "?1000h"],
+  ["modes.alt-scroll-1007", "?1007h"],
+  ["modes.bracketed-paste", "?2004h"],
+  ["modes.color-scheme-reporting", "?2031h"],
+  ["modes.focus-tracking", "?1004h"],
+  ["modes.mouse-all", "?1003h"],
+  ["modes.mouse-sgr", "?1006h"],
+  ["modes.mouse-tracking", "?1000h"],
+  ["modes.synchronized-output", "?2026h"],
+  ["modes.utf8-mouse-1005", "?1005h"],
+  ["modes.xtpopcolors", "#Q"],
+  ["modes.xtpushcolors", "#P"],
+])("%s requires its exact report and a working mode control", (id, code) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)!
+  const result = definition.lib!(reportingSource({ records: [recordsCsi(code)] }))
+  expect(result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+  expect(JSON.parse(result.response!), id).toMatchObject({ unhandled: { target: { kind: "csi", code } } })
+  for (const spec of [
+    { records: [recordsCsi(code)], modeApplies: false },
+    { records: [recordsCsi(code), recordsCsi("?7l")] },
+    { records: [recordsCsi(code), recordsCsi(code)] },
+    { records: [recordsCsi("?9998h")] },
+  ]) {
+    expect(definition.lib!(reportingSource(spec)).observation?.outcome, id).not.toBe("unsupported")
+  }
 })
 
 describe("the unhandled report decides only state cells, and only with both controls", () => {

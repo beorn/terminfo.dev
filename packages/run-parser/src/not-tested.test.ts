@@ -569,11 +569,16 @@ it.each([
   "alacritty-pixel-geometry",
 ])("reads retained native custody in %s", (name) => {
   const { run, read } = nativeCapture(name)
-  expect(read().results?.map((result) => result.status)).toEqual(
+  const retained = read()
+  expect(retained.results?.map((result) => result.status)).toEqual(
     run.results.map((result: { status: string }) =>
       result.status === "test-failure" ? "probe-invalid" : result.status,
     ),
   )
+  const replyPath = JSON.parse(run.rawReplies["collector.replyPath"] as string) as { declaration?: unknown }
+  delete replyPath.declaration
+  run.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
+  expect(read().results).toEqual(retained.results)
 })
 
 it("rejects the retained WezTerm capture whose silent host query has no cause", () => {
@@ -587,6 +592,7 @@ it.each([
   ["foreign-run", /host recipe/i],
   ["undeclared-query", /captured undeclared/],
   ["replied-cause", /invalid harness-unreproduced capture cause/],
+  ["missing-host-recipes", /missing criterion declaration/],
 ] as const)("rejects altered native host custody: %s", (mode, refusal) => {
   const { run, read } = nativeCapture("kitty-osc52-harness")
   const result = run.results[0]
@@ -603,6 +609,17 @@ it.each([
   if (mode === "missing-cause") delete capture.cause
   if (mode === "foreign-run") record.runId = "another-run"
   if (mode === "replied-cause") capture.response = "response"
+  // New collectors omit delivery metadata. One retained recipe declaration must
+  // still require every decision's host-custody declaration; older cases keep it.
+  if (mode === "missing-host-recipes") {
+    const replyPath = JSON.parse(run.rawReplies["collector.replyPath"] as string) as {
+      declaration?: unknown
+      decisions: Record<string, { hostRecipes?: unknown }>
+    }
+    delete replyPath.declaration
+    delete replyPath.decisions[result.featureId]!.hostRecipes
+    run.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
+  }
   if (mode === "undeclared-query") {
     record.captures.push({ query: "\u001b[14t", response: "", error: null })
   }

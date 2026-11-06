@@ -232,17 +232,10 @@ test.each([false, true])("DECSTBM reset reads the active screen with retained hi
   }
 })
 
-// Parser-readback fixtures are deliberately unqualified in both workspace and published installs.
-function createUnqualifiedXtermBackend() {
-  const backend = createXtermBackend()
-  backend.capabilities.extensions.delete("reply-delivery")
-  return backend
-}
-
 async function collectOrigin(origin: probeDefs.ProbeDefinition) {
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   try {
-    const batch = await collectBatch(async () => createUnqualifiedXtermBackend(), "xtermjs", [origin])
+    const batch = await collectBatch(async () => createXtermBackend(), "xtermjs", [origin])
     expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual(["headless xtermjs probe modes.origin\n"])
     return batch
   } finally {
@@ -306,7 +299,7 @@ test("every region-readback kind row records its real xterm.js probe result", as
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   try {
     const batch = await collectBatch(
-      async () => createUnqualifiedXtermBackend(),
+      async () => createXtermBackend(),
       "xtermjs",
       probeDefs.regionReadbackProbes(KIND_ROWS),
     )

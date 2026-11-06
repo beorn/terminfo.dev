@@ -30,6 +30,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -398,8 +399,8 @@ function definitionOf(id: string): ProbeDefinition {
 }
 
 // #32286: generic sentinel tests miss a registered mode callback bypassing the proven reader.
-// DA1 qualifies transport only; without DECRPM the existing mode criterion remains TODO.
-test.each([
+// DA1 qualifies transport only; the independent exact ignored-command report decides DEC1.
+test.runIf(OWNED_LAYOUT).each([
   ["vt100", "\x1b[?1;2c"],
   ["vt220", "\x1b[?62;1;2;6;7;8;9c"],
 ])("%s mode callbacks retain real CSI controls without promoting silent DECRQM", async (name, answer) => {
@@ -441,8 +442,10 @@ test.each([
         id,
       ).toBe(true)
       expect(result.pass, id).toBe(false)
-      expect(result.observation?.outcome, id).not.toBe("unsupported")
-      expect(result.notTested, id).toBeDefined()
+      expect(result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+      expect(JSON.parse(result.response!), id).toMatchObject({
+        unhandled: { target: { kind: "csi", code: `?${number}h` } },
+      })
       expect(result.response, id).toContain(JSON.stringify(answer).slice(1, -1))
     } finally {
       backend.destroy()
@@ -768,7 +771,8 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
 
 // #30576: comparer tests cannot catch a collector that reuses preflight qualification for a
 // different initialized callback instance, or forwards capabilities.version as measured identity.
-// CTO a73afe52: retain shared declaration/identity once and emit each withholding reason once per batch.
+// Retain measured identity once and each instance's control decision; legacy
+// delivery metadata changes do not qualify or withhold the measured path.
 test("qualifies each initialized callback instance and forwards the measured runtime identity", async () => {
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const runtime = fixture.runtime
@@ -815,7 +819,6 @@ test("qualifies each initialized callback instance and forwards the measured run
   expect(identities).toEqual([runtime.identity, runtime.identity, runtime.identity, runtime.identity])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toStrictEqual({
     backend: "xtermjs",
-    declaration: fixture.declaration,
     runtimeIdentity: runtime.identity,
     decisions: {
       declared: { member: true, reason: expect.any(String), runtimeIdentity: runtime.identity },
@@ -871,152 +874,162 @@ test.each(["changed", "unavailable"] as const)(
 
 // Same adapter/version/capabilities without the independent measurement cannot qualify.
 // H1/H2/H4/H6: explicit native-input unit fixture; no actual native engine qualification.
-test.each(["observed", "source-audited", "unimplemented", "missing", "error", "withheld"] as const)(
-  "retains and validates %s host custody before checkpointing the callback",
-  async (mode) => {
-    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
-    if (mode === "withheld") vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
-    const query = "\x1b]10;?\x07",
-      artifact = "a".repeat(64),
-      id = "host.fixture"
-    const runtime: HeadlessProbeRuntime = {
-      ...fixture.runtime,
-      adapterType: "native",
-      identity: {
-        kind: "native",
-        engineVersion: "fixture",
-        adapterVersion: "fixture",
-        termlessRevision: fixture.runtime.identity.termlessRevision,
-        adapterSources: fixture.declaration.adapterSources,
-        loadedBinary: { path: "fixture.node", sha256: artifact },
-        provenance: {
-          sha256: artifact,
-          sourceCommit: "3".repeat(40),
-          buildHash: "b".repeat(64),
-          toolchain: "fixture",
-          lockSha256: "c".repeat(64),
+test.each([
+  ...(["observed", "source-audited", "unimplemented", "missing", "error", "withheld"] as const).map((mode) => ({
+    backendName: "alacritty",
+    mode,
+  })),
+  { backendName: "ghostty-native", mode: "unrecorded" as const },
+  { backendName: "vt100-rust", mode: "unrecorded" as const },
+])("retains existing host custody scope for $backendName / $mode", async ({ backendName, mode }) => {
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+  if (mode === "withheld") vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
+  const query = "\x1b]10;?\x07",
+    artifact = "a".repeat(64),
+    id = "host.fixture"
+  const runtime: HeadlessProbeRuntime = {
+    ...fixture.runtime,
+    adapterType: "native",
+    identity: {
+      kind: "native",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: fixture.runtime.identity.termlessRevision,
+      adapterSources: fixture.declaration.adapterSources,
+      loadedBinary: { path: "fixture.node", sha256: artifact },
+      provenance: {
+        sha256: artifact,
+        sourceCommit: "3".repeat(40),
+        buildHash: "b".repeat(64),
+        toolchain: "fixture",
+        lockSha256: "c".repeat(64),
+      },
+    },
+  }
+  vi.mocked(runtimeIdentityOwner.headlessRuntimeIdentity).mockResolvedValue(runtime.identity)
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "host-run",
+    sourceRevision: "1".repeat(40),
+    intendedSubject: { kind: "lib", id: backendName },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "host-suite",
+      adapterVersion: "4",
+      catalogIds: [id],
+      probes: { term: [], mux: [], lib: [id] },
+    },
+  })
+  draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+    hostInputs: { "foreground-rgb": "not-supplied" },
+  })
+  const checkpoints: string[] = []
+  const batch = await collectBatch(
+    async () => {
+      const backend = fixture.create((text) => {
+        if (mode !== "withheld" || text !== DA1_QUERY) return ""
+        setTimeout(() => backend.onResponse?.(encoder.encode("late-native-reply")), 5)
+        return DA1
+      })
+      return backend
+    },
+    backendName,
+    [
+      {
+        id,
+        term: null,
+        libHostRecipes: [{ recipe: "color-request", query, missing: ["foreground-rgb"] }],
+        lib: (ctx) => {
+          expect(ctx.feedCapture(query)).toBe("")
+          if (mode === "error") throw new Error("original callback error")
+          if (mode === "withheld") {
+            expect(ctx.queryWithSentinelOutcome).toBeUndefined()
+          }
+          const cause: CallbackHostRecipeCause =
+            mode === "observed" || mode === "withheld"
+              ? { recipe: "color-request", cause: { kind: "observed", missing: "foreground-rgb", query } }
+              : {
+                  recipe: "color-request",
+                  cause: {
+                    kind: mode === "unimplemented" ? mode : "source-audited",
+                    missing: "foreground-rgb",
+                    artifactSha256: artifact,
+                    sourceCitation: "fixture native colour request source",
+                  },
+                }
+          return {
+            ...fakeProbeResult(),
+            ...(mode !== "missing" && { hostRecipeCauses: [cause] }),
+          }
         },
       },
-    }
-    vi.mocked(runtimeIdentityOwner.headlessRuntimeIdentity).mockResolvedValue(runtime.identity)
-    const draft = initializeRunDraft({
-      source: { kind: "live" },
-      runId: "host-run",
-      sourceRevision: "1".repeat(40),
-      intendedSubject: { kind: "lib", id: "scripted-native" },
-      manifest: {
-        schemaVersion: 4,
-        probeHash: "host-suite",
-        adapterVersion: "4",
-        catalogIds: [id],
-        probes: { term: [], mux: [], lib: [id] },
-      },
+    ],
+    draft,
+    (batch) => {
+      const record = batch.rawReplies[`collector.hostRecipes.${id}`]
+      if (record !== undefined) checkpoints.push(record)
+    },
+    runtime,
+  )
+  const retained = JSON.parse(batch.rawReplies[`collector.hostRecipes.${id}`] ?? "null")
+  if (mode === "unrecorded") {
+    expect(retained).toBeNull()
+    const replyPath = JSON.parse(batch.rawReplies["collector.replyPath"]!) as { decisions: Record<string, unknown> }
+    const decision = replyPath.decisions[id]
+    expect(decision).toMatchObject({ member: false, runtimeIdentity: { kind: "native" } })
+    expect(decision).not.toHaveProperty("hostRecipes")
+    expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+    return
+  }
+  expect(retained).toMatchObject({
+    runId: draft.runId,
+    captures: [{ query, response: "", error: null }],
+  })
+  expect(checkpoints.at(-1)).toBe(batch.rawReplies[`collector.hostRecipes.${id}`])
+  // Rule A: a native host recipe owns its cause; CPR never grants it a negative-reply member.
+  // Keeping this fixture's DA1-triggered late reply would expose accidental member leakage.
+  if (mode === "withheld") {
+    expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
+      decisions: { [id]: { member: false } },
     })
-    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
-      hostInputs: { "foreground-rgb": "not-supplied" },
+    expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+    expect(batch.rawReplies[`${id}.late`]).toBeUndefined()
+    expect(retained).toMatchObject({
+      causes: [{ cause: { kind: "observed", eventRef: `collector.hostRecipes.${id}` } }],
     })
-    const checkpoints: string[] = []
-    const batch = await collectBatch(
-      async () => {
-        const backend = fixture.create((text) => {
-          if (mode !== "withheld" || text !== DA1_QUERY) return ""
-          setTimeout(() => backend.onResponse?.(encoder.encode("late-native-reply")), 5)
-          return DA1
-        })
-        Object.defineProperty(backend, "replyDelivery", {
-          value: { ...fixture.declaration, engine: { kind: "native", sha256: artifact } },
-        })
-        return backend
-      },
-      "scripted-native",
-      [
+    return
+  }
+  if (mode === "missing" || mode === "error") {
+    expect(batch.results[0]).toMatchObject({ status: "probe-invalid" })
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      message: expect.stringContaining(mode === "error" ? "original callback error" : "missing cause"),
+    })
+  } else {
+    expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+    expect(retained).toMatchObject({
+      causes: [
         {
-          id,
-          term: null,
-          libHostRecipes: [{ recipe: "color-request", query, missing: ["foreground-rgb"] }],
-          lib: (ctx) => {
-            expect(ctx.feedCapture(query)).toBe("")
-            if (mode === "error") throw new Error("original callback error")
-            if (mode === "withheld") {
-              expect(ctx.queryWithSentinelOutcome).toBeUndefined()
-            }
-            const cause: CallbackHostRecipeCause =
-              mode === "observed" || mode === "withheld"
-                ? { recipe: "color-request", cause: { kind: "observed", missing: "foreground-rgb", query } }
-                : {
-                    recipe: "color-request",
-                    cause: {
-                      kind: mode === "unimplemented" ? mode : "source-audited",
-                      missing: "foreground-rgb",
-                      artifactSha256: artifact,
-                      sourceCitation: "fixture native colour request source",
-                    },
-                  }
-            return {
-              ...fakeProbeResult(),
-              ...(mode !== "missing" && { hostRecipeCauses: [cause] }),
-            }
+          recipe: "color-request",
+          cause: {
+            kind: mode,
+            runId: draft.runId,
+            ...(mode === "observed"
+              ? { eventRef: `collector.hostRecipes.${id}` }
+              : mode === "source-audited"
+                ? { citation: { inputRecordRef: "collector.collectionAttempt", input: "foreground-rgb" } }
+                : { artifactSha256: artifact }),
           },
         },
       ],
-      draft,
-      (batch) => {
-        const record = batch.rawReplies[`collector.hostRecipes.${id}`]
-        if (record !== undefined) checkpoints.push(record)
-      },
-      runtime,
-    )
-    const retained = JSON.parse(batch.rawReplies[`collector.hostRecipes.${id}`] ?? "null")
-    expect(retained).toMatchObject({
-      runId: draft.runId,
-      captures: [{ query, response: "", error: null }],
     })
-    expect(checkpoints.at(-1)).toBe(batch.rawReplies[`collector.hostRecipes.${id}`])
-    // Rule A: a native host recipe owns its cause; CPR never grants it a negative-reply member.
-    // Keeping this fixture's DA1-triggered late reply would expose accidental member leakage.
-    if (mode === "withheld") {
-      expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
-        decisions: { [id]: { member: false } },
+    // A no-reply-path cause cites only its source: no declared host input stands behind it.
+    if (mode === "unimplemented") {
+      expect((retained as { causes: [{ cause: { citation: unknown } }] }).causes[0].cause.citation).toEqual({
+        sourceLocation: "fixture native colour request source",
       })
-      expect(batch.ungradedDiagnostics[id]).toBeUndefined()
-      expect(batch.rawReplies[`${id}.late`]).toBeUndefined()
-      expect(retained).toMatchObject({
-        causes: [{ cause: { kind: "observed", eventRef: `collector.hostRecipes.${id}` } }],
-      })
-      return
     }
-    if (mode === "missing" || mode === "error") {
-      expect(batch.results[0]).toMatchObject({ status: "probe-invalid" })
-      expect(batch.ungradedDiagnostics[id]).toMatchObject({
-        message: expect.stringContaining(mode === "error" ? "original callback error" : "missing cause"),
-      })
-    } else {
-      expect(batch.ungradedDiagnostics[id]).toBeUndefined()
-      expect(retained).toMatchObject({
-        causes: [
-          {
-            recipe: "color-request",
-            cause: {
-              kind: mode,
-              runId: draft.runId,
-              ...(mode === "observed"
-                ? { eventRef: `collector.hostRecipes.${id}` }
-                : mode === "source-audited"
-                  ? { citation: { inputRecordRef: "collector.collectionAttempt", input: "foreground-rgb" } }
-                  : { artifactSha256: artifact }),
-            },
-          },
-        ],
-      })
-      // A no-reply-path cause cites only its source: no declared host input stands behind it.
-      if (mode === "unimplemented") {
-        expect((retained as { causes: [{ cause: { citation: unknown } }] }).causes[0].cause.citation).toEqual({
-          sourceLocation: "fixture native colour request source",
-        })
-      }
-    }
-  },
-)
+  }
+})
 
 test("same-run control grants the member without inventing a measured runtime identity", async () => {
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
@@ -1034,7 +1047,6 @@ test("same-run control grants the member without inventing a measured runtime id
   expect(seen).toEqual([expect.any(Function), undefined])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
     backend: "xtermjs",
-    declaration: fixture.declaration,
     decisions: {
       unmeasured: { member: true, reason: "same-run CPR path control answered" },
     },

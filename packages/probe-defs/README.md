@@ -42,6 +42,13 @@ SGR attribute negatives require a rendered target and a same-run bold cell contr
 Headless DEC-mode queries use the existing sentinel reader when the collector has qualified reply delivery.
 Their retained captures include the target query and its separate DA1 control. DA1 responsiveness proves
 transport only: without the criterion's own DECRPM reply, these mode results retain their named PROBE TODO.
+Application-cursor and reverse-video opt into a public-state criterion when DECRPM is absent:
+reset false, set true, reset false, an unknown mode leaves the state unchanged, and the other
+flag stays unchanged throughout. Cursor-key encoding and reverse-video presentation remain unmeasured.
+The seventeen DEC1 mode/mouse definitions also consult the existing unhandled report after an
+undecided prior arm. DECAWM off must read false and add no entry, then one exact own command
+must add exactly one matching entry. Its cleanup reset follows the verdict. No source identity
+selects either criterion.
 
 External release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
@@ -84,6 +91,19 @@ nonnegative decimal fields, retaining the existing optional DEC-private `?`
 reply prefix. XTWINOPS 14 (`CSI 14 t`) reports text-area pixels; the outer-window
 query is `CSI 14;2 t`. These criteria establish query replies, without measuring
 palette push/pop effects or graphics capabilities.
+
+The Kitty library OSC 22 pointer criterion uses its existing `?__current__` reply:
+read the incoming shape, qualify a distinct shape control, set `pointer`, read it
+back, and restore the incoming shape. Missing replies or an unqualified control
+retain PROBE TODO. Other libraries retain their existing path; the app criterion
+still requires pointer appearance outside the cell grid.
+
+Kitty 0.49.2's own parser rejection can decide the scoped OSC 176/440/555/666/710
+cells after their individual payload adds exactly one matching report and a handled
+OSC 2 title control adds none. Delivered OSC 9 remains separate and adds no rejection.
+DECSSCLS uses the reported modifier-plus-final code ` p`, without rebuilding a parameter,
+and a same-run bold control. The existing D2 registry consumer supplies these six routes;
+shell and colour-reset rows reuse their existing report consumer. Silence decides nothing.
 
 The XTWINOPS 22/23 library callbacks run separate pop and push fixtures. The pop
 fixture saves title A, sets B and restores A; the push fixture sets A then B,
@@ -177,7 +197,8 @@ DCS start positions; storage does not establish raster rendering or cell geometr
 The library alternate-scroll, reverse-video, synchronized-output,
 colour-scheme-reporting and DECSCLM cells use the existing DECRPM helper's opt-in
 `requireReadback` criterion. Supported requires Ps1 after set, Ps2 after reset and
-agreeing `getMode` readings. Ps0/2/4 after set is an engine negative. A null or
+agreeing `getMode` readings. Reverse-video additionally admits the no-reply public-state
+criterion above. Ps0/2/4 after set is an engine negative. A null or
 mismatched adapter reading retains a criterion PROBE TODO named
 `adapter binding <backend.name> <mode>`; the name is display-only and never selects
 a status or route. Existing other DECRPM criteria retain their prior readings.
@@ -220,7 +241,7 @@ Raw replies and observed payloads do not embed
 runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
 uses the loaded binary digest, while wrapper repository/tree metadata remains provenance.
 
-Headless collection checks declared-versus-loaded native SHA before probes and collects observed
+Headless collection checks loaded native artifacts against their receipts before probes and collects observed
 buffers and replies. A silence-dependent cell with no same-path control is PROBE TODO with the
 no-control reason and its raw response. Hourly measurement calls the existing `collectHeadlessRuns`
 entry point and reads its `collection.json` through the canonical run parser, without importing review selection.
@@ -616,13 +637,18 @@ grace window. A no-wait assertion states that no grace wait occurred; configured
 Matching replies decide themselves. Missing or wrong controls and late bytes retain named PROBE TODO;
 disagreement between fresh passes is PROBE INVALID, with all raw control, query and repeat evidence retained.
 
-A recipe probe takes the existing native host route, keeps its existing callback surface on an
-undeclared runtime, and takes the control otherwise. A callback-owned TODO keeps its reason and tests
+A recipe probe takes the host route when its measured runtime is native, and takes the control
+otherwise. A callback-owned TODO keeps its reason and tests
 and does not repeat; control findings remain in raw metadata. The existing identity owner still measures
 each initialized callback instance; a changed or unavailable identity prevents its callback.
-Per-feature decisions retain that instance's identity. `collector.replyPath` retains the declaration and
-measured identity as diagnostics; declaration hashes do not authorize a silence-based negative.
-The declaration/comparer and public types remain until their separate removal slices. Live collection keeps DA1.
+Per-feature decisions retain that instance's identity. The existing Alacritty, Kitty and WezTerm cohort
+retains host recipes and query/cause records; a private collector list preserves this validation scope.
+Ghostty Native and vt100-rust keep the native route without these records. The reader requires every
+decision's recipe binding when any is present.
+Historical native declarations still trigger the same strict validation, without rewriting stored runs.
+`collector.replyPath` retains measured identity and decisions; no adapter delivery declaration or comparer
+authorizes a silence-based negative. Adapter source and native artifact receipt checks remain independent.
+Termless public types remain until their separate removal. Live collection keeps DA1.
 
 Source-backed collection requires an owned hh checkout with vendored Termless source. A dist-only
 install without the imported source binding refuses collection loudly; silence stays inconclusive.

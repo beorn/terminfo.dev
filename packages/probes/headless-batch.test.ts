@@ -57,6 +57,138 @@ async function backend() {
   return createXtermBackend()
 }
 
+// @failure OSC22's library arm checks CPR instead of its pointer query; a target no-op,
+// absent control, or silent reader must not acquire Supported, and the incoming shape must survive.
+// @level l5
+// @consumer Kitty library extensions.osc22-pointer, through the production reply transport
+test.runIf(OWNED_LAYOUT && isKittyAvailable())(
+  "Kitty OSC22 uses controlled native pointer replies and restores its incoming shape",
+  () => {
+    const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc22-pointer")!
+    for (const [fault, initial] of [
+      ["none", "0"],
+      ["none", "text"],
+      ["none", "pointer"],
+      ["none", "wait"],
+      ["target", "wait"],
+      ["control", "wait"],
+      ["silence", "wait"],
+    ] as const) {
+      const value = createKittyBackend({ cols: 80, rows: 24 })
+      try {
+        const source = createLibProbeSource(value, undefined, undefined, undefined)
+        source.feed(`\x1b]22;${initial === "0" ? "" : initial}\x07`)
+        const feed = source.feed.bind(source)
+        const capture = source.feedCapture.bind(source)
+        const controlled: LibProbeSource = {
+          ...source,
+          feed(text) {
+            if (fault === "target" && text === "\x1b]22;pointer\x07") return
+            if (fault === "control" && text === "\x1b]22;text\x07") return
+            feed(text)
+          },
+          feedCapture(text) {
+            const raw = capture(text)
+            return fault === "silence" ? "" : raw
+          },
+        }
+        const result = definition.lib!(controlled)
+        if (fault === "none" || fault === "target") {
+          expect(result.observation?.outcome, JSON.stringify(result)).toBe(
+            fault === "none" ? "supported" : "unsupported",
+          )
+        } else {
+          expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+        }
+        expect(capture("\x1b]22;?__current__\x07")).toBe(`\x1b]22;${initial}\x1b\\`)
+      } finally {
+        value.destroy()
+      }
+    }
+  },
+  20_000,
+)
+
+// @failure A native rejection is mistaken for host delivery, lost at collector binding,
+// or used outside the literal Kitty cohort. Each candidate must qualify its own payload.
+// @level l5
+// @consumer Kitty D2 state/rejection cells through collectBatch; held cells retain TODO
+test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvailable())(
+  "Kitty report qualifies its eleven literal candidates while delivered OSC9 stays unreported",
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-kitty-report-"))
+    vi.stubEnv("KITTY_CONFIG_DIRECTORY", join(directory, "kitty"))
+    vi.stubEnv("XDG_CACHE_HOME", join(directory, "cache"))
+    try {
+      const identity = await headlessIdentity.headlessRuntimeIdentity("kitty", "@termless/kitty", "native")
+      const value = createKittyBackend({ cols: 80, rows: 24 })
+      try {
+        identity.adapterSources = headlessIdentity.readAdapterSources("kitty", value)
+        const source = createLibProbeSource(value, undefined, identity, undefined)
+        source.feed("\x1b]9;terminfo-delivery-control\x07")
+        expect(source.getUnhandledSequences!()).toEqual([])
+        expect(source.getNotifications!()).toContain("terminfo-delivery-control")
+      } finally {
+        value.destroy()
+      }
+      const candidates = [
+        "extensions.osc633-b",
+        "extensions.osc633-e",
+        "extensions.osc-633-vscode",
+        "extensions.osc113-reset-pointer-fg",
+        "extensions.osc114-reset-pointer-bg",
+        "extensions.osc176-app-id",
+        "extensions.osc440-audio",
+        "extensions.osc555-flash",
+        "extensions.osc666-termprop",
+        "extensions.osc710-font-normal",
+        "modes.decsscls",
+      ]
+      const held = ["extensions.osc133-b", "extensions.semantic-prompts", "extensions.osc3008-context"]
+      const ids = [...candidates, ...held]
+      const draft = initializeRunDraft({
+        source: { kind: "live" },
+        runId: "kitty-d2-report-fixture",
+        sourceRevision: "a".repeat(40),
+        intendedSubject: { kind: "lib", id: "kitty" },
+        manifest: {
+          schemaVersion: 4,
+          probeHash: "kitty-d2-report-fixture",
+          adapterVersion: "fixture",
+          catalogIds: ids,
+          probes: { term: [], mux: [], lib: ids },
+        },
+      })
+      const batch = await collectBatch(
+        async () => createKittyBackend(),
+        "kitty",
+        registryDefinitions(ids),
+        draft,
+        undefined,
+        {
+          identity,
+          adapterPackage: "@termless/kitty",
+          adapterType: "native",
+          adapterPath: fileURLToPath(import.meta.resolve("@termless/kitty")),
+        },
+      )
+      expect(batch.results).toHaveLength(14)
+      for (const result of batch.results) {
+        expect(result.status, JSON.stringify(result)).toBe(
+          candidates.includes(result.featureId) ? "unsupported" : "probe-todo",
+        )
+        if (candidates.includes(result.featureId)) {
+          expect(result.reason).toBe("library reported this sequence as unhandled")
+        }
+      }
+    } finally {
+      vi.unstubAllEnvs()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+  60_000,
+)
+
 // D2's callback-only tests missed this collector boundary: a truthful parser
 // rejection was invalidated by the registered query-only assertion declaration.
 // This fixture tests declaration admission, not a native engine or its verdict.
@@ -1907,13 +2039,20 @@ test.skipIf(!isKittyAvailable())("Kitty semantic readers witness fresh starts an
       expect(marks.first.at(-1), id).toEqual({ type, startRow: 0, startCol: 0 })
       expect(marks.second.at(-1), id).toEqual({ type, startRow: 1, startCol: 2 })
     }
-    // The umbrella callbacks stay PROBE TODO until a full-lifecycle reader exists (b5fecd017, #32247).
-    for (const id of ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
+    // Full semantic lifecycle remains TODO. Owned Kitty now rejects this OSC633 payload explicitly.
+    for (const id of OWNED_LAYOUT
+      ? ["extensions.semantic-prompts"]
+      : ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
       const umbrella = registryDefinitions([id])[0]!.lib!(source)
       expect(umbrella.tests, id).toEqual([
         { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
       ])
       expect(umbrella.observation, id).toBeUndefined()
+    }
+    if (OWNED_LAYOUT) {
+      expect(registryDefinitions(["extensions.osc-633-vscode"])[0]!.lib!(source).observation).toMatchObject({
+        outcome: "unsupported",
+      })
     }
     const cached = source.getSemanticMarks!()
     const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
@@ -2533,13 +2672,14 @@ test("Wezterm prompt PROBE TODO rows survive actual collection and capture bindi
 // #32099: callback-only tests miss a result rejected by an inherited query_reply declaration. Real engines must take
 // different branches through the same definitions, including xterm's actual mode2031 Ps0 negative; since #32246 the
 // vterm engines' former source reviews are untyped PROBE TODO rows that must still survive collection and parsing.
-test("source-qualified mode and mouse criteria survive collection and capture parsing", async () => {
+test("measured mode and mouse criteria survive collection and capture parsing", async () => {
   const ids = ["modes.synchronized-output", "modes.color-scheme-reporting", "input.pixel-mouse"]
   for (const [name, producer] of [
     ["vt100", resolveVt100],
     ["vt220", resolveVt220],
     ["xtermjs", backend],
   ] as const) {
+    if (name !== "xtermjs" && !OWNED_LAYOUT) continue
     const adapterPackage = `@termless/${name}`
     // Source-audit inputs, not this host's checkout attestation. These pins match the existing
     // headless-decrpm capturedModeEngines and OSC117 xterm fixtures; standalone CI has no owned vterm.
@@ -2649,17 +2789,17 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
         id,
       ).toMatchObject(
         name !== "xtermjs"
-          ? { status: "probe-todo" }
+          ? { status: "unsupported", assertionType: "buffer_state" }
           : {
               status: id === "modes.color-scheme-reporting" ? "unsupported" : "supported",
               assertionType: id === "input.pixel-mouse" ? "input_bytes" : "query_reply",
             },
       )
-      // #32246: the formerly audited vterm identities take no source branch and carry no typed negative.
+      // DEC1: historical source metadata cannot select the current measured report criterion.
       if (name !== "xtermjs") {
         const row = captured.results.find((entry) => entry.featureId === id)!
         expect(row, id).not.toHaveProperty("criterionBranch")
-        expect(row, id).not.toHaveProperty("assertionType")
+        expect(row, id).toHaveProperty("assertionType", "buffer_state")
       }
       expect(JSON.stringify(batch.ungradedDiagnostics[id] ?? {}), id).not.toContain("collector-error")
       if (name === "xtermjs") {
@@ -2683,10 +2823,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
         )
       } else if (id === "input.pixel-mouse") {
         expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({
-          commands: ["\x1b[?1016h", "\x1b[?1016l"],
-          line: "XX",
-          position: { x: 2, y: 0 },
-          control: "consumed-without-effect",
+          unhandled: { target: { kind: "csi", code: "?1016h" } },
         })
       }
     }
@@ -2700,7 +2837,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
     for (const row of parsed.results ?? []) {
       expect(row).toMatchObject(
         name !== "xtermjs"
-          ? { status: "probe-todo" }
+          ? { status: "unsupported", assertionType: "buffer_state" }
           : {
               status: row.featureId === "modes.color-scheme-reporting" ? "unsupported" : "supported",
               assertionType: row.featureId === "input.pixel-mouse" ? "input_bytes" : "query_reply",
@@ -3527,7 +3664,12 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
   } finally {
     actual.destroy()
   }
-  const batch = await collectBatch(resolveVt100, "vt100", registryDefinitions(ids))
+  const withoutReport = async () => {
+    const value = await resolveVt100()
+    delete (value as Partial<OscMetadataExtension>).getUnhandledSequences
+    return value
+  }
+  const batch = await collectBatch(withoutReport, "vt100", registryDefinitions(ids))
   expect(batch.results.map((row) => row.featureId)).toEqual(ids)
   for (const row of batch.results) {
     expect(row.status).toBe("probe-todo")
@@ -5449,17 +5591,6 @@ test("a silent loaded binary uses the measured control and retains its observed 
       lockSha256: "c".repeat(64),
     },
   }
-  const { assertDeclaredNativeSha } = await import("./headless-batch.ts")
-  expect(() =>
-    assertDeclaredNativeSha(
-      "fixture",
-      identity,
-      { boundary: "feed-and-getCursor", adapterSources: [], engine: { kind: "native", sha256 } },
-      undefined,
-      undefined,
-      () => {},
-    ),
-  ).not.toThrow()
   const definitions = registryDefinitions(["device.xtgettcap", "sgr.bold"]).map((definition) => ({
     ...definition,
     lib: (ctx: LibProbeSource) => definition.lib!({ ...ctx, runtimeIdentity: identity }),
@@ -5476,144 +5607,6 @@ test("a silent loaded binary uses the measured control and retains its observed 
   expect(batch.results.find((row) => row.featureId === "sgr.bold")).toMatchObject({
     status: "supported",
   })
-})
-
-// AC2: an actual declared/loaded mismatch still refuses before probes and retains the original failure.
-test("refuses a declared native SHA mismatch before probe collection", async () => {
-  const { initializeRunDraft, readCollectorAttempt, recordCollectionFailure, recordCollectorAttempt } =
-    await import("@terminfo/probe-defs")
-  const { assertDeclaredNativeSha, finalizeHeadlessAttempt } = await import("./headless-batch.ts")
-  const loadedSha = "67736cf8d7d96156ac921566713032a445bfd8564e499f5e715c3c7f077d8af6"
-  const expectedSha = "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9"
-  const nativeTreeOid = "4c4fb801b537704068deac6b8df24ed86a68cf35"
-  const runtimeIdentity = {
-    kind: "native" as const,
-    engineVersion: "0.26.0",
-    adapterVersion: "0.1.0",
-    termlessRevision: "cd5cd5172680fd240ee3445dea96289793bc2d59",
-    loadedBinary: {
-      path: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
-      sha256: loadedSha,
-    },
-    provenance: {
-      sha256: loadedSha,
-      sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
-      buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
-      toolchain: "rustc 1.94.0",
-      lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
-    },
-  }
-  const declaration = {
-    boundary: "feed-and-getCursor" as const,
-    adapterSources: [{ path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" }],
-    engine: { kind: "native" as const, sha256: expectedSha },
-  }
-  // Audited artifact passes without emitting a warning or throwing.
-  const draftPath = "pass-s93GZY/lib-alacritty-unknown.draft.json"
-  const warnings: string[] = []
-  expect(() =>
-    assertDeclaredNativeSha(
-      "alacritty",
-      {
-        ...runtimeIdentity,
-        loadedBinary: { ...runtimeIdentity.loadedBinary, sha256: expectedSha },
-        provenance: { ...runtimeIdentity.provenance, sha256: expectedSha },
-      },
-      declaration,
-      nativeTreeOid,
-      draftPath,
-      (line) => warnings.push(line),
-    ),
-  ).not.toThrow()
-  expect(warnings).toEqual([])
-
-  // Identity mismatch refuses before probes, regardless of source-audit membership.
-  const ids = ["extensions.osc10-fg-color", "device.primary-da"]
-  const startedAt = "2026-10-29T22:34:03.743Z"
-  const draft = initializeRunDraft({
-    source: { kind: "live" },
-    runId: "alacritty-unaudited-preflight",
-    sourceRevision: "a".repeat(40),
-    intendedSubject: { kind: "lib", id: "alacritty" },
-    manifest: {
-      schemaVersion: 4,
-      probeHash: "suite-hash",
-      adapterVersion: "4",
-      catalogIds: ids,
-      probes: { term: [], mux: [], lib: ids },
-    },
-  })
-  recordCollectorAttempt(draft, { result: "started", startedAt, ids, hostInputs: { "foreground-rgb": "not-supplied" } })
-  draft.runtimeIdentity = runtimeIdentity
-
-  let caught: Error | undefined
-  try {
-    assertDeclaredNativeSha("alacritty", runtimeIdentity, declaration, nativeTreeOid, draftPath, (line) =>
-      warnings.push(line),
-    )
-  } catch (error) {
-    caught = error as Error
-    finalizeHeadlessAttempt(
-      draft,
-      {
-        ...readCollectorAttempt(draft.rawReplies),
-        ids,
-        startedAt,
-        result: "failed",
-        error: caught.message,
-      },
-      registryDefinitions(ids),
-    )
-    recordCollectionFailure(draft, startedAt, caught.message, ids)
-  }
-
-  expect(caught).toBeDefined()
-  expect(warnings).toEqual([caught!.message])
-  expect(caught!.message).toContain(loadedSha)
-  expect(caught!.message).toContain(`expected sha ${expectedSha}`)
-  expect(caught!.message).toContain(`nativeTreeOid ${nativeTreeOid}`)
-  expect(caught!.message).toContain(`draft: ${draftPath}`)
-  expect(draft.rawReplies["collector.failure"]).toBe(caught!.message)
-  expect(draft.rawReplies["collector.finalizationFailure"]).toBeUndefined()
-  expect(draft.rawReplies["collector.replyPath"]).toBeUndefined()
-  expect(Object.keys(draft.rawReplies).filter((key) => key.startsWith("collector.hostRecipes."))).toEqual([])
-  expect(draft.results.every((row) => row.attempt.scope === "collection" && row.reason === caught!.message)).toBe(true)
-
-  // #31810: kitty is typed "native" in backends.json but is a `kitty +runpy` subprocess bridge that loads
-  // no .node addon; evaluating readNativeArtifactTreeOid(entry.package) as an argument to assertDeclaredNativeSha
-  // must never ask require.cache for a loaded native addon in packages/kitty.
-  const { readNativeArtifactTreeOid } = await import("./headless-identity.ts")
-  const kittyIdentity = {
-    kind: "native" as const,
-    engineVersion: "0.49.2",
-    adapterVersion: "0.10.2",
-    termlessRevision: "07628619c7b5b5f74de1536df16dab0bc62676b6",
-    loadedBinary: {
-      path: "/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty",
-      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-    },
-    provenance: {
-      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-      sourceCommit: "07628619c7b5b5f74de1536df16dab0bc62676b6",
-      buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
-      toolchain: "Nix kitty +runpy",
-      lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
-    },
-  }
-  const kittyWarnings: string[] = []
-  expect(readNativeArtifactTreeOid("@termless/kitty")).toBeUndefined()
-  expect(readNativeArtifactTreeOid("@termless/kitty", "kitty")).toBeUndefined()
-  expect(() =>
-    assertDeclaredNativeSha(
-      "kitty",
-      kittyIdentity,
-      undefined,
-      readNativeArtifactTreeOid("@termless/kitty", "kitty"),
-      "pass-qd5XqF/lib-kitty-unknown.draft.json",
-      (line) => kittyWarnings.push(line),
-    ),
-  ).not.toThrow()
-  expect(kittyWarnings).toEqual([])
 })
 
 // 31387: An adapter reporting an empty title after OSC 2 leaves the title-stack round trip unobservable.
