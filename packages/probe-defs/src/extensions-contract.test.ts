@@ -96,6 +96,41 @@ function semanticSurfaceSource(mutations: readonly string[] = []) {
   }
 }
 
+// #32451: Kitty's absent B needs its working A reader, while the lifecycle requires A/C/D
+// and an inert unknown letter. Generic opposite-namespace controls miss this reader shape.
+test.each([
+  ["osc133-b", ["osc133-b-noop", "osc633-b-noop"], "unsupported"],
+  ["osc133-b", ["osc633-b-noop"], "supported"],
+  ["osc133-b", ["osc133-a-noop", "osc133-b-noop", "osc633-b-noop"], undefined],
+  ["osc133-b", ["wrong-input-mark"], undefined],
+  ["semantic-prompts", [], "supported"],
+  ["semantic-prompts", ["osc133-a-noop"], undefined],
+  ["semantic-prompts", ["osc133-c-noop"], undefined],
+  ["semantic-prompts", ["osc133-d-noop"], undefined],
+  ["semantic-prompts", ["unknown-mutates"], undefined],
+  ["semantic-prompts", ["cached-reader"], undefined],
+] as const)("Kitty %s with %j observes %s", (name, faults, outcome) => {
+  const working = semanticSurfaceSource(faults)
+  const cached = working.getSemanticMarks!()
+  const source = {
+    ...working,
+    backendName: "kitty",
+    feed(text: string) {
+      working.feed(
+        faults.some((fault) => fault === "unknown-mutates")
+          ? text.replace("133;Z", "133;A")
+          : faults.some((fault) => fault === "wrong-input-mark")
+            ? text.replace("133;B", "133;C")
+            : text,
+      )
+    },
+    getSemanticMarks: faults.some((fault) => fault === "cached-reader") ? () => cached : working.getSemanticMarks,
+  }
+  const result = extensionsProbes.find((entry) => entry.id === `extensions.${name}`)!.lib!(source)
+  expect(result.observation?.outcome).toBe(outcome)
+  if (outcome === undefined) expect(result.notTested?.reason).toBe("no-semantic-observable")
+})
+
 const KITTY_DISABLED_BITS = new Map<string, number>([
   ["kitty-disambiguate-noop", 1],
   ["kitty-report-events-noop", 2],

@@ -1622,6 +1622,57 @@ function promptMarkBody(
   sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
 ): ProbeCallbackResult {
   ctx.feed("\x1b[1;1H")
+  if (ctx.backendName === "kitty" && sourceReview?.probeId === "extensions.semantic-prompts") {
+    const declared =
+      ctx.capabilities.extensions.has("semantic-marks") && ctx.capabilities.extensions.has("semantic-command-end")
+    const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
+    if (!readMarks) {
+      return notTestedResult("OSC 133 lifecycle requires the declared prompt/output and command-end reader", {
+        declared,
+      })
+    }
+    const before = readMarks()
+    const feeds = ["\x1b]133;A\x07", "\x1b[2;3H\x1b]133;C\x07", "\x1b]133;D;17\x07", "\x1b]133;Z\x07"] as const
+    ctx.feed(feeds[0])
+    const prompt = readMarks()
+    ctx.feed(feeds[1])
+    const output = readMarks()
+    ctx.feed(feeds[2])
+    const end = readMarks()
+    ctx.feed(feeds[3])
+    const unknown = readMarks()
+    const promptMark = prompt[before.length]
+    const outputMark = output[prompt.length]
+    const endMark = end[output.length]
+    const supported =
+      prompt.length === before.length + 1 &&
+      promptMark?.type === "prompt" &&
+      promptMark.startRow === 0 &&
+      promptMark.startCol === 0 &&
+      output.length === prompt.length + 1 &&
+      outputMark?.type === "output" &&
+      outputMark.startRow === 1 &&
+      outputMark.startCol === 2 &&
+      end.length === output.length + 1 &&
+      endMark?.type === "command-end" &&
+      endMark.rawStatus === "17" &&
+      before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(prompt[index])) &&
+      prompt.every((mark, index) => JSON.stringify(mark) === JSON.stringify(output[index])) &&
+      output.every((mark, index) => JSON.stringify(mark) === JSON.stringify(end[index])) &&
+      JSON.stringify(end) === JSON.stringify(unknown)
+    const state = { feeds, before, prompt, output, end, unknown }
+    ctx.feed("\x1b[1;1H")
+    return supported
+      ? parserStateResult(
+          true,
+          "OSC 133 appends prompt, output and command-end marks; an unknown letter adds nothing",
+          state,
+        )
+      : notTestedResult(
+          "OSC 133 lifecycle did not retain fresh prompt/output/end marks and an inert unknown letter",
+          state,
+        )
+  }
   const osc633End = sourceReview?.probeId === "extensions.osc633-d"
   const home = ctx.getCursor()
   const markType = sourceReview?.markType
@@ -1629,6 +1680,8 @@ function promptMarkBody(
   const readerKey = markType ? "semantic-marks" : commandEnd ? "semantic-command-end" : undefined
   const declared = readerKey !== undefined && ctx.capabilities.extensions.has(readerKey)
   const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
+  const kittyInput = ctx.backendName === "kitty" && sourceReview?.probeId === "extensions.osc133-b"
+  const controlMarkType = kittyInput ? "prompt" : markType
   if (osc633End && !readMarks) {
     const reason = 'Open: our adapter for this library cannot read the shell\'s "command finished" mark.'
     return {
@@ -1640,14 +1693,25 @@ function promptMarkBody(
     readMarks && (osc633End || commandEnd || markType)
       ? (() => {
           const before = readMarks()
-          const namespace =
-            osc633End || sourceReview?.selector === 633 || sourceReview?.probeId === "extensions.osc133-p" ? 133 : 633
-          const selector = commandEnd ? "D" : markType === "prompt" ? "A" : markType === "command" ? "B" : "C"
+          const namespace = kittyInput
+            ? 133
+            : osc633End || sourceReview?.selector === 633 || sourceReview?.probeId === "extensions.osc133-p"
+              ? 133
+              : 633
+          const selector = commandEnd
+            ? "D"
+            : controlMarkType === "prompt"
+              ? "A"
+              : controlMarkType === "command"
+                ? "B"
+                : "C"
           ctx.feed(`\x1b]${namespace};${selector}${commandEnd ? ";0" : ""}\x07`)
           const first = readMarks()
+          if (kittyInput) ctx.feed("\x1b[2;3H")
           ctx.feed(`\x1b]${namespace};${selector}${commandEnd ? ";17" : ""}\x07`)
           const second = readMarks()
-          return { before, first, second }
+          if (kittyInput) ctx.feed("\x1b[1;1H")
+          return { before, first, second, ...(kittyInput && { feeds: ["\x1b]133;A\x07", "\x1b[2;3H\x1b]133;A\x07"] }) }
         })()
       : undefined
   let readerQualified = false
@@ -1658,8 +1722,15 @@ function promptMarkBody(
     const qualified =
       first.length === before.length + 1 &&
       second.length === first.length + 1 &&
-      firstControl?.type === (commandEnd ? "command-end" : markType) &&
-      secondControl?.type === (commandEnd ? "command-end" : markType) &&
+      firstControl?.type === (commandEnd ? "command-end" : controlMarkType) &&
+      secondControl?.type === (commandEnd ? "command-end" : controlMarkType) &&
+      (!kittyInput ||
+        (firstControl?.type === "prompt" &&
+          firstControl.startRow === 0 &&
+          firstControl.startCol === 0 &&
+          secondControl?.type === "prompt" &&
+          secondControl.startRow === 1 &&
+          secondControl.startCol === 2)) &&
       (!commandEnd ||
         (firstControl?.type === "command-end" &&
           firstControl.rawStatus === "0" &&
@@ -1821,6 +1892,18 @@ function promptMarkBody(
     )
     if (!result.pass && !readerQualified) {
       return notTestedResult(NO_SAME_PATH_CONTROL, { endControl, observed: result.response })
+    }
+    if (
+      kittyInput &&
+      !result.pass &&
+      (JSON.stringify(before) !== JSON.stringify(first) ||
+        JSON.stringify(first) !== JSON.stringify(secondBefore) ||
+        JSON.stringify(secondBefore) !== JSON.stringify(second))
+    ) {
+      return notTestedResult("OSC 133 B changed the semantic reader without the requested input mark", {
+        endControl,
+        observed: result.response,
+      })
     }
     return result
   }
@@ -4971,20 +5054,25 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.semantic-prompts",
-      // Case 1's twelfth shell cell: the umbrella lifecycle read falls to the library's own report.
+      // Kitty reads its approved prompt/output/end lifecycle; other libraries retain the report arm.
       (ctx) =>
-        unhandledOscReportResult(ctx, "\x1b]133;A\x07", {
-          pass: false,
-          note: "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
-          tests: [
-            {
-              id: "criterion",
-              status: "probe-todo" as const,
-              reason:
-                "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
-            },
-          ],
-        }),
+        ctx.backendName === "kitty"
+          ? promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 lifecycle readback", {
+              probeId: "extensions.semantic-prompts",
+              selector: 133,
+            })
+          : unhandledOscReportResult(ctx, "\x1b]133;A\x07", {
+              pass: false,
+              note: "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+              tests: [
+                {
+                  id: "criterion",
+                  status: "probe-todo" as const,
+                  reason:
+                    "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+                },
+              ],
+            }),
       () => {
         const note = "No shell prompt integration metadata or behavior readback for OSC 133"
         return Promise.resolve<ProbeCallbackResult>({

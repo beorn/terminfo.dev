@@ -204,8 +204,8 @@ test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvai
         "extensions.osc710-font-normal",
         "modes.decsscls",
       ]
-      const held = ["extensions.osc133-b", "extensions.semantic-prompts"]
-      const ids = [...candidates, ...held, "extensions.osc3008-context"]
+      const semantic = ["extensions.osc133-b", "extensions.semantic-prompts"]
+      const ids = [...candidates, ...semantic, "extensions.osc3008-context"]
       const draft = initializeRunDraft({
         source: { kind: "live" },
         runId: "kitty-d2-report-fixture",
@@ -239,7 +239,9 @@ test.runIf(OWNED_LAYOUT && process.env.KITTY_BINARY !== undefined && isKittyAvai
             ? "unsupported"
             : result.featureId === "extensions.osc3008-context"
               ? "untestable"
-              : "probe-todo",
+              : result.featureId === "extensions.osc133-b"
+                ? "unsupported"
+                : "supported",
         )
         if (candidates.includes(result.featureId)) {
           expect(result.reason).toBe("library reported this sequence as unhandled")
@@ -2107,12 +2109,24 @@ test.skipIf(!isKittyAvailable())(
         expect(marks.first.at(-1), id).toEqual({ type, startRow: 0, startCol: 0 })
         expect(marks.second.at(-1), id).toEqual({ type, startRow: 1, startCol: 2 })
       }
-      // Full semantic lifecycle remains TODO. Owned Kitty now rejects this OSC633 payload explicitly.
-      for (const id of OWNED_LAYOUT
-        ? ["extensions.semantic-prompts"]
-        : ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
-        const umbrella = registryDefinitions([id])[0]!.lib!(source)
-        expect(umbrella.tests, id).toEqual([
+      const umbrella = registryDefinitions(["extensions.semantic-prompts"])[0]!.lib!(source)
+      expect(umbrella.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      const lifecycle = JSON.parse(umbrella.response!) as {
+        prompt: unknown[]
+        output: unknown[]
+        end: unknown[]
+        unknown: unknown[]
+      }
+      expect(lifecycle.prompt.at(-1)).toEqual({ type: "prompt", startRow: 0, startCol: 0 })
+      expect(lifecycle.output.at(-1)).toEqual({ type: "output", startRow: 1, startCol: 2 })
+      expect(lifecycle.end.at(-1)).toEqual({ type: "command-end", rawStatus: "17" })
+      expect(lifecycle.unknown).toEqual(lifecycle.end)
+      if (OWNED_LAYOUT) {
+        expect(registryDefinitions(["extensions.osc-633-vscode"])[0]!.lib!(source).observation).toMatchObject({
+          outcome: "unsupported",
+        })
+      } else {
+        expect(registryDefinitions(["extensions.osc-633-vscode"])[0]!.lib!(source).tests).toEqual([
           {
             id: "criterion",
             status: "probe-todo",
@@ -2120,12 +2134,6 @@ test.skipIf(!isKittyAvailable())(
               "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
           },
         ])
-        expect(umbrella.observation, id).toBeUndefined()
-      }
-      if (OWNED_LAYOUT) {
-        expect(registryDefinitions(["extensions.osc-633-vscode"])[0]!.lib!(source).observation).toMatchObject({
-          outcome: "unsupported",
-        })
       }
       const cached = source.getSemanticMarks!()
       const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)

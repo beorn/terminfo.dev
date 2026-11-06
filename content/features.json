@@ -1332,7 +1332,7 @@
     "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
     "tags": ["osc"],
     "body": "Semantic prompts use OSC 133 markers to tell the terminal where each shell prompt, command input, and command output begins and ends. The markers are: <code>A</code> (prompt start), <code>B</code> (command input start — after prompt, before the user types), <code>C</code> (command output start — after Enter), and <code>D</code> (command finished, with exit code).\n\nWith these markers, terminals can implement features that were previously impossible: click-to-navigate between prompts, select entire command output, scroll by command boundaries, mark failed commands with a red indicator, and provide command completion times. Shell integration scripts (for bash, zsh, fish) emit these markers automatically.\n\nAlso known as shell integration or command decoration. Supported by iTerm2 (which originated the protocol), Ghostty, WezTerm, Kitty, and VS Code's integrated terminal.",
-    "probe": "PROBE TODO: this probe observes no shell-integration metadata or behavior. Backend declarations remain diagnostic context; the app probe does not send markers merely to check terminal responsiveness.",
+    "probe": "Library arm: one run reads a prompt start, an output start and a command end through the declared reader, and an unknown OSC 133 letter adds nothing. Input start is its own cell.",
     "baseline": "rich",
     "sequence": "ESC ] 133 ; A BEL"
   },
