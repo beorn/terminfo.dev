@@ -440,7 +440,8 @@ export function reportsDecidedOutcome(result: ProbeCallbackResult): boolean {
 /**
  * Case 1 consumer (@cto 2026-11-05 07:25 appendix): a library's own unhandled report decides a STATE cell
  * Unsupported only when the same run proves both controls on the same reader — a handled sequence adds no
- * entry and its own reader shows it applied, then the target adds its exact code or approved ordered list.
+ * entry and its own reader shows it applied, then the target adds one or more entries all carrying its
+ * exact code, or the approved exact ordered list.
  * Anything else returns undefined, so the calling probe keeps its undecided branch; a source without the
  * member never reaches here, which keeps today's exact path (missing evidence, never a negative).
  *
@@ -504,19 +505,16 @@ export function unhandledSequenceVerdict(
   if (qualifying === undefined) return undefined
   ctx.feed(target.feed)
   const afterTarget = read()
-  const added =
-    afterTarget.length === qualifying.baseline.length + codes.length
-      ? afterTarget.slice(qualifying.baseline.length)
-      : []
-  if (
-    added.length !== codes.length ||
-    codes.some((code, index) => {
-      const actual = added[index]
-      return actual === undefined || actual.kind !== code.kind || actual.code !== code.code
-    })
-  ) {
-    return undefined
-  }
+  const added = afterTarget.slice(qualifying.baseline.length)
+  const matches =
+    target.code !== undefined
+      ? added.length > 0 && added.every((actual) => actual.kind === first.kind && actual.code === first.code)
+      : added.length === codes.length &&
+        codes.every((code, index) => {
+          const actual = added[index]
+          return actual !== undefined && actual.kind === code.kind && actual.code === code.code
+        })
+  if (!matches) return undefined
   const label = codes
     .map((code) => `${code.kind === "osc" ? "OSC" : code.code.endsWith("m") ? "SGR" : "CSI"} ${code.code}`)
     .join(", ")
@@ -1245,7 +1243,7 @@ const UNHANDLED_CSI_CELLS: ReadonlySet<string> = new Set([
 
 /**
  * The CSI arm's control (@cto 2026-11-05 07:37 status): SGR 1 must add no report entry while the same
- * cell reader shows bold applied, then the target must add exactly one entry carrying the code its own
+ * cell reader shows bold applied, then the target must add one or more entries all carrying the code its own
  * sequence produces ("5m", "9m", "21m", "4:3m", "4:4m", "4:5m"). Anything else keeps the body's result.
  * sgr.underline-color-reset calls it directly for "59m" (@cto routes-32 section 1, 23:02 PST Nov 5 2026).
  */
