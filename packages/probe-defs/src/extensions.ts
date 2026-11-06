@@ -93,7 +93,7 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 // The OSC 7/9 public-interface census qualifies these exact sources, not every
 // version carrying the same backend name. Real readers take precedence at each caller.
-function hasAuditedOscInterfaceAbsence(
+export function hasAuditedOscInterfaceAbsence(
   ctx: LibProbeSource,
   cohort:
     | "osc-absence"
@@ -1820,7 +1820,7 @@ const UNHANDLED_REPORT_COLOUR_RESETS: readonly string[] = ["104", "110", "111", 
  * path reports and handles nothing, so SGR 1 with a bold cell may qualify the control instead, with the
  * fallback reading its own baseline.
  */
-function unhandledOscReportResult(
+export function unhandledOscReportResult(
   ctx: LibProbeSource,
   sequence: string,
   result: ProbeCallbackResult,
@@ -3331,6 +3331,8 @@ const NO_LIBRARY_PASTE_ENCODER: Readonly<Record<string, string>> = {
     "vt100 0.16.2 exports Parser and Screen with public Screen::bracketed_paste() state and input-mode serialization, but no paste or bracketed-paste encoder",
   xterm:
     "@xterm/headless 6.0.0 exports Terminal and public modes.bracketedPasteMode state; input() takes already encoded bytes and onData reports output; it has no paste or bracketed-paste encoder",
+  ghostty:
+    "Untestable: ghostty-web 0.4.0 exports no paste encoder. Its exports are the terminal and render-state calls only.",
 }
 
 /** Observe the same library instance's native paste encoder; no OS clipboard or injected framing. */
@@ -3338,7 +3340,7 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   const encodePaste = ctx.encodePaste
   if (!encodePaste) {
     const declared = NO_LIBRARY_PASTE_ENCODER[ctx.backendName]
-    if (declared) {
+    if (declared && (ctx.backendName !== "ghostty" || hasAuditedOscInterfaceAbsence(ctx, "ghostty-web-d2"))) {
       return declaredUntestableResult(declared, { backend: ctx.backendName, encodePaste: false })
     }
     const reason =
@@ -6581,6 +6583,8 @@ const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.osc119-reset-highlight-fg":
     "Ghostty 1.3.1 parses OSC 119 and does nothing with it. It keeps no highlight colour.",
   "modes.decsscls": "Ghostty 1.3.1 has no handler for this sequence and no scroll-speed state.",
+  "input.kitty-click-events":
+    "Untestable: Ghostty 1.3.1 core stores click_events, but only Surface acts on a click, and Surface is the app.",
 }
 
 function declaredD2InterfaceAbsence(

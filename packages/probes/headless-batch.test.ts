@@ -2004,7 +2004,7 @@ test.for(["semantic-marks", "sixel-storage"] as const)(
 // @failure The native WezTerm mouse bridge is not reached by the registered callbacks, or an unbound path is graded.
 // @level l5
 // @consumer Real native WezTerm through the production collector's per-probe backend/source boundary.
-test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide five cells and retain two unbound paths", () => {
+test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide six cells and retain one unbound path", () => {
   for (const [id, outcome] of [
     ["input.xtest-click", "supported"],
     ["input.xtest-wheel", "supported"],
@@ -2012,7 +2012,7 @@ test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide five cells and r
     ["input.x10-mouse", "unsupported"],
     ["input.urxvt-mouse", "unsupported"],
     ["input.pixel-mouse", null],
-    ["input.kitty-click-events", null],
+    ["input.kitty-click-events", "unsupported"],
   ] as const) {
     // collectBatch likewise constructs and initializes one fresh backend inside its per-probe loop.
     const value = createWeztermBackend({ cols: 80, rows: 24 })
@@ -5899,6 +5899,24 @@ test.each([
     expect(batch.assertions).toEqual([])
   },
 )
+
+// @cto routes-32 sections 3 and 4: the real engines decide slice C's measured kitty-click rows.
+test.runIf(OWNED_LAYOUT).each([
+  ["vt100", async () => createVt100Backend(), "library reported this sequence as unhandled"],
+  ["vt220", async () => createVt220Backend(), "library reported this sequence as unhandled"],
+  ["wezterm", async () => createWeztermBackend(), "kitty-click-events:1"],
+] as const)("real %s reads input.kitty-click-events Unsupported", async (name, create, evidence) => {
+  const value = await create()
+  value.init({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const result = registryDefinitions(["input.kitty-click-events"])[0]!.lib!(source)
+    expect(result.observation?.outcome, name).toBe("unsupported")
+    expect(JSON.stringify(result), name).toContain(evidence)
+  } finally {
+    value.destroy()
+  }
+})
 
 // NR-A, @cto 947dcd40 slice A: the real engine's own reports decide these rows; the identity is the audited subject.
 // Hosted resolves the published adapter, which is not that subject.
