@@ -17,7 +17,7 @@ import { candidateFromSelected, type ContextCandidate } from "./run-selection.ts
 import { statesFor } from "./selected-results.ts"
 import { fullContextCensus } from "./full-census.ts"
 import { buildFullProjectRows, type FullContextRow } from "./full-project.ts"
-import { siteWorkingHistory, siteWorkingView, workingHistoryFor, type WorkingView } from "./working-runs.ts"
+import { siteWorkingView, type WorkingView } from "./working-runs.ts"
 
 const contentDir = join(import.meta.dirname, "..", "..", "content")
 
@@ -44,8 +44,6 @@ export interface FullProjectData {
    * Present only when TERMINFO_SITE_WORKING_RUNS_DIR is set; it feeds no count above.
    */
   working?: WorkingView
-  /** Retained raw collections in chronological order, only in this private page loader. */
-  workingHistory?: WorkingView[]
 }
 
 /** Every catalog row in the site's category order; an ungroupable id is refused, never dropped. */
@@ -99,7 +97,6 @@ export function loadFullProjectData(): FullProjectData {
     }
   }
   const working = siteWorkingView(contentDir)
-  const workingHistory = siteWorkingHistory(contentDir)
   return {
     mode: "development",
     suiteId: requiredSuiteId,
@@ -113,7 +110,6 @@ export function loadFullProjectData(): FullProjectData {
     complete: rows.complete,
     recordedPositions: rows.recordedPositions,
     ...(working && { working }),
-    ...(workingHistory && { workingHistory: workingHistoryFor(workingHistory, { summaries: true }) }),
   }
 }
 

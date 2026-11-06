@@ -15,6 +15,7 @@ import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "
 import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
+import { siteWorkingHistory, type WorkingView } from "./working-runs.ts"
 import type { ProbeStatus, FeatureResultStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
@@ -172,7 +173,7 @@ function loadBackendMeta(): Record<string, BackendMeta> {
  * build time. One alias names it for both the loader and the `data` a page imports, so a field
  * `load()` drops can never stay advertised in the client-side type.
  */
-export type ClientProbeData = Omit<ProbeData, "selected">
+export type ClientProbeData = Omit<ProbeData, "selected"> & { workingHistory?: WorkingView[] }
 
 declare const data: ClientProbeData
 export { data }
@@ -300,7 +301,8 @@ export default {
   /** #30759: the full projection stays behind at build time; the client payload omits it. */
   load(): ClientProbeData {
     const { selected: _selected, ...client } = loadFullProbes()
-    return client
+    const workingHistory = siteWorkingHistory(contentDir)
+    return { ...client, ...(workingHistory && { workingHistory }) }
   },
 }
 

@@ -3,12 +3,13 @@ import { computed, ref } from "vue"
 import type { WorkingView } from "../../data/working-runs"
 import { evidenceStatus } from "./evidence-status"
 
-const props = defineProps<{ history: WorkingView[]; featureId?: string; summaryOnly?: boolean }>()
+const props = defineProps<{ history: WorkingView[]; featureId?: string; engine?: string; kind?: string }>()
 const collectionId = ref(props.history.at(-1)?.run.id ?? "")
 const selected = computed(() => props.history.find((view) => view.run.id === collectionId.value))
-const contextKey = ref(props.history.at(-1)?.contexts[0]?.contextKey ?? "")
-const context = computed(() => selected.value?.contexts.find((row) => row.contextKey === contextKey.value) ?? selected.value?.contexts[0])
-const cells = computed(() => context.value?.cells.filter((cell) => !props.featureId || cell.featureId === props.featureId) ?? [])
+const contexts = computed(() => selected.value?.contexts.filter((row) => (!props.engine || row.engine === props.engine) && (!props.kind || row.kind === props.kind)) ?? [])
+const contextKey = ref(contexts.value[0]?.contextKey ?? "")
+const context = computed(() => contexts.value.find((row) => row.contextKey === contextKey.value))
+const cells = computed(() => Object.entries(context.value?.states ?? {}).filter(([id]) => !props.featureId || id === props.featureId))
 </script>
 
 <section id="run-history" class="run-history">
@@ -26,21 +27,10 @@ const cells = computed(() => context.value?.cells.filter((cell) => !props.featur
       <p><strong>{{ selected.unreadable.banner }}</strong></p>
       <p>{{ selected.unreadable.reason }}</p>
     </div>
-    <template v-else-if="summaryOnly">
-      <p>Choose a <a href="/terminals">terminal</a> or feature page for its retained per-probe history. Counts below use the shared graded-feature rollup; environment groups are excluded.</p>
-      <table>
-        <thead><tr><th>Context</th><th>Supported / graded features</th><th>Original capture</th></tr></thead>
-        <tbody><tr v-for="row in selected.contexts" :key="row.contextKey">
-          <td>{{ row.engine }} {{ row.version }}<br><code>{{ row.contextKey }}</code></td>
-          <td>{{ row.counts.supported }} / {{ row.positions }}</td>
-          <td><code>{{ row.runId }}</code><br>{{ row.measuredAt }}<br>suite <code>{{ row.suiteId }}</code><br>source <code>{{ row.sourceRevision }}</code></td>
-        </tr></tbody>
-      </table>
-    </template>
-    <template v-else-if="selected.contexts.length">
+    <template v-else-if="contexts.length">
       <label>Recorded context
         <select v-model="contextKey">
-          <option v-for="row in selected.contexts" :key="row.contextKey" :value="row.contextKey">{{ row.engine }} {{ row.version }} · {{ row.contextKey }}</option>
+          <option v-for="row in contexts" :key="row.contextKey" :value="row.contextKey">{{ row.engine }} {{ row.version }} · {{ row.contextKey }}</option>
         </select>
       </label>
       <template v-if="context">
@@ -50,14 +40,15 @@ const cells = computed(() => context.value?.cells.filter((cell) => !props.featur
         <p>{{ context.changeQualification }}</p>
         <table v-if="cells.length">
           <thead><tr><th>Probe</th><th>Recorded status</th><th>Recorded change from baseline</th></tr></thead>
-          <tbody><tr v-for="cell in cells" :key="cell.featureId">
-            <td><code>{{ cell.featureId }}</code></td>
-            <td>{{ evidenceStatus(cell.featureId, cell.raw.status).text }}</td>
-            <td>{{ context.changes === undefined ? 'Comparison unavailable' : context.changes[cell.featureId] ?? 'No recorded status change' }}</td>
+          <tbody><tr v-for="cell in cells" :key="cell[0]">
+            <td><code>{{ cell[0] }}</code></td>
+            <td>{{ evidenceStatus(cell[0], cell[1]).text }}</td>
+            <td>{{ context.changes === undefined ? 'Comparison unavailable' : context.changes[cell[0]] ?? 'No recorded status change' }}</td>
           </tr></tbody>
         </table>
         <p v-else>No probe result is recorded for this feature in this context.</p>
       </template>
+      <p v-else>The selected context was not recorded in this collection; choose another recorded context.</p>
     </template>
     <p v-else>No matching context was recorded in this collection.</p>
   </template>

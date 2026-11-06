@@ -11,7 +11,6 @@ import {
 } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
 import { probeStatusOf } from "../data/probe-status"
-import { siteWorkingHistory, workingHistoryFor } from "../data/working-runs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -21,7 +20,6 @@ export default {
     const data = loadProbes()
     const featuresMeta = loadFeatures(contentDir)
     const allAnalysis = loadAnalysis()
-    const workingHistory = siteWorkingHistory(contentDir)
 
     return data.features.map((f) => {
       const slug = featureSlug(f.id)
@@ -129,9 +127,6 @@ export default {
           category: f.category,
           id: slug,
           featureId: f.id,
-          ...(workingHistory && {
-            workingHistory: JSON.stringify(workingHistoryFor(workingHistory, { featureId: f.id })),
-          }),
           featureName: desc?.name ?? f.name,
           featureCategory: f.category,
           categoryLabel: catLabel(f.category),

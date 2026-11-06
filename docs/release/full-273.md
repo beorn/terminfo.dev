@@ -7,6 +7,7 @@ next: false
 
 <script setup>
 import { data } from '../data/full-project.data'
+import { data as probes } from '../data/probes.data'
 import { currentCoverageSentence, publicResultFor, rankOpenProbes } from '../data/release-scope.ts'
 const collected = data.contexts.filter((row) => row.collected)
 const workingLibraries = data.working && !data.working.unreadable
@@ -68,7 +69,7 @@ This page reads composed contexts with original stored sources on the required s
   </div>
 </div>
 
-<RunHistory v-if="data.workingHistory" :history="data.workingHistory" summary-only />
+<RunHistory v-if="probes.workingHistory" :history="probes.workingHistory" />
 
 ## Scope
 

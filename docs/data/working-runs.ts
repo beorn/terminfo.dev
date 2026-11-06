@@ -404,6 +404,8 @@ export interface WorkingContext {
   changeBaseline?: string
   changeQualification?: string
   changes?: Record<string, string>
+  /** Private history stores each recorded status once; receipts live on this context. */
+  states?: Readonly<Record<string, FeatureResultStatus>>
 }
 
 export interface WorkingView {
@@ -542,6 +544,8 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
       const view = composeWorkingView(projection, reviewed, loaded)
       const fingerprints = new Map<string, string | undefined>()
       for (const context of view.contexts) {
+        context.states = Object.fromEntries(context.cells.map((cell) => [cell.featureId, cell.raw.status]))
+        context.cells = []
         const original = loaded.runs.find((run) => run.subject.id === context.engine)
         context.sha256 = original?.sha256
         context.identity = original?.identity
@@ -582,9 +586,8 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
         if (
           ownMoves.some(
             (move) =>
-              prior.cells.find((cell) => cell.featureId === move.feature)?.raw.status !==
-                storedProbeStatus(move.from) ||
-              context.cells.find((cell) => cell.featureId === move.feature)?.raw.status !== storedProbeStatus(move.to),
+              prior.states?.[move.feature] !== storedProbeStatus(move.from) ||
+              context.states?.[move.feature] !== storedProbeStatus(move.to),
           )
         ) {
           context.changeQualification =
@@ -633,30 +636,4 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
   })
   cache.set(newest.dir, views)
   return views
-}
-
-/** Existing page shapes, scoped before serialization; no page carries unrelated probe histories. */
-export function workingHistoryFor(
-  history: readonly WorkingView[],
-  scope: { engine?: string; kind?: string; featureId?: string; summaries?: boolean },
-): WorkingView[] {
-  return history.map((view) => ({
-    ...view,
-    contexts: view.contexts
-      .filter(
-        (context) =>
-          (scope.engine === undefined || context.engine === scope.engine) &&
-          (scope.kind === undefined || context.kind === scope.kind),
-      )
-      .map((context) => ({
-        ...context,
-        cells: scope.summaries
-          ? []
-          : context.cells.filter((cell) => scope.featureId === undefined || cell.featureId === scope.featureId),
-        ...(context.changes &&
-          scope.featureId !== undefined && {
-            changes: Object.fromEntries(Object.entries(context.changes).filter(([id]) => id === scope.featureId)),
-          }),
-      })),
-  }))
 }

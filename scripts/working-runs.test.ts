@@ -31,6 +31,7 @@ import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-
 import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
+import clientProbes from "../docs/data/probes.data.ts"
 
 function runsDir(): string {
   return mkdtempSync(join(tmpdir(), "terminfo-working-runs-"))
@@ -94,7 +95,10 @@ describe("newestCompleteRun: the site reads the newest COMPLETE hourly run (requ
 })
 
 describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
-  afterEach(() => vi.unstubAllEnvs())
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+  })
   const root = join(import.meta.dirname, "..")
   const catalogIds = Object.keys(loadFeatures(join(root, "content")))
   // Reuse a real committed payload and its committed manifest. Only the hourly envelope is synthetic.
@@ -162,19 +166,22 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       )
     const accepted = acceptedCounts()
     const page = loadFullProjectData()
-    expect(page.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+    const history = clientProbes.load().workingHistory
+    expect(history?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
     expect(page.working?.run.id).toBe(PARTIAL)
     // Full preview carries receipts/counts; detail pages receive their own probe rows.
     // Serializing every terminal/probe history into the preview was 83 MB on the real retained population.
-    expect(page.workingHistory?.every((entry) => entry.contexts[0]?.cells.length === 0)).toBe(true)
-    expect(siteWorkingHistory(join(root, "content"))?.every((entry) => entry.contexts[0]?.cells.length === 273)).toBe(
-      true,
-    )
+    expect(history?.every((entry) => entry.contexts[0]?.cells.length === 0)).toBe(true)
+    expect(
+      siteWorkingHistory(join(root, "content"))?.every(
+        (entry) => Object.keys(entry.contexts[0]?.states ?? {}).length === 273,
+      ),
+    ).toBe(true)
     expect(acceptedCounts()).toBe(accepted)
 
     // A new collection completing mid-build belongs to the next build, not only some pages.
     collection(older.parent, WRITING)
-    const sameBuild = loadFullProjectData()
+    const sameBuild = clientProbes.load()
     expect(sameBuild.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
   })
 
@@ -210,11 +217,33 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(context?.changeQualification).toContain("does not match")
   })
 
+  // Actual build hit 17.6 GB: 273 feature routes repeated 255 MB of history params.
+  // The shared client loader must preserve all statuses/receipts without repeating per-cell provenance.
+  it("shares complete historical statuses with original capture receipts in the client data", () => {
+    const fixture = collection()
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", fixture.parent)
+    const original = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds }).runs[0]!
+    const context = clientProbes.load().workingHistory?.[0]?.contexts[0]
+    expect(context?.states).toEqual(
+      Object.fromEntries(original.results!.map((result) => [result.featureId, result.status])),
+    )
+    expect(context).toMatchObject({
+      runId: original.runId,
+      sha256: original.sha256,
+      measuredAt: original.measuredAt,
+      suiteId: original.probeHash,
+      sourceRevision: original.sourceRevision,
+      identity: original.identity,
+    })
+    expect(context?.cells).toEqual([])
+  })
+
   // Actual retained history includes complete envelopes whose collection file is absent.
   // Newest-only tests never encounter that older input; history must name the gap, never erase it or score zero.
   it.each(["missing collection", "missing rollups"])(
     "keeps %s in older history visible without preventing the current reading",
     (failure) => {
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
       const parent = runsDir()
       if (failure === "missing collection") {
         run(parent, OLD, { complete: true })
@@ -226,13 +255,20 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       collection(parent, PARTIAL)
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", parent)
       const page = loadFullProjectData()
+      const history = clientProbes.load().workingHistory
       expect(page.working?.run.id).toBe(PARTIAL)
-      expect(page.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
-      expect(page.workingHistory?.[0]?.unreadable?.reason).toContain(
+      expect(history?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+      expect(history?.[0]?.unreadable?.reason).toContain(
         failure === "missing collection" ? "headless/collection.json" : "complete run requires per-engine rollups",
       )
-      expect(page.workingHistory?.[0]?.unreadable?.reason).not.toContain(parent)
-      expect(page.workingHistory?.[0]?.contexts).toEqual([])
+      expect(history?.[0]?.unreadable?.reason).not.toContain(parent)
+      expect(history?.[0]?.contexts).toEqual([])
+      expect(warning).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining(
+          failure === "missing collection" ? "headless/collection.json" : "complete run requires per-engine rollups",
+        ),
+      )
     },
   )
 

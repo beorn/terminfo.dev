@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url"
 import { loadTerminals as loadTerminalCatalog, type TerminalRecord } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
-import { siteWorkingHistory, workingHistoryFor } from "../data/working-runs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -38,7 +37,6 @@ export default {
   paths() {
     const data = loadProbes()
     const allAnalysis = loadAnalysis()
-    const workingHistory = siteWorkingHistory(contentDir)
 
     // #30759 Slice A (@cto f1504b5c R2): only a current run gets a page, so a historical-only
     // target can neither be listed nor have its run data serialized into a page bundle.
@@ -143,12 +141,6 @@ export default {
           categories: JSON.stringify(categories),
           versions: JSON.stringify(versions),
           otherRuns: JSON.stringify(otherRuns),
-          ...(workingHistory &&
-            selected?.subject && {
-              workingHistory: JSON.stringify(
-                workingHistoryFor(workingHistory, { engine: selected.subject.id, kind: selected.subject.kind }),
-              ),
-            }),
           analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${slug}`])),
           analysisDate:
             a?.sources?.map((source) => `${source.runId}: ${source.measuredAt}`).join("; ") ?? a?.date ?? "",
