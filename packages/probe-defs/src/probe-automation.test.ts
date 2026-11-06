@@ -420,7 +420,7 @@ describe("qualified clipboard roundtrip", () => {
       lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
     },
   } as const
-  test("the qualified OSC 0 declaration inspects presence without I/O; clipboard declares query_reply", () => {
+  test("OSC 0 and clipboard declarations inspect reader presence without I/O", () => {
     const unavailable = () => {
       throw new Error("declaration performed I/O")
     }
@@ -435,9 +435,15 @@ describe("qualified clipboard roundtrip", () => {
     const declaration = probe("extensions.osc0-icon-title").libAssertionType
     if (declaration === null || typeof declaration !== "object") throw new Error("Missing qualified OSC 0")
     expect(declaration.when(source)).toBe(true)
-    // No source audit qualifies the clipboard declarations any more (#32246): they declare the query reply alone.
+    // No source audit grades clipboard results (#32246). A present report member
+    // additionally admits its buffer_state assertion, without calling any reader.
     for (const id of ["extensions.osc52-clipboard", "extensions.osc52-write"]) {
-      expect(probe(id).libAssertionType, id).toBe("query_reply")
+      const clipboard = probe(id).libAssertionType
+      if (clipboard === null || typeof clipboard !== "object") throw new Error("Missing report declaration")
+      expect(clipboard.when(source), id).toBe(false)
+      expect(clipboard.otherwise, id).toEqual(["query_reply"])
+      expect(clipboard.when({ ...source, getUnhandledSequences: unavailable }), id).toBe(true)
+      expect(clipboard.then, id).toEqual(["query_reply", "buffer_state"])
     }
   })
   test.each(
