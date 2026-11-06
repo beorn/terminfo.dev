@@ -638,6 +638,74 @@ describe("audited OSC interface absence", () => {
     }
   })
 
+  // @failure A Kitty image cell is declared "no way" at the wrong identity, or a library that has a
+  // public image path is declared instead of being routed to a reader (CTO 8be19f1f).
+  // @level l1
+  // @consumer ALL_PROBES library callbacks folded by the shipping result finalizer
+  test("the image no-way pair folds only at each exact audited identity", () => {
+    const xterm = {
+      kind: "js" as const,
+      runtimeFormat: "js" as const,
+      adapterVersion: "0.10.2",
+      termlessRevision: "74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
+      engineVersion: "6.0.0",
+      integrity: {
+        kind: "registry" as const,
+        lockIntegrity:
+          "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+      },
+    }
+    const subjects = [
+      ["alacritty", d2Source(), /alacritty_terminal 0\.26\.0.*no public APC callback/i],
+      [
+        "vt100",
+        {
+          ...library("vt100"),
+          feedCapture: () => "",
+          getTitle: () => "",
+          runtimeIdentity: vtIdentity("vt100", "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d", "0.13.1"),
+        },
+        /vt100\.js 0\.13\.1.*strict DEC VT100/i,
+      ],
+      [
+        "vt220",
+        {
+          ...library("vt220"),
+          feedCapture: () => "",
+          getTitle: () => "",
+          runtimeIdentity: vtIdentity("vt220", "5162719d063ab59d2905d588df3e127d38b110d1", "0.13.1"),
+        },
+        /vt220\.js 0\.13\.1.*sixel\/Kitty graphics deliberately absent/i,
+      ],
+      [
+        "xterm",
+        { ...library("xterm"), feedCapture: () => "", getTitle: () => "", runtimeIdentity: xterm },
+        /@xterm\/headless 6\.0\.0.*APC, PM and SOS/i,
+      ],
+    ] as const
+    for (const [name, source, reason] of subjects) {
+      for (const id of ["extensions.kitty-graphics.display", "extensions.kitty-graphics.transmit"]) {
+        const label = name + ":" + id
+        const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(source as LibProbeSource)
+        expect(isDeclaredUntestable(result), label).toBe(true)
+        expect(fold(id, result), label).toMatchObject({
+          status: "untestable",
+          reason: expect.stringMatching(reason),
+        })
+        expect(result.assertions, label).toBeUndefined()
+      }
+    }
+    // The declaration follows the identity, not the backend name alone.
+    const transmit = ALL_PROBES.find((probe) => probe.id === "extensions.kitty-graphics.transmit")!.lib!
+    for (const extra of [
+      { runtimeIdentity: { ...alacritty, engineVersion: "0.26.1" } },
+      { runtimeIdentity: undefined },
+      { backendName: "kitty" },
+    ] satisfies Partial<LibProbeSource>[]) {
+      expect(isDeclaredUntestable(transmit(d2Source(extra)))).toBe(false)
+    }
+  })
+
   // @failure An absence declaration leaks to an unknown profile, unclear cell or available public reader.
   // @level l1
   // @consumer The conditional declaration route used by the headless collector

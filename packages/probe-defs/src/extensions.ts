@@ -6376,6 +6376,38 @@ const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vterm.js 0.13.1 drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
 }
 
+// CTO 8be19f1f: five libraries expose no public image path, so their Kitty display and transmit
+// cells are "no way" at exact identity. Each map names one library's own public surface, because a
+// shared string would attribute one library's absence to another. libvterm is absent on purpose: its
+// APC hook is public, so it is reader R1, and vterm decides its rows by the refusal reading instead.
+const ALACRITTY_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "alacritty_terminal 0.26.0 exposes Grid, Term and vte with the event, grid, term, tty and vi_mode modules, but no public APC callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "alacritty_terminal 0.26.0 exposes Grid, Term and vte with the event, grid, term, tty and vi_mode modules, but no public APC callback, graphics store or Kitty graphics reply writer",
+}
+
+const XTERM_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "@xterm/headless 6.0.0 exposes Terminal with the IBuffer and ITerminalOptions typings, but its parser documentation states that APC, PM and SOS are not supported, and it exposes no image store, APC handler or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "@xterm/headless 6.0.0 exposes Terminal with the IBuffer and ITerminalOptions typings, but its parser documentation states that APC, PM and SOS are not supported, and it exposes no image store, APC handler or Kitty graphics reply writer",
+}
+
+const VT100_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+}
+
+const VT220_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+}
+
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.osc1-icon": "Ghostty 1.3.1 parses OSC 1 and ignores it. No icon state or action follows.",
   "extensions.osc113-reset-pointer-fg":
@@ -6489,6 +6521,11 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const passThroughReason = OSC_PASS_THROUGH_DECLARATIONS[definition.id]
   const ghosttyNativeReason = GHOSTTY_NATIVE_D2_DECLARATIONS[definition.id]
   const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
+  const imageDeclared =
+    ALACRITTY_IMAGE_D2_DECLARATIONS[definition.id] ??
+    XTERM_IMAGE_D2_DECLARATIONS[definition.id] ??
+    VT100_IMAGE_D2_DECLARATIONS[definition.id] ??
+    VT220_IMAGE_D2_DECLARATIONS[definition.id]
   if (
     !lib ||
     (!vt100Target &&
@@ -6498,7 +6535,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       !vtermReason &&
       !passThroughReason &&
       !ghosttyNativeReason &&
-      !weztermAbsence)
+      !weztermAbsence &&
+      !imageDeclared)
   ) {
     return definition
   }
@@ -6561,6 +6599,44 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
           `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${definition.id === "editing.decsace" ? "CSI" : "OSC"} has no handler or public rejection report.`,
       )
       if (alacrittyDeclared) return alacrittyDeclared
+      // CTO 8be19f1f: the Kitty image pair. No reader is passed because none of these libraries
+      // exposes a public image store or callback; if one ever gains it, its gate stops matching.
+      const alacrittyImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        ALACRITTY_IMAGE_D2_DECLARATIONS,
+        "alacritty",
+        "osc-absence",
+      )
+      if (alacrittyImageDeclared) return alacrittyImageDeclared
+      const xtermImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        XTERM_IMAGE_D2_DECLARATIONS,
+        "xterm",
+        "osc-pass-through",
+      )
+      if (xtermImageDeclared) return xtermImageDeclared
+      const vt100ImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        VT100_IMAGE_D2_DECLARATIONS,
+        "vt100",
+        "osc-absence",
+      )
+      if (vt100ImageDeclared) return vt100ImageDeclared
+      const vt220ImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        VT220_IMAGE_D2_DECLARATIONS,
+        "vt220",
+        "osc-absence",
+      )
+      if (vt220ImageDeclared) return vt220ImageDeclared
       const vtermDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
