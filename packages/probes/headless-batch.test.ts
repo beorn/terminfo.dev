@@ -2111,7 +2111,12 @@ test.skipIf(!isKittyAvailable())(
         : ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
         const umbrella = registryDefinitions([id])[0]!.lib!(source)
         expect(umbrella.tests, id).toEqual([
-          { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
+          {
+            id: "criterion",
+            status: "probe-todo",
+            reason:
+              "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+          },
         ])
         expect(umbrella.observation, id).toBeUndefined()
       }
@@ -4295,13 +4300,7 @@ test.runIf(OWNED_LAYOUT)("a VT100-shaped report moves the claimed OSC and SGR ce
     still(variant, unchanged)
       .map((row) => row.featureId)
       .sort(),
-  ).toEqual([
-    "extensions.osc7-cwd",
-    "sgr.blink",
-    "sgr.underline.curly",
-    "sgr.underline.dashed",
-    "sgr.underline.dotted",
-  ])
+  ).toEqual(["extensions.osc7-cwd", "sgr.blink", "sgr.underline.curly", "sgr.underline.dashed", "sgr.underline.dotted"])
   expect(JSON.stringify(still(variant, unchanged))).not.toContain("library reported this sequence as unhandled")
 })
 
