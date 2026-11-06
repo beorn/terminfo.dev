@@ -913,6 +913,14 @@ describe("audited OSC interface absence", () => {
     ] satisfies Partial<LibProbeSource>[]) {
       expect(isDeclaredUntestable(decsscls(d2Source(extra)))).toBe(false)
     }
+    const blink = ALL_PROBES.find((probe) => probe.id === "sgr.blink")!.lib!
+    expect(fold("sgr.blink", blink(d2Source()))).toMatchObject({
+      status: "untestable",
+      reason: expect.stringMatching(/accepts SGR 5 blink and sends it to a debug line at term\/mod\.rs:1927/u),
+    })
+    expect(isDeclaredUntestable(blink(d2Source({ runtimeIdentity: { ...alacritty, engineVersion: "0.26.1" } })))).toBe(
+      false,
+    )
     const semantic = ALL_PROBES.find((probe) => probe.id === "extensions.osc133-a")!.lib!
     expect(isDeclaredUntestable(semantic(d2Source({ getSemanticMarks: () => [] })))).toBe(false)
     expect(() =>

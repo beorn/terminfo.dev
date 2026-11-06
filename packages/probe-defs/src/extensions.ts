@@ -6477,6 +6477,7 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
   "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
   "modes.decsscls": "CSI 9 SP p (DECSSCLS) scroll-speed state",
+  "sgr.blink": "SGR 5 blink",
   "extensions.osc9-progress": "OSC 9;4 progress state",
   "input.kitty-click-events": "OSC 133 click-events prompt state (mouse encoding is supplied by Termless)",
   "extensions.osc777-notify": "OSC 777 notification payloads",
@@ -7033,9 +7034,13 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 ? typeof source.getSemanticMarks === "function"
                 : false,
         (entry) =>
-          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${
-            definition.id === "editing.decsace" || definition.id === "modes.decsscls" ? "CSI" : "OSC"
-          } has no handler or public rejection report.`,
+          // Blink is handled and dropped, not unhandled: term/mod.rs:1927 sends the attribute to a debug
+          // line and Flags carries no blink bit, so the no-handler clause below would state a false cause.
+          definition.id === "sgr.blink"
+            ? `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 accepts ${entry} and sends it to a debug line at term/mod.rs:1927, and Flags carries no blink bit, so no public state, reply or typed event exposes it.`
+            : `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${
+                definition.id === "editing.decsace" || definition.id === "modes.decsscls" ? "CSI" : "OSC"
+              } has no handler or public rejection report.`,
       )
       if (alacrittyDeclared) return alacrittyDeclared
       // CTO 8be19f1f: the Kitty image pair. No reader is passed because none of these libraries
