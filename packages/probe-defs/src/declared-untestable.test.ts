@@ -50,7 +50,7 @@ const library = (backendName = "alacritty"): LibProbeSource =>
 // or leaks onto an unreviewed engine. Earlier declarations cover none of these eighteen cells.
 // @level l1
 // @consumer ALL_PROBES library callbacks through the shipping result finalizer; no test-only seam.
-describe("six pass-through OSC declarations", () => {
+describe("pass-through declarations", () => {
   const ids = [
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
@@ -61,6 +61,25 @@ describe("six pass-through OSC declarations", () => {
   ] as const
   const reason =
     "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
+  // NR-H: the existing six-OSC cases do not cover these fourteen xterm.js cells.
+  const xtermIds = [
+    "editing.decsace",
+    "extensions.osc9-progress",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.semantic-prompts",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc-633-vscode",
+  ] as const
+  const csiReason =
+    "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it."
   // Engine identities from the 20:34 natural run, also measured directly by CTO at 21:01.
   const subjects = [
     [
@@ -109,15 +128,50 @@ describe("six pass-through OSC declarations", () => {
       },
     ],
   ] as const
+  const baseCell = libProbeSource(createSemanticSurface()).getCell(0, 0)
   const source = (backend: string, identity: unknown) =>
     ({
       ...library(backend),
       runtimeIdentity: identity,
       feedCapture: () => "",
       getTitle: () => "",
+      getCell: (row: number, col: number) => ({
+        ...baseCell,
+        char: ["abcdefgh", "ijklmnop"][row]?.[col] ?? " ",
+        inverse: false,
+      }),
       getMode: () => null,
       getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
     }) as LibProbeSource
+
+  // @failure NR-H stays TODO, leaks to another engine/version, or replaces a decided observation.
+  // @level l1
+  // @consumer Shipping probe callbacks and finalizer; the prior six-OSC set misses all NR-H cells.
+  test.each(xtermIds)("xterm declares %s only at its reviewed identity", (id) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    const identity = subjects[0][1]
+    const result = definition.lib!(source("xterm", identity))
+    expect(fold(id, result)).toMatchObject({
+      status: "untestable",
+      reason: id === "editing.decsace" ? csiReason : reason,
+    })
+    expect(result.observation).toBeUndefined()
+    for (const unknown of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
+      expect(isDeclaredUntestable(definition.lib!(source("xterm", unknown)))).toBe(false)
+    }
+    const decided: ProbeCallbackResult = {
+      pass: true,
+      observation: { outcome: "supported", assertionType: "buffer_state" },
+    }
+    expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source("xterm", identity))).toBe(
+      decided,
+    )
+    for (const [backend, otherIdentity] of subjects.slice(1)) {
+      const other = definition.lib!(source(backend, otherIdentity))
+      // Five pre-existing vterm D2 declarations remain; none gains the NR-H pass-through reason.
+      expect(fold(id, other).reason).not.toBe(id === "editing.decsace" ? csiReason : reason)
+    }
+  })
 
   test.each(subjects)(
     "%s finalizes exactly the six declarations even with a generic numeric report",
@@ -435,19 +489,21 @@ test.each(declared)("%s library arm reads Untestable with its declared reason", 
 })
 
 // The exceptions named inside their probes stay as they are: vterm's stored Sixel payload keeps its review, and
-// XTEST key injection is declared only for the five libraries with no public key encoder (CTO 47010d76).
+// XTEST key injection is declared only for the six libraries with no public key encoder (CTO 47010d76, #32428).
 test("vterm's Sixel storage arm and the encoder-exporting XTEST arms are not declared and stay PROBE TODO", () => {
   const sixel = ALL_PROBES.find((probe) => probe.id === "extensions.sixel")!.lib!
   const stored = sixel({ ...library("vterm"), getSixelImages: () => [] } as unknown as LibProbeSource)
   expect(isDeclaredUntestable(stored)).toBe(false)
   expect(fold("extensions.sixel", stored).status).toBe("probe-todo")
   const xtest = ALL_PROBES.find((probe) => probe.id === "input.xtest-key")!.lib!
-  for (const backendName of ["libvterm", "vterm"]) {
+  for (const backendName of ["libvterm"]) {
     const result = xtest(library(backendName)) as ProbeCallbackResult
     expect(isDeclaredUntestable(result)).toBe(false)
     expect(fold("input.xtest-key", result).status).toBe("probe-todo")
   }
-  expect(isDeclaredUntestable(xtest(library("vt100")) as ProbeCallbackResult)).toBe(true)
+  for (const backendName of ["vt100", "vterm"]) {
+    expect(isDeclaredUntestable(xtest(library(backendName)) as ProbeCallbackResult)).toBe(true)
+  }
 })
 
 test("the declared helper needs a reason and folds only in its exact form", () => {
@@ -718,6 +774,71 @@ describe("audited OSC interface absence", () => {
         : source,
     ),
   }
+  // NR-D adds CSI extent, progress state and prompt-click state to the existing audited route.
+  // The literal23 table above cannot prove these newly ruled cells or their reader precedence.
+  test.each([
+    ["editing.decsace", /CSI/],
+    ["extensions.osc9-progress", /OSC 9/],
+    ["input.kitty-click-events", /Termless/],
+  ] as const)("NR-D %s declares only the audited Alacritty interface", (id, reason) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    for (const runtimeIdentity of [alacritty, alacritty0110]) {
+      const result = definition.lib!(d2Source({ runtimeIdentity }))
+      expect(isDeclaredUntestable(result)).toBe(true)
+      expect(fold(id, result)).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
+    }
+    for (const extra of [
+      { runtimeIdentity: undefined },
+      { runtimeIdentity: { ...alacritty, engineVersion: "unreviewed" } },
+      { backendName: "other-library" },
+      { getUnhandledSequences: () => [] },
+    ] satisfies Partial<LibProbeSource>[]) {
+      expect(isDeclaredUntestable(definition.lib!(d2Source(extra)))).toBe(false)
+    }
+    const decided = parserStateResult(true, "existing decided result", { value: true })
+    expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(d2Source())).toBe(decided)
+    if (id === "extensions.osc9-progress") {
+      expect(isDeclaredUntestable(definition.lib!(d2Source({ getProgress: () => null })))).toBe(false)
+    }
+  })
+
+  // A generic all-zero DECRQM responder must not establish an engine negative.
+  // Existing input tests measure encoder bytes, not this same-reader control.
+  test.each([
+    ["controlled negative", true, 0, 0, "unsupported"],
+    ["constant-zero control", false, 0, 0, "probe-todo"],
+    ["recognized unknown", true, 1, 0, "probe-todo"],
+    ["recognized target", true, 0, 1, "probe-todo"],
+  ] as const)("NR-D pixel mouse: %s", (_label, controlled, unknown, target, outcome) => {
+    let sgr = false
+    const writes: string[] = []
+    const source = d2Source({
+      feed(sequence) {
+        writes.push(sequence)
+        if (sequence === "\x1b[?1006h") sgr = true
+        if (sequence === "\x1b[?1006l") sgr = false
+      },
+      feedCapture(sequence) {
+        writes.push(sequence)
+        const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
+        if (!mode) return ""
+        const ps = mode === "1006" ? (controlled ? (sgr ? 1 : 2) : 0) : mode === "9999" ? unknown : target
+        return `\x1b[?${mode};${ps}$y`
+      },
+    })
+    const result = ALL_PROBES.find((probe) => probe.id === "input.pixel-mouse")!.lib!(source)
+    if (outcome === "unsupported") {
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+      expect(result.assertions?.[0]?.kind).toBe("negative")
+    } else {
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.notTested).toBeDefined()
+    }
+    expect(writes).toContain("\x1b[?1006$p")
+    expect(writes).toContain("\x1b[?9999$p")
+    expect(writes.filter((write) => write === "\x1b[?1016$p")).toHaveLength(2)
+    expect(writes.at(-1)).toBe("\x1b[?1006;1016l")
+  })
   // The starting-colour exception needs this probe's seed, not only an audited identity.
   // Existing D2 and generic colour cases do not combine those two facts.
   test("Alacritty starting-colour declarations require an audited identity and verified seed", () => {

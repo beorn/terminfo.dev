@@ -469,12 +469,25 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     ["extensions.osc99-kitty-notify", "\u001b]99;i=dev4-census:p=?;\u001b\\", "osc", "99"],
     ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "osc", "9"],
     ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "osc", "22"],
+    // NR-A, @cto 947dcd40 slice A.
+    ["editing.decsace", "\u001b[2*x", "csi", "*2x"],
+    ["extensions.osc5522-clipboard", "\u001b[?5522$p", "csi", "?$5522p"],
+    ["extensions.kitty-keyboard", "\u001b[>1u", "csi", ">1u"],
+    ["extensions.kitty-keyboard.disambiguate", "\u001b[>1u", "csi", ">1u"],
+    ["extensions.kitty-keyboard.report-events", "\u001b[>3u", "csi", ">3u"],
+    ["extensions.kitty-keyboard.report-alternate", "\u001b[>5u", "csi", ">5u"],
+    ["extensions.kitty-keyboard.report-all-keys", "\u001b[>9u", "csi", ">9u"],
+    ["extensions.kitty-keyboard.report-text", "\u001b[>25u", "csi", ">25u"],
+    ["input.csi-u", "\u001b[>1u", "csi", ">1u"],
+    ["input.pixel-mouse", "\u001b[?1016h", "csi", "?1016h"],
+    ["input.kitty-click-events", "\u001b]133;A;click_events=1\u0007", "osc", "133"],
   ] as const
   const declared = [
     "device.decrqss",
     "device.xtgettcap",
     "device.xtgetxres",
     "extensions.kitty-graphics",
+    "extensions.kitty-graphics.display",
     "extensions.kitty-graphics.transmit",
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
@@ -523,6 +536,12 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
         ),
       ).toBe(false)
     }
+  })
+
+  // The verdict records buffer_state, which an input_bytes-only declaration would refuse at collection.
+  test("kitty-click declares the report's buffer_state beside its own input_bytes", () => {
+    const declaration = definition("input.kitty-click-events").libAssertionType
+    expect(declaration).toMatchObject({ then: ["input_bytes", "buffer_state"], otherwise: ["input_bytes"] })
   })
 
   test("failed controls, mismatch, extra entry, missing member and changed identity keep the old path", () => {
@@ -584,7 +603,7 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
   })
 })
 
-describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
+describe("vterm 0.13.1 D2 nine-cell interface-absence declarations", () => {
   const sourceIntegrity = {
     kind: "source" as const,
     revision: "7b39f49e8a6bc03ce695c5ab7c143c2cc7379eb0",
@@ -604,11 +623,13 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
   const declared = [
     "modes.decsscls",
     "extensions.osc22-pointer",
+    "extensions.osc9-progress",
     "extensions.osc133-d",
     "extensions.osc633-d",
     "extensions.osc633-e",
     "extensions.semantic-prompts",
     "extensions.osc-633-vscode",
+    "input.kitty-click-events",
   ] as const
   const shellDeclared = new Set([
     "extensions.osc133-d",
@@ -641,6 +662,12 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
     expect(JSON.stringify(result)).toContain("vterm.js 0.13.1")
     if (shellDeclared.has(id)) {
       expect(JSON.stringify(result)).toContain("generic parser tap")
+    }
+    if (id === "extensions.osc9-progress") {
+      expect(JSON.stringify(result)).toContain("tapParser")
+    }
+    if (id === "input.kitty-click-events") {
+      expect(JSON.stringify(result)).toContain("Termless")
     }
     expect(result.observation?.outcome).not.toBe("unsupported")
     for (const overrides of [

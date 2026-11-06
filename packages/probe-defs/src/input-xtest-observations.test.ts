@@ -182,7 +182,7 @@ test.each([
 test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
   "%s declares only checked key-encoder absences Untestable",
   (id) => {
-    for (const backendName of ["alacritty", "vt100", "vt220", "vt100-rust", "xterm"]) {
+    for (const backendName of ["alacritty", "vt100", "vt220", "vt100-rust", "vterm", "xterm"]) {
       const result = probe(id).lib!({ ...libMouseSource({ extensions: [] }), backendName })
       expect(isDeclaredUntestable(result), backendName).toBe(true)
       expect(result.tests?.[0]?.reason).toMatch(/(?:public key-event|key-event-to-byte) encoder/)
@@ -197,7 +197,7 @@ test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
       expect(isDeclaredUntestable(result), `${backendName}/${id}`).toBe(unavailable)
       if (unavailable) expect(result.tests?.[0]?.reason).toMatch(/public.*(?:parsed|state|selector)/)
     }
-    for (const backendName of ["libvterm", "wezterm", "vterm", "unknown"]) {
+    for (const backendName of ["libvterm", "wezterm", "unknown"]) {
       const result = probe(id).lib!({ ...libMouseSource({ extensions: [] }), backendName })
       expect(isDeclaredUntestable(result), backendName).toBe(false)
     }
@@ -206,11 +206,12 @@ test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
 
 // Fixed per-capture review reasons must reach the real callbacks, without grading at callback time.
 // Existing input fixtures checked absence of observations, not this retained review contract.
-// Five libraries export no public key-event encoder: their input.xtest-key cell is declared Untestable (operator Nov 4
+// Six libraries export no public key-event encoder: their input.xtest-key cell is declared Untestable (operator Nov 4
 // 16:55), and its reason names the missing export.
 test.each([
   ["vt100", /vt100\.js 0\.10\.1 exports createVt100Screen/],
   ["vt220", /vt220\.js 0\.10\.1 exports createVt220Screen/],
+  ["vterm", /vterm\.js 0\.13\.1 exports createVtermScreen/],
   ["xterm", /@xterm\/headless 6\.0\.0 exports Terminal/],
   ["alacritty", /alacritty_terminal 0\.26\.0 exposes/],
   ["vt100-rust", /vt100 crate 0\.16\.2 exposes/],
@@ -2064,14 +2065,13 @@ test("input.kitty-click-events library arm records supported when control passes
 })
 
 // @failure A vterm input cell is graded from a source audit, or its outcome depends on source provenance (#32246).
-// @consumer The four registered library callbacks; existing app and foreign mouse paths stay covered above.
-// Every vterm identity, exact or drifted, reads the same PROBE TODO record: no same-path control in this run.
+// @consumer The registered kitty-click-events library callback; existing app and foreign mouse paths stay covered above.
+// Unreviewed or drifted vterm identities read the same PROBE TODO record: no same-path control in this run.
 test.each(
-  ["input.modify-other-keys", "input.modify-other-keys-3", "input.xtest-key", "input.kitty-click-events"].flatMap(
-    (id) =>
-      ["exact", "drift", "dirty", "foreign", "moved-path", "other-version", "other-format"].map(
-        (identityCase) => [id, identityCase] as const,
-      ),
+  ["input.kitty-click-events"].flatMap((id) =>
+    ["exact", "drift", "dirty", "foreign", "moved-path", "other-version", "other-format"].map(
+      (identityCase) => [id, identityCase] as const,
+    ),
   ),
 )("%s keeps the %s vterm identity PROBE TODO, never source-graded", (id, identityCase) => {
   const runtimeIdentity = {

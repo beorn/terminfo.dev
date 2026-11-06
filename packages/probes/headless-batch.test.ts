@@ -26,7 +26,9 @@ import {
   HARNESS_INCOMPLETE_TEST,
   HEADLESS_OBSERVABLE_REVIEW,
   initializeRunDraft,
+  isDeclaredUntestable,
   type CapturedRunDraft,
+  type HeadlessRuntimeIdentity,
   type ProbeCallbackResult,
   type ProbeDefinition,
   type LibProbeSource,
@@ -571,6 +573,7 @@ test("key-encoder absence declarations cover every actual adapter factory name",
     createVt100Backend,
     createVt220Backend,
     createVt100RustBackend,
+    createVtermBackend,
     createXtermBackend,
   ]) {
     const actual = create()
@@ -3537,20 +3540,44 @@ test("formerly audited Vterm input cells record PROBE TODO coverage through the 
   )
   expect(parsed.results).toEqual(batch.results)
   expect(parsed.assertions).toEqual([])
+  const vtermKeyEncoderAbsence =
+    "vterm.js 0.13.1 exports createVtermScreen and its Screen byte parser and state readers, and no key-event-to-byte encoder"
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results).toHaveLength(ids.length)
-  expect(batch.notTested).toEqual(
-    ids.map((id) => ({
-      featureId: id,
+  expect(batch.notTested).toEqual([
+    {
+      featureId: "input.modify-other-keys",
+      reason: "no-semantic-observable",
+      noObservable: vtermKeyEncoderAbsence,
+      rawReplyRef: "input.modify-other-keys",
+    },
+    {
+      featureId: "input.modify-other-keys-3",
+      reason: "no-semantic-observable",
+      noObservable: vtermKeyEncoderAbsence,
+      rawReplyRef: "input.modify-other-keys-3",
+    },
+    {
+      featureId: "input.xtest-key",
+      reason: "no-semantic-observable",
+      noObservable: `OS-level XTEST key injection: ${vtermKeyEncoderAbsence}`,
+      rawReplyRef: "input.xtest-key",
+    },
+    {
+      featureId: "input.kitty-click-events",
       reason: "no-semantic-observable",
       noObservable: NO_SAME_PATH_CONTROL,
-      rawReplyRef: id,
-    })),
-  )
+      rawReplyRef: "input.kitty-click-events",
+    },
+  ])
   for (const id of ids) {
     const row = batch.results.find((entry) => entry.featureId === id)
-    expect(row).toMatchObject({ status: "probe-todo" })
-    expect(row?.criterionBranch).toBeUndefined()
+    if (id === "input.kitty-click-events") {
+      expect(row).toMatchObject({ status: "probe-todo" })
+      expect(row?.criterionBranch).toBeUndefined()
+    } else {
+      expect(row).toMatchObject({ status: "untestable", criterionBranch: "headless-observable-review" })
+    }
     expect(row?.assertionType).toBeUndefined()
   }
   expect(batch.assertions).toEqual([])
@@ -5788,6 +5815,67 @@ test.each([
     expect(batch.results).toMatchObject([{ status: "untestable", reason: expect.stringContaining(library) }])
     expect(batch.observations).toEqual([])
     expect(batch.assertions).toEqual([])
+  },
+)
+
+// NR-A, @cto 947dcd40 slice A: the real engine's own reports decide these rows; the identity is the audited subject.
+// Hosted resolves the published adapter, which is not that subject.
+test.runIf(OWNED_LAYOUT)(
+  "real vt100-rust reports the eleven NR-A targets unhandled and declares Kitty display",
+  async () => {
+    const identity: HeadlessRuntimeIdentity = {
+      kind: "native",
+      engineVersion: "0.16.2",
+      adapterVersion: "0.10.2",
+      termlessRevision: "39f7cd8336b01debdbbe775d1a40900195a7f91e",
+      loadedBinary: {
+        path: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
+        sha256: "72855b1d5462ac4c168d6c2f4a6252ab0bbfbd8682bcd68c732521ed1f4e661c",
+      },
+      provenance: {
+        sha256: "72855b1d5462ac4c168d6c2f4a6252ab0bbfbd8682bcd68c732521ed1f4e661c",
+        sourceCommit: "3a0bcc0f615cc22d64ea6b756026521d697f0c61",
+        buildHash: "1384077ee447681a93471e6ee176b8bbdc4ae172e2f94ab3d7cc1f84a1f674eb",
+        toolchain: "fixture",
+        lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
+      },
+      adapterSources: [
+        { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
+        { path: "packages/vt100-rust/src/backend.ts", blobOid: "ddabecd4881be4f6b63f1c35f9c2265b53d35df4" },
+      ],
+    }
+    const reported = [
+      "editing.decsace",
+      "extensions.osc5522-clipboard",
+      "extensions.kitty-keyboard",
+      "extensions.kitty-keyboard.disambiguate",
+      "extensions.kitty-keyboard.report-events",
+      "extensions.kitty-keyboard.report-alternate",
+      "extensions.kitty-keyboard.report-all-keys",
+      "extensions.kitty-keyboard.report-text",
+      "input.csi-u",
+      "input.pixel-mouse",
+      "input.kitty-click-events",
+    ]
+    const read = async (id: string) => {
+      const value = await createVt100RustBackend()
+      value.init({ cols: 80, rows: 24 })
+      try {
+        const source = {
+          ...createLibProbeSource(value, undefined, undefined, undefined),
+          runtimeIdentity: identity,
+        }
+        return registryDefinitions([id])[0]!.lib!(source)
+      } finally {
+        value.destroy()
+      }
+    }
+    for (const id of reported) {
+      const result = await read(id)
+      expect(result.observation?.outcome, id).toBe("unsupported")
+      expect(JSON.stringify(result), id).toContain("library reported this sequence as unhandled")
+    }
+    expect(isDeclaredUntestable(await read("extensions.kitty-graphics.display"))).toBe(true)
   },
 )
 

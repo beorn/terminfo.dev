@@ -50,6 +50,14 @@ undecided prior arm. DECAWM off must read false and add no entry, then one exact
 must add exactly one matching entry. Its cleanup reset follows the verdict. No source identity
 selects either criterion.
 
+Alacritty's pixel-mouse arm instead qualifies the engine's DECRQM reader: mode1006 must
+change from Ps2 after reset to Ps1 after set, while unknown9999 and target1016 before/after
+set answer Ps0. That controlled target negative reads Unsupported; a missing or inconsistent
+control stays PROBE TODO. Both mouse encoding modes reset on exit. The existing audited
+Alacritty declaration route also covers DECSACE's CSI extent, OSC9;4 progress without a
+progress reader, and OSC133 prompt click-events state; shared Termless encoder bytes do
+not establish a library implementation.
+
 External release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 Terminal tiers describe progress: 0 missing, 1 incomplete, 2 broken and 3 done. These are distinct from the former Release 1 query/reply group and from color depth. This terminology defines no thresholds and changes no status computation.
@@ -400,10 +408,11 @@ Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration c
 
 The `vterm` D2 slice shares the same private helper (`declaredD2InterfaceAbsence`)
 with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source tree
-`3d58d29a8265aafd928e0736dde6723e2bac2007`) to declare seven exact-version
-public-interface absences: `modes.decsscls`, `extensions.osc22-pointer`,
-`extensions.osc133-d`, `extensions.osc633-d`, `extensions.osc633-e`,
-`extensions.semantic-prompts`, and `extensions.osc-633-vscode`. Because `vterm`
+`3d58d29a8265aafd928e0736dde6723e2bac2007`) to declare nine exact-version
+public-interface absences: `modes.decsscls`, `extensions.osc9-progress`,
+`extensions.osc22-pointer`, `extensions.osc133-d`, `extensions.osc633-d`,
+`extensions.osc633-e`, `extensions.semantic-prompts`,
+`extensions.osc-633-vscode`, and `input.kitty-click-events`. Because `vterm`
 exposes `getSemanticMarks` for start zones (`extensions.osc133-a`, `b`, and `c`
 stay Supported; `extensions.osc133-p` stays Unsupported), reader precedence
 checks the `semantic-command-end` capability alongside `getUnhandledSequences`

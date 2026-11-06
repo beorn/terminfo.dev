@@ -6265,11 +6265,26 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.osc7770-font-size": { feed: "\u001b]7770;?\u0007", code: { kind: "osc", code: "7770" } },
   "extensions.osc7777-font-window-size": { feed: "\u001b]7777;?\u0007", code: { kind: "osc", code: "7777" } },
   "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
+  // @cto routes ruling 947dcd40, slice A. Own probe payloads; the SGR 1 control passes where `?7l` cannot.
+  "editing.decsace": { feed: "\u001b[2*x", code: { kind: "csi", code: "*2x" } },
+  "extensions.osc5522-clipboard": { feed: "\u001b[?5522$p", code: { kind: "csi", code: "?$5522p" } },
+  "extensions.kitty-keyboard": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
+  "extensions.kitty-keyboard.disambiguate": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
+  "extensions.kitty-keyboard.report-events": { feed: "\u001b[>3u", code: { kind: "csi", code: ">3u" } },
+  "extensions.kitty-keyboard.report-alternate": { feed: "\u001b[>5u", code: { kind: "csi", code: ">5u" } },
+  "extensions.kitty-keyboard.report-all-keys": { feed: "\u001b[>9u", code: { kind: "csi", code: ">9u" } },
+  "extensions.kitty-keyboard.report-text": { feed: "\u001b[>25u", code: { kind: "csi", code: ">25u" } },
+  "input.csi-u": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
+  "input.pixel-mouse": { feed: "\u001b[?1016h", code: { kind: "csi", code: "?1016h" } },
+  "input.kitty-click-events": { feed: "\u001b]133;A;click_events=1\u0007", code: { kind: "osc", code: "133" } },
 }
 
 // Operator D2, exact alacritty_terminal 0.26.0 / VTE 0.15.0 API read:
-// ansi.rs:1329-1524 dispatches none of these OSCs; event.rs:14-104 has no report for them.
+// The audited dispatcher and event API expose no criterion-bearing state for these sequences.
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
+  "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
+  "extensions.osc9-progress": "OSC 9;4 progress state",
+  "input.kitty-click-events": "OSC 133 click-events prompt state (mouse encoding is supplied by Termless)",
   "extensions.osc777-notify": "OSC 777 notification payloads",
   "extensions.osc133-a": "OSC 133 prompt starts",
   "extensions.osc133-b": "OSC 133 command starts",
@@ -6299,13 +6314,34 @@ const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
 // generic hook; payload delivery is not execution of these host commands.
 const OSC_PASS_THROUGH_REASON =
   "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
-const OSC_PASS_THROUGH_DECLARATIONS: Readonly<Record<string, string>> = {
+const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
+  Record<string, string | { readonly backend: string; readonly reason: string }>
+> = {
   "extensions.osc176-app-id": OSC_PASS_THROUGH_REASON,
   "extensions.osc3008-context": OSC_PASS_THROUGH_REASON,
   "extensions.osc440-audio": OSC_PASS_THROUGH_REASON,
   "extensions.osc555-flash": OSC_PASS_THROUGH_REASON,
   "extensions.osc666-termprop": OSC_PASS_THROUGH_REASON,
   "extensions.osc710-font-normal": OSC_PASS_THROUGH_REASON,
+  // NR-H: xterm.js 6.0.0's logger is not a report; retain the reviewed parser-hook wording.
+  "editing.decsace": {
+    backend: "xterm",
+    reason:
+      "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it.",
+  },
+  "extensions.osc9-progress": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-b": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-c": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-d": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-p": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.semantic-prompts": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-b": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-c": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-d": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-e": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc-633-vscode": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
 }
 
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6318,6 +6354,8 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.kitty-graphics":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.transmit":
+    "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.display":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.osc176-app-id":
     "OSC 176 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
@@ -6336,6 +6374,8 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "modes.decsscls":
     "vterm.js 0.13.1 exposes Screen, Snapshot and TerminalModes, but no public DECSSCLS scroll-speed state, getter or unhandled-sequence report",
+  "extensions.osc9-progress":
+    "vterm.js 0.13.1 exposes getNotifications() and tapParser(), but no public OSC 9;4 progress state, getter or unhandled-sequence report",
   "extensions.osc22-pointer":
     "vterm.js 0.13.1 exposes pointerFgColor and pointerBgColor on Snapshot, but no public OSC 22 pointer-shape state, query reply or unhandled-sequence report",
   "extensions.osc133-d":
@@ -6348,6 +6388,8 @@ const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc-633-vscode":
     "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+  "input.kitty-click-events":
+    "vterm.js 0.13.1 drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
 }
 
 // CTO 8be19f1f: five libraries expose no public image path, so their Kitty display and transmit
@@ -6406,7 +6448,7 @@ function declaredD2InterfaceAbsence(
   ctx: LibProbeSource,
   lib: (ctx: LibProbeSource) => ProbeCallbackResult,
   id: string,
-  table: Readonly<Record<string, string>>,
+  table: Readonly<Record<string, string | { readonly backend: string; readonly reason: string }>>,
   backend: string,
   cohort:
     | "osc-absence"
@@ -6421,7 +6463,13 @@ function declaredD2InterfaceAbsence(
   formatReason: (entry: string) => string = (entry) => entry,
   options: { readonly genericReportIsObservable?: boolean } = {},
 ): ProbeCallbackResult | undefined {
-  const entry = table[id]
+  const declaration = table[id]
+  const entry =
+    typeof declaration === "string"
+      ? declaration
+      : declaration !== undefined && declaration.backend === ctx.backendName
+        ? declaration.reason
+        : undefined
   if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined
   const result = lib(ctx)
   if (
@@ -6519,13 +6567,14 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   }
   return {
     ...definition,
-    ...(vt100Target && definition.libAssertionType === "query_reply"
+    ...(vt100Target && (definition.libAssertionType === "query_reply" || definition.libAssertionType === "input_bytes")
       ? {
+          // A report verdict records buffer_state; the probe's own arm keeps its type.
           libAssertionType: {
             when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
               typeof source.getUnhandledSequences === "function",
-            then: ["query_reply", "buffer_state"] as const,
-            otherwise: ["query_reply"] as const,
+            then: [definition.libAssertionType, "buffer_state"] as const,
+            otherwise: [definition.libAssertionType] as const,
           },
         }
       : {}),
@@ -6561,16 +6610,18 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         "alacritty",
         "osc-absence",
         (source, id) =>
-          id === "extensions.osc777-notify"
-            ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
-            : id.startsWith("extensions.osc133") ||
-                id.startsWith("extensions.osc633") ||
-                id === "extensions.osc-633-vscode" ||
-                id === "extensions.semantic-prompts"
-              ? typeof source.getSemanticMarks === "function"
-              : false,
+          id === "extensions.osc9-progress"
+            ? typeof source.getProgress === "function"
+            : id === "extensions.osc777-notify"
+              ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
+              : id.startsWith("extensions.osc133") ||
+                  id.startsWith("extensions.osc633") ||
+                  id === "extensions.osc-633-vscode" ||
+                  id === "extensions.semantic-prompts"
+                ? typeof source.getSemanticMarks === "function"
+                : false,
         (entry) =>
-          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this OSC has no handler or public rejection report.`,
+          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${definition.id === "editing.decsace" ? "CSI" : "OSC"} has no handler or public rejection report.`,
       )
       if (alacrittyDeclared) return alacrittyDeclared
       // CTO 8be19f1f: the Kitty image pair. No reader is passed because none of these libraries
