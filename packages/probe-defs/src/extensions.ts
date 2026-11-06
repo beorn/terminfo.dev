@@ -94,9 +94,20 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 // version carrying the same backend name. Real readers take precedence at each caller.
 function hasAuditedOscInterfaceAbsence(
   ctx: LibProbeSource,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" = "osc-absence",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "wezterm-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
+  if (cohort === "wezterm-d2") {
+    return (
+      ctx.backendName === "wezterm" &&
+      identity?.kind === "native" &&
+      identity.engineVersion === "0.1.0-fork.5" &&
+      identity.loadedBinary.sha256 === "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186" &&
+      identity.provenance.sourceCommit === "f8f48853438f5fb6c43abbbb081162506d14f167" &&
+      identity.provenance.lockSha256 === "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58" &&
+      auditedAdapterSources(identity, "wezterm")
+    )
+  }
   if (cohort === "vt100-rust-d2") {
     return (
       ctx.backendName === "vt100-rust" &&
@@ -6197,7 +6208,7 @@ function declaredD2InterfaceAbsence(
   id: string,
   table: Readonly<Record<string, string>>,
   backend: string,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "wezterm-d2",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
 ): ProbeCallbackResult | undefined {
@@ -6225,6 +6236,28 @@ const KITTY_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; reado
   "modes.decsscls": { feed: "\x1b[9 p", code: { kind: "csi", code: " p" } },
 }
 
+const WEZTERM_D2_ABSENCES: Readonly<Record<string, string>> = {
+  "extensions.osc113-reset-pointer-fg":
+    "OSC 113 has a recognized empty handler arm; pointer foreground is absent from the public palette, there is no query reply, and PaletteChanged carries no value",
+  "extensions.osc114-reset-pointer-bg":
+    "OSC 114 has a recognized empty handler arm; pointer background is absent from the public palette, there is no query reply, and PaletteChanged carries no value",
+  "extensions.osc22-pointer":
+    "OSC 22 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "modes.decsscls": "DECSSCLS has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc176-app-id":
+    "OSC 176 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc3008-context":
+    "OSC 3008 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc440-audio":
+    "OSC 440 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc555-flash":
+    "OSC 555 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc666-termprop":
+    "OSC 666 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc710-font-normal":
+    "OSC 710 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+}
+
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
@@ -6233,7 +6266,10 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
-  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason)) return definition
+  const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
+  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason && !weztermAbsence)) {
+    return definition
+  }
   return {
     ...definition,
     ...(vt100Target && definition.libAssertionType === "query_reply"
@@ -6277,6 +6313,17 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         (source) => source.capabilities.extensions.has("semantic-command-end"),
       )
       if (vtermDeclared) return vtermDeclared
+      const weztermDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        WEZTERM_D2_ABSENCES,
+        "wezterm",
+        "wezterm-d2",
+        undefined,
+        (entry) => `WezTerm tattoy-wezterm-term 0.1.0-fork.5: ${entry}.`,
+      )
+      if (weztermDeclared) return weztermDeclared
       const identity = ctx.runtimeIdentity
       const vt100Audited = hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")
       if (vt100Audited && reason) {
