@@ -51,7 +51,7 @@ const inputDefinitions: ProbeDefinition[] = [
         const declared = NO_LIBRARY_KEY_ENCODER[ctx.backendName]
         if (declared) return declaredUntestableResult(`OS-level XTEST key injection: ${declared}`, { input: false })
         if (ctx.encodeKey) return xtestKeyLib(ctx.encodeKey)
-        return vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true)
+        return headlessXtestReview("key injection", true)
       },
       xtestKey,
       "input_bytes",
@@ -125,6 +125,8 @@ const NO_LIBRARY_KEY_ENCODER: Readonly<Record<string, string>> = {
     "vt100.js 0.10.1 exports createVt100Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
   vt220:
     "vt220.js 0.10.1 exports createVt220Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
+  vterm:
+    "vterm.js 0.13.1 exports createVtermScreen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
   xterm:
     "@xterm/headless 6.0.0 exports Terminal, whose input() takes already encoded bytes, and no public key-event encoder",
   alacritty:
@@ -161,8 +163,6 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
   if (reason) {
     return declaredUntestableResult(reason, { keyEncoder: ctx.encodeKey !== undefined, requestedLevel: level })
   }
-  const excluded = vtermNoSamePathControl(ctx, { input: false })
-  if (excluded) return excluded
   const encode = ctx.encodeKey
   if (!encode) {
     return notTestedResult("Native key-encoding route is not qualified for this library", { keyEncoder: false })
@@ -291,14 +291,6 @@ function modifyOtherKeysLib(ctx: LibProbeSource, level: 2 | 3): ProbeCallbackRes
       ...(result.assertions ?? []),
     ],
   }
-}
-
-/**
- * The former vterm source-negative input sites (@cto 9fad23d7, #32246): no control in this run shows the same input
- * path can report the state, so the cell stays PROBE TODO; source code never decides it.
- */
-function vtermNoSamePathControl(ctx: LibProbeSource, state: object): ProbeCallbackResult | undefined {
-  return ctx.backendName === "vterm" ? notTestedResult(NO_SAME_PATH_CONTROL, state) : undefined
 }
 
 async function deliveryControl(

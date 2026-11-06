@@ -435,19 +435,21 @@ test.each(declared)("%s library arm reads Untestable with its declared reason", 
 })
 
 // The exceptions named inside their probes stay as they are: vterm's stored Sixel payload keeps its review, and
-// XTEST key injection is declared only for the five libraries with no public key encoder (CTO 47010d76).
+// XTEST key injection is declared only for the six libraries with no public key encoder (CTO 47010d76, #32428).
 test("vterm's Sixel storage arm and the encoder-exporting XTEST arms are not declared and stay PROBE TODO", () => {
   const sixel = ALL_PROBES.find((probe) => probe.id === "extensions.sixel")!.lib!
   const stored = sixel({ ...library("vterm"), getSixelImages: () => [] } as unknown as LibProbeSource)
   expect(isDeclaredUntestable(stored)).toBe(false)
   expect(fold("extensions.sixel", stored).status).toBe("probe-todo")
   const xtest = ALL_PROBES.find((probe) => probe.id === "input.xtest-key")!.lib!
-  for (const backendName of ["libvterm", "vterm"]) {
+  for (const backendName of ["libvterm"]) {
     const result = xtest(library(backendName)) as ProbeCallbackResult
     expect(isDeclaredUntestable(result)).toBe(false)
     expect(fold("input.xtest-key", result).status).toBe("probe-todo")
   }
-  expect(isDeclaredUntestable(xtest(library("vt100")) as ProbeCallbackResult)).toBe(true)
+  for (const backendName of ["vt100", "vterm"]) {
+    expect(isDeclaredUntestable(xtest(library(backendName)) as ProbeCallbackResult)).toBe(true)
+  }
 })
 
 test("the declared helper needs a reason and folds only in its exact form", () => {
