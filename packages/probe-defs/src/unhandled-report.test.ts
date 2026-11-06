@@ -599,7 +599,7 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
     expect(result.observation?.outcome).not.toBe("unsupported")
     for (const overrides of [
       { runtimeIdentity: undefined },
-      { backendName: "vt100" },
+      { backendName: "libvterm" },
       { runtimeIdentity: { ...identity, engineVersion: "0.13.0" } },
       {
         runtimeIdentity: {
