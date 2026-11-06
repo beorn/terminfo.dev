@@ -30,7 +30,7 @@
     {
       "name": "@termless/core",
       "repository": "beorn/termless",
-      "commit": "33b68a1e31b089bca0e35605c1cd4a6f09be4eff",
+      "commit": "545ab534eb03dd84af8e3f4bd87e3d590987502d",
       "pack": true
     },
     {
@@ -57,7 +57,7 @@
     {
       "name": "@termless/vterm",
       "repository": "beorn/termless",
-      "commit": "33b68a1e31b089bca0e35605c1cd4a6f09be4eff",
+      "commit": "545ab534eb03dd84af8e3f4bd87e3d590987502d",
       "pack": true,
       "directory": "packages/vterm"
     },
