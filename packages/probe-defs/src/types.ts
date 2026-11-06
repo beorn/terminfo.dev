@@ -814,6 +814,8 @@ export interface LibProbeSource {
   )[]
   /** Actual stored type at getCell coordinates, declared by semantic-cells; never mark history. */
   getCellSemanticType?(row: number, col: number): "prompt" | "input" | "output"
+  /** Stored image attachments at getCell coordinates, declared by cell-images; not rendered pixels. */
+  getCellImageCount?(row: number, col: number): number
   /** Copied raw payloads and DCS start positions, without raster rendering or cell geometry. */
   getSixelImages?(): readonly {
     readonly data: string
@@ -1090,7 +1092,10 @@ export interface ProbeDefinition {
     | null
     | {
         readonly when: (
-          source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel" | "getUnhandledSequences">,
+          source: Pick<
+            LibProbeSource,
+            "runtimeIdentity" | "getTitle" | "getIconLabel" | "getUnhandledSequences" | "getCellImageCount"
+          >,
         ) => boolean
         readonly then: readonly [AssertionType, ...AssertionType[]]
         readonly otherwise: readonly [AssertionType, ...AssertionType[]]

@@ -177,13 +177,17 @@ export function hasAuditedOscInterfaceAbsence(
       ctx.backendName === "wezterm" &&
       identity?.kind === "native" &&
       identity.engineVersion === "0.1.0-fork.5" &&
-      identity.provenance.lockSha256 === "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58" &&
-      ((identity.loadedBinary.sha256 === "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186" &&
-        identity.provenance.sourceCommit === "f8f48853438f5fb6c43abbbb081162506d14f167" &&
-        (auditedAdapterSources(identity, "wezterm") || auditedAdapterSources(identity, "wezterm0110"))) ||
-        (identity.loadedBinary.sha256 === "74adefb8d3579e58480130efa7672b6c3d2d9006aa2f897bde52791ccf7c1eeb" &&
-          identity.provenance.sourceCommit === "e4d7316cd1f187be48f3c44087e60dad0f785159" &&
-          auditedAdapterSources(identity, "weztermSemanticCells")))
+      ((identity.provenance.lockSha256 === "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58" &&
+        ((identity.loadedBinary.sha256 === "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186" &&
+          identity.provenance.sourceCommit === "f8f48853438f5fb6c43abbbb081162506d14f167" &&
+          (auditedAdapterSources(identity, "wezterm") || auditedAdapterSources(identity, "wezterm0110"))) ||
+          (identity.loadedBinary.sha256 === "74adefb8d3579e58480130efa7672b6c3d2d9006aa2f897bde52791ccf7c1eeb" &&
+            identity.provenance.sourceCommit === "e4d7316cd1f187be48f3c44087e60dad0f785159" &&
+            auditedAdapterSources(identity, "weztermSemanticCells")))) ||
+        (identity.provenance.lockSha256 === "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886" &&
+          identity.loadedBinary.sha256 === "cce8a7d931bf7694891067b4b64062d64df853e7c23e5054521cf5c98a7f67b6" &&
+          identity.provenance.sourceCommit === "1ee22567769a6aa27765e76eafb675e1d7197cef" &&
+          auditedAdapterSources(identity, "weztermClipboardImages")))
     )
   }
   if (cohort === "vt100-rust-d2") {
@@ -214,8 +218,11 @@ export function hasAuditedOscInterfaceAbsence(
     return (
       identity.engineVersion === "0.26.0" &&
       identity.provenance.lockSha256 === "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497" &&
-      identity.provenance.sourceCommit === "6e497eb0310dd6747dfce240fc241e12c07d0615" &&
-      (auditedAdapterSources(identity, "alacritty23b6874c") || auditedAdapterSources(identity, "alacritty0110"))
+      ((identity.provenance.sourceCommit === "6e497eb0310dd6747dfce240fc241e12c07d0615" &&
+        (auditedAdapterSources(identity, "alacritty23b6874c") || auditedAdapterSources(identity, "alacritty0110"))) ||
+        (identity.provenance.sourceCommit === "84b7450963908738cc75e934bb1e4d6f71d00810" &&
+          identity.loadedBinary.sha256 === "1f8b691a60fe07da6dd1a12307a5a1c753b730dde76a7e13e77d0dd770c94757" &&
+          auditedAdapterSources(identity, "alacrittyClipboardReads")))
     )
   }
   if (
@@ -1015,9 +1022,23 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         }
         if (indexed) cells.before = paint(0, "D")
         const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
+        const alacrittyReset =
+          ctx.backendName === "alacritty" &&
+          index === undefined &&
+          [10, 11, 12].includes(setCode) &&
+          resetCode === setCode + 100 &&
+          hasAuditedOscInterfaceAbsence(ctx)
+        let unknownRaw: string | undefined
         const capture = (write: string) => {
           const response = ctx.feedCapture(write)
           controls.push({ write, response })
+          const read = write === query ? replyPattern.exec(response)?.[1] : undefined
+          if (alacrittyReset && unknownRaw === undefined && read && sameRgbText(read, seededCurrentColor)) {
+            const unknown = "\x1b]7110\x07"
+            controls.push({ write: unknown, response: ctx.feedCapture(unknown) })
+            unknownRaw = ctx.feedCapture(query)
+            controls.push({ write: query, response: unknownRaw })
+          }
           if (indexed && write === `\x1b]4;0;${seededCurrentColor}\x07`) cells.seeded = paint(1, "S")
           if (indexed && write === reset) {
             cells.same = globalThis.structuredClone(ctx.getCell(0, 1))
@@ -1084,6 +1105,19 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           )
         }
         if (control.verified && resetRaw === "" && restoredRaw === "") {
+          const unknown = unknownRaw === undefined ? undefined : replyPattern.exec(unknownRaw)?.[1]
+          if (alacrittyReset && unknown && sameRgbText(unknown, seededCurrentColor)) {
+            return answer(
+              parserStateResult(
+                true,
+                `OSC ${resetCode} restores the initial silent default after a verified seed; unknown OSC 7110 preserves the seed`,
+                state,
+                undefined,
+                undefined,
+                "query_reply",
+              ),
+            )
+          }
           return answer(
             colorReadbackReviewResult(
               `Open: setting a colour worked, but our adapter cannot read back the default after the reset (OSC ${resetCode}), leaving the reset itself unseen`,
@@ -3046,8 +3080,38 @@ function placementRequest(imageId: number): string {
 }
 
 /** Live's reading of a placement outcome, shared by both arms (#30554). */
-function placementOutcomeResult(placement: TerminalQueryOutcome, imageId: number): ProbeCallbackResult {
+function placementOutcomeResult(
+  placement: TerminalQueryOutcome,
+  imageId: number,
+  cells?: {
+    row: number
+    col: number
+    before: number
+    unknown: number
+    after: number
+    unknownImageId: number
+    control: TerminalQueryOutcome
+  },
+): ProbeCallbackResult {
   if (!placement.match && placement.reason === "sentinel") {
+    if (cells) {
+      const state = { imageId, ...cells, readback: placement }
+      if (
+        cells.before === 0 &&
+        cells.unknown === 0 &&
+        Number.isSafeInteger(cells.after) &&
+        cells.after > 0 &&
+        (cells.control.reason === "sentinel" || (cells.control.match && cells.control.match[2] !== "OK"))
+      ) {
+        return parserStateResult(
+          true,
+          "An unknown image leaves the cell empty; the allocated image attaches to that cell",
+          state,
+          "Image placement stored in the cell; visible pixels were not tested",
+        )
+      }
+      return notTestedResult("Image placement or unknown-image cell control did not qualify", state)
+    }
     return notTestedResult("No placement readback or image-state observation; DA1 does not observe display", {
       imageId,
       readback: placement,
@@ -3109,11 +3173,30 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
               return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
             }
             if (!imageId || !display) return uploaded.result
+            const readImages = ctx.getCellImageCount?.bind(ctx)
+            let cells: Omit<NonNullable<Parameters<typeof placementOutcomeResult>[2]>, "after"> | undefined
+            if (readImages) {
+              const cursor = ctx.getCursor()
+              const scrollback = ctx.getScrollback()
+              const row = scrollback.totalLines - scrollback.screenLines + cursor.y
+              const col = cursor.x
+              const before = readImages(row, col)
+              const unknownImageId = imageId === 0xffffffff ? 0xfffffffe : 0xffffffff
+              const control = ctx.queryWithSentinelOutcome(
+                placementRequest(unknownImageId),
+                kittyReplyFrame({ i: String(unknownImageId) }),
+              )
+              cells = { row, col, before, unknown: readImages(row, col), unknownImageId, control }
+            }
             const placement = ctx.queryWithSentinelOutcome(
               placementRequest(imageId),
               kittyReplyFrame({ i: String(imageId) }),
             )
-            return placementOutcomeResult(placement, imageId)
+            return placementOutcomeResult(
+              placement,
+              imageId,
+              cells && readImages ? { ...cells, after: readImages(cells.row, cells.col) } : undefined,
+            )
           }
           const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber)), imageNumber)
           imageId = uploaded.imageId
@@ -3149,7 +3232,14 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
       },
       "query_reply",
     ),
-    libAssertionType: "query_reply",
+    libAssertionType: display
+      ? {
+          when: (source) =>
+            typeof source.getCellImageCount === "function" || typeof source.getUnhandledSequences === "function",
+          then: ["query_reply", "buffer_state"],
+          otherwise: ["query_reply"],
+        }
+      : "query_reply",
   }
 }
 
@@ -3308,15 +3398,16 @@ function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackRes
 }
 
 /**
- * #32091: an engine that reports its clipboard permission option (Termless kitty) ran the read under it. Name it on the
- * result, since kitty's own default (read-clipboard-ask) would hold the read for a human instead of answering.
+ * Name the engine-reported permission under which the read ran, including how its default differs.
  */
 function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResult): ProbeCallbackResult {
   const control = typeof ctx.getClipboardState === "function" ? ctx.getClipboardState().control : undefined
   // Only a measured observation carries the note; a not-tested result keeps its own reason.
   const observation = result.observation
   if (control === undefined || observation === undefined) return result
-  const note = `read under harness-supplied clipboard_control ${control.join(" ")}; kitty's default read-clipboard-ask asks a human before answering a read`
+  const note = control.includes("osc52=CopyPaste")
+    ? "read under harness-supplied osc52=CopyPaste; Alacritty's default OnlyCopy disables clipboard reads"
+    : `read under harness-supplied clipboard_control ${control.join(" ")}; kitty's default read-clipboard-ask asks a human before answering a read`
   const join = (prior: string | undefined) => (prior ? `${prior}; ${note}` : note)
   return { ...result, note: join(result.note), observation: { ...observation, note: join(observation.note) } }
 }
@@ -6603,6 +6694,14 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
 // Operator D2, exact alacritty_terminal 0.26.0 / VTE 0.15.0 API read:
 // The audited dispatcher and event API expose no criterion-bearing state for these sequences.
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
+  "extensions.osc0-icon-title":
+    "Alacritty alacritty_terminal 0.26.0 stores the OSC 0 title but keeps no icon label, so no public icon state, reply or typed event exists.",
+  "extensions.osc1-icon":
+    "Alacritty alacritty_terminal 0.26.0 sends OSC 1 to a debug log and keeps no icon label, so no public state, reply or typed event exists.",
+  "extensions.osc22-pointer":
+    "Alacritty alacritty_terminal 0.26.0 sends OSC 22 to an empty default method, so no public pointer state, reply or typed event exists.",
+  "extensions.osc633-p":
+    "Alacritty alacritty_terminal 0.26.0 sends OSC 633 P to a debug log, so no public property state, reply or typed event exists.",
   "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
   "modes.decsscls": "CSI 9 SP p (DECSSCLS) scroll-speed state",
   // CTO b6a3c019: blink is handled and dropped, so this entry states its own cause and renders verbatim.
@@ -7248,17 +7347,21 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         (source, id) =>
           id === "extensions.osc9-progress"
             ? typeof source.getProgress === "function"
-            : id === "extensions.osc777-notify"
-              ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
-              : id.startsWith("extensions.osc133") ||
-                  id.startsWith("extensions.osc633") ||
-                  id === "extensions.osc-633-vscode" ||
-                  id === "extensions.semantic-prompts"
-                ? typeof source.getSemanticMarks === "function"
-                : false,
+            : id === "extensions.osc0-icon-title" || id === "extensions.osc1-icon"
+              ? typeof source.getIconLabel === "function"
+              : id === "extensions.osc633-p"
+                ? typeof source.getCwd === "function"
+                : id === "extensions.osc777-notify"
+                  ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
+                  : id.startsWith("extensions.osc133") ||
+                      id.startsWith("extensions.osc633") ||
+                      id === "extensions.osc-633-vscode" ||
+                      id === "extensions.semantic-prompts"
+                    ? typeof source.getSemanticMarks === "function"
+                    : false,
         (entry) =>
-          // Blink is handled and dropped, not unhandled, so its entry carries the whole reviewed sentence.
-          definition.id === "sgr.blink"
+          // Handled or debug-only commands carry their precise cause rather than the unhandled template.
+          entry.startsWith("Alacritty ")
             ? entry
             : `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${
                 definition.id === "editing.decsace" || definition.id === "modes.decsscls" ? "CSI" : "OSC"

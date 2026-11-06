@@ -50,32 +50,162 @@ import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, replyFailure } from "../pr
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
-// @failure WezTerm's real cell types or enabled Kitty handler never reach the six approved R2 library arms.
+// @failure Alacritty's controlled resets stay TODO, declared absences disappear, or a broken reset control reads Supported.
+// @level l5
+// @consumer Seven shipping callbacks through the real native adapter and qualified collector boundary.
+test.runIf(OWNED_LAYOUT).each(["healthy", "seed", "reset", "unknown"] as const)(
+  "real Alacritty seven retain qualified decisions with %s controls",
+  async (fault) => {
+    const ids = [
+      "extensions.osc110-reset-fg",
+      "extensions.osc111-reset-bg",
+      "extensions.osc112-reset-cursor",
+      ...(fault === "healthy"
+        ? ["extensions.osc0-icon-title", "extensions.osc1-icon", "extensions.osc22-pointer", "extensions.osc633-p"]
+        : []),
+    ]
+    const measured = createAlacrittyBackend()
+    measured.init({ cols: 80, rows: 24 })
+    const identity = await headlessIdentity.headlessRuntimeIdentity("alacritty", "@termless/alacritty", "native")
+    try {
+      identity.adapterSources = headlessIdentity.readAdapterSources("alacritty", measured)
+    } finally {
+      measured.destroy()
+    }
+    const runtime = {
+      identity,
+      adapterPackage: "@termless/alacritty",
+      adapterType: "native",
+      adapterPath: fileURLToPath(import.meta.resolve("@termless/alacritty")),
+    }
+    headlessIdentity.verifyAdapterSources("alacritty", runtime)
+    const batch = await collectBatch(
+      async () => {
+        const value = createAlacrittyBackend()
+        const feed = value.feed.bind(value)
+        value.feed = (data) => {
+          const text = Buffer.from(data).toString("utf8")
+          const changed =
+            fault === "seed"
+              ? text.replace(/\x1b\]1[012];rgb:[^\x07]*\x07/g, "\x1b]7110\x07")
+              : fault === "reset"
+                ? text.replace(/\x1b\]11[012]\x07/g, "\x1b]7110\x07")
+                : fault === "unknown"
+                  ? text.replace(/\x1b\]7110\x07/g, "\x1b]110\x07\x1b]111\x07\x1b]112\x07")
+                  : text
+          feed(Buffer.from(changed, "utf8"))
+        }
+        return value
+      },
+      "alacritty",
+      registryDefinitions(ids),
+      {
+        runId: `alacritty-seven-${fault}`,
+        rawReplies: {},
+        results: ids.map((featureId) => ({ featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [] })),
+      },
+      undefined,
+      runtime,
+    )
+    expect(batch.results).toHaveLength(ids.length)
+    for (const result of batch.results) {
+      const reset = ids.indexOf(result.featureId) < 3
+      expect
+        .soft(result.status, JSON.stringify(result))
+        .toBe(
+          fault === "healthy" ? (reset ? "supported" : "untestable") : fault === "reset" ? "unsupported" : "probe-todo",
+        )
+      if (fault === "healthy" && reset) {
+        expect
+          .soft(batch.assertions.filter((assertion) => assertion.featureId === result.featureId))
+          .toMatchObject([{ assertionType: "query_reply", kind: "positive" }])
+        expect.soft(JSON.parse(batch.rawReplies[result.featureId]!)).toMatchObject({
+          controls: expect.arrayContaining([{ write: "\x1b]7110\x07", response: "" }]),
+        })
+      }
+      if (fault === "healthy" && !reset) {
+        expect.soft(JSON.stringify(result)).toContain("Alacritty")
+        expect.soft(JSON.stringify(result)).toMatch(/no public|no .*flag|no .*label/)
+      }
+    }
+  },
+)
+
+// @failure WezTerm's stored cells, Kitty placement or clipboard callbacks never reach the shipping library arms.
 // @level l0
 // @consumer Existing WezTerm native backend -> headless source -> literal shipping probe callbacks.
+test.runIf(OWNED_LAYOUT)("real WezTerm readers expose semantic cells, image placement and clipboard writes", () => {
+  for (const id of [
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-p",
+    "extensions.kitty-graphics.transmit",
+    "extensions.kitty-graphics.display",
+    "extensions.osc52-write",
+  ]) {
+    const value = createWeztermBackend()
+    try {
+      value.init({ cols: 80, rows: 24, pixelGeometry: { cellWidth: 10, cellHeight: 20 } })
+      expect(feedCapture(value, "\x1b[6n", undefined)).toBe("\x1b[1;1R")
+      const source = createLibProbeSource(value, { graceMs: 0, onSentinel() {} }, undefined, undefined)
+      const definition = ALL_PROBES.find((probe) => probe.id === id)
+      if (!definition?.lib) throw new Error(`Missing WezTerm library arm ${id}`)
+      const result = definition.lib(source)
+      expect.soft(result.observation?.outcome, `${id}: ${JSON.stringify(result)}`).toBe("supported")
+      if (id === "extensions.kitty-graphics.display") {
+        expect.soft(result.observation?.assertionType).toBe("buffer_state")
+        expect.soft(result.note).toContain("pixels were not tested")
+      }
+    } finally {
+      value.destroy()
+    }
+  }
+})
+
+// Native positive coverage cannot detect an inert reader or report-only admission of a silent transfer.
+// @failure A constant image count, a lost placement, or a report without image state receives Supported.
+// @level l0
+// @consumer The Kitty display library arm through the real WezTerm parser.
 test.runIf(OWNED_LAYOUT)(
-  "real WezTerm R2 exposes semantic cells and transmit while silent display stays undecided",
+  "WezTerm image placement requires a changing reader and an inert unknown-image control",
   () => {
-    for (const id of [
-      "extensions.osc133-a",
-      "extensions.osc133-b",
-      "extensions.osc133-c",
-      "extensions.osc133-p",
-      "extensions.kitty-graphics.transmit",
-      "extensions.kitty-graphics.display",
-    ]) {
+    for (const fault of ["zero", "one", "placement", "report-only"] as const) {
       const value = createWeztermBackend()
       try {
         value.init({ cols: 80, rows: 24, pixelGeometry: { cellWidth: 10, cellHeight: 20 } })
-        expect(feedCapture(value, "\x1b[6n", undefined)).toBe("\x1b[1;1R")
         const source = createLibProbeSource(value, { graceMs: 0, onSentinel() {} }, undefined, undefined)
-        const definition = ALL_PROBES.find((probe) => probe.id === id)
-        if (!definition?.lib) throw new Error(`Missing R2 library arm ${id}`)
-        const result = definition.lib(source)
-        if (id === "extensions.kitty-graphics.display") {
-          expect(result.notTested, JSON.stringify(result)).toMatchObject({ reason: "no-semantic-observable" })
-          expect(result.observation).toBeUndefined()
-        } else expect.soft(result.observation?.outcome, `${id}: ${JSON.stringify(result)}`).toBe("supported")
+        let transferWasSilent = false
+        const controlled: LibProbeSource = {
+          ...source,
+          getCellImageCount:
+            fault === "report-only"
+              ? undefined
+              : fault === "zero"
+                ? () => 0
+                : fault === "one"
+                  ? () => 1
+                  : source.getCellImageCount,
+          getUnhandledSequences: fault === "report-only" ? () => [] : source.getUnhandledSequences,
+          queryWithSentinelOutcome(sequence, pattern) {
+            const silentTransfer = fault === "report-only" && sequence.includes("a=t,")
+            const outcome = source.queryWithSentinelOutcome!(
+              silentTransfer
+                ? sequence.replace("a=t,", "a=d,")
+                : fault === "placement"
+                  ? sequence.replace("a=p,", "a=d,")
+                  : sequence,
+              pattern,
+            )
+            if (silentTransfer) transferWasSilent = outcome.match === null && outcome.reason === "sentinel"
+            return outcome
+          },
+        }
+        const definition = ALL_PROBES.find((probe) => probe.id === "extensions.kitty-graphics.display")!
+        const result = definition.lib!(controlled)
+        expect(result.observation?.outcome, `${fault}: ${JSON.stringify(result)}`).not.toBe("supported")
+        expect(result.notTested, `${fault}: ${JSON.stringify(result)}`).toBeDefined()
+        if (fault === "report-only") expect(transferWasSilent).toBe(true)
       } finally {
         value.destroy()
       }
