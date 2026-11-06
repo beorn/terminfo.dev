@@ -84,7 +84,7 @@ test.each(["vt100", "vt220", "ghostty"])("H-4 %s uses its exact report and an ap
     ["extensions.osc555-flash", "555"],
     ["extensions.osc666-termprop", "666"],
     ["extensions.osc710-font-normal", "710"],
-  ]) {
+  ] as const) {
     const definition = ALL_PROBES.find((entry) => entry.id === id)!
     const titleApplies = backendName === "ghostty"
     const records = titleApplies ? [recordsOsc(code)] : [recordsOsc("2"), recordsOsc(code)]
