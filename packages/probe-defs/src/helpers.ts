@@ -143,7 +143,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   weztermClipboardImages: {
     "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
-    "packages/wezterm/src/backend.ts": "8e2e6cd6f437673882ebee5693478db715f808b1",
+    "packages/wezterm/src/backend.ts": "ce6d42d0617e899e608232f472b15d7185729d3b",
     "packages/wezterm/native/src/lib.rs": "924186a9a828d5545997086b424a20ea08f2b737",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
