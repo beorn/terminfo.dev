@@ -163,6 +163,15 @@ describe("audited OSC interface absence", () => {
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
   } satisfies HeadlessRuntimeIdentity
+  const alacritty0110 = {
+    ...alacritty,
+    adapterVersion: "0.11.0",
+    adapterSources: alacritty.adapterSources.map((source) =>
+      source.path === "packages/alacritty/src/backend.ts"
+        ? { ...source, blobOid: "06536c83f34c3e0687ac8664ce0b775589895d1e" }
+        : source,
+    ),
+  }
   const run = (backend: string, runtimeIdentity?: HeadlessRuntimeIdentity, extra: Partial<LibProbeSource> = {}) => {
     const definition = ALL_PROBES.find((probe) => probe.id === "extensions.notifications")!
     return definition.lib!({ ...library(backend), runtimeIdentity, ...extra })
@@ -176,6 +185,7 @@ describe("audited OSC interface absence", () => {
     ["vt220", vt220Release],
     ...current,
     ["alacritty", alacritty],
+    ["alacritty", alacritty0110],
   ] as const)("%s's audited source declares notification absence without a measured assertion", (backend, identity) => {
     let feeds = 0
     const result = run(backend, identity, {
