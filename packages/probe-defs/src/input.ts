@@ -124,9 +124,9 @@ function xtestCoverage(kind?: string): ProbeCallbackResult {
  */
 const NO_LIBRARY_KEY_ENCODER: Readonly<Record<string, string>> = {
   vt100:
-    "vt100.js 0.10.1 exports createVt100Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
+    "vt100.js exports createVt100Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
   vt220:
-    "vt220.js 0.10.1 exports createVt220Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
+    "vt220.js exports createVt220Screen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
   vterm:
     "vterm.js exports createVtermScreen and its Screen byte parser and state readers, and no key-event-to-byte encoder",
   xterm:
