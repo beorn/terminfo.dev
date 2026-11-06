@@ -173,10 +173,13 @@ export function hasAuditedOscInterfaceAbsence(
       ctx.backendName === "wezterm" &&
       identity?.kind === "native" &&
       identity.engineVersion === "0.1.0-fork.5" &&
-      identity.loadedBinary.sha256 === "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186" &&
-      identity.provenance.sourceCommit === "f8f48853438f5fb6c43abbbb081162506d14f167" &&
       identity.provenance.lockSha256 === "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58" &&
-      (auditedAdapterSources(identity, "wezterm") || auditedAdapterSources(identity, "wezterm0110"))
+      ((identity.loadedBinary.sha256 === "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186" &&
+        identity.provenance.sourceCommit === "f8f48853438f5fb6c43abbbb081162506d14f167" &&
+        (auditedAdapterSources(identity, "wezterm") || auditedAdapterSources(identity, "wezterm0110"))) ||
+        (identity.loadedBinary.sha256 === "74adefb8d3579e58480130efa7672b6c3d2d9006aa2f897bde52791ccf7c1eeb" &&
+          identity.provenance.sourceCommit === "e4d7316cd1f187be48f3c44087e60dad0f785159" &&
+          auditedAdapterSources(identity, "weztermSemanticCells")))
     )
   }
   if (cohort === "vt100-rust-d2") {
@@ -1607,6 +1610,59 @@ function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
   return result
 }
 
+function semanticCellResult(ctx: LibProbeSource, target: "A" | "B" | "C" | "P"): ProbeCallbackResult {
+  const read = ctx.getCellSemanticType?.bind(ctx)
+  if (!read) throw new Error(`${ctx.backendName} declares semantic-cells without getCellSemanticType`)
+  if (ctx.cols < 8) return notTestedResult("semantic-cell readback requires eight columns", { cols: ctx.cols })
+  ctx.reset()
+  ctx.feed("\x1b[1;1H0")
+  const seed = { char: ctx.getCell(0, 0).char, type: read(0, 0) }
+  type CellType = ReturnType<typeof read>
+  const steps: { letter: string; before: CellType; after: CellType; char: string; cursor: { x: number; y: number } }[] =
+    []
+  let before = seed.type
+  for (const [index, letter] of (["A", "Z", "B", "Z", "C", "P"] as const).entries()) {
+    // A may start a fresh line. Place the witness explicitly after the mark;
+    // cursor movement must not be mistaken for a missing semantic cell.
+    ctx.feed(`\x1b]133;${letter}\x07\x1b[1;${index + 2}HX`)
+    const after = read(0, index + 1)
+    const cursor = ctx.getCursor()
+    steps.push({ letter, before, after, char: ctx.getCell(0, index + 1).char, cursor: { x: cursor.x, y: cursor.y } })
+    before = after
+  }
+  const retained = [read(0, 0), ...steps.map((_, index) => read(0, index + 1))]
+  const state = { target, seed, steps, retained }
+  const consumed =
+    seed.char === "0" &&
+    steps.every((step, index) => step.char === "X" && step.cursor.x === index + 2 && step.cursor.y === 0)
+  const stable = retained[0] === seed.type && steps.every((step, index) => retained[index + 1] === step.after)
+  const unknownsInert = steps.filter((step) => step.letter === "Z").every((step) => step.after === step.before)
+  if (!consumed || seed.type !== "output" || !stable || !unknownsInert) {
+    return notTestedResult("semantic-cell text, stored-type or unknown-letter controls did not qualify", state)
+  }
+  const expected = { A: "prompt", B: "input", C: "output", P: "prompt" } as const
+  const selected = steps.find((step) => step.letter === target)
+  if (!selected) throw new Error(`Missing semantic-cell target ${target}`)
+  if (selected.before !== expected[target] && selected.after === expected[target]) {
+    return parserStateResult(true, `OSC133 ${target} changes the stored cell type; unknown Z keeps it`, state)
+  }
+  const anotherMoves = steps.some(
+    (step) =>
+      step.letter !== target &&
+      step.letter !== "Z" &&
+      step.after !== step.before &&
+      step.after === expected[step.letter as keyof typeof expected],
+  )
+  if (selected.before !== expected[target] && selected.after === selected.before && anotherMoves) {
+    return parserStateResult(
+      false,
+      `OSC133 ${target} changes the stored cell type; other handled letters move it`,
+      state,
+    )
+  }
+  return notTestedResult(`OSC133 ${target} cell-type transition lacks a deciding same-run control`, state)
+}
+
 /**
  * C154 — a consumed semantic prompt mark proves consumption, not that the mark registered.
  * Read the measured home / target / control sequence from the real cursor and cell state so a
@@ -1621,6 +1677,18 @@ function promptMarkBody(
   noObservable: string,
   sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
 ): ProbeCallbackResult {
+  if (ctx.capabilities.extensions.has("semantic-cells")) {
+    switch (sourceReview?.probeId) {
+      case "extensions.osc133-a":
+        return semanticCellResult(ctx, "A")
+      case "extensions.osc133-b":
+        return semanticCellResult(ctx, "B")
+      case "extensions.osc133-c":
+        return semanticCellResult(ctx, "C")
+      case "extensions.osc133-p":
+        return semanticCellResult(ctx, "P")
+    }
+  }
   ctx.feed("\x1b[1;1H")
   if (ctx.backendName === "kitty" && sourceReview?.probeId === "extensions.semantic-prompts") {
     const declared =

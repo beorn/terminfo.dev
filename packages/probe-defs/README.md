@@ -210,6 +210,14 @@ stable earlier history and the existing cell/cursor consumption controls.
 The reader does not expose bounded zones. Sixel records contain raw payloads and
 DCS start positions; storage does not establish raster rendering or cell geometry.
 
+The optional `semantic-cells` extension exposes `getCellSemanticType(row, col)` as
+`prompt`, `input` or `output` from the stored cell. OSC133 A/B/C/P share one
+consumer: write text after each handled letter and unknown Z, check the target's
+type transition, inert Z and retained earlier cells. A target no-op is Unsupported
+only when another handled letter moves the type; failed controls remain Open.
+Coordinates follow `getCell`; invalid coordinates throw. This reader supplies no
+mark history or command end and cannot decide OSC133 D or the full lifecycle.
+
 The library alternate-scroll, reverse-video, synchronized-output,
 colour-scheme-reporting and DECSCLM cells use the existing DECRPM helper's opt-in
 `requireReadback` criterion. Supported requires Ps1 after set, Ps2 after reset and

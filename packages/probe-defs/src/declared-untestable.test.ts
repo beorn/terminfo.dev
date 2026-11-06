@@ -606,6 +606,49 @@ describe("WezTerm D2 audited interface absence", () => {
     }
   })
 
+  // @failure The rebuilt semantic-cell addon loses delivered absences or borrows the old binary's audit.
+  // @level l1
+  // @consumer Exact native identity qualification before shipping WezTerm D2 declarations.
+  test("the semantic-cell build retains all twenty absences only with its coupled source audit", () => {
+    const runtimeIdentity = {
+      ...identity,
+      loadedBinary: {
+        ...identity.loadedBinary,
+        sha256: "74adefb8d3579e58480130efa7672b6c3d2d9006aa2f897bde52791ccf7c1eeb",
+      },
+      provenance: {
+        ...identity.provenance,
+        sha256: "74adefb8d3579e58480130efa7672b6c3d2d9006aa2f897bde52791ccf7c1eeb",
+        sourceCommit: "e4d7316cd1f187be48f3c44087e60dad0f785159",
+        buildHash: "79d5c6fe69ff1f7804d83adbe458db199f1bb9b81a18c1b4ada22ac123390974",
+      },
+      adapterSources: identity.adapterSources.map((entry) => ({
+        ...entry,
+        blobOid:
+          entry.path === "packages/wezterm/src/backend.ts"
+            ? "a260d3df32acf13ee7aedfbd4eabfc99c69330b9"
+            : entry.path === "packages/wezterm/native/src/lib.rs"
+              ? "7040dba8959e01fb6fde625e426b6059a5ef65f3"
+              : entry.blobOid,
+      })),
+    }
+    for (const [id] of targets) {
+      expect(
+        isDeclaredUntestable(ALL_PROBES.find((probe) => probe.id === id)!.lib!(source({ runtimeIdentity }))),
+        id,
+      ).toBe(true)
+      for (const mixed of [
+        { ...runtimeIdentity, loadedBinary: identity.loadedBinary, provenance: identity.provenance },
+        { ...runtimeIdentity, adapterSources: identity.adapterSources },
+      ]) {
+        expect(
+          isDeclaredUntestable(ALL_PROBES.find((probe) => probe.id === id)!.lib!(source({ runtimeIdentity: mixed }))),
+          id,
+        ).toBe(false)
+      }
+    }
+  })
+
   test("real reports and decided results retain their original result", () => {
     for (const [id] of targets) {
       const definition = ALL_PROBES.find((probe) => probe.id === id)!

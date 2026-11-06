@@ -50,6 +50,74 @@ import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, replyFailure } from "../pr
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
+// @failure WezTerm's real cell types or enabled Kitty handler never reach the six approved R2 library arms.
+// @level l0
+// @consumer Existing WezTerm native backend -> headless source -> literal shipping probe callbacks.
+test.runIf(OWNED_LAYOUT)(
+  "real WezTerm R2 exposes semantic cells and transmit while silent display stays undecided",
+  () => {
+    for (const id of [
+      "extensions.osc133-a",
+      "extensions.osc133-b",
+      "extensions.osc133-c",
+      "extensions.osc133-p",
+      "extensions.kitty-graphics.transmit",
+      "extensions.kitty-graphics.display",
+    ]) {
+      const value = createWeztermBackend()
+      try {
+        value.init({ cols: 80, rows: 24, pixelGeometry: { cellWidth: 10, cellHeight: 20 } })
+        expect(feedCapture(value, "\x1b[6n", undefined)).toBe("\x1b[1;1R")
+        const source = createLibProbeSource(value, { graceMs: 0, onSentinel() {} }, undefined, undefined)
+        const definition = ALL_PROBES.find((probe) => probe.id === id)
+        if (!definition?.lib) throw new Error(`Missing R2 library arm ${id}`)
+        const result = definition.lib(source)
+        if (id === "extensions.kitty-graphics.display") {
+          expect(result.notTested, JSON.stringify(result)).toMatchObject({ reason: "no-semantic-observable" })
+          expect(result.observation).toBeUndefined()
+        } else expect.soft(result.observation?.outcome, `${id}: ${JSON.stringify(result)}`).toBe("supported")
+      } finally {
+        value.destroy()
+      }
+    }
+  },
+)
+
+// Existing mark-history controls cannot exercise the per-cell reader's negative decisions.
+// @failure A dropped OSC133 target or broken unknown-letter control acquires Supported.
+// @level l0
+// @consumer Shipping semantic-cell library arms against the real WezTerm parser.
+test.runIf(OWNED_LAYOUT)("real WezTerm R2 semantic-cell controls distinguish target no-op and inert readers", () => {
+  for (const target of ["A", "B", "C", "P"] as const) {
+    for (const fault of ["target", "unknown", "reader"] as const) {
+      const value = createWeztermBackend()
+      try {
+        value.init({ cols: 80, rows: 24 })
+        const source = createLibProbeSource(value, undefined, undefined, undefined)
+        const controlled: LibProbeSource = {
+          ...source,
+          feed(text) {
+            source.feed(
+              fault === "target"
+                ? text.replace(`\x1b]133;${target}\x07`, "\x1b]133;Z\x07")
+                : fault === "unknown"
+                  ? text.replace("\x1b]133;Z\x07", "\x1b]133;C\x07")
+                  : text,
+            )
+          },
+          getCellSemanticType: fault === "reader" ? () => "output" : source.getCellSemanticType,
+        }
+        const definition = ALL_PROBES.find((probe) => probe.id === `extensions.osc133-${target.toLowerCase()}`)!
+        const result = definition.lib!(controlled)
+        if (fault === "target") expect(result.observation?.outcome, JSON.stringify(result)).toBe("unsupported")
+        else expect(result.notTested, JSON.stringify(result)).toBeDefined()
+      } finally {
+        value.destroy()
+      }
+    }
+  }
+})
+
 /** Feature payloads only; collector records use the reserved collector.* namespace. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
   return Object.fromEntries(Object.entries(batch.rawReplies).filter(([key]) => !key.startsWith("collector.")))
