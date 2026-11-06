@@ -6251,6 +6251,8 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "modes.decsscls":
     "vterm.js 0.13.1 exposes Screen, Snapshot and TerminalModes, but no public DECSSCLS scroll-speed state, getter or unhandled-sequence report",
+  "extensions.osc9-progress":
+    "vterm.js 0.13.1 exposes getNotifications() and tapParser(), but no public OSC 9;4 progress state, getter or unhandled-sequence report",
   "extensions.osc22-pointer":
     "vterm.js 0.13.1 exposes pointerFgColor and pointerBgColor on Snapshot, but no public OSC 22 pointer-shape state, query reply or unhandled-sequence report",
   "extensions.osc133-d":
@@ -6263,6 +6265,8 @@ const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc-633-vscode":
     "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+  "input.kitty-click-events":
+    "vterm.js 0.13.1 drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
 }
 
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {

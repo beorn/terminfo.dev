@@ -558,7 +558,7 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
   })
 })
 
-describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
+describe("vterm 0.13.1 D2 nine-cell interface-absence declarations", () => {
   const sourceIntegrity = {
     kind: "source" as const,
     revision: "7b39f49e8a6bc03ce695c5ab7c143c2cc7379eb0",
@@ -578,11 +578,13 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
   const declared = [
     "modes.decsscls",
     "extensions.osc22-pointer",
+    "extensions.osc9-progress",
     "extensions.osc133-d",
     "extensions.osc633-d",
     "extensions.osc633-e",
     "extensions.semantic-prompts",
     "extensions.osc-633-vscode",
+    "input.kitty-click-events",
   ] as const
   const shellDeclared = new Set([
     "extensions.osc133-d",
@@ -615,6 +617,12 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
     expect(JSON.stringify(result)).toContain("vterm.js 0.13.1")
     if (shellDeclared.has(id)) {
       expect(JSON.stringify(result)).toContain("generic parser tap")
+    }
+    if (id === "extensions.osc9-progress") {
+      expect(JSON.stringify(result)).toContain("tapParser")
+    }
+    if (id === "input.kitty-click-events") {
+      expect(JSON.stringify(result)).toContain("Termless")
     }
     expect(result.observation?.outcome).not.toBe("unsupported")
     for (const overrides of [
