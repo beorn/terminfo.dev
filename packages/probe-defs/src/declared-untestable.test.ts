@@ -259,6 +259,34 @@ describe("app-job handoffs", () => {
     }
   })
 
+  // @failure Route 2's xterm writes stay Open, escape their identity, or replace another clipboard reader.
+  // The ten app-job cases above omit OSC52 and do not protect its separate query/read route.
+  // @level l1
+  // @consumer Registered clipboard callbacks, existing identity predicate and shipping finalizer.
+  test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
+    "xterm declares %s without changing other clipboard routes",
+    (id) => {
+      const definition = ALL_PROBES.find((probe) => probe.id === id)!
+      const identity = subjects[0][1]
+      const result = definition.lib!(source("xterm", identity))
+      expect(fold(id, result)).toMatchObject({ status: "untestable", reason: tapReason })
+      expect(result.observation).toBeUndefined()
+      for (const unknown of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
+        expect(isDeclaredUntestable(definition.lib!(source("xterm", unknown)))).toBe(false)
+      }
+      const prior: ProbeCallbackResult = {
+        pass: true,
+        observation: { outcome: "supported", assertionType: "query_reply" },
+      }
+      const wrapped = withD2LibraryObservation({ ...definition, lib: () => prior })
+      for (const [backend, otherIdentity] of subjects.slice(1)) {
+        expect(wrapped.lib!(source(backend, otherIdentity))).toBe(prior)
+      }
+      const read = ALL_PROBES.find((probe) => probe.id === "extensions.osc52-read")!
+      expect(withD2LibraryObservation({ ...read, lib: () => prior }).lib!(source("xterm", identity))).toBe(prior)
+    },
+  )
+
   test("the report verdict for library-job features stays in its existing home", () => {
     const id = "extensions.osc113-reset-pointer-fg"
     const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(reporting("libvterm"))
