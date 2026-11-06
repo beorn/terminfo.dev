@@ -578,10 +578,14 @@ function loadAppWorkingRun(
         unreadable: {
           suiteId: error.suiteId,
           treeSuiteId: error.treeSuiteId,
-          reason: error.message,
+          reason: `${error.message}; no exact retained library manifest at ${librariesDir}/<run>/headless/suites/${error.suiteId}.json`,
           banner: `Retained app collection ${context.context}/${selection.id} is unavailable: suite ${error.suiteId} has no trusted manifest.`,
         },
       }
+    }
+    const libraryRun = dirname(dirname(dirname(manifestPath)))
+    if (!realpathSync(manifestPath).startsWith(realpathSync(libraryRun) + sep)) {
+      throw new Error(`${manifestPath}: suite manifest outside its retained library run`)
     }
     run = loadRawCapture(rawPath, { ...options, manifestPath })
   }
@@ -618,7 +622,7 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
     try {
       selections.push(...[...completeRunSelections(appDir)].reverse().map((selection) => ({ selection, context })))
     } catch (error) {
-      if (!(error instanceof Error)) throw error
+      if (!(error instanceof Error) || !error.message.includes(appDir)) throw error
       gaps.push({ engine: context.context, status: "unavailable", reason: `${appDir}: ${error.message}` })
     }
   }

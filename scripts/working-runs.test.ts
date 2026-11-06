@@ -161,7 +161,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     const rawPath = join(passDir, "capture.json")
     const original = JSON.parse(
       readFileSync(join(root, "content/probes-apps/ghostty-1.3.1-linux-3d1eb75c5fa11383e3a6327d32a2c1a0.json"), "utf8"),
-    ) as Pick<LoadedRun, "subject" | "probeHash" | "suiteId" | "sourceRevision" | "runId" | "measuredAt">
+    ) as Pick<LoadedRun, "subject" | "probeHash" | "suiteId" | "sourceRevision" | "runId" | "measuredAt" | "provenance">
     // Only OS routing varies here; this is not a claim to have measured a Mac runtime.
     original.subject.os = os
     writeFileSync(rawPath, JSON.stringify(original))
@@ -254,6 +254,50 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       )
       expect(unavailable?.contexts).toEqual([])
       expect(unavailable?.unreadable?.banner).toContain("unavailable")
+    },
+  )
+
+  // App fallback custody is not reached by the library collection's explicit-manifest tests.
+  // An exact retained declaration must work; a misnamed or contradictory one must never stand in for it.
+  it.each(["exact", "wrong filename", "wrong suite", "outside library run"])(
+    "reads an app's old suite with %s retained manifest custody",
+    (custody) => {
+      const instrument = runsDir()
+      const libraries = join(instrument, "runs")
+      mkdirSync(libraries)
+      const library = collection(libraries)
+      const app = appCollection(instrument, "linux")
+      const suiteId = "aaaaaaaaaaaa"
+      const manifest = JSON.parse(
+        readFileSync(join(root, "content", "suites", `${app.original.probeHash}.json`), "utf8"),
+      ) as { probeHash: string }
+      app.original.probeHash = app.original.suiteId = suiteId
+      if (app.original.provenance) app.original.provenance.runtime.suiteHash = suiteId
+      writeFileSync(app.rawPath, JSON.stringify(app.original))
+      const manifestDir = join(library.dir, "headless", "suites")
+      mkdirSync(manifestDir)
+      if (custody !== "wrong suite") manifest.probeHash = suiteId
+      const manifestPath = join(manifestDir, `${custody === "wrong filename" ? "bbbbbbbbbbbb" : suiteId}.json`)
+      if (custody === "outside library run") {
+        const outside = join(instrument, `${suiteId}.json`)
+        writeFileSync(outside, JSON.stringify(manifest))
+        symlinkSync(outside, manifestPath)
+      } else writeFileSync(manifestPath, JSON.stringify(manifest))
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
+      const retained = siteWorkingHistory(join(root, "content"))!.find((view) =>
+        view.run.id.startsWith("apps/ghostty/linux/"),
+      )!
+      if (custody === "exact") {
+        expect(retained.unreadable).toBeUndefined()
+        expect(retained.contexts[0]).toMatchObject({
+          suiteId,
+          runId: app.original.runId,
+          states: { "text.basic": "supported" },
+        })
+      } else {
+        expect(retained.contexts).toEqual([])
+        expect(retained.unreadable?.reason).toContain(suiteId)
+      }
     },
   )
 
