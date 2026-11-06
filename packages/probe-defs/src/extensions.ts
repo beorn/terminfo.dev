@@ -104,9 +104,13 @@ export function hasAuditedOscInterfaceAbsence(
     | "ghostty-native-d2"
     | "host-effect-h4"
     | "wezterm-d2"
-    | "ghostty-web-d2" = "osc-absence",
+    | "ghostty-web-d2"
+    | "libvterm-r1" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
+  if (cohort === "libvterm-r1") {
+    return ctx.backendName === "libvterm" && identity?.engineVersion === "0.3.3"
+  }
   if (cohort === "osc-tap") {
     // Operator Nov 5 / CTO 4ab79b2f: these are engine identities. Adapter-only
     // releases do not change the library's generic pass-through behavior.
@@ -3299,6 +3303,7 @@ function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResu
 function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
+  const pasteBefore = ctx.getClipboardState?.().pasteSelector
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const query = "\x1b]52;c;?\x07"
   const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
@@ -3315,16 +3320,36 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const result: ProbeCallbackResult = writeUnobservable
     ? { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
     : headlessClipboardResult(empty ? "" : raw, nonce)
+  const handoff = empty ? clipboardPasteHandoff(ctx, pasteBefore) : null
+  if (handoff) return handoff
   return withClipboardControlNote(ctx, emptyNativeHostReply(ctx, { ...result, response: raw }, query, empty))
+}
+
+/**
+ * routes-16 row 1 (32472): vt100 0.16.2 hands an OSC 52 read to its `paste_from_clipboard` callback and
+ * keeps no clipboard of its own, so the read has no reply to grade. The witness the backend already
+ * exposes is the engine's own paste selector: absent before the read and "c" after it. A selector that
+ * was already set, or one that stays absent, proves nothing and keeps the existing inconclusive result.
+ */
+function clipboardPasteHandoff(ctx: LibProbeSource, before: string | undefined): ProbeCallbackResult | null {
+  const after = ctx.getClipboardState?.().pasteSelector
+  if (before !== undefined || after !== "c") return null
+  return declaredUntestableResult(
+    "Untestable (passed to the app): the library sent no reply and handed this read to the app through its clipboard callback, seen in this run.",
+    { pasteSelector: { before: null, after } },
+  )
 }
 
 /** Read silence is conclusive only on a collector-qualified, ordered reply path. */
 function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
+  const pasteBefore = ctx.getClipboardState?.().pasteSelector
   ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
+    const handoff = silence !== null ? clipboardPasteHandoff(ctx, pasteBefore) : null
+    if (handoff) return handoff
     return withClipboardControlNote(
       ctx,
       emptyNativeHostReply(
@@ -3336,6 +3361,8 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
     )
   }
   const raw = ctx.feedCapture("\x1b]52;c;?\x07")
+  const handoff = raw === "" ? clipboardPasteHandoff(ctx, pasteBefore) : null
+  if (handoff) return handoff
   return withClipboardControlNote(
     ctx,
     emptyNativeHostReply(ctx, headlessClipboardResult(raw, nonce), "\x1b]52;c;?\x07", raw === ""),
@@ -6555,6 +6582,10 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
 // The audited dispatcher and event API expose no criterion-bearing state for these sequences.
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
   "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
+  "modes.decsscls": "CSI 9 SP p (DECSSCLS) scroll-speed state",
+  // CTO b6a3c019: blink is handled and dropped, so this entry states its own cause and renders verbatim.
+  "sgr.blink":
+    "Alacritty alacritty_terminal 0.26.0 handles blink by writing a debug line and keeps no blink flag, so no public state, reply or typed event exists.",
   "extensions.osc9-progress": "OSC 9;4 progress state",
   "input.kitty-click-events": "OSC 133 click-events prompt state (mouse encoding is supplied by Termless)",
   "extensions.osc777-notify": "OSC 777 notification payloads",
@@ -6593,6 +6624,12 @@ const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
     backend: "xterm",
     reason:
       "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it.",
+  },
+  // xterm.js 6.0.0 registers only " " A and " " q for the " " intermediate, so CSI 9 SP p takes the same tap.
+  "modes.decsscls": {
+    backend: "xterm",
+    reason:
+      "Untestable: the library hands this command to the app through registerCsiHandler, registering only DECSCUSR's two space handlers, and does nothing with it.",
   },
   "extensions.osc9-progress": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
   "extensions.osc133-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
@@ -6890,7 +6927,8 @@ function declaredD2InterfaceAbsence(
     | "ghostty-native-d2"
     | "wezterm-d2"
     | "ghostty-web-d2"
-    | "host-effect-h4",
+    | "host-effect-h4"
+    | "libvterm-r1",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
   options: { readonly genericReportIsObservable?: boolean } = {},
@@ -6954,6 +6992,8 @@ const WEZTERM_D2_ABSENCES: Readonly<Record<string, string>> = {
   "editing.decsace": "DECSACE has no handler; its only trace is an opt-in log-facade line, off in this embedding",
   "extensions.osc52-read":
     "OSC 52 QuerySelection has a recognized empty handler arm and emits no clipboard query reply",
+  "extensions.osc52-clipboard":
+    "OSC 52 QuerySelection has a recognized empty handler arm and emits no clipboard query reply, so the write cannot round trip to the app",
   "extensions.osc133-d": "OSC 133 D has a recognized empty handler arm and retains no command-exit status",
   "extensions.semantic-prompts":
     "OSC 133 D retains no command-exit status, so the public semantic marks cannot expose a complete prompt-command cycle",
@@ -7022,6 +7062,20 @@ const DEC_SETUP_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSequ
   "sgr.selective-reset.italic": { feed: "\x1b[3m", code: { kind: "csi", code: "3m" } },
 }
 
+// CTO R1 correction: # and * return before libvterm 0.3.3's public fallback.
+// This is an engine-level absence, independent of the adapter's Wasm build.
+const LIBVTERM_R1_ABSENCES: Readonly<Record<string, string>> = Object.fromEntries(
+  ["modes.xtpushcolors", "modes.xtpopcolors", "editing.decsace"].map((id) => [
+    id,
+    "libvterm 0.3.3 drops CSI with intermediate # or * in on_csi before its public fallback, and has no other hook.",
+  ]),
+)
+const LIBVTERM_R1_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
+  "modes.decsscls": { feed: "\x1b[9 p", code: { kind: "csi", code: " 9p" } },
+  "extensions.kitty-graphics.display": { feed: imageTransferRequest(1), code: { kind: "apc", code: "G" } },
+  "extensions.kitty-graphics.transmit": { feed: imageTransferRequest(1), code: { kind: "apc", code: "G" } },
+}
+
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
@@ -7031,6 +7085,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const decsace = definition.id === "editing.decsace"
   const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]
   const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
+  const libvtermTarget = LIBVTERM_R1_NEGATIVES[definition.id]
+  const libvtermAbsence = LIBVTERM_R1_ABSENCES[definition.id]
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
@@ -7051,6 +7107,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       !decSetup &&
       !decsace &&
       !vt100Target &&
+      !libvtermTarget &&
+      !libvtermAbsence &&
       !kittyTarget &&
       !reason &&
       !absence &&
@@ -7066,7 +7124,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   }
   return {
     ...definition,
-    ...((vt100Target || decClipboard) &&
+    ...((vt100Target || decClipboard || libvtermTarget) &&
     (definition.libAssertionType === "query_reply" || definition.libAssertionType === "input_bytes")
       ? {
           // A report verdict records buffer_state; the probe's own arm keeps its type.
@@ -7122,6 +7180,18 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
         return reported ?? result
       }
+      const libvtermDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        LIBVTERM_R1_ABSENCES,
+        "libvterm",
+        "libvterm-r1",
+        undefined,
+        undefined,
+        { genericReportIsObservable: false },
+      )
+      if (libvtermDeclared) return libvtermDeclared
       const passThroughDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
@@ -7165,7 +7235,12 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 ? typeof source.getSemanticMarks === "function"
                 : false,
         (entry) =>
-          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${definition.id === "editing.decsace" ? "CSI" : "OSC"} has no handler or public rejection report.`,
+          // Blink is handled and dropped, not unhandled, so its entry carries the whole reviewed sentence.
+          definition.id === "sgr.blink"
+            ? entry
+            : `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${
+                definition.id === "editing.decsace" || definition.id === "modes.decsscls" ? "CSI" : "OSC"
+              } has no handler or public rejection report.`,
       )
       if (alacrittyDeclared) return alacrittyDeclared
       // CTO 8be19f1f: the Kitty image pair. No reader is passed because none of these libraries
@@ -7278,21 +7353,28 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         (decsace || definition.id === "modes.decsscls") &&
         hasAuditedOscInterfaceAbsence(ctx, "ghostty-web-d2") &&
         auditedAdapterSources(identity, "ghosttyCsiNrg")
-      const target = hostEffectReport
-        ? kittyTarget
-        : ghosttyCsiReport && vt100Target
-          ? {
-              ...vt100Target,
-              code: { kind: "csi" as const, code: decsace ? "*2x" : " p" },
-            }
-          : vt100Audited
-            ? vt100Target
-            : ctx.backendName === "kitty" &&
-                identity?.kind === "native" &&
-                identity.engineVersion === "0.49.2" &&
-                identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
-              ? kittyTarget
-              : undefined
+      const r1Report =
+        ctx.backendName === "libvterm" &&
+        hasAuditedOscInterfaceAbsence(ctx, "libvterm-r1") &&
+        auditedAdapterSources(identity, "libvtermR1")
+      const target =
+        r1Report && libvtermTarget
+          ? libvtermTarget
+          : hostEffectReport
+            ? kittyTarget
+            : ghosttyCsiReport && vt100Target
+              ? {
+                  ...vt100Target,
+                  code: { kind: "csi" as const, code: decsace ? "*2x" : " p" },
+                }
+              : vt100Audited
+                ? vt100Target
+                : ctx.backendName === "kitty" &&
+                    identity?.kind === "native" &&
+                    identity.engineVersion === "0.49.2" &&
+                    identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+                  ? kittyTarget
+                  : undefined
       if (!target) return lib(ctx)
       const result = lib(ctx)
       if (reportsDecidedOutcome(result)) return result
@@ -7301,7 +7383,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         unhandledSequenceVerdict(
           ctx,
           target,
-          target.code.kind === "osc"
+          target.code.kind === "osc" || r1Report
             ? {
                 feed: "\x1b]2;" + UNHANDLED_OSC_CONTROL_TITLE + "\x07",
                 applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
