@@ -3303,6 +3303,7 @@ function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResu
 function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
+  const pasteBefore = ctx.getClipboardState?.().pasteSelector
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const query = "\x1b]52;c;?\x07"
   const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
@@ -3319,16 +3320,36 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const result: ProbeCallbackResult = writeUnobservable
     ? { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
     : headlessClipboardResult(empty ? "" : raw, nonce)
+  const handoff = empty ? clipboardPasteHandoff(ctx, pasteBefore) : null
+  if (handoff) return handoff
   return withClipboardControlNote(ctx, emptyNativeHostReply(ctx, { ...result, response: raw }, query, empty))
+}
+
+/**
+ * routes-16 row 1 (32472): vt100 0.16.2 hands an OSC 52 read to its `paste_from_clipboard` callback and
+ * keeps no clipboard of its own, so the read has no reply to grade. The witness the backend already
+ * exposes is the engine's own paste selector: absent before the read and "c" after it. A selector that
+ * was already set, or one that stays absent, proves nothing and keeps the existing inconclusive result.
+ */
+function clipboardPasteHandoff(ctx: LibProbeSource, before: string | undefined): ProbeCallbackResult | null {
+  const after = ctx.getClipboardState?.().pasteSelector
+  if (before !== undefined || after !== "c") return null
+  return declaredUntestableResult(
+    "Untestable (passed to the app): the library sent no reply and handed this read to the app through its clipboard callback, seen in this run.",
+    { pasteSelector: { before: null, after } },
+  )
 }
 
 /** Read silence is conclusive only on a collector-qualified, ordered reply path. */
 function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
+  const pasteBefore = ctx.getClipboardState?.().pasteSelector
   ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
+    const handoff = silence !== null ? clipboardPasteHandoff(ctx, pasteBefore) : null
+    if (handoff) return handoff
     return withClipboardControlNote(
       ctx,
       emptyNativeHostReply(
@@ -3340,6 +3361,8 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
     )
   }
   const raw = ctx.feedCapture("\x1b]52;c;?\x07")
+  const handoff = raw === "" ? clipboardPasteHandoff(ctx, pasteBefore) : null
+  if (handoff) return handoff
   return withClipboardControlNote(
     ctx,
     emptyNativeHostReply(ctx, headlessClipboardResult(raw, nonce), "\x1b]52;c;?\x07", raw === ""),
@@ -6559,6 +6582,10 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
 // The audited dispatcher and event API expose no criterion-bearing state for these sequences.
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
   "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
+  "modes.decsscls": "CSI 9 SP p (DECSSCLS) scroll-speed state",
+  // CTO b6a3c019: blink is handled and dropped, so this entry states its own cause and renders verbatim.
+  "sgr.blink":
+    "Alacritty alacritty_terminal 0.26.0 handles blink by writing a debug line and keeps no blink flag, so no public state, reply or typed event exists.",
   "extensions.osc9-progress": "OSC 9;4 progress state",
   "input.kitty-click-events": "OSC 133 click-events prompt state (mouse encoding is supplied by Termless)",
   "extensions.osc777-notify": "OSC 777 notification payloads",
@@ -6597,6 +6624,12 @@ const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
     backend: "xterm",
     reason:
       "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it.",
+  },
+  // xterm.js 6.0.0 registers only " " A and " " q for the " " intermediate, so CSI 9 SP p takes the same tap.
+  "modes.decsscls": {
+    backend: "xterm",
+    reason:
+      "Untestable: the library hands this command to the app through registerCsiHandler, registering only DECSCUSR's two space handlers, and does nothing with it.",
   },
   "extensions.osc9-progress": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
   "extensions.osc133-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
@@ -6959,6 +6992,8 @@ const WEZTERM_D2_ABSENCES: Readonly<Record<string, string>> = {
   "editing.decsace": "DECSACE has no handler; its only trace is an opt-in log-facade line, off in this embedding",
   "extensions.osc52-read":
     "OSC 52 QuerySelection has a recognized empty handler arm and emits no clipboard query reply",
+  "extensions.osc52-clipboard":
+    "OSC 52 QuerySelection has a recognized empty handler arm and emits no clipboard query reply, so the write cannot round trip to the app",
   "extensions.osc133-d": "OSC 133 D has a recognized empty handler arm and retains no command-exit status",
   "extensions.semantic-prompts":
     "OSC 133 D retains no command-exit status, so the public semantic marks cannot expose a complete prompt-command cycle",
@@ -7200,7 +7235,12 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 ? typeof source.getSemanticMarks === "function"
                 : false,
         (entry) =>
-          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${definition.id === "editing.decsace" ? "CSI" : "OSC"} has no handler or public rejection report.`,
+          // Blink is handled and dropped, not unhandled, so its entry carries the whole reviewed sentence.
+          definition.id === "sgr.blink"
+            ? entry
+            : `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${
+                definition.id === "editing.decsace" || definition.id === "modes.decsscls" ? "CSI" : "OSC"
+              } has no handler or public rejection report.`,
       )
       if (alacrittyDeclared) return alacrittyDeclared
       // CTO 8be19f1f: the Kitty image pair. No reader is passed because none of these libraries
