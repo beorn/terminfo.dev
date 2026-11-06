@@ -6203,8 +6203,11 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
 }
 
 // Operator D2, exact alacritty_terminal 0.26.0 / VTE 0.15.0 API read:
-// ansi.rs:1329-1524 dispatches none of these OSCs; event.rs:14-104 has no report for them.
+// The audited dispatcher and event API expose no criterion-bearing state for these sequences.
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
+  "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
+  "extensions.osc9-progress": "OSC 9;4 progress state",
+  "input.kitty-click-events": "OSC 133 click-events prompt state (mouse encoding is supplied by Termless)",
   "extensions.osc777-notify": "OSC 777 notification payloads",
   "extensions.osc133-a": "OSC 133 prompt starts",
   "extensions.osc133-b": "OSC 133 command starts",
@@ -6449,16 +6452,18 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         "alacritty",
         "osc-absence",
         (source, id) =>
-          id === "extensions.osc777-notify"
-            ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
-            : id.startsWith("extensions.osc133") ||
-                id.startsWith("extensions.osc633") ||
-                id === "extensions.osc-633-vscode" ||
-                id === "extensions.semantic-prompts"
-              ? typeof source.getSemanticMarks === "function"
-              : false,
+          id === "extensions.osc9-progress"
+            ? typeof source.getProgress === "function"
+            : id === "extensions.osc777-notify"
+              ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
+              : id.startsWith("extensions.osc133") ||
+                  id.startsWith("extensions.osc633") ||
+                  id === "extensions.osc-633-vscode" ||
+                  id === "extensions.semantic-prompts"
+                ? typeof source.getSemanticMarks === "function"
+                : false,
         (entry) =>
-          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this OSC has no handler or public rejection report.`,
+          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${definition.id === "editing.decsace" ? "CSI" : "OSC"} has no handler or public rejection report.`,
       )
       if (alacrittyDeclared) return alacrittyDeclared
       const vtermDeclared = declaredD2InterfaceAbsence(
