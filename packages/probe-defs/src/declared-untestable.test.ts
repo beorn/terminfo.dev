@@ -299,6 +299,59 @@ describe("H-4 exact host-effect declarations", () => {
       { path: "packages/ghostty-native/src/backend.ts", blobOid: "d15e83634be3aa1bf2df9b58eb2f6376af800808" },
     ],
   } satisfies HeadlessRuntimeIdentity
+  // @failure NR-I's seven reviewed cells stay TODO or leak onto an unaudited engine.
+  // @level l1
+  // @consumer Registered library callbacks and the shipping finalizer; prior native cohorts omit these seven.
+  test.each([
+    "editing.decsace",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc-633-vscode",
+  ])("NR-I %s declares only the reviewed native engine and preserves observations", (id) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    const source: LibProbeSource = {
+      ...library("ghostty-native"),
+      runtimeIdentity: ghosttyIdentity,
+      feedCapture: () => "",
+      getTitle: () => "",
+      getMode: () => null,
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    }
+    const result = definition.lib!(source)
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(fold(id, result)).toMatchObject({
+      status: "untestable",
+      reason: expect.stringContaining(
+        "Untestable (no way): the library offers no reading or input our test could use for this feature:",
+      ),
+    })
+    expect(fold(id, result).reason).toContain(id === "editing.decsace" ? "DECSACE" : "OSC 633")
+    expect(result.observation).toBeUndefined()
+    for (const runtimeIdentity of [
+      undefined,
+      { ...ghosttyIdentity, engineVersion: "unreviewed" },
+      { ...ghosttyIdentity, provenance: { ...ghosttyIdentity.provenance, sourceCommit: "0".repeat(40) } },
+      { ...ghosttyIdentity, provenance: { ...ghosttyIdentity.provenance, lockSha256: "0".repeat(64) } },
+    ]) {
+      expect(isDeclaredUntestable(definition.lib!({ ...source, runtimeIdentity }))).toBe(false)
+    }
+    const decided: ProbeCallbackResult = {
+      pass: true,
+      observation: { outcome: "supported", assertionType: "buffer_state" },
+    }
+    expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source)).toBe(decided)
+    const prior: ProbeCallbackResult = {
+      pass: false,
+      notTested: { reason: "no-semantic-observable", noObservable: "prior undecided result" },
+    }
+    const wrapped = withD2LibraryObservation({ ...definition, lib: () => prior })
+    expect(wrapped.lib!({ ...source, backendName: "other-library" })).toBe(prior)
+    expect(wrapped.lib!({ ...source, getUnhandledSequences: () => [] })).toBe(prior)
+  })
+
   const kittyIdentity = {
     kind: "native",
     engineVersion: "0.49.2",

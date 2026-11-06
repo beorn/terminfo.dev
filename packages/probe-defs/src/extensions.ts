@@ -6621,6 +6621,20 @@ const GHOSTTY_WEB_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 }
 
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "editing.decsace":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no DECSACE handler or character-attribute extent state.",
+  "extensions.osc633-a":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc633-b":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc633-c":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc633-d":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc633-e":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
+  "extensions.osc-633-vscode":
+    "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 has no handler for OSC 633 and keeps no VS Code shell-integration state.",
   "extensions.osc1-icon": "Ghostty 1.3.1 parses OSC 1 and ignores it. No icon state or action follows.",
   "extensions.osc113-reset-pointer-fg":
     "Ghostty 1.3.1 parses OSC 113 and does nothing with it. It keeps no pointer colour.",
