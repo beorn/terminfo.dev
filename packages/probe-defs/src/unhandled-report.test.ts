@@ -634,7 +634,7 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     expect(declaration).toMatchObject({ then: ["input_bytes", "buffer_state"], otherwise: ["input_bytes"] })
   })
 
-  test("failed controls, mismatch, extra entry, missing member and changed identity keep the old path", () => {
+  test("failed controls, mismatch, extra unmatched entry, missing member and changed identity keep the old path", () => {
     const [id, feed, kind, code] = targets[0]
     const lib = definition(id).lib!
     for (const ctx of [
@@ -667,7 +667,7 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
         ...reportingSource({
           records: [
             { match: /\x1b\[6n/, code: { kind, code } },
-            { match: /\x1b\[6n/, code: { kind, code } },
+            { match: /\x1b\[6n/, code: { kind, code: "other" } },
           ],
         }),
         backendName: "vt100-rust",
