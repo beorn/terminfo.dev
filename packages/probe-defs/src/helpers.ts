@@ -42,6 +42,10 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
     "packages/ghostty-native/src/backend.ts": "9bda39988b0af9c66fcc342ca477cf9daab2f5ac",
   },
+  ghosttyNativeR372ef06ec: {
+    "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+    "packages/ghostty-native/src/backend.ts": "72ef06ecf72f2509c097aff3260914d098ff010a",
+  },
   kittyH4: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
     "packages/kitty/src/backend.ts": "4cfc0a1707e4c92211c501cd27d8e1944ebe66db",

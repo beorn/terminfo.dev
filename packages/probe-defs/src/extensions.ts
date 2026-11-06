@@ -163,7 +163,8 @@ export function hasAuditedOscInterfaceAbsence(
         ((identity.loadedBinary.sha256 === "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd" &&
           auditedAdapterSources(identity, "ghosttyNativeH4")) ||
           (identity.loadedBinary.sha256 === "bb0c0c6a34997fc4850756e095d1ae978fb9fa046d87eb91847d9e0e6bdfb207" &&
-            auditedAdapterSources(identity, "ghosttyNativeR3")))
+            (auditedAdapterSources(identity, "ghosttyNativeR3") ||
+              auditedAdapterSources(identity, "ghosttyNativeR372ef06ec"))))
       )
     }
     return (
