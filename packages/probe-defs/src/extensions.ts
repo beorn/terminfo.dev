@@ -94,9 +94,31 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 // version carrying the same backend name. Real readers take precedence at each caller.
 function hasAuditedOscInterfaceAbsence(
   ctx: LibProbeSource,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" = "osc-absence",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-pass-through" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
+  if (cohort === "osc-pass-through") {
+    // Operator Nov 5 / CTO 4ab79b2f: these are engine identities. Adapter-only
+    // releases do not change the library's generic pass-through behavior.
+    if (ctx.backendName === "vterm") return hasAuditedOscInterfaceAbsence(ctx, "vterm-d2")
+    if (ctx.backendName === "xterm") {
+      return (
+        identity?.kind === "js" &&
+        identity.runtimeFormat === "js" &&
+        identity.engineVersion === "6.0.0" &&
+        identity.integrity.kind === "registry" &&
+        identity.integrity.lockIntegrity ===
+          "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="
+      )
+    }
+    return (
+      ctx.backendName === "libvterm" &&
+      identity?.kind === "js" &&
+      identity.runtimeFormat === "wasm" &&
+      identity.engineVersion === "0.3.3" &&
+      identity.loadedBinary.sha256 === "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0"
+    )
+  }
   if (cohort === "vt100-rust-d2") {
     return (
       ctx.backendName === "vt100-rust" &&
@@ -6149,6 +6171,19 @@ const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
   "extensions.osc710-font-normal": "OSC 710 font selection",
 }
 
+// Operator 20:59 / CTO 9182ff20: all six and made-up OSC 9999 take the same
+// generic hook; payload delivery is not execution of these host commands.
+const OSC_PASS_THROUGH_REASON =
+  "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
+const OSC_PASS_THROUGH_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.osc176-app-id": OSC_PASS_THROUGH_REASON,
+  "extensions.osc3008-context": OSC_PASS_THROUGH_REASON,
+  "extensions.osc440-audio": OSC_PASS_THROUGH_REASON,
+  "extensions.osc555-flash": OSC_PASS_THROUGH_REASON,
+  "extensions.osc666-termprop": OSC_PASS_THROUGH_REASON,
+  "extensions.osc710-font-normal": OSC_PASS_THROUGH_REASON,
+}
+
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "device.decrqss":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public DCS callback, response writer or device.decrqss result state",
@@ -6197,14 +6232,19 @@ function declaredD2InterfaceAbsence(
   id: string,
   table: Readonly<Record<string, string>>,
   backend: string,
-  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" | "osc-pass-through",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
+  options: { readonly genericReportIsObservable?: boolean } = {},
 ): ProbeCallbackResult | undefined {
   const entry = table[id]
   if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined
   const result = lib(ctx)
-  if (typeof ctx.getUnhandledSequences === "function" || hasReader(ctx, id) || reportsDecidedOutcome(result)) {
+  if (
+    (options.genericReportIsObservable !== false && typeof ctx.getUnhandledSequences === "function") ||
+    hasReader(ctx, id) ||
+    reportsDecidedOutcome(result)
+  ) {
     return result
   }
   return declaredUntestableResult(formatReason(entry), {
@@ -6233,7 +6273,10 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
-  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason)) return definition
+  const passThroughReason = OSC_PASS_THROUGH_DECLARATIONS[definition.id]
+  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason && !passThroughReason)) {
+    return definition
+  }
   return {
     ...definition,
     ...(vt100Target && definition.libAssertionType === "query_reply"
@@ -6247,6 +6290,19 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
+      const passThroughDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        OSC_PASS_THROUGH_DECLARATIONS,
+        ctx.backendName,
+        "osc-pass-through",
+        undefined,
+        undefined,
+        // libvterm's numeric report is the same generic hook, not a command effect.
+        { genericReportIsObservable: false },
+      )
+      if (passThroughDeclared) return passThroughDeclared
       const alacrittyDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,

@@ -15,6 +15,7 @@ import {
   recordExecutedProbe,
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
+import { withD2LibraryObservation } from "./extensions.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { HeadlessRuntimeIdentity, LibProbeSource, NotTestedCoverageResult, ProbeCallbackResult } from "./types.ts"
@@ -43,6 +44,123 @@ const library = (backendName = "alacritty"): LibProbeSource =>
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     reset: () => {},
   }) as unknown as LibProbeSource
+
+// @failure The operator's Nov 5 pass-through declaration stays TODO, loses its exact reason,
+// or leaks onto an unreviewed engine. Earlier declarations cover none of these eighteen cells.
+// @level l1
+// @consumer ALL_PROBES library callbacks through the shipping result finalizer; no test-only seam.
+describe("six pass-through OSC declarations", () => {
+  const ids = [
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc555-flash",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+  ] as const
+  const reason =
+    "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
+  // Engine identities from the 20:34 natural run, also measured directly by CTO at 21:01.
+  const subjects = [
+    [
+      "xterm",
+      {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: "6.0.0",
+        integrity: {
+          kind: "registry",
+          lockIntegrity:
+            "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+        },
+      },
+    ],
+    [
+      "vterm",
+      {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: "0.13.1",
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/vterm.git",
+          treeOid: "3d58d29a8265aafd928e0736dde6723e2bac2007",
+          cleanTree: true,
+        },
+      },
+    ],
+    [
+      "libvterm",
+      {
+        kind: "js",
+        runtimeFormat: "wasm",
+        engineVersion: "0.3.3",
+        loadedBinary: {
+          path: "libvterm.wasm",
+          sha256: "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0",
+        },
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/termless.git",
+          treeOid: "0d42787b5be964b449d39295b47084edfcf3cdc7",
+          cleanTree: true,
+        },
+      },
+    ],
+  ] as const
+  const source = (backend: string, identity: unknown) =>
+    ({
+      ...library(backend),
+      runtimeIdentity: identity,
+      feedCapture: () => "",
+      getTitle: () => "",
+      getMode: () => null,
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    }) as LibProbeSource
+
+  test.each(subjects)(
+    "%s finalizes exactly the six declarations even with a generic numeric report",
+    (backend, identity) => {
+      for (const id of ids) {
+        const lib = ALL_PROBES.find((probe) => probe.id === id)!.lib!
+        for (const getUnhandledSequences of [undefined, () => []]) {
+          const result = lib({ ...source(backend, identity), getUnhandledSequences })
+          expect(fold(id, result), id).toMatchObject({ status: "untestable", reason })
+          expect(isDeclaredUntestable(result), id).toBe(true)
+          expect(result.observation, id).toBeUndefined()
+          expect(result.assertions, id).toBeUndefined()
+        }
+      }
+    },
+  )
+
+  test.each(subjects)(
+    "%s keeps unreviewed identities and other features on their existing path",
+    (backend, identity) => {
+      for (const id of ids) {
+        const lib = ALL_PROBES.find((probe) => probe.id === id)!.lib!
+        for (const unknown of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
+          expect(isDeclaredUntestable(lib(source(backend, unknown))), id).toBe(false)
+        }
+      }
+      const notify = ALL_PROBES.find((probe) => probe.id === "extensions.osc777-notify")!.lib!
+      expect(isDeclaredUntestable(notify(source(backend, identity)))).toBe(false)
+    },
+  )
+
+  test.each(subjects)("%s preserves a decided result and never declares another backend", (backend, identity) => {
+    const decided: ProbeCallbackResult = {
+      pass: true,
+      observation: { outcome: "supported", assertionType: "buffer_state" },
+    }
+    const definition = ALL_PROBES.find((probe) => probe.id === ids[0])!
+    const wrapped = withD2LibraryObservation({ ...definition, lib: () => decided })
+    expect(wrapped.lib!(source(backend, identity))).toBe(decided)
+    const prior: ProbeCallbackResult = { pass: false, note: "prior undecided result" }
+    const other = withD2LibraryObservation({ ...definition, lib: () => prior })
+    expect(other.lib!(source("other-library", identity))).toBe(prior)
+  })
+})
 
 // The operator's Nov 4 16:55 decision, part A: each feature's reason, written once in its own probe.
 const declared = [
