@@ -6,7 +6,7 @@
  * @testonly none
  */
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend boundary. */
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { fileURLToPath } from "node:url"
 import { createXtermBackend } from "@termless/xtermjs"
 import { ALL_PROBES } from "@terminfo/probe-defs"
@@ -18,6 +18,7 @@ import { headlessRuntimeIdentity, readAdapterSources } from "./headless-identity
 test("xterm OSC22 declares only its reviewed identity and preserves deciding observations", async () => {
   const definition = ALL_PROBES.find((probe) => probe.id === "extensions.osc22-pointer")!
   const backend = createXtermBackend({ cols: 80, rows: 24 })
+  const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   try {
     const identity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
     identity.adapterSources = readAdapterSources("xtermjs", backend)
@@ -35,6 +36,8 @@ test("xterm OSC22 declares only its reviewed identity and preserves deciding obs
       undefined,
       runtime,
     )
+    expect(progress).toHaveBeenCalledExactlyOnceWith("headless xtermjs probe extensions.osc22-pointer\n")
+    progress.mockRestore()
     expect(batch.results).toMatchObject([
       {
         featureId: "extensions.osc22-pointer",
@@ -62,6 +65,7 @@ test("xterm OSC22 declares only its reviewed identity and preserves deciding obs
     const other = definition.lib!({ ...source, backendName: "vterm", runtimeIdentity: vtermIdentity })
     expect(JSON.stringify(other)).not.toContain("xterm.js 6.0.0")
   } finally {
+    progress.mockRestore()
     backend.destroy()
   }
 })
