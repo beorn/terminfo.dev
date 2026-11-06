@@ -102,12 +102,7 @@ test.runIf(OWNED_LAYOUT).each(["healthy", "seed", "reset", "unknown"] as const)(
       {
         runId: `alacritty-seven-${fault}`,
         rawReplies: {},
-        results: ids.map((featureId) => ({
-          featureId,
-          status: "probe-todo",
-          attempt: { scope: "none" },
-          tests: [],
-        })),
+        results: ids.map((featureId) => ({ featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [] })),
       },
       undefined,
       runtime,
@@ -401,22 +396,8 @@ async function backend() {
 // @level l5
 // @consumer Registered mode callbacks on the owned real engines; prior tests cover only DECRPM and two state opt-ins.
 test.runIf(OWNED_LAYOUT).each([
-  {
-    name: "vt100",
-    create: createVt100Backend,
-    type: "js",
-    id: "modes.decsclm",
-    number: 4,
-    expected: "unsupported",
-  },
-  {
-    name: "vt220",
-    create: createVt220Backend,
-    type: "js",
-    id: "modes.decsclm",
-    number: 4,
-    expected: "unsupported",
-  },
+  { name: "vt100", create: createVt100Backend, type: "js", id: "modes.decsclm", number: 4, expected: "unsupported" },
+  { name: "vt220", create: createVt220Backend, type: "js", id: "modes.decsclm", number: 4, expected: "unsupported" },
   ...[
     { id: "modes.bracketed-paste", number: 2004 },
     { id: "modes.mouse-tracking", number: 1000 },
@@ -510,10 +491,7 @@ test.runIf(OWNED_LAYOUT && isKittyAvailable())(
             fault === "none" ? "supported" : "unsupported",
           )
         } else {
-          expect(result.notTested).toEqual({
-            reason: "no-semantic-observable",
-            noObservable: NO_SAME_PATH_CONTROL,
-          })
+          expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
         }
         expect(capture("\x1b]22;?__current__\x07")).toBe(`\x1b]22;${initial}\x1b\\`)
       } finally {
@@ -759,12 +737,7 @@ for (const scenario of [
           reason,
           criterionBranch,
           rawReplyRef,
-          tests: tests.map(({ id, status, reason, rawReplyRef }) => ({
-            id,
-            status,
-            reason,
-            rawReplyRef,
-          })),
+          tests: tests.map(({ id, status, reason, rawReplyRef }) => ({ id, status, reason, rawReplyRef })),
         })),
       ).toEqual(expected)
       expect(instances).toBe(scenario.ids.length + 1)
@@ -965,9 +938,7 @@ test("exposes key input only for a declared library encoder and preserves bindin
     expect(encode).toHaveBeenCalledWith({ key: "a", ctrl: true })
     expect(encode.mock.contexts[0]).toBe(value)
 
-    const broken = Object.assign(Object.create(Object.getPrototypeOf(value)), value, {
-      encodeKey: undefined,
-    })
+    const broken = Object.assign(Object.create(Object.getPrototypeOf(value)), value, { encodeKey: undefined })
     expect(() => createLibProbeSource(broken, undefined, undefined, undefined)).toThrow(
       /declares capability extension "key-encoding" without an encodeKey function/,
     )
@@ -998,10 +969,7 @@ test("key-encoder absence declarations cover every actual adapter factory name",
       // #32308 (@cto e4f1c5bd): the absence map runs first, so a later declaration here would be silently shadowed.
       expect(actual.capabilities.extensions.has("key-encoding"), actual.name).toBe(false)
       for (const definition of definitions) {
-        const result = definition.lib!({
-          kind: "live",
-          backendName: actual.name,
-        } as LibProbeSource)
+        const result = definition.lib!({ kind: "live", backendName: actual.name } as LibProbeSource)
         expect(result.tests?.[0], `${actual.name} ${definition.id}`).toMatchObject({
           id: "declared-untestable",
           status: "untestable",
@@ -1050,12 +1018,7 @@ test.each([
     runId: "library-cell-criterion-fixture",
     rawReplies: {},
     results: [
-      {
-        featureId: definition.id,
-        status: "probe-todo" as const,
-        attempt: { scope: "none" as const },
-        tests: [],
-      },
+      { featureId: definition.id, status: "probe-todo" as const, attempt: { scope: "none" as const }, tests: [] },
     ],
   }
   const checkpoints: string[] = []
@@ -1088,10 +1051,7 @@ test("adapter-binding TODO names the initialized backend", async () => {
   )
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results).toMatchObject([
-    {
-      status: "probe-todo",
-      tests: [{ id: "criterion", reason: "adapter binding xterm syncOutput" }],
-    },
+    { status: "probe-todo", tests: [{ id: "criterion", reason: "adapter binding xterm syncOutput" }] },
   ])
   expect(batch.assertions).toEqual([])
 })
@@ -1159,10 +1119,7 @@ function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
     alternatePhases: Array<{ id: string; status: string; outcome: string; reason: string }>
     alternateRoundtrips: Record<
       string,
-      {
-        roundtrip: { pass: boolean; response: string; note?: string }
-        identity: Record<string, boolean | null>
-      }
+      { roundtrip: { pass: boolean; response: string; note?: string }; identity: Record<string, boolean | null> }
     >
     actions: Array<{ kind: string; text?: string; name?: string }>
     reads: Record<string, { cells: string[][]; scrollback: { totalLines: number; screenLines: number } }>
@@ -1229,14 +1186,7 @@ test.each([
     for (const { id } of alternate.alternatePhases) {
       expect(alternate.alternateRoundtrips[id]).toMatchObject({
         roundtrip: { pass: true },
-        identity: {
-          before: false,
-          entered: true,
-          target: true,
-          control: true,
-          restored: false,
-          after: false,
-        },
+        identity: { before: false, entered: true, target: true, control: true, restored: false, after: false },
       })
       const target = alternate.actions.findIndex((action) => action.kind === "read" && action.name === `${id}.after`)
       const control = alternate.actions.findIndex(
@@ -1277,34 +1227,15 @@ test.each([
       expect(row.assertionRefs!.map((index) => batch.assertions[index]!.expected.split(":")[0])).toEqual([row.id])
     }
     expect(mainAndHistoryAssertions(batch)).toMatchObject([
-      {
-        kind: "positive",
-        assertionType: "buffer_state",
-        observed: batch.rawReplies["extensions.reflow"],
-      },
-      {
-        kind: "positive",
-        assertionType: "buffer_state",
-        observed: batch.rawReplies["extensions.reflow"],
-      },
-      {
-        kind: "positive",
-        assertionType: "buffer_state",
-        observed: batch.rawReplies["extensions.reflow"],
-      },
-      {
-        kind: "positive",
-        assertionType: "buffer_state",
-        observed: batch.rawReplies["extensions.reflow"],
-      },
+      { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+      { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+      { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+      { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
     ])
     const observed = reflowEvidence(batch)
     if (enabled === undefined) expect(observed).not.toHaveProperty("reflowSetting")
     else expect(observed.reflowSetting).toEqual({ enabled })
-    expect(observed).toMatchObject({
-      declaredReflow: declared,
-      phases: [{ outcome: "reflow" }, { outcome: "reflow" }],
-    })
+    expect(observed).toMatchObject({ declaredReflow: declared, phases: [{ outcome: "reflow" }, { outcome: "reflow" }] })
     // Main-only coverage cannot detect lost history or hard-line boundaries. Check the actual full
     // buffer, including every hard witness, independently of the required-test fold.
     expect(observed.historyPhases).toMatchObject([
@@ -1345,14 +1276,8 @@ test.each([
       tests: expect.arrayContaining([
         // The combined libvterm artifact enables native main reflow while
         // retained physical history still supplies a measured negative.
-        expect.objectContaining({
-          id: "main-grow",
-          status: name === "libvterm" ? "supported" : "unsupported",
-        }),
-        expect.objectContaining({
-          id: "main-shrink",
-          status: name === "libvterm" ? "supported" : "unsupported",
-        }),
+        expect.objectContaining({ id: "main-grow", status: name === "libvterm" ? "supported" : "unsupported" }),
+        expect.objectContaining({ id: "main-shrink", status: name === "libvterm" ? "supported" : "unsupported" }),
         ...["history-grow", "history-shrink"].map((id) =>
           expect.objectContaining({
             id,
@@ -1443,14 +1368,8 @@ test.each([
   expect(reflowEvidence(batch).historyPhases).toMatchObject(
     corrupt
       ? [
-          {
-            status: "probe-invalid",
-            reason: expect.stringContaining("does not match the fed tail"),
-          },
-          {
-            status: "probe-invalid",
-            reason: expect.stringContaining("does not match the fed tail"),
-          },
+          { status: "probe-invalid", reason: expect.stringContaining("does not match the fed tail") },
+          { status: "probe-invalid", reason: expect.stringContaining("does not match the fed tail") },
         ]
       : [
           { status: "probe-todo", reason: `target not fully retained (H=${limit}, need 28)` },
@@ -1736,11 +1655,7 @@ test("alternate reflow records real vterm logical layouts without deciding a pro
 // is false or unavailable. Status-only cases miss a removed identity check or the wrong failing control.
 test.each([
   { fault: "missing-mode", status: "probe-todo", reason: "alternate buffer identity unavailable" },
-  {
-    fault: "target-mode-missing",
-    status: "probe-todo",
-    reason: "alternate buffer identity unavailable",
-  },
+  { fault: "target-mode-missing", status: "probe-todo", reason: "alternate buffer identity unavailable" },
   { fault: "no-entry", status: "probe-todo", reason: "alternate buffer not entered" },
   {
     fault: "bogus-mode",
@@ -1767,16 +1682,8 @@ test.each([
     status: "probe-invalid",
     reason: "Alternate buffer identity changed during target or width-control readback",
   },
-  {
-    fault: "slot-read",
-    status: "probe-invalid",
-    reason: "Alternate measurement failed: alternate slot read failed",
-  },
-  {
-    fault: "restore",
-    status: "probe-invalid",
-    reason: expect.stringContaining("PRIMARY-A not restored"),
-  },
+  { fault: "slot-read", status: "probe-invalid", reason: "Alternate measurement failed: alternate slot read failed" },
+  { fault: "restore", status: "probe-invalid", reason: expect.stringContaining("PRIMARY-A not restored") },
   {
     fault: "marker-missing-false",
     status: "probe-invalid",
@@ -1917,20 +1824,14 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
     expect(batch.results[0]!.reason).toContain("main-grow:")
     const observed = reflowEvidence(batch)
     if (fault === "hard-boundary") {
-      expect(observed).toMatchObject({
-        phases: [{ outcome: "preserved-wraps" }, { outcome: "reflow" }],
-      })
+      expect(observed).toMatchObject({ phases: [{ outcome: "preserved-wraps" }, { outcome: "reflow" }] })
       expect(
         batch.assertions
           .filter((assertion) => assertion.expected.startsWith("main-"))
           .map((assertion) => assertion.kind),
       ).toEqual(["negative", "positive"])
       expect(batch.results[0]!.tests).toContainEqual(
-        expect.objectContaining({
-          id: "criterion",
-          status: "probe-invalid",
-          assertionRefs: [0, 1],
-        }),
+        expect.objectContaining({ id: "criterion", status: "probe-invalid", assertionRefs: [0, 1] }),
       )
     } else {
       expect(observed).toMatchObject({
@@ -2102,10 +2003,7 @@ test("real vterm metadata reaches both registered callbacks and the batch produc
     const source = createLibProbeSource(value, undefined, undefined, undefined)
     for (const id of ids) {
       const result = registryDefinitions([id])[0]!.lib!(source)
-      expect(result.observation, id).toMatchObject({
-        outcome: "supported",
-        assertionType: "buffer_state",
-      })
+      expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
       expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
       const observed = JSON.parse(result.response!)
       if (id === "extensions.osc7-cwd") {
@@ -2156,17 +2054,11 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
       if (id === "extensions.osc7-cwd") {
         // A stale Cwd reader cannot qualify the independent control either. The qualified no-op negative is
         // covered by the existing real callback contract suite; this native fixture must remain undecided.
-        expect(stale.notTested).toEqual({
-          reason: "no-semantic-observable",
-          noObservable: NO_SAME_PATH_CONTROL,
-        })
+        expect(stale.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
         expect(stale.observation).toBeUndefined()
         expect(stale.assertions).toBeUndefined()
       } else {
-        expect(stale.observation).toMatchObject({
-          outcome: "unsupported",
-          assertionType: "buffer_state",
-        })
+        expect(stale.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
         expect(stale.assertions).toMatchObject([{ kind: "negative", observed: stale.response }])
       }
       if (id === "extensions.notifications") {
@@ -2217,10 +2109,7 @@ test("an osc-metadata engine without getCwd leaves the OSC 7 criterion a probe-t
     expect(feed).not.toHaveBeenCalled()
     feed.mockRestore()
     const notifications = registryDefinitions(["extensions.notifications"])[0]!.lib!(source)
-    expect(notifications.observation).toMatchObject({
-      outcome: "supported",
-      assertionType: "buffer_state",
-    })
+    expect(notifications.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   } finally {
     value.destroy()
   }
@@ -2272,10 +2161,7 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
     source.feed("\x1b]777;preexec\x07")
     const result = definition.lib!(source)
     expect(result.notTested).toBeUndefined()
-    expect(result.observation).toMatchObject({
-      outcome: "supported",
-      assertionType: "buffer_state",
-    })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect((JSON.parse(result.response!) as { second: string[] }).second).toEqual([
       "preexec",
       "terminfo-777-control",
@@ -2347,10 +2233,7 @@ test.for([
       if (reader) {
         for (const result of [notifications!, osc777!]) {
           expect(result.notTested).toBeUndefined()
-          expect(result.observation).toMatchObject({
-            outcome: "supported",
-            assertionType: "buffer_state",
-          })
+          expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
         }
         // Each step's added toasts are the engine's own fields: the OSC 9 title is recorded verbatim, never used to decide the probe result.
         expect(JSON.parse(notifications!.response!)).toMatchObject({
@@ -2361,19 +2244,14 @@ test.for([
         expect(JSON.parse(osc777!.response!)).toMatchObject({
           noToast: { added: [] },
           cross: { added: [{ title: osc9Title, body: "terminfo-777-cross-body" }] },
-          graded: {
-            added: [{ title: "terminfo-777-toast-title", body: "terminfo-777-toast-body" }],
-          },
+          graded: { added: [{ title: "terminfo-777-toast-title", body: "terminfo-777-toast-body" }] },
         })
         return
       }
       expect(source.getToasts).toBeUndefined()
       expect(notifications!.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
       expect(notifications!.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
-      expect(osc777!.notTested).toEqual({
-        reason: "no-semantic-observable",
-        noObservable: NO_SAME_PATH_CONTROL,
-      })
+      expect(osc777!.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
       for (const result of [notifications!, osc777!]) {
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
@@ -2410,18 +2288,12 @@ test.for([
       const result = registryDefinitions(["extensions.osc9-progress"])[0]!.lib!(source)
       if (reader) {
         expect(result.notTested).toBeUndefined()
-        expect(result.observation).toMatchObject({
-          outcome: "supported",
-          assertionType: "buffer_state",
-        })
+        expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
         // Probe cleanup restores the incoming report, including a value matching its first control.
         expect(source.getProgress!()).toEqual({ state: 1, value: 37 })
       } else {
         expect(source.getProgress).toBeUndefined()
-        expect(result.notTested).toEqual({
-          reason: "no-semantic-observable",
-          noObservable: NO_SAME_PATH_CONTROL,
-        })
+        expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
         expect(result.observation).toBeUndefined()
       }
     } finally {
@@ -2521,10 +2393,7 @@ test.skipIf(!isKittyAvailable())(
       const source = createLibProbeSource(value, undefined, undefined, undefined)
       for (const id of ["extensions.osc1-icon", "extensions.osc0-icon-title"]) {
         const result = registryDefinitions([id])[0]!.lib!(source)
-        expect(result.observation, id).toMatchObject({
-          outcome: "supported",
-          assertionType: "buffer_state",
-        })
+        expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
         expect(value.getTitle(), id).toBe("original-window")
       }
       feed("\x1b]1;previous-icon\x07")
@@ -2564,10 +2433,7 @@ test.skipIf(!isKittyAvailable())(
       const source = createLibProbeSource(value, undefined, undefined, undefined)
       const definition = registryDefinitions(["extensions.osc133-d"])[0]!
       const result = definition.lib!(source)
-      expect(result.observation).toMatchObject({
-        outcome: "supported",
-        assertionType: "buffer_state",
-      })
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
       const observed = JSON.parse(result.response!) as { first: unknown[]; second: unknown[] }
       expect(observed.first.at(-1)).toEqual({ type: "command-end", rawStatus: "0" })
       expect(observed.second.at(-1)).toEqual({ type: "command-end", rawStatus: "17" })
@@ -2576,19 +2442,13 @@ test.skipIf(!isKittyAvailable())(
         ["extensions.osc133-c", "output"],
       ] as const) {
         const start = registryDefinitions([id])[0]!.lib!(source)
-        expect(start.observation, id).toMatchObject({
-          outcome: "supported",
-          assertionType: "buffer_state",
-        })
+        expect(start.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
         const marks = JSON.parse(start.response!) as { first: unknown[]; second: unknown[] }
         expect(marks.first.at(-1), id).toEqual({ type, startRow: 0, startCol: 0 })
         expect(marks.second.at(-1), id).toEqual({ type, startRow: 1, startCol: 2 })
       }
       const umbrella = registryDefinitions(["extensions.semantic-prompts"])[0]!.lib!(source)
-      expect(umbrella.observation).toMatchObject({
-        outcome: "supported",
-        assertionType: "buffer_state",
-      })
+      expect(umbrella.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
       const lifecycle = JSON.parse(umbrella.response!) as {
         prompt: unknown[]
         output: unknown[]
@@ -2616,10 +2476,7 @@ test.skipIf(!isKittyAvailable())(
       const cached = source.getSemanticMarks!()
       const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
       const inert = definition.lib!(source)
-      expect(inert.notTested).toEqual({
-        reason: "no-semantic-observable",
-        noObservable: NO_SAME_PATH_CONTROL,
-      })
+      expect(inert.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
       expect(inert.observation).toBeUndefined()
       expect(inert.assertions).toBeUndefined()
       reader.mockRestore()
@@ -2668,10 +2525,7 @@ test.for(VTERM_MARK_CASES)(
       const source = createLibProbeSource(value, undefined, undefined, undefined)
       const definition = registryDefinitions([id])[0]!
       const result = definition.lib!(source)
-      expect(result.observation, id).toMatchObject({
-        outcome: "supported",
-        assertionType: "buffer_state",
-      })
+      expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
       expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
       const observed = JSON.parse(result.response!) as {
         first: unknown[]
@@ -2783,10 +2637,7 @@ test.for(["type", "position", "count", "history"] as const)("rejects fresh mark 
       return marks.flatMap((mark) => [mark, { ...mark }])
     })
     const result = registryDefinitions(["extensions.osc133-a"])[0]!.lib!(source)
-    expect(result.observation).toMatchObject({
-      outcome: "unsupported",
-      assertionType: "buffer_state",
-    })
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
   } finally {
     value.destroy()
@@ -2871,14 +2722,8 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       termlessRevision: "9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7",
       // Source-audit fixture follows the supplied-pixel binding edit; response forwarding is unchanged.
       adapterSources: [
-        {
-          path: "packages/xtermjs/src/index.ts",
-          blobOid: "550e10110ec2baaf326d2958319b03ee8208feba",
-        },
-        {
-          path: "packages/xtermjs/src/backend.ts",
-          blobOid: "72dc827b2026af7736de722f7ff986a04f3fe883",
-        },
+        { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
+        { path: "packages/xtermjs/src/backend.ts", blobOid: "72dc827b2026af7736de722f7ff986a04f3fe883" },
       ],
       resolvedPath:
         "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
@@ -2973,10 +2818,7 @@ test.each([
     adapterVersion: "0.10.2",
     termlessRevision: "9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7",
     // The audited source table, not an attestation of this runner's checkout.
-    adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.xtermjs).map(([path, blobOid]) => ({
-      path,
-      blobOid,
-    })),
+    adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.xtermjs).map(([path, blobOid]) => ({ path, blobOid })),
     resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
     integrity: {
       kind: "registry",
@@ -3091,9 +2933,7 @@ test("DECSSCLS real-vterm parser-state PROBE TODO survives collection and canoni
   expect(batch.results[0]).not.toHaveProperty("criterionBranch")
   expect(batch.results[0]).not.toHaveProperty("assertionType")
   expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ cursor: { x: 1, y: 0 } })
-  expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({
-    text: expect.stringMatching(/^Q\s*$/u),
-  })
+  expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ text: expect.stringMatching(/^Q\s*$/u) })
   expect(batch.assertions).toEqual([])
   const captured: CapturedRunDraft = {
     ...draft,
@@ -3162,18 +3002,9 @@ test("Wezterm prompt PROBE TODO rows survive actual collection and capture bindi
     termlessRevision: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
     // The JS carrier exercises collection; the qualified identity belongs to audited WezTerm sources.
     adapterSources: [
-      {
-        path: "packages/wezterm/src/index.ts",
-        blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
-      },
-      {
-        path: "packages/wezterm/src/backend.ts",
-        blobOid: "42a196995a5f8845ab2e3bb6227192556c470071",
-      },
-      {
-        path: "packages/wezterm/native/src/lib.rs",
-        blobOid: "445f5484027aebbea01a641a96dd92dfea273693",
-      },
+      { path: "packages/wezterm/src/index.ts", blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0" },
+      { path: "packages/wezterm/src/backend.ts", blobOid: "42a196995a5f8845ab2e3bb6227192556c470071" },
+      { path: "packages/wezterm/native/src/lib.rs", blobOid: "445f5484027aebbea01a641a96dd92dfea273693" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
     loadedBinary: {
@@ -3297,24 +3128,12 @@ test("measured mode and mouse criteria survive collection and capture parsing", 
             adapterSources:
               name === "vt100"
                 ? [
-                    {
-                      path: "packages/vt100/src/index.ts",
-                      blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-                    },
-                    {
-                      path: "packages/vt100/src/backend.ts",
-                      blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
-                    },
+                    { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
                   ]
                 : [
-                    {
-                      path: "packages/vt220/src/index.ts",
-                      blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-                    },
-                    {
-                      path: "packages/vt220/src/backend.ts",
-                      blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73",
-                    },
+                    { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
                   ],
           } as const)
         : ({
@@ -3327,14 +3146,8 @@ test("measured mode and mouse criteria survive collection and capture parsing", 
                 "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
             },
             adapterSources: [
-              {
-                path: "packages/xtermjs/src/index.ts",
-                blobOid: "550e10110ec2baaf326d2958319b03ee8208feba",
-              },
-              {
-                path: "packages/xtermjs/src/backend.ts",
-                blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e",
-              },
+              { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
+              { path: "packages/xtermjs/src/backend.ts", blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e" },
             ],
           } as const)),
     } as const
@@ -3499,10 +3312,7 @@ test.each([false, true])("retains only marked synchronous reply failure evidence
         expect(ctx.feedCapture("\x1b[9999n")).toBe("")
         return marked
           ? replyFailure("No probe reply")
-          : {
-              pass: false,
-              tests: [{ id: "criterion", status: "probe-invalid", reason: "No probe reply" }],
-            }
+          : { pass: false, tests: [{ id: "criterion", status: "probe-invalid", reason: "No probe reply" }] }
       },
     },
   ])
@@ -3530,11 +3340,7 @@ test.each([
       ...definition,
       lib(context) {
         // Controlled received bytes exercise the actual callback and stored-row precedence.
-        return definition.lib!({
-          ...context,
-          queryWithSentinelOutcome: undefined,
-          feedCapture: () => reply,
-        })
+        return definition.lib!({ ...context, queryWithSentinelOutcome: undefined, feedCapture: () => reply })
       },
     },
   ])
@@ -3552,12 +3358,7 @@ test.each([
     note: "Malformed or out-of-range DECRPM mode 3 reply",
     disagree: false,
   },
-  {
-    query: "\x1b[?3$p",
-    reply: "\x1b[?3;9$y",
-    note: "Malformed or out-of-range DECRPM mode 3 reply",
-    disagree: false,
-  },
+  { query: "\x1b[?3$p", reply: "\x1b[?3;9$y", note: "Malformed or out-of-range DECRPM mode 3 reply", disagree: false },
   { query: "\x1b[18t", reply: "", note: null, disagree: false },
   { query: "\x1b[18t", reply: "not-a-size-reply", note: "Malformed 18t reply", disagree: true },
   {
@@ -3921,11 +3722,7 @@ test.each([0, 1, 4] as const)(
     expect(batch.rawReplies[id]).toBe(response)
     const supported = ps === 1
     expect(batch.observations).toMatchObject([
-      {
-        featureId: id,
-        outcome: supported ? "supported" : "unsupported",
-        assertionType: "query_reply",
-      },
+      { featureId: id, outcome: supported ? "supported" : "unsupported", assertionType: "query_reply" },
     ])
     expect(batch.assertions).toMatchObject([{ featureId: id, kind: supported ? "positive" : "negative" }])
     expect(batch.results.find((result) => result.featureId === id)?.status).toBe(
@@ -3980,11 +3777,7 @@ test("separates mode readback from headless OS-input review without fabricating 
     if (declaredInputIds.has(result.featureId)) {
       expect(result.status, result.featureId).toBe("untestable")
       expect(result.tests, result.featureId).toContainEqual(
-        expect.objectContaining({
-          id: "declared-untestable",
-          status: "untestable",
-          reason: expect.any(String),
-        }),
+        expect.objectContaining({ id: "declared-untestable", status: "untestable", reason: expect.any(String) }),
       )
       continue
     }
@@ -4189,10 +3982,7 @@ test("formerly audited Vterm input cells record PROBE TODO coverage through the 
       expect(row).toMatchObject({ status: "probe-todo" })
       expect(row?.criterionBranch).toBeUndefined()
     } else {
-      expect(row).toMatchObject({
-        status: "untestable",
-        criterionBranch: "headless-observable-review",
-      })
+      expect(row).toMatchObject({ status: "untestable", criterionBranch: "headless-observable-review" })
     }
     expect(row?.assertionType).toBeUndefined()
   }
@@ -4239,10 +4029,7 @@ test("mouse collector distinguishes unavailable state/pixels, measured no-report
     expect(batch.results).toMatchObject([{ featureId: id, status: expected }])
     if (expected === "unsupported") {
       expect(batch.assertions).toMatchObject([{ featureId: id, kind: "negative", assertionType: "input_bytes" }])
-      expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({
-        negativeControl: null,
-        report: null,
-      })
+      expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ negativeControl: null, report: null })
     } else expect(batch.assertions).toEqual([])
     if (error) expect(batch.results[0]!.reason).toContain(error)
     const writes = feed.mock.calls.map(([bytes]) => new TextDecoder().decode(bytes))
@@ -4490,12 +4277,7 @@ test("retains a qualified headless shell mark's required source review through p
       criterionBranch: SEMANTIC_PROMPT_SOURCE_REVIEW,
       rawReplyRef: id,
       tests: [
-        expect.objectContaining({
-          id: "review",
-          status: "probe-todo",
-          attempt: { scope: "none" },
-          rawReplyRef: id,
-        }),
+        expect.objectContaining({ id: "review", status: "probe-todo", attempt: { scope: "none" }, rawReplyRef: id }),
       ],
     }),
   ])
@@ -4661,11 +4443,7 @@ test.each([
         expect.objectContaining({ featureId, outcome: "supported", assertionType: "buffer_state" }),
       ),
       ...unhandledReportIds.map((featureId) =>
-        expect.objectContaining({
-          featureId,
-          outcome: "unsupported",
-          assertionType: "buffer_state",
-        }),
+        expect.objectContaining({ featureId, outcome: "unsupported", assertionType: "buffer_state" }),
       ),
     ])
     expect(batch.assertions).toEqual([
@@ -5034,11 +4812,7 @@ function unreproducingXterm() {
   const feed = value.feed.bind(value)
   value.feed = (bytes) => {
     if (new TextDecoder().decode(bytes).includes("\x1b]52;")) {
-      warnings.push({
-        code: "UNREPRODUCED_CALLBACK",
-        message: "clipboard_control",
-        backend: "xtermjs",
-      })
+      warnings.push({ code: "UNREPRODUCED_CALLBACK", message: "clipboard_control", backend: "xtermjs" })
     }
     feed(bytes)
   }
@@ -5055,10 +4829,7 @@ test.each([
   { name: "replied", query: "\x1b]52;c;?\x1b\\\x1b[6n", harness: false },
 ])("records a probe result for a capture that reached an unreproduced callback ($name)", async ({ query, harness }) => {
   const value = unreproducingXterm()
-  const measured = (reply: string): ProbeCallbackResult => ({
-    ...fakeProbeResult("query_reply"),
-    response: reply,
-  })
+  const measured = (reply: string): ProbeCallbackResult => ({ ...fakeProbeResult("query_reply"), response: reply })
   const batch = await collectBatch(async () => value, "xtermjs", [
     definition("clipboard.read", (ctx) => measured(ctx.feedCapture(query))),
   ])
@@ -5169,10 +4940,7 @@ test("attributes headless exceptions only to the headless marker and retains leg
     throw new TypeError("Callback failed")
   }
   const batch = await collectBatch(backend, "xtermjs", [
-    definition("marked", throws, {
-      termAssertionType: "query_reply",
-      libAssertionType: "buffer_state",
-    }),
+    definition("marked", throws, { termAssertionType: "query_reply", libAssertionType: "buffer_state" }),
     definition("app-only", throws, { termAssertionType: "query_reply" }),
     definition("legacy", throws),
   ])
@@ -5254,11 +5022,7 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
     notTested: [],
     rawReplies: {},
     ungradedDiagnostics: {
-      setup: {
-        kind: "collector-error",
-        name: "Error",
-        message: `headless xtermjs probe setup: ${stage} failed`,
-      },
+      setup: { kind: "collector-error", name: "Error", message: `headless xtermjs probe setup: ${stage} failed` },
     },
   })
 })
@@ -5287,11 +5051,7 @@ test.each(["factory", "init"] as const)(
     // none arm stays a named diagnostic without a probe result instead of becoming an error observation.
     expect(batch.observations).toEqual([])
     expect(batch.ungradedDiagnostics).toEqual({
-      declines: {
-        kind: "collector-error",
-        name: "Error",
-        message: `headless xtermjs probe declines: ${stage} failed`,
-      },
+      declines: { kind: "collector-error", name: "Error", message: `headless xtermjs probe declines: ${stage} failed` },
     })
   },
 )
@@ -5362,11 +5122,7 @@ test("attributes a context operation failure and restores the backend response l
     notTested: [],
     rawReplies: {},
     ungradedDiagnostics: {
-      query: {
-        kind: "collector-error",
-        name: "Error",
-        message: "headless xtermjs probe query: Feed failed",
-      },
+      query: { kind: "collector-error", name: "Error", message: "headless xtermjs probe query: Feed failed" },
     },
   })
 })
@@ -5403,11 +5159,7 @@ test("rejects a returned method that disagrees with the marker and preserves mat
       "wrong",
       () => ({
         pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "no-response",
-          assertionType: "query_reply",
-        },
+        observation: { outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" },
       }),
       { libAssertionType: "buffer_state" },
     ),
@@ -5415,11 +5167,7 @@ test("rejects a returned method that disagrees with the marker and preserves mat
       "matching",
       () => ({
         pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          assertionType: "buffer_state",
-        },
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "buffer_state" },
       }),
       { libAssertionType: "buffer_state" },
     ),
@@ -5680,12 +5428,7 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
 test.each([
   { selected: true, actual: "buffer_state", allowed: ["buffer_state"], outcome: "inconclusive" },
   { selected: false, actual: "query_reply", allowed: ["buffer_state"], outcome: "inconclusive" },
-  {
-    selected: true,
-    actual: "query_reply",
-    allowed: ["query_reply", "buffer_state"],
-    outcome: "inconclusive",
-  },
+  { selected: true, actual: "query_reply", allowed: ["query_reply", "buffer_state"], outcome: "inconclusive" },
   { selected: false, actual: "buffer_state", allowed: ["buffer_state"], outcome: "error" },
   { selected: true, actual: "query_reply", allowed: ["buffer_state"], outcome: "error" },
 ] as const)("qualified declaration selects $selected/$actual/$allowed", async (scenario) => {
@@ -5760,14 +5503,7 @@ test("an assertion type that disagrees with the marker keeps the response and th
         pass: false,
         response,
         observation: { outcome: "unsupported", assertionType: "query_reply" },
-        assertions: [
-          {
-            kind: "negative",
-            assertionType: "query_reply",
-            expected: "no DA1 answer",
-            observed: response,
-          },
-        ],
+        assertions: [{ kind: "negative", assertionType: "query_reply", expected: "no DA1 answer", observed: response }],
       }),
       { libAssertionType: "buffer_state" },
     ),
@@ -5904,22 +5640,13 @@ test("admits an inconclusive no-response result with its named reason and no syn
       "silent",
       () => ({
         pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "no-response",
-          assertionType: "query_reply",
-        },
+        observation: { outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" },
       }),
       { libAssertionType: "query_reply" },
     ),
   ])
   expect(batch.observations).toStrictEqual([
-    {
-      featureId: "silent",
-      outcome: "inconclusive",
-      reason: "no-response",
-      assertionType: "query_reply",
-    },
+    { featureId: "silent", outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" },
   ])
   expect(batch.assertions).toStrictEqual([])
   expect(probeReplies(batch)).toStrictEqual({})
@@ -5936,10 +5663,7 @@ test("admits an inconclusive no-response result with its named reason and no syn
 
 test("refuses a callback result that is neither a measurement nor a coverage record", async () => {
   // The union makes this unreachable from a typed callback; an untyped caller still gets a loud refusal.
-  const untyped = (() => ({
-    pass: true,
-    note: "Legacy conclusion",
-  })) as unknown as ProbeDefinition["lib"]
+  const untyped = (() => ({ pass: true, note: "Legacy conclusion" })) as unknown as ProbeDefinition["lib"]
   const batch = await collectBatch(backend, "xtermjs", [
     definition("legacy", untyped, { libAssertionType: "buffer_state" }),
   ])
@@ -6192,10 +5916,7 @@ test.skipIf(!ghosttyNativeAvailable)(
       registryDefinitions(ids),
     )
     expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual(
-      ids.map((featureId) => ({
-        featureId,
-        status: metadataAvailable ? "supported" : "probe-todo",
-      })),
+      ids.map((featureId) => ({ featureId, status: metadataAvailable ? "supported" : "probe-todo" })),
     )
     // Native 0.10.2 lacks metadata; retain its TODO evidence and the source build's positive assertions.
     if (!metadataAvailable) {
@@ -6232,12 +5953,7 @@ test.skipIf(!ghosttyNativeAvailable)(
         rawReplyRef: id,
       })
       expect(batch.assertions.filter((row) => row.featureId === id)).toMatchObject([
-        {
-          kind: "positive",
-          assertionType: "buffer_state",
-          rawReplyRef: id,
-          observed: batch.rawReplies[id],
-        },
+        { kind: "positive", assertionType: "buffer_state", rawReplyRef: id, observed: batch.rawReplies[id] },
       ])
     }
     const unset = { fg: null, bg: null, cursor: null }
@@ -6316,13 +6032,7 @@ test("retains execution-only failure bytes despite pass true and rejects a typed
     definition("execution-only", () => ({
       pass: true,
       response: "retained refusal",
-      tests: [
-        {
-          id: "criterion",
-          status: "probe-invalid",
-          reason: "Timed out without a deciding observable",
-        },
-      ],
+      tests: [{ id: "criterion", status: "probe-invalid", reason: "Timed out without a deciding observable" }],
     })),
     definition(
       "declared-null",
@@ -6330,23 +6040,13 @@ test("retains execution-only failure bytes despite pass true and rejects a typed
         pass: true,
         response: "retained state",
         observation: { outcome: "supported", assertionType: "query_reply" },
-        assertions: [
-          {
-            kind: "positive",
-            assertionType: "query_reply",
-            expected: "state",
-            observed: "retained state",
-          },
-        ],
+        assertions: [{ kind: "positive", assertionType: "query_reply", expected: "state", observed: "retained state" }],
       }),
       { libAssertionType: null },
     ),
   ])
   expect(result.results.map((entry) => entry.status)).toEqual(["probe-invalid", "probe-invalid"])
-  expect(result.rawReplies).toMatchObject({
-    "execution-only": "retained refusal",
-    "declared-null": "retained state",
-  })
+  expect(result.rawReplies).toMatchObject({ "execution-only": "retained refusal", "declared-null": "retained state" })
   expect(result.results[0]).toMatchObject({
     rawReplyRef: "execution-only",
     tests: [expect.objectContaining({ status: "probe-invalid" })],
@@ -6447,9 +6147,7 @@ test.skipIf(!ghosttyNativeAvailable)(
     )
     // The published addon exposes no title state; current source builds observe setup.
     // Each path retains both fixtures; only observable controls can decide the round trip.
-    const firstFixture = JSON.parse(batch.rawReplies[TITLE_STACK_IDS[0]]!) as {
-      popFixture: { original: string }
-    }
+    const firstFixture = JSON.parse(batch.rawReplies[TITLE_STACK_IDS[0]]!) as { popFixture: { original: string } }
     if (firstFixture.popFixture.original === "") {
       expectTitleSetupReview(batch)
       return
@@ -6459,13 +6157,7 @@ test.skipIf(!ghosttyNativeAvailable)(
       TITLE_STACK_IDS.map((featureId) => ({
         featureId,
         status: "unsupported",
-        tests: [
-          {
-            id: "criterion",
-            status: "unsupported",
-            reason: "push/pop round trip does not restore",
-          },
-        ],
+        tests: [{ id: "criterion", status: "unsupported", reason: "push/pop round trip does not restore" }],
       })),
     )
     expect(batch.observations).toMatchObject(
@@ -6477,11 +6169,7 @@ test.skipIf(!ghosttyNativeAvailable)(
       })),
     )
     expect(batch.assertions).toMatchObject(
-      TITLE_STACK_IDS.map((featureId) => ({
-        featureId,
-        kind: "negative",
-        assertionType: "buffer_state",
-      })),
+      TITLE_STACK_IDS.map((featureId) => ({ featureId, kind: "negative", assertionType: "buffer_state" })),
     )
     for (const id of TITLE_STACK_IDS) {
       expect(JSON.parse(batch.rawReplies[id]!)).toEqual({
@@ -6529,12 +6217,7 @@ test("records qualified SGR readback when the cell attribute is unreported", asy
           ...ctx,
           queryWithSentinelOutcome(sequence, pattern) {
             const raw = ctx.feedCapture(sequence)
-            return {
-              raw,
-              rawBase64: Buffer.from(raw).toString("base64"),
-              match: raw.match(pattern),
-              reason: "reply",
-            }
+            return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: raw.match(pattern), reason: "reply" }
           },
         })
       },
@@ -6567,12 +6250,7 @@ test.each([
       runId: `paste-absence-${name}`,
       rawReplies: {},
       results: [
-        {
-          featureId: definition.id,
-          status: "probe-todo" as const,
-          attempt: { scope: "none" as const },
-          tests: [],
-        },
+        { featureId: definition.id, status: "probe-todo" as const, attempt: { scope: "none" as const }, tests: [] },
       ],
     }
     const batch = await collectBatch(async () => value, selector, [definition], draft)
@@ -6659,14 +6337,8 @@ test.runIf(OWNED_LAYOUT)(
         lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
       },
       adapterSources: [
-        {
-          path: "packages/vt100-rust/src/index.ts",
-          blobOid: "3ddb74f3ae1f79bb356952103853232f69211268",
-        },
-        {
-          path: "packages/vt100-rust/src/backend.ts",
-          blobOid: "ddabecd4881be4f6b63f1c35f9c2265b53d35df4",
-        },
+        { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
+        { path: "packages/vt100-rust/src/backend.ts", blobOid: "ddabecd4881be4f6b63f1c35f9c2265b53d35df4" },
       ],
     }
     const reported = [
@@ -6717,10 +6389,7 @@ test.each([false, true])("libvterm paste mode query measures and restores actual
     const result = definition.lib!(source)
     expect(result.observation?.outcome).toBe("supported")
     expect(source.feedCapture("\x1b[?2004$p")).toContain(initial ? "\x1b[?2004;1$y" : "\x1b[?2004;2$y")
-    const evidence = JSON.parse(result.response!) as {
-      incomingMode: boolean
-      modeReads: Array<{ raw: string }>
-    }
+    const evidence = JSON.parse(result.response!) as { incomingMode: boolean; modeReads: Array<{ raw: string }> }
     expect(evidence.incomingMode).toBe(initial)
     expect(evidence.modeReads).toHaveLength(2)
     expect(evidence.modeReads.every((read) => read.raw.includes(initial ? ";1$y" : ";2$y"))).toBe(true)
