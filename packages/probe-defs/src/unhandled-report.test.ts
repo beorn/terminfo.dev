@@ -818,6 +818,18 @@ describe("vterm 0.13.1 D2 nine-cell interface-absence declarations", () => {
     const lib = definition(id).lib!
     const result = lib(vtermSource())
     expect(isDeclaredUntestable(result)).toBe(true)
+    expect(
+      isDeclaredUntestable(
+        lib(
+          vtermSource({
+            runtimeIdentity: {
+              ...identity,
+              integrity: { ...sourceIntegrity, treeOid: "656da900d83e7c41af13b7ca679f8e1e31481537" },
+            },
+          }),
+        ),
+      ),
+    ).toBe(true)
     expect(JSON.stringify(result)).toContain("vterm.js 0.13.1")
     if (shellDeclared.has(id)) {
       expect(JSON.stringify(result)).toContain("generic parser tap")
