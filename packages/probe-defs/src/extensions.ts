@@ -94,7 +94,7 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 // version carrying the same backend name. Real readers take precedence at each caller.
 function hasAuditedOscInterfaceAbsence(
   ctx: LibProbeSource,
-  cohort: "osc-absence" | "vt100-rust-d2" = "osc-absence",
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
   if (cohort === "vt100-rust-d2") {
@@ -106,6 +106,18 @@ function hasAuditedOscInterfaceAbsence(
       identity.provenance.sourceCommit === "3a0bcc0f615cc22d64ea6b756026521d697f0c61" &&
       identity.provenance.lockSha256 === "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6" &&
       auditedAdapterSources(identity, "vt100RustDdabecd4")
+    )
+  }
+  if (cohort === "vterm-d2") {
+    return (
+      ctx.backendName === "vterm" &&
+      identity?.kind === "js" &&
+      identity.runtimeFormat === "js" &&
+      identity.engineVersion === "0.13.1" &&
+      identity.integrity.kind === "source" &&
+      identity.integrity.cleanTree &&
+      identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
+      identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007"
     )
   }
   if (identity?.kind === "native") {
@@ -6162,6 +6174,46 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "OSC 710 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
 }
 
+const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "modes.decsscls":
+    "vterm.js 0.13.1 exposes Screen, Snapshot and TerminalModes, but no public DECSSCLS scroll-speed state, getter or unhandled-sequence report",
+  "extensions.osc22-pointer":
+    "vterm.js 0.13.1 exposes pointerFgColor and pointerBgColor on Snapshot, but no public OSC 22 pointer-shape state, query reply or unhandled-sequence report",
+  "extensions.osc133-d":
+    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
+  "extensions.osc633-d":
+    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D command-end state or exit status; the payload reaches only the generic parser tap, which cannot observe state application",
+  "extensions.osc633-e":
+    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;E command-line or nonce state; the payload reaches only the generic parser tap, which cannot observe state application",
+  "extensions.semantic-prompts":
+    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+  "extensions.osc-633-vscode":
+    "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+}
+
+function declaredD2InterfaceAbsence(
+  ctx: LibProbeSource,
+  lib: (ctx: LibProbeSource) => ProbeCallbackResult,
+  id: string,
+  table: Readonly<Record<string, string>>,
+  backend: string,
+  cohort: "osc-absence" | "vt100-rust-d2" | "vterm-d2",
+  hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
+  formatReason: (entry: string) => string = (entry) => entry,
+): ProbeCallbackResult | undefined {
+  const entry = table[id]
+  if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined
+  const result = lib(ctx)
+  if (typeof ctx.getUnhandledSequences === "function" || hasReader(ctx, id) || reportsDecidedOutcome(result)) {
+    return result
+  }
+  return declaredUntestableResult(formatReason(entry), {
+    backend: ctx.backendName,
+    featureId: id,
+    runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
+  })
+}
+
 // CTO Kitty 16:50: shell3/reset2 already use the generic OSC report consumer.
 // These six uncovered routes use their own literal payload and the same canonical controls.
 const KITTY_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
@@ -6180,7 +6232,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
-  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence)) return definition
+  const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
+  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason)) return definition
   return {
     ...definition,
     ...(vt100Target && definition.libAssertionType === "query_reply"
@@ -6194,28 +6247,36 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
-      if (absence && ctx.backendName === "alacritty" && hasAuditedOscInterfaceAbsence(ctx)) {
-        const result = lib(ctx)
-        const hasReader =
-          typeof ctx.getUnhandledSequences === "function" ||
-          (definition.id === "extensions.osc777-notify"
-            ? typeof ctx.getOsc777Payloads === "function" || typeof ctx.getToasts === "function"
-            : definition.id.startsWith("extensions.osc133") ||
-                definition.id.startsWith("extensions.osc633") ||
-                definition.id === "extensions.osc-633-vscode" ||
-                definition.id === "extensions.semantic-prompts"
-              ? typeof ctx.getSemanticMarks === "function"
-              : false)
-        if (hasReader || reportsDecidedOutcome(result)) return result
-        return declaredUntestableResult(
-          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${absence}; this OSC has no handler or public rejection report.`,
-          {
-            backend: ctx.backendName,
-            featureId: definition.id,
-            runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
-          },
-        )
-      }
+      const alacrittyDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        ALACRITTY_D2_ABSENCES,
+        "alacritty",
+        "osc-absence",
+        (source, id) =>
+          id === "extensions.osc777-notify"
+            ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
+            : id.startsWith("extensions.osc133") ||
+                id.startsWith("extensions.osc633") ||
+                id === "extensions.osc-633-vscode" ||
+                id === "extensions.semantic-prompts"
+              ? typeof source.getSemanticMarks === "function"
+              : false,
+        (entry) =>
+          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this OSC has no handler or public rejection report.`,
+      )
+      if (alacrittyDeclared) return alacrittyDeclared
+      const vtermDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        VTERM_D2_DECLARATIONS,
+        "vterm",
+        "vterm-d2",
+        (source) => source.capabilities.extensions.has("semantic-command-end"),
+      )
+      if (vtermDeclared) return vtermDeclared
       const identity = ctx.runtimeIdentity
       const vt100Audited = hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")
       if (vt100Audited && reason) {
