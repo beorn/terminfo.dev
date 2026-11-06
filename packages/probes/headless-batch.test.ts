@@ -573,6 +573,7 @@ test("key-encoder absence declarations cover every actual adapter factory name",
     createVt100Backend,
     createVt220Backend,
     createVt100RustBackend,
+    createVtermBackend,
     createXtermBackend,
   ]) {
     const actual = create()
@@ -3539,20 +3540,44 @@ test("formerly audited Vterm input cells record PROBE TODO coverage through the 
   )
   expect(parsed.results).toEqual(batch.results)
   expect(parsed.assertions).toEqual([])
+  const vtermKeyEncoderAbsence =
+    "vterm.js 0.13.1 exports createVtermScreen and its Screen byte parser and state readers, and no key-event-to-byte encoder"
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results).toHaveLength(ids.length)
-  expect(batch.notTested).toEqual(
-    ids.map((id) => ({
-      featureId: id,
+  expect(batch.notTested).toEqual([
+    {
+      featureId: "input.modify-other-keys",
+      reason: "no-semantic-observable",
+      noObservable: vtermKeyEncoderAbsence,
+      rawReplyRef: "input.modify-other-keys",
+    },
+    {
+      featureId: "input.modify-other-keys-3",
+      reason: "no-semantic-observable",
+      noObservable: vtermKeyEncoderAbsence,
+      rawReplyRef: "input.modify-other-keys-3",
+    },
+    {
+      featureId: "input.xtest-key",
+      reason: "no-semantic-observable",
+      noObservable: `OS-level XTEST key injection: ${vtermKeyEncoderAbsence}`,
+      rawReplyRef: "input.xtest-key",
+    },
+    {
+      featureId: "input.kitty-click-events",
       reason: "no-semantic-observable",
       noObservable: NO_SAME_PATH_CONTROL,
-      rawReplyRef: id,
-    })),
-  )
+      rawReplyRef: "input.kitty-click-events",
+    },
+  ])
   for (const id of ids) {
     const row = batch.results.find((entry) => entry.featureId === id)
-    expect(row).toMatchObject({ status: "probe-todo" })
-    expect(row?.criterionBranch).toBeUndefined()
+    if (id === "input.kitty-click-events") {
+      expect(row).toMatchObject({ status: "probe-todo" })
+      expect(row?.criterionBranch).toBeUndefined()
+    } else {
+      expect(row).toMatchObject({ status: "untestable", criterionBranch: "headless-observable-review" })
+    }
     expect(row?.assertionType).toBeUndefined()
   }
   expect(batch.assertions).toEqual([])

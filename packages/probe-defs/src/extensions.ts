@@ -101,19 +101,10 @@ export function hasAuditedOscInterfaceAbsence(
     | "osc-pass-through"
     | "ghostty-native-d2"
     | "host-effect-h4"
-    | "ghostty-web-no-way"
-    | "wezterm-d2" = "osc-absence",
+    | "wezterm-d2"
+    | "ghostty-web-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
-  if (cohort === "ghostty-web-no-way") {
-    return (
-      ctx.backendName === "ghostty" &&
-      identity?.kind === "js" &&
-      identity.runtimeFormat === "wasm" &&
-      identity.engineVersion === "0.4.0" &&
-      identity.loadedBinary.sha256 === "aaf8ce18ad92e98b1233d85b5f71043aceccf3abbc75dea07e1c704cd3ae690a"
-    )
-  }
   if (cohort === "osc-pass-through") {
     // Operator Nov 5 / CTO 4ab79b2f: these are engine identities. Adapter-only
     // releases do not change the library's generic pass-through behavior.
@@ -134,6 +125,21 @@ export function hasAuditedOscInterfaceAbsence(
       identity.runtimeFormat === "wasm" &&
       identity.engineVersion === "0.3.3" &&
       identity.loadedBinary.sha256 === "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0"
+    )
+  }
+  if (cohort === "ghostty-web-d2") {
+    // CTO 8be19f1f: the web build is a different engine from Ghostty native, so it carries its own
+    // gate. WASM binary and vendored tree together, because either alone admits another build.
+    return (
+      ctx.backendName === "ghostty" &&
+      identity?.kind === "js" &&
+      identity.runtimeFormat === "wasm" &&
+      identity.engineVersion === "0.4.0" &&
+      identity.loadedBinary.sha256 === "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de" &&
+      identity.integrity.kind === "source" &&
+      identity.integrity.repository === "git@github.com:beorn/termless.git" &&
+      identity.integrity.treeOid === "ad3571a518e9e672e102eb83becc2caa03b9ffc3" &&
+      identity.integrity.cleanTree
     )
   }
   if (cohort === "ghostty-native-d2") {
@@ -2732,15 +2738,57 @@ function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackR
   })
 }
 
+function kittyGraphicsRefused(response: string, code: string): ProbeCallbackResult {
+  const note = `library refused the canonical graphics query: ${code}`
+  return {
+    pass: false,
+    response,
+    note,
+    observation: { outcome: "unsupported", assertionType: "query_reply", note },
+    assertions: [
+      {
+        assertionType: "query_reply" as const,
+        kind: "negative",
+        expected: "The canonical Kitty graphics query is acknowledged rather than refused",
+        observed: response,
+      },
+    ],
+  }
+}
+
+/** A Kitty graphics ERROR frame in this run's reply window: an explicit refusal, not an absence. */
+function kittyGraphicsRefusalCode(raw: string): string | null {
+  const frame = /\x1b_G[^;\x1b]*;([A-Z][A-Z0-9]{2,})\x1b\\/.exec(raw)
+  return frame ? (frame[1] ?? null) : null
+}
+
+/**
+ * Display cannot be observed when transmit was refused in the same run: the library answered the
+ * canonical query with an error, so there is no image for the display cell to place.
+ */
+function kittyDisplayWithoutTransmit(code: string, imageNumber: number): ProbeCallbackResult {
+  return declaredUntestableResult(
+    `Untestable (no setup): Kitty graphics transmit is refused by this library (${code}), so the display cell has no image to place`,
+    { imageNumber, refusal: code },
+  )
+}
+
 /** Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window. */
 function allocationOutcomeResult(
   reply: TerminalQueryOutcome,
   imageNumber: number,
-): { imageId: number | null; result: ProbeCallbackResult } {
+): { imageId: number | null; refusal: string | null; result: ProbeCallbackResult } {
   if (!reply.match) {
     if (reply.reason === "sentinel") {
+      // A refusal decides; silence does not. Only a graphics ERROR frame in the same window moves
+      // this cell off "not observed", because a library that refuses the query has answered it.
+      const refusal = kittyGraphicsRefusalCode(reply.raw)
+      if (refusal) {
+        return { imageId: null, refusal, result: kittyGraphicsRefused(reply.raw, refusal) }
+      }
       return {
         imageId: null,
+        refusal: null,
         result: notTestedResult("No image allocation readback; DA1 does not observe image transmission", {
           imageNumber,
           readback: reply,
@@ -2749,6 +2797,7 @@ function allocationOutcomeResult(
     }
     return {
       imageId: null,
+      refusal: null,
       result: unansweredQuery(
         reply,
         "No matching image allocation reply; no image ownership or transmission conclusion",
@@ -2756,7 +2805,7 @@ function allocationOutcomeResult(
     }
   }
   const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
-  return { ...uploaded, result: { ...uploaded.result, response: reply.raw } }
+  return { ...uploaded, refusal: null, result: { ...uploaded.result, response: reply.raw } }
 }
 
 function placementRequest(imageId: number): string {
@@ -2811,6 +2860,9 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
               imageNumber,
             )
             imageId = uploaded.imageId
+            if (uploaded.refusal && display) {
+              return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
+            }
             if (!imageId || !display) return uploaded.result
             const placement = ctx.queryWithSentinelOutcome(
               placementRequest(imageId),
@@ -2836,6 +2888,9 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
             imageNumber,
           )
           imageId = uploaded.imageId
+          if (uploaded.refusal && display) {
+            return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
+          }
           if (!imageId || !display) return uploaded.result
           const placement = await ctx.queryWithSentinelOutcome(
             placementRequest(imageId),
@@ -3272,7 +3327,7 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   const encodePaste = ctx.encodePaste
   if (!encodePaste) {
     const declared = NO_LIBRARY_PASTE_ENCODER[ctx.backendName]
-    if (declared && (ctx.backendName !== "ghostty" || hasAuditedOscInterfaceAbsence(ctx, "ghostty-web-no-way"))) {
+    if (declared && (ctx.backendName !== "ghostty" || hasAuditedOscInterfaceAbsence(ctx, "ghostty-web-d2"))) {
       return declaredUntestableResult(declared, { backend: ctx.backendName, encodePaste: false })
     }
     const reason = `${ctx.backendName}: paste-encoding extension unavailable; native paste interface not observed`
@@ -6261,13 +6316,34 @@ const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
 // generic hook; payload delivery is not execution of these host commands.
 const OSC_PASS_THROUGH_REASON =
   "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
-const OSC_PASS_THROUGH_DECLARATIONS: Readonly<Record<string, string>> = {
+const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
+  Record<string, string | { readonly backend: string; readonly reason: string }>
+> = {
   "extensions.osc176-app-id": OSC_PASS_THROUGH_REASON,
   "extensions.osc3008-context": OSC_PASS_THROUGH_REASON,
   "extensions.osc440-audio": OSC_PASS_THROUGH_REASON,
   "extensions.osc555-flash": OSC_PASS_THROUGH_REASON,
   "extensions.osc666-termprop": OSC_PASS_THROUGH_REASON,
   "extensions.osc710-font-normal": OSC_PASS_THROUGH_REASON,
+  // NR-H: xterm.js 6.0.0's logger is not a report; retain the reviewed parser-hook wording.
+  "editing.decsace": {
+    backend: "xterm",
+    reason:
+      "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it.",
+  },
+  "extensions.osc9-progress": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-b": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-c": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-d": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-p": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.semantic-prompts": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-b": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-c": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-d": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-e": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc-633-vscode": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
 }
 
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6300,6 +6376,8 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "modes.decsscls":
     "vterm.js 0.13.1 exposes Screen, Snapshot and TerminalModes, but no public DECSSCLS scroll-speed state, getter or unhandled-sequence report",
+  "extensions.osc9-progress":
+    "vterm.js 0.13.1 exposes getNotifications() and tapParser(), but no public OSC 9;4 progress state, getter or unhandled-sequence report",
   "extensions.osc22-pointer":
     "vterm.js 0.13.1 exposes pointerFgColor and pointerBgColor on Snapshot, but no public OSC 22 pointer-shape state, query reply or unhandled-sequence report",
   "extensions.osc133-d":
@@ -6312,6 +6390,47 @@ const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc-633-vscode":
     "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+  "input.kitty-click-events":
+    "vterm.js 0.13.1 drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
+}
+
+// CTO 8be19f1f: five libraries expose no public image path, so their Kitty display and transmit
+// cells are "no way" at exact identity. Each map names one library's own public surface, because a
+// shared string would attribute one library's absence to another. libvterm is absent on purpose: its
+// APC hook is public, so it is reader R1, and vterm decides its rows by the refusal reading instead.
+const ALACRITTY_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "alacritty_terminal 0.26.0 exposes Grid, Term and vte with the event, grid, term, tty and vi_mode modules, but no public APC callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "alacritty_terminal 0.26.0 exposes Grid, Term and vte with the event, grid, term, tty and vi_mode modules, but no public APC callback, graphics store or Kitty graphics reply writer",
+}
+
+const XTERM_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "@xterm/headless 6.0.0 exposes Terminal with the IBuffer and ITerminalOptions typings, but its parser documentation states that APC, PM and SOS are not supported, and it exposes no image store, APC handler or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "@xterm/headless 6.0.0 exposes Terminal with the IBuffer and ITerminalOptions typings, but its parser documentation states that APC, PM and SOS are not supported, and it exposes no image store, APC handler or Kitty graphics reply writer",
+}
+
+const VT100_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+}
+
+const VT220_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+}
+
+const GHOSTTY_WEB_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "ghostty-web 0.4.0 exposes Ghostty, GhosttyTerminal and CanvasRenderer, and its only Kitty surface is setKittyFlags with KittyKeyFlags, the keyboard protocol; its WebAssembly export interface carries no image, sixel or graphics entry, so it has no public image store or APC callback",
+  "extensions.kitty-graphics.transmit":
+    "ghostty-web 0.4.0 exposes Ghostty, GhosttyTerminal and CanvasRenderer, and its only Kitty surface is setKittyFlags with KittyKeyFlags, the keyboard protocol; its WebAssembly export interface carries no image, sixel or graphics entry, so it has no public image store or APC callback",
 }
 
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6333,7 +6452,7 @@ function declaredD2InterfaceAbsence(
   ctx: LibProbeSource,
   lib: (ctx: LibProbeSource) => ProbeCallbackResult,
   id: string,
-  table: Readonly<Record<string, string>>,
+  table: Readonly<Record<string, string | { readonly backend: string; readonly reason: string }>>,
   backend: string,
   cohort:
     | "osc-absence"
@@ -6342,12 +6461,19 @@ function declaredD2InterfaceAbsence(
     | "osc-pass-through"
     | "ghostty-native-d2"
     | "wezterm-d2"
+    | "ghostty-web-d2"
     | "host-effect-h4",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
   options: { readonly genericReportIsObservable?: boolean } = {},
 ): ProbeCallbackResult | undefined {
-  const entry = table[id]
+  const declaration = table[id]
+  const entry =
+    typeof declaration === "string"
+      ? declaration
+      : declaration !== undefined && declaration.backend === ctx.backendName
+        ? declaration.reason
+        : undefined
   if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined
   const result = lib(ctx)
   if (
@@ -6423,6 +6549,12 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const passThroughReason = OSC_PASS_THROUGH_DECLARATIONS[definition.id]
   const ghosttyNativeReason = GHOSTTY_NATIVE_D2_DECLARATIONS[definition.id]
   const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
+  const imageDeclared =
+    ALACRITTY_IMAGE_D2_DECLARATIONS[definition.id] ??
+    XTERM_IMAGE_D2_DECLARATIONS[definition.id] ??
+    VT100_IMAGE_D2_DECLARATIONS[definition.id] ??
+    VT220_IMAGE_D2_DECLARATIONS[definition.id] ??
+    GHOSTTY_WEB_IMAGE_D2_DECLARATIONS[definition.id]
   if (
     !lib ||
     (!vt100Target &&
@@ -6432,7 +6564,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       !vtermReason &&
       !passThroughReason &&
       !ghosttyNativeReason &&
-      !weztermAbsence)
+      !weztermAbsence &&
+      !imageDeclared)
   ) {
     return definition
   }
@@ -6495,6 +6628,53 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
           `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${definition.id === "editing.decsace" ? "CSI" : "OSC"} has no handler or public rejection report.`,
       )
       if (alacrittyDeclared) return alacrittyDeclared
+      // CTO 8be19f1f: the Kitty image pair. No reader is passed because none of these libraries
+      // exposes a public image store or callback; if one ever gains it, its gate stops matching.
+      const alacrittyImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        ALACRITTY_IMAGE_D2_DECLARATIONS,
+        "alacritty",
+        "osc-absence",
+      )
+      if (alacrittyImageDeclared) return alacrittyImageDeclared
+      const xtermImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        XTERM_IMAGE_D2_DECLARATIONS,
+        "xterm",
+        "osc-pass-through",
+      )
+      if (xtermImageDeclared) return xtermImageDeclared
+      const vt100ImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        VT100_IMAGE_D2_DECLARATIONS,
+        "vt100",
+        "osc-absence",
+      )
+      if (vt100ImageDeclared) return vt100ImageDeclared
+      const vt220ImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        VT220_IMAGE_D2_DECLARATIONS,
+        "vt220",
+        "osc-absence",
+      )
+      if (vt220ImageDeclared) return vt220ImageDeclared
+      const ghosttyWebImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        GHOSTTY_WEB_IMAGE_D2_DECLARATIONS,
+        "ghostty",
+        "ghostty-web-d2",
+      )
+      if (ghosttyWebImageDeclared) return ghosttyWebImageDeclared
       const vtermDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
