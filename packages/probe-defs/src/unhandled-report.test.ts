@@ -912,7 +912,7 @@ describe("Ghostty native 1.3.1 D2 six-cell interface-absence declarations", () =
     expect(result.observation?.outcome).toBe("unsupported")
   })
 
-  test("OSC 22, host effects and shell cells remain outside the six declarations", () => {
+  test("R3 readers and unaudited host effects remain outside native D2 declarations", () => {
     for (const id of [
       "extensions.osc22-pointer",
       "extensions.osc176-app-id",
@@ -922,7 +922,8 @@ describe("Ghostty native 1.3.1 D2 six-cell interface-absence declarations", () =
       "extensions.osc666-termprop",
       "extensions.osc710-font-normal",
       "extensions.osc133-a",
-      "editing.decsace",
+      "extensions.osc133-d",
+      "extensions.semantic-prompts",
     ]) {
       expect(isDeclaredUntestable(definition(id).lib!(nativeSource()))).toBe(false)
     }
