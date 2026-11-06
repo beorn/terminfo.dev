@@ -6109,6 +6109,34 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
 }
 
+// Operator D2, exact alacritty_terminal 0.26.0 / VTE 0.15.0 API read:
+// ansi.rs:1329-1524 dispatches none of these OSCs; event.rs:14-104 has no report for them.
+const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
+  "extensions.osc777-notify": "OSC 777 notification payloads",
+  "extensions.osc133-a": "OSC 133 prompt starts",
+  "extensions.osc133-b": "OSC 133 command starts",
+  "extensions.osc133-c": "OSC 133 output starts",
+  "extensions.osc133-d": "OSC 133 command completion",
+  "extensions.osc133-p": "OSC 133 prompt markers",
+  "extensions.semantic-prompts": "semantic prompt lifecycle",
+  "extensions.osc633-a": "OSC 633 prompt starts",
+  "extensions.osc633-b": "OSC 633 command starts",
+  "extensions.osc633-c": "OSC 633 output starts",
+  "extensions.osc633-d": "OSC 633 command completion",
+  "extensions.osc633-e": "OSC 633 command lines",
+  "extensions.osc-633-vscode": "OSC 633 shell integration",
+  "extensions.osc113-reset-pointer-fg": "OSC 113 pointer foreground reset",
+  "extensions.osc114-reset-pointer-bg": "OSC 114 pointer background reset",
+  "extensions.osc117-reset-highlight-bg": "OSC 117 highlight background reset",
+  "extensions.osc119-reset-highlight-fg": "OSC 119 highlight foreground reset",
+  "extensions.osc176-app-id": "OSC 176 application identity",
+  "extensions.osc3008-context": "OSC 3008 context tags",
+  "extensions.osc440-audio": "OSC 440 audio effects",
+  "extensions.osc555-flash": "OSC 555 flash effects",
+  "extensions.osc666-termprop": "OSC 666 terminal properties",
+  "extensions.osc710-font-normal": "OSC 710 font selection",
+}
+
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "device.decrqss":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public DCS callback, response writer or device.decrqss result state",
@@ -6151,7 +6179,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]
   const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
-  if (!lib || (!vt100Target && !kittyTarget && !reason)) return definition
+  const absence = ALACRITTY_D2_ABSENCES[definition.id]
+  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence)) return definition
   return {
     ...definition,
     ...(vt100Target && definition.libAssertionType === "query_reply"
@@ -6165,6 +6194,28 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
+      if (absence && ctx.backendName === "alacritty" && hasAuditedOscInterfaceAbsence(ctx)) {
+        const result = lib(ctx)
+        const hasReader =
+          typeof ctx.getUnhandledSequences === "function" ||
+          (definition.id === "extensions.osc777-notify"
+            ? typeof ctx.getOsc777Payloads === "function" || typeof ctx.getToasts === "function"
+            : definition.id.startsWith("extensions.osc133") ||
+                definition.id.startsWith("extensions.osc633") ||
+                definition.id === "extensions.osc-633-vscode" ||
+                definition.id === "extensions.semantic-prompts"
+              ? typeof ctx.getSemanticMarks === "function"
+              : false)
+        if (hasReader || reportsDecidedOutcome(result)) return result
+        return declaredUntestableResult(
+          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${absence}; this OSC has no handler or public rejection report.`,
+          {
+            backend: ctx.backendName,
+            featureId: definition.id,
+            runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
+          },
+        )
+      }
       const identity = ctx.runtimeIdentity
       const vt100Audited = hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")
       if (vt100Audited && reason) {
