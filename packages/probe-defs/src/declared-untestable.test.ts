@@ -293,6 +293,7 @@ describe("WezTerm D2 audited interface absence", () => {
       runtimeIdentity: identity,
       feedCapture: () => "",
       getTitle: () => "",
+      getCell: (row, col) => ({ char: ["abcdefgh", "ijklmnop"][row]?.[col] ?? " ", inverse: false }),
       // Existing DECSSCLS parser-consumption control passes; presentation speed remains unobserved.
       feed: (sequence) => {
         parsedMarker = sequence.includes("\x1b[9 pQ")
@@ -314,6 +315,16 @@ describe("WezTerm D2 audited interface absence", () => {
     ["extensions.osc555-flash", /OSC 555.*no host route/],
     ["extensions.osc666-termprop", /OSC 666.*no host route/],
     ["extensions.osc710-font-normal", /OSC 710.*no host route/],
+    ["editing.decsace", /DECSACE.*no handler.*opt-in log.*off/],
+    ["extensions.osc52-read", /OSC 52.*QuerySelection.*empty.*reply/],
+    ["extensions.osc133-d", /OSC 133 D.*empty.*status/],
+    ["extensions.semantic-prompts", /OSC 133 D.*complete.*cycle/],
+    ["extensions.osc633-a", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc633-b", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc633-c", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc633-d", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc633-e", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc-633-vscode", /OSC 633.*no handler.*opt-in log.*off/],
   ] as const
 
   // @failure The exact approved WezTerm cohort retains TODO or invents an observation.
@@ -327,7 +338,7 @@ describe("WezTerm D2 audited interface absence", () => {
     expect(result.assertions).toBeUndefined()
   })
 
-  test("the public 0.11.0 adapter retains the ten audited interface absences", () => {
+  test("the public 0.11.0 adapter retains the audited interface absences", () => {
     const runtimeIdentity = {
       ...identity,
       adapterVersion: "0.11.0",
@@ -344,7 +355,7 @@ describe("WezTerm D2 audited interface absence", () => {
     }
   })
 
-  test("unqualified runtime identities keep the ten cells TODO", () => {
+  test("unqualified runtime identities retain their existing outcomes", () => {
     for (const runtimeIdentity of [
       undefined,
       { ...identity, engineVersion: "0.1.0-fork.6" },
@@ -360,7 +371,9 @@ describe("WezTerm D2 audited interface absence", () => {
     ]) {
       for (const [id] of targets) {
         const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(source({ runtimeIdentity }))
-        expect(fold(id, result).status, id).toBe("probe-todo")
+        expect(fold(id, result).status, id).toBe(
+          id === "extensions.osc52-read" && runtimeIdentity === undefined ? "probe-invalid" : "probe-todo",
+        )
       }
     }
   })
@@ -372,6 +385,21 @@ describe("WezTerm D2 audited interface absence", () => {
       const decided = parserStateResult(true, "retained original reader result", { value: "fixture" })
       expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source())).toBe(decided)
     }
+  })
+
+  // @failure Replacing an undecided read with a declaration drops its measured host cause and invalidates collection.
+  // @level l1
+  // @consumer The declaration callback metadata retained by the headless host-recipe recorder.
+  test("an interface absence retains the measured empty-read host cause", () => {
+    const definition = ALL_PROBES.find((probe) => probe.id === "extensions.osc52-read")!
+    const result = definition.lib!(source())
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(result.hostRecipeCauses).toEqual([
+      {
+        recipe: "clipboard-load",
+        cause: { kind: "observed", missing: "clipboard-read-permission", query: "\x1b]52;c;?\x07" },
+      },
+    ])
   })
 
   test("the WezTerm identity cannot declare absences on another backend", () => {
