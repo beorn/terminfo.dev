@@ -104,9 +104,13 @@ export function hasAuditedOscInterfaceAbsence(
     | "ghostty-native-d2"
     | "host-effect-h4"
     | "wezterm-d2"
-    | "ghostty-web-d2" = "osc-absence",
+    | "ghostty-web-d2"
+    | "libvterm-r1" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
+  if (cohort === "libvterm-r1") {
+    return ctx.backendName === "libvterm" && identity?.engineVersion === "0.3.3"
+  }
   if (cohort === "osc-tap") {
     // Operator Nov 5 / CTO 4ab79b2f: these are engine identities. Adapter-only
     // releases do not change the library's generic pass-through behavior.
@@ -6890,7 +6894,8 @@ function declaredD2InterfaceAbsence(
     | "ghostty-native-d2"
     | "wezterm-d2"
     | "ghostty-web-d2"
-    | "host-effect-h4",
+    | "host-effect-h4"
+    | "libvterm-r1",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
   options: { readonly genericReportIsObservable?: boolean } = {},
@@ -7022,6 +7027,20 @@ const DEC_SETUP_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSequ
   "sgr.selective-reset.italic": { feed: "\x1b[3m", code: { kind: "csi", code: "3m" } },
 }
 
+// CTO R1 correction: # and * return before libvterm 0.3.3's public fallback.
+// This is an engine-level absence, independent of the adapter's Wasm build.
+const LIBVTERM_R1_ABSENCES: Readonly<Record<string, string>> = Object.fromEntries(
+  ["modes.xtpushcolors", "modes.xtpopcolors", "editing.decsace"].map((id) => [
+    id,
+    "libvterm 0.3.3 drops CSI with intermediate # or * in on_csi before its public fallback, and has no other hook.",
+  ]),
+)
+const LIBVTERM_R1_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
+  "modes.decsscls": { feed: "\x1b[9 p", code: { kind: "csi", code: " 9p" } },
+  "extensions.kitty-graphics.display": { feed: imageTransferRequest(1), code: { kind: "apc", code: "G" } },
+  "extensions.kitty-graphics.transmit": { feed: imageTransferRequest(1), code: { kind: "apc", code: "G" } },
+}
+
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
@@ -7031,6 +7050,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const decsace = definition.id === "editing.decsace"
   const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]
   const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
+  const libvtermTarget = LIBVTERM_R1_NEGATIVES[definition.id]
+  const libvtermAbsence = LIBVTERM_R1_ABSENCES[definition.id]
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
@@ -7051,6 +7072,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       !decSetup &&
       !decsace &&
       !vt100Target &&
+      !libvtermTarget &&
+      !libvtermAbsence &&
       !kittyTarget &&
       !reason &&
       !absence &&
@@ -7066,7 +7089,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   }
   return {
     ...definition,
-    ...((vt100Target || decClipboard) &&
+    ...((vt100Target || decClipboard || libvtermTarget) &&
     (definition.libAssertionType === "query_reply" || definition.libAssertionType === "input_bytes")
       ? {
           // A report verdict records buffer_state; the probe's own arm keeps its type.
@@ -7122,6 +7145,18 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
         return reported ?? result
       }
+      const libvtermDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        LIBVTERM_R1_ABSENCES,
+        "libvterm",
+        "libvterm-r1",
+        undefined,
+        undefined,
+        { genericReportIsObservable: false },
+      )
+      if (libvtermDeclared) return libvtermDeclared
       const passThroughDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
@@ -7273,16 +7308,23 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         return declaredUntestableResult(reason, { backend: ctx.backendName, runtimeIdentity: ctx.runtimeIdentity })
       }
       const hostEffectReport = appJob && ["vt100", "vt220", "ghostty"].includes(ctx.backendName)
-      const target = hostEffectReport
-        ? kittyTarget
-        : vt100Audited
-          ? vt100Target
-          : ctx.backendName === "kitty" &&
-              identity?.kind === "native" &&
-              identity.engineVersion === "0.49.2" &&
-              identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+      const r1Report =
+        ctx.backendName === "libvterm" &&
+        hasAuditedOscInterfaceAbsence(ctx, "libvterm-r1") &&
+        auditedAdapterSources(identity, "libvtermR1")
+      const target =
+        r1Report && libvtermTarget
+          ? libvtermTarget
+          : hostEffectReport
             ? kittyTarget
-            : undefined
+            : vt100Audited
+              ? vt100Target
+              : ctx.backendName === "kitty" &&
+                  identity?.kind === "native" &&
+                  identity.engineVersion === "0.49.2" &&
+                  identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+                ? kittyTarget
+                : undefined
       if (!target) return lib(ctx)
       const result = lib(ctx)
       if (reportsDecidedOutcome(result)) return result
@@ -7291,7 +7333,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         unhandledSequenceVerdict(
           ctx,
           target,
-          target.code.kind === "osc"
+          target.code.kind === "osc" || r1Report
             ? {
                 feed: "\x1b]2;" + UNHANDLED_OSC_CONTROL_TITLE + "\x07",
                 applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,

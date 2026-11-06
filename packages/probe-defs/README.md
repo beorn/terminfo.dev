@@ -401,6 +401,15 @@ faint, italic, strikethrough and the four underline styles) may move; delivery c
 outcome, a missing member and any other code keep their own path, except for the exact vt100-rust
 cohort below and the following DEC colour/setup slice.
 
+Libvterm R1 uses that same report verdict for DECSSCLS and Kitty image transmit/display,
+with a handled OSC 2/title control. Its public CSI fallback retains native normalized parameters
+and the final byte; its APC fallback retains only the initial payload byte (`G`), without image
+payloads. Handled DECSCUSR changes cursor shape and adds no report; made-up APC is also unhandled
+because libvterm handles no APC. At libvterm 0.3.3, palette push/pop and DECSACE instead use the
+existing no-way declaration: `on_csi` drops `#` and `*` before the public fallback and has no other
+hook. That absence is keyed on the engine version, independently of the adapter's Wasm build.
+The rebuilt artifact adds its own source-audit cohort; earlier audit entries stay unchanged.
+
 On VT100.js and VT220.js, standard, bright and default foreground/background colours and OSC 2 use
 their own one-entry report with the handled SGR 1/bold control. OSC 2 never uses an OSC fallback whose
 control would itself be the target. Indexed colours use the probe's own `38;5;173` / `48;5;173` payload
