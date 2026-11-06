@@ -254,9 +254,9 @@ export default {
       if (terminal && !terminal.historical && selected?.kind !== "lib") {
         for (const engine of terminal.headlessBackends ?? []) subjects.push({ engine, kind: "lib" })
       }
-      page.params.historySubjects = JSON.stringify(
-        [...new Map(subjects.map((subject) => [`${subject.kind}:${subject.engine}`, subject])).values()],
-      )
+      page.params.historySubjects = JSON.stringify([
+        ...new Map(subjects.map((subject) => [`${subject.kind}:${subject.engine}`, subject])).values(),
+      ])
     }
 
     // A page id is a public URL: VitePress writes one file per id, so two backends minting
