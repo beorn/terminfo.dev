@@ -6530,8 +6530,11 @@ const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
   "extensions.osc-633-vscode": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
 }
 
-// The default is the library's job. CTO's phase-1 rule assigns these ten to the app.
+// The default is the library's job. Phase 1 assigns ten commands to the app;
+// the OSC 52 follow-on assigns clipboard/write only on the audited xterm route.
 const APP_JOB_OSCS: Readonly<Record<string, string>> = {
+  "extensions.osc52-clipboard": "52;c;dGVybWluZm8=",
+  "extensions.osc52-write": "52;c;dGVybWluZm8=",
   "extensions.notifications": "9;terminfo-notification",
   "extensions.osc777-notify": "777;notify;terminfo-title;terminfo-body",
   "extensions.osc7-cwd": "7;file://localhost/terminfo-cwd",
@@ -6573,6 +6576,12 @@ function appJobHandoff(
   featureId: string,
   lib: (ctx: LibProbeSource) => ProbeCallbackResult,
 ): ProbeCallbackResult | undefined {
+  if (
+    (featureId === "extensions.osc52-clipboard" || featureId === "extensions.osc52-write") &&
+    ctx.backendName !== "xterm"
+  ) {
+    return undefined
+  }
   const target = APP_JOB_OSCS[featureId]
   const hook = LIBRARY_OSC_HOOKS[ctx.backendName]
   if (
