@@ -821,13 +821,48 @@ test.each(declared)("%s library arm reads Untestable with its declared reason", 
   expect(folded.reason).toMatch(reason)
 })
 
-// The exceptions named inside their probes stay as they are: vterm's stored Sixel payload keeps its review, and
-// XTEST key injection is declared only for the six libraries with no public key encoder (CTO 47010d76, #32428).
-test("vterm's Sixel storage arm and the encoder-exporting XTEST arms are not declared and stay PROBE TODO", () => {
+// CTO phase2-ruling.md:41 (#32485): vterm's Sixel storage arm reads Untestable with the same rendered-pixels reason
+// as the other ten libraries while preserving its retained payload in evidence; an unretained storage reader and the
+// encoder-exporting XTEST arms stay PROBE TODO (CTO 47010d76, #32428).
+test("vterm's retained Sixel storage arm reads Untestable while unretained storage and encoder-exporting XTEST stay PROBE TODO", () => {
   const sixel = ALL_PROBES.find((probe) => probe.id === "extensions.sixel")!.lib!
-  const stored = sixel({ ...library("vterm"), getSixelImages: () => [] } as unknown as LibProbeSource)
-  expect(isDeclaredUntestable(stored)).toBe(false)
-  expect(fold("extensions.sixel", stored).status).toBe("probe-todo")
+  const images: { data: string; row: number; col: number }[] = []
+  let row = 0
+  let col = 0
+  const retained = sixel({
+    ...library("vterm"),
+    feed: (data: string) => {
+      const cup = /\x1b\[(\d+);(\d+)H/.exec(data)
+      if (cup) {
+        row = Number(cup[1]) - 1
+        col = Number(cup[2]) - 1
+      }
+      const dcs = /\x1bPq(.*)\x1b\\/.exec(data)
+      if (dcs) images.push({ data: dcs[1]!, row, col })
+    },
+    getSixelImages: () => [...images],
+  } as unknown as LibProbeSource)
+  expect(isDeclaredUntestable(retained)).toBe(true)
+  expect(fold("extensions.sixel", retained)).toMatchObject({
+    status: "untestable",
+    reason: "Declared Sixel capability does not establish rendered pixels",
+  })
+  expect(JSON.parse(retained.response!)).toMatchObject({
+    declared: true,
+    storage: {
+      retained: true,
+      before: [],
+      first: [{ data: "#1;2;100;0;0~", row: 0, col: 0 }],
+      secondBefore: [{ data: "#1;2;100;0;0~", row: 0, col: 0 }],
+      second: [
+        { data: "#1;2;100;0;0~", row: 0, col: 0 },
+        { data: "#2;2;0;100;0!2~", row: 1, col: 2 },
+      ],
+    },
+  })
+  const unretained = sixel({ ...library("vterm"), getSixelImages: () => [] } as unknown as LibProbeSource)
+  expect(isDeclaredUntestable(unretained)).toBe(false)
+  expect(fold("extensions.sixel", unretained).status).toBe("probe-todo")
   const xtest = ALL_PROBES.find((probe) => probe.id === "input.xtest-key")!.lib!
   for (const backendName of ["libvterm"]) {
     const result = xtest(library(backendName)) as ProbeCallbackResult
