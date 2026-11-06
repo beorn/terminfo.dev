@@ -560,6 +560,14 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
           const restoredRaw = capture(querySeq)
           const state = { query: querySeq, initialRaw: raw, controls }
           if (control.verified && resetRaw === "" && restoredRaw === "") {
+            if (ctx.backendName === "alacritty" && hasAuditedOscInterfaceAbsence(ctx)) {
+              return answer(
+                declaredUntestableResult(
+                  "Untestable: Alacritty keeps no starting colour. Its public colour table holds nothing until a colour is set. Setting one works, so this limit is only about the starting value.",
+                  state,
+                ),
+              )
+            }
             return answer(
               colorReadbackReviewResult(
                 `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`,
