@@ -235,6 +235,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
   it.each(["untrusted suite", "multiple passes"])(
     "keeps an app collection with %s visible and uncounted",
     (failure) => {
+      const warning = failure === "multiple passes" ? vi.spyOn(console, "warn").mockImplementation(() => {}) : undefined
       const instrument = runsDir()
       const libraries = join(instrument, "runs")
       mkdirSync(libraries)
@@ -254,6 +255,10 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       )
       expect(unavailable?.contexts).toEqual([])
       expect(unavailable?.unreadable?.banner).toContain("unavailable")
+      if (warning) {
+        expect(warning).toHaveBeenCalledOnce()
+        expect(warning).toHaveBeenCalledWith(expect.stringContaining("ghostty/linux"))
+      }
     },
   )
 
@@ -262,6 +267,10 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
   it.each(["exact", "wrong filename", "wrong suite", "outside library run"])(
     "reads an app's old suite with %s retained manifest custody",
     (custody) => {
+      const warning =
+        custody === "wrong suite" || custody === "outside library run"
+          ? vi.spyOn(console, "warn").mockImplementation(() => {})
+          : undefined
       const instrument = runsDir()
       const libraries = join(instrument, "runs")
       mkdirSync(libraries)
@@ -297,6 +306,10 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       } else {
         expect(retained.contexts).toEqual([])
         expect(retained.unreadable?.reason).toContain(suiteId)
+      }
+      if (warning) {
+        expect(warning).toHaveBeenCalledOnce()
+        expect(warning).toHaveBeenCalledWith(expect.stringContaining(suiteId))
       }
     },
   )
