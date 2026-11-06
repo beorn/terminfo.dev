@@ -16,9 +16,10 @@ import {
   osInputReviewResult,
   NO_SAME_PATH_CONTROL,
   probe,
+  reportsDecidedOutcome,
   withUnhandledModeReport,
 } from "./helpers.ts"
-import { kittyKeyboardFlagProbe } from "./extensions.ts"
+import { hasAuditedOscInterfaceAbsence, kittyKeyboardFlagProbe, unhandledOscReportResult } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
 const inputDefinitions: ProbeDefinition[] = [
@@ -1025,13 +1026,23 @@ const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
 function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   const expected =
     "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
-  if (ctx.backendName === "kitty") {
-    return notTestedResult("Kitty send_mouse_event does not bind Window's prompt click_events pointer path", {
-      storedClickEvents: false,
-    })
+  // @cto routes-32 sections 3 and 4: both DEC engines list OSC 133 in their own report.
+  if (ctx.backendName === "vt100" || ctx.backendName === "vt220") {
+    const report = unhandledOscReportResult(
+      ctx,
+      KITTY_CLICK_START,
+      notTestedResult(NO_SAME_PATH_CONTROL, { storedClickEvents: false }),
+    )
+    if (reportsDecidedOutcome(report)) return report
   }
-  if (ctx.backendName === "wezterm") {
-    return notTestedResult("WezTerm mouse_event does not bind a prompt click_events path", {
+  if (ctx.backendName === "kitty") {
+    if (hasAuditedOscInterfaceAbsence(ctx, "host-effect-h4")) {
+      return declaredUntestableResult(
+        "Untestable: Kitty 0.49.2 keeps click_events in its C screen state and handles the click in Window, which a library run does not have.",
+        { backend: ctx.backendName, storedClickEvents: false },
+      )
+    }
+    return notTestedResult("Kitty send_mouse_event does not bind Window's prompt click_events pointer path", {
       storedClickEvents: false,
     })
   }
@@ -1045,6 +1056,12 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   // never a source-qualified review (#32246).
   const sharedEncoderClickEventsLimit = SHARED_ENCODER_CLICK_EVENTS_LIMITS.get(ctx.backendName)
   if (sharedEncoderClickEventsLimit) {
+    if (hasAuditedOscInterfaceAbsence(ctx, "ghostty-web-no-way")) {
+      return declaredUntestableResult(
+        "Untestable: the ghostty-web 0.4.0 WASM does not keep click_events, and Surface, which acts on a click, is not in it.",
+        { backend: ctx.backendName, storedClickEvents: false },
+      )
+    }
     return notTestedResult(sharedEncoderClickEventsLimit.limit, { storedClickEvents: false })
   }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {

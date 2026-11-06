@@ -260,6 +260,41 @@ describe("H-4 exact host-effect declarations", () => {
       }
     }
   })
+
+  // @cto routes-32 section 4: slice C, four no-way declarations at exact library identity.
+  const ghosttyWebIdentity = {
+    kind: "js",
+    adapterVersion: "0.11.0",
+    termlessRevision: "10dbfe015d27357bac7f2337e2a828a5afe0ad97",
+    resolvedPath: "ghostty-web/dist/ghostty-web.js",
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/termless.git",
+      revision: "10dbfe015d27357bac7f2337e2a828a5afe0ad97",
+      treeOid: "5b2708cb4ee7b99b0a80c8970ec13c7ac673cbe4",
+      cleanTree: true,
+    },
+    runtimeFormat: "wasm",
+    engineVersion: "0.4.0",
+    loadedBinary: {
+      path: "ghostty-web/ghostty-vt.wasm",
+      sha256: "aaf8ce18ad92e98b1233d85b5f71043aceccf3abbc75dea07e1c704cd3ae690a",
+    },
+  } as unknown as HeadlessRuntimeIdentity
+  test.each([
+    ["kitty", kittyIdentity, "input.kitty-click-events", /Window/],
+    ["ghostty-native", ghosttyIdentity, "input.kitty-click-events", /Surface/],
+    ["ghostty", ghosttyWebIdentity, "input.kitty-click-events", /WASM/],
+    ["ghostty", ghosttyWebIdentity, "extensions.clipboard-paste", /paste encoder/],
+  ] as const)("slice C: %s %s declares only at its exact identity", (backendName, runtimeIdentity, id, reason) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    const source = { ...library(backendName), runtimeIdentity }
+    const result = definition.lib!(source)
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(fold(id, result)).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
+    const changed = { ...runtimeIdentity, engineVersion: "0.0.0" } as HeadlessRuntimeIdentity
+    expect(isDeclaredUntestable(definition.lib!({ ...source, runtimeIdentity: changed }))).toBe(false)
+  })
 })
 
 describe("WezTerm D2 audited interface absence", () => {

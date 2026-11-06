@@ -5793,6 +5793,24 @@ test.each([
   },
 )
 
+// @cto routes-32 sections 3 and 4: the real engines decide slice C's measured kitty-click rows.
+test.runIf(OWNED_LAYOUT).each([
+  ["vt100", async () => createVt100Backend(), "library reported this sequence as unhandled"],
+  ["vt220", async () => createVt220Backend(), "library reported this sequence as unhandled"],
+  ["wezterm", async () => createWeztermBackend(), "kitty-click-events:1"],
+] as const)("real %s reads input.kitty-click-events Unsupported", async (name, create, evidence) => {
+  const value = await create()
+  value.init({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const result = registryDefinitions(["input.kitty-click-events"])[0]!.lib!(source)
+    expect(result.observation?.outcome, name).toBe("unsupported")
+    expect(JSON.stringify(result), name).toContain(evidence)
+  } finally {
+    value.destroy()
+  }
+})
+
 // NR-A, @cto 947dcd40 slice A: the real engine's own reports decide these rows; the identity is the audited subject.
 // Hosted resolves the published adapter, which is not that subject.
 test.runIf(OWNED_LAYOUT)(

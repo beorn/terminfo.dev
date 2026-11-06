@@ -1821,6 +1821,8 @@ test.each([
   // A former source-negative site: PROBE TODO with no same-path control, never a source citation (#32246).
   ["vt100-rust", "not-tested", "observation not decided: no same-path control in this run"],
   ["xtermjs", "unsupported", null],
+  // @cto routes-32 section 4: its encoder is the library's own Terminal::mouse_event, so the test runs.
+  ["wezterm", "unsupported", null],
 ] as const)(
   "input.kitty-click-events library arm on %s: shared-encoder limit reads %s",
   (backendName, expected, noObservable) => {
