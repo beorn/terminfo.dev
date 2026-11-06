@@ -145,6 +145,11 @@ These describe workflow and launcher code, not measured results.
   each job's `timeout-minutes` is 25.
 - The explicit iTerm2, editor, Warp and cmux installer downloads compare SHA-256 with
   declared pins. A mismatch reports expected and actual values and fails the job.
+- Before launching iTerm2 3.6.11, the job configures remembered consent for terminal-initiated
+  transfers and inline display: `NoSyncSuppressDownloadConfirmation=true` and
+  `NoSyncSuppressDownloadConfirmation_selection=0` (Yes). The existing `launcher.log`
+  records both exact settings commands and their outcomes. This describes the configured
+  hosted target's consent policy, not iTerm2's default user configuration or accepted results.
 - For Alacritty, Cursor, VS Code and cmux, the workflow exports the bundle's
   `CFBundleShortVersionString` as `TERMINFO_TARGET_VERSION`; it also checks that Alacritty's
   binary version agrees. The app launcher reads WezTerm's version from `wezterm --version`
