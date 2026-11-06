@@ -4124,7 +4124,8 @@ test.each([
         expect(result.criterionBranch, result.featureId).toBeUndefined()
         continue
       }
-      const noSetup = engine === "xtermjs"
+      const publishedDec = !OWNED_LAYOUT && (engine === "vt100" || engine === "vt220")
+      const noSetup = engine === "xtermjs" || (publishedDec && result.featureId !== "extensions.osc104-reset-palette")
       expect(result.status, result.featureId).toBe(noSetup ? "untestable" : "probe-todo")
       expect(result.criterionBranch, result.featureId).toBe(
         noSetup ? "headless-observable-review" : "color-readback-review",
