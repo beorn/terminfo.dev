@@ -1352,7 +1352,12 @@ test("modes capture refuses undersized geometry before any bytes or frames", asy
  * no fixture is the joint arm's single fixture, the POP fixture's shape (the on-control for
  * save/restore). Witness frames come from the ordinary adapter.
  */
-function stackStateSource(writes: string[], frames: ObservationFrame[], target: Record<string, string>) {
+function stackStateSource(
+  writes: string[],
+  frames: ObservationFrame[],
+  target: Record<string, string>,
+  identicalReferences = false,
+) {
   const source = captureSource(24, 80, writes, frames)
   const witness = source.capture!
   source.capture = async (request) => {
@@ -1370,7 +1375,7 @@ function stackStateSource(writes: string[], frames: ObservationFrame[], target: 
     let plane = "blank"
     if (label.endsWith("post-sequence target")) plane = target[fixture] ?? "unscripted"
     else if (label.endsWith("expected frame") || label.endsWith("setup reference frame")) plane = restores
-    else if (label.endsWith("ignored-attribute frame")) plane = ignored
+    else if (label.endsWith("ignored-attribute frame")) plane = identicalReferences ? restores : ignored
     else if (label.endsWith("pre-edit seed")) plane = mode ? "off" : joint && /colors/.test(label) ? restores : "blank"
     const { role, cells, pixelGeometry } = request
     const frame = {
@@ -1470,6 +1475,22 @@ test.each(
     }
   },
 )
+
+// Native Screen #31742: identical palette references must keep the oracle's reason and all fixtures.
+test.each(["modes.xtpushcolors", "modes.xtpopcolors"])("%s retains non-separating fixture diagnostics", async (id) => {
+  const definition = modesProbes.find((item) => item.id === id)
+  if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+  const frames: ObservationFrame[] = []
+  const result = await definition.term(stackStateSource([], frames, {}, true))
+  expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
+  expect(result.observation?.frames).toEqual(frames)
+  expect(frames.filter((frame) => frame.label.endsWith("post-sequence target"))).toHaveLength(3)
+  for (const fixture of ["POP fixture", "PUSH fixture (earlier contrast)", "PUSH fixture (persisted contrast)"]) {
+    const reason = `${id} ${fixture}: the ignored-attribute frame and the expected frame read the same cells, so this run cannot separate them`
+    expect(result.tests?.[0]?.reason).toContain(reason)
+    expect(result.observation?.note).toContain(reason)
+  }
+})
 
 // #31904 R3f capture arm: the headless arm's three fixtures (@cto 009e40cd, 4e804806).
 test.each([

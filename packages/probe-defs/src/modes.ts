@@ -268,7 +268,12 @@ function captureStackResult(
   if (decided.pass === null) {
     // No operation was observed, so the row is a required review (PROBE TODO), never a PROBE INVALID
     // (@cto 19664c4c); every fixture's frames stay its evidence.
-    const reason = decided.note ?? "no stack operation was observed"
+    const reason = [
+      decided.note ?? "no stack operation was observed",
+      ...reads.flatMap(({ match, result }) =>
+        match === "other" && result.observation?.note ? [result.observation.note] : [],
+      ),
+    ].join("; ")
     return {
       pass: false,
       criterionBranch: "visual-review",
