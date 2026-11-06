@@ -206,7 +206,8 @@ export function hasAuditedOscInterfaceAbsence(
       identity.integrity.kind === "source" &&
       identity.integrity.cleanTree &&
       identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
-      identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007"
+      (identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007" ||
+        identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537")
     )
   }
   if (identity?.kind === "native") {
