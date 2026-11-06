@@ -190,6 +190,53 @@ test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
   },
 )
 
+// DEC-additions-five N-TITLE (@cto routes-48): vt100 and vt220 expose no title or icon reader, so the
+// library's own report decides OSC 0 once its OSC 2 control is unhandled and the SGR 1 paint applies.
+test.each(["vt100", "vt220"])(
+  "%s extensions.osc0-icon-title decides Unsupported from its own report",
+  (backendName) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc0-icon-title")!
+    const source = reportingSource({ records: [recordsOsc("2"), recordsOsc("0")], titleApplies: false })
+    Object.assign(source, { backendName })
+    const result = definition.lib!(source)
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(JSON.stringify(result)).toContain(REASON)
+  },
+)
+
+// The same report cannot decide without the SGR 1 paint control applying in that run.
+test.each(["vt100", "vt220"])(
+  "%s extensions.osc0-icon-title keeps its TODO without an applied control",
+  (backendName) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc0-icon-title")!
+    for (const [label, spec, overrides] of [
+      ["no applied control", { boldApplies: false }, {}],
+      ["no report reader", {}, { getUnhandledSequences: undefined }],
+      ["no target entry", { records: [recordsOsc("2")] }, {}],
+    ] as const) {
+      const source = reportingSource({ records: [recordsOsc("2"), recordsOsc("0")], titleApplies: false, ...spec })
+      Object.assign(source, { backendName, ...overrides })
+      const result = definition.lib!(source)
+      expect(result.observation?.outcome, label).not.toBe("unsupported")
+      expect(JSON.stringify(result), label).not.toContain(REASON)
+    }
+  },
+)
+
+// DEC-additions-five N-5522 (@cto routes-48): both libraries report the OSC 5522 command itself and
+// add nothing for the CSI ?5522$p mode query, so the command's own code is the deciding entry.
+test.each(["vt100", "vt220"])(
+  "%s extensions.osc5522-clipboard decides Unsupported from its own report",
+  (backendName) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc5522-clipboard")!
+    const source = reportingSource({ records: [recordsOsc("5522")] })
+    Object.assign(source, { backendName })
+    const result = definition.lib!(source)
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(JSON.stringify(result)).toContain(REASON)
+  },
+)
+
 // @failure H-4's numeric rejection reports remain TODO, or a failed handled control invents a negative.
 // @level l2
 // @consumer The registered host-effect callbacks, with the existing report/control fixture.
