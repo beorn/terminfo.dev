@@ -5605,7 +5605,11 @@ export const extensionsProbes: ProbeDefinition[] = [
           const before = ctx.getTitle()
           ctx.feed("\x1b]1;test-icon\x07")
           const after = ctx.getTitle()
-          return notTestedResult(NO_SAME_PATH_CONTROL, { before, after })
+          return unhandledOscReportResult(
+            ctx,
+            "\x1b]1;test-icon\x07",
+            notTestedResult(NO_SAME_PATH_CONTROL, { before, after }),
+          )
         }
         const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
         const requested = before.icon === "test-icon" ? "test-icon-2" : "test-icon"
@@ -5692,7 +5696,8 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc22-pointer",
       (ctx) => {
-        const undecided = () => noSamePathControl("\x1b]22;pointer\x07")(ctx)
+        const undecided = () =>
+          unhandledOscReportResult(ctx, "\x1b]22;pointer\x07", noSamePathControl("\x1b]22;pointer\x07")(ctx))
         if (ctx.backendName !== "kitty") return undecided()
         const query = "\x1b]22;?__current__\x07"
         const read = () => {
@@ -5749,7 +5754,12 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       null,
     ),
-    libAssertionType: "query_reply",
+    libAssertionType: {
+      when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
+        typeof source.getUnhandledSequences === "function",
+      then: ["query_reply", "buffer_state"],
+      otherwise: ["query_reply"],
+    },
   },
 
   // Query capabilities without displaying a notification or requiring desktop access.
@@ -6111,6 +6121,34 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
 }
 
+// Operator D2, exact alacritty_terminal 0.26.0 / VTE 0.15.0 API read:
+// ansi.rs:1329-1524 dispatches none of these OSCs; event.rs:14-104 has no report for them.
+const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
+  "extensions.osc777-notify": "OSC 777 notification payloads",
+  "extensions.osc133-a": "OSC 133 prompt starts",
+  "extensions.osc133-b": "OSC 133 command starts",
+  "extensions.osc133-c": "OSC 133 output starts",
+  "extensions.osc133-d": "OSC 133 command completion",
+  "extensions.osc133-p": "OSC 133 prompt markers",
+  "extensions.semantic-prompts": "semantic prompt lifecycle",
+  "extensions.osc633-a": "OSC 633 prompt starts",
+  "extensions.osc633-b": "OSC 633 command starts",
+  "extensions.osc633-c": "OSC 633 output starts",
+  "extensions.osc633-d": "OSC 633 command completion",
+  "extensions.osc633-e": "OSC 633 command lines",
+  "extensions.osc-633-vscode": "OSC 633 shell integration",
+  "extensions.osc113-reset-pointer-fg": "OSC 113 pointer foreground reset",
+  "extensions.osc114-reset-pointer-bg": "OSC 114 pointer background reset",
+  "extensions.osc117-reset-highlight-bg": "OSC 117 highlight background reset",
+  "extensions.osc119-reset-highlight-fg": "OSC 119 highlight foreground reset",
+  "extensions.osc176-app-id": "OSC 176 application identity",
+  "extensions.osc3008-context": "OSC 3008 context tags",
+  "extensions.osc440-audio": "OSC 440 audio effects",
+  "extensions.osc555-flash": "OSC 555 flash effects",
+  "extensions.osc666-termprop": "OSC 666 terminal properties",
+  "extensions.osc710-font-normal": "OSC 710 font selection",
+}
+
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "device.decrqss":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public DCS callback, response writer or device.decrqss result state",
@@ -6193,8 +6231,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]
   const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
+  const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
-  if (!lib || (!vt100Target && !kittyTarget && !reason && !vtermReason)) return definition
+  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason)) return definition
   return {
     ...definition,
     ...(vt100Target && definition.libAssertionType === "query_reply"
@@ -6208,6 +6247,26 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
+      const alacrittyDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        ALACRITTY_D2_ABSENCES,
+        "alacritty",
+        "osc-absence",
+        (source, id) =>
+          id === "extensions.osc777-notify"
+            ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
+            : id.startsWith("extensions.osc133") ||
+                id.startsWith("extensions.osc633") ||
+                id === "extensions.osc-633-vscode" ||
+                id === "extensions.semantic-prompts"
+              ? typeof source.getSemanticMarks === "function"
+              : false,
+        (entry) =>
+          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this OSC has no handler or public rejection report.`,
+      )
+      if (alacrittyDeclared) return alacrittyDeclared
       const vtermDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,

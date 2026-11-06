@@ -3873,6 +3873,55 @@ function registryDefinitions(ids: readonly string[]): ProbeDefinition[] {
   })
 }
 
+// @failure Real palette-stack warnings never reach registered, canonical collector decisions.
+// @consumer Owned Ghostty web two-cell collector; hosted source-siblings resolves an older published adapter.
+test.runIf(OWNED_LAYOUT)("real Ghostty palette-stack reports decide exactly the two registered cells", async () => {
+  const ids = ["modes.xtpushcolors", "modes.xtpopcolors"]
+  const measured = await resolveGhosttyWasm()
+  measured.init({ cols: 80, rows: 24 })
+  const identity = await headlessIdentity.headlessRuntimeIdentity("ghostty", "@termless/ghostty", "wasm")
+  identity.adapterSources = headlessIdentity.readAdapterSources("ghostty", measured)
+  measured.destroy()
+  const runtime = {
+    identity,
+    adapterPath: fileURLToPath(import.meta.resolve("@termless/ghostty")),
+    adapterPackage: "@termless/ghostty",
+    adapterType: "wasm",
+  }
+  const batch = await collectBatch(
+    resolveGhosttyWasm,
+    "ghostty",
+    registryDefinitions(ids),
+    undefined,
+    undefined,
+    runtime,
+  )
+  expect(
+    batch.results.map(({ featureId, status }) => ({ featureId, status })),
+    JSON.stringify({ identity, results: batch.results, replies: batch.rawReplies }),
+  ).toEqual(ids.map((featureId) => ({ featureId, status: "unsupported" })))
+  for (const [featureId, code] of [
+    [ids[0]!, "#P"],
+    [ids[1]!, "#Q"],
+  ] as const) {
+    expect(JSON.parse(batch.rawReplies[featureId]!)).toMatchObject({
+      unhandled: { control: "\x1b[?7l", target: { kind: "csi", code }, added: [{ kind: "csi", code }] },
+    })
+  }
+  // Removing only the new producer records must lose both conclusions; native effects stay real.
+  const withoutCsi = async () => {
+    const value = await resolveGhosttyWasm()
+    if (!hasExtension<OscMetadataExtension>(value, "osc-metadata") || !value.getUnhandledSequences) {
+      throw new Error("Owned Ghostty report reader missing")
+    }
+    const read = value.getUnhandledSequences.bind(value)
+    value.getUnhandledSequences = () => read().filter(({ kind }) => kind !== "csi")
+    return value
+  }
+  const missing = await collectBatch(withoutCsi, "ghostty", registryDefinitions(ids), undefined, undefined, runtime)
+  expect(missing.results.map(({ status }) => status)).toEqual(["probe-todo", "probe-todo"])
+})
+
 // @failure Ghostty's allocator-plus-rejection pair is mistaken for one unhandled report, or shell reports are lost.
 // @consumer Owned monorepo Ghostty WASM collector; published Termless does not yet expose this report reader.
 test.runIf(OWNED_LAYOUT)(
@@ -5747,4 +5796,36 @@ test.each([false, true])("libvterm paste mode query measures and restores actual
   } finally {
     value.destroy()
   }
+})
+
+// AC4: these real adapters must reach the registered OSC consumer, including its
+// buffer_state assertion admission. Callback-only tests miss collector INVALID.
+test.each([["libvterm", resolveLibvterm]] as const)(
+  "%s OSC22 report crosses the real collector boundary",
+  async (engine, factory) => {
+    const batch = await collectBatch(factory, engine, registryDefinitions(["extensions.osc22-pointer"]))
+    expect(batch.results).toMatchObject([
+      {
+        featureId: "extensions.osc22-pointer",
+        status: "unsupported",
+        reason: "library reported this sequence as unhandled",
+      },
+    ])
+    expect(batch.observations).toMatchObject([{ assertionType: "buffer_state", outcome: "unsupported" }])
+  },
+)
+
+test.runIf(OWNED_LAYOUT).each([
+  ["vt100", resolveVt100],
+  ["vt220", resolveVt220],
+] as const)("%s OSC1 and OSC22 reports cross the real collector boundary", async (engine, factory) => {
+  const ids = ["extensions.osc1-icon", "extensions.osc22-pointer"]
+  const batch = await collectBatch(factory, engine, registryDefinitions(ids))
+  expect(batch.results).toHaveLength(2)
+  for (const result of batch.results) {
+    expect(result.status, result.featureId).toBe("unsupported")
+    expect(result.reason).toBe("library reported this sequence as unhandled")
+  }
+  expect(batch.observations).toHaveLength(2)
+  for (const observation of batch.observations) expect(observation.assertionType).toBe("buffer_state")
 })
