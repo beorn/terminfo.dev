@@ -2009,12 +2009,13 @@ test.each(qualifiedSharedEncoderIdentities)(
     }
     expect(staleResult).toEqual(formerlyQualified)
     // Ghostty keeps its shared-encoder coverage limit; the former source-negative engines name no citation.
-    if (backendName === "ghostty")
+    if (backendName === "ghostty") {
       expect(formerlyQualified.note).toContain("the web build of Ghostty we test does not pass on")
-    else
+    } else {
       expect(formerlyQualified.note).toBe(
         "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
       )
+    }
   },
 )
 

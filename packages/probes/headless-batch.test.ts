@@ -2252,7 +2252,9 @@ test("real vterm Sixel storage sharpens the TODO reason without deciding a rende
     const source = createLibProbeSource(value, undefined, undefined, undefined)
     const definition = registryDefinitions(["extensions.sixel"])[0]!
     const result = definition.lib!(source)
-    expect(result.note).toBe("payload retained at row/col; no raster; cell geometry unmeasured")
+    expect(result.note).toBe(
+      "Open: our test cannot check the image, for two reasons. The library stores the image data at the right screen position, but drawing it is the app's job; and our test does not measure the character cell size needed to check the image's size.",
+    )
     expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
     expect(result.tests).toMatchObject([{ status: "probe-todo" }])
     expect(result.observation).toBeUndefined()
@@ -3282,7 +3284,8 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   }
   expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
     status: "probe-todo",
-    reason: expect.stringContaining("adapter binding libvterm applicationKeypad"),
+    reason:
+      "Open: our libvterm adapter cannot read the application keypad mode yet.; keypad key encoding unmeasured; mode state measured",
   })
 })
 
@@ -3678,7 +3681,7 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
   expect(batch.results.map((row) => row.featureId)).toEqual(ids)
   for (const row of batch.results) {
     expect(row.status).toBe("probe-todo")
-    expect(row.reason).toContain("mouse-encoding extension unavailable")
+    expect(row.reason).toBe("Open: our vt100 adapter has no hook for sending mouse events yet.")
     expect(row.criterionBranch).toBeUndefined()
     expect(row.tests?.some((test) => test.id === "review" || test.reviewRef !== undefined)).not.toBe(true)
     expect(JSON.parse(batch.rawReplies[row.featureId]!)).toEqual({ mouseEncoding: false })
@@ -4026,10 +4029,28 @@ test.each([
           raw: expect.stringMatching(/^\x1b\[\?[0-9;]+c$/),
         })
       }
+      const noObservableByFeature: Record<string, string> = {
+        "extensions.osc104-reset-palette":
+          "Open: the colour query (OSC 4) did not confirm the colour we set, leaving the reset (OSC 104) with no verified setup",
+        "extensions.osc110-reset-fg":
+          "Open: the colour query (OSC 10) did not confirm the colour we set, leaving the reset (OSC 110) with no verified setup",
+        "extensions.osc111-reset-bg":
+          "Open: the colour query (OSC 11) did not confirm the colour we set, leaving the reset (OSC 111) with no verified setup",
+        "extensions.osc112-reset-cursor":
+          "Open: the colour query (OSC 12) did not confirm the colour we set, leaving the reset (OSC 112) with no verified setup",
+        "extensions.osc113-reset-pointer-fg":
+          "Open: the colour query (OSC 13) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen",
+        "extensions.osc114-reset-pointer-bg":
+          "Open: the colour query (OSC 14) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen",
+        "extensions.osc30001-color-stack-push":
+          "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
+        "extensions.osc30101-color-stack-pop":
+          "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
+      }
       expect(batch.notTested, result.featureId).toContainEqual({
         featureId: result.featureId,
         reason: "no-semantic-observable",
-        noObservable: expect.stringMatching(/answered nothing|did not answer/),
+        noObservable: noObservableByFeature[result.featureId],
         rawReplyRef: result.featureId,
       })
       expect(result.tests, result.featureId).toContainEqual(

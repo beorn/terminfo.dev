@@ -1931,7 +1931,7 @@ const modeDefinitions: ProbeDefinition[] = [
                 ? "Open: our WezTerm adapter has no hook yet for application keypad mode (where the number keypad sends its own codes)."
                 : `Open: our ${ctx.backendName} adapter cannot read the application keypad mode yet.`
             : `DECKPAM state pair: set ${setMode}, reset ${resetMode}`
-        const note = `${reason}; ${facet}`
+        const note = setMode === null || resetMode === null ? reason : `${reason}; ${facet}`
         return {
           pass: false,
           response,
