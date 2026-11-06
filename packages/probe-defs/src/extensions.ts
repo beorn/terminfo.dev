@@ -1161,7 +1161,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
   }
   return (ctx) => {
     const result = body(ctx)
-    // Case 1 names exactly the ledger's four colour-reset cells; every other reset keeps its own body.
+    // Case 1 names the ledger's eight colour-reset cells (2a adds 104, 110, 111, 112); every other reset keeps its own body.
     if (!UNHANDLED_REPORT_COLOUR_RESETS.includes(String(resetCode))) return result
     const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
     return unhandledOscReportResult(ctx, reset, result)
@@ -1809,7 +1809,7 @@ function promptMarkBody(
  * The Case 1 colour-reset cells (@cto 2026-11-05 07:25 appendix: "up to 8 colour reset (4 each)"), the
  * ledger's `colour reset` group. Every other reset code keeps its own body's outcome.
  */
-const UNHANDLED_REPORT_COLOUR_RESETS: readonly string[] = ["113", "114", "117", "119"]
+const UNHANDLED_REPORT_COLOUR_RESETS: readonly string[] = ["104", "110", "111", "112", "113", "114", "117", "119"]
 
 /**
  * Case 1 consumer, OSC arm (@cto 2026-11-05 07:25 appendix, conditions 3 and 5): the library's own
@@ -1921,7 +1921,7 @@ function colorStackError(actionKind: "query" | "behavior", action: string, error
 }
 
 function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): ProbeDefinition["lib"] {
-  return (ctx) => {
+  const body: ProbeDefinition["lib"] = (ctx) => {
     const operation = ownSequence === colorPush ? "push" : "pop"
     let initialReadback: TerminalQueryOutcome | undefined
     if (ctx.queryWithSentinelOutcome) {
@@ -2183,6 +2183,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
       }
     }
   }
+  return (ctx) => unhandledOscReportResult(ctx, ownSequence, body(ctx))
 }
 
 async function colorStackTermProbe(

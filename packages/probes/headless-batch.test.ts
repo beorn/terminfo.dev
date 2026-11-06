@@ -4017,7 +4017,16 @@ test.each([
     // Published DEC adapters lack that reader; other silent resets keep their review and raw query.
     const unhandledReportIds =
       engine === "libvterm" || (OWNED_LAYOUT && (engine === "vt100" || engine === "vt220"))
-        ? ["extensions.osc113-reset-pointer-fg", "extensions.osc114-reset-pointer-bg"]
+        ? [
+            "extensions.osc104-reset-palette",
+            "extensions.osc110-reset-fg",
+            "extensions.osc111-reset-bg",
+            "extensions.osc112-reset-cursor",
+            "extensions.osc113-reset-pointer-fg",
+            "extensions.osc114-reset-pointer-bg",
+            "extensions.osc30001-color-stack-push",
+            "extensions.osc30101-color-stack-pop",
+          ]
         : []
     expect(batch.observations).toEqual([
       ...cellWitnessIds.map((featureId) =>
