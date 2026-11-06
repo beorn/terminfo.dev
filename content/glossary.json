@@ -867,5 +867,10 @@
     "expansion": "Primary Device Attributes (DA1)",
     "description": "The most fundamental terminal query — CSI c. The terminal responds with capability flags indicating what features it supports. Also used for terminal detection since different terminals report different values.",
     "link": "/device/da1-primary-device-attributes"
+  },
+  "Untestable": {
+    "expansion": "Untestable",
+    "description": "This context cannot decide the feature for the stated cause: passed to the app (a generic hook hands over an app-job command), no way (the library exposes no usable reading or input), or no setup (a required setup does not work). The reason may specify no way to tell for a generic tap or app when the library keeps nothing of its own. Real state and typed stores can still establish Supported.",
+    "link": "/how-it-works/how-to-read-a-result#untestable-probe-todo-and-probe-invalid"
   }
 }

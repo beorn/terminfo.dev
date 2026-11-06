@@ -130,6 +130,8 @@ function platformIcons(b) {
 
 ## Coverage and results
 
+Untestable reasons name the cause: **passed to the app**, **no way**, or **no setup**. A generic OSC hook handing an app-job command to the app does not establish Supported; a reading of the library's own state or typed notification store can. A missing control or undeclared tap identity stays PROBE TODO. [Result meanings](/how-it-works/how-to-read-a-result#untestable-probe-todo-and-probe-invalid).
+
 ### Terminal Applications
 
 <div v-if="appScores.length > 0" class="summary">

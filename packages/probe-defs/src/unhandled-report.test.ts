@@ -450,12 +450,6 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     "device.xtgetxres",
     "extensions.kitty-graphics",
     "extensions.kitty-graphics.transmit",
-    "extensions.osc176-app-id",
-    "extensions.osc3008-context",
-    "extensions.osc440-audio",
-    "extensions.osc555-flash",
-    "extensions.osc666-termprop",
-    "extensions.osc710-font-normal",
   ] as const
   const definition = (id: string) => ALL_PROBES.find((p) => p.id === id)!
   const source = (feed: string, kind: "osc" | "csi", code: string, overrides: Partial<LibProbeSource> = {}) => ({
@@ -477,7 +471,8 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     }
   })
 
-  // The released eleven-cell D2 slice declares only this audited 0.16.2 subject.
+  // The five remaining D2 interface absences declare only this audited 0.16.2 subject.
+  // The six app-job OSCs moved to run-derived controls in declared-untestable.test.ts.
   // Negative-only coverage could not prove the declaration or retain its versioned reason.
   test.each(declared)("%s declares Untestable only for the audited vt100 0.16.2 subject", (id) => {
     const lib = definition(id).lib!
