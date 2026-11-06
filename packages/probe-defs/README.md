@@ -608,13 +608,16 @@ grace window. A no-wait assertion states that no grace wait occurred; configured
 Matching replies decide themselves. Missing or wrong controls and late bytes retain named PROBE TODO;
 disagreement between fresh passes is PROBE INVALID, with all raw control, query and repeat evidence retained.
 
-A recipe probe takes the existing native host route, keeps its existing callback surface on an
-undeclared runtime, and takes the control otherwise. A callback-owned TODO keeps its reason and tests
+A recipe probe takes the host route when its measured runtime is native, and takes the control
+otherwise. A callback-owned TODO keeps its reason and tests
 and does not repeat; control findings remain in raw metadata. The existing identity owner still measures
 each initialized callback instance; a changed or unavailable identity prevents its callback.
-Per-feature decisions retain that instance's identity. `collector.replyPath` retains the declaration and
-measured identity as diagnostics; declaration hashes do not authorize a silence-based negative.
-The declaration/comparer and public types remain until their separate removal slices. Live collection keeps DA1.
+Per-feature decisions retain that instance's identity. Native decisions retain their host recipes and
+query/cause records; the reader requires every decision's recipe binding when any is present.
+Historical native declarations still trigger the same strict validation, without rewriting stored runs.
+`collector.replyPath` retains measured identity and decisions; no adapter delivery declaration or comparer
+authorizes a silence-based negative. Adapter source and native artifact receipt checks remain independent.
+Termless public types remain until their separate removal. Live collection keeps DA1.
 
 Source-backed collection requires an owned hh checkout with vendored Termless source. A dist-only
 install without the imported source binding refuses collection loudly; silence stays inconclusive.

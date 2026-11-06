@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import type { HeadlessRuntimeIdentity } from "@terminfo/probe-defs"
-import type { AdapterSourcesExtension, ReplyDeliveryExtension } from "@termless/core"
+import type { AdapterSourcesExtension } from "@termless/core"
 import { owningCheckout } from "./termless-root.ts"
 
 /** The already measured module/engine used by this worker's backend factory. */
@@ -15,16 +15,6 @@ export interface HeadlessProbeRuntime {
   readonly adapterPath: string
   readonly adapterPackage: string
   readonly adapterType: string
-}
-
-type ReplyDelivery = ReplyDeliveryExtension["replyDelivery"]
-
-export interface ReplyPathDecision {
-  readonly member: boolean
-  readonly backend: string
-  readonly reason: string
-  readonly declaration?: ReplyDelivery
-  readonly runtimeIdentity?: HeadlessRuntimeIdentity
 }
 
 /** Read the adapter's one declared identity without granting reply-delivery capability. */
@@ -84,87 +74,6 @@ export function verifyAdapterSources(backend: string, runtime: HeadlessProbeRunt
     if (detail.startsWith(`adapter source declaration stale for ${backend}:`)) throw cause
     throw new Error(`adapter source verification failed for ${backend}: ${detail}`, { cause })
   }
-}
-
-/** One eligibility comparison; neither an adapter declaration nor versions authenticate source. */
-export function replyDeliveryDecision(
-  backend: string,
-  declaration: ReplyDelivery | undefined,
-  runtime: HeadlessProbeRuntime | undefined,
-  warn: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
-): ReplyPathDecision {
-  const decide = (member: boolean, reason: string): ReplyPathDecision => {
-    if (!member) warn(`headless ${reason}`)
-    return {
-      member,
-      backend,
-      reason,
-      ...(declaration && { declaration }),
-      ...(runtime && { runtimeIdentity: runtime.identity }),
-    }
-  }
-  if (!declaration) return decide(false, `${backend} declares no reply delivery`)
-  if (!runtime) return decide(false, `${backend} has no measured runtime identity for reply delivery`)
-  if (
-    declaration.boundary !== "feed-and-getCursor" ||
-    !Array.isArray(declaration.adapterSources) ||
-    !declaration.adapterSources.length
-  ) {
-    return decide(false, `${backend} reply delivery has no audited feed-and-getCursor source binding`)
-  }
-
-  const identity = runtime.identity
-  const expected = declaration.engine
-  if (!record(expected)) return decide(false, `${backend} reply delivery has no audited engine binding`)
-  if (expected.kind === "registry") {
-    if (
-      identity.kind !== "js" ||
-      identity.runtimeFormat !== "js" ||
-      identity.integrity.kind !== "registry" ||
-      identity.integrity.lockIntegrity !== expected.lockIntegrity
-    ) {
-      return decide(false, `${backend} reply delivery engine.lockIntegrity differs from the audited registry integrity`)
-    }
-  } else if (expected.kind === "source") {
-    if (
-      identity.kind !== "js" ||
-      identity.runtimeFormat !== "js" ||
-      identity.integrity.kind !== "source" ||
-      identity.integrity.repository !== expected.repository ||
-      identity.integrity.treeOid !== expected.treeOid ||
-      identity.integrity.cleanTree !== true
-    ) {
-      return decide(
-        false,
-        `${backend} reply delivery engine repository/treeOid/cleanTree differs from the audited source`,
-      )
-    }
-  } else if (expected.kind === "wasm") {
-    if (
-      identity.kind !== "js" ||
-      identity.runtimeFormat !== "wasm" ||
-      identity.loadedBinary.sha256 !== expected.sha256
-    ) {
-      return decide(false, `${backend} reply delivery engine.sha256 differs from the loaded WASM`)
-    }
-  } else if (expected.kind === "native") {
-    if (
-      identity.kind !== "native" ||
-      typeof expected.sha256 !== "string" ||
-      !/^[a-f0-9]{64}$/.test(expected.sha256) ||
-      !record(identity.loadedBinary) ||
-      identity.loadedBinary.sha256 !== expected.sha256
-    ) {
-      return decide(false, `${backend} reply delivery engine.sha256 differs from the loaded native binary`)
-    }
-  } else {
-    return decide(false, `${backend} reply delivery has no recognized audited engine binding`)
-  }
-
-  if (JSON.stringify(declaration.adapterSources) !== JSON.stringify(identity.adapterSources)) {
-    return decide(false, `${backend} reply delivery adapterSources differs from the verified runtime`)
-  }
-  return decide(true, `${backend} declares complete reply delivery bound to its loaded source and engine`)
 }
 
 const MODULE_PATH = fileURLToPath(import.meta.url)
@@ -385,20 +294,6 @@ function loadedAddon(adapterDirectory: string): { path: string; sha256: string }
   if (!loadedPath) throw new Error(`Native addon cache lost the loaded path in ${adapterDirectory}`)
   const path = realpathSync(loadedPath)
   return { path, sha256: sha256(readFileSync(path)) }
-}
-
-/**
- * The `nativeTreeOid` recorded in the loaded native addon's `.receipt.json` (#31774).
- * Kitty is typed `"native"` in `backends.json` but is a `kitty +runpy` subprocess bridge that loads no `.node` addon (#31810).
- */
-export function readNativeArtifactTreeOid(adapterSpecifier: string, name?: string): string | undefined {
-  if (name === "kitty" || adapterSpecifier === "@termless/kitty" || adapterSpecifier.endsWith("/kitty")) {
-    return undefined
-  }
-  const adapter = resolvedPackage(adapterSpecifier, MODULE_PATH)
-  const loadedBinary = loadedAddon(adapter.directory)
-  const receipt: unknown = JSON.parse(readFileSync(`${loadedBinary.path}.receipt.json`, "utf8"))
-  return record(receipt) && typeof receipt.nativeTreeOid === "string" ? receipt.nativeTreeOid : undefined
 }
 
 function sidecarIdentity(

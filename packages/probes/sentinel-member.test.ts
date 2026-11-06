@@ -768,7 +768,8 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
 
 // #30576: comparer tests cannot catch a collector that reuses preflight qualification for a
 // different initialized callback instance, or forwards capabilities.version as measured identity.
-// CTO a73afe52: retain shared declaration/identity once and emit each withholding reason once per batch.
+// Retain measured identity once and each instance's control decision; legacy
+// delivery metadata changes do not qualify or withhold the measured path.
 test("qualifies each initialized callback instance and forwards the measured runtime identity", async () => {
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const runtime = fixture.runtime
@@ -815,7 +816,6 @@ test("qualifies each initialized callback instance and forwards the measured run
   expect(identities).toEqual([runtime.identity, runtime.identity, runtime.identity, runtime.identity])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toStrictEqual({
     backend: "xtermjs",
-    declaration: fixture.declaration,
     runtimeIdentity: runtime.identity,
     decisions: {
       declared: { member: true, reason: expect.any(String), runtimeIdentity: runtime.identity },
@@ -922,9 +922,6 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "w
           if (mode !== "withheld" || text !== DA1_QUERY) return ""
           setTimeout(() => backend.onResponse?.(encoder.encode("late-native-reply")), 5)
           return DA1
-        })
-        Object.defineProperty(backend, "replyDelivery", {
-          value: { ...fixture.declaration, engine: { kind: "native", sha256: artifact } },
         })
         return backend
       },
@@ -1034,7 +1031,6 @@ test("same-run control grants the member without inventing a measured runtime id
   expect(seen).toEqual([expect.any(Function), undefined])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
     backend: "xtermjs",
-    declaration: fixture.declaration,
     decisions: {
       unmeasured: { member: true, reason: "same-run CPR path control answered" },
     },
