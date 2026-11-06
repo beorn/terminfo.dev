@@ -811,6 +811,8 @@ export interface LibProbeSource {
         readonly rawStatus: string
       }
   )[]
+  /** Actual stored type at getCell coordinates, declared by semantic-cells; never mark history. */
+  getCellSemanticType?(row: number, col: number): "prompt" | "input" | "output"
   /** Copied raw payloads and DCS start positions, without raster rendering or cell geometry. */
   getSixelImages?(): readonly {
     readonly data: string
