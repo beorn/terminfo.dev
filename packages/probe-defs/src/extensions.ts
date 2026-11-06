@@ -101,7 +101,8 @@ function hasAuditedOscInterfaceAbsence(
     | "osc-pass-through"
     | "ghostty-native-d2"
     | "host-effect-h4"
-    | "wezterm-d2" = "osc-absence",
+    | "wezterm-d2"
+    | "ghostty-web-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
   if (cohort === "osc-pass-through") {
@@ -124,6 +125,21 @@ function hasAuditedOscInterfaceAbsence(
       identity.runtimeFormat === "wasm" &&
       identity.engineVersion === "0.3.3" &&
       identity.loadedBinary.sha256 === "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0"
+    )
+  }
+  if (cohort === "ghostty-web-d2") {
+    // CTO 8be19f1f: the web build is a different engine from Ghostty native, so it carries its own
+    // gate. WASM binary and vendored tree together, because either alone admits another build.
+    return (
+      ctx.backendName === "ghostty" &&
+      identity?.kind === "js" &&
+      identity.runtimeFormat === "wasm" &&
+      identity.engineVersion === "0.4.0" &&
+      identity.loadedBinary.sha256 === "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de" &&
+      identity.integrity.kind === "source" &&
+      identity.integrity.repository === "git@github.com:beorn/termless.git" &&
+      identity.integrity.treeOid === "ad3571a518e9e672e102eb83becc2caa03b9ffc3" &&
+      identity.integrity.cleanTree
     )
   }
   if (cohort === "ghostty-native-d2") {
@@ -6408,6 +6424,13 @@ const VT220_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
 }
 
+const GHOSTTY_WEB_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "ghostty-web 0.4.0 exposes Ghostty, GhosttyTerminal and CanvasRenderer, and its only Kitty surface is setKittyFlags with KittyKeyFlags, the keyboard protocol; its WebAssembly export interface carries no image, sixel or graphics entry, so it has no public image store or APC callback",
+  "extensions.kitty-graphics.transmit":
+    "ghostty-web 0.4.0 exposes Ghostty, GhosttyTerminal and CanvasRenderer, and its only Kitty surface is setKittyFlags with KittyKeyFlags, the keyboard protocol; its WebAssembly export interface carries no image, sixel or graphics entry, so it has no public image store or APC callback",
+}
+
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.osc1-icon": "Ghostty 1.3.1 parses OSC 1 and ignores it. No icon state or action follows.",
   "extensions.osc113-reset-pointer-fg":
@@ -6434,6 +6457,7 @@ function declaredD2InterfaceAbsence(
     | "osc-pass-through"
     | "ghostty-native-d2"
     | "wezterm-d2"
+    | "ghostty-web-d2"
     | "host-effect-h4",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
@@ -6525,7 +6549,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
     ALACRITTY_IMAGE_D2_DECLARATIONS[definition.id] ??
     XTERM_IMAGE_D2_DECLARATIONS[definition.id] ??
     VT100_IMAGE_D2_DECLARATIONS[definition.id] ??
-    VT220_IMAGE_D2_DECLARATIONS[definition.id]
+    VT220_IMAGE_D2_DECLARATIONS[definition.id] ??
+    GHOSTTY_WEB_IMAGE_D2_DECLARATIONS[definition.id]
   if (
     !lib ||
     (!vt100Target &&
@@ -6637,6 +6662,15 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         "osc-absence",
       )
       if (vt220ImageDeclared) return vt220ImageDeclared
+      const ghosttyWebImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        GHOSTTY_WEB_IMAGE_D2_DECLARATIONS,
+        "ghostty",
+        "ghostty-web-d2",
+      )
+      if (ghosttyWebImageDeclared) return ghosttyWebImageDeclared
       const vtermDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
