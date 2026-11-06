@@ -94,9 +94,20 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 // version carrying the same backend name. Real readers take precedence at each caller.
 function hasAuditedOscInterfaceAbsence(
   ctx: LibProbeSource,
-  cohort: "osc-absence" | "vt100-rust-d2" = "osc-absence",
+  cohort: "osc-absence" | "vt100-rust-d2" | "wezterm-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
+  if (cohort === "wezterm-d2") {
+    return (
+      ctx.backendName === "wezterm" &&
+      identity?.kind === "native" &&
+      identity.engineVersion === "0.1.0-fork.5" &&
+      identity.loadedBinary.sha256 === "4753e20984ab7e15ea7ef8d4ddf9bd11237f79146087939e9c37771aaadbf186" &&
+      identity.provenance.sourceCommit === "f8f48853438f5fb6c43abbbb081162506d14f167" &&
+      identity.provenance.lockSha256 === "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58" &&
+      auditedAdapterSources(identity, "wezterm")
+    )
+  }
   if (cohort === "vt100-rust-d2") {
     return (
       ctx.backendName === "vt100-rust" &&
@@ -6173,6 +6184,52 @@ const KITTY_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; reado
   "modes.decsscls": { feed: "\x1b[9 p", code: { kind: "csi", code: " p" } },
 }
 
+const WEZTERM_D2_ABSENCES: Readonly<Record<string, string>> = {
+  "extensions.osc113-reset-pointer-fg":
+    "OSC 113 has a recognized empty handler arm; pointer foreground is absent from the public palette, there is no query reply, and PaletteChanged carries no value",
+  "extensions.osc114-reset-pointer-bg":
+    "OSC 114 has a recognized empty handler arm; pointer background is absent from the public palette, there is no query reply, and PaletteChanged carries no value",
+  "extensions.osc22-pointer":
+    "OSC 22 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "modes.decsscls": "DECSSCLS has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc176-app-id":
+    "OSC 176 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc3008-context":
+    "OSC 3008 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc440-audio":
+    "OSC 440 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc555-flash":
+    "OSC 555 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc666-termprop":
+    "OSC 666 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "extensions.osc710-font-normal":
+    "OSC 710 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+}
+
+// Preserve original results whenever a public reader or decided observation is available.
+function declaredD2InterfaceAbsence(
+  ctx: LibProbeSource,
+  lib: (ctx: LibProbeSource) => ProbeCallbackResult,
+  id: string,
+  table: Readonly<Record<string, string>>,
+  backend: string,
+  cohort: "osc-absence" | "vt100-rust-d2" | "wezterm-d2",
+  hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
+  formatReason: (entry: string) => string = (entry) => entry,
+): ProbeCallbackResult | undefined {
+  const entry = table[id]
+  if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined
+  const result = lib(ctx)
+  if (typeof ctx.getUnhandledSequences === "function" || hasReader(ctx, id) || reportsDecidedOutcome(result)) {
+    return result
+  }
+  return declaredUntestableResult(formatReason(entry), {
+    backend: ctx.backendName,
+    featureId: id,
+    runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
+  })
+}
+
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
@@ -6180,7 +6237,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
-  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence)) return definition
+  const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
+  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !weztermAbsence)) return definition
   return {
     ...definition,
     ...(vt100Target && definition.libAssertionType === "query_reply"
@@ -6194,28 +6252,37 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         }
       : {}),
     lib(ctx) {
-      if (absence && ctx.backendName === "alacritty" && hasAuditedOscInterfaceAbsence(ctx)) {
-        const result = lib(ctx)
-        const hasReader =
-          typeof ctx.getUnhandledSequences === "function" ||
-          (definition.id === "extensions.osc777-notify"
-            ? typeof ctx.getOsc777Payloads === "function" || typeof ctx.getToasts === "function"
-            : definition.id.startsWith("extensions.osc133") ||
-                definition.id.startsWith("extensions.osc633") ||
-                definition.id === "extensions.osc-633-vscode" ||
-                definition.id === "extensions.semantic-prompts"
-              ? typeof ctx.getSemanticMarks === "function"
-              : false)
-        if (hasReader || reportsDecidedOutcome(result)) return result
-        return declaredUntestableResult(
-          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${absence}; this OSC has no handler or public rejection report.`,
-          {
-            backend: ctx.backendName,
-            featureId: definition.id,
-            runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
-          },
-        )
-      }
+      const alacrittyDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        ALACRITTY_D2_ABSENCES,
+        "alacritty",
+        "osc-absence",
+        (source, id) =>
+          id === "extensions.osc777-notify"
+            ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
+            : id.startsWith("extensions.osc133") ||
+                id.startsWith("extensions.osc633") ||
+                id === "extensions.osc-633-vscode" ||
+                id === "extensions.semantic-prompts"
+              ? typeof source.getSemanticMarks === "function"
+              : false,
+        (entry) =>
+          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this OSC has no handler or public rejection report.`,
+      )
+      if (alacrittyDeclared) return alacrittyDeclared
+      const weztermDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        WEZTERM_D2_ABSENCES,
+        "wezterm",
+        "wezterm-d2",
+        undefined,
+        (entry) => `WezTerm tattoy-wezterm-term 0.1.0-fork.5: ${entry}.`,
+      )
+      if (weztermDeclared) return weztermDeclared
       const identity = ctx.runtimeIdentity
       const vt100Audited = hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")
       if (vt100Audited && reason) {
