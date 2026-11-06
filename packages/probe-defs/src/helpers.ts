@@ -26,6 +26,12 @@ import type {
 } from "./types.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
+/** Translate a screen row into the absolute buffer retained by the library source. */
+export function activeScreenRow(ctx: LibProbeSource, row: number): number {
+  const { totalLines, screenLines } = ctx.getScrollback()
+  return Math.max(0, totalLines - screenLines) + row
+}
+
 export const ADAPTER_SOURCE_AUDITS = {
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",

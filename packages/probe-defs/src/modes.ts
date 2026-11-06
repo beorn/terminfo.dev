@@ -9,6 +9,7 @@ import type {
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import {
+  activeScreenRow,
   probe,
   withUnhandledModeReport,
   replyFailure,
@@ -547,7 +548,10 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 3) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs three columns")
   }
-  const readBXY = () => ({ b: ctx.getCell(0, 0), x: ctx.getCell(0, 1), y: ctx.getCell(0, 2) })
+  const readBXY = () => {
+    const row = activeScreenRow(ctx, 0)
+    return { b: ctx.getCell(row, 0), x: ctx.getCell(row, 1), y: ctx.getCell(row, 2) }
+  }
   const charsIntact = (cells: ReturnType<typeof readBXY>) =>
     cells.b.char === "B" && cells.x.char === "X" && cells.y.char === "Y"
   const plain = (cell: StackCell) => cell.bold !== true && cell.italic !== true
@@ -816,11 +820,6 @@ function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): P
 const ALT_1049_SEED_A = "PRIMARY-A"
 const ALT_1049_SEED_B = "PRIMARY-B"
 const ALT_1049_MARK = "ALT-MARK"
-
-function activeScreenRow(ctx: LibProbeSource, row: number): number {
-  const { totalLines, screenLines } = ctx.getScrollback()
-  return Math.max(0, totalLines - screenLines) + row
-}
 
 /** Read the exact characters of a horizontal span; never an inequality shortcut. */
 function readAlt1049Span(ctx: LibProbeSource, row: number, length: number): string {
@@ -2504,8 +2503,7 @@ const modeDefinitions: ProbeDefinition[] = [
         }
         ctx.feed("\x1b[9 pQ")
         const state = { text: ctx.getText(), cursor: ctx.getCursor() }
-        const { totalLines, screenLines } = ctx.getScrollback()
-        const screenTop = Math.max(0, totalLines - screenLines)
+        const screenTop = activeScreenRow(ctx, 0)
         const line = state.text.split("\n").slice(screenTop).join("\n").trimEnd()
         if (line === "Q" && state.cursor.x === 1 && state.cursor.y === 0) {
           return parserStateResult(

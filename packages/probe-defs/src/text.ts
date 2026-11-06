@@ -1,5 +1,6 @@
 import type { AssertionType, ProbeDefinition, ProbeCallbackResult, LibProbeSource } from "./types.ts"
 import {
+  activeScreenRow,
   isBlank,
   parserStateResult,
   replyFailure,
@@ -536,10 +537,10 @@ export const textProbes: ProbeDefinition[] = [
       "text.newline",
       (ctx) => {
         ctx.feed("\x1b[2J\x1b[H")
-        const before = [ctx.getCell(0, 0), ctx.getCell(1, 0)]
+        const before = [ctx.getCell(activeScreenRow(ctx, 0), 0), ctx.getCell(activeScreenRow(ctx, 1), 0)]
         ctx.feed("A\r\nB")
-        const first = ctx.getCell(0, 0)
-        const second = ctx.getCell(1, 0)
+        const first = ctx.getCell(activeScreenRow(ctx, 0), 0)
+        const second = ctx.getCell(activeScreenRow(ctx, 1), 0)
         const ready = before.every((cell) => isBlank(cell.char))
         return parserStateResult(
           ready ? first.char === "A" && second.char === "B" : null,
@@ -610,10 +611,10 @@ export const textProbes: ProbeDefinition[] = [
           }
         }
         ctx.feed("\x1b[2J\x1b[H")
-        const before = [ctx.getCell(0, ctx.cols - 1), ctx.getCell(1, 0)]
+        const before = [ctx.getCell(activeScreenRow(ctx, 0), ctx.cols - 1), ctx.getCell(activeScreenRow(ctx, 1), 0)]
         ctx.feed("X".repeat(ctx.cols + 1))
-        const last = ctx.getCell(0, ctx.cols - 1)
-        const next = ctx.getCell(1, 0)
+        const last = ctx.getCell(activeScreenRow(ctx, 0), ctx.cols - 1)
+        const next = ctx.getCell(activeScreenRow(ctx, 1), 0)
         const ready = before.every((cell) => isBlank(cell.char))
         return parserStateResult(
           ready ? last.char === "X" && next.char === "X" : null,
