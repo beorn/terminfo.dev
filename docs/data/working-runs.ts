@@ -34,6 +34,7 @@ import { loadRawCapture, UntrustedSuiteError } from "../../packages/admin/raw-ca
 import { compatibilitySubjects, loadCurrentResults, type CurrentResult } from "./current-results.ts"
 import { admittedContextKeys, originalRunFor, workingSubjectKey, type SelectedProjection } from "./selected-results.ts"
 import { rollupTerminalStatuses, type TerminalStatusRollup } from "./release-scope.ts"
+import { fullContextCensus, type CensusContext } from "./full-census.ts"
 
 export const WORKING_RUNS_ENV = "TERMINFO_SITE_WORKING_RUNS_DIR"
 export const RAW_LABEL = "raw, unreviewed"
@@ -441,7 +442,9 @@ export function composeWorkingView(
     const contextKey = workingSubjectKey(admitted, run.subject)
     if (seen.has(contextKey)) throw new Error(`Hourly run ${working.id} carries two runs for ${contextKey}`)
     seen.add(contextKey)
-    const review = bySubject.get(`${run.subject.kind}:${run.subject.id}`)
+    const candidate = bySubject.get(`${run.subject.kind}:${run.subject.id}`)
+    const review =
+      run.subject.kind === "lib" || candidate?.selected.subject?.os === run.subject.os ? candidate : undefined
     const suiteId = run.probeHash
     const cells = run.results.map((result) => {
       const cell = review?.selected.cells[result.featureId]
@@ -524,6 +527,77 @@ export function siteWorkingView(contentDir: string, env: NodeJS.ProcessEnv = pro
   return composeWorkingView(projection, compatibilitySubjects(projection, contentDir), working)
 }
 
+/** App passes retain their own index; capture decoding and status folding keep their existing owners. */
+function loadAppWorkingRun(
+  selection: WorkingRunSelection,
+  context: CensusContext,
+  librariesDir: string,
+  catalogIds: readonly string[],
+): LoadedWorkingRun {
+  const passes = readdirSync(selection.dir).filter(
+    (name) => name.startsWith("pass-") && statSync(join(selection.dir, name)).isDirectory(),
+  )
+  const [passName] = passes
+  if (passes.length !== 1 || passName === undefined) {
+    throw new Error(`${selection.dir}: expected one retained pass; found ${passes.length}`)
+  }
+  const path = join(selection.dir, passName, "pass.json")
+  const pass = parseJsonStrict(path, readFileSync(path, "utf8"))
+  if (!record(pass) || !Array.isArray(pass.contexts)) throw new Error(`${path}: missing retained contexts`)
+  const rows = pass.contexts.filter(
+    (row) =>
+      record(row) &&
+      record(row.context) &&
+      row.context.id === context.terminalId &&
+      row.context.kind === context.kind &&
+      row.context.os === context.os,
+  )
+  const row = rows[0]
+  if (rows.length !== 1 || !record(row) || row.status !== "classified" || typeof row.rawRun !== "string") {
+    throw new Error(`${path}: ${context.context} has no single classified raw capture`)
+  }
+  const rawPath = resolve(dirname(path), row.rawRun)
+  if (!realpathSync(rawPath).startsWith(realpathSync(selection.dir) + sep)) {
+    throw new Error(`${path}: raw capture outside its retained collection`)
+  }
+  const options = { root: REPO_ROOT, catalogIds }
+  let run: LoadedRun
+  try {
+    run = loadRawCapture(rawPath, options)
+  } catch (error) {
+    if (!(error instanceof UntrustedSuiteError)) throw error
+    // Only an exact named manifest in the configured producer's library store supplies custody.
+    const manifestPath = readdirSync(librariesDir)
+      .filter((name) => RUN_DIR.test(name))
+      .sort()
+      .reverse()
+      .map((name) => join(librariesDir, name, "headless", "suites", `${error.suiteId}.json`))
+      .find((candidate) => existsSync(candidate))
+    if (!manifestPath) {
+      return {
+        ...selection,
+        runs: [],
+        unmeasured: [],
+        unreadable: {
+          suiteId: error.suiteId,
+          treeSuiteId: error.treeSuiteId,
+          reason: `${error.message}; no exact retained library manifest at ${librariesDir}/<run>/headless/suites/${error.suiteId}.json`,
+          banner: `Retained app collection ${context.context}/${selection.id} is unavailable: suite ${error.suiteId} has no trusted manifest.`,
+        },
+      }
+    }
+    const libraryRun = dirname(dirname(dirname(manifestPath)))
+    if (!realpathSync(manifestPath).startsWith(realpathSync(libraryRun) + sep)) {
+      throw new Error(`${manifestPath}: suite manifest outside its retained library run`)
+    }
+    run = loadRawCapture(rawPath, { ...options, manifestPath })
+  }
+  if (run.subject.id !== context.terminalId || run.subject.kind !== context.kind || run.subject.os !== context.os) {
+    throw new Error(`${rawPath}: captured subject disagrees with ${context.context}`)
+  }
+  return { ...selection, runs: [run], unmeasured: [] }
+}
+
 /** Private page history uses the same raw reader and view; public API generation remains newest-only. */
 export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = process.env): WorkingView[] | null {
   const newest = selectedSiteWorkingRun(env)
@@ -532,16 +606,42 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
   const cache = (host[HISTORY_CACHE] ??= new Map())
   const known = cache.get(newest.dir) as WorkingView[] | undefined
   if (known) return known
-  const selections = [...completeRunSelections(dir, newest.id)].reverse()
+  const selections: Array<{ selection: WorkingRunSelection; context?: CensusContext }> = [
+    ...completeRunSelections(dir, newest.id),
+  ]
+    .reverse()
+    .map((selection) => ({ selection }))
+  const gaps: LoadedWorkingRun["unmeasured"] = []
+  for (const context of fullContextCensus(contentDir).contexts.filter((context) => context.kind !== "lib")) {
+    const appDir = join(dirname(dir), "apps", context.terminalId, context.os, "runs")
+    if (!existsSync(appDir)) {
+      gaps.push({
+        engine: context.context,
+        status: "unmeasured",
+        reason: `No retained app store at ${appDir}; a missing store is not a measured result.`,
+      })
+      continue
+    }
+    try {
+      selections.push(...[...completeRunSelections(appDir)].reverse().map((selection) => ({ selection, context })))
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes(appDir)) throw error
+      gaps.push({ engine: context.context, status: "unavailable", reason: `${appDir}: ${error.message}` })
+    }
+  }
   const { projection } = loadCurrentResults(contentDir)
   const reviewed = compatibilitySubjects(projection, contentDir)
   const earlier = new Map<string, WorkingView>()
   const runtimeReceipts = new Map<string, Map<string, string | undefined>>()
   // Keep the small page views across loaders, not every historical capture's full evidence payload.
-  const views = selections.map((selection): WorkingView => {
+  const views = selections.map(({ selection, context: app }): WorkingView => {
     try {
-      const loaded = loadedSiteWorkingRun(selection, selection.id === newest.id)
+      const loaded = app
+        ? loadAppWorkingRun(selection, app, dir, Object.keys(loadFeatures(contentDir)))
+        : loadedSiteWorkingRun(selection, selection.id === newest.id)
       const view = composeWorkingView(projection, reviewed, loaded)
+      if (app) view.run.id = `apps/${app.context}/${selection.id}`
+      else if (selection.id === newest.id) view.unmeasured = [...view.unmeasured, ...gaps]
       const fingerprints = new Map<string, string | undefined>()
       for (const context of view.contexts) {
         context.states = Object.fromEntries(context.cells.map((cell) => [cell.featureId, cell.raw.status]))
@@ -549,6 +649,11 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
         const original = loaded.runs.find((run) => run.subject.id === context.engine)
         context.sha256 = original?.sha256
         context.identity = original?.identity
+        if (app) {
+          context.changeQualification =
+            "Recorded runtime identity differs or is missing; moves are not comparable. Required app/mux pairs remain UNMEASURED."
+          continue
+        }
         fingerprints.set(context.contextKey, JSON.stringify(original?.runtimeIdentity))
         const receipt = loaded.changeRecord
         if (!record(receipt) || typeof receipt.since !== "string" || !Array.isArray(receipt.moves)) {
@@ -611,29 +716,41 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
     } catch (error) {
       // A reader diagnostic naming this older collection is an input gap, not zero results.
       // Newest-run failures and errors outside that input still propagate unchanged.
-      if (selection.id === newest.id || !(error instanceof Error)) throw error
+      if ((!app && selection.id === newest.id) || !(error instanceof Error)) throw error
       const missingInput =
         "code" in error &&
         error.code === "ENOENT" &&
         "path" in error &&
         typeof error.path === "string" &&
         error.path.startsWith(selection.dir + sep)
-      if (!missingInput && !error.message.startsWith(selection.dir + sep)) {
+      if (
+        !missingInput &&
+        !error.message.startsWith(selection.dir + sep) &&
+        !(app && (error.message.startsWith(selection.dir + ":") || error.message.startsWith(dir + sep)))
+      ) {
         throw error
       }
       const reason = error.message.replaceAll(selection.dir, selection.id)
-      const banner = `Retained collection ${selection.id} has unreadable input; results and counts are unavailable.`
+      const banner = `Retained collection ${app ? app.context + "/" : ""}${selection.id} has unreadable input; results and counts are unavailable.`
       console.warn(`terminfo-site: WARNING ${banner} (${reason})`)
       return {
         label: RAW_LABEL,
         rule: "Missing retained inputs are not zero results and do not change accepted answers.",
-        run: { id: selection.id, startedAt: selection.startedAt, newestCaptureAt: "not read", suites: [] },
+        run: {
+          id: app ? `apps/${app.context}/${selection.id}` : selection.id,
+          startedAt: selection.startedAt,
+          newestCaptureAt: "not read",
+          suites: [],
+        },
         contexts: [],
         unmeasured: [],
         unreadable: { banner, reason },
       }
     }
   })
+  views.sort(
+    (left, right) => left.run.startedAt.localeCompare(right.run.startedAt) || left.run.id.localeCompare(right.run.id),
+  )
   cache.set(newest.dir, views)
   return views
 }
