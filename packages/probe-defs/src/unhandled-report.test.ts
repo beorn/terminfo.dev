@@ -35,17 +35,24 @@ function reportingSource(spec: {
   records?: readonly { readonly match: RegExp; readonly code: UnhandledSequence }[]
   titleApplies?: boolean
   boldApplies?: boolean
+  modeApplies?: boolean
 }): LibProbeSource {
   const report: UnhandledSequence[] = []
   let title = ""
   let bold = false
+  let autoWrap = true
   const base = inertLibProbeSource()
   return {
     ...base,
     getUnhandledSequences: () => report.slice(),
     getTitle: () => title,
+    getMode: (name) => (name === "autoWrap" ? autoWrap : base.getMode(name)),
     getCell: () => ({ ...base.getCell(0, 0), bold }),
     feed: (text) => {
+      if (spec.modeApplies !== false) {
+        if (text === "\x1b[?7l") autoWrap = false
+        if (text === "\x1b[?7h") autoWrap = true
+      }
       const titleSet = /\x1b\]2;([^\x07]*)\x07/.exec(text)
       if (titleSet) {
         if (spec.titleApplies !== false) title = titleSet[1] ?? ""
@@ -61,6 +68,41 @@ const recordsOsc = (code: string) => ({ match: new RegExp(`\\x1b\\]${code}`), co
 const recordsCsi = (code: string) => ({
   match: new RegExp(`\\x1b\\[${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
   code: { kind: "csi" as const, code },
+})
+
+// DEC1: registered callbacks must feed one own command after the prior arm; a mouse pair
+// or an ignored control cannot turn an otherwise undecided feature into a negative.
+test.each([
+  ["input.button-event-mouse", "?1002h"],
+  ["input.pixel-mouse", "?1016h"],
+  ["input.urxvt-mouse", "?1015h"],
+  ["input.x10-mouse", "?9h"],
+  ["input.xtest-click", "?1000h"],
+  ["input.xtest-wheel", "?1000h"],
+  ["modes.alt-scroll-1007", "?1007h"],
+  ["modes.bracketed-paste", "?2004h"],
+  ["modes.color-scheme-reporting", "?2031h"],
+  ["modes.focus-tracking", "?1004h"],
+  ["modes.mouse-all", "?1003h"],
+  ["modes.mouse-sgr", "?1006h"],
+  ["modes.mouse-tracking", "?1000h"],
+  ["modes.synchronized-output", "?2026h"],
+  ["modes.utf8-mouse-1005", "?1005h"],
+  ["modes.xtpopcolors", "#Q"],
+  ["modes.xtpushcolors", "#P"],
+])("%s requires its exact report and a working mode control", (id, code) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)!
+  const result = definition.lib!(reportingSource({ records: [recordsCsi(code)] }))
+  expect(result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+  expect(JSON.parse(result.response!), id).toMatchObject({ unhandled: { target: { kind: "csi", code } } })
+  for (const spec of [
+    { records: [recordsCsi(code)], modeApplies: false },
+    { records: [recordsCsi(code), recordsCsi("?7l")] },
+    { records: [recordsCsi(code), recordsCsi(code)] },
+    { records: [recordsCsi("?9998h")] },
+  ]) {
+    expect(definition.lib!(reportingSource(spec)).observation?.outcome, id).not.toBe("unsupported")
+  }
 })
 
 describe("the unhandled report decides only state cells, and only with both controls", () => {
@@ -298,7 +340,7 @@ describe("the report arm decides italic and faint as well, and nothing outside i
 })
 
 // Accepted D2 cut (Chief 6ef3debd) plus M-1 (CTO f23f1197): 44 controlled negatives;
-// the 12 proposed declarations remain on their prior paths pending policy wording.
+// The released eleven-cell D2-U1 slice declares only the audited vt100 0.16.2 subject.
 // Independent input/code oracles were measured from the real addon before each
 // consumer extension; these cases exercise the registered callback boundary.
 describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
@@ -383,7 +425,6 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     "device.xtgetxres",
     "extensions.kitty-graphics",
     "extensions.kitty-graphics.transmit",
-    "extensions.osc22-pointer",
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
     "extensions.osc440-audio",
@@ -411,10 +452,13 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     }
   })
 
-  test.each(declared)("%s stays outside the negative-only cut while declaration policy is held", (id) => {
+  // The released eleven-cell D2 slice declares only this audited 0.16.2 subject.
+  // Negative-only coverage could not prove the declaration or retain its versioned reason.
+  test.each(declared)("%s declares Untestable only for the audited vt100 0.16.2 subject", (id) => {
     const lib = definition(id).lib!
     const result = lib({ ...inertLibProbeSource(), backendName: "vt100-rust", runtimeIdentity: identity })
-    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(JSON.stringify(result)).toContain("vt100 0.16.2")
     expect(result.observation?.outcome).not.toBe("unsupported")
     for (const overrides of [
       { runtimeIdentity: undefined },
@@ -475,14 +519,16 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     }
   })
 
-  test("a decided reply survives the report and OSC52 read is neither declared nor negative", () => {
+  test("a decided reply survives the report and reader-owned OSC cells stay outside declarations", () => {
     const target = source("\x1b[6n", "csi", "6n", {
       feedCapture: () => "\x1b[3;5R",
       getCursor: () => ({ x: 4, y: 2, visible: true, style: null }),
     })
     expect(definition("cursor.position-report").lib!(target).observation?.outcome).toBe("supported")
-    const result = definition("extensions.osc52-read").lib!(target)
-    expect(isDeclaredUntestable(result)).toBe(false)
-    expect(JSON.stringify(result)).not.toContain(REASON)
+    for (const id of ["extensions.osc22-pointer", "extensions.osc52-read"]) {
+      const result = definition(id).lib!(target)
+      expect(isDeclaredUntestable(result)).toBe(false)
+      expect(JSON.stringify(result)).not.toContain(REASON)
+    }
   })
 })

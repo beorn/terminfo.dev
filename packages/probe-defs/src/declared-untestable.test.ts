@@ -227,6 +227,7 @@ describe("audited OSC interface absence", () => {
       { runtimeIdentity: { ...alacritty, provenance: { ...alacritty.provenance, lockSha256: "0".repeat(64) } } },
       { getUnhandledSequences: () => [] },
       { getOsc777Payloads: () => [] },
+      { getToasts: () => [] },
     ] satisfies Partial<LibProbeSource>[]) {
       expect(isDeclaredUntestable(notify(d2Source(extra)))).toBe(false)
     }

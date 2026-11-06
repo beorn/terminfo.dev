@@ -148,10 +148,7 @@ function runKittyIdentity(
       if (args[0] === "hash" && args[1] === "path" && args[2] === source) return "sha256-" + "B".repeat(43) + "=";
       throw new Error("Unexpected Nix operation: " + args.join(" "));
     };
-    const { headlessRuntimeIdentity, readNativeArtifactTreeOid } = await import(${JSON.stringify(fixture.identityHref)});
-    if (readNativeArtifactTreeOid("@termless/kitty", "kitty") !== undefined || readNativeArtifactTreeOid("@termless/kitty") !== undefined) {
-      throw new Error("Expected readNativeArtifactTreeOid to skip kitty bridge adapter");
-    }
+    const { headlessRuntimeIdentity } = await import(${JSON.stringify(fixture.identityHref)});
     const identity = await headlessRuntimeIdentity("kitty", "@termless/kitty", "native");
     process.stdout.write(JSON.stringify(identity));
   `,
@@ -451,154 +448,115 @@ test("a Termless checkout outside the sibling path is used, and its own revision
   expect(body.revision).toBe(revision)
 })
 
-// #30576 source binding: the old sentinel suite changed versions only. This uses its
-// existing owned Git/package fixture and the production identity producer/comparer.
-function runReplyDecision(mode: string) {
-  return spawnSync(
+// Adapter identity remains required after the delivery comparer is retired. These
+// cases exercise its real Git/package boundary, without a delivery eligibility verdict.
+test.each([
+  ["match", undefined],
+  ["undeclared", "adapter source identity undeclared"],
+  ["unadvertised", "adapter source identity undeclared"],
+  ["adapter", "adapter source declaration stale"],
+  ["entry", "adapter source identity undeclared"],
+  ["missing-entry", "does not bind the imported entry"],
+  ["outside", "outside its imported checkout"],
+  ["dist", "adapter source verification failed"],
+] as const)("adapter source identity %s preserves the imported-byte contract", (mode, error) => {
+  const run = spawnSync(
     process.execPath,
     [
       "-e",
       `
-      import { execFileSync } from "node:child_process";
-      import { createHash } from "node:crypto";
-      import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-      import { join, relative } from "node:path";
-      const { headlessRuntimeIdentity, replyDeliveryDecision, verifyAdapterSources, readAdapterSources } = await import(${JSON.stringify(fixture.identityHref)});
-      const root = ${JSON.stringify(fixture.root)}, adapterRoot = ${JSON.stringify(fixture.termless)};
-      const engineRoot = ${JSON.stringify(fixture.vterm)}, mode = ${JSON.stringify(mode)};
-      const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], {encoding:"utf8"}).trim();
-      const entry = join(adapterRoot, "packages/vt100/src/index.ts");
-      const declaration = {
-        boundary: "feed-and-getCursor",
-        adapterSources: [{path:relative(adapterRoot, entry), blobOid:git(adapterRoot, "hash-object", entry)}],
-        engine: {kind:"source",repository:git(engineRoot,"remote","get-url","origin"),treeOid:git(engineRoot,"rev-parse","HEAD:packages/vt100")}
-      };
-      if (mode === "engine" || mode === "dirty") {
-        const text = 'export const engine = "changed source, same version";\\n';
-        writeFileSync(join(engineRoot,"packages/vt100/src/index.ts"),text);
-        writeFileSync(join(root,"node_modules/.bun/vt100.js@file/node_modules/vt100.js/src/index.ts"),text);
-        if (mode === "engine") {
-          git(engineRoot,"add","packages/vt100/src/index.ts");
-          git(engineRoot,"-c","user.name=Fixture","-c","user.email=fixture@example.invalid","commit","-qm","engine source change without version bump");
-        }
-      }
-      const identity = await headlessRuntimeIdentity("vt100","@termless/vt100","js");
-      const runtime = {identity,adapterPath:entry,adapterPackage:"@termless/vt100"};
-      if (mode === "adapter") writeFileSync(entry,readFileSync(entry,"utf8")+"\\n// changed imported adapter, same versions\\n");
-      if (mode === "registry-match" || mode === "registry-drift") {
-        const expected = "sha512-"+Buffer.alloc(64,1).toString("base64");
-        declaration.engine = {kind:"registry",lockIntegrity:expected};
-        identity.integrity = {kind:"registry",lockIntegrity:mode === "registry-match" ? expected : "sha512-"+Buffer.alloc(64,2).toString("base64")};
-      }
-      if (mode === "wasm-match" || mode === "wasm-drift") {
-        const path = join(root,"engine.wasm");
-        writeFileSync(path,"fixture engine bytes");
-        const digest = () => createHash("sha256").update(readFileSync(path)).digest("hex");
-        declaration.engine = {kind:"wasm",sha256:digest()};
-        if (mode === "wasm-drift") writeFileSync(path,"different engine bytes, same version");
-        identity.runtimeFormat = "wasm";
-        identity.loadedBinary = {path:"vendor/termless/engine.wasm",sha256:digest()};
-      }
-      // N1/N2: the comparer consumes measured native custody, not a native library load.
-      // Keep the real imported adapter/Git fixture; alter only the engine evidence under comparison.
-      if (mode.startsWith("native-")) {
-        const path = join(root,"engine.node");
-        writeFileSync(path,"fixture native engine bytes");
-        const digest = () => createHash("sha256").update(readFileSync(path)).digest("hex");
-        declaration.engine = {kind:"native",sha256:digest()};
-        identity.kind = "native";
-        delete identity.runtimeFormat;
-        delete identity.integrity;
-        identity.loadedBinary = {path:"vendor/termless/engine.node",sha256:digest()};
-        identity.provenance = {sha256:digest(),sourceCommit:identity.termlessRevision,
-          buildHash:"fixture-build",toolchain:"fixture",lockSha256:"1".repeat(64)};
-        if (mode === "native-drift") {
-          writeFileSync(path,"different native engine bytes, same version");
-          identity.loadedBinary.sha256 = digest();
-          identity.provenance.sha256 = digest();
-        }
-        if (mode === "native-js") { identity.kind = "js"; identity.runtimeFormat = "js"; }
-        if (mode === "native-wasm") { identity.kind = "js"; identity.runtimeFormat = "wasm"; }
-        if (mode === "native-missing-binary") delete identity.loadedBinary;
-        if (mode === "native-missing-digest") delete identity.loadedBinary.sha256;
-        if (mode === "native-empty-digests") { declaration.engine.sha256 = ""; identity.loadedBinary.sha256 = ""; }
-        if (mode === "native-adapter") writeFileSync(entry,readFileSync(entry,"utf8")+"\\n// changed native adapter, same versions\\n");
-        if (mode === "native-entry") declaration.adapterSources = [{path:"packages/vt100/package.json",blobOid:git(adapterRoot,"hash-object","packages/vt100/package.json")}];
-      }
-      if (mode === "entry") declaration.adapterSources = [];
-      if (mode === "outside") declaration.adapterSources.push({path:"../vterm/packages/vt100/src/index.ts",blobOid:git(engineRoot,"hash-object","packages/vt100/src/index.ts")});
-      if (mode === "dist") {
-        const pkg = join(root,"dist-only");
-        mkdirSync(pkg);
-        writeFileSync(join(pkg,"package.json"),JSON.stringify({name:"@termless/vt100"}));
-        writeFileSync(join(pkg,"index.js"),"export {}\\n");
-        runtime.adapterPath = join(pkg,"index.js");
-      }
-      identity.adapterSources = mode === "undeclared" ? undefined : declaration.adapterSources;
-      const warnings = [];
-      try {
-        if (mode === "unadvertised") readAdapterSources("unit-adapter", {capabilities:{extensions:new Set()},getAdapterSources:()=>declaration.adapterSources});
-        verifyAdapterSources("unit-adapter", runtime);
-      }
-      catch (error) {
-        process.stdout.write(JSON.stringify({result:{member:false,reason:error.message},warnings:[error.message],engineVersion:identity.engineVersion,collectorError:error.message}));
-        process.exit(0);
-      }
-      if (mode === "verified-once") writeFileSync(entry, readFileSync(entry,"utf8")+"\\n// must not hash again\\n");
-      const result = replyDeliveryDecision("unit-adapter",mode === "absent" ? undefined : declaration,mode === "identity" ? undefined : runtime,line => warnings.push(line));
-      process.stdout.write(JSON.stringify({result,warnings,engineVersion:identity.engineVersion}));
-      `,
+    import { execFileSync } from "node:child_process";
+    import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
+    import { join, relative } from "node:path";
+    const {headlessRuntimeIdentity, readAdapterSources, verifyAdapterSources} = await import(${JSON.stringify(fixture.identityHref)});
+    const root=${JSON.stringify(fixture.root)}, adapterRoot=${JSON.stringify(fixture.termless)}, mode=${JSON.stringify(mode)};
+    const git=(...args)=>execFileSync("git",["-C",adapterRoot,...args],{encoding:"utf8"}).trim();
+    const entry=join(adapterRoot,"packages/vt100/src/index.ts");
+    const sources=[{path:relative(adapterRoot,entry),blobOid:git("hash-object",entry)}];
+    const identity=await headlessRuntimeIdentity("vt100","@termless/vt100","js");
+    const runtime={identity,adapterPath:entry,adapterPackage:"@termless/vt100",adapterType:"js"};
+    if(mode==="adapter")writeFileSync(entry,readFileSync(entry,"utf8")+"\\n// changed imported bytes\\n");
+    if(mode==="entry")sources.length=0;
+    if(mode==="missing-entry")sources.splice(0,1,{path:"packages/vt100/package.json",blobOid:git("hash-object",join(adapterRoot,"packages/vt100/package.json"))});
+    if(mode==="outside")sources.push({path:"../vterm/packages/vt100/src/index.ts",blobOid:"1".repeat(40)});
+    if(mode==="dist"){const pkg=join(root,"dist-only");mkdirSync(pkg);writeFileSync(join(pkg,"package.json"),JSON.stringify({name:"@termless/vt100"}));writeFileSync(join(pkg,"index.js"),"export {}\\n");runtime.adapterPath=join(pkg,"index.js");}
+    const adapter={capabilities:{extensions:new Set(mode==="unadvertised"?[]:["adapter-sources"])},getAdapterSources:()=>sources};
+    try {
+      identity.adapterSources=mode==="undeclared"?undefined:readAdapterSources("unit-adapter",adapter);
+      verifyAdapterSources("unit-adapter",runtime);
+      process.stdout.write(JSON.stringify({sources:identity.adapterSources,engineVersion:identity.engineVersion}));
+    }catch(e){process.stdout.write(JSON.stringify({error:e.message,engineVersion:identity.engineVersion}));}
+  `,
     ],
     { encoding: "utf8" },
   )
-}
-
-test.each([
-  ["match", true, "bound to its loaded source"],
-  ["verified-once", true, "bound to its loaded source"],
-  ["undeclared", false, "adapter source identity undeclared for unit-adapter"],
-  ["unadvertised", false, "adapter source identity undeclared for unit-adapter"],
-  ["adapter", false, "adapterSources"],
-  ["engine", false, "treeOid"],
-  ["dirty", false, "cleanTree"],
-  ["registry-match", true, "bound to its loaded source"],
-  ["registry-drift", false, "lockIntegrity"],
-  ["wasm-match", true, "bound to its loaded source"],
-  ["wasm-drift", false, "sha256"],
-  ["native-match", true, "bound to its loaded source"],
-  ["native-drift", false, "sha256"],
-  ["native-js", false, "native"],
-  ["native-wasm", false, "native"],
-  ["native-missing-binary", false, "sha256"],
-  ["native-missing-digest", false, "sha256"],
-  ["native-empty-digests", false, "sha256"],
-  ["native-adapter", false, "adapterSources"],
-  ["native-entry", false, "imported entry"],
-  ["entry", false, "identity undeclared"],
-  ["outside", false, "outside its imported checkout"],
-  ["dist", false, "adapter source verification failed"],
-  ["absent", false, "declares no reply delivery"],
-  ["identity", false, "no measured runtime identity"],
-] as const)("reply eligibility %s uses source/engine facts, not unchanged versions", (mode, member, reason) => {
-  const run = runReplyDecision(mode)
   expect(run.status, run.stderr).toBe(0)
   const body = JSON.parse(run.stdout) as {
     engineVersion: string
-    result: { member: boolean; reason: string }
-    warnings: string[]
-    collectorError?: string
-  }
-  if (["adapter", "native-adapter"].includes(mode)) {
-    expect(body.collectorError).toMatch(
-      /^adapter source declaration stale for unit-adapter:.*declared [a-f0-9]{40}, actual [a-f0-9]{40}/,
-    )
-  }
-  if (["undeclared", "unadvertised"].includes(mode)) {
-    expect(body.collectorError).toBe("adapter source identity undeclared for unit-adapter")
+    error?: string
+    sources?: readonly { path: string; blobOid: string }[]
   }
   expect(body.engineVersion).toBe("0.7.1")
-  expect(body.result.member).toBe(member)
-  expect(body.result.reason).toContain(reason)
-  expect(body.warnings).toHaveLength(member ? 0 : 1)
-  if (!member) expect(body.warnings[0]).toContain(body.result.reason)
+  if (error) expect(body.error).toContain(error)
+  else {
+    expect(body.error).toBeUndefined()
+    expect(body.sources).toEqual([
+      { path: "packages/vt100/src/index.ts", blobOid: expect.stringMatching(/^[a-f0-9]{40}$/) },
+    ])
+  }
+})
+
+// The retired expected-SHA check must not take native custody with it. Existing
+// comparer tests never called sidecarIdentity, so mutate each independently checked
+// receipt fact at the public loader boundary. The cache entry models an already
+// loaded adapter; this test measures file identity and does not execute an engine.
+test.each([
+  ["match", undefined],
+  ["sha", "receipt missing or does not match loaded binary"],
+  ["tree", "receipt source tree differs"],
+  ["lock", "receipt lock differs"],
+] as const)("native artifact receipt %s is checked independently of delivery metadata", (mode, error) => {
+  const run = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `
+    import {execFileSync} from "node:child_process";
+    import {createHash} from "node:crypto";
+    import {writeFileSync,readFileSync,mkdirSync} from "node:fs";
+    import {join} from "node:path";
+    const adapterRoot=${JSON.stringify(fixture.termless)}, mode=${JSON.stringify(mode)};
+    const git=(...args)=>execFileSync("git",["-C",adapterRoot,...args],{encoding:"utf8"}).trim();
+    const directory=join(adapterRoot,"packages/vt100"),native=join(directory,"native");
+    mkdirSync(native);writeFileSync(join(native,"Cargo.lock"),"native lock bytes\\n");writeFileSync(join(native,"lib.rs"),"native source bytes\\n");
+    writeFileSync(join(directory,".gitignore"),"identity.node*\\n");
+    git("add","packages/vt100/native","packages/vt100/.gitignore");git("-c","user.name=Fixture","-c","user.email=fixture@example.invalid","commit","-qm","native identity inputs");
+    const addon=join(directory,"identity.node");writeFileSync(addon,"loaded native identity fixture bytes");
+    const hash=p=>createHash("sha256").update(readFileSync(p)).digest("hex");
+    const digest=hash(addon);
+    const receipt={sha256:digest,engineVersion:"fixture-native",sourceCommit:git("rev-parse","HEAD"),buildHash:"fixture-build",toolchain:"fixture-toolchain",lockSha256:hash(join(native,"Cargo.lock")),nativeTreeOid:git("rev-parse","HEAD:packages/vt100/native")};
+    if(mode==="sha")receipt.sha256="0".repeat(64);
+    if(mode==="tree")receipt.nativeTreeOid="0".repeat(40);
+    if(mode==="lock")receipt.lockSha256="0".repeat(64);
+    writeFileSync(addon+".receipt.json",JSON.stringify(receipt));
+    require.cache[addon]={id:addon,filename:addon,loaded:true,exports:{}};
+    const {headlessRuntimeIdentity}=await import(${JSON.stringify(fixture.identityHref)});
+    try{const identity=await headlessRuntimeIdentity("vt100","@termless/vt100","native");process.stdout.write(JSON.stringify({identity,digest}));}
+    catch(e){process.stdout.write(JSON.stringify({error:e.message}));}
+  `,
+    ],
+    { encoding: "utf8" },
+  )
+  expect(run.status, run.stderr).toBe(0)
+  const body = JSON.parse(run.stdout) as { error?: string; identity?: unknown; digest: string }
+  if (error) expect(body.error).toContain(error)
+  else {
+    expect(body.error).toBeUndefined()
+    expect(body.identity).toMatchObject({
+      kind: "native",
+      engineVersion: "fixture-native",
+      loadedBinary: { sha256: body.digest },
+      provenance: { sha256: body.digest },
+    })
+  }
 })
