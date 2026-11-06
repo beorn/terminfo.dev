@@ -2062,7 +2062,12 @@ test.skipIf(!isKittyAvailable())(
         : ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
         const umbrella = registryDefinitions([id])[0]!.lib!(source)
         expect(umbrella.tests, id).toEqual([
-          { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
+          {
+            id: "criterion",
+            status: "probe-todo",
+            reason:
+              "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+          },
         ])
         expect(umbrella.observation, id).toBeUndefined()
       }
