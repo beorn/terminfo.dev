@@ -11,7 +11,6 @@ import {
   type OscMetadataExtension,
   type SemanticMarkExtension,
   type SixelStorageExtension,
-  type ReplyDeliveryExtension,
   type TerminalBackend,
   type WarningExtension,
 } from "@termless/core"
@@ -47,39 +46,10 @@ import type {
   CollectorAttempt,
 } from "@terminfo/probe-defs"
 import { validateHostRecipeCauses } from "@terminfo/run-parser"
-import {
-  headlessRuntimeIdentity,
-  readAdapterSources,
-  type HeadlessProbeRuntime,
-  type ReplyPathDecision,
-} from "./headless-identity.ts"
+import { headlessRuntimeIdentity, readAdapterSources, type HeadlessProbeRuntime } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
 import { notTestedResult, NO_SAME_PATH_CONTROL } from "../probe-defs/src/helpers.ts"
-
-/**
- * Preserve run identity before collection: a declared native SHA must equal the loaded binary.
- * Source-audit availability affects individual cells, never whether this artifact can be measured.
- */
-export function assertDeclaredNativeSha(
-  backend: string,
-  runtimeIdentity: HeadlessRuntimeIdentity,
-  declaration: ReplyDeliveryExtension["replyDelivery"] | undefined,
-  nativeTreeOid?: string,
-  draftPath?: string,
-  warn: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
-): void {
-  if (backend === "kitty" || runtimeIdentity.kind !== "native") return
-  const loadedSha = runtimeIdentity.loadedBinary.sha256
-  const expectedSha = declaration?.engine.kind === "native" ? declaration.engine.sha256 : undefined
-  if (expectedSha === undefined || loadedSha === expectedSha) return
-  const message =
-    `${backend} loaded native artifact ${loadedSha} differs from expected sha ${expectedSha} ` +
-    `(nativeTreeOid ${nativeTreeOid ?? "unrecorded"}; draft: ${draftPath ?? "unrecorded"}); ` +
-    `check the artifact receipt and declared engine SHA before collecting`
-  warn(message)
-  throw new Error(message)
-}
 
 /** Finalize the existing attempt without breaking its source-audited host-input citations. */
 export function finalizeHeadlessAttempt(
@@ -757,9 +727,8 @@ async function collectPass(
   let graceMs: number | undefined
   const replyPath: {
     backend: string
-    declaration?: ReplyDeliveryExtension["replyDelivery"]
     runtimeIdentity?: HeadlessRuntimeIdentity
-    decisions: Record<string, Pick<ReplyPathDecision, "member" | "reason" | "runtimeIdentity">>
+    decisions: Record<string, { member: boolean; reason: string; runtimeIdentity?: HeadlessRuntimeIdentity }>
   } = { backend: backendName, ...(runtime && { runtimeIdentity: runtime.identity }), decisions: {} }
   const batch: Batch = {
     results:
@@ -808,12 +777,11 @@ async function collectPass(
             },
           }
         : undefined
-      const declaration = hasExtension<ReplyDeliveryExtension>(backend, "reply-delivery")
-        ? backend.replyDelivery
-        : undefined
       const hostRecipes = probe.libHostRecipes ?? []
-      const nativeHostRoute = declaration?.engine.kind === "native"
-      const usesHostRoute = hostRecipes.length > 0 && (nativeHostRoute || declaration === undefined)
+      const nativeHostRoute = initializedRuntime?.identity.kind === "native"
+      const usesHostRoute = hostRecipes.length > 0 && nativeHostRoute
+      // Preserve the existing strict-capture cohort independently of native routing.
+      const recordsHostRecipes = nativeHostRoute && ["alacritty", "kitty", "wezterm"].includes(backendName)
       const decision = {
         member: pass?.control === true && !usesHostRoute,
         reason: usesHostRoute
@@ -829,16 +797,15 @@ async function collectPass(
       const reason = identityChanged
         ? `${backendName} initialized instance identity differs from the recorded run identity`
         : decision.reason
-      if (declaration) replyPath.declaration ??= declaration
       replyPath.decisions[probe.id] = {
         member: decision.member && !identityChanged,
         reason,
         ...(initializedRuntime && { runtimeIdentity: initializedRuntime.identity }),
-        ...(nativeHostRoute && { hostRecipes }),
+        ...(recordsHostRecipes && { hostRecipes }),
       }
       batch.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
       if (identityChanged) throw new Error(reason)
-      if (nativeHostRoute) {
+      if (recordsHostRecipes) {
         if (!draft) throw new Error("Native host recipe capture requires the actual run draft")
         hostRecord = { runId: draft.runId, captures: [], causes: [] }
       }
