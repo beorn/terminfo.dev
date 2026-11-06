@@ -100,7 +100,9 @@ test("headless osc1 requires a verified title control before deciding independen
   const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc1-icon")
   const result = probe!.lib!(source({ current: "original-icon" }, { ignoresTitleSetup: true }))
   expect(result.observation).toBeUndefined()
-  expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
+  expect(result.notTested?.noObservable).toBe(
+    "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
+  )
 })
 
 test.each(["original-icon", "test-icon"])(
@@ -109,7 +111,9 @@ test.each(["original-icon", "test-icon"])(
     const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc1-icon")
     const result = probe!.lib!(source({ current: initial }, { ignoresIconSet: true }))
     expect(result.observation).toBeUndefined()
-    expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
+    expect(result.notTested?.noObservable).toBe(
+      "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
+    )
   },
 )
 
@@ -123,7 +127,9 @@ test.each(["unchanged-title", "Test Title"])(
       const ctx = source(null, { initialTitle, ignoresTitleSetup })
       const result = probe.lib!(ctx)
       if (ignoresTitleSetup) {
-        expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
+        expect(result.notTested?.noObservable).toBe(
+          "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
+        )
         expect(result.observation).toBeUndefined()
       } else {
         expect(result.observation).toMatchObject({ outcome: "supported" })
