@@ -116,66 +116,74 @@ test.runIf(OWNED_LAYOUT)(
 test.runIf(OWNED_LAYOUT)(
   "Kitty report qualifies its eleven literal candidates while delivered OSC9 stays unreported",
   async () => {
-    const identity = await headlessIdentity.headlessRuntimeIdentity("kitty", "@termless/kitty", "native")
-    const value = createKittyBackend({ cols: 80, rows: 24 })
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-kitty-report-"))
+    vi.stubEnv("KITTY_CONFIG_DIRECTORY", join(directory, "kitty"))
+    vi.stubEnv("XDG_CACHE_HOME", join(directory, "cache"))
     try {
-      identity.adapterSources = headlessIdentity.readAdapterSources("kitty", value)
-      const source = createLibProbeSource(value, undefined, identity, undefined)
-      source.feed("\x1b]9;terminfo-delivery-control\x07")
-      expect(source.getUnhandledSequences!()).toEqual([])
-      expect(source.getNotifications!()).toContain("terminfo-delivery-control")
-    } finally {
-      value.destroy()
-    }
-    const candidates = [
-      "extensions.osc633-b",
-      "extensions.osc633-e",
-      "extensions.osc-633-vscode",
-      "extensions.osc113-reset-pointer-fg",
-      "extensions.osc114-reset-pointer-bg",
-      "extensions.osc176-app-id",
-      "extensions.osc440-audio",
-      "extensions.osc555-flash",
-      "extensions.osc666-termprop",
-      "extensions.osc710-font-normal",
-      "modes.decsscls",
-    ]
-    const held = ["extensions.osc133-b", "extensions.semantic-prompts", "extensions.osc3008-context"]
-    const ids = [...candidates, ...held]
-    const draft = initializeRunDraft({
-      source: { kind: "live" },
-      runId: "kitty-d2-report-fixture",
-      sourceRevision: "a".repeat(40),
-      intendedSubject: { kind: "lib", id: "kitty" },
-      manifest: {
-        schemaVersion: 4,
-        probeHash: "kitty-d2-report-fixture",
-        adapterVersion: "fixture",
-        catalogIds: ids,
-        probes: { term: [], mux: [], lib: ids },
-      },
-    })
-    const batch = await collectBatch(
-      async () => createKittyBackend(),
-      "kitty",
-      registryDefinitions(ids),
-      draft,
-      undefined,
-      {
-        identity,
-        adapterPackage: "@termless/kitty",
-        adapterType: "native",
-        adapterPath: fileURLToPath(import.meta.resolve("@termless/kitty")),
-      },
-    )
-    expect(batch.results).toHaveLength(14)
-    for (const result of batch.results) {
-      expect(result.status, JSON.stringify(result)).toBe(
-        candidates.includes(result.featureId) ? "unsupported" : "probe-todo",
-      )
-      if (candidates.includes(result.featureId)) {
-        expect(result.reason).toBe("library reported this sequence as unhandled")
+      const identity = await headlessIdentity.headlessRuntimeIdentity("kitty", "@termless/kitty", "native")
+      const value = createKittyBackend({ cols: 80, rows: 24 })
+      try {
+        identity.adapterSources = headlessIdentity.readAdapterSources("kitty", value)
+        const source = createLibProbeSource(value, undefined, identity, undefined)
+        source.feed("\x1b]9;terminfo-delivery-control\x07")
+        expect(source.getUnhandledSequences!()).toEqual([])
+        expect(source.getNotifications!()).toContain("terminfo-delivery-control")
+      } finally {
+        value.destroy()
       }
+      const candidates = [
+        "extensions.osc633-b",
+        "extensions.osc633-e",
+        "extensions.osc-633-vscode",
+        "extensions.osc113-reset-pointer-fg",
+        "extensions.osc114-reset-pointer-bg",
+        "extensions.osc176-app-id",
+        "extensions.osc440-audio",
+        "extensions.osc555-flash",
+        "extensions.osc666-termprop",
+        "extensions.osc710-font-normal",
+        "modes.decsscls",
+      ]
+      const held = ["extensions.osc133-b", "extensions.semantic-prompts", "extensions.osc3008-context"]
+      const ids = [...candidates, ...held]
+      const draft = initializeRunDraft({
+        source: { kind: "live" },
+        runId: "kitty-d2-report-fixture",
+        sourceRevision: "a".repeat(40),
+        intendedSubject: { kind: "lib", id: "kitty" },
+        manifest: {
+          schemaVersion: 4,
+          probeHash: "kitty-d2-report-fixture",
+          adapterVersion: "fixture",
+          catalogIds: ids,
+          probes: { term: [], mux: [], lib: ids },
+        },
+      })
+      const batch = await collectBatch(
+        async () => createKittyBackend(),
+        "kitty",
+        registryDefinitions(ids),
+        draft,
+        undefined,
+        {
+          identity,
+          adapterPackage: "@termless/kitty",
+          adapterType: "native",
+          adapterPath: fileURLToPath(import.meta.resolve("@termless/kitty")),
+        },
+      )
+      expect(batch.results).toHaveLength(14)
+      for (const result of batch.results) {
+        expect(result.status, JSON.stringify(result)).toBe(
+          candidates.includes(result.featureId) ? "unsupported" : "probe-todo",
+        )
+        if (candidates.includes(result.featureId)) {
+          expect(result.reason).toBe("library reported this sequence as unhandled")
+        }
+      }
+    } finally {
+      vi.unstubAllEnvs()
+      rmSync(directory, { recursive: true, force: true })
     }
   },
   60_000,
@@ -2031,13 +2039,20 @@ test.skipIf(!isKittyAvailable())("Kitty semantic readers witness fresh starts an
       expect(marks.first.at(-1), id).toEqual({ type, startRow: 0, startCol: 0 })
       expect(marks.second.at(-1), id).toEqual({ type, startRow: 1, startCol: 2 })
     }
-    // The umbrella callbacks stay PROBE TODO until a full-lifecycle reader exists (b5fecd017, #32247).
-    for (const id of ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
+    // Full semantic lifecycle remains TODO. Owned Kitty now rejects this OSC633 payload explicitly.
+    for (const id of OWNED_LAYOUT
+      ? ["extensions.semantic-prompts"]
+      : ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
       const umbrella = registryDefinitions([id])[0]!.lib!(source)
       expect(umbrella.tests, id).toEqual([
         { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
       ])
       expect(umbrella.observation, id).toBeUndefined()
+    }
+    if (OWNED_LAYOUT) {
+      expect(registryDefinitions(["extensions.osc-633-vscode"])[0]!.lib!(source).observation).toMatchObject({
+        outcome: "unsupported",
+      })
     }
     const cached = source.getSemanticMarks!()
     const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
