@@ -6267,8 +6267,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const absence = ALACRITTY_D2_ABSENCES[definition.id]
   const vtermReason = VTERM_D2_DECLARATIONS[definition.id]
   const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
-  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason && !weztermAbsence))
+  if (!lib || (!vt100Target && !kittyTarget && !reason && !absence && !vtermReason && !weztermAbsence)) {
     return definition
+  }
   return {
     ...definition,
     ...(vt100Target && definition.libAssertionType === "query_reply"
