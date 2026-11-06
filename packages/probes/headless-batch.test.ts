@@ -2339,28 +2339,26 @@ test.for(["semantic-marks", "sixel-storage"] as const)(
   },
 )
 
-// @failure The native WezTerm mouse bridge is not reached by the registered callbacks, or an unbound path is graded.
+// @failure The native WezTerm mouse bridge is not reached by the registered callbacks, or reported bytes are ignored.
 // @level l5
 // @consumer Real native WezTerm through the production collector's per-probe backend/source boundary.
-test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide six cells and retain one unbound path", () => {
+test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide all seven cells", () => {
   for (const [id, outcome] of [
     ["input.xtest-click", "supported"],
     ["input.xtest-wheel", "supported"],
     ["input.button-event-mouse", "supported"],
     ["input.x10-mouse", "unsupported"],
     ["input.urxvt-mouse", "unsupported"],
-    ["input.pixel-mouse", null],
+    ["input.pixel-mouse", "supported"],
     ["input.kitty-click-events", "unsupported"],
   ] as const) {
     // collectBatch likewise constructs and initializes one fresh backend inside its per-probe loop.
-    const value = createWeztermBackend({ cols: 80, rows: 24 })
+    const value = createWeztermBackend({ cols: 80, rows: 24, pixelGeometry: { cellWidth: 10, cellHeight: 20 } })
     try {
       const result = registryDefinitions([id])[0]!.lib!(createLibProbeSource(value, undefined, undefined, undefined))
-      if (outcome === null) {
-        expect(result.notTested, id).toBeDefined()
-        expect(result.observation, id).toBeUndefined()
-      } else {
-        expect(result.observation, id).toMatchObject({ outcome, assertionType: "input_bytes" })
+      expect(result.observation, id).toMatchObject({ outcome, assertionType: "input_bytes" })
+      if (id === "input.pixel-mouse") {
+        expect(JSON.parse(result.response!)).toMatchObject({ negativeControl: null, report: "\x1b[<0;41;25M" })
       }
     } finally {
       value.destroy()
