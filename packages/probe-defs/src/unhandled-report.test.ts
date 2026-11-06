@@ -25,24 +25,28 @@ import { parserStateResult, recordExecutedProbe } from "./helpers.ts"
 const REASON = "library reported this sequence as unhandled"
 
 // A report or declaration cannot replace a deciding callback supplied by the registry.
-test.each(["sgr.fg.256", "extensions.osc2-title", "device.xtwinops-22", "editing.decsace"])(
-  "%s retains its existing measured reader outcome",
-  (id) => {
-    for (const pass of [true, false]) {
-      const definition = withD2LibraryObservation({
-        id,
-        lib: () => parserStateResult(pass, "existing measured reader", { measured: pass }),
-        term: null,
-      })
-      const source = reportingSource({ records: [recordsOsc("2"), recordsCsi("38;5;173m")] })
-      Object.assign(source, { backendName: "vt100", runtimeIdentity: { kind: "js", engineVersion: "0.13.1" } })
-      const result = definition.lib!(source)
-      expect(result.observation?.outcome).toBe(pass ? "supported" : "unsupported")
-      expect(isDeclaredUntestable(result)).toBe(false)
-      expect(JSON.stringify(result)).not.toContain(REASON)
-    }
-  },
-)
+test.each([
+  "sgr.fg.256",
+  "extensions.osc2-title",
+  "device.xtwinops-22",
+  "editing.decsace",
+  "extensions.osc52-clipboard",
+  "extensions.osc52-write",
+])("%s retains its existing measured reader outcome", (id) => {
+  for (const pass of [true, false]) {
+    const definition = withD2LibraryObservation({
+      id,
+      lib: () => parserStateResult(pass, "existing measured reader", { measured: pass }),
+      term: null,
+    })
+    const source = reportingSource({ records: [recordsOsc("2"), recordsOsc("52"), recordsCsi("38;5;173m")] })
+    Object.assign(source, { backendName: "vt100", runtimeIdentity: { kind: "js", engineVersion: "0.13.1" } })
+    const result = definition.lib!(source)
+    expect(result.observation?.outcome).toBe(pass ? "supported" : "unsupported")
+    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(JSON.stringify(result)).not.toContain(REASON)
+  }
+})
 
 // NR-C: existing scalar cases cannot catch partial, reordered or extra reports.
 test.each([
@@ -164,6 +168,27 @@ const recordsCsi = (code: string) => ({
   match: new RegExp(`\\x1b\\[${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
   code: { kind: "csi" as const, code },
 })
+
+// Route 2: the clipboard is outside the library, but its own parser rejection
+// can decide the write. Missing controls and the unqueued subjects stay on their prior path.
+test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
+  "%s VT100 rejection needs its own report and the existing handled control",
+  (id) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    const source = reportingSource({ records: [recordsOsc("2"), recordsOsc("52")], titleApplies: false })
+    Object.assign(source, { backendName: "vt100" })
+    expect(definition.lib!(source).observation?.outcome).toBe("unsupported")
+    for (const overrides of [
+      { backendName: "vt220" },
+      { getUnhandledSequences: undefined },
+      { getCell: inertLibProbeSource().getCell },
+    ]) {
+      const control = reportingSource({ records: [recordsOsc("2"), recordsOsc("52")], titleApplies: false })
+      Object.assign(control, { backendName: "vt100", ...overrides })
+      expect(JSON.stringify(definition.lib!(control))).not.toContain(REASON)
+    }
+  },
+)
 
 // @failure H-4's numeric rejection reports remain TODO, or a failed handled control invents a negative.
 // @level l2

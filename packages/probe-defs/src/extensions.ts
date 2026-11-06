@@ -6725,6 +6725,7 @@ const DEC_SETUP_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSequ
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
+  const decClipboard = definition.id === "extensions.osc52-clipboard" || definition.id === "extensions.osc52-write"
   const decTarget = DEC_COLOUR_REPORTS[definition.id]
   const decSetup = DEC_SETUP_REPORTS[definition.id]
   const decsace = definition.id === "editing.decsace"
@@ -6745,7 +6746,8 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
     GHOSTTY_WEB_IMAGE_D2_DECLARATIONS[definition.id]
   if (
     !lib ||
-    (!decTarget &&
+    (!decClipboard &&
+      !decTarget &&
       !decSetup &&
       !decsace &&
       !vt100Target &&
@@ -6763,12 +6765,13 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   }
   return {
     ...definition,
-    ...(vt100Target && (definition.libAssertionType === "query_reply" || definition.libAssertionType === "input_bytes")
+    ...((vt100Target || decClipboard) &&
+    (definition.libAssertionType === "query_reply" || definition.libAssertionType === "input_bytes")
       ? {
           // A report verdict records buffer_state; the probe's own arm keeps its type.
           libAssertionType: {
-            when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
-              typeof source.getUnhandledSequences === "function",
+            when: (source: Pick<LibProbeSource, "getUnhandledSequences" | "backendName">) =>
+              typeof source.getUnhandledSequences === "function" && (!decClipboard || source.backendName === "vt100"),
             then: [definition.libAssertionType, "buffer_state"] as const,
             otherwise: [definition.libAssertionType] as const,
           },
@@ -6777,6 +6780,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
     lib(ctx) {
       const handoff = appJobHandoff(ctx, definition.id, lib)
       if (handoff) return handoff
+      if (ctx.backendName === "vt100" && decClipboard) {
+        return unhandledOscReportResult(ctx, "\x1b]52;c;dGVybWluZm8=\x07", lib(ctx))
+      }
       if ((ctx.backendName === "vt100" || ctx.backendName === "vt220") && (decTarget || decSetup || decsace)) {
         const result = lib(ctx)
         if (reportsDecidedOutcome(result)) return result

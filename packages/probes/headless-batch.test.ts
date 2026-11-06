@@ -6014,6 +6014,18 @@ test.runIf(OWNED_LAYOUT).each([
   for (const observation of batch.observations) expect(observation.assertionType).toBe("buffer_state")
 })
 
+// Route 2: the real collector must admit the report's buffer_state assertion
+// for these query_reply definitions; callback-only tests cannot catch that boundary.
+test.runIf(OWNED_LAYOUT)("VT100 OSC52 write reports cross the real collector boundary", async () => {
+  const ids = ["extensions.osc52-clipboard", "extensions.osc52-write"]
+  const batch = await collectBatch(resolveVt100, "vt100", registryDefinitions(ids))
+  expect(batch.results.map(({ featureId, status }) => [featureId, status])).toEqual(
+    ids.map((id) => [id, "unsupported"]),
+  )
+  for (const result of batch.results) expect(result.reason).toBe("library reported this sequence as unhandled")
+  expect(batch.observations.map(({ assertionType }) => assertionType)).toEqual(["buffer_state", "buffer_state"])
+})
+
 // NR-C: scalar-only reporting misses colour payload lists, while setup rejection
 // must declare the dependent claim Untestable rather than grade the target.
 test.runIf(OWNED_LAYOUT).each([
