@@ -2248,11 +2248,7 @@ export function declaredUntestableResult(reason: string, state: object): NotTest
 }
 
 /** Shared declared-absent viewport branch; callers retain their actuator contradiction check. */
-export function productViewportAbsenceResult(
-  ctx: LibProbeSource,
-  reason: string,
-  state: object,
-): ProbeCallbackResult {
+export function productViewportAbsenceResult(ctx: LibProbeSource, reason: string, state: object): ProbeCallbackResult {
   const version = ctx.runtimeIdentity?.engineVersion
   if (
     !(
