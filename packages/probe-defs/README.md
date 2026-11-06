@@ -398,6 +398,17 @@ Alacritty's public events provide no rejection report. A supplied real reader,
 an already decided result or an unknown profile retains its original path.
 Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration cut.
 
+The `vterm` D2 slice shares the same private helper (`declaredD2InterfaceAbsence`)
+with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source tree
+`3d58d29a8265aafd928e0736dde6723e2bac2007`) to declare seven exact-version
+public-interface absences: `modes.decsscls`, `extensions.osc22-pointer`,
+`extensions.osc133-d`, `extensions.osc633-d`, `extensions.osc633-e`,
+`extensions.semantic-prompts`, and `extensions.osc-633-vscode`. Because `vterm`
+exposes `getSemanticMarks` for start zones (`extensions.osc133-a`, `b`, and `c`
+stay Supported; `extensions.osc133-p` stays Unsupported), reader precedence
+checks the `semantic-command-end` capability alongside `getUnhandledSequences`
+and decided outcomes; the six host-effect OSCs stay held.
+
 The twelve proposed Untestable declarations remain outside this negative-only cut pending
 operator wording approval: DECRQSS, XTGETTCAP, XTGETXRES, the Kitty graphics query/transmit
 cells, and OSC 22, 176, 3008, 440, 555, 666 and 710 retain their prior paths. OSC52 read also
