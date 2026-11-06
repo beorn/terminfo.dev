@@ -13,6 +13,7 @@ import {
   declaredUntestableResult,
   isDeclaredUntestable,
   recordExecutedProbe,
+  parserStateResult,
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
 import { withD2LibraryObservation } from "./extensions.ts"
@@ -48,6 +49,8 @@ const library = (backendName = "alacritty"): LibProbeSource =>
 describe("WezTerm D2 audited interface absence", () => {
   const identity = {
     kind: "native",
+    adapterVersion: "0.10.2",
+    termlessRevision: "f540232e22ba0ccb4005dba5ba2d8de10cb129c5",
     engineVersion: "0.1.0-fork.5",
     loadedBinary: {
       path: "termless-wezterm.node",
@@ -133,7 +136,7 @@ describe("WezTerm D2 audited interface absence", () => {
     for (const [id] of targets) {
       const definition = ALL_PROBES.find((probe) => probe.id === id)!
       expect(isDeclaredUntestable(definition.lib!(source({ getUnhandledSequences: () => [] })))).toBe(false)
-      const decided = { pass: true, response: "retained original result" }
+      const decided = parserStateResult(true, "retained original reader result", { value: "fixture" })
       expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source())).toBe(decided)
     }
   })
