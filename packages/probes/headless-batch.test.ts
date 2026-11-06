@@ -6101,6 +6101,65 @@ test.each([["libvterm", resolveLibvterm]] as const)(
   },
 )
 
+// R1: native callback tests cannot catch a registry route that still declares
+// these cells unreadable, rejects buffer_state, or lets an old source-absence
+// cohort shadow the rebuilt adapter's working retained-history reader.
+test.runIf(OWNED_LAYOUT)(
+  "libvterm R1 reports decide six cells while preserving measured retained history",
+  async () => {
+    const historyIds = ["erase.screen.scrollback", "scrollback.accumulate", "scrollback.total-lines"]
+    const ids = [
+      "modes.xtpushcolors",
+      "modes.xtpopcolors",
+      "modes.decsscls",
+      "editing.decsace",
+      "extensions.kitty-graphics.display",
+      "extensions.kitty-graphics.transmit",
+      ...historyIds,
+    ]
+    const measured = await resolveLibvterm()
+    measured.init({ cols: 80, rows: 24 })
+    const identity = await headlessIdentity.headlessRuntimeIdentity("libvterm", "@termless/libvterm", "wasm")
+    identity.adapterSources = headlessIdentity.readAdapterSources("libvterm", measured)
+    measured.destroy()
+    const runtime = {
+      identity,
+      adapterPath: fileURLToPath(import.meta.resolve("@termless/libvterm")),
+      adapterPackage: "@termless/libvterm",
+      adapterType: "wasm",
+    }
+    const batch = await collectBatch(
+      resolveLibvterm,
+      "libvterm",
+      registryDefinitions(ids),
+      undefined,
+      undefined,
+      runtime,
+    )
+    expect(batch.results).toHaveLength(ids.length)
+    for (const result of batch.results) {
+      if (historyIds.includes(result.featureId)) {
+        expect(result.status, result.featureId).toBe("supported")
+        continue
+      }
+      const noWay = ["modes.xtpushcolors", "modes.xtpopcolors", "editing.decsace"].includes(result.featureId)
+      expect(result.status, result.featureId).toBe(noWay ? "untestable" : "unsupported")
+      if (noWay) {
+        expect(result.reason).toBe(
+          "libvterm 0.3.3 drops CSI with intermediate # or * in on_csi before its public fallback, and has no other hook.",
+        )
+      } else {
+        expect(result.reason, result.featureId).toBe("library reported this sequence as unhandled")
+      }
+    }
+    expect(batch.observations).toHaveLength(6)
+    for (const observation of batch.observations) {
+      expect(observation.assertionType).toBe("buffer_state")
+      expect(observation.outcome).toBe(historyIds.includes(observation.featureId) ? "supported" : "unsupported")
+    }
+  },
+)
+
 test.runIf(OWNED_LAYOUT).each([
   ["vt100", resolveVt100],
   ["vt220", resolveVt220],

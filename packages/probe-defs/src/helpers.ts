@@ -84,6 +84,13 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/libvterm/src/wasm-bindings.ts": "55ddc684464e525e63cd523d2d6a638c4c6dbcd9",
     "packages/libvterm/wasm/libvterm.js": "d28bc97333d33129c7c9764a331a3d47f088f7b3",
   },
+  libvtermR1: {
+    "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
+    "packages/libvterm/src/backend.ts": "fff111feabbcf729b6a071c33db2365b55706e7f",
+    "packages/libvterm/src/wasm-bindings.ts": "a983fb2cd6fc9a97c0d035a3a4bccb967f0bcfd4",
+    "packages/libvterm/wasm/libvterm.js": "35ae07fbdb0fc67ee1a73477fe53ea6cff89a985",
+    "src/terminal/key-mapping.ts": "a687ff18768ae42b315f689122bcef07244b036e",
+  },
   // Conceal forwarding changes the backend blob; exact native receipt and artifact audits bind the rebuilt Zig.
   ghosttyNative: {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
@@ -2384,9 +2391,9 @@ export const SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES: ReadonlySet<string> = new Set
 ])
 
 /**
- * The qualified WASM artifact per libvterm history cohort, keyed as in ADAPTER_SOURCE_AUDITS. A rebuilt adapter
- * adds a cohort here rather than editing a grading literal in the review, and each key names the review's own
- * source citation (31386/32220).
+ * Historical libvterm profiles without a retained-history reader, keyed as in ADAPTER_SOURCE_AUDITS.
+ * Reader-bearing builds use the measured history criterion, rather than inheriting this absence review.
+ * Each key names the review's own source citation (31386/32220).
  */
 const LIBVTERM_HISTORY_ARTIFACTS = {
   libvterm3b7c0232: {
