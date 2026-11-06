@@ -221,7 +221,7 @@ test.each([
   for (const spec of [
     { records: [recordsCsi(code)], modeApplies: false },
     { records: [recordsCsi(code), recordsCsi("?7l")] },
-    { records: [recordsCsi(code), recordsCsi("?9998h")] },
+    { records: [recordsCsi(code), { ...recordsCsi(code), code: { kind: "csi" as const, code: "?9998h" } }] },
     { records: [recordsCsi("?9998h")] },
   ]) {
     expect(definition.lib!(reportingSource(spec)).observation?.outcome, id).not.toBe("unsupported")
