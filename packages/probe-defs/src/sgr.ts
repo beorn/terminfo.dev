@@ -875,7 +875,9 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         if (!changed || sameCellColor(baseColor, changed)) {
           // #30701, @cto ruling C: the colored X is the reference the reset is read against; a setup
           // that reads back as the default leaves the reset with no observable.
-          const reason = `Open: the ${channel === "bg" ? "background" : "text"} colour we set first (SGR ${setup}) read the same as the default, so we cannot tell whether the reset to default worked.`
+          const reason = changed
+            ? `Open: the ${channel === "bg" ? "background" : "text"} colour we set first (SGR ${setup}) read the same as the default, so we cannot tell whether the reset to default worked.`
+            : `Open: our test could not read the ${channel === "bg" ? "background" : "text"} colour we set first (SGR ${setup}), so we cannot tell whether the reset to default worked.`
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, state)
         }
         if (resetColor === undefined) {

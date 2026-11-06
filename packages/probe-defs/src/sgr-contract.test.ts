@@ -644,8 +644,8 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
           status: "probe-todo",
           reason:
             id === "sgr.fg.default"
-              ? "Open: the text colour we set first (SGR 31) read the same as the default, so we cannot tell whether the reset to default worked."
-              : "Open: the background colour we set first (SGR 42) read the same as the default, so we cannot tell whether the reset to default worked.",
+              ? "Open: our test could not read the text colour we set first (SGR 31), so we cannot tell whether the reset to default worked."
+              : "Open: our test could not read the background colour we set first (SGR 42), so we cannot tell whether the reset to default worked.",
         }),
       )
     }

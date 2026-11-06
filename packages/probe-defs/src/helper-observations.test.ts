@@ -1101,6 +1101,22 @@ test("SGR 39 and 49 restore the measured default, including concrete RGB default
     ])
     expect(uncalibrated?.observation, id).toBeUndefined()
     expect(uncalibrated?.assertions, id).toBeUndefined()
+    // An unread seed cannot be described as equal to a concrete default colour.
+    const unreadSeed = run([baseline, null, baseline])
+    expect(unreadSeed?.tests, id).toEqual([
+      {
+        id: "review",
+        status: "probe-todo",
+        reason: `Open: our test could not read the ${channel === "fg" ? "text" : "background"} colour we set first (SGR ${channel === "fg" ? 31 : 42}), so we cannot tell whether the reset to default worked.`,
+      },
+    ])
+    expect(unreadSeed?.observation, id).toBeUndefined()
+    expect(unreadSeed?.assertions, id).toBeUndefined()
+    expect(JSON.parse(unreadSeed!.response!)).toMatchObject({
+      baseline: { [channel]: baseline },
+      before: { [channel]: null },
+      after: { [channel]: baseline },
+    })
   }
 })
 
