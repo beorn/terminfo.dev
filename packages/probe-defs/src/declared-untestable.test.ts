@@ -916,7 +916,8 @@ describe("audited OSC interface absence", () => {
     const blink = ALL_PROBES.find((probe) => probe.id === "sgr.blink")!.lib!
     expect(fold("sgr.blink", blink(d2Source()))).toMatchObject({
       status: "untestable",
-      reason: expect.stringMatching(/accepts SGR 5 blink and sends it to a debug line at term\/mod\.rs:1927/u),
+      reason:
+        "Alacritty alacritty_terminal 0.26.0 handles blink by writing a debug line and keeps no blink flag, so no public state, reply or typed event exists.",
     })
     expect(isDeclaredUntestable(blink(d2Source({ runtimeIdentity: { ...alacritty, engineVersion: "0.26.1" } })))).toBe(
       false,

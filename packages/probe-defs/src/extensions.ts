@@ -3263,7 +3263,7 @@ function clipboardPasteHandoff(ctx: LibProbeSource, before: string | undefined):
   const after = ctx.getClipboardState?.().pasteSelector
   if (before !== undefined || after !== "c") return null
   return declaredUntestableResult(
-    "Untestable (passed to the app): the library handed the clipboard read to its paste_from_clipboard callback; its paste selector went from absent to c in this run and the library keeps no clipboard of its own.",
+    "Untestable (passed to the app): the library sent no reply and handed this read to the app through its clipboard callback, seen in this run.",
     { pasteSelector: { before: null, after } },
   )
 }
@@ -6500,7 +6500,9 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
   "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
   "modes.decsscls": "CSI 9 SP p (DECSSCLS) scroll-speed state",
-  "sgr.blink": "SGR 5 blink",
+  // CTO b6a3c019: blink is handled and dropped, so this entry states its own cause and renders verbatim.
+  "sgr.blink":
+    "Alacritty alacritty_terminal 0.26.0 handles blink by writing a debug line and keeps no blink flag, so no public state, reply or typed event exists.",
   "extensions.osc9-progress": "OSC 9;4 progress state",
   "input.kitty-click-events": "OSC 133 click-events prompt state (mouse encoding is supplied by Termless)",
   "extensions.osc777-notify": "OSC 777 notification payloads",
@@ -7057,10 +7059,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 ? typeof source.getSemanticMarks === "function"
                 : false,
         (entry) =>
-          // Blink is handled and dropped, not unhandled: term/mod.rs:1927 sends the attribute to a debug
-          // line and Flags carries no blink bit, so the no-handler clause below would state a false cause.
+          // Blink is handled and dropped, not unhandled, so its entry carries the whole reviewed sentence.
           definition.id === "sgr.blink"
-            ? `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 accepts ${entry} and sends it to a debug line at term/mod.rs:1927, and Flags carries no blink bit, so no public state, reply or typed event exposes it.`
+            ? entry
             : `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${
                 definition.id === "editing.decsace" || definition.id === "modes.decsscls" ? "CSI" : "OSC"
               } has no handler or public rejection report.`,
