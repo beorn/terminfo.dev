@@ -217,6 +217,70 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(context?.changeQualification).toContain("does not match")
   })
 
+  // Acceptance: retain a comparable recorded change, but never infer it across a different runtime/version.
+  // Empty-move and stale-receipt cases cannot catch dropping every valid change or accepting the wrong cohort.
+  it.each(["matching", "different version", "different runtime"] as const)(
+    "qualifies a recorded status change with %s capture identities",
+    (identity) => {
+      const older = collection()
+      const newer = collection(older.parent, PARTIAL)
+      const priorPath = older.collected.runs[0]!
+      const prior = JSON.parse(readFileSync(priorPath, "utf8"))
+      // A synthetic prior observation over the existing complete capture fixture; never admitted as real data.
+      const bold = prior.results.find((row: { featureId: string }) => row.featureId === "sgr.bold")
+      bold.status = "unsupported"
+      bold.tests[0].status = "unsupported"
+      const assertion = prior.assertions[bold.tests[0].assertionRefs[0]]
+      assertion.kind = "negative"
+      assertion.expected = "sgr.bold: attribute absent in the prior fixture observation"
+      assertion.observed = JSON.stringify({ char: "X", bold: false })
+      prior.rawReplies["sgr.bold"] = assertion.observed
+      writeFileSync(priorPath, JSON.stringify(prior))
+      const decoded = loadRawCapture(priorPath, { root, catalogIds })
+      older.summary.rollups.vterm = rollupTerminalStatuses(
+        Object.fromEntries(decoded.results!.map((row) => [row.featureId, row.status])),
+        catalogIds,
+      )
+      older.save()
+
+      const nextPath = newer.collected.runs[0]!
+      const next = JSON.parse(readFileSync(nextPath, "utf8"))
+      if (identity === "different version") {
+        next.subject.version = "0.10.2"
+        next.runtimeIdentity.engineVersion = "0.10.2"
+      } else if (identity === "different runtime") {
+        next.runtimeIdentity.integrity.treeOid = "f".repeat(40)
+      }
+      writeFileSync(nextPath, JSON.stringify(next))
+      Object.assign(newer.summary, {
+        moved: {
+          since: older.dir,
+          moves: [
+            {
+              engine: "vterm",
+              feature: "sgr.bold",
+              from: "unsupported",
+              to: "supported",
+              comparison: "same-suite move",
+            },
+          ],
+        },
+      })
+      newer.save()
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
+      const context = siteWorkingHistory(join(root, "content"))?.[1]?.contexts[0]
+      if (identity === "matching") {
+        expect(context?.changes).toEqual({ "sgr.bold": "unsupported → supported (same-suite move)" })
+        expect(context?.changeQualification).toContain("not runtime verification")
+      } else {
+        expect(context?.changes).toBeUndefined()
+        expect(context?.changeQualification).toContain(
+          identity === "different version" ? "Different suite or engine version" : "runtime identity differs",
+        )
+      }
+    },
+  )
+
   // Actual build hit 17.6 GB: 273 feature routes repeated 255 MB of history params.
   // The shared client loader must preserve all statuses/receipts without repeating per-cell provenance.
   it("shares complete historical statuses with original capture receipts in the client data", () => {
