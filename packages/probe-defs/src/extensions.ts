@@ -220,7 +220,8 @@ export function hasAuditedOscInterfaceAbsence(
         (identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007" ||
           identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537")) ||
         (identity.engineVersion === "0.13.2" &&
-          identity.integrity.treeOid === "8eae12c15ce34e7e3b6c86a005990f1bb0f53af5"))
+          (identity.integrity.treeOid === "8eae12c15ce34e7e3b6c86a005990f1bb0f53af5" ||
+            identity.integrity.treeOid === "3cca402276f5d6b3e4ee9030f7b5e6d5be75667e")))
     )
   }
   if (identity?.kind === "native") {
@@ -259,7 +260,10 @@ export function hasAuditedOscInterfaceAbsence(
     (identity.engineVersion === "0.13.1" &&
       (tree === "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d" || tree === "5162719d063ab59d2905d588df3e127d38b110d1")) ||
     (identity.engineVersion === "0.13.2" &&
-      (tree === "ce4a64f5517083815ce02892d3f6458ef1128906" || tree === "232e7bd71913340475d283b313f67a4e624057be"))
+      (tree === "ce4a64f5517083815ce02892d3f6458ef1128906" ||
+        tree === "232e7bd71913340475d283b313f67a4e624057be" ||
+        tree === "60088603eff12a69d1c810fa2ee699a821e29d0f" ||
+        tree === "0db06083bfe1f65e53f556469c45983789e0d272"))
   )
 }
 
