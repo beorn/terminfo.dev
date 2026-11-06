@@ -221,7 +221,8 @@ export function hasAuditedOscInterfaceAbsence(
           identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537")) ||
         (identity.engineVersion === "0.13.2" &&
           (identity.integrity.treeOid === "8eae12c15ce34e7e3b6c86a005990f1bb0f53af5" ||
-            identity.integrity.treeOid === "3cca402276f5d6b3e4ee9030f7b5e6d5be75667e")))
+            identity.integrity.treeOid === "3cca402276f5d6b3e4ee9030f7b5e6d5be75667e" ||
+            identity.integrity.treeOid === "fbee854e249c4046bd8800ff3c8ead25381a8977")))
     )
   }
   if (identity?.kind === "native") {
