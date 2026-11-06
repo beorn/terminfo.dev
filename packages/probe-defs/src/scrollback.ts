@@ -11,6 +11,7 @@ import {
   replyFailure,
   notTestedResult,
   reviewResult,
+  productViewportAbsenceResult,
   tooSmall,
   validSize,
   HEADLESS_OBSERVABLE_REVIEW,
@@ -244,7 +245,7 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
     if (ctx.scrollViewport) {
       return parserStateResult(null, expected, state, "Product viewport declared absent but scroll control is present")
     }
-    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, declared.reason, "scrollback viewport scroll control", state)
+    return productViewportAbsenceResult(ctx, declared.reason, state)
   }
   if (!ctx.scrollViewport) return notTestedResult("scrollback viewport scroll control", state)
   const scroll = ctx.scrollViewport.bind(ctx)

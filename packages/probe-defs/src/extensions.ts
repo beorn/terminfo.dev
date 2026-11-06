@@ -32,6 +32,7 @@ import {
   cancelReplyFailure,
   reviewResult,
   declaredUntestableResult,
+  productViewportAbsenceResult,
   auditedAdapterSources,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
@@ -2251,16 +2252,7 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
           "Product viewport declared absent but scroll control is present",
         )
       }
-      const version = ctx.runtimeIdentity?.engineVersion
-      if (
-        !(
-          (ctx.backendName === "libvterm" && version === "0.3.3") ||
-          (ctx.backendName === "wezterm" && version === "0.1.0-fork.5")
-        )
-      ) {
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, declared.reason, "scrollback viewport scroll control", state)
-      }
-      return declaredUntestableResult(`${declared.reason} Library version: ${version}.`, state)
+      return productViewportAbsenceResult(ctx, declared.reason, state)
     }
     feedScrollbackHistory(ctx)
     const before = ctx.getScrollback()
