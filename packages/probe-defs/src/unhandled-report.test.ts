@@ -298,7 +298,7 @@ describe("the report arm decides italic and faint as well, and nothing outside i
 })
 
 // Accepted D2 cut (Chief 6ef3debd) plus M-1 (CTO f23f1197): 44 controlled negatives;
-// the 12 proposed declarations remain on their prior paths pending policy wording.
+// The released twelve-cell D2-U1 slice declares only the audited vt100 0.16.2 subject.
 // Independent input/code oracles were measured from the real addon before each
 // consumer extension; these cases exercise the registered callback boundary.
 describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
