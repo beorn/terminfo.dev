@@ -63,6 +63,64 @@ const recordsCsi = (code: string) => ({
   code: { kind: "csi" as const, code },
 })
 
+// @failure Registered Ghostty stack cells ignore the public CSI report or borrow another runtime's verdict.
+// @consumer ALL_PROBES library callbacks for exactly the Ghostty web 0.4.0 palette-stack pair.
+describe("Ghostty's two palette-stack report consumers", () => {
+  const identity: Extract<HeadlessRuntimeIdentity, { kind: "js"; runtimeFormat: "wasm" }> = {
+    kind: "js",
+    runtimeFormat: "wasm",
+    engineVersion: "0.4.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "b".repeat(40),
+    resolvedPath: "ghostty-web/dist/ghostty-web.js",
+    integrity: { kind: "registry", lockIntegrity: "test-engine" },
+    loadedBinary: {
+      path: "ghostty-web/ghostty-vt.wasm",
+      sha256: "aaf8ce18ad92e98b1233d85b5f71043aceccf3abbc75dea07e1c704cd3ae690a",
+    },
+  }
+  const source = (
+    code: string,
+    overrides: Partial<LibProbeSource> = {},
+    controls: Parameters<typeof reportingSource>[0] = {},
+  ) => ({
+    ...reportingSource({ records: [recordsCsi(code)], ...controls }),
+    backendName: "ghostty",
+    runtimeIdentity: identity,
+    ...overrides,
+  })
+
+  test.each([
+    ["modes.xtpushcolors", "#P"],
+    ["modes.xtpopcolors", "#Q"],
+  ])("%s uses its own literal code and an applied same-run control", (id, code) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    const result = definition.lib!(source(code))
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(JSON.parse(result.response!)).toMatchObject({ unhandled: { target: { kind: "csi", code } } })
+  })
+
+  test("missing qualification, a wrong report or a failed control retains the undecided cell", () => {
+    const lib = ALL_PROBES.find((entry) => entry.id === "modes.xtpushcolors")!.lib!
+    for (const ctx of [
+      source("#P", { runtimeIdentity: undefined }),
+      source("#P", { backendName: "libvterm" }),
+      source("#P", { runtimeIdentity: { ...identity, engineVersion: "0.4.1" } }),
+      source("#P", {
+        runtimeIdentity: { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+      }),
+      source("#P", { getUnhandledSequences: undefined }),
+      source("#0P"),
+      source("#P", {}, { records: [recordsCsi("#P"), recordsCsi("#P")] }),
+      source("#P", {}, { boldApplies: false }),
+    ]) {
+      const result = lib(ctx)
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(JSON.stringify(result)).not.toContain(REASON)
+    }
+  })
+})
+
 describe("the unhandled report decides only state cells, and only with both controls", () => {
   test.each([
     ["extensions.osc113-reset-pointer-fg", "113"],

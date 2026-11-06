@@ -6048,6 +6048,14 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
 }
 
+// Ghostty web 0.4.0's actual warning literals carry #P/#Q, not vt100-rust's #0P/#0Q.
+const GHOSTTY_COLOR_STACK_NEGATIVES: Readonly<
+  Record<string, { readonly feed: string; readonly code: UnhandledSequence }>
+> = {
+  "modes.xtpushcolors": { feed: "\u001b[#P", code: { kind: "csi", code: "#P" } },
+  "modes.xtpopcolors": { feed: "\u001b[#Q", code: { kind: "csi", code: "#Q" } },
+}
+
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withVt100RustD2Observation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
@@ -6066,15 +6074,25 @@ export function withVt100RustD2Observation(definition: ProbeDefinition): ProbeDe
         }
       : {}),
     lib(ctx) {
-      if (!hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")) return lib(ctx)
+      const identity = ctx.runtimeIdentity
+      const measuredTarget = hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")
+        ? target
+        : ctx.backendName === "ghostty" &&
+            identity?.kind === "js" &&
+            identity.runtimeFormat === "wasm" &&
+            identity.engineVersion === "0.4.0" &&
+            identity.loadedBinary.sha256 === "aaf8ce18ad92e98b1233d85b5f71043aceccf3abbc75dea07e1c704cd3ae690a"
+          ? GHOSTTY_COLOR_STACK_NEGATIVES[definition.id]
+          : undefined
+      if (!measuredTarget) return lib(ctx)
       const result = lib(ctx)
       if (reportsDecidedOutcome(result)) return result
       const cursor = ctx.getCursor()
       return (
         unhandledSequenceVerdict(
           ctx,
-          target,
-          target.code.kind === "osc"
+          measuredTarget,
+          measuredTarget.code.kind === "osc"
             ? {
                 feed: "\x1b]2;" + UNHANDLED_OSC_CONTROL_TITLE + "\x07",
                 applied: () => ctx.getTitle() === UNHANDLED_OSC_CONTROL_TITLE,
