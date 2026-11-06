@@ -1950,7 +1950,7 @@ test.for(["semantic-marks", "sixel-storage"] as const)(
 // @failure The native WezTerm mouse bridge is not reached by the registered callbacks, or an unbound path is graded.
 // @level l5
 // @consumer Real native WezTerm through the production collector's per-probe backend/source boundary.
-test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide five cells and retain two unbound paths", () => {
+test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide six cells and retain one unbound path", () => {
   for (const [id, outcome] of [
     ["input.xtest-click", "supported"],
     ["input.xtest-wheel", "supported"],
@@ -1958,7 +1958,7 @@ test.runIf(OWNED_LAYOUT)("WezTerm native mouse callbacks decide five cells and r
     ["input.x10-mouse", "unsupported"],
     ["input.urxvt-mouse", "unsupported"],
     ["input.pixel-mouse", null],
-    ["input.kitty-click-events", null],
+    ["input.kitty-click-events", "unsupported"],
   ] as const) {
     // collectBatch likewise constructs and initializes one fresh backend inside its per-probe loop.
     const value = createWeztermBackend({ cols: 80, rows: 24 })
