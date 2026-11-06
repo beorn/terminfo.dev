@@ -816,6 +816,8 @@ export interface LibProbeSource {
   getCellSemanticType?(row: number, col: number): "prompt" | "input" | "output"
   /** Stored image attachments at getCell coordinates, declared by cell-images; not rendered pixels. */
   getCellImageCount?(row: number, col: number): number
+  /** Current logical pointer shape from the library, declared by mouse-shape; not text-caret style. */
+  getMouseShape?(): string
   /** Copied raw payloads and DCS start positions, without raster rendering or cell geometry. */
   getSixelImages?(): readonly {
     readonly data: string
@@ -1094,7 +1096,13 @@ export interface ProbeDefinition {
         readonly when: (
           source: Pick<
             LibProbeSource,
-            "runtimeIdentity" | "getTitle" | "getIconLabel" | "getUnhandledSequences" | "getCellImageCount"
+            | "runtimeIdentity"
+            | "getTitle"
+            | "getIconLabel"
+            | "getUnhandledSequences"
+            | "getCellImageCount"
+            | "getMouseShape"
+            | "capabilities"
           >,
         ) => boolean
         readonly then: readonly [AssertionType, ...AssertionType[]]

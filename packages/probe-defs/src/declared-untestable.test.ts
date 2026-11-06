@@ -328,6 +328,72 @@ describe("H-4 exact host-effect declarations", () => {
       { path: "packages/ghostty-native/src/backend.ts", blobOid: "d15e83634be3aa1bf2df9b58eb2f6376af800808" },
     ],
   } satisfies HeadlessRuntimeIdentity
+  const ghosttyR3Identity = {
+    ...ghosttyIdentity,
+    termlessRevision: "1e61d17c546139386a9ab78abeaa753660d3e93c",
+    loadedBinary: {
+      ...ghosttyIdentity.loadedBinary,
+      sha256: "bb0c0c6a34997fc4850756e095d1ae978fb9fa046d87eb91847d9e0e6bdfb207",
+    },
+    provenance: {
+      ...ghosttyIdentity.provenance,
+      sha256: "bb0c0c6a34997fc4850756e095d1ae978fb9fa046d87eb91847d9e0e6bdfb207",
+      buildHash: "83a45eb6571bf3d44a3cf8d0b5fdd5b1941d742ca5e33fd2bf6f142f7d7451fb",
+    },
+    adapterSources: [
+      { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
+      { path: "packages/ghostty-native/src/backend.ts", blobOid: "9bda39988b0af9c66fcc342ca477cf9daab2f5ac" },
+    ],
+  } satisfies HeadlessRuntimeIdentity
+  const ghosttyR372efIdentity = {
+    ...ghosttyR3Identity,
+    termlessRevision: "dfa25540d38b2a098189810e015d8e3ebf5c8552",
+    adapterSources: [
+      { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
+      { path: "packages/ghostty-native/src/backend.ts", blobOid: "72ef06ecf72f2509c097aff3260914d098ff010a" },
+    ],
+  } satisfies HeadlessRuntimeIdentity
+  // @failure A native build with library-forced graphics disabled stays TODO or an enabled build borrows its absence.
+  // @level l1
+  // @consumer The two registered native image callbacks and shipping result fold; older image cohorts omit native.
+  test.each(["extensions.kitty-graphics.display", "extensions.kitty-graphics.transmit"])(
+    "R3 native %s declares only the actual disabled library build",
+    (id) => {
+      const definition = ALL_PROBES.find((entry) => entry.id === id)!
+      const source: LibProbeSource = {
+        ...library("ghostty-native"),
+        runtimeIdentity: ghosttyIdentity,
+        capabilities: { ...library().capabilities, kittyGraphics: false },
+        feedCapture: () => "",
+      }
+      expect(fold(id, definition.lib!(source))).toMatchObject({
+        status: "untestable",
+        reason: expect.stringMatching(/ghostty-vt.*forces oniguruma off.*kitty_graphics off/),
+      })
+      for (const extra of [
+        { capabilities: { ...source.capabilities, kittyGraphics: true } },
+        { runtimeIdentity: undefined },
+        { backendName: "ghostty" },
+        { runtimeIdentity: { ...ghosttyIdentity, engineVersion: "unreviewed" } },
+        {
+          runtimeIdentity: {
+            ...ghosttyIdentity,
+            provenance: { ...ghosttyIdentity.provenance, lockSha256: "0".repeat(64) },
+          },
+        },
+      ]) {
+        expect(isDeclaredUntestable(definition.lib!({ ...source, ...extra }))).toBe(false)
+      }
+      for (const outcome of ["supported", "unsupported"] as const) {
+        const decided: ProbeCallbackResult = {
+          pass: outcome === "supported",
+          observation: { outcome, assertionType: "query_reply" },
+        }
+        expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source)).toBe(decided)
+      }
+    },
+  )
+
   // @failure NR-I's seven reviewed cells stay TODO or leak onto an unaudited engine.
   // @level l1
   // @consumer Registered library callbacks and the shipping finalizer; prior native cohorts omit these seven.
@@ -539,6 +605,8 @@ describe("H-4 exact host-effect declarations", () => {
   // @consumer Registered callbacks through the result finalizer; the generic Kitty report is not a payload store.
   test.each([
     ["ghostty-native", ghosttyIdentity, ids, /Ghostty.*no.*(state|report|route)/i],
+    ["ghostty-native", ghosttyR3Identity, ids, /Ghostty.*no.*(state|report|route)/i],
+    ["ghostty-native", ghosttyR372efIdentity, ids, /Ghostty.*no.*(state|report|route)/i],
     ["kitty", kittyIdentity, ["extensions.osc3008-context"], /hands.*(text|payload).*bridge.*(not keep|drops)/i],
   ] as const)("%s retains only its exact declaration", (backendName, runtimeIdentity, targets, reason) => {
     for (const id of targets) {
@@ -556,6 +624,17 @@ describe("H-4 exact host-effect declarations", () => {
       expect(result.observation).toBeUndefined()
       for (const changed of [
         { ...runtimeIdentity, loadedBinary: { ...runtimeIdentity.loadedBinary, sha256: "0".repeat(64) } },
+        ...(backendName === "ghostty-native"
+          ? [
+              {
+                ...runtimeIdentity,
+                adapterSources:
+                  runtimeIdentity === ghosttyIdentity
+                    ? ghosttyR3Identity.adapterSources
+                    : ghosttyIdentity.adapterSources,
+              },
+            ]
+          : []),
         {
           ...runtimeIdentity,
           adapterSources: runtimeIdentity.adapterSources.map((entry, index) =>
@@ -593,6 +672,8 @@ describe("H-4 exact host-effect declarations", () => {
   test.each([
     ["kitty", kittyIdentity, "input.kitty-click-events", /Window/],
     ["ghostty-native", ghosttyIdentity, "input.kitty-click-events", /Surface/],
+    ["ghostty-native", ghosttyR3Identity, "input.kitty-click-events", /Surface/],
+    ["ghostty-native", ghosttyR372efIdentity, "input.kitty-click-events", /Surface/],
     ["ghostty", ghosttyWebIdentity, "input.kitty-click-events", /WASM/],
     ["ghostty", ghosttyWebIdentity, "extensions.clipboard-paste", /paste encoder/],
   ] as const)("slice C: %s %s declares only at its exact identity", (backendName, runtimeIdentity, id, reason) => {

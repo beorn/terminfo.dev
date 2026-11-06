@@ -158,10 +158,13 @@ export function hasAuditedOscInterfaceAbsence(
     if (ctx.backendName === "ghostty-native") {
       return (
         identity.engineVersion === "1.3.1" &&
-        identity.loadedBinary.sha256 === "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd" &&
         identity.provenance.sourceCommit === "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28" &&
         identity.provenance.lockSha256 === "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a" &&
-        auditedAdapterSources(identity, "ghosttyNativeH4")
+        ((identity.loadedBinary.sha256 === "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd" &&
+          auditedAdapterSources(identity, "ghosttyNativeH4")) ||
+          (identity.loadedBinary.sha256 === "bb0c0c6a34997fc4850756e095d1ae978fb9fa046d87eb91847d9e0e6bdfb207" &&
+            (auditedAdapterSources(identity, "ghosttyNativeR3") ||
+              auditedAdapterSources(identity, "ghosttyNativeR372ef06ec"))))
       )
     }
     return (
@@ -1749,7 +1752,11 @@ function promptMarkBody(
     }
   }
   ctx.feed("\x1b[1;1H")
-  if (ctx.backendName === "kitty" && sourceReview?.probeId === "extensions.semantic-prompts") {
+  if (
+    sourceReview?.probeId === "extensions.semantic-prompts" &&
+    ctx.capabilities.extensions.has("semantic-marks") &&
+    ctx.capabilities.extensions.has("semantic-command-end")
+  ) {
     const declared =
       ctx.capabilities.extensions.has("semantic-marks") && ctx.capabilities.extensions.has("semantic-command-end")
     const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
@@ -3452,7 +3459,7 @@ function clipboardPasteHandoff(ctx: LibProbeSource, before: string | undefined):
   )
 }
 
-/** Read silence is conclusive only on a collector-qualified, ordered reply path. */
+/** A read negative needs a qualified reply path; a fresh typed app handoff does not grade reply support. */
 function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const pasteBefore = ctx.getClipboardState?.().pasteSelector
@@ -3460,7 +3467,8 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
-    const handoff = silence !== null ? clipboardPasteHandoff(ctx, pasteBefore) : null
+    const empty = silence !== null || (outcome.reason === "timeout" && outcome.raw === "")
+    const handoff = empty ? clipboardPasteHandoff(ctx, pasteBefore) : null
     if (handoff) return handoff
     return withClipboardControlNote(
       ctx,
@@ -5274,9 +5282,9 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.semantic-prompts",
-      // Kitty reads its approved prompt/output/end lifecycle; other libraries retain the report arm.
+      // A declared start/end reader qualifies the lifecycle; other libraries retain the report arm.
       (ctx) =>
-        ctx.backendName === "kitty"
+        ctx.capabilities.extensions.has("semantic-marks") && ctx.capabilities.extensions.has("semantic-command-end")
           ? promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 lifecycle readback", {
               probeId: "extensions.semantic-prompts",
               selector: 133,
@@ -6250,6 +6258,49 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc22-pointer",
       (ctx) => {
+        if (ctx.capabilities.extensions.has("mouse-shape") && typeof ctx.getMouseShape === "function") {
+          const read = ctx.getMouseShape.bind(ctx)
+          const initial = read()
+          const controlShape = initial === "text" ? "wait" : "text"
+          const secondShape = controlShape === "text" ? "wait" : "text"
+          const readings: {
+            initial: string
+            control?: string
+            second?: string
+            target?: string
+            unknown?: string
+            restored?: string
+          } = { initial }
+          try {
+            ctx.feed(`\x1b]22;${controlShape}\x07`)
+            readings.control = read()
+            ctx.feed(`\x1b]22;${secondShape}\x07`)
+            readings.second = read()
+            if (readings.control === controlShape && readings.second === secondShape) {
+              ctx.feed("\x1b]22;pointer\x07")
+              readings.target = read()
+              ctx.feed("\x1b]22;terminfo-unknown-shape\x07")
+              readings.unknown = read()
+            }
+          } finally {
+            ctx.feed(`\x1b]22;${initial}\x07`)
+            readings.restored = read()
+          }
+          if (
+            readings.control !== controlShape ||
+            readings.second !== secondShape ||
+            readings.target === undefined ||
+            readings.unknown !== readings.target ||
+            readings.restored !== initial
+          ) {
+            return notTestedResult(NO_SAME_PATH_CONTROL, { controlShape, secondShape, readings })
+          }
+          return parserStateResult(
+            readings.target === "pointer" ? true : readings.target === secondShape ? false : null,
+            "OSC 22 changes logical pointer state after two accepted controls; an unknown name is inert and the initial state is restored",
+            { controlShape, secondShape, readings },
+          )
+        }
         const undecided = () =>
           unhandledOscReportResult(ctx, "\x1b]22;pointer\x07", noSamePathControl("\x1b]22;pointer\x07")(ctx))
         if (ctx.backendName !== "kitty") return undecided()
@@ -6309,8 +6360,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       null,
     ),
     libAssertionType: {
-      when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
-        typeof source.getUnhandledSequences === "function",
+      when: (source: Pick<LibProbeSource, "getUnhandledSequences" | "getMouseShape" | "capabilities">) =>
+        typeof source.getUnhandledSequences === "function" ||
+        (source.capabilities.extensions.has("mouse-shape") && typeof source.getMouseShape === "function"),
       then: ["query_reply", "buffer_state"],
       otherwise: ["query_reply"],
     },
@@ -6980,6 +7032,10 @@ const GHOSTTY_WEB_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 }
 
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "Untestable (no way): Ghostty 1.3.1 ghostty-vt forces oniguruma off (src/build/GhosttyZig.zig:19-25), which forces kitty_graphics off (src/terminal/build_options.zig:37-46). The loaded native binary reports graphics disabled; our build does not choose this.",
+  "extensions.kitty-graphics.transmit":
+    "Untestable (no way): Ghostty 1.3.1 ghostty-vt forces oniguruma off (src/build/GhosttyZig.zig:19-25), which forces kitty_graphics off (src/terminal/build_options.zig:37-46). The loaded native binary reports graphics disabled; our build does not choose this.",
   "input.button-event-mouse":
     "Untestable: Ghostty 1.3.1's library has no mouse encoder; only Surface writes a mouse report, and Surface is the app.",
   "input.pixel-mouse":
@@ -7333,8 +7389,10 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         "ghostty-native",
         "ghostty-native-d2",
         (source, id) =>
-          (id === "extensions.osc1-icon" || id === "extensions.osc0-icon-title") &&
-          typeof source.getIconLabel === "function",
+          id === "extensions.kitty-graphics.display" || id === "extensions.kitty-graphics.transmit"
+            ? source.capabilities.kittyGraphics !== false
+            : (id === "extensions.osc1-icon" || id === "extensions.osc0-icon-title") &&
+              typeof source.getIconLabel === "function",
       )
       if (ghosttyNativeDeclared) return ghosttyNativeDeclared
       const alacrittyDeclared = declaredD2InterfaceAbsence(
