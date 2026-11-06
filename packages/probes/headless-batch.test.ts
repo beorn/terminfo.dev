@@ -116,9 +116,9 @@ test.runIf(OWNED_LAYOUT).each(["healthy", "seed", "reset", "unknown"] as const)(
           fault === "healthy" ? (reset ? "supported" : "untestable") : fault === "reset" ? "unsupported" : "probe-todo",
         )
       if (fault === "healthy" && reset) {
-        expect.soft(batch.assertions.filter((assertion) => assertion.featureId === result.featureId)).toMatchObject([
-          { assertionType: "query_reply", kind: "positive" },
-        ])
+        expect
+          .soft(batch.assertions.filter((assertion) => assertion.featureId === result.featureId))
+          .toMatchObject([{ assertionType: "query_reply", kind: "positive" }])
         expect.soft(JSON.parse(batch.rawReplies[result.featureId]!)).toMatchObject({
           controls: expect.arrayContaining([{ write: "\x1b]7110\x07", response: "" }]),
         })
