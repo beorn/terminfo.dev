@@ -343,8 +343,9 @@ faint, italic, strikethrough and the four underline styles) may move; delivery c
 outcome, a missing member and any other code keep their own path, except for the exact vt100-rust
 cohort below.
 
-Operator D2 and the November 5 11:16 ruling add 34 cells only at the audited vt100 crate 0.16.2
-native provenance and adapter profile. One `ALL_PROBES` decorator uses the same verdict helper;
+Operator D2 and the November 5 11:16 ruling add 34 cells; the M-1 scope adds ten state cells,
+for 44 only at the audited vt100 crate 0.16.2 native provenance and adapter profile.
+One `ALL_PROBES` decorator uses the same verdict helper;
 OSC 2/title controls OSC targets and SGR 1/bold controls CSI targets. Exact normalized codes were
 measured from that addon. A changed identity, failed control, missing member, unmatched code or
 already decided result retains its previous path. The additional IDs are:
@@ -359,6 +360,13 @@ already decided result retains its previous path. The additional IDs are:
   `extensions.osc21-kitty-color`, `extensions.osc4-palette`, `extensions.osc5-special-color`,
   `extensions.osc701-locale`, `extensions.osc702-version`, `extensions.osc776-cell-size`,
   `extensions.osc7770-font-size`, `extensions.osc7777-font-window-size`, `extensions.osc99-kitty-notify`.
+- `modes.alt-scroll-1007`, `modes.color-scheme-reporting`, `modes.decsclm`, `modes.reverse-video`,
+  `modes.synchronized-output`, `modes.xtpushcolors`, `modes.xtpopcolors`, `modes.xtrestore`,
+  `modes.xtsave`, `modes.focus-tracking`.
+
+For the M-1 cells, the deciding observation is the library reporting the mode or stack write
+as unhandled with the SGR 1/bold control. Failed palette and wrap calibration remains evidence;
+the report verdict does not claim those effect readers calibrated successfully.
 
 The twelve proposed Untestable declarations remain outside this negative-only cut pending
 operator wording approval: DECRQSS, XTGETTCAP, XTGETXRES, the Kitty graphics query/transmit
