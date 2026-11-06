@@ -161,7 +161,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     const rawPath = join(passDir, "capture.json")
     const original = JSON.parse(
       readFileSync(join(root, "content/probes-apps/ghostty-1.3.1-linux-3d1eb75c5fa11383e3a6327d32a2c1a0.json"), "utf8"),
-    )
+    ) as Pick<LoadedRun, "subject" | "probeHash" | "suiteId" | "sourceRevision" | "runId" | "measuredAt">
     // Only OS routing varies here; this is not a claim to have measured a Mac runtime.
     original.subject.os = os
     writeFileSync(rawPath, JSON.stringify(original))
