@@ -178,14 +178,14 @@ async function primaryRestoreCapture(
         ...result.observation,
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        note: "alternate-screen entry not observed, so exit cannot be attributed",
+        note: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
       },
       assertions: [],
       tests: [
         {
           id: "entry-qualified",
           status: "probe-todo",
-          reason: "alternate-screen entry not observed, so exit cannot be attributed",
+          reason: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
         },
         remainingFacets,
       ],
@@ -441,7 +441,7 @@ async function xtModeSaveCapture(ctx: TermProbeSource, operation: "push" | "pop"
       note:
         operation === "pop"
           ? "restore returned DECAWM off after on was saved"
-          : "restore returned DECAWM off whatever was saved, so no save was observed",
+          : "Open: restoring always turned line wrap off, whatever we saved, so nothing shows whether the save worked.",
     })
   }
   const verdict = decideStackOperation(operation, pop, push)
@@ -708,7 +708,7 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
       return operation === "pop"
         ? parserStateResult(false, expected, state, "restore returned DECAWM off after on was saved")
         : stackStateResult(
-            { pass: null, note: "restore returned DECAWM off whatever was saved, so no save was observed" },
+            { pass: null, note: "Open: restoring always turned line wrap off, whatever we saved, so nothing shows whether the save worked." },
             expected,
             state,
           )
@@ -968,7 +968,7 @@ function altScreenRoundtrip(
       if (phase === "exit") {
         // An unqualified entry is a missing prerequisite for the exit: PROBE TODO, and source never decides it
         // (#32246, @cto batch7 A-F1 and 84e7b78b).
-        return notTestedResult("alternate-screen entry not observed, so exit cannot be attributed", state)
+        return notTestedResult("Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.", state)
       }
       return parserStateResult(
         false,

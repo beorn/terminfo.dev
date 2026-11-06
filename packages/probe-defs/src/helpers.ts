@@ -519,7 +519,7 @@ export const SEMANTIC_PROMPT_SOURCE_REVIEW = "semantic-prompt-source-review"
  * control in this run showed the same observation path can report the state, so the cell stays PROBE TODO (rule 4).
  * Source code never decides it; a probe owner adds the same-path control per feature.
  */
-export const NO_SAME_PATH_CONTROL = "observation not decided: no same-path control in this run"
+export const NO_SAME_PATH_CONTROL = "Open: our test has no control for this feature in this run, so the observations do not decide the result."
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as

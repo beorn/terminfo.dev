@@ -186,13 +186,13 @@ const headlessStateFeatures = [
     "sgr.underline.color",
     ["A", "B", "X"],
     "sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
-    "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color",
+    "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it. [cell.underlineColor]",
   ],
   [
     "sgr.underline-color-indexed",
     ["A", "X", "B", "Y"],
     "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
-    "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color",
+    "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it. [cell.underlineColor]",
   ],
   // Seedless SGR59/default-color cases are named TODOs, covered by sgr-contract.test.ts.
   [
@@ -354,10 +354,8 @@ test("the 9 headless C154 semantic-mark features emit named coverage only after 
         id: "review",
         status: "probe-todo",
         reason: noObservable
-          ? "OSC 133 P / 633 E consumed; no property or command-line observer exists in this run"
-          : expect.stringMatching(
-              /OSC 133 \/ 633 mark was consumed but this run has no qualified declared mark or zone reader/,
-            ),
+          ? "Open: the library did not print the shell property and command-line marks (OSC 133 P, 633 E) as text, but our test cannot read them back."
+          : "Open: the library did not print the shell marks (OSC 133 / 633) as text, but our test has no way to read the marks back.",
       },
     ])
     expect(JSON.parse(result.response ?? "{}"), id).toEqual({

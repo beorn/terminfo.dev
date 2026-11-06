@@ -248,7 +248,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
  * PROBE TODO), never a negative (#30701, @cto ruling C: PROBE TODO only where the cell field is missing).
  */
 const UNDERLINE_COLOR_UNEXPOSED =
-  "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
+  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it. [cell.underlineColor]"
 
 /**
  * Keep DECRQSS for state-only claims. Registered colour/reset visual claims use their owned pixel
@@ -990,7 +990,7 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.hidden",
     "\x1b[8m",
     (cell) => (cell.hidden == null ? null : cell.hidden === true),
-    (cell) => (cell.hidden == null ? "cell.hidden field not exposed" : null),
+    (cell) => (cell.hidden == null ? "Open: this library's screen cells have no hidden-text field, so our test cannot see hidden text. [cell.hidden]" : null),
     { require: [8] },
     "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
   ),
@@ -1008,7 +1008,7 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.overline",
     "\x1b[53m",
     (cell) => (cell.overline == null ? null : cell.overline === true),
-    (cell) => (cell.overline == null ? "cell.overline field not exposed" : null),
+    (cell) => (cell.overline == null ? "Open: this library's screen cells have no overline field, so our test cannot see overline. [cell.overline]" : null),
     { require: [53] },
   ),
 

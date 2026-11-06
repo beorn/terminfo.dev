@@ -61,7 +61,7 @@ const baseCell = {
 }
 
 const underlineColorUnexposed =
-  "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
+  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it. [cell.underlineColor]"
 
 // @failure Missing reset readback is interpreted as a measured reset (null becomes !null).
 // @level l0
@@ -570,7 +570,7 @@ test("unexposed overline and default conceal flags cannot establish negative sup
       expect(result.observation, id).toBeUndefined()
       expect(result.notTested, id).toEqual({
         reason: "no-semantic-observable",
-        noObservable: "cell.overline field not exposed",
+        noObservable: "Open: this library's screen cells have no overline field, so our test cannot see overline. [cell.overline]",
       })
     } else expectNoSamePathTodo(result, id)
     expect(JSON.parse(result.response ?? ""), id).toMatchObject({ char: "X" })
@@ -580,7 +580,7 @@ test("unexposed overline and default conceal flags cannot establish negative sup
     expect(measured.assertions, id).toMatchObject([{ kind: "positive" }])
     if (id === "sgr.hidden") {
       const unexposed = probe.lib(headless({ getCell: () => ({ ...baseCell, hidden: null }) }))
-      expectNoSamePathTodo(unexposed, id, "cell.hidden field not exposed")
+      expectNoSamePathTodo(unexposed, id, "Open: this library's screen cells have no hidden-text field, so our test cannot see hidden text. [cell.hidden]")
       expect(JSON.parse(unexposed.response ?? ""), id).toMatchObject({ char: "X", hidden: null })
     }
   }

@@ -966,12 +966,12 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   const expected =
     "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
   if (ctx.backendName === "kitty") {
-    return notTestedResult("Kitty send_mouse_event does not bind Window's prompt click_events pointer path", {
+    return notTestedResult("Open: Kitty's mouse-event function does not reach the click-in-a-prompt path, so our test cannot click a prompt. [send_mouse_event]", {
       storedClickEvents: false,
     })
   }
   if (ctx.backendName === "wezterm") {
-    return notTestedResult("WezTerm mouse_event does not bind a prompt click_events path", {
+    return notTestedResult("Open: WezTerm's mouse-event function does not reach the click-in-a-prompt path, so our test cannot click a prompt. [mouse_event]", {
       storedClickEvents: false,
     })
   }
@@ -988,7 +988,7 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
     return notTestedResult(sharedEncoderClickEventsLimit.limit, { storedClickEvents: false })
   }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
-    return notTestedResult("library mouse-event encoding (undeclared mouse-encoding extension)", {
+    return notTestedResult("Open: our adapter for this library has no declared way to send mouse events.", {
       mouseEncoding: false,
     })
   }

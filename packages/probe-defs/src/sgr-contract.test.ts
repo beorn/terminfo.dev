@@ -308,7 +308,7 @@ test("a row reading overline is notTested when the bit is null, bound when prese
   expect(omitted.satisfies).toBe(false)
   expect(probe.lib?.(omittedSource).notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "cell.overline field not exposed",
+    noObservable: "Open: this library's screen cells have no overline field, so our test cannot see overline. [cell.overline]",
   })
 })
 
@@ -317,7 +317,7 @@ test("a row reading overline is notTested when the bit is null, bound when prese
  * (#32318). Missing observables or a failed control remain open; source never decides support.
  */
 const underlineColorUnexposed =
-  "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
+  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it. [cell.underlineColor]"
 const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   id: string,
   mutation: string,

@@ -1110,7 +1110,7 @@ test.each(geometryReplies)(
         const result = callback(id).headless(ctx)
         expect(result.notTested).toEqual({
           reason: "no-semantic-observable",
-          noObservable: "observation not decided: no same-path control in this run",
+          noObservable: "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
         })
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
@@ -1126,7 +1126,7 @@ test.each(geometryReplies)(
     // Silence is PROBE TODO for lack of a control (@cto batch7 A-F4); a partial or foreign reply keeps its reading.
     const silent = { feedCapture: () => "", runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
     expect(callback(id).headless(silent).notTested?.noObservable).toBe(
-      "observation not decided: no same-path control in this run",
+      "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
     )
     for (const reply of [raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
       const ctx = { feedCapture: () => reply, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource

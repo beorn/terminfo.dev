@@ -1522,7 +1522,7 @@ test.each([
       expect(result.notTested?.noObservable).toContain("mouse encoding unavailable: pixel input is not bound")
       expect(result.observation).toBeUndefined()
     } else if (dead) {
-      expect(result.notTested?.noObservable).toBe("observation not decided: no same-path control in this run")
+      expect(result.notTested?.noObservable).toBe("Open: our test has no control for this feature in this run, so the observations do not decide the result.")
       expect(result.observation).toBeUndefined()
     } else if (id === "input.x10-mouse") {
       expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
@@ -1651,7 +1651,7 @@ test("input.kitty-click-events declares libAssertionType input_bytes and returns
   const absent = definition.lib!(libMouseSource({ extensions: [] }))
   expect(absent.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/mouse-encoding/i),
+    noObservable: "Open: our adapter for this library has no declared way to send mouse events.",
   })
   expect(absent.observation).toBeUndefined()
   expect(absent.criterionBranch).toBeUndefined()
@@ -1664,7 +1664,7 @@ test("input.kitty-click-events declares libAssertionType input_bytes and returns
   )
   expect(undeclaredMethod.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/undeclared|mouse-encoding/i),
+    noObservable: "Open: our adapter for this library has no declared way to send mouse events.",
   })
   expect(undeclaredMethod.observation).toBeUndefined()
 })
@@ -1786,9 +1786,9 @@ test.each([
     "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554 into prompt_start.click_events (:74), while the WASM binding does not forward click_events (termless 2719cfd ghostty-wasm-api.patch:624-627) and a headless library run has no pointer surface; #30936",
   ],
   // A former source-negative site: PROBE TODO with no same-path control, never a source citation (#32246).
-  ["alacritty", "not-tested", "observation not decided: no same-path control in this run"],
+  ["alacritty", "not-tested", "Open: our test has no control for this feature in this run, so the observations do not decide the result."],
   // A former source-negative site: PROBE TODO with no same-path control, never a source citation (#32246).
-  ["vt100-rust", "not-tested", "observation not decided: no same-path control in this run"],
+  ["vt100-rust", "not-tested", "Open: our test has no control for this feature in this run, so the observations do not decide the result."],
   ["xtermjs", "unsupported", null],
 ] as const)(
   "input.kitty-click-events library arm on %s: shared-encoder limit reads %s",
@@ -1948,7 +1948,7 @@ test.each(qualifiedSharedEncoderIdentities)(
     expect(staleResult).toEqual(formerlyQualified)
     // Ghostty keeps its shared-encoder coverage limit; the former source-negative engines name no citation.
     if (backendName === "ghostty") expect(formerlyQualified.note).toContain(citationMarker)
-    else expect(formerlyQualified.note).toBe("observation not decided: no same-path control in this run")
+    else expect(formerlyQualified.note).toBe("Open: our test has no control for this feature in this run, so the observations do not decide the result.")
   },
 )
 
@@ -2065,10 +2065,10 @@ test.each(
   expect(result).toEqual({
     pass: false,
     response: JSON.stringify(id === "input.kitty-click-events" ? { storedClickEvents: false } : { input: false }),
-    note: "observation not decided: no same-path control in this run",
+    note: "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
     notTested: {
       reason: "no-semantic-observable",
-      noObservable: "observation not decided: no same-path control in this run",
+      noObservable: "Open: our test has no control for this feature in this run, so the observations do not decide the result.",
     },
   })
 })

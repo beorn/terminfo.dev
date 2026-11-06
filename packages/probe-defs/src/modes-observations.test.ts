@@ -997,7 +997,7 @@ test("1049 exit after an unqualified entry is PROBE TODO: the entry is a missing
   const result = definition.lib!(context)
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "alternate-screen entry not observed, so exit cannot be attributed",
+    noObservable: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
   })
   expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
@@ -1031,7 +1031,7 @@ test("1049 exit after an unqualified entry is PROBE TODO, and source never decid
   const result = definition.lib!(withRuntimeIdentity(audited.context, VT100_SOURCE_IDENTITY))
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "alternate-screen entry not observed, so exit cannot be attributed",
+    noObservable: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
   })
   expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
@@ -1049,7 +1049,7 @@ test("the same entry failure is PROBE TODO on a moved, dirty or different source
     const { context } = alt1049Source("ignored-entry")
     const result = definition.lib!(withRuntimeIdentity(context, { ...VT100_SOURCE_IDENTITY, integrity }))
     expect(result.notTested?.noObservable, JSON.stringify(integrity)).toBe(
-      "alternate-screen entry not observed, so exit cannot be attributed",
+      "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
     )
     expect(result.assertions, JSON.stringify(integrity)).toBeUndefined()
   }
@@ -1205,11 +1205,11 @@ test.each([
       expect.objectContaining({
         id: "entry-qualified",
         status: "probe-todo",
-        reason: "alternate-screen entry not observed, so exit cannot be attributed",
+        reason: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
       }),
     ]),
   )
-  expect(result.observation?.note).toBe("alternate-screen entry not observed, so exit cannot be attributed")
+  expect(result.observation?.note).toBe("Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.")
 })
 
 test("alt-screen exit capture frames the primary, alternate and restored buffers", async () => {
