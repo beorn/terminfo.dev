@@ -163,6 +163,65 @@ describe("audited OSC interface absence", () => {
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
   } satisfies HeadlessRuntimeIdentity
+  // Operator D2's independently reviewed literal23; four unclear Alacritty rows are excluded.
+  const alacrittyD2 = [
+    "extensions.osc777-notify",
+    "extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-d", "extensions.osc133-p",
+    "extensions.semantic-prompts",
+    "extensions.osc633-a", "extensions.osc633-b", "extensions.osc633-c", "extensions.osc633-d", "extensions.osc633-e",
+    "extensions.osc-633-vscode",
+    "extensions.osc113-reset-pointer-fg", "extensions.osc114-reset-pointer-bg", "extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-highlight-fg",
+    "extensions.osc176-app-id", "extensions.osc3008-context", "extensions.osc440-audio", "extensions.osc555-flash", "extensions.osc666-termprop", "extensions.osc710-font-normal",
+  ] as const
+  const d2Source = (extra: Partial<LibProbeSource> = {}): LibProbeSource => ({
+    ...library("alacritty"),
+    runtimeIdentity: alacritty,
+    feedCapture: () => "",
+    getTitle: () => "",
+    getMode: () => null,
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    ...extra,
+  })
+
+  // @failure The approved exact-version absence cohort stays TODO or bypasses the declaration finalizer.
+  // @level l1
+  // @consumer ALL_PROBES library callbacks folded by the shipping result finalizer
+  test("Alacritty D2 folds the literal23 audited interface absences to Untestable", () => {
+    for (const id of alacrittyD2) {
+      const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(d2Source())
+      expect(isDeclaredUntestable(result), id).toBe(true)
+      expect(fold(id, result), id).toMatchObject({
+        status: "untestable",
+        reason: expect.stringMatching(/alacritty.*0\.26\.0/i),
+      })
+      expect(result.observation, id).toBeUndefined()
+      expect(result.assertions, id).toBeUndefined()
+    }
+  })
+
+  // @failure An absence declaration leaks to an unknown profile, unclear cell or available public reader.
+  // @level l1
+  // @consumer The conditional declaration route used by the headless collector
+  test("Alacritty D2 preserves unknown identities, four unclear cells and public readers", () => {
+    const notify = ALL_PROBES.find((probe) => probe.id === "extensions.osc777-notify")!.lib!
+    for (const extra of [
+      { runtimeIdentity: undefined },
+      { backendName: "kitty" },
+      { runtimeIdentity: { ...alacritty, engineVersion: "0.26.1" } },
+      { runtimeIdentity: { ...alacritty, provenance: { ...alacritty.provenance, lockSha256: "0".repeat(64) } } },
+      { getUnhandledSequences: () => [] },
+      { getOsc777Payloads: () => [] },
+    ] satisfies Partial<LibProbeSource>[]) {
+      expect(isDeclaredUntestable(notify(d2Source(extra)))).toBe(false)
+    }
+    for (const id of ["sgr.blink", "extensions.osc22-pointer", "extensions.osc1-icon", "modes.decsscls"]) {
+      expect(isDeclaredUntestable(ALL_PROBES.find((probe) => probe.id === id)!.lib!(d2Source())), id).toBe(false)
+    }
+    const semantic = ALL_PROBES.find((probe) => probe.id === "extensions.osc133-a")!.lib!
+    expect(isDeclaredUntestable(semantic(d2Source({ getSemanticMarks: () => [] })))).toBe(false)
+    expect(() => notify(d2Source({ getOsc777Payloads: () => { throw new Error("reader failed") } }))).toThrow("reader failed")
+  })
+
   const run = (backend: string, runtimeIdentity?: HeadlessRuntimeIdentity, extra: Partial<LibProbeSource> = {}) => {
     const definition = ALL_PROBES.find((probe) => probe.id === "extensions.notifications")!
     return definition.lib!({ ...library(backend), runtimeIdentity, ...extra })
