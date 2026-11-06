@@ -3873,6 +3873,55 @@ function registryDefinitions(ids: readonly string[]): ProbeDefinition[] {
   })
 }
 
+// @failure Real palette-stack warnings never reach registered, canonical collector decisions.
+// @consumer Owned Ghostty web two-cell collector; hosted source-siblings resolves an older published adapter.
+test.runIf(OWNED_LAYOUT)("real Ghostty palette-stack reports decide exactly the two registered cells", async () => {
+  const ids = ["modes.xtpushcolors", "modes.xtpopcolors"]
+  const measured = await resolveGhosttyWasm()
+  measured.init({ cols: 80, rows: 24 })
+  const identity = await headlessIdentity.headlessRuntimeIdentity("ghostty", "@termless/ghostty", "wasm")
+  identity.adapterSources = headlessIdentity.readAdapterSources("ghostty", measured)
+  measured.destroy()
+  const runtime = {
+    identity,
+    adapterPath: fileURLToPath(import.meta.resolve("@termless/ghostty")),
+    adapterPackage: "@termless/ghostty",
+    adapterType: "wasm",
+  }
+  const batch = await collectBatch(
+    resolveGhosttyWasm,
+    "ghostty",
+    registryDefinitions(ids),
+    undefined,
+    undefined,
+    runtime,
+  )
+  expect(
+    batch.results.map(({ featureId, status }) => ({ featureId, status })),
+    JSON.stringify({ identity, results: batch.results, replies: batch.rawReplies }),
+  ).toEqual(ids.map((featureId) => ({ featureId, status: "unsupported" })))
+  for (const [featureId, code] of [
+    [ids[0]!, "#P"],
+    [ids[1]!, "#Q"],
+  ]) {
+    expect(JSON.parse(batch.rawReplies[featureId]!)).toMatchObject({
+      unhandled: { control: "\x1b[0m\x1b[1mC", target: { kind: "csi", code }, added: [{ kind: "csi", code }] },
+    })
+  }
+  // Removing only the new producer records must lose both conclusions; native effects stay real.
+  const withoutCsi = async () => {
+    const value = await resolveGhosttyWasm()
+    if (!hasExtension<OscMetadataExtension>(value, "osc-metadata") || !value.getUnhandledSequences) {
+      throw new Error("Owned Ghostty report reader missing")
+    }
+    const read = value.getUnhandledSequences.bind(value)
+    value.getUnhandledSequences = () => read().filter(({ kind }) => kind !== "csi")
+    return value
+  }
+  const missing = await collectBatch(withoutCsi, "ghostty", registryDefinitions(ids), undefined, undefined, runtime)
+  expect(missing.results.map(({ status }) => status)).toEqual(["probe-todo", "probe-todo"])
+})
+
 // @failure Ghostty's allocator-plus-rejection pair is mistaken for one unhandled report, or shell reports are lost.
 // @consumer Owned monorepo Ghostty WASM collector; published Termless does not yet expose this report reader.
 test.runIf(OWNED_LAYOUT)(

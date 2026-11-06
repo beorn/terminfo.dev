@@ -6099,6 +6099,14 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
 }
 
+// Ghostty web 0.4.0's actual warning literals carry #P/#Q, not vt100-rust's #0P/#0Q.
+const GHOSTTY_COLOR_STACK_NEGATIVES: Readonly<
+  Record<string, { readonly feed: string; readonly code: UnhandledSequence }>
+> = {
+  "modes.xtpushcolors": { feed: "\u001b[#P", code: { kind: "csi", code: "#P" } },
+  "modes.xtpopcolors": { feed: "\u001b[#Q", code: { kind: "csi", code: "#Q" } },
+}
+
 // CTO Kitty 16:50: shell3/reset2 already use the generic OSC report consumer.
 // These six uncovered routes use their own literal payload and the same canonical controls.
 const KITTY_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
@@ -6137,7 +6145,13 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
             identity.engineVersion === "0.49.2" &&
             identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
           ? kittyTarget
-          : undefined
+          : ctx.backendName === "ghostty" &&
+              identity?.kind === "js" &&
+              identity.runtimeFormat === "wasm" &&
+              identity.engineVersion === "0.4.0" &&
+              identity.loadedBinary.sha256 === "aaf8ce18ad92e98b1233d85b5f71043aceccf3abbc75dea07e1c704cd3ae690a"
+            ? GHOSTTY_COLOR_STACK_NEGATIVES[definition.id]
+            : undefined
       if (!target) return lib(ctx)
       const result = lib(ctx)
       if (reportsDecidedOutcome(result)) return result
