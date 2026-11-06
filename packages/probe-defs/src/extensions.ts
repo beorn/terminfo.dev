@@ -6180,6 +6180,18 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.osc7770-font-size": { feed: "\u001b]7770;?\u0007", code: { kind: "osc", code: "7770" } },
   "extensions.osc7777-font-window-size": { feed: "\u001b]7777;?\u0007", code: { kind: "osc", code: "7777" } },
   "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
+  // @cto routes ruling 947dcd40, slice A. Own probe payloads; the SGR 1 control passes where `?7l` cannot.
+  "editing.decsace": { feed: "\u001b[2*x", code: { kind: "csi", code: "*2x" } },
+  "extensions.osc5522-clipboard": { feed: "\u001b[?5522$p", code: { kind: "csi", code: "?$5522p" } },
+  "extensions.kitty-keyboard": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
+  "extensions.kitty-keyboard.disambiguate": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
+  "extensions.kitty-keyboard.report-events": { feed: "\u001b[>3u", code: { kind: "csi", code: ">3u" } },
+  "extensions.kitty-keyboard.report-alternate": { feed: "\u001b[>5u", code: { kind: "csi", code: ">5u" } },
+  "extensions.kitty-keyboard.report-all-keys": { feed: "\u001b[>9u", code: { kind: "csi", code: ">9u" } },
+  "extensions.kitty-keyboard.report-text": { feed: "\u001b[>25u", code: { kind: "csi", code: ">25u" } },
+  "input.csi-u": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
+  "input.pixel-mouse": { feed: "\u001b[?1016h", code: { kind: "csi", code: "?1016h" } },
+  "input.kitty-click-events": { feed: "\u001b]133;A;click_events=1\u0007", code: { kind: "osc", code: "133" } },
 }
 
 // Operator D2, exact alacritty_terminal 0.26.0 / VTE 0.15.0 API read:
@@ -6233,6 +6245,8 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.kitty-graphics":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.transmit":
+    "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.display":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.osc176-app-id":
     "OSC 176 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
@@ -6365,13 +6379,14 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   }
   return {
     ...definition,
-    ...(vt100Target && definition.libAssertionType === "query_reply"
+    ...(vt100Target && (definition.libAssertionType === "query_reply" || definition.libAssertionType === "input_bytes")
       ? {
+          // A report verdict records buffer_state; the probe's own arm keeps its type.
           libAssertionType: {
             when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
               typeof source.getUnhandledSequences === "function",
-            then: ["query_reply", "buffer_state"] as const,
-            otherwise: ["query_reply"] as const,
+            then: [definition.libAssertionType, "buffer_state"] as const,
+            otherwise: [definition.libAssertionType] as const,
           },
         }
       : {}),
