@@ -3949,7 +3949,7 @@ test("formerly audited Vterm input cells record PROBE TODO coverage through the 
   expect(parsed.results).toEqual(batch.results)
   expect(parsed.assertions).toEqual([])
   const vtermKeyEncoderAbsence =
-    "vterm.js 0.13.1 exports createVtermScreen and its Screen byte parser and state readers, and no key-event-to-byte encoder"
+    "vterm.js exports createVtermScreen and its Screen byte parser and state readers, and no key-event-to-byte encoder"
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results).toHaveLength(ids.length)
   expect(batch.notTested).toEqual([

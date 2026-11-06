@@ -232,7 +232,7 @@ test.each(["input.modify-other-keys", "input.modify-other-keys-3"])(
 test.each([
   ["vt100", /vt100\.js 0\.10\.1 exports createVt100Screen/],
   ["vt220", /vt220\.js 0\.10\.1 exports createVt220Screen/],
-  ["vterm", /vterm\.js 0\.13\.1 exports createVtermScreen/],
+  ["vterm", /vterm\.js exports createVtermScreen/],
   ["xterm", /@xterm\/headless 6\.0\.0 exports Terminal/],
   ["alacritty", /alacritty_terminal 0\.26\.0 exposes/],
   ["vt100-rust", /vt100 crate 0\.16\.2 exposes/],
