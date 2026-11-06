@@ -1230,8 +1230,9 @@ const UNHANDLED_CSI_CELLS: ReadonlySet<string> = new Set([
  * The CSI arm's control (@cto 2026-11-05 07:37 status): SGR 1 must add no report entry while the same
  * cell reader shows bold applied, then the target must add exactly one entry carrying the code its own
  * sequence produces ("5m", "9m", "21m", "4:3m", "4:4m", "4:5m"). Anything else keeps the body's result.
+ * sgr.underline-color-reset calls it directly for "59m" (@cto routes-32 section 1, 23:02 PST Nov 5 2026).
  */
-function withUnhandledSgrReport(
+export function withUnhandledSgrReport(
   id: string,
   sequence: string,
   body: (ctx: LibProbeSource) => ProbeCallbackResult,
