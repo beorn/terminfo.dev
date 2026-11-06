@@ -166,12 +166,28 @@ describe("audited OSC interface absence", () => {
   // Operator D2's independently reviewed literal23; four unclear Alacritty rows are excluded.
   const alacrittyD2 = [
     "extensions.osc777-notify",
-    "extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-d", "extensions.osc133-p",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
     "extensions.semantic-prompts",
-    "extensions.osc633-a", "extensions.osc633-b", "extensions.osc633-c", "extensions.osc633-d", "extensions.osc633-e",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
     "extensions.osc-633-vscode",
-    "extensions.osc113-reset-pointer-fg", "extensions.osc114-reset-pointer-bg", "extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-highlight-fg",
-    "extensions.osc176-app-id", "extensions.osc3008-context", "extensions.osc440-audio", "extensions.osc555-flash", "extensions.osc666-termprop", "extensions.osc710-font-normal",
+    "extensions.osc113-reset-pointer-fg",
+    "extensions.osc114-reset-pointer-bg",
+    "extensions.osc117-reset-highlight-bg",
+    "extensions.osc119-reset-highlight-fg",
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc555-flash",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
   ] as const
   const d2Source = (extra: Partial<LibProbeSource> = {}): LibProbeSource => ({
     ...library("alacritty"),
@@ -219,7 +235,15 @@ describe("audited OSC interface absence", () => {
     }
     const semantic = ALL_PROBES.find((probe) => probe.id === "extensions.osc133-a")!.lib!
     expect(isDeclaredUntestable(semantic(d2Source({ getSemanticMarks: () => [] })))).toBe(false)
-    expect(() => notify(d2Source({ getOsc777Payloads: () => { throw new Error("reader failed") } }))).toThrow("reader failed")
+    expect(() =>
+      notify(
+        d2Source({
+          getOsc777Payloads: () => {
+            throw new Error("reader failed")
+          },
+        }),
+      ),
+    ).toThrow("reader failed")
   })
 
   const run = (backend: string, runtimeIdentity?: HeadlessRuntimeIdentity, extra: Partial<LibProbeSource> = {}) => {

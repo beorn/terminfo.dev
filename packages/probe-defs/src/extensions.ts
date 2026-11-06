@@ -6110,7 +6110,11 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         if (hasReader || reportsDecidedOutcome(result)) return result
         return declaredUntestableResult(
           `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${absence}; this OSC has no handler or public rejection report.`,
-          { backend: ctx.backendName, featureId: definition.id, runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity) },
+          {
+            backend: ctx.backendName,
+            featureId: definition.id,
+            runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
+          },
         )
       }
       if (!target || !hasAuditedOscInterfaceAbsence(ctx, "vt100-rust-d2")) return lib(ctx)
