@@ -835,7 +835,7 @@ describe("vterm 0.13.1 D2 nine-cell interface-absence declarations", () => {
       "8eae12c15ce34e7e3b6c86a005990f1bb0f53af5",
       "3cca402276f5d6b3e4ee9030f7b5e6d5be75667e",
       "fbee854e249c4046bd8800ff3c8ead25381a8977",
-      "ff2c183d5cbec830dab048f2e81ce6873f26ccbf",
+      "d0d81c90794d45e51d4f5c9e70d5556b02ed5067",
     ]) {
       expect(
         isDeclaredUntestable(
