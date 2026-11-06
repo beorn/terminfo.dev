@@ -5022,14 +5022,13 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     adapterType: "js",
   })
   expect(batch.ungradedDiagnostics).toEqual({})
-  // #32246: the pending OSC 52 rows stay PROBE TODO and carry no source branch or typed negative.
+  // Route 2: the audited xterm OSC 52 writes declare an app handoff without a typed observation.
   expect(batch.results).toMatchObject([
     { featureId: ids[0], status: "supported", assertionType: "buffer_state" },
-    { featureId: ids[1], status: "probe-todo" },
-    { featureId: ids[2], status: "probe-todo" },
+    { featureId: ids[1], status: "untestable", criterionBranch: "headless-observable-review" },
+    { featureId: ids[2], status: "untestable", criterionBranch: "headless-observable-review" },
   ])
   for (const row of batch.results.slice(1)) {
-    expect(row, row.featureId).not.toHaveProperty("criterionBranch")
     expect(row, row.featureId).not.toHaveProperty("assertionType")
   }
   const captured: CapturedRunDraft = {
@@ -5057,15 +5056,14 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     parseRun("qualified-unit.capture.json", JSON.stringify(value), ids, new Map([[manifest.probeHash, manifest]]))
   expect(read(captured).results).toEqual(batch.results)
   expect(read(finalizeCollectedDraft(captured)).results).toEqual(batch.results)
-  // The parser-level-rejection rule is gone with the source answers (#32246): a PROBE TODO row that claims a type
-  // stays PROBE TODO, never an Unsupported probe result.
+  // A stray type cannot turn the app handoff declaration into a measured verdict.
   const mislabeled = structuredClone(captured)
   for (const result of mislabeled.results.slice(1)) result.assertionType = "query_reply"
   for (const assertion of mislabeled.assertions.filter((entry) => entry.featureId !== ids[0])) {
     assertion.assertionType = "query_reply"
   }
   const relabeled = read(mislabeled).results
-  expect(relabeled?.slice(1).map((row) => row.status)).toEqual(["probe-todo", "probe-todo"])
+  expect(relabeled?.slice(1).map((row) => row.status)).toEqual(["untestable", "untestable"])
   // The OSC 52 rows carry no state assertion any more (#32246); the measured OSC 0 snapshot keeps the check.
   const invalidState = structuredClone(captured)
   const stateAssertion = invalidState.assertions.find((entry) => entry.featureId === ids[0])!
