@@ -4,12 +4,8 @@ import { isEnvironmentGroup, readCollectorSelection } from "@terminfo/probe-defs
 import type {
   ProbeResult,
   FeatureResultStatus,
-  ConsoleBufferOwner,
   Observation,
   ObservationFrame,
-  ProbeAssertion,
-  RunOrigin,
-  RunDraft,
   TextQualification,
   TextCellsObservationFrame,
 } from "../../packages/probe-defs/src/types.ts"
@@ -206,21 +202,45 @@ function publicAttempt(attempt: ProbeResult["attempt"]): ProbeResult["attempt"] 
   return attempt.scope === "none" ? { scope: "none" } : { scope: attempt.scope, startedAt: attempt.startedAt }
 }
 
+const UNSAFE_TODO_CLAUSE =
+  /(?:^|[\s(])(?:\/[a-z0-9._-]+|[a-z0-9._/-]+\/[a-z0-9._-]+\.[a-z0-9]+|@[a-z0-9/_-]+|#\d+|sha256:[0-9a-f]+)\b|[{}]|:\d+[:-]\d+|\b(?:TypeError|ReferenceError|SyntaxError|RangeError|JSON Parse error|Error):|^Pixel capture unavailable:|^cannot read structured\b|\b(?:unchecked collector note|UNAPPROVED_CURRENT_REASON|kept answers disagree|kept originals|not re-verified|TEST TODO)\b/i
+
+/** Maps a stored `probe-todo` reason to a short reader-safe missing-evidence explanation, withholding raw diagnostics and paths. */
+function publicTodoReason(reason: string | undefined): string | undefined {
+  if (!reason || reason === "Required probe test has not started") return undefined
+  if (reason.startsWith("instrument gap Original measured-context rationale:")) {
+    if (/ligature/i.test(reason)) return "Instrument gap: no calibrated ligature-capable font in this run"
+    if (/blink|one phase/i.test(reason)) return "Instrument gap: single-phase capture cannot decide blink oscillation"
+    return "Instrument gap in this run"
+  }
+  const withoutPrefix = reason
+    .replace(/^(?:[a-z0-9-]+(?:\.[a-z0-9-]+)+:\s+|#\d+\s+)/i, "")
+    .replace(/\s+—\s+Capture calibration\b.*$/i, "")
+    .replace(/\s*\(seed sha256:[0-9a-f]+,\s*reference sha256:[0-9a-f]+\)$/i, "")
+  if (/^Pixel capture unavailable:/i.test(withoutPrefix)) return "Pixel capture unavailable"
+  const clauses = withoutPrefix
+    .split(/;\s+/)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 0 && !UNSAFE_TODO_CLAUSE.test(clause))
+  return clauses.length > 0 ? clauses.join("; ") : undefined
+}
+
 /** The API and site consume canonical contexts and original run-owned evidence documents. */
 export function publicResults(projection: SelectedProjection, subjects: ReadonlyMap<string, CurrentResult>) {
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
   const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
     const hold = result.tests.find((check) => check.id === "console-host")?.reason
+    const isScoredTodo = result.status === "probe-todo" && !isEnvironmentGroup(result.featureId)
     const selection =
-      result.status === "probe-todo" && result.attempt.scope === "none" && !isEnvironmentGroup(result.featureId)
-        ? readCollectorSelection(version.rawReplies)
-        : undefined
-    // Scheduling facts explain an untouched row without presenting unreviewed callback evidence.
+      isScoredTodo && result.attempt.scope === "none" ? readCollectorSelection(version.rawReplies) : undefined
+    // Scheduling facts explain an untouched row; attempted TODO rows expose their reader-safe missing-evidence cause.
     const reason =
       selection && !selection.ids.includes(result.featureId)
         ? "Not selected for this collection; no test was attempted."
-        : undefined
+        : isScoredTodo && result.attempt.scope !== "none"
+          ? publicTodoReason(result.reason)
+          : undefined
     const mapped: PublicProbeResult = {
       featureId: result.featureId,
       status: result.status,

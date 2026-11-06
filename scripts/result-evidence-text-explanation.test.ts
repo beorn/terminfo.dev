@@ -65,7 +65,7 @@ it.each([
     expect(selected?.measuredAt).toBe(run.measuredAt)
     const published = publicResults(projection, new Map()).projection.contexts[context]?.featureResults[featureId]
     expect(published?.status).toBe("probe-todo")
-    expect(published?.reason).toBeUndefined()
+    expect(published?.reason).toBe(reason)
     const publicBytes = JSON.stringify(published)
     expect(publicBytes).not.toContain("not re-verified")
     expect(publicBytes).not.toContain("kept answers disagree")
@@ -78,6 +78,35 @@ it.each([
     expect(readFileSync(path, "utf8")).toBe(bytes)
   },
 )
+
+it("publishes short reader-safe missing-evidence reasons on probe-todo cells while stripping raw diagnostic tails and private paths", () => {
+  const path = new URL(
+    "../content/probes-libs/ghostty-0.4.0-linux-3bacc3ae-a7c9-4fed-9f3f-a2c0ce01e6f5.json",
+    import.meta.url,
+  )
+  const bytes = readFileSync(path, "utf8")
+  const manifestPath = new URL("../content/suites/5ccb68c2db36.json", import.meta.url)
+  const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
+  const catalog = manifest.catalogIds!
+  const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
+  const byFeature = new Map((run.results ?? []).map((entry) => [entry.featureId, entry]))
+  byFeature.get("sgr.bg.256")!.status = "probe-todo"
+  byFeature.get("sgr.bg.256")!.reason =
+    'Cursor advance does not verify SGR styling; Pixel capture unavailable: Capture calibration cannot restore cursor visibility: unreported mode; {"match":null,"reason":"sentinel"}'
+  byFeature.get("sgr.bold")!.status = "probe-todo"
+  byFeature.get("sgr.bold")!.reason = "unchecked collector note /home/fixture/private"
+  const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
+  const features = publicResults(projection, new Map()).projection.contexts["lib:ghostty"]?.featureResults
+  expect(features?.["extensions.osc176-app-id"]?.reason).toBe(
+    "OSC 176 app-id: no audited library target readback at this runtime",
+  )
+  expect(features?.["input.kitty-click-events"]?.reason).toBe("shared core encoder carries no prompt state")
+  expect(features?.["sgr.bg.256"]?.reason).toBe("Cursor advance does not verify SGR styling")
+  expect(features?.["sgr.bold"]?.reason).toBeUndefined()
+  expect(JSON.stringify(features)).not.toContain("/home/fixture/private")
+  expect(JSON.stringify(features)).not.toContain("Capture calibration")
+  expect(JSON.stringify(features)).not.toContain("src/terminal/osc.zig")
+})
 
 describe("the site says why a text row does not count (30033 ruling f1f3c64b)", () => {
   it("names the console host on a Windows text row, and says it is not counted", () => {
