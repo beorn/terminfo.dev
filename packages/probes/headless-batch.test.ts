@@ -2111,7 +2111,12 @@ test.skipIf(!isKittyAvailable())(
       }
       const umbrella = registryDefinitions(["extensions.semantic-prompts"])[0]!.lib!(source)
       expect(umbrella.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
-      const lifecycle = JSON.parse(umbrella.response!)
+      const lifecycle = JSON.parse(umbrella.response!) as {
+        prompt: unknown[]
+        output: unknown[]
+        end: unknown[]
+        unknown: unknown[]
+      }
       expect(lifecycle.prompt.at(-1)).toEqual({ type: "prompt", startRow: 0, startCol: 0 })
       expect(lifecycle.output.at(-1)).toEqual({ type: "output", startRow: 1, startCol: 2 })
       expect(lifecycle.end.at(-1)).toEqual({ type: "command-end", rawStatus: "17" })
