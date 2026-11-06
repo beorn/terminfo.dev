@@ -21,7 +21,7 @@ const cells = computed(() => Object.entries(context.value?.states ?? {}).filter(
       <option v-for="view in history" :key="view.run.id" :value="view.run.id">{{ view.run.startedAt }} · {{ view.run.id }}{{ view.unreadable ? ' · unreadable' : '' }}</option>
     </select>
   </label>
-  <p>{{ history.length }} retained complete collections, oldest {{ history[0]?.run.startedAt }}, newest {{ history.at(-1)?.run.startedAt }}. Times are UTC.</p>
+  <p>{{ history.length }} retained collection entries, including entries with unreadable inputs. Oldest {{ history[0]?.run.startedAt }}, newest {{ history.at(-1)?.run.startedAt }}. Times are UTC.</p>
   <template v-if="selected">
     <p>Collection <code>{{ selected.run.id }}</code>; started {{ selected.run.startedAt }}; newest capture {{ selected.run.newestCaptureAt }}.</p>
     <div v-if="selected.unreadable" class="danger custom-block">
