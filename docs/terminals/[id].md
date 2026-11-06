@@ -154,7 +154,7 @@ const breadcrumbParent = (() => {
   &mdash; this terminal uses the same underlying engine and is not probed separately.
 </p>
 
-<p v-if="!defaultRun && !isHistorical">No composed context is available.</p>
+<p v-if="!defaultRun && !isHistorical">No result is selected for the main {{ p.terminalType === 'lib' ? 'library' : p.terminalType === 'mux' ? 'multiplexer' : 'application' }} table.</p>
 
 <div v-if="measuredBar" class="score-card">
   <h2 class="results-heading">Feature support</h2>
@@ -183,7 +183,7 @@ const breadcrumbParent = (() => {
       <option v-if="defaultRun" value="">Composed context (default)</option>
       <option v-for="run in recordedRuns" :key="run.sha256" :value="run.sha256">Original run · {{ runLabel(run) }}</option>
     </select>
-    <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
+    <p>Choosing another record updates this page's counts and evidence. Choices include current configurations and older measurements; the matrix uses the default context.</p>
   </div>
 
   <ul>
