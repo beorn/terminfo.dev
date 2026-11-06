@@ -200,6 +200,10 @@ Terminal-query timeouts and apparatus errors without a native capture-command ca
 **A definition is executable, not a saved result.** `ProbeDefinition` identifies a feature and supplies either or both callback arms:
 
 - `lib(ctx)` is synchronous and reads a `LibProbeSource` backed by a headless engine.
+  Its `getCell` attributes derive from the canonical `Cell` in `@termless/core/io`.
+  The probe type leaves out continuation and keeps hyperlink and underline colour optional.
+  Underline also accepts the existing probe-only readings true and null.
+  An absent hyperlink is unreported metadata; null is a reported unlinked cell.
 - `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
 
