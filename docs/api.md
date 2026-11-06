@@ -29,13 +29,13 @@ Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutpu
 
 ## Five recorded statuses
 
-| Stored value   | Display label | Meaning                                                         |
-| -------------- | ------------- | --------------------------------------------------------------- |
-| `supported`    | Supported     | The recorded criterion was satisfied                            |
-| `unsupported`  | Unsupported   | The functioning test obtained the defined negative result       |
-| `untestable`   | Untestable    | No current route; no result reaches it                          |
-| `probe-todo`    | PROBE TODO     | Required work remains; feature support is not decided   |
-| `probe-invalid` | PROBE INVALID  | An attempted test or collection failed to obtain a valid result |
+| Stored value    | Display label | Meaning                                                         |
+| --------------- | ------------- | --------------------------------------------------------------- |
+| `supported`     | Supported     | The recorded criterion was satisfied                            |
+| `unsupported`   | Unsupported   | The functioning test obtained the defined negative result       |
+| `untestable`    | Untestable    | No current route; no result reaches it                          |
+| `probe-todo`    | PROBE TODO    | Required work remains; feature support is not decided           |
+| `probe-invalid` | PROBE INVALID | An attempted test or collection failed to obtain a valid result |
 
 Each stored run has exactly one result per catalog ID. Original raw run documents are immutable and served verbatim. Older stored runs retain `test-todo` and `test-failure`; current readers map those words one to one to `probe-todo` and `probe-invalid`. Supported, Unsupported and Untestable retain their meanings. This is a vocabulary rename, not a re-grade or a rewrite of stored content.
 

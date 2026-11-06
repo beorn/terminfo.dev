@@ -27,7 +27,7 @@ Decode that JSON string to read `ids`; decode `rawReplies["collector.collectionA
 | ----------- | -------------------------------------------------------------------------------- |
 | `empty`     | Explicit selection scheduled nothing; no start or measured identity is invented. |
 | `started`   | Actual collection started; an interrupted record may retain this checkpoint.     |
-| `completed` | Collection returned; PROBE TODO rows may remain.                                  |
+| `completed` | Collection returned; PROBE TODO rows may remain.                                 |
 | `failed`    | Original error retained; a pre-start refusal has no invented start.              |
 | `cancelled` | Cancellation retained with its original diagnostic.                              |
 

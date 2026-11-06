@@ -9,10 +9,7 @@
   "boot": {
     "raw": {
       "binary": "/usr/sbin/sysctl",
-      "args": [
-        "-n",
-        "kern.bootsessionuuid"
-      ],
+      "args": ["-n", "kern.bootsessionuuid"],
       "status": 0,
       "signal": null,
       "error": null,
@@ -28,9 +25,7 @@
     "sha256": "07b706b76c0e7374eb524f9e2e738437f208b4b123d7d9b7b2666019c8881add",
     "version": {
       "binary": "/usr/bin/screen",
-      "args": [
-        "-v"
-      ],
+      "args": ["-v"],
       "status": 1,
       "signal": null,
       "stdout": "Screen version 4.00.03 (FAU) 23-Oct-06\r\n",
@@ -44,10 +39,7 @@
   "topology": {
     "sessionList": {
       "binary": "/usr/bin/screen",
-      "args": [
-        "-ls",
-        "terminfo-5d2ab6a2ec8e4d7af47bcc4854372db8"
-      ],
+      "args": ["-ls", "terminfo-5d2ab6a2ec8e4d7af47bcc4854372db8"],
       "status": 1,
       "stdout": "There is a screen on:\r\n\t40704.terminfo-5d2ab6a2ec8e4d7af47bcc4854372db8\t(Attached)\n1 Socket in /var/folders/_m/x5qbzmq555g4v2l211zg5z940000gn/T/.screen.\n\r\n",
       "stderr": "",
@@ -77,12 +69,7 @@
       "raw": {
         "lstartBefore": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40706",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40706", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -91,12 +78,7 @@
         },
         "ids": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40706",
-            "-o",
-            "pid=,ppid=,uid=,ruid=,tty="
-          ],
+          "args": ["-p", "40706", "-o", "pid=,ppid=,uid=,ruid=,tty="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -105,12 +87,7 @@
         },
         "comm": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40706",
-            "-o",
-            "comm="
-          ],
+          "args": ["-p", "40706", "-o", "comm="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -119,13 +96,7 @@
         },
         "command": {
           "binary": "/bin/ps",
-          "args": [
-            "-ww",
-            "-p",
-            "40706",
-            "-o",
-            "command="
-          ],
+          "args": ["-ww", "-p", "40706", "-o", "command="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -134,12 +105,7 @@
         },
         "lstartAfter": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40706",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40706", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -148,11 +114,7 @@
         },
         "rdev": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%r",
-            "/dev/ttys003"
-          ],
+          "args": ["-f", "%r", "/dev/ttys003"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -161,11 +123,7 @@
         },
         "rdevParts": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%Hr %Lr",
-            "/dev/ttys003"
-          ],
+          "args": ["-f", "%Hr %Lr", "/dev/ttys003"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -195,12 +153,7 @@
       "raw": {
         "lstartBefore": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40705",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40705", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -209,12 +162,7 @@
         },
         "ids": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40705",
-            "-o",
-            "pid=,ppid=,uid=,ruid=,tty="
-          ],
+          "args": ["-p", "40705", "-o", "pid=,ppid=,uid=,ruid=,tty="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -223,12 +171,7 @@
         },
         "comm": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40705",
-            "-o",
-            "comm="
-          ],
+          "args": ["-p", "40705", "-o", "comm="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -237,13 +180,7 @@
         },
         "command": {
           "binary": "/bin/ps",
-          "args": [
-            "-ww",
-            "-p",
-            "40705",
-            "-o",
-            "command="
-          ],
+          "args": ["-ww", "-p", "40705", "-o", "command="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -252,12 +189,7 @@
         },
         "lstartAfter": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40705",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40705", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -266,11 +198,7 @@
         },
         "rdev": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%r",
-            "/dev/ttys003"
-          ],
+          "args": ["-f", "%r", "/dev/ttys003"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -279,11 +207,7 @@
         },
         "rdevParts": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%Hr %Lr",
-            "/dev/ttys003"
-          ],
+          "args": ["-f", "%Hr %Lr", "/dev/ttys003"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -313,12 +237,7 @@
       "raw": {
         "lstartBefore": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40704",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40704", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -327,12 +246,7 @@
         },
         "ids": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40704",
-            "-o",
-            "pid=,ppid=,uid=,ruid=,tty="
-          ],
+          "args": ["-p", "40704", "-o", "pid=,ppid=,uid=,ruid=,tty="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -341,12 +255,7 @@
         },
         "comm": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40704",
-            "-o",
-            "comm="
-          ],
+          "args": ["-p", "40704", "-o", "comm="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -355,13 +264,7 @@
         },
         "command": {
           "binary": "/bin/ps",
-          "args": [
-            "-ww",
-            "-p",
-            "40704",
-            "-o",
-            "command="
-          ],
+          "args": ["-ww", "-p", "40704", "-o", "command="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -370,12 +273,7 @@
         },
         "lstartAfter": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40704",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40704", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -407,12 +305,7 @@
       "raw": {
         "lstartBefore": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40703",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40703", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -421,12 +314,7 @@
         },
         "ids": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40703",
-            "-o",
-            "pid=,ppid=,uid=,ruid=,tty="
-          ],
+          "args": ["-p", "40703", "-o", "pid=,ppid=,uid=,ruid=,tty="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -435,12 +323,7 @@
         },
         "comm": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40703",
-            "-o",
-            "comm="
-          ],
+          "args": ["-p", "40703", "-o", "comm="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -449,13 +332,7 @@
         },
         "command": {
           "binary": "/bin/ps",
-          "args": [
-            "-ww",
-            "-p",
-            "40703",
-            "-o",
-            "command="
-          ],
+          "args": ["-ww", "-p", "40703", "-o", "command="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -464,12 +341,7 @@
         },
         "lstartAfter": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40703",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40703", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -478,11 +350,7 @@
         },
         "rdev": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%r",
-            "/dev/ttys000"
-          ],
+          "args": ["-f", "%r", "/dev/ttys000"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -491,11 +359,7 @@
         },
         "rdevParts": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%Hr %Lr",
-            "/dev/ttys000"
-          ],
+          "args": ["-f", "%Hr %Lr", "/dev/ttys000"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -525,12 +389,7 @@
       "raw": {
         "lstartBefore": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40675",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40675", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -539,12 +398,7 @@
         },
         "ids": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40675",
-            "-o",
-            "pid=,ppid=,uid=,ruid=,tty="
-          ],
+          "args": ["-p", "40675", "-o", "pid=,ppid=,uid=,ruid=,tty="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -553,12 +407,7 @@
         },
         "comm": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40675",
-            "-o",
-            "comm="
-          ],
+          "args": ["-p", "40675", "-o", "comm="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -567,13 +416,7 @@
         },
         "command": {
           "binary": "/bin/ps",
-          "args": [
-            "-ww",
-            "-p",
-            "40675",
-            "-o",
-            "command="
-          ],
+          "args": ["-ww", "-p", "40675", "-o", "command="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -582,12 +425,7 @@
         },
         "lstartAfter": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40675",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40675", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -596,11 +434,7 @@
         },
         "rdev": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%r",
-            "/dev/ttys000"
-          ],
+          "args": ["-f", "%r", "/dev/ttys000"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -609,11 +443,7 @@
         },
         "rdevParts": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%Hr %Lr",
-            "/dev/ttys000"
-          ],
+          "args": ["-f", "%Hr %Lr", "/dev/ttys000"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -643,12 +473,7 @@
       "raw": {
         "lstartBefore": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40674",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40674", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -657,12 +482,7 @@
         },
         "ids": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40674",
-            "-o",
-            "pid=,ppid=,uid=,ruid=,tty="
-          ],
+          "args": ["-p", "40674", "-o", "pid=,ppid=,uid=,ruid=,tty="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -671,12 +491,7 @@
         },
         "comm": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40674",
-            "-o",
-            "comm="
-          ],
+          "args": ["-p", "40674", "-o", "comm="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -685,13 +500,7 @@
         },
         "command": {
           "binary": "/bin/ps",
-          "args": [
-            "-ww",
-            "-p",
-            "40674",
-            "-o",
-            "command="
-          ],
+          "args": ["-ww", "-p", "40674", "-o", "command="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -700,12 +509,7 @@
         },
         "lstartAfter": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40674",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40674", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -714,11 +518,7 @@
         },
         "rdev": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%r",
-            "/dev/ttys000"
-          ],
+          "args": ["-f", "%r", "/dev/ttys000"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -727,11 +527,7 @@
         },
         "rdevParts": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%Hr %Lr",
-            "/dev/ttys000"
-          ],
+          "args": ["-f", "%Hr %Lr", "/dev/ttys000"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -761,12 +557,7 @@
       "raw": {
         "lstartBefore": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40673",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40673", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -775,12 +566,7 @@
         },
         "ids": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40673",
-            "-o",
-            "pid=,ppid=,uid=,ruid=,tty="
-          ],
+          "args": ["-p", "40673", "-o", "pid=,ppid=,uid=,ruid=,tty="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -789,12 +575,7 @@
         },
         "comm": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40673",
-            "-o",
-            "comm="
-          ],
+          "args": ["-p", "40673", "-o", "comm="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -803,13 +584,7 @@
         },
         "command": {
           "binary": "/bin/ps",
-          "args": [
-            "-ww",
-            "-p",
-            "40673",
-            "-o",
-            "command="
-          ],
+          "args": ["-ww", "-p", "40673", "-o", "command="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -818,12 +593,7 @@
         },
         "lstartAfter": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40673",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40673", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -855,12 +625,7 @@
       "raw": {
         "lstartBefore": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40677",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40677", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -869,12 +634,7 @@
         },
         "ids": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40677",
-            "-o",
-            "pid=,ppid=,uid=,ruid=,tty="
-          ],
+          "args": ["-p", "40677", "-o", "pid=,ppid=,uid=,ruid=,tty="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -883,12 +643,7 @@
         },
         "comm": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40677",
-            "-o",
-            "comm="
-          ],
+          "args": ["-p", "40677", "-o", "comm="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -897,13 +652,7 @@
         },
         "command": {
           "binary": "/bin/ps",
-          "args": [
-            "-ww",
-            "-p",
-            "40677",
-            "-o",
-            "command="
-          ],
+          "args": ["-ww", "-p", "40677", "-o", "command="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -912,12 +661,7 @@
         },
         "lstartAfter": {
           "binary": "/bin/ps",
-          "args": [
-            "-p",
-            "40677",
-            "-o",
-            "lstart="
-          ],
+          "args": ["-p", "40677", "-o", "lstart="],
           "status": 0,
           "signal": null,
           "error": null,
@@ -926,11 +670,7 @@
         },
         "rdev": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%r",
-            "/dev/ttys000"
-          ],
+          "args": ["-f", "%r", "/dev/ttys000"],
           "status": 0,
           "signal": null,
           "error": null,
@@ -939,11 +679,7 @@
         },
         "rdevParts": {
           "binary": "/usr/bin/stat",
-          "args": [
-            "-f",
-            "%Hr %Lr",
-            "/dev/ttys000"
-          ],
+          "args": ["-f", "%Hr %Lr", "/dev/ttys000"],
           "status": 0,
           "signal": null,
           "error": null,

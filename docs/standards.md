@@ -197,7 +197,7 @@ Here's the irony: developers universally call these "ANSI escape codes," but the
 - Every terminal escape sequence uses ECMA-48's CSI parameter syntax
 - SGR codes are the universal way to style terminal text
 - The `?` private-mode prefix that DEC exploited is defined here
-  :::
+:::
 
 <p class="standard-link"><a class="hover-link" href="/ecma-48">View ECMA-48 features &rarr;</a></p>
 
@@ -224,7 +224,7 @@ The VT100's dominance wasn't accidental — DEC shipped it with the rising tide 
 - "VT100-compatible" is still the baseline every terminal must meet
 - Scroll regions power every full-screen TUI (vim, tmux, htop)
 - Line-drawing characters render box UIs in every terminal
-  :::
+:::
 
 <p class="standard-link"><a class="hover-link" href="/vt100">View VT100 features &rarr;</a></p>
 
@@ -265,7 +265,7 @@ These editing sequences are so fundamental that it's hard to imagine terminals w
 - Every full-screen editor (vim, nano, emacs) depends on ICH/DCH/IL/DL
 - tmux and screen use editing sequences for efficient pane updates
 - The keyboard layout from the LK201 is still the PC standard
-  :::
+:::
 
 <p class="standard-link"><a class="hover-link" href="/vt220">View VT220 features &rarr;</a></p>
 
@@ -315,7 +315,7 @@ By 1993, hardware terminals were already losing to PCs running terminal emulator
 - The VT510 Reference Manual is the go-to document for terminal implementors
 - DECTCEM (cursor show/hide) is used by virtually every TUI application
 - DECSCNM (reverse video) remains a supported mode in modern terminals
-  :::
+:::
 
 <p class="standard-link"><a class="hover-link" href="/vt510">View VT510 features &rarr;</a></p>
 
@@ -338,7 +338,7 @@ The "private" designation means vendor-defined: any terminal can allocate new mo
 - Every TUI app uses alternate screen, cursor visibility, and auto-wrap modes
 - Bracketed paste is a security-critical feature enabled by default in most shells
 - Mouse tracking powers interactive terminal UIs (lazygit, btop, TUI file managers)
-  :::
+:::
 
 <p class="standard-link"><a class="hover-link" href="/dec-private-modes">View DEC Private Modes features &rarr;</a></p>
 
@@ -413,7 +413,7 @@ Incorrect width calculation causes cursor positioning errors, text misalignment,
 - `wcwidth()` implementations lag behind new Unicode versions by years
 - Emoji rendering is the most common source of terminal alignment bugs today
 - Nerd Fonts and Powerline glyphs are the backbone of modern shell prompts
-  :::
+:::
 
 ::: details The width problem in practice
 This table is supposed to be aligned — but depending on your terminal and font, the columns may be off:
@@ -479,7 +479,7 @@ Xterm became the reference for many widely deployed extensions, including **256-
 - Truecolor is now expected by every modern TUI (delta, bat, lazygit)
 - The xterm ctlseqs document is the de facto spec every terminal implementor references
 - Most "standard" terminal features were xterm innovations first
-  :::
+:::
 
 <p class="standard-link"><a class="hover-link" href="/xterm-extensions">View Xterm Extension features &rarr;</a></p>
 
@@ -506,7 +506,7 @@ The OSC namespace is **open-ended** — any terminal can define new number codes
 - OSC 52 clipboard access is how tmux and vim share the system clipboard
 - OSC 8 hyperlinks make `ls`, `grep`, and compiler output clickable
 - OSC 133 powers shell integration in iTerm2, WezTerm, and VS Code terminal
-  :::
+:::
 
 <p class="standard-link"><a class="hover-link" href="/osc">View OSC features &rarr;</a></p>
 
@@ -529,7 +529,7 @@ The [keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) docu
 - Kitty documents keyboard-protocol implementations in Ghostty, WezTerm, foot, and others
 - Extended underlines power squiggly-line error indicators in terminal editors
 - Graphics queries can establish protocol recognition; visible rendering needs a capture
-  :::
+:::
 
 <p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
 

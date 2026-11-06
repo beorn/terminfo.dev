@@ -35,7 +35,7 @@ Our current app measurements cover [Kitty 0.49.2 on Linux](/terminals/kitty) in 
 - Check your terminal's clipboard policy; keep reads denied or subject to confirmation unless you need unrestricted access.
 - If you enable OSC 52 read for remote workflows, scope it to specific sessions or hosts.
 - Libraries: don't assume OSC 52 read works. Fall back gracefully — check the terminal's response or use platform clipboard tools (`pbcopy`, `xclip`).
-  :::
+:::
 
 ## OSC 8: Hyperlink Spoofing
 
@@ -59,7 +59,7 @@ A user sees "Google" as a clickable link in their terminal. Clicking it opens `e
 - Hover before clicking: most terminals show the actual URL on hover (like a browser).
 - If your application renders links from untrusted sources, sanitize the URL or display the raw URL alongside the link text.
 - Terminal authors: show the real URL in a tooltip or status bar, as browsers do.
-  :::
+:::
 
 ## Paste Injection & Bracketed Paste
 
@@ -101,7 +101,7 @@ printf '\e[?2004l'
 - Use a modern shell (zsh, fish, bash 5.1+) — they enable bracketed paste automatically.
 - If writing a TUI application that accepts text input, enable mode 2004 and handle the paste markers.
 - Be cautious pasting commands from websites. Use a plain text editor as an intermediate step if unsure.
-  :::
+:::
 
 ## Escape Injection in Logs
 
@@ -127,7 +127,7 @@ echo -e 'normal log line\n\e[1A\e[2K\e[1A\e[2Knormal log line' >> server.log
 - **Viewing logs**: Use `cat -v` (shows control characters as `^[`), `less -R` (passes through color but blocks most others), or a log viewer that strips escapes.
 - **Writing logs**: Sanitize user input before logging. Strip or escape bytes in the 0x00-0x1F range (especially 0x1B/ESC). Most logging libraries do this by default.
 - **Piping untrusted data**: Use `| cat -v` or `| sed 's/\x1b\[[0-9;]*[a-zA-Z]//g'` to strip ANSI sequences.
-  :::
+:::
 
 ## Title and Icon Attacks
 
@@ -152,7 +152,7 @@ Some older terminals also supported _reading_ the title back via a query sequenc
 - Terminal authors: never respond to title query sequences (`CSI 21 t`) with the actual title contents. Most modern terminals already block this.
 - Users: be aware that window titles can be set by remote content. Don't rely on the title bar to verify which host or directory you're in.
 - Sanitize data before passing it to title-setting sequences in your application. Strip control characters and limit the length.
-  :::
+:::
 
 ## Further Reading
 

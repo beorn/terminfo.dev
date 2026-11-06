@@ -15,12 +15,7 @@ import {
   type LoadedCellTrace,
 } from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
-import {
-  describeReplyBytes,
-  describeSentBytes,
-  describeStepTable,
-  type StepSource,
-} from "../../data/step-table"
+import { describeReplyBytes, describeSentBytes, describeStepTable, type StepSource } from "../../data/step-table"
 import { textEvidenceExplanation } from "./ungraded-explanation"
 import { evidenceStatus } from "./evidence-status"
 import ResultSteps from "./ResultSteps.vue"
@@ -162,7 +157,9 @@ const plainResult = computed(() => {
   return table?.summary ?? reason
 })
 
-const actionLabel = computed(() => props.cell ? "Original evidence not reviewed for presentation" : "No evidence in current selection")
+const actionLabel = computed(() =>
+  props.cell ? "Original evidence not reviewed for presentation" : "No evidence in current selection",
+)
 const accessibleName = computed(
   () =>
     `${props.featureName} in ${props.subjectName}${sourceRun.value ? ` ${sourceRun.value.subject.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
@@ -255,21 +252,11 @@ async function loadEvidence(): Promise<void> {
         expectedSha256: traceReceipt.sha256,
         actualSha256: cached.actualSha256,
       })
-      if (
-        request !== evidenceRequest ||
-        !previewVisible.value ||
-        identity !== evidenceIdentity.value
-      )
-        return
+      if (request !== evidenceRequest || !previewVisible.value || identity !== evidenceIdentity.value) return
       cellTrace.value = loaded
       repositionPreview()
     } catch (error) {
-      if (
-        request !== evidenceRequest ||
-        !previewVisible.value ||
-        identity !== evidenceIdentity.value
-      )
-        return
+      if (request !== evidenceRequest || !previewVisible.value || identity !== evidenceIdentity.value) return
       evidenceError.value = error instanceof Error ? error.message : String(error)
       repositionPreview()
     } finally {
@@ -387,9 +374,7 @@ onBeforeUnmount(() => {
       @click="focusPreview"
     >
       <span aria-hidden="true">{{ status.icon }}</span>
-      <span v-if="display === 'text'" class="result-evidence__label"
-        >{{ shortLabel }}</span
-      >
+      <span v-if="display === 'text'" class="result-evidence__label">{{ shortLabel }}</span>
     </button>
 
     <Teleport to="body">
@@ -509,8 +494,6 @@ onBeforeUnmount(() => {
           </div>
         </details>
       </div>
-
-
     </Teleport>
   </span>
 </template>

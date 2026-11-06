@@ -135,7 +135,7 @@ Terminal detection gets significantly harder when multiplexers (tmux, screen, Ze
 1. Check the selected `$TERM` entry for the interface exposed to your application.
 2. Query a specific mode when the responding layer implements DECRQM; silence after an attempted query is PROBE INVALID.
 3. If you explicitly use tmux passthrough, check its `allow-passthrough` setting and validate the reply's origin. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
-   :::
+:::
 
 ## Practical Detection Recipes
 
