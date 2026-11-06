@@ -1,0 +1,64 @@
+<script setup lang="ts">
+import { computed, ref } from "vue"
+import type { WorkingView } from "../../data/working-runs"
+import { evidenceStatus } from "./evidence-status"
+
+const props = defineProps<{ history: WorkingView[]; featureId?: string; engine?: string; kind?: string }>()
+const collectionId = ref(props.history.at(-1)?.run.id ?? "")
+const selected = computed(() => props.history.find((view) => view.run.id === collectionId.value))
+const contexts = computed(() => selected.value?.contexts.filter((row) => (!props.engine || row.engine === props.engine) && (!props.kind || row.kind === props.kind)) ?? [])
+const contextKey = ref(contexts.value[0]?.contextKey ?? "")
+const context = computed(() => contexts.value.find((row) => row.contextKey === contextKey.value))
+const cells = computed(() => Object.entries(context.value?.states ?? {}).filter(([id]) => !props.featureId || id === props.featureId))
+</script>
+
+<template>
+<section id="run-history" class="run-history">
+  <h2>Retained run history — raw, unreviewed</h2>
+  <p>Each collection keeps its original probe statuses and receipts. These results do not change accepted answers, scores or completion. Missing or untrusted inputs remain visible.</p>
+  <label>Collection
+    <select v-model="collectionId">
+      <option v-for="view in history" :key="view.run.id" :value="view.run.id">{{ view.run.startedAt }} · {{ view.run.id }}{{ view.unreadable ? ' · unreadable' : '' }}</option>
+    </select>
+  </label>
+  <p>{{ history.length }} retained collection entries, including entries with unreadable inputs. Oldest {{ history[0]?.run.startedAt }}, newest {{ history.at(-1)?.run.startedAt }}. Times are UTC.</p>
+  <template v-if="selected">
+    <p>Collection <code>{{ selected.run.id }}</code>; started {{ selected.run.startedAt }}; newest capture {{ selected.run.newestCaptureAt }}.</p>
+    <div v-if="selected.unreadable" class="danger custom-block">
+      <p><strong>{{ selected.unreadable.banner }}</strong></p>
+      <p>{{ selected.unreadable.reason }}</p>
+    </div>
+    <template v-else-if="contexts.length">
+      <label>Recorded context
+        <select v-model="contextKey">
+          <option v-for="row in contexts" :key="row.contextKey" :value="row.contextKey">{{ row.engine }} {{ row.version }} · {{ row.contextKey }}</option>
+        </select>
+      </label>
+      <template v-if="context">
+        <p><strong>{{ context.engine }} {{ context.version }}</strong>; original capture <code>{{ context.runId }}</code>; measured {{ context.measuredAt }}; suite <code>{{ context.suiteId }}</code>; source <code>{{ context.sourceRevision }}</code>; capture SHA-256 <code>{{ context.sha256 }}</code>; identity {{ context.identity }}.</p>
+        <p>Raw Supported / graded features: {{ context.counts.supported }} / {{ context.positions }}. Environment groups are ungraded; shown-but-not-counted and reference results retain the existing rollup treatment.</p>
+        <p v-if="context.changeBaseline">Recorded comparison baseline: <code>{{ context.changeBaseline }}</code>.</p>
+        <p>{{ context.changeQualification }}</p>
+        <table v-if="cells.length">
+          <thead><tr><th>Probe</th><th>Recorded status</th><th>Recorded change from baseline</th></tr></thead>
+          <tbody><tr v-for="cell in cells" :key="cell[0]">
+            <td><code>{{ cell[0] }}</code></td>
+            <td>{{ evidenceStatus(cell[0], cell[1]).text }}</td>
+            <td>{{ context.changes === undefined ? 'Comparison unavailable' : context.changes[cell[0]] ?? 'No recorded status change' }}</td>
+          </tr></tbody>
+        </table>
+        <p v-else>No probe result is recorded for this feature in this context.</p>
+      </template>
+      <p v-else>The selected context was not recorded in this collection; choose another recorded context.</p>
+    </template>
+    <p v-else>No matching context was recorded in this collection.</p>
+  </template>
+</section>
+</template>
+
+<style scoped>
+.run-history { margin: 2rem 0; padding-top: 1rem; border-top: 1px solid var(--vp-c-divider); }
+label { display: block; margin: 1rem 0; }
+select { display: block; max-width: 100%; padding: .35rem; border: 1px solid var(--vp-c-divider); border-radius: 4px; background: var(--vp-c-bg); }
+code { overflow-wrap: anywhere; }
+</style>

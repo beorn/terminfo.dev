@@ -20,7 +20,7 @@
  * - "Differs from reviewed" needs the same suite AND the same engine version and a different status.
  */
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
-import { join, resolve, sep } from "node:path"
+import { basename, dirname, join, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
 import {
   PROBE_STATUSES,
@@ -51,6 +51,8 @@ export interface WorkingRunSelection {
 
 export interface LoadedWorkingRun extends WorkingRunSelection {
   runs: LoadedRun[]
+  /** Existing hourly summary receipt, consumed only by private history presentation. */
+  changeRecord?: unknown
   /** Retained view shape; a complete collection must contain every requested engine. */
   unmeasured: Array<{ engine: string; status: string; reason: string }>
   /**
@@ -71,6 +73,13 @@ const record = (value: unknown): value is Record<string, unknown> =>
  * summary that exists but does not parse is a loud error, never a skip.
  */
 export function newestCompleteRun(runsDir: string): WorkingRunSelection {
+  const [selection] = completeRunSelections(runsDir)
+  // The enumeration throws when no complete selection exists.
+  return selection as WorkingRunSelection
+}
+
+/** One enumeration owner for newest-only callers and retained page history. */
+function* completeRunSelections(runsDir: string, latestId?: string): Generator<WorkingRunSelection> {
   let names: string[]
   try {
     names = readdirSync(runsDir)
@@ -81,9 +90,10 @@ export function newestCompleteRun(runsDir: string): WorkingRunSelection {
     )
   }
   const skipped: string[] = []
+  let found = false
   // Entries that are not run directories (no ISO-time-and-root name) are not runs and are not read.
   for (const name of names
-    .filter((entry) => RUN_DIR.test(entry))
+    .filter((entry) => RUN_DIR.test(entry) && (latestId === undefined || entry <= latestId))
     .sort()
     .reverse()) {
     const dir = join(runsDir, name)
@@ -104,11 +114,14 @@ export function newestCompleteRun(runsDir: string): WorkingRunSelection {
       throw new Error(`${join(dir, "cells.json")}: complete summary names a run whose cells are absent`)
     }
     const [, day, hh, mm, ss, ms] = RUN_DIR.exec(name) ?? []
-    return { id: name, dir, startedAt: `${day}T${hh}:${mm}:${ss}.${ms}Z` }
+    found = true
+    yield { id: name, dir, startedAt: `${day}T${hh}:${mm}:${ss}.${ms}Z` }
   }
-  throw new Error(
-    `no complete hourly run in ${runsDir}${skipped.length ? `; skipped ${skipped.join(", ")}` : "; no run directories"}`,
-  )
+  if (!found) {
+    throw new Error(
+      `no complete hourly run in ${runsDir}${skipped.length ? `; skipped ${skipped.join(", ")}` : "; no run directories"}`,
+    )
+  }
 }
 
 /** Load the current hourly collection and verify its recorded rollups through the one raw-capture reader. */
@@ -252,7 +265,7 @@ export function loadWorkingRun(
     }
     runs.push(run)
   }
-  return { ...selection, runs, unmeasured: [] }
+  return { ...selection, runs, unmeasured: [], ...(Object.hasOwn(summary, "moved") && { changeRecord: summary.moved }) }
 }
 
 /** The runs directory the site build reads, or undefined when the variable is unset or blank. */
@@ -271,6 +284,7 @@ export function siteWorkingRunsDir(env: NodeJS.ProcessEnv = process.env): string
  */
 const SELECTION_CACHE = Symbol.for("terminfo.dev/workingRunSelection")
 const LOADED_CACHE = Symbol.for("terminfo.dev/workingRunLoaded")
+const HISTORY_CACHE = Symbol.for("terminfo.dev/workingRunHistorySelections")
 const host = globalThis as unknown as { [k: symbol]: Map<string, unknown> | undefined }
 
 export function selectedSiteWorkingRun(env: NodeJS.ProcessEnv = process.env): WorkingRunSelection | null {
@@ -289,6 +303,10 @@ const REPO_ROOT = join(import.meta.dirname, "..", "..")
 export function siteWorkingRun(env: NodeJS.ProcessEnv = process.env): LoadedWorkingRun | null {
   const selection = selectedSiteWorkingRun(env)
   if (selection === null) return null
+  return loadedSiteWorkingRun(selection)
+}
+
+function loadedSiteWorkingRun(selection: WorkingRunSelection, retain = true): LoadedWorkingRun {
   const cache = (host[LOADED_CACHE] ??= new Map())
   const known = cache.get(selection.dir) as LoadedWorkingRun | undefined
   if (known) return known
@@ -298,7 +316,7 @@ export function siteWorkingRun(env: NodeJS.ProcessEnv = process.env): LoadedWork
   if (loaded.unreadable) {
     console.warn(`terminfo-site: WARNING ${loaded.unreadable.banner} (${loaded.unreadable.reason})`)
   }
-  cache.set(selection.dir, loaded)
+  if (retain) cache.set(selection.dir, loaded)
   return loaded
 }
 
@@ -380,14 +398,22 @@ export interface WorkingContext {
   cells: WorkingCell[]
   counts: TerminalStatusRollup["counts"]
   positions: TerminalStatusRollup["positions"]
+  /** Original receipts and recorded change captions, populated only in private history views. */
+  sha256?: string
+  identity?: LoadedRun["identity"]
+  changeBaseline?: string
+  changeQualification?: string
+  changes?: Record<string, string>
+  /** Private history stores each recorded status once; receipts live on this context. */
+  states?: Readonly<Record<string, FeatureResultStatus>>
 }
 
 export interface WorkingView {
   label: typeof RAW_LABEL
   rule: string
   run: { id: string; startedAt: string; newestCaptureAt: string; suites: string[] }
-  /** The loud banner when this build cannot read the run's suite; `contexts` is then empty. */
-  unreadable?: LoadedWorkingRun["unreadable"]
+  /** A suite or retained-input gap is visible without inventing context counts. */
+  unreadable?: Pick<NonNullable<LoadedWorkingRun["unreadable"]>, "reason" | "banner">
   contexts: WorkingContext[]
   unmeasured: LoadedWorkingRun["unmeasured"]
 }
@@ -496,4 +522,118 @@ export function siteWorkingView(contentDir: string, env: NodeJS.ProcessEnv = pro
   if (working === null) return null
   const { projection } = loadCurrentResults(contentDir)
   return composeWorkingView(projection, compatibilitySubjects(projection, contentDir), working)
+}
+
+/** Private page history uses the same raw reader and view; public API generation remains newest-only. */
+export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = process.env): WorkingView[] | null {
+  const newest = selectedSiteWorkingRun(env)
+  if (newest === null) return null
+  const dir = dirname(newest.dir)
+  const cache = (host[HISTORY_CACHE] ??= new Map())
+  const known = cache.get(newest.dir) as WorkingView[] | undefined
+  if (known) return known
+  const selections = [...completeRunSelections(dir, newest.id)].reverse()
+  const { projection } = loadCurrentResults(contentDir)
+  const reviewed = compatibilitySubjects(projection, contentDir)
+  const earlier = new Map<string, WorkingView>()
+  const runtimeReceipts = new Map<string, Map<string, string | undefined>>()
+  // Keep the small page views across loaders, not every historical capture's full evidence payload.
+  const views = selections.map((selection): WorkingView => {
+    try {
+      const loaded = loadedSiteWorkingRun(selection, selection.id === newest.id)
+      const view = composeWorkingView(projection, reviewed, loaded)
+      const fingerprints = new Map<string, string | undefined>()
+      for (const context of view.contexts) {
+        context.states = Object.fromEntries(context.cells.map((cell) => [cell.featureId, cell.raw.status]))
+        context.cells = []
+        const original = loaded.runs.find((run) => run.subject.id === context.engine)
+        context.sha256 = original?.sha256
+        context.identity = original?.identity
+        fingerprints.set(context.contextKey, JSON.stringify(original?.runtimeIdentity))
+        const receipt = loaded.changeRecord
+        if (!record(receipt) || typeof receipt.since !== "string" || !Array.isArray(receipt.moves)) {
+          context.changeQualification = "No usable comparison receipt was recorded for this collection."
+          continue
+        }
+        const baseline = basename(receipt.since)
+        context.changeBaseline = baseline
+        const prior = earlier.get(baseline)?.contexts.find((candidate) => candidate.contextKey === context.contextKey)
+        const priorRuntime = runtimeReceipts.get(baseline)?.get(context.contextKey)
+        if (!prior) {
+          context.changeQualification = "The recorded baseline context is unavailable in this history reading."
+          continue
+        }
+        if (prior.suiteId !== context.suiteId || prior.version !== context.version) {
+          context.changeQualification = "Different suite or engine version; recorded moves are not comparable."
+          continue
+        }
+        if (priorRuntime === undefined || priorRuntime !== fingerprints.get(context.contextKey)) {
+          context.changeQualification = "Recorded runtime identity differs or is missing; moves are not comparable."
+          continue
+        }
+        const moves = receipt.moves
+        if (
+          !moves.every(
+            (move): move is Record<"engine" | "feature" | "from" | "to" | "comparison", string> =>
+              record(move) &&
+              ["engine", "feature", "from", "to", "comparison"].every((key) => typeof move[key] === "string"),
+          )
+        ) {
+          context.changeQualification = "The retained change receipt is malformed; comparison is unavailable."
+          continue
+        }
+        const ownMoves = moves.filter((move) => move.engine === context.engine)
+        if (
+          ownMoves.some(
+            (move) =>
+              prior.states?.[move.feature] !== storedProbeStatus(move.from) ||
+              context.states?.[move.feature] !== storedProbeStatus(move.to),
+          )
+        ) {
+          context.changeQualification =
+            "The recorded change does not match the decoded captures; comparison is unavailable."
+          continue
+        }
+        context.changeQualification = `Same recorded context, suite, engine version and runtime identity; baseline capture ${prior.runId}, source ${prior.sourceRevision}. A recorded identity match is not runtime verification.`
+        context.changes = Object.fromEntries(
+          ownMoves.map((move) => [move.feature, `${move.from} → ${move.to} (${move.comparison})`]),
+        )
+      }
+      earlier.set(selection.id, view)
+      runtimeReceipts.set(selection.id, fingerprints)
+      if (view.unreadable) {
+        view.unreadable = {
+          ...view.unreadable,
+          reason: view.unreadable.reason.replaceAll(dir, "retained runs").replaceAll(REPO_ROOT, "source tree"),
+        }
+      }
+      return view
+    } catch (error) {
+      // A reader diagnostic naming this older collection is an input gap, not zero results.
+      // Newest-run failures and errors outside that input still propagate unchanged.
+      if (selection.id === newest.id || !(error instanceof Error)) throw error
+      const missingInput =
+        "code" in error &&
+        error.code === "ENOENT" &&
+        "path" in error &&
+        typeof error.path === "string" &&
+        error.path.startsWith(selection.dir + sep)
+      if (!missingInput && !error.message.startsWith(selection.dir + sep)) {
+        throw error
+      }
+      const reason = error.message.replaceAll(selection.dir, selection.id)
+      const banner = `Retained collection ${selection.id} has unreadable input; results and counts are unavailable.`
+      console.warn(`terminfo-site: WARNING ${banner} (${reason})`)
+      return {
+        label: RAW_LABEL,
+        rule: "Missing retained inputs are not zero results and do not change accepted answers.",
+        run: { id: selection.id, startedAt: selection.startedAt, newestCaptureAt: "not read", suites: [] },
+        contexts: [],
+        unmeasured: [],
+        unreadable: { banner, reason },
+      }
+    }
+  })
+  cache.set(newest.dir, views)
+  return views
 }

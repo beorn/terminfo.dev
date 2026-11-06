@@ -235,6 +235,8 @@ const breadcrumbParent = (() => {
 
 </div>
 
+<RunHistory v-if="data.workingHistory && defaultRun?.subject" :history="data.workingHistory" :engine="defaultRun.subject.id" :kind="defaultRun.subject.kind" />
+
 <style>
 .backend-page {
   max-width: 800px;

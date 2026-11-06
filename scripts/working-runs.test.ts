@@ -11,7 +11,7 @@ import { createHash } from "node:crypto"
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { LoadedRun } from "@terminfo/run-parser"
 import type { ProbeStatus } from "@terminfo/probe-defs"
 import { loadFeatures } from "@terminfo/catalog"
@@ -24,11 +24,14 @@ import {
   selectedSiteWorkingRun,
   workingCell,
   workingRunStamp,
+  siteWorkingHistory,
   type LoadedWorkingRun,
 } from "../docs/data/working-runs.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
+import { loadFullProjectData } from "../docs/data/full-project.data.ts"
+import clientProbes from "../docs/data/probes.data.ts"
 
 function runsDir(): string {
   return mkdtempSync(join(tmpdir(), "terminfo-working-runs-"))
@@ -92,12 +95,15 @@ describe("newestCompleteRun: the site reads the newest COMPLETE hourly run (requ
 })
 
 describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+  })
   const root = join(import.meta.dirname, "..")
   const catalogIds = Object.keys(loadFeatures(join(root, "content")))
   // Reuse a real committed payload and its committed manifest. Only the hourly envelope is synthetic.
-  function collection() {
-    const parent = runsDir()
-    const dir = run(parent, OLD, { complete: true })
+  function collection(parent = runsDir(), name = OLD) {
+    const dir = run(parent, name, { complete: true })
     const headless = join(dir, "headless")
     mkdirSync(headless)
     const rawPath = join(headless, "vterm.draft.json")
@@ -142,6 +148,200 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(loaded.runs[0]?.results).toHaveLength(273)
     expect(loaded.runs[0]?.runId).toBe("a22f06ca-2505-4c0d-a518-b0b01f8bbe76")
   })
+
+  // Accepted history requirement: page data retains older complete collections automatically.
+  // The existing manual reopen test cannot detect a newest-only page loader.
+  it("retains complete ordinary history in page data without changing accepted results", () => {
+    const older = collection()
+    collection(older.parent, PARTIAL)
+    run(older.parent, WRITING, undefined, false)
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
+    const acceptedCounts = () =>
+      JSON.stringify(
+        Object.entries(loadCurrentResults(join(root, "content")).projection.contexts).map(([key, context]) => [
+          key,
+          context.counts,
+          context.score,
+        ]),
+      )
+    const accepted = acceptedCounts()
+    const page = loadFullProjectData()
+    const history = clientProbes.load().workingHistory
+    expect(history?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+    expect(page.working?.run.id).toBe(PARTIAL)
+    // Full preview carries receipts/counts; detail pages receive their own probe rows.
+    // Serializing every terminal/probe history into the preview was 83 MB on the real retained population.
+    expect(history?.every((entry) => entry.contexts[0]?.cells.length === 0)).toBe(true)
+    expect(
+      siteWorkingHistory(join(root, "content"))?.every(
+        (entry) => Object.keys(entry.contexts[0]?.states ?? {}).length === 273,
+      ),
+    ).toBe(true)
+    expect(acceptedCounts()).toBe(accepted)
+
+    // A new collection completing mid-build belongs to the next build, not only some pages.
+    collection(older.parent, WRITING)
+    const sameBuild = clientProbes.load()
+    expect(sameBuild.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+  })
+
+  it("keeps the recorded comparison baseline separate from missing comparison evidence", () => {
+    const older = collection()
+    const newer = collection(older.parent, PARTIAL)
+    Object.assign(newer.summary, { moved: { since: older.dir, range: "recorded source range", moves: [] } })
+    newer.save()
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
+    const history = siteWorkingHistory(join(root, "content"))
+    const first = history?.[0]?.contexts[0] as { changeBaseline?: string; changes?: Record<string, string> } | undefined
+    const next = history?.[1]?.contexts[0] as typeof first
+    expect(first?.changes).toBeUndefined()
+    expect(next?.changeBaseline).toBe(OLD)
+    expect(next?.changes).toEqual({})
+  })
+
+  it("qualifies a recorded move that no longer matches the decoded captures", () => {
+    const older = collection()
+    const newer = collection(older.parent, PARTIAL)
+    Object.assign(newer.summary, {
+      moved: {
+        since: older.dir,
+        moves: [
+          { engine: "vterm", feature: "sgr.bold", from: "unsupported", to: "supported", comparison: "same-suite move" },
+        ],
+      },
+    })
+    newer.save()
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
+    const context = siteWorkingHistory(join(root, "content"))?.[1]?.contexts[0]
+    expect(context?.changes).toBeUndefined()
+    expect(context?.changeQualification).toContain("does not match")
+  })
+
+  // Acceptance: retain a comparable recorded change, but never infer it across a different runtime/version.
+  // Empty-move and stale-receipt cases cannot catch dropping every valid change or accepting the wrong cohort.
+  it.each(["matching", "different version", "different runtime"] as const)(
+    "qualifies a recorded status change with %s capture identities",
+    (identity) => {
+      const older = collection()
+      const newer = collection(older.parent, PARTIAL)
+      const priorPath = older.collected.runs[0]!
+      const prior = JSON.parse(readFileSync(priorPath, "utf8")) as {
+        results: Array<{ featureId: string; status: string; tests: [{ status: string; assertionRefs: [number] }] }>
+        assertions: Array<{ kind: string; expected: string; observed: string }>
+        rawReplies: Record<string, string>
+      }
+      // A synthetic prior observation over the existing complete capture fixture; never admitted as real data.
+      const bold = prior.results.find((row) => row.featureId === "sgr.bold")!
+      bold.status = "unsupported"
+      bold.tests[0].status = "unsupported"
+      const assertion = prior.assertions[bold.tests[0].assertionRefs[0]]!
+      assertion.kind = "negative"
+      assertion.expected = "sgr.bold: attribute absent in the prior fixture observation"
+      assertion.observed = JSON.stringify({ char: "X", bold: false })
+      prior.rawReplies["sgr.bold"] = assertion.observed
+      writeFileSync(priorPath, JSON.stringify(prior))
+      const decoded = loadRawCapture(priorPath, { root, catalogIds })
+      older.summary.rollups.vterm = rollupTerminalStatuses(
+        Object.fromEntries(decoded.results!.map((row) => [row.featureId, row.status])),
+        catalogIds,
+      )
+      older.save()
+
+      const nextPath = newer.collected.runs[0]!
+      const next = JSON.parse(readFileSync(nextPath, "utf8")) as {
+        subject: { version: string }
+        runtimeIdentity: { engineVersion: string; integrity: { treeOid: string } }
+      }
+      if (identity === "different version") {
+        next.subject.version = "0.10.2"
+        next.runtimeIdentity.engineVersion = "0.10.2"
+      } else if (identity === "different runtime") {
+        next.runtimeIdentity.integrity.treeOid = "f".repeat(40)
+      }
+      writeFileSync(nextPath, JSON.stringify(next))
+      Object.assign(newer.summary, {
+        moved: {
+          since: older.dir,
+          moves: [
+            {
+              engine: "vterm",
+              feature: "sgr.bold",
+              from: "unsupported",
+              to: "supported",
+              comparison: "same-suite move",
+            },
+          ],
+        },
+      })
+      newer.save()
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
+      const context = siteWorkingHistory(join(root, "content"))?.[1]?.contexts[0]
+      if (identity === "matching") {
+        expect(context?.changes).toEqual({ "sgr.bold": "unsupported → supported (same-suite move)" })
+        expect(context?.changeQualification).toContain("not runtime verification")
+      } else {
+        expect(context?.changes).toBeUndefined()
+        expect(context?.changeQualification).toContain(
+          identity === "different version" ? "Different suite or engine version" : "runtime identity differs",
+        )
+      }
+    },
+  )
+
+  // Actual build hit 17.6 GB: 273 feature routes repeated 255 MB of history params.
+  // The shared client loader must preserve all statuses/receipts without repeating per-cell provenance.
+  it("shares complete historical statuses with original capture receipts in the client data", () => {
+    const fixture = collection()
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", fixture.parent)
+    const original = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds }).runs[0]!
+    const context = clientProbes.load().workingHistory?.[0]?.contexts[0]
+    expect(context?.states).toEqual(
+      Object.fromEntries(original.results!.map((result) => [result.featureId, result.status])),
+    )
+    expect(context).toMatchObject({
+      runId: original.runId,
+      sha256: original.sha256,
+      measuredAt: original.measuredAt,
+      suiteId: original.probeHash,
+      sourceRevision: original.sourceRevision,
+      identity: original.identity,
+    })
+    expect(context?.cells).toEqual([])
+  })
+
+  // Actual retained history includes complete envelopes whose collection file is absent.
+  // Newest-only tests never encounter that older input; history must name the gap, never erase it or score zero.
+  it.each(["missing collection", "missing rollups"])(
+    "keeps %s in older history visible without preventing the current reading",
+    (failure) => {
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+      const parent = runsDir()
+      if (failure === "missing collection") {
+        run(parent, OLD, { complete: true })
+      } else {
+        const older = collection(parent, OLD)
+        delete (older.summary as Partial<typeof older.summary>).rollups
+        older.save()
+      }
+      collection(parent, PARTIAL)
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", parent)
+      const page = loadFullProjectData()
+      const history = clientProbes.load().workingHistory
+      expect(page.working?.run.id).toBe(PARTIAL)
+      expect(history?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+      expect(history?.[0]?.unreadable?.reason).toContain(
+        failure === "missing collection" ? "headless/collection.json" : "complete run requires per-engine rollups",
+      )
+      expect(history?.[0]?.unreadable?.reason).not.toContain(parent)
+      expect(history?.[0]?.contexts).toEqual([])
+      expect(warning).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining(
+          failure === "missing collection" ? "headless/collection.json" : "complete run requires per-engine rollups",
+        ),
+      )
+    },
+  )
 
   it("reads older retained probe history after a newer hourly run exists without admitting its raw results", () => {
     const fixture = collection()

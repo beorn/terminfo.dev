@@ -167,6 +167,8 @@ function termTooltip(r) {
 
 </div>
 
+<RunHistory v-if="data.workingHistory" :history="data.workingHistory" :feature-id="p.featureId" />
+
 <style>
 .feature-page {
   max-width: 100%;
