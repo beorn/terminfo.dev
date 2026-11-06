@@ -71,6 +71,12 @@ const record = (value: unknown): value is Record<string, unknown> =>
  * summary that exists but does not parse is a loud error, never a skip.
  */
 export function newestCompleteRun(runsDir: string): WorkingRunSelection {
+  const [selection] = completeRunSelections(runsDir)
+  return selection!
+}
+
+/** One enumeration owner for newest-only callers and retained page history. */
+function* completeRunSelections(runsDir: string, latestId?: string): Generator<WorkingRunSelection> {
   let names: string[]
   try {
     names = readdirSync(runsDir)
@@ -81,9 +87,10 @@ export function newestCompleteRun(runsDir: string): WorkingRunSelection {
     )
   }
   const skipped: string[] = []
+  let found = false
   // Entries that are not run directories (no ISO-time-and-root name) are not runs and are not read.
   for (const name of names
-    .filter((entry) => RUN_DIR.test(entry))
+    .filter((entry) => RUN_DIR.test(entry) && (latestId === undefined || entry <= latestId))
     .sort()
     .reverse()) {
     const dir = join(runsDir, name)
@@ -104,11 +111,14 @@ export function newestCompleteRun(runsDir: string): WorkingRunSelection {
       throw new Error(`${join(dir, "cells.json")}: complete summary names a run whose cells are absent`)
     }
     const [, day, hh, mm, ss, ms] = RUN_DIR.exec(name) ?? []
-    return { id: name, dir, startedAt: `${day}T${hh}:${mm}:${ss}.${ms}Z` }
+    found = true
+    yield { id: name, dir, startedAt: `${day}T${hh}:${mm}:${ss}.${ms}Z` }
   }
-  throw new Error(
-    `no complete hourly run in ${runsDir}${skipped.length ? `; skipped ${skipped.join(", ")}` : "; no run directories"}`,
-  )
+  if (!found) {
+    throw new Error(
+      `no complete hourly run in ${runsDir}${skipped.length ? `; skipped ${skipped.join(", ")}` : "; no run directories"}`,
+    )
+  }
 }
 
 /** Load the current hourly collection and verify its recorded rollups through the one raw-capture reader. */
@@ -271,6 +281,7 @@ export function siteWorkingRunsDir(env: NodeJS.ProcessEnv = process.env): string
  */
 const SELECTION_CACHE = Symbol.for("terminfo.dev/workingRunSelection")
 const LOADED_CACHE = Symbol.for("terminfo.dev/workingRunLoaded")
+const HISTORY_CACHE = Symbol.for("terminfo.dev/workingRunHistorySelections")
 const host = globalThis as unknown as { [k: symbol]: Map<string, unknown> | undefined }
 
 export function selectedSiteWorkingRun(env: NodeJS.ProcessEnv = process.env): WorkingRunSelection | null {
@@ -289,6 +300,10 @@ const REPO_ROOT = join(import.meta.dirname, "..", "..")
 export function siteWorkingRun(env: NodeJS.ProcessEnv = process.env): LoadedWorkingRun | null {
   const selection = selectedSiteWorkingRun(env)
   if (selection === null) return null
+  return loadedSiteWorkingRun(selection)
+}
+
+function loadedSiteWorkingRun(selection: WorkingRunSelection): LoadedWorkingRun {
   const cache = (host[LOADED_CACHE] ??= new Map())
   const known = cache.get(selection.dir) as LoadedWorkingRun | undefined
   if (known) return known
@@ -496,4 +511,20 @@ export function siteWorkingView(contentDir: string, env: NodeJS.ProcessEnv = pro
   if (working === null) return null
   const { projection } = loadCurrentResults(contentDir)
   return composeWorkingView(projection, compatibilitySubjects(projection, contentDir), working)
+}
+
+/** Private page history uses the same raw reader and view; public API generation remains newest-only. */
+export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = process.env): WorkingView[] | null {
+  const newest = selectedSiteWorkingRun(env)
+  if (newest === null) return null
+  const dir = siteWorkingRunsDir(env)!
+  const cache = (host[HISTORY_CACHE] ??= new Map())
+  let selections = cache.get(dir) as WorkingRunSelection[] | undefined
+  if (!selections) {
+    selections = [...completeRunSelections(dir, newest.id)].reverse()
+    cache.set(dir, selections)
+  }
+  const { projection } = loadCurrentResults(contentDir)
+  const reviewed = compatibilitySubjects(projection, contentDir)
+  return selections.map((selection) => composeWorkingView(projection, reviewed, loadedSiteWorkingRun(selection)))
 }

@@ -11,7 +11,7 @@ import { createHash } from "node:crypto"
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { LoadedRun } from "@terminfo/run-parser"
 import type { ProbeStatus } from "@terminfo/probe-defs"
 import { loadFeatures } from "@terminfo/catalog"
@@ -29,6 +29,7 @@ import {
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
+import { loadFullProjectData } from "../docs/data/full-project.data.ts"
 
 function runsDir(): string {
   return mkdtempSync(join(tmpdir(), "terminfo-working-runs-"))
@@ -92,12 +93,12 @@ describe("newestCompleteRun: the site reads the newest COMPLETE hourly run (requ
 })
 
 describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
+  afterEach(() => vi.unstubAllEnvs())
   const root = join(import.meta.dirname, "..")
   const catalogIds = Object.keys(loadFeatures(join(root, "content")))
   // Reuse a real committed payload and its committed manifest. Only the hourly envelope is synthetic.
-  function collection() {
-    const parent = runsDir()
-    const dir = run(parent, OLD, { complete: true })
+  function collection(parent = runsDir(), name = OLD) {
+    const dir = run(parent, name, { complete: true })
     const headless = join(dir, "headless")
     mkdirSync(headless)
     const rawPath = join(headless, "vterm.draft.json")
@@ -141,6 +142,34 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(loaded.runs[0]?.subject.id).toBe("vterm")
     expect(loaded.runs[0]?.results).toHaveLength(273)
     expect(loaded.runs[0]?.runId).toBe("a22f06ca-2505-4c0d-a518-b0b01f8bbe76")
+  })
+
+  // Accepted history requirement: page data retains older complete collections automatically.
+  // The existing manual reopen test cannot detect a newest-only page loader.
+  it("retains complete ordinary history in page data without changing accepted results", () => {
+    const older = collection()
+    collection(older.parent, PARTIAL)
+    run(older.parent, WRITING, undefined, false)
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
+    const acceptedCounts = () =>
+      JSON.stringify(
+        Object.entries(loadCurrentResults(join(root, "content")).projection.contexts).map(([key, context]) => [
+          key,
+          context.counts,
+          context.score,
+        ]),
+      )
+    const accepted = acceptedCounts()
+    const page = loadFullProjectData()
+    expect(page.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+    expect(page.working?.run.id).toBe(PARTIAL)
+    expect(page.workingHistory?.every((entry) => entry.contexts[0]?.cells.length === 273)).toBe(true)
+    expect(acceptedCounts()).toBe(accepted)
+
+    // A new collection completing mid-build belongs to the next build, not only some pages.
+    collection(older.parent, WRITING)
+    const sameBuild = loadFullProjectData()
+    expect(sameBuild.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
   })
 
   it("reads older retained probe history after a newer hourly run exists without admitting its raw results", () => {
