@@ -301,11 +301,14 @@ test("extensions.clipboard-paste keeps missing native paste encoding PROBE TODO 
   // CTO 8baca152: adapter absence does not authorize Untestable; those claims need
   // the operator's separate approval. The app arm retains its independent XTEST prerequisite.
   expect(headless.tests).toEqual([
-    expect.objectContaining({ status: "probe-todo", reason: expect.stringMatching(/paste-encoding.*unavailable/i) }),
+    expect.objectContaining({
+      status: "probe-todo",
+      reason: expect.stringContaining("has no hook for sending pastes"),
+    }),
   ])
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/paste-encoding.*unavailable/i),
+    noObservable: expect.stringContaining("has no hook for sending pastes"),
   })
   expect(headless.observation).toBeUndefined()
 
@@ -489,7 +492,9 @@ describe("native clipboard paste encoding", () => {
     const model = nativePasteModel()
     delete model.ctx.encodePaste
     const result = pasteProbe().lib!(model.ctx)
-    expect(result.tests).toMatchObject([{ status: "probe-todo", reason: expect.stringContaining("paste-encoding") }])
+    expect(result.tests).toMatchObject([
+      { status: "probe-todo", reason: expect.stringContaining("has no hook for sending pastes") },
+    ])
     expect(result.observation).toBeUndefined()
     expect(model.feeds).toEqual([])
   })

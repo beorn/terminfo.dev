@@ -219,7 +219,8 @@ test.each(DEVICE_SEMANTIC_SURFACE_CONTROLS)(
       expect(negativeResult.observation).toBeUndefined()
       expect(negativeResult.notTested).toEqual({
         reason: "no-semantic-observable",
-        noObservable: "observation not decided: no same-path control in this run",
+        noObservable:
+          "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
       })
       expect(negativeResult.criterionBranch).toBeUndefined()
     } else expect(negativeResult.observation?.outcome).toBe(negativeOutcome)
