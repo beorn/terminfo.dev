@@ -187,7 +187,11 @@ export function hasAuditedOscInterfaceAbsence(
         (identity.provenance.lockSha256 === "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886" &&
           identity.loadedBinary.sha256 === "cce8a7d931bf7694891067b4b64062d64df853e7c23e5054521cf5c98a7f67b6" &&
           identity.provenance.sourceCommit === "1ee22567769a6aa27765e76eafb675e1d7197cef" &&
-          auditedAdapterSources(identity, "weztermClipboardImages")))
+          auditedAdapterSources(identity, "weztermClipboardImages")) ||
+        (identity.provenance.lockSha256 === "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886" &&
+          identity.loadedBinary.sha256 === "ff7d2eb1021ac1a5629a151ea4b2b6f510312af36245377dc92ffb56508ca746" &&
+          identity.provenance.sourceCommit === "17d0ee52ebdfdfc4589d453cd6bed8a8af96fa2e" &&
+          auditedAdapterSources(identity, "weztermPixelMouse")))
     )
   }
   if (cohort === "vt100-rust-d2") {
