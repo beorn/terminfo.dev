@@ -1,3 +1,5 @@
+import type { Cell } from "@termless/core/io"
+
 /** A mode readback; null means this source does not expose the requested state. */
 export type ModeState = boolean | null
 
@@ -846,34 +848,18 @@ export interface LibProbeSource {
    * `sentinel` outcome live records, a measured negative only when nothing preceded the answer.
    */
   queryWithSentinelOutcome?(sequence: string, pattern: RegExp): TerminalQueryOutcome
+  /**
+   * Shared cell attributes; probes do not require continuation or metadata.
+   * Absent hyperlink: unreported; null: reported unlinked; string: exact URI.
+   */
   getCell(
     row: number,
     col: number,
-  ): {
-    char: string
-    /** Absent: backend does not report links; null: reported unlinked; string: exact URI. */
-    hyperlink?: string | null
-    bold: boolean
-    /** null = this producer does not report the attribute; never a terminal-support claim. */
-    dim: boolean | null
-    /** null = this producer does not report the attribute; never a terminal-support claim. */
-    italic: boolean | null
-    // oxlint-disable-next-line typescript/no-explicit-any -- Existing Termless cell contract; observation schema does not change it.
-    underline: any
-    underlineColor?: { r: number; g: number; b: number } | null
-    /** null = this producer does not report the attribute; never a terminal-support claim. */
-    strikethrough: boolean | null
-    inverse: boolean
-    /** null = this producer does not report the attribute; never a terminal-support claim. */
-    hidden: boolean | null
-    /** null = this producer does not report the attribute; never a terminal-support claim. */
-    blink: boolean | null
-    /** null = this producer does not report the attribute; never a terminal-support claim. */
-    overline: boolean | null
-    fg: { r: number; g: number; b: number } | null
-    bg: { r: number; g: number; b: number } | null
-    wide: boolean
-  }
+  ): Omit<Cell, "continuation" | "hyperlink" | "underlineColor" | "underline"> &
+    Partial<Pick<Cell, "hyperlink" | "underlineColor">> & {
+      /** true and null are probe-only readings in addition to the canonical styles. */
+      underline: Cell["underline"] | true | null
+    }
   getCursor(): { x: number; y: number; visible: boolean | null; style: string | null }
   getMode(mode: string): ModeState
   getText(): string

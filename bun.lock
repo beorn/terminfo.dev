@@ -61,6 +61,9 @@
     "packages/probe-defs": {
       "name": "@terminfo/probe-defs",
       "version": "0.0.0",
+      "dependencies": {
+        "@termless/core": "0.10.2",
+      },
       "devDependencies": {
         "tsdown": "0.23.0",
         "typescript": "6.0.3",

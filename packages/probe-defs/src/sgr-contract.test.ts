@@ -6,11 +6,12 @@
  * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/sgr-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/helper-observations.test.ts vendor/terminfo.dev/packages/probe-defs/src/readback.test.ts
  * @testonly none
  */
-import { expect, test } from "vitest"
+import { expect, expectTypeOf, test } from "vitest"
+import type { Cell } from "@termless/core/io"
 import { join } from "node:path"
 import { NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
-import type { ProbeCallbackResult } from "./types.ts"
+import type { LibProbeSource, ProbeCallbackResult } from "./types.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import {
   contractGaps,
@@ -767,4 +768,15 @@ test.each([
   expect(queries).toEqual(expected ? ["\x1bP$qm\x1b\\", "\x1bP$qm\x1b\\"] : ["\x1bP$qm\x1b\\"])
   if (expected) expect(result.response).toContain("sgrReadback")
   else expect(result.notTested?.reason).toBe("no-semantic-observable")
+})
+
+// AC3: runtime style tests can pass while the independently declared cell type drifts.
+// The compiler must carry the canonical style/color types across this real source boundary.
+test("library cells share core attribute types and retain optional metadata", () => {
+  type ReadCell = ReturnType<LibProbeSource["getCell"]>
+  expectTypeOf<ReadCell["underline"]>().toEqualTypeOf<Cell["underline"] | true | null>()
+  expectTypeOf<ReadCell["dim"]>().toEqualTypeOf<Cell["dim"]>()
+  expectTypeOf<ReadCell["fg"]>().toEqualTypeOf<Cell["fg"]>()
+  expectTypeOf<ReadCell["hyperlink"]>().toEqualTypeOf<Cell["hyperlink"] | undefined>()
+  expectTypeOf<ReadCell["underlineColor"]>().toEqualTypeOf<Cell["underlineColor"] | undefined>()
 })

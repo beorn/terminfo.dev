@@ -497,7 +497,7 @@ export function createLibProbeSource(
         backend.name,
       )
       const { hyperlink: _unreported, ...withoutLink } = cell
-      return { ...withoutLink, ...(hyperlink !== undefined && { hyperlink }) } as ReturnType<LibProbeSource["getCell"]>
+      return { ...withoutLink, ...(hyperlink !== undefined && { hyperlink }) }
     },
     getCursor() {
       return backend.getCursor()
