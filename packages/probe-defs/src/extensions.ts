@@ -6110,8 +6110,6 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.transmit":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
-  "extensions.osc22-pointer":
-    "OSC 22 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
   "extensions.osc176-app-id":
     "OSC 176 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
   "extensions.osc3008-context":
