@@ -488,28 +488,35 @@ test.each([
 ])("viewport absence is declared only at the ruled %s %s identity", (backendName, engineVersion) => {
   const fixture = viewportSource()
   fixture.source.backendName = backendName
-  fixture.source.runtimeIdentity = backendName === "libvterm"
-    ? { ...historyRuntime, engineVersion }
-    : {
-        kind: "native",
-        engineVersion,
-        adapterVersion: "fixture",
-        termlessRevision: "fixture-revision",
-        loadedBinary: { path: "/fixtures/wezterm.node", sha256: "fixture" },
-        provenance: {
-          sha256: "fixture", sourceCommit: "fixture", lockSha256: "fixture",
-          buildHash: "fixture", toolchain: "fixture",
-        },
-      }
+  fixture.source.runtimeIdentity =
+    backendName === "libvterm"
+      ? { ...historyRuntime, engineVersion }
+      : {
+          kind: "native",
+          engineVersion,
+          adapterVersion: "fixture",
+          termlessRevision: "fixture-revision",
+          loadedBinary: { path: "/fixtures/wezterm.node", sha256: "fixture" },
+          provenance: {
+            sha256: "fixture",
+            sourceCommit: "fixture",
+            lockSha256: "fixture",
+            buildHash: "fixture",
+            toolchain: "fixture",
+          },
+        }
   const declared = { available: false as const, reason: "Library has no product viewport" }
   fixture.source.capabilities.productViewport = declared
   expect(viewportProbe()(fixture.source).observation?.outcome).toBe("inconclusive")
   delete fixture.source.scrollViewport
   const result = viewportProbe()(fixture.source)
-  expect(result.tests).toContainEqual(expect.objectContaining({
-    status: "untestable", reason: `${declared.reason} Library version: ${engineVersion}.`,
-  }))
-  expect(result.notTested).toBeUndefined()
+  expect(result.tests).toContainEqual(
+    expect.objectContaining({
+      status: "untestable",
+      reason: `${declared.reason} Library version: ${engineVersion}.`,
+    }),
+  )
+  expect(result.notTested?.noObservable).toBe(`${declared.reason} Library version: ${engineVersion}.`)
   expect(fixture.writes).toEqual([])
   expect(fixture.moves).toEqual([])
   expect(fixture.reads).toEqual([])
