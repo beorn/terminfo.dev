@@ -302,14 +302,14 @@ for (const scenario of [
           featureId === "extensions.osc10-fg-color" ? 10 : featureId === "extensions.osc11-bg-color" ? 11 : 12
         const colour = featureId !== "extensions.osc0-icon-title" && scenario.name === "ghostty-native"
         const reason = colour
-          ? `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`
+          ? `Open: the colour query (OSC ${slot}) got no answer before setting a colour or after resetting it. The set-colour control did work, but it cannot show the original default`
           : scenario.name === "alacritty"
             ? "DECRPM reply to CSI ? 2026 $ p"
             : "OSC 0 lacks a deciding observation for icon label (CSI 20 t): timeout"
         const testReason = colour
           ? `${reason}, so this run cannot decide it`
           : scenario.name === "alacritty"
-            ? "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it"
+            ? "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works."
             : reason
         return {
           featureId,
@@ -5629,7 +5629,8 @@ function expectTitleSetupReview(batch: Awaited<ReturnType<typeof collectBatch>>)
         {
           id: "review",
           status: "probe-todo",
-          reason: "Title setup was not observable, so this run cannot decide it",
+          reason:
+            "Open: this test first sets a window title, then tests whether the command under test changes it. We could not read the first title back, so this run cannot decide it",
         },
       ],
     })),

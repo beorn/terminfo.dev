@@ -266,7 +266,8 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
       pushFixture.original !== "new-title" ||
       pushFixture.changed !== "next-title"
     ) {
-      const note = "Title setup was not observable"
+      const note =
+        "Open: this test first sets a window title, then tests whether the command under test changes it. We could not read the first title back"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, state)
     }
     const pass = popFixture.restored === saved && pushFixture.restored === "new-title"
