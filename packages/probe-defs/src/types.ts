@@ -760,10 +760,11 @@ export type Interpretation = HistoricalInterpretation
 
 /**
  * One sequence a library reported as passed through unhandled. The binding records the number only:
- * an OSC command number, or the library's own normalized CSI values with the final byte ("5m", "4:3m", "?5m").
+ * an OSC command number, the library's own normalized CSI values with the final byte ("5m", "4:3m", "?5m"),
+ * or the initial APC payload byte ("G"), without the remaining payload.
  */
 export interface UnhandledSequence {
-  readonly kind: "osc" | "csi"
+  readonly kind: "osc" | "csi" | "apc"
   readonly code: string
 }
 
