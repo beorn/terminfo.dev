@@ -225,12 +225,16 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       const older = collection()
       const newer = collection(older.parent, PARTIAL)
       const priorPath = older.collected.runs[0]!
-      const prior = JSON.parse(readFileSync(priorPath, "utf8"))
+      const prior = JSON.parse(readFileSync(priorPath, "utf8")) as {
+        results: Array<{ featureId: string; status: string; tests: [{ status: string; assertionRefs: [number] }] }>
+        assertions: Array<{ kind: string; expected: string; observed: string }>
+        rawReplies: Record<string, string>
+      }
       // A synthetic prior observation over the existing complete capture fixture; never admitted as real data.
-      const bold = prior.results.find((row: { featureId: string }) => row.featureId === "sgr.bold")
+      const bold = prior.results.find((row) => row.featureId === "sgr.bold")!
       bold.status = "unsupported"
       bold.tests[0].status = "unsupported"
-      const assertion = prior.assertions[bold.tests[0].assertionRefs[0]]
+      const assertion = prior.assertions[bold.tests[0].assertionRefs[0]]!
       assertion.kind = "negative"
       assertion.expected = "sgr.bold: attribute absent in the prior fixture observation"
       assertion.observed = JSON.stringify({ char: "X", bold: false })
@@ -244,7 +248,10 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       older.save()
 
       const nextPath = newer.collected.runs[0]!
-      const next = JSON.parse(readFileSync(nextPath, "utf8"))
+      const next = JSON.parse(readFileSync(nextPath, "utf8")) as {
+        subject: { version: string }
+        runtimeIdentity: { engineVersion: string; integrity: { treeOid: string } }
+      }
       if (identity === "different version") {
         next.subject.version = "0.10.2"
         next.runtimeIdentity.engineVersion = "0.10.2"
