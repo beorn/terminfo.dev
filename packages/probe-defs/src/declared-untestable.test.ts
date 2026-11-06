@@ -17,7 +17,7 @@ import {
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
 import { withD2LibraryObservation } from "./extensions.ts"
-import { libProbeSource } from "./testing/group-harness.ts"
+import { inertLibProbeSource, libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { HeadlessRuntimeIdentity, LibProbeSource, NotTestedCoverageResult, ProbeCallbackResult } from "./types.ts"
 
@@ -50,7 +50,7 @@ const library = (backendName = "alacritty"): LibProbeSource =>
 // or leaks onto an unreviewed engine. Earlier declarations cover none of these eighteen cells.
 // @level l1
 // @consumer ALL_PROBES library callbacks through the shipping result finalizer; no test-only seam.
-describe("six pass-through OSC declarations", () => {
+describe("pass-through declarations", () => {
   const ids = [
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
@@ -61,6 +61,25 @@ describe("six pass-through OSC declarations", () => {
   ] as const
   const reason =
     "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
+  // NR-H: the existing six-OSC cases do not cover these fourteen xterm.js cells.
+  const xtermIds = [
+    "editing.decsace",
+    "extensions.osc9-progress",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.semantic-prompts",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc-633-vscode",
+  ] as const
+  const csiReason =
+    "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it."
   // Engine identities from the 20:34 natural run, also measured directly by CTO at 21:01.
   const subjects = [
     [
@@ -109,15 +128,50 @@ describe("six pass-through OSC declarations", () => {
       },
     ],
   ] as const
+  const baseCell = libProbeSource(createSemanticSurface()).getCell(0, 0)
   const source = (backend: string, identity: unknown) =>
     ({
       ...library(backend),
       runtimeIdentity: identity,
       feedCapture: () => "",
       getTitle: () => "",
+      getCell: (row: number, col: number) => ({
+        ...baseCell,
+        char: ["abcdefgh", "ijklmnop"][row]?.[col] ?? " ",
+        inverse: false,
+      }),
       getMode: () => null,
       getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
     }) as LibProbeSource
+
+  // @failure NR-H stays TODO, leaks to another engine/version, or replaces a decided observation.
+  // @level l1
+  // @consumer Shipping probe callbacks and finalizer; the prior six-OSC set misses all NR-H cells.
+  test.each(xtermIds)("xterm declares %s only at its reviewed identity", (id) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    const identity = subjects[0][1]
+    const result = definition.lib!(source("xterm", identity))
+    expect(fold(id, result)).toMatchObject({
+      status: "untestable",
+      reason: id === "editing.decsace" ? csiReason : reason,
+    })
+    expect(result.observation).toBeUndefined()
+    for (const unknown of [undefined, { ...identity, engineVersion: "unreviewed" }]) {
+      expect(isDeclaredUntestable(definition.lib!(source("xterm", unknown)))).toBe(false)
+    }
+    const decided: ProbeCallbackResult = {
+      pass: true,
+      observation: { outcome: "supported", assertionType: "buffer_state" },
+    }
+    expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source("xterm", identity))).toBe(
+      decided,
+    )
+    for (const [backend, otherIdentity] of subjects.slice(1)) {
+      const other = definition.lib!(source(backend, otherIdentity))
+      // Five pre-existing vterm D2 declarations remain; none gains the NR-H pass-through reason.
+      expect(fold(id, other).reason).not.toBe(id === "editing.decsace" ? csiReason : reason)
+    }
+  })
 
   test.each(subjects)(
     "%s finalizes exactly the six declarations even with a generic numeric report",
@@ -288,11 +342,13 @@ describe("WezTerm D2 audited interface absence", () => {
   } satisfies HeadlessRuntimeIdentity
   const source = (extra: Partial<LibProbeSource> = {}): LibProbeSource => {
     let parsedMarker = false
+    const blank = inertLibProbeSource().getCell(0, 0)
     return {
       ...library("wezterm"),
       runtimeIdentity: identity,
       feedCapture: () => "",
       getTitle: () => "",
+      getCell: (row, col) => ({ ...blank, char: ["abcdefgh", "ijklmnop"][row]?.[col] ?? " " }),
       // Existing DECSSCLS parser-consumption control passes; presentation speed remains unobserved.
       feed: (sequence) => {
         parsedMarker = sequence.includes("\x1b[9 pQ")
@@ -314,6 +370,16 @@ describe("WezTerm D2 audited interface absence", () => {
     ["extensions.osc555-flash", /OSC 555.*no host route/],
     ["extensions.osc666-termprop", /OSC 666.*no host route/],
     ["extensions.osc710-font-normal", /OSC 710.*no host route/],
+    ["editing.decsace", /DECSACE.*no handler.*opt-in log.*off/],
+    ["extensions.osc52-read", /OSC 52.*QuerySelection.*empty.*reply/],
+    ["extensions.osc133-d", /OSC 133 D.*empty.*status/],
+    ["extensions.semantic-prompts", /OSC 133 D.*complete.*cycle/],
+    ["extensions.osc633-a", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc633-b", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc633-c", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc633-d", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc633-e", /OSC 633.*no handler.*opt-in log.*off/],
+    ["extensions.osc-633-vscode", /OSC 633.*no handler.*opt-in log.*off/],
   ] as const
 
   // @failure The exact approved WezTerm cohort retains TODO or invents an observation.
@@ -327,7 +393,7 @@ describe("WezTerm D2 audited interface absence", () => {
     expect(result.assertions).toBeUndefined()
   })
 
-  test("the public 0.11.0 adapter retains the ten audited interface absences", () => {
+  test("the public 0.11.0 adapter retains the audited interface absences", () => {
     const runtimeIdentity = {
       ...identity,
       adapterVersion: "0.11.0",
@@ -344,7 +410,7 @@ describe("WezTerm D2 audited interface absence", () => {
     }
   })
 
-  test("unqualified runtime identities keep the ten cells TODO", () => {
+  test("unqualified runtime identities retain their existing outcomes", () => {
     for (const runtimeIdentity of [
       undefined,
       { ...identity, engineVersion: "0.1.0-fork.6" },
@@ -360,7 +426,9 @@ describe("WezTerm D2 audited interface absence", () => {
     ]) {
       for (const [id] of targets) {
         const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(source({ runtimeIdentity }))
-        expect(fold(id, result).status, id).toBe("probe-todo")
+        expect(fold(id, result).status, id).toBe(
+          id === "extensions.osc52-read" && runtimeIdentity === undefined ? "probe-invalid" : "probe-todo",
+        )
       }
     }
   })
@@ -372,6 +440,21 @@ describe("WezTerm D2 audited interface absence", () => {
       const decided = parserStateResult(true, "retained original reader result", { value: "fixture" })
       expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(source())).toBe(decided)
     }
+  })
+
+  // @failure Replacing an undecided read with a declaration drops its measured host cause and invalidates collection.
+  // @level l1
+  // @consumer The declaration callback metadata retained by the headless host-recipe recorder.
+  test("an interface absence retains the measured empty-read host cause", () => {
+    const definition = ALL_PROBES.find((probe) => probe.id === "extensions.osc52-read")!
+    const result = definition.lib!(source())
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(result.hostRecipeCauses).toEqual([
+      {
+        recipe: "clipboard-load",
+        cause: { kind: "observed", missing: "clipboard-read-permission", query: "\x1b]52;c;?\x07" },
+      },
+    ])
   })
 
   test("the WezTerm identity cannot declare absences on another backend", () => {
@@ -406,19 +489,21 @@ test.each(declared)("%s library arm reads Untestable with its declared reason", 
 })
 
 // The exceptions named inside their probes stay as they are: vterm's stored Sixel payload keeps its review, and
-// XTEST key injection is declared only for the five libraries with no public key encoder (CTO 47010d76).
+// XTEST key injection is declared only for the six libraries with no public key encoder (CTO 47010d76, #32428).
 test("vterm's Sixel storage arm and the encoder-exporting XTEST arms are not declared and stay PROBE TODO", () => {
   const sixel = ALL_PROBES.find((probe) => probe.id === "extensions.sixel")!.lib!
   const stored = sixel({ ...library("vterm"), getSixelImages: () => [] } as unknown as LibProbeSource)
   expect(isDeclaredUntestable(stored)).toBe(false)
   expect(fold("extensions.sixel", stored).status).toBe("probe-todo")
   const xtest = ALL_PROBES.find((probe) => probe.id === "input.xtest-key")!.lib!
-  for (const backendName of ["libvterm", "vterm"]) {
+  for (const backendName of ["libvterm"]) {
     const result = xtest(library(backendName)) as ProbeCallbackResult
     expect(isDeclaredUntestable(result)).toBe(false)
     expect(fold("input.xtest-key", result).status).toBe("probe-todo")
   }
-  expect(isDeclaredUntestable(xtest(library("vt100")) as ProbeCallbackResult)).toBe(true)
+  for (const backendName of ["vt100", "vterm"]) {
+    expect(isDeclaredUntestable(xtest(library(backendName)) as ProbeCallbackResult)).toBe(true)
+  }
 })
 
 test("the declared helper needs a reason and folds only in its exact form", () => {
@@ -553,6 +638,101 @@ describe("audited OSC interface absence", () => {
     }
   })
 
+  // @failure A Kitty image cell is declared "no way" at the wrong identity, or a library that has a
+  // public image path is declared instead of being routed to a reader (CTO 8be19f1f).
+  // @level l1
+  // @consumer ALL_PROBES library callbacks folded by the shipping result finalizer
+  test("the image no-way pair folds only at each exact audited identity", () => {
+    const xterm = {
+      kind: "js" as const,
+      runtimeFormat: "js" as const,
+      adapterVersion: "0.10.2",
+      termlessRevision: "74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
+      engineVersion: "6.0.0",
+      integrity: {
+        kind: "registry" as const,
+        lockIntegrity:
+          "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+      },
+    }
+    const subjects = [
+      ["alacritty", d2Source(), /alacritty_terminal 0\.26\.0.*no public APC callback/i],
+      [
+        "vt100",
+        {
+          ...library("vt100"),
+          feedCapture: () => "",
+          getTitle: () => "",
+          runtimeIdentity: vtIdentity("vt100", "d0e3d3fe4e893b70bd3f7d95725b4e10c1f6d99d", "0.13.1"),
+        },
+        /vt100\.js 0\.13\.1.*strict DEC VT100/i,
+      ],
+      [
+        "vt220",
+        {
+          ...library("vt220"),
+          feedCapture: () => "",
+          getTitle: () => "",
+          runtimeIdentity: vtIdentity("vt220", "5162719d063ab59d2905d588df3e127d38b110d1", "0.13.1"),
+        },
+        /vt220\.js 0\.13\.1.*sixel\/Kitty graphics deliberately absent/i,
+      ],
+      [
+        "xterm",
+        { ...library("xterm"), feedCapture: () => "", getTitle: () => "", runtimeIdentity: xterm },
+        /@xterm\/headless 6\.0\.0.*APC, PM and SOS/i,
+      ],
+      [
+        "ghostty",
+        {
+          ...library("ghostty"),
+          feedCapture: () => "",
+          getTitle: () => "",
+          runtimeIdentity: {
+            kind: "js" as const,
+            runtimeFormat: "wasm" as const,
+            adapterVersion: "0.10.2",
+            termlessRevision: "2f73fc28027b7d483e504e08edc64d1837935816",
+            engineVersion: "0.4.0",
+            loadedBinary: {
+              path: "vendor/termless/vendor/ghostty-web/ghostty-vt.wasm",
+              sha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
+            },
+            integrity: {
+              kind: "source" as const,
+              repository: "git@github.com:beorn/termless.git",
+              revision: "2f73fc28027b7d483e504e08edc64d1837935816",
+              treeOid: "ad3571a518e9e672e102eb83becc2caa03b9ffc3",
+              cleanTree: true,
+            },
+          },
+        },
+        /ghostty-web 0\.4\.0.*no public image store or APC callback/i,
+      ],
+    ] as const
+    for (const [name, source, reason] of subjects) {
+      for (const id of ["extensions.kitty-graphics.display", "extensions.kitty-graphics.transmit"]) {
+        const label = name + ":" + id
+        const result = ALL_PROBES.find((probe) => probe.id === id)!.lib!(source as LibProbeSource)
+        expect(isDeclaredUntestable(result), label).toBe(true)
+        expect(fold(id, result), label).toMatchObject({
+          status: "untestable",
+          reason: expect.stringMatching(reason),
+        })
+        expect(result.assertions, label).toBeUndefined()
+      }
+    }
+    // The declaration follows the identity, not the backend name alone.
+    const transmit = ALL_PROBES.find((probe) => probe.id === "extensions.kitty-graphics.transmit")!.lib!
+    for (const extra of [
+      { runtimeIdentity: { ...alacritty, engineVersion: "0.26.1" } },
+      { runtimeIdentity: undefined },
+      { backendName: "kitty" },
+    ] satisfies Partial<LibProbeSource>[]) {
+      expect(isDeclaredUntestable(transmit(d2Source(extra)))).toBe(false)
+    }
+  })
+
   // @failure An absence declaration leaks to an unknown profile, unclear cell or available public reader.
   // @level l1
   // @consumer The conditional declaration route used by the headless collector
@@ -594,6 +774,71 @@ describe("audited OSC interface absence", () => {
         : source,
     ),
   }
+  // NR-D adds CSI extent, progress state and prompt-click state to the existing audited route.
+  // The literal23 table above cannot prove these newly ruled cells or their reader precedence.
+  test.each([
+    ["editing.decsace", /CSI/],
+    ["extensions.osc9-progress", /OSC 9/],
+    ["input.kitty-click-events", /Termless/],
+  ] as const)("NR-D %s declares only the audited Alacritty interface", (id, reason) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    for (const runtimeIdentity of [alacritty, alacritty0110]) {
+      const result = definition.lib!(d2Source({ runtimeIdentity }))
+      expect(isDeclaredUntestable(result)).toBe(true)
+      expect(fold(id, result)).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
+    }
+    for (const extra of [
+      { runtimeIdentity: undefined },
+      { runtimeIdentity: { ...alacritty, engineVersion: "unreviewed" } },
+      { backendName: "other-library" },
+      { getUnhandledSequences: () => [] },
+    ] satisfies Partial<LibProbeSource>[]) {
+      expect(isDeclaredUntestable(definition.lib!(d2Source(extra)))).toBe(false)
+    }
+    const decided = parserStateResult(true, "existing decided result", { value: true })
+    expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(d2Source())).toBe(decided)
+    if (id === "extensions.osc9-progress") {
+      expect(isDeclaredUntestable(definition.lib!(d2Source({ getProgress: () => null })))).toBe(false)
+    }
+  })
+
+  // A generic all-zero DECRQM responder must not establish an engine negative.
+  // Existing input tests measure encoder bytes, not this same-reader control.
+  test.each([
+    ["controlled negative", true, 0, 0, "unsupported"],
+    ["constant-zero control", false, 0, 0, "probe-todo"],
+    ["recognized unknown", true, 1, 0, "probe-todo"],
+    ["recognized target", true, 0, 1, "probe-todo"],
+  ] as const)("NR-D pixel mouse: %s", (_label, controlled, unknown, target, outcome) => {
+    let sgr = false
+    const writes: string[] = []
+    const source = d2Source({
+      feed(sequence) {
+        writes.push(sequence)
+        if (sequence === "\x1b[?1006h") sgr = true
+        if (sequence === "\x1b[?1006l") sgr = false
+      },
+      feedCapture(sequence) {
+        writes.push(sequence)
+        const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
+        if (!mode) return ""
+        const ps = mode === "1006" ? (controlled ? (sgr ? 1 : 2) : 0) : mode === "9999" ? unknown : target
+        return `\x1b[?${mode};${ps}$y`
+      },
+    })
+    const result = ALL_PROBES.find((probe) => probe.id === "input.pixel-mouse")!.lib!(source)
+    if (outcome === "unsupported") {
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+      expect(result.assertions?.[0]?.kind).toBe("negative")
+    } else {
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.notTested).toBeDefined()
+    }
+    expect(writes).toContain("\x1b[?1006$p")
+    expect(writes).toContain("\x1b[?9999$p")
+    expect(writes.filter((write) => write === "\x1b[?1016$p")).toHaveLength(2)
+    expect(writes.at(-1)).toBe("\x1b[?1006;1016l")
+  })
   // The starting-colour exception needs this probe's seed, not only an audited identity.
   // Existing D2 and generic colour cases do not combine those two facts.
   test("Alacritty starting-colour declarations require an audited identity and verified seed", () => {
@@ -849,26 +1094,31 @@ test.each([
   ["vt220", "0.13.0", false],
   ["vt220", "0.13.2", false],
   ["libvterm", "0.13.1", false],
-] as const)("DECSSCLS declaration is exact %s/%s", (backendName, engineVersion, declared) => {
-  const definition = ALL_PROBES.find((entry) => entry.id === "modes.decsscls")!
-  let measured = false
-  const ctx = {
-    ...library(backendName),
-    runtimeIdentity: engineVersion ? { kind: "js", runtimeFormat: "js", engineVersion } : undefined,
-    getText: () => (measured ? "Q" : ""),
-    getTitle: () => "",
-    getCursor: () => ({ x: measured ? 1 : 0, y: 0, visible: true, style: null }),
-    getScrollback: () => ({ totalLines: 24, screenLines: 24, viewportOffset: 0 }),
-    feed: (sequence: string) => {
-      measured = sequence.includes("\x1b[9 pQ")
-    },
-  } as unknown as LibProbeSource
-  const result = definition.lib!(ctx)
-  expect(isDeclaredUntestable(result)).toBe(declared)
-  expect(fold(definition.id, result).status).toBe(declared ? "untestable" : "probe-todo")
-  if (declared) {
-    expect(result.tests?.[0]?.reason).toBe(
-      `${backendName === "vt100" ? "VT100.js" : "VT220.js"} 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
+] as const)("DEC declarations are exact %s/%s", (backendName, engineVersion, declared) => {
+  for (const id of ["modes.decsscls", "editing.decsace"]) {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    let measured = false
+    const ctx = {
+      ...library(backendName),
+      runtimeIdentity: engineVersion ? { kind: "js", runtimeFormat: "js", engineVersion } : undefined,
+      getText: () => (measured ? "Q" : ""),
+      getTitle: () => "",
+      getCursor: () => ({ x: measured ? 1 : 0, y: 0, visible: true, style: null }),
+      getScrollback: () => ({ totalLines: 24, screenLines: 24, viewportOffset: 0 }),
+      feed: (sequence: string) => {
+        measured = sequence.includes("\x1b[9 pQ")
+      },
+    } as unknown as LibProbeSource
+    const result = definition.lib!(ctx)
+    expect(isDeclaredUntestable(result)).toBe(declared)
+    // This DECSACE fixture has no measured frames; a version miss keeps that invalid criterion.
+    expect(fold(definition.id, result).status).toBe(
+      declared ? "untestable" : id === "editing.decsace" ? "probe-invalid" : "probe-todo",
     )
+    if (declared && id === "modes.decsscls") {
+      expect(result.tests?.[0]?.reason).toBe(
+        `${backendName === "vt100" ? "VT100.js" : "VT220.js"} 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,
+      )
+    }
   }
 })

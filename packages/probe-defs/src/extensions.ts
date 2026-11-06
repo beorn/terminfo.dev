@@ -102,7 +102,8 @@ function hasAuditedOscInterfaceAbsence(
     | "osc-pass-through"
     | "ghostty-native-d2"
     | "host-effect-h4"
-    | "wezterm-d2" = "osc-absence",
+    | "wezterm-d2"
+    | "ghostty-web-d2" = "osc-absence",
 ): boolean {
   const identity = ctx.runtimeIdentity
   if (cohort === "osc-pass-through") {
@@ -125,6 +126,21 @@ function hasAuditedOscInterfaceAbsence(
       identity.runtimeFormat === "wasm" &&
       identity.engineVersion === "0.3.3" &&
       identity.loadedBinary.sha256 === "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0"
+    )
+  }
+  if (cohort === "ghostty-web-d2") {
+    // CTO 8be19f1f: the web build is a different engine from Ghostty native, so it carries its own
+    // gate. WASM binary and vendored tree together, because either alone admits another build.
+    return (
+      ctx.backendName === "ghostty" &&
+      identity?.kind === "js" &&
+      identity.runtimeFormat === "wasm" &&
+      identity.engineVersion === "0.4.0" &&
+      identity.loadedBinary.sha256 === "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de" &&
+      identity.integrity.kind === "source" &&
+      identity.integrity.repository === "git@github.com:beorn/termless.git" &&
+      identity.integrity.treeOid === "ad3571a518e9e672e102eb83becc2caa03b9ffc3" &&
+      identity.integrity.cleanTree
     )
   }
   if (cohort === "ghostty-native-d2") {
@@ -591,7 +607,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
             }
             return answer(
               colorReadbackReviewResult(
-                `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`,
+                `Open: the colour query (OSC ${slot}) got no answer before setting a colour or after resetting it. The set-colour control did work, but it cannot show the original default`,
                 state,
               ),
             )
@@ -688,7 +704,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
             {
               id: "criterion",
               status: "probe-todo",
-              reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
+              reason: `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`,
             },
           ],
         }
@@ -893,7 +909,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           setCode,
           initialSentinel,
           colorReadbackReviewResult(
-            `OSC ${setCode} query did not answer, so OSC ${resetCode} reset has no effect readback`,
+            `Open: the colour query (OSC ${setCode}) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen`,
             { query, initialSentinel },
           ),
         )
@@ -917,7 +933,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
               {
                 id: "criterion",
                 status: "probe-todo",
-                reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
+                reason: `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`,
               },
             ],
           })
@@ -944,7 +960,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
             ctx.getDefaultColors
           ) {
             return notTestedResult(
-              `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support is not observable on this reader`,
+              `Open: our test cannot read the mouse pointer colour (OSC ${setCode}). On this library it can only read text, background and cursor colours.`,
               { query, originalRaw, defaultColors: ctx.getDefaultColors() },
             )
           }
@@ -1045,7 +1061,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         if (control.verified && resetRaw === "" && restoredRaw === "") {
           return answer(
             colorReadbackReviewResult(
-              `OSC ${setCode} seeded colour was verified but OSC ${resetCode} restored an unreadable embedder-owned default`,
+              `Open: setting a colour worked, but our adapter cannot read back the default after the reset (OSC ${resetCode}), leaving the reset itself unseen`,
               state,
             ),
           )
@@ -1083,12 +1099,12 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
                   setCode,
                   initialSentinel,
                   colorReadbackReviewResult(
-                    `OSC ${setCode} set-and-verify query did not answer, so OSC ${resetCode} reset has no effect readback`,
+                    `Open: the colour query (OSC ${setCode}) did not confirm the colour we set, leaving the reset (OSC ${resetCode}) with no verified setup`,
                     state,
                   ),
                 )
               : colorReadbackReviewResult(
-                  `OSC ${setCode} set-and-verify query did not answer, so OSC ${resetCode} reset has no effect readback`,
+                  `Open: the colour query (OSC ${setCode}) did not confirm the colour we set, leaving the reset (OSC ${resetCode}) with no verified setup`,
                   state,
                 ),
           )
@@ -1096,7 +1112,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         if (control.setterRaw === "" && control.seededRaw === "" && resetRaw === "" && restoredRaw === "") {
           return answer(
             colorReadbackReviewResult(
-              `OSC ${setCode} initial and seeded queries answered nothing, so OSC ${resetCode} reset has no readback`,
+              `Open: the colour query (OSC ${setCode}) got no answer before or after we set a colour, and no reply control worked in this test. The reset stays unseen`,
               state,
             ),
           )
@@ -1187,7 +1203,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
   }
   return (ctx) => {
     const result = body(ctx)
-    // Case 1 names exactly the ledger's four colour-reset cells; every other reset keeps its own body.
+    // Case 1 names the ledger's eight colour-reset cells (2a adds 104, 110, 111, 112); every other reset keeps its own body.
     if (isDeclaredUntestable(result) || !UNHANDLED_REPORT_COLOUR_RESETS.includes(String(resetCode))) return result
     const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
     return unhandledOscReportResult(ctx, reset, result)
@@ -1262,7 +1278,7 @@ async function colorResetAppProbe(
   if (!before.rgb) {
     if (before.outcome.reason === "sentinel") {
       return notTestedResult(
-        `OSC ${spec.setCode} query did not answer, so OSC ${spec.resetCode} reset has no effect readback`,
+        `Open: the colour query (OSC ${spec.setCode}) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen`,
         { query, initialReadback: before.outcome },
       )
     }
@@ -1526,7 +1542,8 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
 /** CTO54bf1c9c — Cwd-only metadata, qualified by two same-run OSC7 readbacks. */
 function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
   if (!ctx.getCwd) {
-    const reason = "no property reader in this adapter"
+    const reason =
+      "Open: our adapter for this library cannot read back the shell properties a shell sends (OSC 633 P, used by VS Code) yet."
     return {
       ...parserStateResult(null, "OSC633 P Cwd property readback", {}, reason),
       tests: [{ id: "criterion", status: "probe-todo", reason }],
@@ -1616,7 +1633,7 @@ function promptMarkBody(
   const declared = readerKey !== undefined && ctx.capabilities.extensions.has(readerKey)
   const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
   if (osc633End && !readMarks) {
-    const reason = "no command-end reader in this adapter"
+    const reason = 'Open: our adapter for this library cannot read the shell\'s "command finished" mark.'
     return {
       ...parserStateResult(null, "OSC633 D command-end status readback", {}, reason),
       tests: [{ id: "criterion", status: "probe-todo", reason }],
@@ -1823,8 +1840,8 @@ function promptMarkBody(
   return reviewResult(
     SEMANTIC_PROMPT_SOURCE_REVIEW,
     readerKey === undefined
-      ? "OSC 133 P / 633 E consumed; no property or command-line observer exists in this run"
-      : "OSC 133 / 633 mark was consumed but this run has no qualified declared mark or zone reader",
+      ? "Open: the library did not print the shell property and command-line marks (OSC 133 P, 633 E) as text, but our test cannot read them back."
+      : "Open: the shell's prompt mark (OSC 133 / 633) did not show up on screen as stray text, but our test has no way to read marks back, so we cannot tell whether the library kept it.",
     readerKey === undefined ? noObservable : NO_SAME_PATH_CONTROL,
     { home, target, control, cell: cell.char },
   )
@@ -1834,7 +1851,7 @@ function promptMarkBody(
  * The Case 1 colour-reset cells (@cto 2026-11-05 07:25 appendix: "up to 8 colour reset (4 each)"), the
  * ledger's `colour reset` group. Every other reset code keeps its own body's outcome.
  */
-const UNHANDLED_REPORT_COLOUR_RESETS: readonly string[] = ["113", "114", "117", "119"]
+const UNHANDLED_REPORT_COLOUR_RESETS: readonly string[] = ["104", "110", "111", "112", "113", "114", "117", "119"]
 
 /**
  * Case 1 consumer, OSC arm (@cto 2026-11-05 07:25 appendix, conditions 3 and 5): the library's own
@@ -1946,7 +1963,7 @@ function colorStackError(actionKind: "query" | "behavior", action: string, error
 }
 
 function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): ProbeDefinition["lib"] {
-  return (ctx) => {
+  const body: ProbeDefinition["lib"] = (ctx) => {
     const operation = ownSequence === colorPush ? "push" : "pop"
     let initialReadback: TerminalQueryOutcome | undefined
     if (ctx.queryWithSentinelOutcome) {
@@ -1960,10 +1977,13 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
           ownSequence,
           10,
           initialReadback,
-          colorReadbackReviewResult("OSC 10 query did not answer, so the colour-stack effect has no readback", {
-            query: foregroundQuery,
-            initialReadback,
-          }),
+          colorReadbackReviewResult(
+            "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
+            {
+              query: foregroundQuery,
+              initialReadback,
+            },
+          ),
         )
       }
     }
@@ -2048,7 +2068,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         if (!control.verified || control.color === null) {
           if (control.setterRaw === "" && control.seededRaw === "") {
             result = colorReadbackReviewResult(
-              "OSC 10 initial and seeded foreground queries answered nothing, so the colour-stack effect has no readback",
+              "Open: the text-colour query (OSC 10) got no answer before or after we set a colour, and no reply control worked in this test. Saving and restoring colours stays unseen",
               { query: foregroundQuery, originalRaw, initialReadback, trace },
             )
           } else {
@@ -2211,6 +2231,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
       }
     }
   }
+  return (ctx) => unhandledOscReportResult(ctx, ownSequence, body(ctx))
 }
 
 async function colorStackTermProbe(
@@ -2220,10 +2241,13 @@ async function colorStackTermProbe(
   const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
   const before = foregroundValue(originalReply.match?.[0] ?? "")
   if (!before && originalReply.reason === "sentinel") {
-    return notTestedResult("OSC 10 query did not answer, so the colour-stack effect has no readback", {
-      query: foregroundQuery,
-      initialReadback: originalReply,
-    })
+    return notTestedResult(
+      "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
+      {
+        query: foregroundQuery,
+        initialReadback: originalReply,
+      },
+    )
   }
   if (!before) return unansweredQuery(originalReply, "No original OSC 10 foreground reply; color stack was not changed")
   let pushed = false
@@ -2770,23 +2794,69 @@ function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackR
   })
 }
 
+function kittyGraphicsRefused(response: string, code: string): ProbeCallbackResult {
+  const note = `library refused the canonical graphics query: ${code}`
+  return {
+    pass: false,
+    response,
+    note,
+    observation: { outcome: "unsupported", assertionType: "query_reply", note },
+    assertions: [
+      {
+        assertionType: "query_reply" as const,
+        kind: "negative",
+        expected: "The canonical Kitty graphics query is acknowledged rather than refused",
+        observed: response,
+      },
+    ],
+  }
+}
+
+/** A Kitty graphics ERROR frame in this run's reply window: an explicit refusal, not an absence. */
+function kittyGraphicsRefusalCode(raw: string): string | null {
+  const frame = /\x1b_G[^;\x1b]*;([A-Z][A-Z0-9]{2,})\x1b\\/.exec(raw)
+  return frame ? (frame[1] ?? null) : null
+}
+
+/**
+ * Display cannot be observed when transmit was refused in the same run: the library answered the
+ * canonical query with an error, so there is no image for the display cell to place.
+ */
+function kittyDisplayWithoutTransmit(code: string, imageNumber: number): ProbeCallbackResult {
+  return declaredUntestableResult(
+    `Untestable (no setup): Kitty graphics transmit is refused by this library (${code}), so the display cell has no image to place`,
+    { imageNumber, refusal: code },
+  )
+}
+
 /** Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window. */
 function allocationOutcomeResult(
   reply: TerminalQueryOutcome,
   imageNumber: number,
-): { imageId: number | null; result: ProbeCallbackResult } {
+): { imageId: number | null; refusal: string | null; result: ProbeCallbackResult } {
   if (!reply.match) {
     if (reply.reason === "sentinel") {
+      // A refusal decides; silence does not. Only a graphics ERROR frame in the same window moves
+      // this cell off "not observed", because a library that refuses the query has answered it.
+      const refusal = kittyGraphicsRefusalCode(reply.raw)
+      if (refusal) {
+        return { imageId: null, refusal, result: kittyGraphicsRefused(reply.raw, refusal) }
+      }
       return {
         imageId: null,
-        result: notTestedResult("No image allocation readback; DA1 does not observe image transmission", {
-          imageNumber,
-          readback: reply,
-        }),
+        refusal: null,
+        result: notTestedResult(
+          "Open: our test cannot see whether the library stored the image. The device reply (DA) that does come back says nothing about images.",
+          {
+            imageNumber,
+            readback: reply,
+          },
+        ),
       }
     }
     return {
       imageId: null,
+      refusal: null,
       result: unansweredQuery(
         reply,
         "No matching image allocation reply; no image ownership or transmission conclusion",
@@ -2794,7 +2864,7 @@ function allocationOutcomeResult(
     }
   }
   const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
-  return { ...uploaded, result: { ...uploaded.result, response: reply.raw } }
+  return { ...uploaded, refusal: null, result: { ...uploaded.result, response: reply.raw } }
 }
 
 function placementRequest(imageId: number): string {
@@ -2849,6 +2919,9 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
               imageNumber,
             )
             imageId = uploaded.imageId
+            if (uploaded.refusal && display) {
+              return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
+            }
             if (!imageId || !display) return uploaded.result
             const placement = ctx.queryWithSentinelOutcome(
               placementRequest(imageId),
@@ -2874,6 +2947,9 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
             imageNumber,
           )
           imageId = uploaded.imageId
+          if (uploaded.refusal && display) {
+            return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
+          }
           if (!imageId || !display) return uploaded.result
           const placement = await ctx.queryWithSentinelOutcome(
             placementRequest(imageId),
@@ -3074,7 +3150,7 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const empty = readNegative || raw === ""
   const writeUnobservable = readNegative && typeof ctx.getClipboardState !== "function"
   const reason =
-    "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired."
+    "Open: our test cannot see the clipboard. Asking for it back (OSC 52) got no answer, and nothing else in our test watches the clipboard."
   const result: ProbeCallbackResult = writeUnobservable
     ? { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
     : headlessClipboardResult(empty ? "" : raw, nonce)
@@ -3311,7 +3387,10 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
     if (declared) {
       return declaredUntestableResult(declared, { backend: ctx.backendName, encodePaste: false })
     }
-    const reason = `${ctx.backendName}: paste-encoding extension unavailable; native paste interface not observed`
+    const reason =
+      ctx.backendName === "ghostty" || ctx.backendName === "ghostty-native"
+        ? "Open: our Ghostty adapter has no hook for sending pastes, and our test has not tried Ghostty's own paste function."
+        : `Open: our ${ctx.backendName} adapter has no hook for sending pastes, and our test has not tried the library's own paste function.`
     return reviewResult("paste-encoding", reason, reason, { backend: ctx.backendName, encodePaste: false })
   }
   const samples: { phase: string; text: string; bytes: number[]; raw: string }[] = []
@@ -4670,7 +4749,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             secondImage.row === 1 &&
             secondImage.col === 2
           const note = retained
-            ? "payload retained at row/col; no raster; cell geometry unmeasured"
+            ? "Open: our test cannot check the image, for two reasons. The library stores the image data at the right screen position, but drawing it is the app's job; and our test does not measure the character cell size needed to check the image's size."
             : "Sixel payload/position readback did not show new stored records; no raster; cell geometry unmeasured"
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, note, note, {
             declared: ctx.capabilities.sixel === true,
@@ -4786,7 +4865,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           const adapter = identity
             ? `Engine ${identity.engineVersion}, adapter ${identity.adapterVersion}`
             : "Adapter (runtime identity unavailable)"
-          const note = `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`
+          const note = `Open: our adapter for this library version does not read a link's address back (OSC 8; ${adapter})`
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
             chars: cells.map((cell) => cell.char),
             links,
@@ -4892,9 +4971,14 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) =>
         unhandledOscReportResult(ctx, "\x1b]133;A\x07", {
           pass: false,
-          note: "no full-lifecycle observable on this reader",
+          note: "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
           tests: [
-            { id: "criterion", status: "probe-todo" as const, reason: "no full-lifecycle observable on this reader" },
+            {
+              id: "criterion",
+              status: "probe-todo" as const,
+              reason:
+                "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+            },
           ],
         }),
       () => {
@@ -5024,19 +5108,40 @@ export const extensionsProbes: ProbeDefinition[] = [
           const iconReason = iconOutcome ? iconOutcome.reason : "feedCapture boundary"
           const titleReason = titleOutcome ? titleOutcome.reason : "feedCapture boundary"
           if (iconLabel !== OSC0_PAYLOAD || windowTitle !== OSC0_PAYLOAD) {
+            const iconControl = iconOutcome && sentinelSilenceResult(iconOutcome, "OSC 0 icon name")
+            const titleControl = titleOutcome && sentinelSilenceResult(titleOutcome, "OSC 0 window title")
             const missing = [
-              ...(iconLabel !== OSC0_PAYLOAD ? [`icon label (CSI 20 t): ${iconReason}`] : []),
-              ...(windowTitle !== OSC0_PAYLOAD ? [`window title (CSI 21 t): ${titleReason}`] : []),
+              ...(iconLabel !== OSC0_PAYLOAD
+                ? [
+                    iconControl
+                      ? "asking for the icon name (CSI 20 t, a short window name) got no answer, though the reply control did come back"
+                      : iconReason === "timeout" && icon === ""
+                        ? "asking for the icon name (CSI 20 t, a short window name) got no answer within our wait, and no reply control worked in this test"
+                        : "the icon-name query (CSI 20 t) did not return the name we set",
+                  ]
+                : []),
+              ...(windowTitle !== OSC0_PAYLOAD
+                ? [
+                    titleControl
+                      ? "asking for the window title (CSI 21 t) got no answer, though the reply control did come back"
+                      : titleReason === "timeout" && title === ""
+                        ? "asking for the window title (CSI 21 t) got no answer within our wait, and no reply control worked in this test"
+                        : "the window-title query (CSI 21 t) did not return the title we set",
+                  ]
+                : []),
             ]
-            return notTestedResult(`OSC 0 lacks a deciding observation for ${missing.join("; ")}`, {
-              ...state,
-              icon,
-              title,
-              iconLabel,
-              windowTitle,
-              iconReason,
-              titleReason,
-            })
+            return notTestedResult(
+              `Open: ${missing.join("; ")}. With these readings, our test cannot tell whether OSC 0 set both names.`,
+              {
+                ...state,
+                icon,
+                title,
+                iconLabel,
+                windowTitle,
+                iconReason,
+                titleReason,
+              },
+            )
           }
           const result = osc0IconTitleResult(
             iconLabel,
@@ -5196,9 +5301,14 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) =>
         unhandledOscReportResult(ctx, "\x1b]633;A\x07", {
           pass: false,
-          note: "no full-lifecycle observable on this reader",
+          note: "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
           tests: [
-            { id: "criterion", status: "probe-todo" as const, reason: "no full-lifecycle observable on this reader" },
+            {
+              id: "criterion",
+              status: "probe-todo" as const,
+              reason:
+                "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+            },
           ],
         }),
       () => {
@@ -5695,7 +5805,7 @@ export const extensionsProbes: ProbeDefinition[] = [
               response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
               if (allSilent) {
                 const reason =
-                  "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed."
+                  "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing."
                 return {
                   pass: false,
                   response,
@@ -6248,11 +6358,26 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.osc7770-font-size": { feed: "\u001b]7770;?\u0007", code: { kind: "osc", code: "7770" } },
   "extensions.osc7777-font-window-size": { feed: "\u001b]7777;?\u0007", code: { kind: "osc", code: "7777" } },
   "extensions.osc99-kitty-notify": { feed: "\u001b]99;i=dev4-census:p=?;\u001b\\", code: { kind: "osc", code: "99" } },
+  // @cto routes ruling 947dcd40, slice A. Own probe payloads; the SGR 1 control passes where `?7l` cannot.
+  "editing.decsace": { feed: "\u001b[2*x", code: { kind: "csi", code: "*2x" } },
+  "extensions.osc5522-clipboard": { feed: "\u001b[?5522$p", code: { kind: "csi", code: "?$5522p" } },
+  "extensions.kitty-keyboard": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
+  "extensions.kitty-keyboard.disambiguate": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
+  "extensions.kitty-keyboard.report-events": { feed: "\u001b[>3u", code: { kind: "csi", code: ">3u" } },
+  "extensions.kitty-keyboard.report-alternate": { feed: "\u001b[>5u", code: { kind: "csi", code: ">5u" } },
+  "extensions.kitty-keyboard.report-all-keys": { feed: "\u001b[>9u", code: { kind: "csi", code: ">9u" } },
+  "extensions.kitty-keyboard.report-text": { feed: "\u001b[>25u", code: { kind: "csi", code: ">25u" } },
+  "input.csi-u": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
+  "input.pixel-mouse": { feed: "\u001b[?1016h", code: { kind: "csi", code: "?1016h" } },
+  "input.kitty-click-events": { feed: "\u001b]133;A;click_events=1\u0007", code: { kind: "osc", code: "133" } },
 }
 
 // Operator D2, exact alacritty_terminal 0.26.0 / VTE 0.15.0 API read:
-// ansi.rs:1329-1524 dispatches none of these OSCs; event.rs:14-104 has no report for them.
+// The audited dispatcher and event API expose no criterion-bearing state for these sequences.
 const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
+  "editing.decsace": "CSI Ps * x (DECSACE) attribute-change extent",
+  "extensions.osc9-progress": "OSC 9;4 progress state",
+  "input.kitty-click-events": "OSC 133 click-events prompt state (mouse encoding is supplied by Termless)",
   "extensions.osc777-notify": "OSC 777 notification payloads",
   "extensions.osc133-a": "OSC 133 prompt starts",
   "extensions.osc133-b": "OSC 133 command starts",
@@ -6282,13 +6407,34 @@ const ALACRITTY_D2_ABSENCES: Readonly<Record<string, string>> = {
 // generic hook; payload delivery is not execution of these host commands.
 const OSC_PASS_THROUGH_REASON =
   "Untestable: the library hands this command to the app, as it does any OSC it does not handle itself, and does nothing with it."
-const OSC_PASS_THROUGH_DECLARATIONS: Readonly<Record<string, string>> = {
+const OSC_PASS_THROUGH_DECLARATIONS: Readonly<
+  Record<string, string | { readonly backend: string; readonly reason: string }>
+> = {
   "extensions.osc176-app-id": OSC_PASS_THROUGH_REASON,
   "extensions.osc3008-context": OSC_PASS_THROUGH_REASON,
   "extensions.osc440-audio": OSC_PASS_THROUGH_REASON,
   "extensions.osc555-flash": OSC_PASS_THROUGH_REASON,
   "extensions.osc666-termprop": OSC_PASS_THROUGH_REASON,
   "extensions.osc710-font-normal": OSC_PASS_THROUGH_REASON,
+  // NR-H: xterm.js 6.0.0's logger is not a report; retain the reviewed parser-hook wording.
+  "editing.decsace": {
+    backend: "xterm",
+    reason:
+      "Untestable: the library hands this command to the app through registerCsiHandler, as it does any CSI it does not handle itself, and does nothing with it.",
+  },
+  "extensions.osc9-progress": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-b": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-c": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-d": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc133-p": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.semantic-prompts": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-a": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-b": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-c": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-d": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc633-e": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
+  "extensions.osc-633-vscode": { backend: "xterm", reason: OSC_PASS_THROUGH_REASON },
 }
 
 const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6301,6 +6447,8 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "extensions.kitty-graphics":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.kitty-graphics.transmit":
+    "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.display":
     "vt100 0.16.2 exposes Parser, Screen and Callbacks, but no public APC callback, graphics store or Kitty graphics reply writer",
   "extensions.osc176-app-id":
     "OSC 176 is a host effect; vt100 0.16.2 only passes the sequence to the embedder's generic callback and has no effect of its own to observe",
@@ -6319,6 +6467,8 @@ const VT100_RUST_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
   "modes.decsscls":
     "vterm.js 0.13.1 exposes Screen, Snapshot and TerminalModes, but no public DECSSCLS scroll-speed state, getter or unhandled-sequence report",
+  "extensions.osc9-progress":
+    "vterm.js 0.13.1 exposes getNotifications() and tapParser(), but no public OSC 9;4 progress state, getter or unhandled-sequence report",
   "extensions.osc22-pointer":
     "vterm.js 0.13.1 exposes pointerFgColor and pointerBgColor on Snapshot, but no public OSC 22 pointer-shape state, query reply or unhandled-sequence report",
   "extensions.osc133-d":
@@ -6331,6 +6481,47 @@ const VTERM_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 133;D command-end state for the full semantic-prompt lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
   "extensions.osc-633-vscode":
     "vterm.js 0.13.1 exposes prompt, command and output start coordinates in getSemanticZones(), but no public OSC 633;D/E/P command-end, command-line or property state for the full VS Code shell-integration lifecycle; the payload reaches only the generic parser tap, which cannot observe state application",
+  "input.kitty-click-events":
+    "vterm.js 0.13.1 drops OSC 133;A click_events parameters in getSemanticZones() and exports no mouse-event encoder; the adapter's encodeMouse is Termless's encodeMouseReport",
+}
+
+// CTO 8be19f1f: five libraries expose no public image path, so their Kitty display and transmit
+// cells are "no way" at exact identity. Each map names one library's own public surface, because a
+// shared string would attribute one library's absence to another. libvterm is absent on purpose: its
+// APC hook is public, so it is reader R1, and vterm decides its rows by the refusal reading instead.
+const ALACRITTY_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "alacritty_terminal 0.26.0 exposes Grid, Term and vte with the event, grid, term, tty and vi_mode modules, but no public APC callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "alacritty_terminal 0.26.0 exposes Grid, Term and vte with the event, grid, term, tty and vi_mode modules, but no public APC callback, graphics store or Kitty graphics reply writer",
+}
+
+const XTERM_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "@xterm/headless 6.0.0 exposes Terminal with the IBuffer and ITerminalOptions typings, but its parser documentation states that APC, PM and SOS are not supported, and it exposes no image store, APC handler or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "@xterm/headless 6.0.0 exposes Terminal with the IBuffer and ITerminalOptions typings, but its parser documentation states that APC, PM and SOS are not supported, and it exposes no image store, APC handler or Kitty graphics reply writer",
+}
+
+const VT100_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "vt100.js 0.13.1 exposes createVt100Screen, Screen, ScreenOptions, ScreenCell and CellColor, and is a strict DEC VT100 (1978) implementation, but has no public APC or DCS string callback, graphics store or Kitty graphics reply writer",
+}
+
+const VT220_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+  "extensions.kitty-graphics.transmit":
+    "vt220.js 0.13.1 exposes createVt220Screen, Vt220Screen, ScreenOptions, ScreenSnapshot, Attrs, ScreenCell and CellColor, and declares sixel/Kitty graphics deliberately absent, with no public APC callback, graphics store or Kitty graphics reply writer",
+}
+
+const GHOSTTY_WEB_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
+  "extensions.kitty-graphics.display":
+    "ghostty-web 0.4.0 exposes Ghostty, GhosttyTerminal and CanvasRenderer, and its only Kitty surface is setKittyFlags with KittyKeyFlags, the keyboard protocol; its WebAssembly export interface carries no image, sixel or graphics entry, so it has no public image store or APC callback",
+  "extensions.kitty-graphics.transmit":
+    "ghostty-web 0.4.0 exposes Ghostty, GhosttyTerminal and CanvasRenderer, and its only Kitty surface is setKittyFlags with KittyKeyFlags, the keyboard protocol; its WebAssembly export interface carries no image, sixel or graphics entry, so it has no public image store or APC callback",
 }
 
 const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
@@ -6350,7 +6541,7 @@ function declaredD2InterfaceAbsence(
   ctx: LibProbeSource,
   lib: (ctx: LibProbeSource) => ProbeCallbackResult,
   id: string,
-  table: Readonly<Record<string, string>>,
+  table: Readonly<Record<string, string | { readonly backend: string; readonly reason: string }>>,
   backend: string,
   cohort:
     | "osc-absence"
@@ -6359,12 +6550,19 @@ function declaredD2InterfaceAbsence(
     | "osc-pass-through"
     | "ghostty-native-d2"
     | "wezterm-d2"
+    | "ghostty-web-d2"
     | "host-effect-h4",
   hasReader: (ctx: LibProbeSource, id: string) => boolean = () => false,
   formatReason: (entry: string) => string = (entry) => entry,
   options: { readonly genericReportIsObservable?: boolean } = {},
 ): ProbeCallbackResult | undefined {
-  const entry = table[id]
+  const declaration = table[id]
+  const entry =
+    typeof declaration === "string"
+      ? declaration
+      : declaration !== undefined && declaration.backend === ctx.backendName
+        ? declaration.reason
+        : undefined
   if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined
   const result = lib(ctx)
   if (
@@ -6374,11 +6572,12 @@ function declaredD2InterfaceAbsence(
   ) {
     return result
   }
-  return declaredUntestableResult(formatReason(entry), {
+  const declared = declaredUntestableResult(formatReason(entry), {
     backend: ctx.backendName,
     featureId: id,
     runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
   })
+  return result.hostRecipeCauses ? { ...declared, hostRecipeCauses: result.hostRecipeCauses } : declared
 }
 
 // CTO Kitty 16:50: shell3/reset2 already use the generic OSC report consumer.
@@ -6413,11 +6612,76 @@ const WEZTERM_D2_ABSENCES: Readonly<Record<string, string>> = {
     "OSC 666 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
   "extensions.osc710-font-normal":
     "OSC 710 has no host route through the public library API; the opt-in log-facade line is off in this embedding",
+  "editing.decsace": "DECSACE has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc52-read":
+    "OSC 52 QuerySelection has a recognized empty handler arm and emits no clipboard query reply",
+  "extensions.osc133-d": "OSC 133 D has a recognized empty handler arm and retains no command-exit status",
+  "extensions.semantic-prompts":
+    "OSC 133 D retains no command-exit status, so the public semantic marks cannot expose a complete prompt-command cycle",
+  "extensions.osc633-a": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc633-b": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc633-c": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc633-d": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc633-e": "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+  "extensions.osc-633-vscode":
+    "OSC 633 has no handler; its only trace is an opt-in log-facade line, off in this embedding",
+}
+
+// CTO21:07 Slice C: only these DEC cells gain report routes. Lists are the
+// reports from each probe's own payload, not a substituted compound control.
+const DEC_COLOUR_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSequenceVerdict>[1]>> = {
+  "sgr.fg.standard": { feed: "\x1b[31m", code: { kind: "csi", code: "31m" } },
+  "sgr.bg.standard": { feed: "\x1b[41m", code: { kind: "csi", code: "41m" } },
+  "sgr.fg.bright": { feed: "\x1b[91m", code: { kind: "csi", code: "91m" } },
+  "sgr.bg.bright": { feed: "\x1b[101m", code: { kind: "csi", code: "101m" } },
+  "sgr.fg.default": { feed: "\x1b[39m", code: { kind: "csi", code: "39m" } },
+  "sgr.bg.default": { feed: "\x1b[49m", code: { kind: "csi", code: "49m" } },
+  "extensions.osc2-title": { feed: "\x1b]2;Test Title\x07", code: { kind: "osc", code: "2" } },
+  "sgr.fg.256": {
+    feed: "\x1b[38;5;173m\x1b[0m",
+    codes: [
+      { kind: "csi", code: "38m" },
+      { kind: "csi", code: "173m" },
+    ],
+  },
+  "sgr.bg.256": {
+    feed: "\x1b[48;5;173m\x1b[0m",
+    codes: [
+      { kind: "csi", code: "48m" },
+      { kind: "csi", code: "173m" },
+    ],
+  },
+  "sgr.fg.truecolor": {
+    feed: "\x1b[38;2;17;97;201m",
+    codes: ["38m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
+  },
+  "sgr.bg.truecolor": {
+    feed: "\x1b[48;2;17;97;201m",
+    codes: ["48m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
+  },
+  "extensions.truecolor": {
+    feed: "\x1b[38;2;17;97;201m",
+    codes: ["38m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
+  },
+  "extensions.osc633-p": { feed: "\x1b]633;P;Cwd=/terminfo-633-cwd-A\x07", code: { kind: "osc", code: "633" } },
+}
+
+// Rejection of the prerequisite makes the dependent claim untestable in THIS
+// run. Versions never stand in for this setup report (CTO ruling6).
+const DEC_SETUP_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSequenceVerdict>[1]>> = {
+  "erase.el-with-attrs": { feed: "\x1b[42m", code: { kind: "csi", code: "42m" } },
+  "device.xtwinops-22": { feed: "\x1b]2;pushed-title\x07", code: { kind: "osc", code: "2" } },
+  "device.xtwinops-23": { feed: "\x1b]2;pushed-title\x07", code: { kind: "osc", code: "2" } },
+  "modes.alt-screen.exit": { feed: "\x1b[?1049h", code: { kind: "csi", code: "?1049h" } },
+  "sgr.selective-reset.italic": { feed: "\x1b[3m", code: { kind: "csi", code: "3m" } },
 }
 
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
+  const decTarget = DEC_COLOUR_REPORTS[definition.id]
+  const decSetup = DEC_SETUP_REPORTS[definition.id]
+  const decsace = definition.id === "editing.decsace"
   const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]
   const kittyTarget = KITTY_D2_NEGATIVES[definition.id]
   const reason = VT100_RUST_D2_DECLARATIONS[definition.id]
@@ -6426,32 +6690,81 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
   const passThroughReason = OSC_PASS_THROUGH_DECLARATIONS[definition.id]
   const ghosttyNativeReason = GHOSTTY_NATIVE_D2_DECLARATIONS[definition.id]
   const weztermAbsence = WEZTERM_D2_ABSENCES[definition.id]
+  const imageDeclared =
+    ALACRITTY_IMAGE_D2_DECLARATIONS[definition.id] ??
+    XTERM_IMAGE_D2_DECLARATIONS[definition.id] ??
+    VT100_IMAGE_D2_DECLARATIONS[definition.id] ??
+    VT220_IMAGE_D2_DECLARATIONS[definition.id] ??
+    GHOSTTY_WEB_IMAGE_D2_DECLARATIONS[definition.id]
   if (
     !lib ||
-    (!vt100Target &&
+    (!decTarget &&
+      !decSetup &&
+      !decsace &&
+      !vt100Target &&
       !kittyTarget &&
       !reason &&
       !absence &&
       !vtermReason &&
       !passThroughReason &&
       !ghosttyNativeReason &&
-      !weztermAbsence)
+      !weztermAbsence &&
+      !imageDeclared)
   ) {
     return definition
   }
   return {
     ...definition,
-    ...(vt100Target && definition.libAssertionType === "query_reply"
+    ...(vt100Target && (definition.libAssertionType === "query_reply" || definition.libAssertionType === "input_bytes")
       ? {
+          // A report verdict records buffer_state; the probe's own arm keeps its type.
           libAssertionType: {
             when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
               typeof source.getUnhandledSequences === "function",
-            then: ["query_reply", "buffer_state"] as const,
-            otherwise: ["query_reply"] as const,
+            then: [definition.libAssertionType, "buffer_state"] as const,
+            otherwise: [definition.libAssertionType] as const,
           },
         }
       : {}),
     lib(ctx) {
+      if ((ctx.backendName === "vt100" || ctx.backendName === "vt220") && (decTarget || decSetup || decsace)) {
+        const result = lib(ctx)
+        if (reportsDecidedOutcome(result)) return result
+        if (decsace) {
+          return ctx.runtimeIdentity?.engineVersion === "0.13.1"
+            ? declaredUntestableResult(
+                `${ctx.backendName} 0.13.1 exposes no DECSACE extent state or effect reader through its public Screen API.`,
+                { backend: ctx.backendName, engineVersion: ctx.runtimeIdentity.engineVersion },
+              )
+            : result
+        }
+        const target = decTarget ?? decSetup
+        if (!target) return result
+        const cursor = ctx.getCursor()
+        const reported = unhandledSequenceVerdict(
+          ctx,
+          target,
+          {
+            feed: "\x1b[0m\x1b[1mC",
+            applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
+            cleanup: "\x1b[0m",
+          },
+          { featureId: definition.id, ...(result.response !== undefined && { body: result.response }) },
+        )
+        if (decSetup && reported) {
+          return declaredUntestableResult(
+            `${definition.id}: the library reported its setup sequence as unhandled; the dependent effect cannot be observed in this run.`,
+            { setup: target.feed, report: reported.response },
+          )
+        }
+        if (decSetup) {
+          return notTestedResult(
+            `${definition.id}: setup rejection with a handled SGR 1 control was not qualified in this run`,
+            { setup: target.feed, body: result },
+          )
+        }
+        return reported ?? result
+      }
       const passThroughDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,
@@ -6483,18 +6796,67 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         "alacritty",
         "osc-absence",
         (source, id) =>
-          id === "extensions.osc777-notify"
-            ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
-            : id.startsWith("extensions.osc133") ||
-                id.startsWith("extensions.osc633") ||
-                id === "extensions.osc-633-vscode" ||
-                id === "extensions.semantic-prompts"
-              ? typeof source.getSemanticMarks === "function"
-              : false,
+          id === "extensions.osc9-progress"
+            ? typeof source.getProgress === "function"
+            : id === "extensions.osc777-notify"
+              ? typeof source.getOsc777Payloads === "function" || typeof source.getToasts === "function"
+              : id.startsWith("extensions.osc133") ||
+                  id.startsWith("extensions.osc633") ||
+                  id === "extensions.osc-633-vscode" ||
+                  id === "extensions.semantic-prompts"
+                ? typeof source.getSemanticMarks === "function"
+                : false,
         (entry) =>
-          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this OSC has no handler or public rejection report.`,
+          `Alacritty alacritty_terminal 0.26.0 / VTE 0.15.0 exposes no public state, reply or typed event for ${entry}; this ${definition.id === "editing.decsace" ? "CSI" : "OSC"} has no handler or public rejection report.`,
       )
       if (alacrittyDeclared) return alacrittyDeclared
+      // CTO 8be19f1f: the Kitty image pair. No reader is passed because none of these libraries
+      // exposes a public image store or callback; if one ever gains it, its gate stops matching.
+      const alacrittyImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        ALACRITTY_IMAGE_D2_DECLARATIONS,
+        "alacritty",
+        "osc-absence",
+      )
+      if (alacrittyImageDeclared) return alacrittyImageDeclared
+      const xtermImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        XTERM_IMAGE_D2_DECLARATIONS,
+        "xterm",
+        "osc-pass-through",
+      )
+      if (xtermImageDeclared) return xtermImageDeclared
+      const vt100ImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        VT100_IMAGE_D2_DECLARATIONS,
+        "vt100",
+        "osc-absence",
+      )
+      if (vt100ImageDeclared) return vt100ImageDeclared
+      const vt220ImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        VT220_IMAGE_D2_DECLARATIONS,
+        "vt220",
+        "osc-absence",
+      )
+      if (vt220ImageDeclared) return vt220ImageDeclared
+      const ghosttyWebImageDeclared = declaredD2InterfaceAbsence(
+        ctx,
+        lib,
+        definition.id,
+        GHOSTTY_WEB_IMAGE_D2_DECLARATIONS,
+        "ghostty",
+        "ghostty-web-d2",
+      )
+      if (ghosttyWebImageDeclared) return ghosttyWebImageDeclared
       const vtermDeclared = declaredD2InterfaceAbsence(
         ctx,
         lib,

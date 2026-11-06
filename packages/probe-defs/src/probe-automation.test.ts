@@ -493,7 +493,7 @@ describe("qualified clipboard roundtrip", () => {
           id: "criterion",
           status: "probe-todo",
           reason:
-            "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
+            "Open: our test cannot see the clipboard. Asking for it back (OSC 52) got no answer, and nothing else in our test watches the clipboard.",
         },
       ])
       snapshots.push(result.response!)
@@ -826,7 +826,7 @@ describe("zero-byte replies on a loaded artifact", () => {
       reason: "no-semantic-observable",
       noObservable:
         id === "extensions.osc0-icon-title"
-          ? "OSC 0 lacks a deciding observation for icon label (CSI 20 t): feedCapture boundary; window title (CSI 21 t): feedCapture boundary"
+          ? "Open: the icon-name query (CSI 20 t) did not return the name we set; the window-title query (CSI 21 t) did not return the title we set. With these readings, our test cannot tell whether OSC 0 set both names."
           : NO_SAME_PATH_CONTROL,
     })
     expect(result.criterionBranch).toBeUndefined()
@@ -892,8 +892,20 @@ describe("zero-byte replies on a loaded artifact", () => {
     }
     const reason = route === "lib" ? result.notTested?.noObservable : result.tests?.[0].reason
     if (route === "lib") expect(result.notTested?.reason).toBe("no-semantic-observable")
-    expect(reason).toContain("icon label (CSI 20 t): sentinel")
-    expect(reason).toContain(`window title (CSI 21 t): ${titleReason}`)
+    expect(reason).toContain(
+      route === "lib"
+        ? "the icon-name query (CSI 20 t) did not return the name we set"
+        : "icon label (CSI 20 t): sentinel",
+    )
+    expect(reason).toContain(
+      route === "lib"
+        ? titleReason === "timeout"
+          ? "asking for the window title (CSI 21 t) got no answer within our wait"
+          : "the window-title query (CSI 21 t) did not return the title we set"
+        : `window title (CSI 21 t): ${titleReason}`,
+    )
+    // Human text changes; each query's captured outcome remains exact.
+    if (route === "lib") expect(JSON.parse(result.response!)).toMatchObject({ iconReason: "sentinel", titleReason })
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
   })
@@ -918,7 +930,11 @@ describe("zero-byte replies on a loaded artifact", () => {
         })
       }
       const reason = route === "lib" ? result.notTested?.noObservable : result.tests?.[0].reason
-      expect(reason).toContain("window title (CSI 21 t): sentinel")
+      expect(reason).toContain(
+        route === "lib"
+          ? "the window-title query (CSI 21 t) did not return the title we set"
+          : "window title (CSI 21 t): sentinel",
+      )
       expect(reason).not.toContain("icon label (CSI 20 t):")
       expect(JSON.parse(result.response!)).toMatchObject({ iconLabel: "osc0-icon-title", windowTitle: null })
     },
@@ -927,8 +943,14 @@ describe("zero-byte replies on a loaded artifact", () => {
   test("OSC 0 without a query outcome names the synchronous capture boundary", () => {
     const result = probe("extensions.osc0-icon-title").lib!(context({ feedCapture: () => "\x1b[?1;2c" }))
     expect(result.notTested?.reason).toBe("no-semantic-observable")
-    expect(result.notTested?.noObservable).toContain("icon label (CSI 20 t): feedCapture boundary")
-    expect(result.notTested?.noObservable).toContain("window title (CSI 21 t): feedCapture boundary")
+    expect(result.notTested?.noObservable).toContain("the icon-name query (CSI 20 t) did not return the name we set")
+    expect(result.notTested?.noObservable).toContain(
+      "the window-title query (CSI 21 t) did not return the title we set",
+    )
+    expect(JSON.parse(result.response!)).toMatchObject({
+      iconReason: "feedCapture boundary",
+      titleReason: "feedCapture boundary",
+    })
     expect(result.notTested?.noObservable).not.toContain("timeout")
   })
 
@@ -939,7 +961,7 @@ describe("zero-byte replies on a loaded artifact", () => {
     // One arm replied, so the capture is not silent and no source answer replaces it (#32246).
     expect(result.notTested?.reason).toBe("no-semantic-observable")
     expect(result.observation).toBeUndefined()
-    expect(result.notTested?.noObservable).toContain("icon label (CSI 20 t)")
+    expect(result.notTested?.noObservable).toContain("icon-name query (CSI 20 t)")
     expect(JSON.parse(result.response!)).toMatchObject({ windowTitle: "osc0-icon-title", iconLabel: null })
     expect(result).toEqual(run("extensions.osc0-icon-title", "f".repeat(64), answerTitle).result)
     const answerIcon = (q: string) => (q === "\x1b[20t" ? "\x1b]Losc0-icon-title\x07" : "")
@@ -955,7 +977,7 @@ describe("zero-byte replies on a loaded artifact", () => {
     const query = "\x1b]10;?\x07"
     const stackQuery = "\x1b]30001\x1b\\"
     const missing =
-      "OSC 10 initial and seeded foreground queries answered nothing, so the colour-stack effect has no readback"
+      "Open: the text-colour query (OSC 10) got no answer before or after we set a colour, and no reply control worked in this test. Saving and restoring colours stays unseen"
     const early = {
       pass: false,
       response: JSON.stringify({
@@ -1214,7 +1236,7 @@ describe("initial colour context review", () => {
           notTested: { noObservable: expect.stringContaining(`OSC ${slot}`) },
           tests: [{ id: "review", status: "probe-todo" }],
         })
-        expect(result.notTested?.noObservable).toContain("embedder-owned")
+        expect(result.notTested?.noObservable).toContain("cannot show the original default")
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         expect(JSON.parse(result.response!)).toEqual({
@@ -1520,7 +1542,7 @@ describe("OSC 8 link metadata observation", () => {
       expect(unreported.observation).toBeUndefined()
       expect(unreported.notTested).toMatchObject({
         reason: "no-semantic-observable",
-        noObservable: expect.stringContaining("OSC 8 URI observer"),
+        noObservable: expect.stringContaining("our adapter for this library version does not read a link"),
       })
       expect(unreported.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
       expect(unreported.tests).toEqual([
@@ -1561,7 +1583,7 @@ describe("OSC 8 link metadata observation", () => {
     if (!p.lib) throw new Error("OSC 8 needs headless callback")
     const result = p.lib(linkedSource(Array(6).fill(null), false))
     expect(result.observation).toBeUndefined()
-    expect(result.notTested?.noObservable).toContain("OSC 8 URI observer")
+    expect(result.notTested?.noObservable).toContain("our adapter for this library version does not read a link")
     expect(JSON.parse(result.response ?? "")).toMatchObject({ links: Array(6).fill({ reported: false }) })
   })
 
@@ -2451,7 +2473,7 @@ describe("Kitty protocol detection", () => {
       expect(result.assertions).toBeUndefined()
       if (expected === "probe-todo") {
         expect(result.tests?.[0]?.reason).toBe(
-          "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed.",
+          "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing.",
         )
         expect(JSON.parse(result.response!)).toMatchObject({
           detection: da1,
@@ -2702,7 +2724,7 @@ describe("Kitty protocol detection", () => {
             id: "criterion",
             status: "probe-todo",
             reason:
-              "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
+              "Open: our test cannot see the clipboard. Asking for it back (OSC 52) got no answer, and nothing else in our test watches the clipboard.",
           },
         ])
       }

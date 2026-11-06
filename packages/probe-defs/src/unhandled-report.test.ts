@@ -15,13 +15,105 @@
  */
 import { describe, expect, test } from "vitest"
 
-import { extensionsProbes } from "./extensions.ts"
+import { extensionsProbes, withD2LibraryObservation } from "./extensions.ts"
 import { sgrProbes } from "./sgr.ts"
 import { ALL_PROBES, isDeclaredUntestable } from "./index.ts"
 import { inertLibProbeSource } from "./testing/group-harness.ts"
 import type { HeadlessRuntimeIdentity, LibProbeSource, UnhandledSequence } from "./types.ts"
+import { parserStateResult, recordExecutedProbe } from "./helpers.ts"
 
 const REASON = "library reported this sequence as unhandled"
+
+// A report or declaration cannot replace a deciding callback supplied by the registry.
+test.each(["sgr.fg.256", "extensions.osc2-title", "device.xtwinops-22", "editing.decsace"])(
+  "%s retains its existing measured reader outcome",
+  (id) => {
+    for (const pass of [true, false]) {
+      const definition = withD2LibraryObservation({
+        id,
+        lib: () => parserStateResult(pass, "existing measured reader", { measured: pass }),
+        term: null,
+      })
+      const source = reportingSource({ records: [recordsOsc("2"), recordsCsi("38;5;173m")] })
+      Object.assign(source, { backendName: "vt100", runtimeIdentity: { kind: "js", engineVersion: "0.13.1" } })
+      const result = definition.lib!(source)
+      expect(result.observation?.outcome).toBe(pass ? "supported" : "unsupported")
+      expect(isDeclaredUntestable(result)).toBe(false)
+      expect(JSON.stringify(result)).not.toContain(REASON)
+    }
+  },
+)
+
+// NR-C: existing scalar cases cannot catch partial, reordered or extra reports.
+test.each([
+  ["sgr.fg.256", "38;5;173m", ["38m", "173m"]],
+  ["sgr.bg.truecolor", "48;2;17;97;201m", ["48m", "2m", "17m", "97m", "201m"]],
+] as const)("%s requires the complete ordered report and a handled control", (id, sequence, codes) => {
+  const exact: UnhandledSequence[] = codes.map((code) => ({ kind: "csi", code }))
+  const variants = [
+    exact.slice(0, -1),
+    [...exact, { kind: "csi" as const, code: "999m" }],
+    [...exact].reverse(),
+    exact.map((code, index) => (index === exact.length - 1 ? { ...code, kind: "osc" as const } : code)),
+    exact.map((code, index) => (index === exact.length - 1 ? { ...code, code: "999m" } : code)),
+  ]
+  const definition = ALL_PROBES.find((entry) => entry.id === id)!
+  for (const codes of variants) {
+    const source = reportingSource({ records: codes.map((code) => ({ ...recordsCsi(sequence), code })) })
+    Object.assign(source, { backendName: "vt100" })
+    const result = definition.lib!(source)
+    expect(result.observation?.outcome, JSON.stringify(codes)).not.toBe("unsupported")
+    expect(JSON.stringify(result)).not.toContain(REASON)
+  }
+  for (const control of [{ boldApplies: false }, { rejected: true }, { missing: true }]) {
+    const source = reportingSource({
+      records: [
+        ...exact.map((code) => ({ ...recordsCsi(sequence), code })),
+        ...("rejected" in control ? [recordsCsi("1m")] : []),
+      ],
+      ...control,
+    })
+    Object.assign(source, {
+      backendName: "vt100",
+      ...("missing" in control ? { getUnhandledSequences: undefined } : {}),
+    })
+    const result = definition.lib!(source)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(JSON.stringify(result)).not.toContain(REASON)
+  }
+})
+
+// A rejected target cannot stand in for rejection of its prerequisite.
+test.each([
+  ["erase.el-with-attrs", "42m", "0K"],
+  ["device.xtwinops-22", "osc2", "22;0t"],
+  ["device.xtwinops-23", "osc2", "23;0t"],
+  ["modes.alt-screen.exit", "?1049h", "?1049l"],
+  ["sgr.selective-reset.italic", "3m", "23m"],
+])("%s needs its own setup rejection for Untestable", (id, setup, target) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)!
+  for (const spec of [
+    { records: [recordsCsi(target)] },
+    { records: [setup === "osc2" ? recordsOsc("2") : recordsCsi(setup)], boldApplies: false },
+    { records: [setup === "osc2" ? recordsOsc("2") : recordsCsi(setup), recordsCsi("1m")] },
+    { records: [] },
+  ]) {
+    const source = reportingSource({ ...spec, titleApplies: false })
+    Object.assign(source, { backendName: "vt100" })
+    const result = definition.lib!(source)
+    expect(isDeclaredUntestable(result)).toBe(false)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    const recorded = recordExecutedProbe({
+      featureId: id,
+      attempt: { scope: "probe", startedAt: "2026-11-06T06:54:00Z" },
+      assertions: [],
+      ...(result.notTested ? { coverage: { featureId: id, rawReplyRef: id, ...result.notTested } } : {}),
+      ...(result.tests ? { tests: result.tests } : {}),
+      ...(result.criterionBranch ? { criterionBranch: result.criterionBranch } : {}),
+    })
+    expect(recorded.status).toBe("probe-todo")
+  }
+})
 
 const probe = (id: string) => extensionsProbes.find((entry) => entry.id === id)!
 const sgr = (id: string) => sgrProbes.find((entry) => entry.id === id)!
@@ -140,6 +232,10 @@ describe("the unhandled report decides only state cells, and only with both cont
     ["extensions.osc9-progress", "9"],
     ["extensions.osc22-pointer", "22"],
     ["extensions.osc777-notify", "777"],
+    ["extensions.osc104-reset-palette", "104"],
+    ["extensions.osc110-reset-fg", "110"],
+    ["extensions.osc111-reset-bg", "111"],
+    ["extensions.osc112-reset-cursor", "112"],
     ["extensions.osc113-reset-pointer-fg", "113"],
     ["extensions.osc114-reset-pointer-bg", "114"],
     ["extensions.osc117-reset-highlight-bg", "117"],
@@ -149,22 +245,6 @@ describe("the unhandled report decides only state cells, and only with both cont
     const result = probe(id).lib!(source)
     expect(result.observation?.outcome).toBe("unsupported")
     expect(JSON.stringify(result)).toContain(REASON)
-  })
-
-  test("a colour reset outside the four named cells keeps its own path", () => {
-    // @cto names the ledger's colour-reset group (113/114/117/119); 104/110/111/112 belong to another
-    // card group and must not move here even when the same report carries their number.
-    for (const [id, code] of [
-      ["extensions.osc104-reset-palette", "104"],
-      ["extensions.osc110-reset-fg", "110"],
-      ["extensions.osc111-reset-bg", "111"],
-      ["extensions.osc112-reset-cursor", "112"],
-    ] as const) {
-      const source = reportingSource({ records: [recordsOsc(code)] })
-      const result = probe(id).lib!(source)
-      expect(result.observation?.outcome, id).not.toBe("unsupported")
-      expect(JSON.stringify(result), id).not.toContain(REASON)
-    }
   })
 
   test("the two umbrella shell cells reach the report arm too", () => {
@@ -469,12 +549,25 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     ["extensions.osc99-kitty-notify", "\u001b]99;i=dev4-census:p=?;\u001b\\", "osc", "99"],
     ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "osc", "9"],
     ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "osc", "22"],
+    // NR-A, @cto 947dcd40 slice A.
+    ["editing.decsace", "\u001b[2*x", "csi", "*2x"],
+    ["extensions.osc5522-clipboard", "\u001b[?5522$p", "csi", "?$5522p"],
+    ["extensions.kitty-keyboard", "\u001b[>1u", "csi", ">1u"],
+    ["extensions.kitty-keyboard.disambiguate", "\u001b[>1u", "csi", ">1u"],
+    ["extensions.kitty-keyboard.report-events", "\u001b[>3u", "csi", ">3u"],
+    ["extensions.kitty-keyboard.report-alternate", "\u001b[>5u", "csi", ">5u"],
+    ["extensions.kitty-keyboard.report-all-keys", "\u001b[>9u", "csi", ">9u"],
+    ["extensions.kitty-keyboard.report-text", "\u001b[>25u", "csi", ">25u"],
+    ["input.csi-u", "\u001b[>1u", "csi", ">1u"],
+    ["input.pixel-mouse", "\u001b[?1016h", "csi", "?1016h"],
+    ["input.kitty-click-events", "\u001b]133;A;click_events=1\u0007", "osc", "133"],
   ] as const
   const declared = [
     "device.decrqss",
     "device.xtgettcap",
     "device.xtgetxres",
     "extensions.kitty-graphics",
+    "extensions.kitty-graphics.display",
     "extensions.kitty-graphics.transmit",
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
@@ -523,6 +616,12 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
         ),
       ).toBe(false)
     }
+  })
+
+  // The verdict records buffer_state, which an input_bytes-only declaration would refuse at collection.
+  test("kitty-click declares the report's buffer_state beside its own input_bytes", () => {
+    const declaration = definition("input.kitty-click-events").libAssertionType
+    expect(declaration).toMatchObject({ then: ["input_bytes", "buffer_state"], otherwise: ["input_bytes"] })
   })
 
   test("failed controls, mismatch, extra entry, missing member and changed identity keep the old path", () => {
@@ -584,7 +683,7 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
   })
 })
 
-describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
+describe("vterm 0.13.1 D2 nine-cell interface-absence declarations", () => {
   const sourceIntegrity = {
     kind: "source" as const,
     revision: "7b39f49e8a6bc03ce695c5ab7c143c2cc7379eb0",
@@ -604,11 +703,13 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
   const declared = [
     "modes.decsscls",
     "extensions.osc22-pointer",
+    "extensions.osc9-progress",
     "extensions.osc133-d",
     "extensions.osc633-d",
     "extensions.osc633-e",
     "extensions.semantic-prompts",
     "extensions.osc-633-vscode",
+    "input.kitty-click-events",
   ] as const
   const shellDeclared = new Set([
     "extensions.osc133-d",
@@ -641,6 +742,12 @@ describe("vterm 0.13.1 D2 seven-cell interface-absence declarations", () => {
     expect(JSON.stringify(result)).toContain("vterm.js 0.13.1")
     if (shellDeclared.has(id)) {
       expect(JSON.stringify(result)).toContain("generic parser tap")
+    }
+    if (id === "extensions.osc9-progress") {
+      expect(JSON.stringify(result)).toContain("tapParser")
+    }
+    if (id === "input.kitty-click-events") {
+      expect(JSON.stringify(result)).toContain("Termless")
     }
     expect(result.observation?.outcome).not.toBe("unsupported")
     for (const overrides of [

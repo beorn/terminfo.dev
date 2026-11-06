@@ -73,7 +73,7 @@ test.each(F4)("%s: qualified silence distinguishes reply negatives and absent co
     expect(result.assertions).toBeUndefined()
     expect(result.criterionBranch).toBe("color-readback-review")
     expect(result.tests).toContainEqual(
-      expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining("readback") }),
+      expect.objectContaining({ status: "probe-todo", reason: expect.stringMatching(/^Open: .*colour query/) }),
     )
     expect(result.response).toContain(JSON.stringify(da1).slice(1, -1))
   }

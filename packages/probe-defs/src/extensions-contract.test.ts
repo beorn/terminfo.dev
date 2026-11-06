@@ -128,7 +128,8 @@ test.each([
   expect(result.observation?.outcome).not.toBe("unsupported")
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "observation not decided: no same-path control in this run",
+    noObservable:
+      "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
   })
   expect(source.feedCapture("\x1b[c")).toMatch(/^\x1b\[\?[0-9;]+c$/u)
 })
@@ -163,7 +164,7 @@ test.each(["control", "target"])("OSC 52 missing %s cannot establish support", (
     reason: "no-semantic-observable",
     noObservable:
       missing === "control"
-        ? "observation not decided: no same-path control in this run"
+        ? "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result."
         : "control OSC 52 c write recorded but the probe write was not; same-run observations disagree",
   })
 })
@@ -182,7 +183,8 @@ test.each(["osc133-a", "osc133-b", "osc133-c", "osc133-d", "osc633-a", "osc633-b
     expect(result.observation?.outcome).not.toBe("unsupported")
     expect(result.notTested).toEqual({
       reason: "no-semantic-observable",
-      noObservable: "observation not decided: no same-path control in this run",
+      noObservable:
+        "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
     })
     expect(source.feedCapture("\x1b[c")).toMatch(/^\x1b\[\?[0-9;]+c$/u)
   },
@@ -402,7 +404,7 @@ test.each(["semantic-prompts", "osc-633-vscode", "osc633-e"])(
       expect(result.observation?.outcome, name).not.toBe("supported")
       if (consumes && name === "osc633-e") {
         expect(result.tests?.[0]?.reason).toBe(
-          "OSC 133 P / 633 E consumed; no property or command-line observer exists in this run",
+          "Open: the library did not print the shell property and command-line marks (OSC 133 P, 633 E) as text, but our test cannot read them back.",
         )
         expect(result.notTested?.noObservable).toBe("OSC 633;E commandline-with-nonce mark registration")
       }
@@ -1271,7 +1273,12 @@ test.each([
   const result = umbrella.lib!(makeSource())
   expect(result.pass).toBe(false)
   expect(result.tests).toEqual([
-    { id: "criterion", status: "probe-todo", reason: "no full-lifecycle observable on this reader" },
+    {
+      id: "criterion",
+      status: "probe-todo",
+      reason:
+        "Open: our test saw only some of the shell cycle's steps (prompt start, command start, output start, command end with exit status), so it cannot judge the whole cycle yet.",
+    },
   ])
   expect(result.observation?.outcome).not.toBe("supported")
 })

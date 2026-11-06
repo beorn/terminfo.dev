@@ -439,7 +439,7 @@ export function reportsDecidedOutcome(result: ProbeCallbackResult): boolean {
 /**
  * Case 1 consumer (@cto 2026-11-05 07:25 appendix): a library's own unhandled report decides a STATE cell
  * Unsupported only when the same run proves both controls on the same reader — a handled sequence adds no
- * entry and its own reader shows it applied, then the target adds exactly one entry carrying its exact code.
+ * entry and its own reader shows it applied, then the target adds its exact code or approved ordered list.
  * Anything else returns undefined, so the calling probe keeps its undecided branch; a source without the
  * member never reaches here, which keeps today's exact path (missing evidence, never a negative).
  *
@@ -448,13 +448,16 @@ export function reportsDecidedOutcome(result: ProbeCallbackResult): boolean {
  * with a handled non-OSC sequence — SGR 1 and bold — only in the same run that shows the OSC 2 control
  * added exactly one entry carrying `fallback.proves` while the title stayed unapplied: the engine reports
  * the OSC path and handles none of it. The fallback then reads its own baseline, so the control's entry is
- * never counted against the target's one-entry delta. A Case 1 engine whose title read answered never
+ * never counted against the target's exact delta. A Case 1 engine whose title read answered never
  * reaches it, and every report length is compared exactly, so a bounded history that rolled decides
  * nothing rather than a wrong grade.
  */
 export function unhandledSequenceVerdict(
   ctx: LibProbeSource,
-  target: { readonly feed: string; readonly code: UnhandledSequence },
+  target: { readonly feed: string } & (
+    | { readonly code: UnhandledSequence; readonly codes?: never }
+    | { readonly codes: readonly UnhandledSequence[]; readonly code?: never }
+  ),
   control: {
     readonly feed: string
     readonly applied: () => boolean
@@ -467,6 +470,9 @@ export function unhandledSequenceVerdict(
     readonly arm: () => { readonly feed: string; readonly applied: () => boolean; readonly cleanup?: string }
   },
 ): ProbeCallbackResult | undefined {
+  const codes = target.code !== undefined ? [target.code] : target.codes
+  const first = codes[0]
+  if (first === undefined) return undefined
   const read = ctx.getUnhandledSequences?.bind(ctx)
   if (!read) return undefined
   const before = read()
@@ -479,7 +485,7 @@ export function unhandledSequenceVerdict(
     qualifying = { feed: control.feed, baseline: afterControl }
   } else if (
     fallback !== undefined &&
-    target.code.kind === "osc" &&
+    first.kind === "osc" &&
     !controlApplied &&
     afterControl.length === before.length + 1
   ) {
@@ -498,16 +504,25 @@ export function unhandledSequenceVerdict(
   ctx.feed(target.feed)
   const afterTarget = read()
   const added =
-    afterTarget.length === qualifying.baseline.length + 1 ? afterTarget.slice(qualifying.baseline.length) : []
-  const only = added.length === 1 ? added[0] : undefined
-  if (only === undefined || only.kind !== target.code.kind || only.code !== target.code.code) {
+    afterTarget.length === qualifying.baseline.length + codes.length
+      ? afterTarget.slice(qualifying.baseline.length)
+      : []
+  if (
+    added.length !== codes.length ||
+    codes.some((code, index) => {
+      const actual = added[index]
+      return actual === undefined || actual.kind !== code.kind || actual.code !== code.code
+    })
+  ) {
     return undefined
   }
-  const label = `${target.code.kind === "osc" ? "OSC" : target.code.code.endsWith("m") ? "SGR" : "CSI"} ${target.code.code}`
+  const label = codes
+    .map((code) => `${code.kind === "osc" ? "OSC" : code.code.endsWith("m") ? "SGR" : "CSI"} ${code.code}`)
+    .join(", ")
   return parserStateResult(
     false,
     `${label}: the library's own report carries this exact code, with both same-run controls qualified`,
-    { evidence, unhandled: { control: qualifying.feed, target: target.code, added } },
+    { evidence, unhandled: { control: qualifying.feed, target: target.code ?? target.codes, added } },
     UNHANDLED_SEQUENCE_REASON,
   )
 }
@@ -549,7 +564,8 @@ export const SEMANTIC_PROMPT_SOURCE_REVIEW = "semantic-prompt-source-review"
  * control in this run showed the same observation path can report the state, so the cell stays PROBE TODO (rule 4).
  * Source code never decides it; a probe owner adds the same-path control per feature.
  */
-export const NO_SAME_PATH_CONTROL = "observation not decided: no same-path control in this run"
+export const NO_SAME_PATH_CONTROL =
+  "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result."
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as
@@ -1290,7 +1306,7 @@ export function sgrProbe(
           const field = id === "sgr.faint" ? "dim" : id.slice("sgr.".length)
           const prerequisite =
             SGR_ATTRIBUTE_READER_ABSENCE[`${ctx.backendName}:${ctx.runtimeIdentity?.engineVersion}:${field}`]
-          const missingReader = `cell.${field} is unreported; ${prerequisite ? `${prerequisite}; ` : ""}no qualified SGR m alternative in this run`
+          const missingReader = `Open: our test could not read ${field} from the screen cells and found no qualified alternative in this run.${prerequisite ? ` ${prerequisite}.` : ""}`
           // The reply is used only after this same SGR m reader reports the bold control.
           // A facility-wide DECRQSS/DECSTBM answer does not qualify it (#32318).
           if (readback && ctx.queryWithSentinelOutcome) {
@@ -1364,7 +1380,9 @@ export function sgrProbe(
               )
             }
             return notTestedResult(
-              `Underline reader did not distinguish the ${style} style control in this run`,
+              style === "double" && styleControl.char === "D" && styleControl.underline === "single"
+                ? "Open: our test tells underline styles apart by comparing with double underline, its control. On this library double underline read the same as plain underline, so this style cannot be judged yet."
+                : `Open: our test compares underline styles with a ${style}-underline control, but that control did not read as ${style} underline, so this style cannot be judged yet.`,
               styleState,
             )
           }
@@ -1794,7 +1812,7 @@ export function headlessDecrpmArm(
           return osInputReviewResult(
             `DECRPM reply to CSI ? ${modeNum} $ p`,
             state,
-            "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
+            "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works.",
           )
         }
         const insertBindingGap = modeNum === 4 && (insertBefore === null || insertAfter === null)
@@ -1852,7 +1870,7 @@ export function headlessDecrpmArm(
       return osInputReviewResult(
         `DECRPM reply to CSI ? ${modeNum} $ p`,
         state,
-        "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it",
+        "Open: our test received no usable reply to the mode query (DECRPM), and this run has no qualified control for that reply, so it cannot tell whether the mode works.",
       )
     }
     return { ...decrpmResult(ps, modeNum), response: JSON.stringify(state) }
@@ -1886,9 +1904,16 @@ function modeStateReadback(ctx: LibProbeSource, number: number, key: string, pri
       otherReset === otherBefore &&
       otherUnknown === otherBefore
     const facet = number === 1 ? "key encoding unmeasured" : "presentation unmeasured"
+    const label = key === "applicationCursor" ? "cursor-keys" : key === "reverseVideo" ? "reverse-video" : key
     const note = qualified
       ? `${key} state measured; ${facet}`
-      : `${key} public-state set/reset or independence control unavailable`
+      : initial !== false || set !== true || reset !== false || unknown !== false
+        ? `Open: setting and resetting ${label} mode did not give the expected readings.`
+        : otherBefore === null || otherSet === null || otherReset === null || otherUnknown === null
+          ? key === "applicationCursor"
+            ? "Open: cursor-keys mode set and reset as expected, but our adapter returns no on/off state for reverse video on this library, and reverse video is the second mode we use to show the two modes are independent."
+            : `Open: ${label} mode set and reset as expected, but the second mode we use to show they are independent cannot be read here.`
+          : `Open: the second mode changed while we set or reset ${label} mode, so this test cannot show they are independent.`
     return {
       ...parserStateResult(qualified ? true : null, `${key} state measured; ${facet}`, state, note),
       ...(!qualified && { tests: [{ id: "criterion", status: "probe-todo" as const, reason: note }] }),
