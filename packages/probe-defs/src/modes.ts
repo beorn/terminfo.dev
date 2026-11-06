@@ -16,6 +16,7 @@ import {
   headlessDecrpmArm,
   parserStateResult,
   notTestedResult,
+  declaredUntestableResult,
   NO_SAME_PATH_CONTROL,
   reviewResult,
   HEADLESS_OBSERVABLE_REVIEW,
@@ -2473,6 +2474,15 @@ const modeDefinitions: ProbeDefinition[] = [
     ...probe(
       "modes.decsscls",
       (ctx) => {
+        // Exact public Screen0.13.1 has no speed getter or speed key in getMode.
+        // No DEC citation establishes this feature on a VT100; do not invent an engine reader.
+        // Existing registry report consumers retain their own deciding path for other engines.
+        if (ctx.backendName === "vt100" && ctx.runtimeIdentity?.engineVersion === "0.13.1") {
+          return declaredUntestableResult(
+            "VT100.js 0.13.1 exposes no scroll-speed state or presentation-speed observer through its public Screen API.",
+            { backendName: ctx.backendName, engineVersion: ctx.runtimeIdentity.engineVersion },
+          )
+        }
         const expected = "CSI 9 SP p yields observable scroll-speed state or effect"
         if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8) {
           return parserStateResult(
