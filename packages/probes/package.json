@@ -10,7 +10,7 @@
     "@terminfo/probe-defs": "workspace:*",
     "@terminfo/run-parser": "workspace:*",
     "@termless/alacritty": "0.10.2",
-    "@termless/core": "0.10.2",
+    "@termless/core": "0.11.0",
     "@termless/ghostty": "0.10.2",
     "@termless/ghostty-native": "0.10.2",
     "@termless/kitty": "0.10.2",
@@ -18,12 +18,12 @@
     "@termless/vt100": "0.10.2",
     "@termless/vt100-rust": "0.10.2",
     "@termless/vt220": "0.10.2",
-    "@termless/vterm": "0.10.2",
+    "@termless/vterm": "0.11.0",
     "@termless/wezterm": "0.10.2",
     "@termless/xtermjs": "0.10.2",
     "loggily": "0.13.0",
     "viprobe": "workspace:*",
-    "vterm.js": "0.10.1"
+    "vterm.js": "0.14.0"
   },
   "devDependencies": {
     "vitest": "5.0.4"
