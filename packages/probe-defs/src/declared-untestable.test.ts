@@ -17,7 +17,7 @@ import {
   notTestedResult,
 } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
-import { withD2LibraryObservation } from "./extensions.ts"
+import { hasAuditedOscInterfaceAbsence, withD2LibraryObservation } from "./extensions.ts"
 import { libProbeSource, inertLibProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { HeadlessRuntimeIdentity, LibProbeSource, NotTestedCoverageResult, ProbeCallbackResult } from "./types.ts"
@@ -46,6 +46,28 @@ const library = (backendName = "alacritty"): LibProbeSource =>
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     reset: () => {},
   }) as unknown as LibProbeSource
+
+// Existing fixtures use older engines; a new minor must retain its exact version/tree qualification.
+test("Vterm 0.14.0 keeps the shared identity cohort exact", () => {
+  const identity = {
+    kind: "js",
+    runtimeFormat: "js",
+    engineVersion: "0.14.0",
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/vterm.git",
+      treeOid: "89dac5839077e57249405ab6673b996918c03f04",
+      cleanTree: true,
+    },
+  } as const
+  const matches = (runtimeIdentity: unknown) =>
+    hasAuditedOscInterfaceAbsence({ ...library("vterm"), runtimeIdentity } as LibProbeSource, "vterm-d2")
+  expect(matches(identity)).toBe(true)
+  expect(matches({ ...identity, engineVersion: "0.13.2" })).toBe(false)
+  expect(matches({ ...identity, integrity: { ...identity.integrity, treeOid: "f".repeat(40) } })).toBe(false)
+  expect(matches({ ...identity, integrity: { ...identity.integrity, cleanTree: false } })).toBe(false)
+  expect(matches({ ...identity, integrity: { ...identity.integrity, repository: "foreign" } })).toBe(false)
+})
 
 // @failure Phase 1 treats a generic OSC hook as support, or declares a report handoff without
 // both same-run controls. The old H-1 tests covered only identity declarations, not the thirteen

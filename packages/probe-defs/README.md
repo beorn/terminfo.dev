@@ -509,7 +509,8 @@ an already decided result or an unknown profile retains its original path.
 Blink, OSC 22 pointer, OSC 1 icon and DECSSCLS remain outside this declaration cut.
 
 The `vterm` D2 slice shares the same private helper (`declaredD2InterfaceAbsence`)
-with the named `"vterm-d2"` cohort (`vterm.js 0.13.1`, clean source trees
+with the named `"vterm-d2"` cohort (`vterm.js 0.14.0`, clean source tree
+`89dac5839077e57249405ab6673b996918c03f04`; `vterm.js 0.13.1`, clean source trees
 `3d58d29a8265aafd928e0736dde6723e2bac2007` and `656da900d83e7c41af13b7ca679f8e1e31481537`, and `vterm.js 0.13.2`, clean source trees
 `8eae12c15ce34e7e3b6c86a005990f1bb0f53af5`, `3cca402276f5d6b3e4ee9030f7b5e6d5be75667e` and
 `fbee854e249c4046bd8800ff3c8ead25381a8977`) to declare nine exact-version
