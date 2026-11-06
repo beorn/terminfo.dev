@@ -308,7 +308,7 @@ test("a row reading overline is notTested when the bit is null, bound when prese
   expect(omitted.satisfies).toBe(false)
   expect(probe.lib?.(omittedSource).notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "cell.overline field not exposed",
+    noObservable: "Open: this library's screen cells have no overline field, so our test cannot see overline. [cell.overline]",
   })
 })
 
@@ -317,7 +317,7 @@ test("a row reading overline is notTested when the bit is null, bound when prese
  * (#32318). Missing observables or a failed control remain open; source never decides support.
  */
 const underlineColorUnexposed =
-  "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
+  "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it. [cell.underlineColor]"
 const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   id: string,
   mutation: string,
@@ -632,7 +632,7 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
     if (id === "sgr.underline-color-reset") {
       expect(result.notTested).toEqual({
         reason: "no-semantic-observable",
-        noObservable: "SGR 59 setup cell exposes no explicit underline color",
+        noObservable: "Open: after we set an underline colour (SGR 58), the screen cell showed none, so there is nothing for the reset (SGR 59) to clear.",
       })
     } else {
       expect(result.criterionBranch).toBe("headless-observable-review")

@@ -178,14 +178,14 @@ async function primaryRestoreCapture(
         ...result.observation,
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        note: "alternate-screen entry not observed, so exit cannot be attributed",
+        note: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
       },
       assertions: [],
       tests: [
         {
           id: "entry-qualified",
           status: "probe-todo",
-          reason: "alternate-screen entry not observed, so exit cannot be attributed",
+          reason: "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
         },
         remainingFacets,
       ],
@@ -441,7 +441,7 @@ async function xtModeSaveCapture(ctx: TermProbeSource, operation: "push" | "pop"
       note:
         operation === "pop"
           ? "restore returned DECAWM off after on was saved"
-          : "restore returned DECAWM off whatever was saved, so no save was observed",
+          : "Open: restoring always turned line wrap off, whatever we saved, so nothing shows whether the save worked.",
     })
   }
   const verdict = decideStackOperation(operation, pop, push)
@@ -558,7 +558,7 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
     const control = readBXY()
     if (!charsIntact(control) || !boldOnly(control.b) || control.x.bold !== false || control.y.bold !== true) {
       return notTestedResult(
-        "bold and italic cell attributes in the headless readback (control frame not calibrated)",
+        "Open: the control, which should show bold and italic before the test, did not read correctly, so this result cannot be trusted yet.",
         { control },
       )
     }
@@ -708,7 +708,7 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
       return operation === "pop"
         ? parserStateResult(false, expected, state, "restore returned DECAWM off after on was saved")
         : stackStateResult(
-            { pass: null, note: "restore returned DECAWM off whatever was saved, so no save was observed" },
+            { pass: null, note: "Open: restoring always turned line wrap off, whatever we saved, so nothing shows whether the save worked." },
             expected,
             state,
           )
@@ -768,7 +768,7 @@ function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): P
       !reads(calibration.green, COLOR_STACK_GREEN) ||
       !reads(calibration.magenta, COLOR_STACK_MAGENTA)
     ) {
-      return notTestedResult("OSC 4 redefinition of palette index 1 reflected in the headless cell colors", calibration)
+      return notTestedResult("Open: changing a palette colour with OSC 4 did not change the colour the cell reads, so our test cannot see the palette stack.", calibration)
     }
     const fixture = (before: string) => {
       ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${before}`)
@@ -968,7 +968,7 @@ function altScreenRoundtrip(
       if (phase === "exit") {
         // An unqualified entry is a missing prerequisite for the exit: PROBE TODO, and source never decides it
         // (#32246, @cto batch7 A-F1 and 84e7b78b).
-        return notTestedResult("alternate-screen entry not observed, so exit cannot be attributed", state)
+        return notTestedResult("Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.", state)
       }
       return parserStateResult(
         false,
@@ -1916,7 +1916,7 @@ const modeDefinitions: ProbeDefinition[] = [
         }
         const reason =
           setMode === null || resetMode === null
-            ? `adapter binding ${ctx.backendName} applicationKeypad`
+            ? `Open: our ${ctx.backendName} adapter cannot read the application keypad mode yet.`
             : `DECKPAM state pair: set ${setMode}, reset ${resetMode}`
         const note = `${reason}; ${facet}`
         return {
