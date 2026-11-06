@@ -6002,6 +6002,26 @@ test.runIf(OWNED_LAYOUT).each([
   }
 })
 
+// @cto 8c79b122: each engine's own report decides OSC 8. Hosted CI resolves published vt100 and vt220, which have no
+// report and stay TODO, so this reads the owned layout only.
+test.runIf(OWNED_LAYOUT).each([
+  ["libvterm", resolveLibvterm],
+  ["vt100", async () => createVt100Backend()],
+  ["vt220", async () => createVt220Backend()],
+  ["vt100-rust", async () => createVt100RustBackend()],
+] as const)("real %s reads extensions.osc8 Unsupported by its own report", async (name, create) => {
+  const value = await create()
+  value.init({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const result = registryDefinitions(["extensions.osc8"])[0]!.lib!(source)
+    expect(result.observation?.outcome, name).toBe("unsupported")
+    expect(JSON.stringify(result), name).toContain("library reported this sequence as unhandled")
+  } finally {
+    value.destroy()
+  }
+})
+
 // NR-A, @cto 947dcd40 slice A: the real engine's own reports decide these rows; the identity is the audited subject.
 // Hosted resolves the published adapter, which is not that subject.
 test.runIf(OWNED_LAYOUT)(

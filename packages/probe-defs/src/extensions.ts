@@ -5029,10 +5029,15 @@ export const extensionsProbes: ProbeDefinition[] = [
             ? `Engine ${identity.engineVersion}, adapter ${identity.adapterVersion}`
             : "Adapter (runtime identity unavailable)"
           const note = `Open: our adapter for this library version does not read a link's address back (OSC 8; ${adapter})`
-          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
-            chars: cells.map((cell) => cell.char),
-            links,
-          })
+          // @cto 8c79b122: one open only; the verdict needs a report delta of exactly one entry.
+          return unhandledOscReportResult(
+            ctx,
+            `\x1b]8;;${uri}\x07`,
+            reviewResult(HEADLESS_OBSERVABLE_REVIEW, `${note}, so this run cannot decide it`, note, {
+              chars: cells.map((cell) => cell.char),
+              links,
+            }),
+          )
         }
         if (!charsMatch) {
           return {
