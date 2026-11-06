@@ -34,6 +34,9 @@ For the approved reset/colour-stack no-setup route, a silent setup query with it
 control and no target report returns the existing declared Untestable result with the no-setup cause.
 A missing control or ambiguous target report stays Open; verified seeded-colour effects keep their
 existing result. This route adds no post-collection classification or dependency on another cell.
+Alacritty's audited OSC 110/111/112 route compares its initial silent default with a verified
+seeded colour reply: unknown OSC 7110 must preserve that seed, then the reset must restore
+the initial silence. Those same-run query replies establish Supported without inventing a default RGB value.
 Other missing initial readings record a named PROBE TODO; broken or untrustworthy
 measurement remains PROBE INVALID. Silence alone does not establish Unsupported.
 The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
