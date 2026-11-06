@@ -6239,7 +6239,14 @@ const APP_JOB_OSCS: Readonly<Record<string, string>> = {
 }
 
 const LIBRARY_OSC_HOOKS: Readonly<
-  Record<string, { readonly kind: "report" | "tap" | "typed" | "none"; readonly typed?: readonly string[]; readonly handoff?: string }>
+  Record<
+    string,
+    {
+      readonly kind: "report" | "tap" | "typed" | "none"
+      readonly typed?: readonly string[]
+      readonly handoff?: string
+    }
+  >
 > = {
   libvterm: { kind: "report" },
   "vt100-rust": { kind: "report" },
@@ -6255,18 +6262,35 @@ const LIBRARY_OSC_HOOKS: Readonly<
 }
 
 /** Only generic handoffs use this rule; typed stores and library-job reports keep their existing paths. */
-function appJobHandoff(ctx: LibProbeSource, featureId: string, lib: (ctx: LibProbeSource) => ProbeCallbackResult): ProbeCallbackResult | undefined {
+function appJobHandoff(
+  ctx: LibProbeSource,
+  featureId: string,
+  lib: (ctx: LibProbeSource) => ProbeCallbackResult,
+): ProbeCallbackResult | undefined {
   const target = APP_JOB_OSCS[featureId]
   const hook = LIBRARY_OSC_HOOKS[ctx.backendName]
-  if (!target || !hook || hook.kind === "none" || (hook.kind === "typed" && hook.handoff !== featureId) || hook.typed?.includes(featureId)) {
+  if (
+    !target ||
+    !hook ||
+    hook.kind === "none" ||
+    (hook.kind === "typed" && hook.handoff !== featureId) ||
+    hook.typed?.includes(featureId)
+  ) {
     return undefined
   }
   const state = { featureId, backend: ctx.backendName, runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity) }
   if (hook.kind === "typed") {
     // H-4's typed OSC 3008 callback hands off text that this exact bridge does not keep.
     return declaredD2InterfaceAbsence(
-      ctx, lib, featureId, APP_JOB_OSCS, "kitty", "host-effect-h4", undefined,
-      () => "Kitty 0.49.2 hands the OSC 3008 text to the app; our bridge does not keep it and exposes no context effect to read.",
+      ctx,
+      lib,
+      featureId,
+      APP_JOB_OSCS,
+      "kitty",
+      "host-effect-h4",
+      undefined,
+      () =>
+        "Kitty 0.49.2 hands the OSC 3008 text to the app; our bridge does not keep it and exposes no context effect to read.",
       { genericReportIsObservable: false },
     )
   }
@@ -6375,7 +6399,11 @@ function declaredD2InterfaceAbsence(
   const entry = table[id]
   if (!entry || ctx.backendName !== backend || !hasAuditedOscInterfaceAbsence(ctx, cohort)) return undefined
   const result = lib(ctx)
-  if ((options.genericReportIsObservable !== false && typeof ctx.getUnhandledSequences === "function") || hasReader(ctx, id) || reportsDecidedOutcome(result)) {
+  if (
+    (options.genericReportIsObservable !== false && typeof ctx.getUnhandledSequences === "function") ||
+    hasReader(ctx, id) ||
+    reportsDecidedOutcome(result)
+  ) {
     return result
   }
   return declaredUntestableResult(formatReason(entry), {
@@ -6511,8 +6539,15 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       if (weztermDeclared) return weztermDeclared
       if (appJob && kittyTarget && ctx.backendName === "ghostty-native") {
         const declared = declaredD2InterfaceAbsence(
-          ctx, lib, definition.id, APP_JOB_OSCS, "ghostty-native", "host-effect-h4", undefined,
-          () => `Ghostty 1.3.1 native bridge exposes no public state, report or payload route for OSC ${kittyTarget.code.code} at this audited engine/bridge identity.`,
+          ctx,
+          lib,
+          definition.id,
+          APP_JOB_OSCS,
+          "ghostty-native",
+          "host-effect-h4",
+          undefined,
+          () =>
+            `Ghostty 1.3.1 native bridge exposes no public state, report or payload route for OSC ${kittyTarget.code.code} at this audited engine/bridge identity.`,
         )
         if (declared) return declared
       }
