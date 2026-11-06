@@ -59,6 +59,64 @@ async function backend() {
   return createXtermBackend()
 }
 
+// @failure The approved nine mode observations stay TODO despite a controlled report, public state or effect.
+// @level l5
+// @consumer Registered mode callbacks on the owned real engines; prior tests cover only DECRPM and two state opt-ins.
+test.runIf(OWNED_LAYOUT).each([
+  { name: "vt100", create: createVt100Backend, type: "js", id: "modes.decsclm", number: 4, expected: "unsupported" },
+  { name: "vt220", create: createVt220Backend, type: "js", id: "modes.decsclm", number: 4, expected: "unsupported" },
+  ...[
+    { id: "modes.bracketed-paste", number: 2004 },
+    { id: "modes.mouse-tracking", number: 1000 },
+    { id: "modes.mouse-all", number: 1003 },
+    { id: "modes.mouse-sgr", number: 1006 },
+    { id: "modes.utf8-mouse-1005", number: 1005 },
+    { id: "modes.application-cursor", number: 1 },
+  ].map((row) => ({
+    name: "vt100-rust",
+    create: createVt100RustBackend,
+    type: "native" as const,
+    ...row,
+    expected: "supported",
+  })),
+  {
+    name: "alacritty",
+    create: createAlacrittyBackend,
+    type: "native",
+    id: "modes.synchronized-output",
+    number: 2026,
+    expected: "supported",
+  },
+] as const)("controlled modes: $name $id", async ({ name, create, type, id, number, expected }) => {
+  const value = await create()
+  try {
+    await value.init({ cols: 80, rows: 24 })
+    const identity = await headlessIdentity.headlessRuntimeIdentity(name, `@termless/${name}`, type)
+    identity.adapterSources = headlessIdentity.readAdapterSources(name, value)
+    const source = createLibProbeSource(value, undefined, identity, undefined)
+    const definition = registryDefinitions([id])[0]!
+    const result = definition.lib!(source)
+    expect(result.observation, result.response ?? result.note).toMatchObject({
+      outcome: expected,
+      assertionType: "buffer_state",
+    })
+    expect(
+      result.assertions?.some((assertion) => assertion.kind === (expected === "supported" ? "positive" : "negative")),
+    ).toBe(true)
+    if (expected === "supported") {
+      const disabled = definition.lib!({
+        ...source,
+        feed(text) {
+          source.feed(text.replaceAll(`\x1b[?${number}h`, ""))
+        },
+      })
+      expect(disabled.observation?.outcome, disabled.response ?? disabled.note).not.toBe("supported")
+    }
+  } finally {
+    value.destroy()
+  }
+})
+
 // @failure OSC22's library arm checks CPR instead of its pointer query; a target no-op,
 // absent control, or silent reader must not acquire Supported, and the incoming shape must survive.
 // @level l5
@@ -247,7 +305,7 @@ function afterReplyControl(factory: typeof backend): typeof backend {
   }
 }
 
-// @failure Reply qualification replaces an engine's own review, or repeats a callback that cannot yield a negative.
+// @failure Reply qualification replaces native observations or repeats a callback that yields no controlled negative.
 // @level l1
 // @consumer Real Ghostty-native colour/icon callbacks and Alacritty synchronized-output through collectBatch
 for (const scenario of [
@@ -270,7 +328,7 @@ for (const scenario of [
   },
 ]) {
   test.skipIf(!OWNED_LAYOUT || !scenario.available)(
-    `preserves ${scenario.name} native reviews without fresh-instance repeats`,
+    `preserves ${scenario.name} native observations without fresh-instance repeats`,
     async () => {
       const measured = await scenario.create()
       measured.init({ cols: 80, rows: 24 })
@@ -312,30 +370,23 @@ for (const scenario of [
         const slot =
           featureId === "extensions.osc10-fg-color" ? 10 : featureId === "extensions.osc11-bg-color" ? 11 : 12
         const colour = featureId !== "extensions.osc0-icon-title" && scenario.name === "ghostty-native"
+        const status = scenario.name === "alacritty" ? "supported" : "probe-todo"
         const reason = colour
           ? `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`
           : scenario.name === "alacritty"
-            ? "DECRPM reply to CSI ? 2026 $ p"
+            ? "buffered effect measured; rendered tearing unmeasured"
             : "OSC 0 lacks a deciding observation for icon label (CSI 20 t): timeout"
-        const testReason = colour
-          ? `${reason}, so this run cannot decide it`
-          : scenario.name === "alacritty"
-            ? "The adapter delivered no DECRPM reply from the engine, so this run cannot decide it"
-            : reason
+        const testReason = colour ? `${reason}, so this run cannot decide it` : reason
         return {
           featureId,
-          status: "probe-todo",
+          status,
           reason,
-          criterionBranch: colour
-            ? "color-readback-review"
-            : scenario.name === "alacritty"
-              ? "os-input-review"
-              : undefined,
+          criterionBranch: colour ? "color-readback-review" : undefined,
           rawReplyRef: featureId,
           tests: [
             {
-              id: colour || scenario.name === "alacritty" ? "review" : "criterion",
-              status: "probe-todo",
+              id: colour ? "review" : "criterion",
+              status,
               reason: testReason,
               rawReplyRef: featureId,
             },
