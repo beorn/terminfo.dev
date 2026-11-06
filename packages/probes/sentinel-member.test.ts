@@ -30,6 +30,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -398,8 +399,8 @@ function definitionOf(id: string): ProbeDefinition {
 }
 
 // #32286: generic sentinel tests miss a registered mode callback bypassing the proven reader.
-// DA1 qualifies transport only; without DECRPM the existing mode criterion remains TODO.
-test.each([
+// DA1 qualifies transport only; the independent exact ignored-command report decides DEC1.
+test.runIf(OWNED_LAYOUT).each([
   ["vt100", "\x1b[?1;2c"],
   ["vt220", "\x1b[?62;1;2;6;7;8;9c"],
 ])("%s mode callbacks retain real CSI controls without promoting silent DECRQM", async (name, answer) => {
@@ -441,8 +442,10 @@ test.each([
         id,
       ).toBe(true)
       expect(result.pass, id).toBe(false)
-      expect(result.observation?.outcome, id).not.toBe("unsupported")
-      expect(result.notTested, id).toBeDefined()
+      expect(result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+      expect(JSON.parse(result.response!), id).toMatchObject({
+        unhandled: { target: { kind: "csi", code: `?${number}h` } },
+      })
       expect(result.response, id).toContain(JSON.stringify(answer).slice(1, -1))
     } finally {
       backend.destroy()

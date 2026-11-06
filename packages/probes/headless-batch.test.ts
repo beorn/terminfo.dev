@@ -2672,13 +2672,14 @@ test("Wezterm prompt PROBE TODO rows survive actual collection and capture bindi
 // #32099: callback-only tests miss a result rejected by an inherited query_reply declaration. Real engines must take
 // different branches through the same definitions, including xterm's actual mode2031 Ps0 negative; since #32246 the
 // vterm engines' former source reviews are untyped PROBE TODO rows that must still survive collection and parsing.
-test("source-qualified mode and mouse criteria survive collection and capture parsing", async () => {
+test("measured mode and mouse criteria survive collection and capture parsing", async () => {
   const ids = ["modes.synchronized-output", "modes.color-scheme-reporting", "input.pixel-mouse"]
   for (const [name, producer] of [
     ["vt100", resolveVt100],
     ["vt220", resolveVt220],
     ["xtermjs", backend],
   ] as const) {
+    if (name !== "xtermjs" && !OWNED_LAYOUT) continue
     const adapterPackage = `@termless/${name}`
     // Source-audit inputs, not this host's checkout attestation. These pins match the existing
     // headless-decrpm capturedModeEngines and OSC117 xterm fixtures; standalone CI has no owned vterm.
@@ -2788,17 +2789,17 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
         id,
       ).toMatchObject(
         name !== "xtermjs"
-          ? { status: "probe-todo" }
+          ? { status: "unsupported", assertionType: "buffer_state" }
           : {
               status: id === "modes.color-scheme-reporting" ? "unsupported" : "supported",
               assertionType: id === "input.pixel-mouse" ? "input_bytes" : "query_reply",
             },
       )
-      // #32246: the formerly audited vterm identities take no source branch and carry no typed negative.
+      // DEC1: historical source metadata cannot select the current measured report criterion.
       if (name !== "xtermjs") {
         const row = captured.results.find((entry) => entry.featureId === id)!
         expect(row, id).not.toHaveProperty("criterionBranch")
-        expect(row, id).not.toHaveProperty("assertionType")
+        expect(row, id).toHaveProperty("assertionType", "buffer_state")
       }
       expect(JSON.stringify(batch.ungradedDiagnostics[id] ?? {}), id).not.toContain("collector-error")
       if (name === "xtermjs") {
@@ -2822,10 +2823,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
         )
       } else if (id === "input.pixel-mouse") {
         expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({
-          commands: ["\x1b[?1016h", "\x1b[?1016l"],
-          line: "XX",
-          position: { x: 2, y: 0 },
-          control: "consumed-without-effect",
+          unhandled: { target: { kind: "csi", code: "?1016h" } },
         })
       }
     }
@@ -2839,7 +2837,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
     for (const row of parsed.results ?? []) {
       expect(row).toMatchObject(
         name !== "xtermjs"
-          ? { status: "probe-todo" }
+          ? { status: "unsupported", assertionType: "buffer_state" }
           : {
               status: row.featureId === "modes.color-scheme-reporting" ? "unsupported" : "supported",
               assertionType: row.featureId === "input.pixel-mouse" ? "input_bytes" : "query_reply",
@@ -3666,7 +3664,12 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
   } finally {
     actual.destroy()
   }
-  const batch = await collectBatch(resolveVt100, "vt100", registryDefinitions(ids))
+  const withoutReport = async () => {
+    const value = await resolveVt100()
+    delete (value as Partial<OscMetadataExtension>).getUnhandledSequences
+    return value
+  }
+  const batch = await collectBatch(withoutReport, "vt100", registryDefinitions(ids))
   expect(batch.results.map((row) => row.featureId)).toEqual(ids)
   for (const row of batch.results) {
     expect(row.status).toBe("probe-todo")

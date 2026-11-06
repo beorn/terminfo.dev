@@ -42,6 +42,13 @@ SGR attribute negatives require a rendered target and a same-run bold cell contr
 Headless DEC-mode queries use the existing sentinel reader when the collector has qualified reply delivery.
 Their retained captures include the target query and its separate DA1 control. DA1 responsiveness proves
 transport only: without the criterion's own DECRPM reply, these mode results retain their named PROBE TODO.
+Application-cursor and reverse-video opt into a public-state criterion when DECRPM is absent:
+reset false, set true, reset false, an unknown mode leaves the state unchanged, and the other
+flag stays unchanged throughout. Cursor-key encoding and reverse-video presentation remain unmeasured.
+The seventeen DEC1 mode/mouse definitions also consult the existing unhandled report after an
+undecided prior arm. DECAWM off must read false and add no entry, then one exact own command
+must add exactly one matching entry. Its cleanup reset follows the verdict. No source identity
+selects either criterion.
 
 External release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
@@ -190,7 +197,8 @@ DCS start positions; storage does not establish raster rendering or cell geometr
 The library alternate-scroll, reverse-video, synchronized-output,
 colour-scheme-reporting and DECSCLM cells use the existing DECRPM helper's opt-in
 `requireReadback` criterion. Supported requires Ps1 after set, Ps2 after reset and
-agreeing `getMode` readings. Ps0/2/4 after set is an engine negative. A null or
+agreeing `getMode` readings. Reverse-video additionally admits the no-reply public-state
+criterion above. Ps0/2/4 after set is an engine negative. A null or
 mismatched adapter reading retains a criterion PROBE TODO named
 `adapter binding <backend.name> <mode>`; the name is display-only and never selects
 a status or route. Existing other DECRPM criteria retain their prior readings.

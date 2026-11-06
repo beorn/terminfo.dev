@@ -10,7 +10,7 @@ import type {
 import { frameDigests } from "./types.ts"
 import {
   probe,
-  withModeSourceReview,
+  withUnhandledModeReport,
   replyFailure,
   decrpmModeProbe,
   headlessDecrpmArm,
@@ -1660,7 +1660,7 @@ const modeDefinitions: ProbeDefinition[] = [
   decrpmModeProbe("modes.bracketed-paste", 2004, headlessDecrpmArm(2004, "bracketedPaste")),
 
   // Application cursor keys
-  decrpmModeProbe("modes.application-cursor", 1, headlessDecrpmArm(1, "applicationCursor")),
+  decrpmModeProbe("modes.application-cursor", 1, headlessDecrpmArm(1, "applicationCursor", { stateReadback: true })),
 
   // Auto wrap
   decrpmModeProbe("modes.auto-wrap", 7, (ctx) => {
@@ -1702,8 +1702,13 @@ const modeDefinitions: ProbeDefinition[] = [
 
   // Reverse video
   {
-    ...decrpmModeProbe("modes.reverse-video", 5, headlessDecrpmArm(5, "reverseVideo", { requireReadback: true }), true),
-    libAssertionType: "query_reply",
+    ...decrpmModeProbe(
+      "modes.reverse-video",
+      5,
+      headlessDecrpmArm(5, "reverseVideo", { requireReadback: true, stateReadback: true }),
+      true,
+    ),
+    libAssertionType: undefined,
   },
 
   // Synchronized output
@@ -2521,4 +2526,4 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 ]
 
-export const modesProbes: ProbeDefinition[] = modeDefinitions.map(withModeSourceReview)
+export const modesProbes: ProbeDefinition[] = modeDefinitions.map(withUnhandledModeReport)
