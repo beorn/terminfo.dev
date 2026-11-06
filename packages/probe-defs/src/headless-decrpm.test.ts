@@ -40,6 +40,7 @@ test.each([
     } else {
       expect(result.observation?.outcome, fault).not.toBe("supported")
       expect(result.assertions ?? [], fault).toEqual([])
+      expect(result.tests, fault).toMatchObject([{ id: "criterion", status: "probe-todo" }])
     }
   }
 })

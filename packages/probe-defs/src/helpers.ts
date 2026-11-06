@@ -1841,14 +1841,13 @@ function modeStateReadback(ctx: LibProbeSource, number: number, key: string, pri
       otherReset === otherBefore &&
       otherUnknown === otherBefore
     const facet = number === 1 ? "key encoding unmeasured" : "presentation unmeasured"
-    return parserStateResult(
-      qualified ? true : null,
-      `${key} state measured; ${facet}`,
-      state,
-      qualified
-        ? `${key} state measured; ${facet}`
-        : `${key} public-state set/reset or independence control unavailable`,
-    )
+    const note = qualified
+      ? `${key} state measured; ${facet}`
+      : `${key} public-state set/reset or independence control unavailable`
+    return {
+      ...parserStateResult(qualified ? true : null, `${key} state measured; ${facet}`, state, note),
+      ...(!qualified && { tests: [{ id: "criterion", status: "probe-todo" as const, reason: note }] }),
+    }
   } finally {
     ctx.feed(`\x1b[?${number}l`)
   }
