@@ -6595,6 +6595,7 @@ const VT100_RUST_D2_NEGATIVES: Readonly<Record<string, { readonly feed: string; 
   "extensions.kitty-keyboard.report-text": { feed: "\u001b[>25u", code: { kind: "csi", code: ">25u" } },
   "input.csi-u": { feed: "\u001b[>1u", code: { kind: "csi", code: ">1u" } },
   "input.pixel-mouse": { feed: "\u001b[?1016h", code: { kind: "csi", code: "?1016h" } },
+  "input.urxvt-mouse": { feed: "\u001b[?1015h", code: { kind: "csi", code: "?1015h" } },
   "input.kitty-click-events": { feed: "\u001b]133;A;click_events=1\u0007", code: { kind: "osc", code: "133" } },
 }
 
