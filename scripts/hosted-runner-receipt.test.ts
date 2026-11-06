@@ -733,6 +733,7 @@ if (cmd.includes('Get-NetAdapter')) {
   }
 })
 
+// The real 3 s child timeout plus process launches exceeded the 5 s test budget; keep all refusal controls.
 test("the hosted producer supports Windows Alacritty with Mesa3D receipt and refuses --version failures by name", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-win-alacritty-"))
   const raw = {
@@ -892,7 +893,7 @@ if (cmd.includes('Get-NetAdapter')) {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
     await rm(dir, { recursive: true, force: true })
   }
-})
+}, 10_000)
 
 test("a runner name that never appears is refused by name after one bounded budget, never awaited forever", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-exhaustion-"))
