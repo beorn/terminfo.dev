@@ -6038,7 +6038,18 @@ test.runIf(OWNED_LAYOUT)("libvterm R1 rejection reports decide the exact six reg
     "extensions.kitty-graphics.display",
     "extensions.kitty-graphics.transmit",
   ]
-  const batch = await collectBatch(resolveLibvterm, "libvterm", registryDefinitions(ids))
+  const measured = await resolveLibvterm()
+  measured.init({ cols: 80, rows: 24 })
+  const identity = await headlessIdentity.headlessRuntimeIdentity("libvterm", "@termless/libvterm", "wasm")
+  identity.adapterSources = headlessIdentity.readAdapterSources("libvterm", measured)
+  measured.destroy()
+  const runtime = {
+    identity,
+    adapterPath: fileURLToPath(import.meta.resolve("@termless/libvterm")),
+    adapterPackage: "@termless/libvterm",
+    adapterType: "wasm",
+  }
+  const batch = await collectBatch(resolveLibvterm, "libvterm", registryDefinitions(ids), undefined, undefined, runtime)
   expect(batch.results).toHaveLength(ids.length)
   for (const result of batch.results) {
     const noWay = ["modes.xtpushcolors", "modes.xtpopcolors", "editing.decsace"].includes(result.featureId)
