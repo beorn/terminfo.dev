@@ -1272,6 +1272,7 @@ test.each(["reflowed", "unadjusted", "stayed-alternate"] as const)(
 // @level l1
 // @consumer Actual vterm alternate resize/readback; the xterm case above supplies complete physical negatives.
 // CTO F4b: main positive/history negative is an engine limit, not a cross-buffer failure or perpetual TODO.
+// Real collector grace and layout reads measured 4.15 s focused and exceeded 5 s under fleet load.
 test("alternate reflow records real vterm logical layouts without deciding a probe result from another buffer", async () => {
   const batch = await collectBatch(
     async () => createVtermBackend(),
@@ -1307,7 +1308,7 @@ test("alternate reflow records real vterm logical layouts without deciding a pro
     { id: "history-grow", status: "unsupported" },
     { id: "history-shrink", status: "unsupported" },
   ])
-})
+}, 10_000)
 
 // @failure An unqualified alternate buffer or corrupt target/control becomes a reflow assertion.
 // @level l1
@@ -2045,6 +2046,7 @@ const VTERM_MARK_CASES = [
 // survive later input or reset and impersonate fresh icon state. Existing Kitty tests only read window titles.
 // @level l5
 // @consumer Registered OSC1/OSC0 callbacks through Kitty's real native bridge and production collector source.
+// Real native readback exceeded the 5 s default in a whole run (5.21 s); preserve every lifecycle check.
 test.skipIf(!isKittyAvailable())(
   "Kitty icon observations retain independent titles across OSC1, OSC0 and reset",
   () => {
@@ -2080,6 +2082,7 @@ test.skipIf(!isKittyAvailable())(
       value.destroy()
     }
   },
+  10_000,
 )
 
 // @failure A native semantic reader loses fresh positioned starts or accepts cached/wrong raw status as a new D event.

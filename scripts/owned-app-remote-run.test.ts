@@ -321,6 +321,7 @@ afterEach(() => {
 })
 
 describe("owned-app ssh transport", () => {
+  // Real staging and receipt subprocesses exceeded the 5 s default under fleet load (7.04 s).
   it("stages portable resource modes without source-host privilege bits", () => {
     const resources = join(code, "node_modules", "portable-modes")
     mkdirSync(resources)
@@ -343,7 +344,7 @@ describe("owned-app ssh transport", () => {
     expect(readFileSync(join(staged, "link"))).toEqual(readFileSync(join(resources, "executable")))
     expect(statSync(resources).mode & 0o7777).toBe(0o2755)
     expect(statSync(join(resources, "executable")).mode & 0o7777).toBe(0o6755)
-  })
+  }, 10_000)
 
   it("stages exact source, runs the identical argv on the host, and proves the returned bytes", () => {
     const result = run()
