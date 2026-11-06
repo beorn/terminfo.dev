@@ -627,9 +627,8 @@ function noColorSetupResult(
   result: ProbeCallbackResult,
 ): ProbeCallbackResult {
   const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
-  const reported = code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code)
-    ? unhandledOscReportResult(ctx, sequence, result)
-    : result
+  const reported =
+    code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code) ? unhandledOscReportResult(ctx, sequence, result) : result
   if (reportsDecidedOutcome(reported) || !query || !sentinelSilenceResult(query, `OSC ${setCode} colour setup`)) {
     return reported
   }

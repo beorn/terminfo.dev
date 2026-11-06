@@ -4019,7 +4019,9 @@ test.each([
       }
       const noSetup = engine === "xtermjs"
       expect(result.status, result.featureId).toBe(noSetup ? "untestable" : "probe-todo")
-      expect(result.criterionBranch, result.featureId).toBe(noSetup ? "headless-observable-review" : "color-readback-review")
+      expect(result.criterionBranch, result.featureId).toBe(
+        noSetup ? "headless-observable-review" : "color-readback-review",
+      )
       expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
       const retained = JSON.parse(batch.rawReplies[result.featureId]!)
       const raw = (noSetup ? JSON.parse(retained.body) : retained) as {
@@ -4044,7 +4046,11 @@ test.each([
         rawReplyRef: result.featureId,
       })
       expect(result.tests, result.featureId).toContainEqual(
-        expect.objectContaining({ id: noSetup ? "declared-untestable" : "review", status: noSetup ? "untestable" : "probe-todo", rawReplyRef: result.featureId }),
+        expect.objectContaining({
+          id: noSetup ? "declared-untestable" : "review",
+          status: noSetup ? "untestable" : "probe-todo",
+          rawReplyRef: result.featureId,
+        }),
       )
     }
   },
