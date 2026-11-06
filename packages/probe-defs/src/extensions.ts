@@ -6478,9 +6478,12 @@ const VT220_IMAGE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
 }
 
 const GHOSTTY_WEB_D2_DECLARATIONS: Readonly<Record<string, string>> = {
-  "extensions.osc133-a": "ghostty-web 0.4.0 exposes no public OSC 133 prompt-start state, semantic-mark reader or report",
-  "extensions.osc133-b": "ghostty-web 0.4.0 exposes no public OSC 133 input-start state, semantic-mark reader or report",
-  "extensions.osc133-c": "ghostty-web 0.4.0 exposes no public OSC 133 output-start state, semantic-mark reader or report",
+  "extensions.osc133-a":
+    "ghostty-web 0.4.0 exposes no public OSC 133 prompt-start state, semantic-mark reader or report",
+  "extensions.osc133-b":
+    "ghostty-web 0.4.0 exposes no public OSC 133 input-start state, semantic-mark reader or report",
+  "extensions.osc133-c":
+    "ghostty-web 0.4.0 exposes no public OSC 133 output-start state, semantic-mark reader or report",
   "extensions.osc133-d": "ghostty-web 0.4.0 exposes no public OSC 133 command-end state, exit status or report",
   "extensions.semantic-prompts":
     "ghostty-web 0.4.0 exposes no public prompt, output or command-end semantic state or report for the shell lifecycle",

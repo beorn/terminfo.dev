@@ -743,7 +743,9 @@ describe("audited OSC interface absence", () => {
       expect.soft(isDeclaredUntestable(result), id).toBe(true)
       expect.soft(fold(id, result), id).toMatchObject({
         status: "untestable",
-        reason: expect.stringMatching(id === "extensions.osc52-write" ? /ghostty-web 0\.4\.0.*app/i : /ghostty-web 0\.4\.0/i),
+        reason: expect.stringMatching(
+          id === "extensions.osc52-write" ? /ghostty-web 0\.4\.0.*app/i : /ghostty-web 0\.4\.0/i,
+        ),
       })
       const prior = { pass: false, note: "undecided existing callback" }
       const wrapped = withD2LibraryObservation({ ...definition, lib: () => prior }).lib!
