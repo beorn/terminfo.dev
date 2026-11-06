@@ -37,6 +37,7 @@ it.each([
     context: "term:alacritty",
     featureId: "extensions.iterm2-images",
     reason: STORED_VISUAL_REVIEW_RETIRED_REASON,
+    publicReason: "needs a same-run pixel check",
   },
   {
     name: "a real disputed Ghostty cell",
@@ -45,10 +46,11 @@ it.each([
     context: "lib:ghostty",
     featureId: "extensions.kitty-graphics",
     reason: SOURCE_ANSWER_RETIRED_REASON,
+    publicReason: "no qualified probe observation in this run",
   },
 ])(
   "reads $name as PROBE TODO and publishes no source caption or private detail",
-  ({ file, suite, context, featureId, reason }) => {
+  ({ file, suite, context, featureId, reason, publicReason }) => {
     const path = new URL(file, import.meta.url)
     const bytes = readFileSync(path, "utf8")
     const manifestPath = new URL(suite, import.meta.url)
@@ -65,13 +67,17 @@ it.each([
     expect(selected?.measuredAt).toBe(run.measuredAt)
     const published = publicResults(projection, new Map()).projection.contexts[context]?.featureResults[featureId]
     expect(published?.status).toBe("probe-todo")
-    expect(published?.reason).toBe(reason)
+    expect(published?.reason).toBe(publicReason)
     const publicBytes = JSON.stringify(published)
     expect(publicBytes).not.toContain("not re-verified")
     expect(publicBytes).not.toContain("kept answers disagree")
     expect(publicBytes).not.toContain("kept originals")
     expect(publicBytes).not.toContain("@dev/")
     expect(publicBytes).not.toContain("reply-path-audit")
+    expect(publicBytes).not.toContain("operator")
+    expect(published?.reason).not.toContain("2026-11-03")
+    expect(publicBytes).not.toContain("not re-admitted")
+    expect(publicBytes).not.toContain("source answer")
     expect(published?.presentation.state).toBe("not-reviewed")
     expect(published?.record).toBeUndefined()
     expect(run).toEqual(original)
@@ -98,7 +104,7 @@ it("publishes short reader-safe missing-evidence reasons on probe-todo cells whi
   const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
   const features = publicResults(projection, new Map()).projection.contexts["lib:ghostty"]?.featureResults
   expect(features?.["extensions.osc176-app-id"]?.reason).toBe(
-    "OSC 176 app-id: no audited library target readback at this runtime",
+    "OSC 176 app-id: no library target readback at this runtime",
   )
   expect(features?.["input.kitty-click-events"]?.reason).toBe("shared core encoder carries no prompt state")
   expect(features?.["sgr.bg.256"]?.reason).toBe("Cursor advance does not verify SGR styling")

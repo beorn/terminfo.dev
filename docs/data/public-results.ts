@@ -208,13 +208,27 @@ const UNSAFE_TODO_CLAUSE =
 /** Maps a stored `probe-todo` reason to a short reader-safe missing-evidence explanation, withholding raw diagnostics and paths. */
 function publicTodoReason(reason: string | undefined): string | undefined {
   if (!reason || reason === "Required probe test has not started") return undefined
+  if (reason === "source answer no longer counts (operator 2026-11-03)") {
+    return "no qualified probe observation in this run"
+  }
+  if (
+    reason === "stored visual review not re-admitted: needs a same-run pixel check" ||
+    reason === "Source answer requires a current deciding negative assertion"
+  ) {
+    return "needs a same-run pixel check"
+  }
+  if (reason === "TERM_FEATURES: no engine-specific API source citation at this runtime") {
+    return "TERM_FEATURES: a library context spawns no application child to receive the environment export"
+  }
   if (reason.startsWith("instrument gap Original measured-context rationale:")) {
-    if (/ligature/i.test(reason)) return "Instrument gap: no calibrated ligature-capable font in this run"
-    if (/blink|one phase/i.test(reason)) return "Instrument gap: single-phase capture cannot decide blink oscillation"
-    return "Instrument gap in this run"
+    if (/ligature/i.test(reason)) return "no calibrated ligature-capable font in this run"
+    if (/blink|one phase/i.test(reason)) return "single-phase capture cannot decide blink oscillation"
+    return "missing measurement control in this run"
   }
   const withoutPrefix = reason
-    .replace(/^(?:[a-z0-9-]+(?:\.[a-z0-9-]+)+:\s+|#\d+\s+)/i, "")
+    .replace(/^(?:Collector policy:\s+|Instrument gap:\s+|[a-z0-9-]+(?:\.[a-z0-9-]+)+:\s+|#\d+\s+)/i, "")
+    .replace(/\bno audited library target readback\b/i, "no library target readback")
+    .replace(/^Our probe source lacks\b/i, "Probe runner lacks")
     .replace(/\s+—\s+Capture calibration\b.*$/i, "")
     .replace(/\s*\(seed sha256:[0-9a-f]+,\s*reference sha256:[0-9a-f]+\)$/i, "")
   if (/^Pixel capture unavailable:/i.test(withoutPrefix)) return "Pixel capture unavailable"
