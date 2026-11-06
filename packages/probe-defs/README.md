@@ -46,6 +46,12 @@ Every former source-review or source-negative site now returns PROBE TODO with a
 
 SGR attribute negatives require a rendered target and a same-run bold cell control. Underline style negatives require both exact `single` readback and a non-single style other than the target reading back as itself: curly for the double target, double for the other targets. Missing nullable attributes and on/off readers normalized to `single` stay open. Bright/indexed colour negatives require an ordinary-red control on the same colour reader and targets unchanged from the neutral baseline; different nondefault colours remain inconclusive. Existing positive effects witness their own reader. When an attribute field is unreported, a DECRQSS alternative qualifies only after this probe reads a status-1 SGR `m` bold control; a facility or DECSTBM reply does not qualify it. The exact issued input strings and control/target evidence are retained together. These library controls do not change app-arm criteria.
 
+Hidden and overline also use the existing controlled rejection report after an undecided cell reading.
+Their five reviewed public-field absences use the existing engine-version/attribute table and declare
+Untestable (no way) only when that field is null. A positive cell reading takes precedence; an
+unreviewed identity stays Open. Ghostty web's overline reason names its public cell interface, not
+the native engine's capability.
+
 Headless DEC-mode queries use the existing sentinel reader when the collector has qualified reply delivery.
 Their retained captures include the target query and its separate DA1 control. DA1 responsiveness proves
 transport only: without the criterion's own DECRPM reply, these mode results retain their named PROBE TODO.

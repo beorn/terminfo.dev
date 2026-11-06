@@ -1223,8 +1223,9 @@ export type SgrCaptureFixture = Readonly<{ sequence: string; sample: string; row
 /** A probe-owned pixel capture, for an attribute one control/target pair cannot show (sgr.blink, #31812). */
 export type SgrCapture = (ctx: TermProbeSource, fixture: SgrCaptureFixture) => Promise<ProbeCallbackResult>
 
-// Diagnostic prerequisites only: these checked public types do not expose the null attribute.
-// A matching runtime version binds the audit; this table never decides a support result (#32329).
+// These checked public types do not expose the null attribute. A matching engine version binds
+// the audit. The approved hidden/overline no-observable arms declare no way; other entries remain
+// diagnostic prerequisites and never decide support (#32329, CTO open14 rows1–9).
 const SGR_ATTRIBUTE_READER_ABSENCE: Readonly<Record<string, string>> = {
   "vt100:0.10.1:dim": "vt100.js 0.10.1 public ScreenCell has no dim field",
   "vt100:0.10.1:italic": "vt100.js 0.10.1 public ScreenCell has no italic field",
@@ -1235,19 +1236,28 @@ const SGR_ATTRIBUTE_READER_ABSENCE: Readonly<Record<string, string>> = {
   "alacritty:0.26.0:blink": "alacritty_terminal 0.26.0 public term::cell::Flags has no blink flag",
   "vt100-rust:0.16.2:blink": "vt100 0.16.2 public Cell has no blink reader",
   "vt100-rust:0.16.2:strikethrough": "vt100 0.16.2 public Cell has no strikethrough reader",
+  "alacritty:0.26.0:overline": "alacritty_terminal 0.26.0 public term::cell::Flags has no overline flag",
+  "kitty:0.49.2:overline": "Kitty 0.49.2 public cursor has no overline field or SGR 53 reader",
+  "kitty:0.49.2:hidden": "Kitty 0.49.2 public cursor has no hidden field or SGR 8 reader",
+  "libvterm:0.3.3:overline":
+    "libvterm 0.3.3 public VTermScreenCellAttrs has no overline attribute; SGR 53 has only a debug log, not a public rejection report",
+  "ghostty:0.4.0:overline":
+    "ghostty-web 0.4.0 public CellFlags has no overline bit; this web cell interface cannot expose the attribute",
 }
 
 /**
  * The only SGR cells a library's own unhandled report may move (@cto 2026-11-05 07:25 appendix and
  * 07:38 addendum, Case 1; faint and italic added by the 09:00 Case 2 ruling R2): blink, faint, italic,
- * strikethrough and the four underline styles. Every other SGR cell keeps its own reader's path, so no
- * unnamed row can move.
+ * strikethrough and the four underline styles; CTO open14 rows1–4 adds hidden and overline.
+ * Every other SGR cell keeps its own reader's path, so no unnamed row can move.
  */
 const UNHANDLED_CSI_CELLS: ReadonlySet<string> = new Set([
   "sgr.blink",
   "sgr.faint",
   "sgr.italic",
   "sgr.strikethrough",
+  "sgr.hidden",
+  "sgr.overline",
   "sgr.underline.double",
   "sgr.underline.curly",
   "sgr.underline.dotted",
@@ -1303,7 +1313,18 @@ export function sgrProbe(
       const cell = ctx.getCell(0, 0)
       if (cell.char === "X") {
         const noObservable = noObservableWhen?.(cell)
-        if (noObservable) return notTestedResult(noObservable, cell)
+        if (noObservable) {
+          const absence =
+            SGR_ATTRIBUTE_READER_ABSENCE[
+              `${ctx.backendName}:${ctx.runtimeIdentity?.engineVersion}:${id.slice("sgr.".length)}`
+            ]
+          return absence
+            ? declaredUntestableResult(`Untestable: no way: ${absence}.`, {
+                cell,
+                runtimeIdentity: evidenceRuntimeIdentity(ctx.runtimeIdentity),
+              })
+            : notTestedResult(noObservable, cell)
+        }
       }
       const measured = cell.char === "X" && check(cell) === true
       if (sourceReviewReason !== undefined && cell.char === "X") {
