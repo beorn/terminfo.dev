@@ -7237,7 +7237,10 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         return declaredUntestableResult(reason, { backend: ctx.backendName, runtimeIdentity: ctx.runtimeIdentity })
       }
       const hostEffectReport = appJob && ["vt100", "vt220", "ghostty"].includes(ctx.backendName)
-      const r1Report = ctx.backendName === "libvterm" && auditedAdapterSources(identity, "libvtermR1")
+      const r1Report =
+        ctx.backendName === "libvterm" &&
+        hasAuditedOscInterfaceAbsence(ctx, "libvterm-r1") &&
+        auditedAdapterSources(identity, "libvtermR1")
       const target =
         r1Report && libvtermTarget
           ? libvtermTarget
