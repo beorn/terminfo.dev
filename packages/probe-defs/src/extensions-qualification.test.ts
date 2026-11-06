@@ -1376,6 +1376,34 @@ test("an explicit graphics refusal decides transmit and leaves display with no s
   expect(JSON.stringify(displayResult)).not.toMatch(/no image allocation readback/iu)
 })
 
+test.each(["sentinel", "timeout"] as const)(
+  "the library arm asks its canonical graphics question whether the silence reads as a %s",
+  async (reason) => {
+    // 32473: ghostty-native's natural run 2026-11-06T08-34 met the timeout shape in pass 1 and the sentinel
+    // shape in passes 2-3, so the query count differed across fresh-instance passes and both image cells graded
+    // probe-invalid. The count must not depend on which silence the collector reports.
+    const asked: string[] = []
+    const source = {
+      queryWithSentinelOutcome: (sequence: string, _pattern: RegExp) => {
+        asked.push(sequence)
+        return reason === "sentinel"
+          ? {
+              match: null,
+              reason: "sentinel" as const,
+              raw: "\x1b[?62;22c",
+              rawBase64: Buffer.from("\x1b[?62;22c").toString("base64"),
+              sentinel: { atMs: 3, graceMs: 250 },
+            }
+          : { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+      },
+      write: () => undefined,
+    } as unknown as LibProbeSource
+    const result = callback("extensions.kitty-graphics.transmit").lib!(source)
+    expect(asked.filter((sequence) => sequence.includes("a=q"))).toHaveLength(1)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  },
+)
+
 // 31377: the refusal specimen is retained run772ff2a6/suite9cc61ebe4417, including its DA1 window.
 // A correlated refusal proves recognition but does not accept the canonical direct RGB query.
 test.each([
