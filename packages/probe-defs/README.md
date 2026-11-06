@@ -228,6 +228,9 @@ Engines exposing both kinds declare both keys. Start and end probes use their re
 declarations; a command-end-only reader never decides positional start support.
 OSC133D requires two newly appended entries carrying distinct injected raw statuses,
 stable earlier history and the existing cell/cursor consumption controls.
+The full OSC133 lifecycle uses the same reader when both start and end capabilities
+are declared: fresh prompt/output/end records, unchanged earlier history and an inert
+unknown letter must agree in the same run. A backend name alone selects no lifecycle.
 The reader does not expose bounded zones. Sixel records contain raw payloads and
 DCS start positions; storage does not establish raster rendering or cell geometry.
 
@@ -238,6 +241,22 @@ type transition, inert Z and retained earlier cells. A target no-op is Unsupport
 only when another handled letter moves the type; failed controls remain Open.
 Coordinates follow `getCell`; invalid coordinates throw. This reader supplies no
 mark history or command end and cannot decide OSC133 D or the full lifecycle.
+
+The optional `mouse-shape` reader exposes the library's current logical pointer
+shape, separately from text-caret style. OSC22 reads two accepted shape controls,
+the pointer target and an inert unknown name, then restores the initial shape.
+This path records `buffer_state`; existing Kitty query and library report paths
+retain their own criteria. A declared capability with no callable method is a
+binding failure, not a feature result.
+
+An OSC52 read with a newly witnessed typed paste selector and no reply is an app
+handoff, including a timeout with zero raw bytes. A timeout alone, an already set
+selector, another selector or unmatched reply bytes retain the prior result.
+
+The native Ghostty image pair declares Untestable only for the reviewed source/lock
+and an actual disabled `kittyGraphics` reading. The pinned ghostty-vt library forces
+oniguruma off and therefore compiles Kitty graphics out; an enabled build or an
+existing decided reply retains its original probe path.
 
 The library alternate-scroll, reverse-video, synchronized-output,
 colour-scheme-reporting and DECSCLM cells use the existing DECRPM helper's opt-in
