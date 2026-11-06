@@ -38,7 +38,7 @@ import {
 } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { captureRegionCallbackResult, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
+import { captureRegionCallbackResult, cropPositionRefusal, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
 
 /** One addressing fixture supplies both parser-state and capture-region observers. */
 export const modesReadbackRows: readonly RegionReadbackRow[] = [
@@ -514,9 +514,22 @@ async function xtColorStackCapture(ctx: TermProbeSource, operation: "push" | "po
     if (!observation || !frames) return result
     const noSetup = ["POP fixture", "PUSH fixture (earlier contrast)", "PUSH fixture (persisted contrast)"].every(
       (fixture) => {
+        const frame = (suffix: string) => frames.find((candidate) => candidate.label === `${id} ${fixture}: ${suffix}`)
+        const cropRefusal = cropPositionRefusal({
+          id: `${id} ${fixture}`,
+          compared: ["pre-edit seed", "post-sequence target", "expected frame", "ignored-attribute frame"].map(
+            (role) => {
+              const captured = frame(role)
+              return { role, rectangle: captured?.kind === "text-cells" ? undefined : captured?.regionRectangle }
+            },
+          ),
+          response: result.response ?? "",
+          frames,
+        })
+        if (cropRefusal) return false
         const digest = (suffix: string) => {
-          const frame = frames.find((candidate) => candidate.label === `${id} ${fixture}: ${suffix}`)
-          return frame && frameDigests(frame).cells
+          const captured = frame(suffix)
+          return captured && frameDigests(captured).cells
         }
         const expected = digest("expected frame")
         const ignored = digest("ignored-attribute frame")

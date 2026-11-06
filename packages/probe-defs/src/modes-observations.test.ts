@@ -1513,6 +1513,27 @@ test.each(
   if (fresh) expect(result.observation?.frames).toEqual(frames)
 })
 
+// Test-broken-first: equal references do not establish no setup when the compared crop moved.
+test.each(["modes.xtpushcolors", "modes.xtpopcolors"])("%s keeps differing crops Open before no setup", async (id) => {
+  const definition = modesProbes.find((item) => item.id === id)
+  if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+  const source = stackStateSource([], [], {}, true)
+  const capture = source.capture!
+  source.capture = async (request) => {
+    const frame = await capture(request)
+    if (request.label.endsWith("expected frame") && frame.regionRectangle) {
+      frame.regionRectangle = { ...frame.regionRectangle, x: frame.regionRectangle.x + 1 }
+    }
+    return frame
+  }
+  const result = await definition.term(source)
+  expect(isDeclaredUntestable(result)).toBe(false)
+  expect(result.tests).toMatchObject([
+    { status: "probe-todo", reason: expect.stringContaining("different screen positions") },
+  ])
+  expect(result.observation?.note).toContain("different screen positions")
+})
+
 test.each(["modes.xtpushcolors", "modes.xtpopcolors", "modes.xtpushsgr", "modes.xtpopsgr"])(
   "%s paints X at least two empty cells away from the compared Y",
   async (id) => {
