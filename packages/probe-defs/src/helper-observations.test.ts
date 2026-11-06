@@ -225,7 +225,7 @@ test("app resets require measured effects and declare the backend-only reset met
   const recorded = recordExecutedProbe({
     featureId: "reset.method",
     attempt: { scope: "probe", startedAt: "2026-11-06T22:00:00.000Z" },
-    coverage: method.notTested && { featureId: "reset.method", ...method.notTested },
+    coverage: method.notTested && { featureId: "reset.method", rawReplyRef: "reset.method", ...method.notTested },
     assertions: [],
     tests: method.tests,
     criterionBranch: method.criterionBranch,
