@@ -27,6 +27,18 @@ import type {
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 export const ADAPTER_SOURCE_AUDITS = {
+  ghosttyNativeH4: {
+    "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+    "packages/ghostty-native/src/backend.ts": "d15e83634be3aa1bf2df9b58eb2f6376af800808",
+  },
+  kittyH4: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "4cfc0a1707e4c92211c501cd27d8e1944ebe66db",
+    "packages/kitty/build/bridge.py": "c78e427917d4e22453414db76c4d52509cc8b82f",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
+    "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
+  },
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
     "packages/vt100/src/backend.ts": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
