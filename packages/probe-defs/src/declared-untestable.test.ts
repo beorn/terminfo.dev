@@ -594,6 +594,71 @@ describe("audited OSC interface absence", () => {
         : source,
     ),
   }
+  // NR-D adds CSI extent, progress state and prompt-click state to the existing audited route.
+  // The literal23 table above cannot prove these newly ruled cells or their reader precedence.
+  test.each([
+    ["editing.decsace", /CSI/],
+    ["extensions.osc9-progress", /OSC 9/],
+    ["input.kitty-click-events", /Termless/],
+  ] as const)("NR-D %s declares only the audited Alacritty interface", (id, reason) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    for (const runtimeIdentity of [alacritty, alacritty0110]) {
+      const result = definition.lib!(d2Source({ runtimeIdentity }))
+      expect(isDeclaredUntestable(result)).toBe(true)
+      expect(fold(id, result)).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
+    }
+    for (const extra of [
+      { runtimeIdentity: undefined },
+      { runtimeIdentity: { ...alacritty, engineVersion: "unreviewed" } },
+      { backendName: "other-library" },
+      { getUnhandledSequences: () => [] },
+    ] satisfies Partial<LibProbeSource>[]) {
+      expect(isDeclaredUntestable(definition.lib!(d2Source(extra)))).toBe(false)
+    }
+    const decided = parserStateResult(true, "existing decided result", { value: true })
+    expect(withD2LibraryObservation({ ...definition, lib: () => decided }).lib!(d2Source())).toBe(decided)
+    if (id === "extensions.osc9-progress") {
+      expect(isDeclaredUntestable(definition.lib!(d2Source({ getProgress: () => null })))).toBe(false)
+    }
+  })
+
+  // A generic all-zero DECRQM responder must not establish an engine negative.
+  // Existing input tests measure encoder bytes, not this same-reader control.
+  test.each([
+    ["controlled negative", true, 0, 0, "unsupported"],
+    ["constant-zero control", false, 0, 0, "probe-todo"],
+    ["recognized unknown", true, 1, 0, "probe-todo"],
+    ["recognized target", true, 0, 1, "probe-todo"],
+  ] as const)("NR-D pixel mouse: %s", (_label, controlled, unknown, target, outcome) => {
+    let sgr = false
+    const writes: string[] = []
+    const source = d2Source({
+      feed(sequence) {
+        writes.push(sequence)
+        if (sequence === "\x1b[?1006h") sgr = true
+        if (sequence === "\x1b[?1006l") sgr = false
+      },
+      feedCapture(sequence) {
+        writes.push(sequence)
+        const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
+        if (!mode) return ""
+        const ps = mode === "1006" ? (controlled ? (sgr ? 1 : 2) : 0) : mode === "9999" ? unknown : target
+        return `\x1b[?${mode};${ps}$y`
+      },
+    })
+    const result = ALL_PROBES.find((probe) => probe.id === "input.pixel-mouse")!.lib!(source)
+    if (outcome === "unsupported") {
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+      expect(result.assertions?.[0]?.kind).toBe("negative")
+    } else {
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.notTested).toBeDefined()
+    }
+    expect(writes).toContain("\x1b[?1006$p")
+    expect(writes).toContain("\x1b[?9999$p")
+    expect(writes.filter((write) => write === "\x1b[?1016$p")).toHaveLength(2)
+    expect(writes.at(-1)).toBe("\x1b[?1006;1016l")
+  })
   // The starting-colour exception needs this probe's seed, not only an audited identity.
   // Existing D2 and generic colour cases do not combine those two facts.
   test("Alacritty starting-colour declarations require an audited identity and verified seed", () => {
