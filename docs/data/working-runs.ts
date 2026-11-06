@@ -20,7 +20,7 @@
  * - "Differs from reviewed" needs the same suite AND the same engine version and a different status.
  */
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
-import { join, resolve, sep } from "node:path"
+import { dirname, join, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
 import {
   PROBE_STATUSES,
@@ -72,7 +72,8 @@ const record = (value: unknown): value is Record<string, unknown> =>
  */
 export function newestCompleteRun(runsDir: string): WorkingRunSelection {
   const [selection] = completeRunSelections(runsDir)
-  return selection!
+  // The enumeration throws when no complete selection exists.
+  return selection as WorkingRunSelection
 }
 
 /** One enumeration owner for newest-only callers and retained page history. */
@@ -303,7 +304,7 @@ export function siteWorkingRun(env: NodeJS.ProcessEnv = process.env): LoadedWork
   return loadedSiteWorkingRun(selection)
 }
 
-function loadedSiteWorkingRun(selection: WorkingRunSelection): LoadedWorkingRun {
+function loadedSiteWorkingRun(selection: WorkingRunSelection, retain = true): LoadedWorkingRun {
   const cache = (host[LOADED_CACHE] ??= new Map())
   const known = cache.get(selection.dir) as LoadedWorkingRun | undefined
   if (known) return known
@@ -313,7 +314,7 @@ function loadedSiteWorkingRun(selection: WorkingRunSelection): LoadedWorkingRun 
   if (loaded.unreadable) {
     console.warn(`terminfo-site: WARNING ${loaded.unreadable.banner} (${loaded.unreadable.reason})`)
   }
-  cache.set(selection.dir, loaded)
+  if (retain) cache.set(selection.dir, loaded)
   return loaded
 }
 
@@ -517,14 +518,17 @@ export function siteWorkingView(contentDir: string, env: NodeJS.ProcessEnv = pro
 export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = process.env): WorkingView[] | null {
   const newest = selectedSiteWorkingRun(env)
   if (newest === null) return null
-  const dir = siteWorkingRunsDir(env)!
+  const dir = dirname(newest.dir)
   const cache = (host[HISTORY_CACHE] ??= new Map())
-  let selections = cache.get(dir) as WorkingRunSelection[] | undefined
-  if (!selections) {
-    selections = [...completeRunSelections(dir, newest.id)].reverse()
-    cache.set(dir, selections)
-  }
+  const known = cache.get(newest.dir) as WorkingView[] | undefined
+  if (known) return known
+  const selections = [...completeRunSelections(dir, newest.id)].reverse()
   const { projection } = loadCurrentResults(contentDir)
   const reviewed = compatibilitySubjects(projection, contentDir)
-  return selections.map((selection) => composeWorkingView(projection, reviewed, loadedSiteWorkingRun(selection)))
+  // Keep the small page views across loaders, not every historical capture's full evidence payload.
+  const views = selections.map((selection) =>
+    composeWorkingView(projection, reviewed, loadedSiteWorkingRun(selection, selection.id === newest.id)),
+  )
+  cache.set(newest.dir, views)
+  return views
 }
