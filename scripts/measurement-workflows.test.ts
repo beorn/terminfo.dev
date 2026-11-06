@@ -1076,7 +1076,7 @@ test.each(["granted", "unreadable"] as const)(
     try {
       fixture("PlistBuddy", `case "$2" in *Identifier) echo com.example.term ;; *) echo Term ;; esac`)
       fixture("codesign", `echo 'designated => identifier "com.example.term"'`)
-      fixture("csreq", `printf 'csreq' > "$3"`)
+      fixture("csreq", `cat > /dev/null; printf 'csreq' > "$3"`)
       fixture("xxd", `od -An -tx1 "$2" | tr -d ' '`)
       fixture("sudo", `exec "$@"`)
       fixture("sqlite3", `case "$2" in SELECT*) ${scenario === "granted" ? "echo 2" : "true"} ;; esac`)
