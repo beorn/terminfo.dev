@@ -2364,7 +2364,7 @@ test("cwd readback errors propagate after restoring the original metadata", asyn
 // 31299: callback-only assertions miss a typed source review that the capture parser rejects.
 // Keep the real registered callback, pinned identity fixture, adapter, collector and parser on one path.
 test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-highlight-fg"])(
-  "%s reads PROBE TODO, never a source review, through the actual collector",
+  "%s reads the no-setup declaration through the actual collector and parser",
   async (id) => {
     const definition = ALL_PROBES.find((entry) => entry.id === id)!
     // Source-audit input, not an attestation of this runner's checkout. Standalone CI has no owned siblings.
@@ -2445,11 +2445,11 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
     expect(parsed.results).toMatchObject([
       {
         featureId: id,
-        status: "probe-todo",
-        tests: [{ id: "criterion", status: "probe-todo" }],
+        status: "untestable",
+        tests: [{ id: "declared-untestable", status: "untestable" }],
       },
     ])
-    expect(parsed.results?.[0]?.criterionBranch).toBeUndefined()
+    expect(parsed.results?.[0]?.criterionBranch).toBe("headless-observable-review")
   },
 )
 
@@ -4069,7 +4069,7 @@ test.each([
     expect(batch.results).toHaveLength(COLOR_READBACK_IDS.length)
     // On xtermjs, extensions.osc104-reset-palette is decided via the indexed-cell witness
     // (_core._inputHandler.onColor events; #31735, @cto 863bef67), while the 7 default/stack
-    // queries remain silent and request color-readback-review.
+    // queries remain silent and now declare no setup after their own control.
     const cellWitnessIds = engine === "xtermjs" ? ["extensions.osc104-reset-palette"] : []
     // libvterm and the owned DEC adapters report the two pointer resets as unhandled.
     // Published DEC adapters lack that reader; other silent resets keep their review and raw query.
@@ -4113,10 +4113,14 @@ test.each([
         expect(result.criterionBranch, result.featureId).toBeUndefined()
         continue
       }
-      expect(result.status, result.featureId).toBe("probe-todo")
-      expect(result.criterionBranch, result.featureId).toBe("color-readback-review")
+      const noSetup = engine === "xtermjs"
+      expect(result.status, result.featureId).toBe(noSetup ? "untestable" : "probe-todo")
+      expect(result.criterionBranch, result.featureId).toBe(
+        noSetup ? "headless-observable-review" : "color-readback-review",
+      )
       expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
-      const raw = JSON.parse(batch.rawReplies[result.featureId]!) as {
+      const retained = JSON.parse(batch.rawReplies[result.featureId]!) as { body: string }
+      const raw = (noSetup ? JSON.parse(retained.body) : retained) as {
         query: string
         originalRaw?: string
         initialSentinel?: unknown
@@ -4152,11 +4156,17 @@ test.each([
       expect(batch.notTested, result.featureId).toContainEqual({
         featureId: result.featureId,
         reason: "no-semantic-observable",
-        noObservable: noObservableByFeature[result.featureId],
+        noObservable: noSetup
+          ? expect.stringMatching(/Untestable \(no setup\):/)
+          : noObservableByFeature[result.featureId],
         rawReplyRef: result.featureId,
       })
       expect(result.tests, result.featureId).toContainEqual(
-        expect.objectContaining({ id: "review", status: "probe-todo", rawReplyRef: result.featureId }),
+        expect.objectContaining({
+          id: noSetup ? "declared-untestable" : "review",
+          status: noSetup ? "untestable" : "probe-todo",
+          rawReplyRef: result.featureId,
+        }),
       )
     }
   },

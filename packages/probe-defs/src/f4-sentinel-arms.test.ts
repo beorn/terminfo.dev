@@ -11,6 +11,7 @@ import { expect, test } from "vitest"
 import { deviceProbes } from "./device.ts"
 import { editingProbes } from "./editing.ts"
 import { extensionsProbes } from "./extensions.ts"
+import { isDeclaredUntestable } from "./helpers.ts"
 import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const da1 = "\x1b[?1;2c"
@@ -53,7 +54,7 @@ function silentSentinel(reason: TerminalQueryOutcome["reason"] = "sentinel"): Te
   }
 }
 
-test.each(F4)("%s: DA1-only silence decides reply criteria, leaving effects without readback open", (id) => {
+test.each(F4)("%s: qualified silence distinguishes reply negatives and absent colour setup", (id) => {
   const result = run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel() })
   if (QUERY_CRITERIA.has(id)) {
     expect(result.observation).toMatchObject({
@@ -63,6 +64,10 @@ test.each(F4)("%s: DA1-only silence decides reply criteria, leaving effects with
     })
     expect(result.response).toBe(da1)
     expect(result.assertions?.map(({ kind }) => kind)).toEqual(["negative"])
+  } else if (id !== "extensions.osc104-reset-palette") {
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(result.observation).toBeUndefined()
+    expect(result.response).toContain(JSON.stringify(da1).slice(1, -1))
   } else {
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
@@ -77,6 +82,7 @@ test.each(F4)("%s: DA1-only silence decides reply criteria, leaving effects with
 test.each(F4)("%s: an unanswered DA1 keeps the capture reading, never a negative", (id) => {
   const result = run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel("timeout") })
   expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(isDeclaredUntestable(result)).toBe(false)
 })
 
 test.each(F4)("%s: an engine with no proven reply path keeps its pre-existing reading", (id) => {
@@ -85,7 +91,10 @@ test.each(F4)("%s: an engine with no proven reply path keeps its pre-existing re
   const memberWithoutSentinel = run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel("timeout") })
   expect(withoutMember.observation?.outcome).not.toBe("unsupported")
   expect(withoutMember.observation?.outcome).toBe(memberWithoutSentinel.observation?.outcome)
+  expect(isDeclaredUntestable(withoutMember)).toBe(false)
+  expect(isDeclaredUntestable(memberWithoutSentinel)).toBe(false)
   if (QUERY_CRITERIA.has(id)) expect(withMember.observation?.outcome).toBe("unsupported")
+  else if (id !== "extensions.osc104-reset-palette") expect(isDeclaredUntestable(withMember)).toBe(true)
   else {
     expect(withMember.observation).toBeUndefined()
     expect(withMember.criterionBranch).toBe("color-readback-review")
