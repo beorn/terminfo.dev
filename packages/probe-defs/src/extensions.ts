@@ -5593,7 +5593,11 @@ export const extensionsProbes: ProbeDefinition[] = [
           const before = ctx.getTitle()
           ctx.feed("\x1b]1;test-icon\x07")
           const after = ctx.getTitle()
-          return notTestedResult(NO_SAME_PATH_CONTROL, { before, after })
+          return unhandledOscReportResult(
+            ctx,
+            "\x1b]1;test-icon\x07",
+            notTestedResult(NO_SAME_PATH_CONTROL, { before, after }),
+          )
         }
         const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
         const requested = before.icon === "test-icon" ? "test-icon-2" : "test-icon"
@@ -5680,7 +5684,8 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc22-pointer",
       (ctx) => {
-        const undecided = () => noSamePathControl("\x1b]22;pointer\x07")(ctx)
+        const undecided = () =>
+          unhandledOscReportResult(ctx, "\x1b]22;pointer\x07", noSamePathControl("\x1b]22;pointer\x07")(ctx))
         if (ctx.backendName !== "kitty") return undecided()
         const query = "\x1b]22;?__current__\x07"
         const read = () => {
@@ -5737,7 +5742,12 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       null,
     ),
-    libAssertionType: "query_reply",
+    libAssertionType: {
+      when: (source: Pick<LibProbeSource, "getUnhandledSequences">) =>
+        typeof source.getUnhandledSequences === "function",
+      then: ["query_reply", "buffer_state"],
+      otherwise: ["query_reply"],
+    },
   },
 
   // Query capabilities without displaying a notification or requiring desktop access.
