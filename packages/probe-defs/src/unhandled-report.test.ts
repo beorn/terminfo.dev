@@ -94,7 +94,7 @@ test.each([
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
   const result = definition.lib!(reportingSource({ records: [recordsCsi(code)] }))
   expect(result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
-  expect(JSON.parse(result.response!).unhandled.target, id).toEqual({ kind: "csi", code })
+  expect(JSON.parse(result.response!), id).toMatchObject({ unhandled: { target: { kind: "csi", code } } })
   for (const spec of [
     { records: [recordsCsi(code)], modeApplies: false },
     { records: [recordsCsi(code), recordsCsi("?7l")] },

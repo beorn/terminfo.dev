@@ -17,7 +17,6 @@ import type {
   AssertionType,
   ObservationFrame,
   ProbeDefinition,
-  HeadlessRuntimeIdentity,
   ProbeCallbackResult,
   ExecutionOnlyProbeCallbackResult,
   TerminalQueryOutcome,
@@ -1686,9 +1685,9 @@ export function headlessDecrpmArm(
     const capture = () =>
       ctx.queryWithSentinelOutcome?.(`\x1b[?${modeNum}$p`, decrpmReplyPattern(modeNum)).raw ??
       ctx.feedCapture(`\x1b[?${modeNum}$p`)
-    if (args[2]?.requireReadback === true) {
+    if (args[2]?.requireReadback === true && modeName !== undefined) {
       // The strict overload requires a mode key; the name is display-only, never an engine selector.
-      const key = args[1]
+      const key = modeName
       const insertBefore = modeNum === 4 ? ctx.getMode("insertMode") : undefined
       let resetSent = false
       try {

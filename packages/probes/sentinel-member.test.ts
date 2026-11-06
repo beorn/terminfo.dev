@@ -443,7 +443,9 @@ test.runIf(OWNED_LAYOUT).each([
       ).toBe(true)
       expect(result.pass, id).toBe(false)
       expect(result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
-      expect(JSON.parse(result.response!).unhandled.target, id).toEqual({ kind: "csi", code: `?${number}h` })
+      expect(JSON.parse(result.response!), id).toMatchObject({
+        unhandled: { target: { kind: "csi", code: `?${number}h` } },
+      })
       expect(result.response, id).toContain(JSON.stringify(answer).slice(1, -1))
     } finally {
       backend.destroy()
