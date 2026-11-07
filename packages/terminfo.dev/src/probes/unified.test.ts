@@ -19,7 +19,7 @@ import {
   type TextQualification,
   type TermProbeSource,
 } from "@terminfo/probe-defs"
-import { replyFailure } from "../../../probe-defs/src/helpers.ts"
+import { replyFailure, notTestedResult } from "../../../probe-defs/src/helpers.ts"
 import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
@@ -44,6 +44,40 @@ vi.mock("../tty.ts", async (importOriginal) => {
 })
 
 const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
+
+// @failure An approved exact-version declaration is dropped by either unresolved callback path.
+// Existing native recording cases have no declaration map; both paths are used by prompt callbacks.
+// @level l1
+// @consumer runProbeBatch -> recordExecutedProbe -> canonical result reader.
+it.each(["coverage", "explicit todo"] as const)(
+  "records an approved App declaration after unresolved %s",
+  async (path) => {
+    const id = "extensions.osc133-a"
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    const original = { term: definition.term, termWrites: definition.termWrites }
+    const reason = "Untestable (no way): this exact App version has no prompt-state reader."
+    try {
+      // The in-memory callback performs no terminal operation; retain the real batch/recorder.
+      definition.termWrites = "query"
+      definition.term = async () =>
+        path === "coverage"
+          ? notTestedResult("No prompt-state reading", { source: "fixture" })
+          : { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "No prompt-state reading" }] }
+      const options = { ids: [id], appDeclarations: { [id]: reason } }
+      const batch = await runProbeBatch(options)
+      expect(batch.results.find((result) => result.featureId === id)).toMatchObject({
+        status: "untestable",
+        reason,
+        tests: [{ id: "declared-untestable", status: "untestable", reason }],
+      })
+      expect(batch.assertions).toEqual([])
+      expect(batch.ungradedDiagnostics).toEqual({})
+    } finally {
+      definition.term = original.term
+      definition.termWrites = original.termWrites
+    }
+  },
+)
 
 // Real query recording supplies nondefault timeout and bytes; the fixture supplies only callback intent.
 it.each([false, true])("attaches completed TTY evidence only to marked failure rows (marked: %s)", async (marked) => {
