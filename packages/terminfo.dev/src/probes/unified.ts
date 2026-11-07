@@ -774,7 +774,7 @@ export async function runProbeBatch(
           options.subject?.kind === "mux" &&
           options.subject.id === "screen" &&
           titleReads.length === 1 &&
-          "error" in titleReads[0]! &&
+          titleReads.some((reading) => "error" in reading) &&
           !events.some((event) => event.kind === "write")
         ) {
           result = {
