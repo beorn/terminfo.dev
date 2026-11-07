@@ -3932,7 +3932,10 @@ function osc0IconTitleResult(
   iconLabel: string | null,
   windowTitle: string | null,
   raw: { icon: string; title: string },
-  reasons: Record<"icon" | "title", TerminalQueryOutcome["reason"] | "feedCapture boundary">,
+  reasons: Record<
+    "icon" | "title",
+    TerminalQueryOutcome["reason"] | "feedCapture boundary" | "owned public title read"
+  >,
 ): ProbeCallbackResult {
   const response = JSON.stringify({ ...raw, iconLabel, windowTitle })
   if (iconLabel === null || windowTitle === null) {

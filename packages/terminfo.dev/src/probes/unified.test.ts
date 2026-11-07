@@ -677,7 +677,7 @@ it.each(
   expect(row.status).toBe("probe-todo")
   expect(row.reason).toMatch(/Screen.*screen -Q title/)
   expect(batch.assertions).toEqual([])
-  const reads = JSON.parse(batch.rawReplies[id]!).titleReads
+  const reads = (JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }).titleReads
   if (failure === "query") expect(reads).toEqual([{ error: "screen -Q title is unavailable" }])
   else expect(reads.length).toBeGreaterThan(1)
 })
@@ -699,7 +699,7 @@ it.each([false, true])("binds the title reader and its raw readings only to the 
   })
   expect(batch.results.find((row) => row.featureId === id)?.status).toBe(owned ? "supported" : "probe-todo")
   expect(title).toBe("incoming App title")
-  const trace = JSON.parse(batch.rawReplies[id]!)
+  const trace = JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }
   if (owned) {
     expect(readTitle).toHaveBeenCalledTimes(7)
     expect(trace.titleReads).toHaveLength(7)
