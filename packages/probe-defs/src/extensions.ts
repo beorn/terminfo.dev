@@ -5437,8 +5437,11 @@ export const extensionsProbes: ProbeDefinition[] = [
           ctx.write("\x1b]7654;terminfo-title-negative\x07")
           state.negative = await read()
           const controls = readings[0] === values[0] && readings[1] === values[1]
+          const unexpected = readings
+            .slice(2)
+            .some((value, index) => value !== values[index + 2] && value !== readings[index + 1])
           result =
-            controls && state.negative === readings[3]
+            controls && state.negative === readings[3] && !unexpected
               ? parserStateResult(
                   readings[2] === values[2] && readings[3] === values[3],
                   "OSC 2 sets both exact requested titles after two title controls; a made-up OSC is inert",
@@ -5454,6 +5457,7 @@ export const extensionsProbes: ProbeDefinition[] = [
                     },
                   ],
                 }
+          if (!controls) result.criterionBranch = "app-title-control"
         } finally {
           ctx.write(`\x1b]2;${before}\x07`)
           state.restored = await read()
@@ -5611,6 +5615,50 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        if (ctx.readTitle) {
+          const read = ctx.readTitle
+          const before = await read()
+          const controls = ["terminfo-osc0-control-A", "terminfo-osc0-control-B"]
+          const readings: string[] = []
+          const state = { before, controls, readings, title: "", icon: "", restored: "" }
+          let result: ProbeCallbackResult
+          try {
+            for (const control of controls) {
+              ctx.write(`\x1b]2;${control}\x07`)
+              readings.push(await read())
+            }
+            if (readings[0] !== controls[0] || readings[1] !== controls[1]) {
+              result = replyFailure("Owned title reader failed the OSC 0 title-clause controls")
+            } else {
+              ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
+              state.title = await read()
+              if (state.title === controls[1]) {
+                result = parserStateResult(false, "OSC 0 sets both icon and window title", state)
+              } else if (state.title !== OSC0_PAYLOAD) {
+                result = replyFailure("OSC 0 changed the public title to an unexpected value")
+              } else {
+                const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
+                state.icon = icon.raw
+                result = osc0IconTitleResult(
+                  icon.match?.[1] ?? null,
+                  state.title,
+                  { icon: icon.raw, title: state.title },
+                  { icon: icon.reason, title: "owned public title read" },
+                )
+                if (result.assertions) {
+                  result.assertions = result.assertions.map((assertion, index) =>
+                    index === 1 ? { ...assertion, assertionType: "buffer_state" as const } : assertion,
+                  )
+                }
+              }
+            }
+          } finally {
+            ctx.write(`\x1b]2;${before}\x07`)
+            state.restored = await read()
+            if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+          }
+          return { ...result, response: JSON.stringify(state) }
+        }
         ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
         const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
         const title = await ctx.queryWithSentinelOutcome(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
@@ -5724,14 +5772,60 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
         return result
       },
-      () => {
+      async (ctx) => {
+        const read = ctx.readTitle
+        if (read) {
+          const before = await read()
+          const controls = ["terminfo-cwd-title-control-A", "terminfo-cwd-title-control-B"]
+          const paths = ["/terminfo-cwd-A", "/terminfo-cwd-B"]
+          const controlReadings: string[] = []
+          const readings: string[] = []
+          const state = { before, controls, controlReadings, paths, readings, empty: "", negative: "", restored: "" }
+          let result: ProbeCallbackResult
+          try {
+            for (const control of controls) {
+              ctx.write(`\x1b]2;${control}\x07`)
+              controlReadings.push(await read())
+            }
+            if (controlReadings[0] !== controls[0] || controlReadings[1] !== controls[1]) {
+              result = replyFailure("OSC 7 public title reader failed its handled OSC 2 controls")
+            } else {
+              ctx.write("\x1b]2;\x07")
+              state.empty = await read()
+              for (const path of paths) {
+                ctx.write(`\x1b]7;file://localhost${path}\x07`)
+                readings.push(await read())
+              }
+              ctx.write("\x1b]7654;file://localhost/terminfo-cwd-negative\x07")
+              state.negative = await read()
+              const unexpected = readings.some(
+                (value, index) => value !== paths[index] && value !== (index === 0 ? state.empty : readings[index - 1]),
+              )
+              result =
+                state.negative !== readings[1] || unexpected
+                  ? replyFailure("Made-up OSC changed the OSC 7 public title surface")
+                  : parserStateResult(
+                      readings[0] === paths[0] && readings[1] === paths[1],
+                      "OSC 7 localhost targets appear as their exact raw paths on the qualified public title surface",
+                      state,
+                    )
+            }
+          } finally {
+            ctx.write("\x1b]7;\x07")
+            ctx.write(`\x1b]2;${before}\x07`)
+            state.restored = await read()
+            if (state.restored !== before) throw new Error(`OSC 7 title restoration mismatch: ${JSON.stringify(state)}`)
+          }
+          return { ...result, response: JSON.stringify(state) }
+        }
         const note = "No working-directory metadata readback for OSC 7"
-        return Promise.resolve<ProbeCallbackResult>({
+        return {
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
-        })
+          tests: [{ id: "criterion", status: "probe-todo" as const, reason: note }],
+        }
       },
+      "buffer_state",
     ),
     libAssertionType: "buffer_state",
   },

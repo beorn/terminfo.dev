@@ -347,6 +347,7 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
           state,
         )
       : { ...replyFailure("Owned title reader failed the OSC 2 controls"), response: JSON.stringify(state) }
+    if (!controlled) result.criterionBranch = "app-title-control"
   } finally {
     try {
       if (pushed) ctx.write("\x1b[23;0t")

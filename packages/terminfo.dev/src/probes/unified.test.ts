@@ -655,6 +655,33 @@ function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
 
+it.each(
+  ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
+    ["controls", "query"].map((failure) => ({ id, failure })),
+  ),
+)("names Screen's missing own-title reader after $failure fails: $id", async ({ id, failure }) => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: [id],
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    ownedTerminal: {
+      ...geometryOwner(noGeometry),
+      readTitle: async () => {
+        if (failure === "query") throw new Error("screen -Q title is unavailable")
+        return "unchanged Screen title"
+      },
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === id)!
+  expect(row.status).toBe("probe-todo")
+  expect(row.reason).toMatch(/Screen.*screen -Q title/)
+  expect(batch.assertions).toEqual([])
+  const reads = JSON.parse(batch.rawReplies[id]!).titleReads
+  if (failure === "query") expect(reads).toEqual([{ error: "screen -Q title is unavailable" }])
+  else expect(reads.length).toBeGreaterThan(1)
+})
+
 // #32573: direct callback cases cannot detect a collector that drops or exposes a foreign title reader.
 it.each([false, true])("binds the title reader and its raw readings only to the owned run: %s", async (owned) => {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(owned)
