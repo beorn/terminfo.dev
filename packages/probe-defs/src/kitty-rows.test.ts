@@ -234,44 +234,74 @@ test("an acknowledgement with unchanging pixels is not animation support", async
   expect(result.observation?.note).toContain("static image control failed")
 })
 
-// CTO animation acceptance: a painting static-only terminal can be denied, a broken playback setup cannot.
-test.each(["red", "blank"])(
-  "an equal playback pair with first image %s qualifies against the static control",
-  async (playback) => {
-    const { context } = surface({
-      region: ["blank", "red", "red", "red", "cursor", "cursor", playback, playback, playback, playback, playback],
-      whole: ["before", "after"],
-    })
-    // Ghostty's animation rejection is diagnostic detail, never a substitute for the pixel controls.
-    const query = context.queryWithSentinelOutcome
-    context.queryWithSentinelOutcome = async (...args) => {
-      const [sequence, pattern] = args
-      if (sequence.startsWith("\x1b_Ga=f,") || sequence.startsWith("\x1b_Ga=a,")) {
-        const imageId = /,i=(\d+)/u.exec(sequence)![1]
-        const raw = `\x1b_Gi=${imageId};ERROR: unimplemented action\x1b\\`
-        return { match: pattern.exec(raw), reason: "reply", raw, rawBase64: btoa(raw) }
-      }
-      return query(...args)
+// Retained Kitty 03:36 PST run: static red and all playback/selection crops equal, only DA1 replies.
+// Exercise the final recorded status: the previous pixel-only test accepted that probe defect.
+test.each([
+  ["red", "refused", "unsupported"],
+  ["blank", "refused", "probe-invalid"],
+  ["red", "silent", "probe-invalid"],
+  ["red", "ok", "probe-invalid"],
+  ["red", "base-error", "probe-invalid"],
+  ["red", "foreign-error", "probe-invalid"],
+  ["red", "stop-only-error", "probe-invalid"],
+  ["red", "selection-only-error", "probe-invalid"],
+] as const)("equal animation pixels %s with %s replies record %s", async (playback, reply, status) => {
+  const { context, writes } = surface({
+    region: ["blank", "red", "red", "red", "cursor", "cursor", playback, playback, playback, playback, playback],
+    whole: ["before", "after"],
+  })
+  const query = context.queryWithSentinelOutcome
+  context.queryWithSentinelOutcome = async (...args) => {
+    const [sequence, pattern] = args
+    const target = sequence.startsWith("\x1b_Ga=f,") || sequence.startsWith("\x1b_Ga=a,")
+    if (target || (reply === "base-error" && sequence.startsWith("\x1b_Ga=t,i="))) {
+      writes.push(sequence)
+      const imageId = /,i=(\d+)/u.exec(sequence)![1]
+      const raw =
+        reply === "refused" ||
+        (reply === "base-error" && !target) ||
+        (reply === "stop-only-error" && sequence.includes(",s=1,")) ||
+        (reply === "selection-only-error" && sequence.includes(",c=2,"))
+          ? `\x1b_Gi=${imageId};ERROR: unimplemented action\x1b\\`
+          : reply === "ok"
+            ? `\x1b_Gi=${imageId};OK\x1b\\`
+            : reply === "foreign-error"
+              ? `\x1b_Gi=${Number(imageId) + 1};ERROR: unimplemented action\x1b\\\x1b[?62;52;c`
+              : "\x1b[?62;52;c"
+      const match = pattern.exec(raw)
+      return { match, reason: match ? "reply" : "sentinel", raw, rawBase64: btoa(raw) }
     }
-    const result = await term("extensions.kitty-graphics.animation")(context)
-    expect(result.observation?.outcome).toBe(playback === "red" ? "unsupported" : "inconclusive")
+    return query(...args)
+  }
+  const featureId = "extensions.kitty-graphics.animation"
+  const result = await term(featureId)(context)
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: new Date(0).toISOString() },
+    ...result,
+    observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
+    assertions: (result.assertions ?? []).map((assertion) => ({ ...assertion, featureId, rawReplyRef: featureId })),
+  })
+  expect(recorded.status).toBe(status)
+  const retained = JSON.parse(result.response!) as { replies: Array<{ label: string; readback: { raw: string } }> }
+  expect(retained.replies.find((entry) => entry.label === "second frame")?.readback.raw).not.toBe("")
+  if (reply === "refused") {
     expect(result.observation?.note).toContain("second frame: ERROR: unimplemented action")
     expect(result.observation?.note).toContain("start playback: ERROR: unimplemented action")
-    const retained = JSON.parse(result.response!) as { replies: Array<{ label: string; readback: { raw: string } }> }
-    expect(retained.replies.find((reply) => reply.label === "second frame")?.readback.raw).toContain(
-      "ERROR: unimplemented action",
-    )
-    if (playback === "red") {
-      expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "screenshot" }])
-      expect(result.observation?.note).toContain("hand selection did not change")
-    } else {
-      expect(result.assertions).toBeUndefined()
-      expect(result.observation?.note).toContain("playback image did not paint")
-    }
-  },
-)
+  } else {
+    expect(result.observation?.note).toContain("observed replies")
+    expect(result.observation?.note).toContain(reply === "ok" ? "OK" : "62;52;c")
+  }
+  if (status === "unsupported") {
+    expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "query_reply" }])
+    expect(result.observation?.note).toContain("hand selection did not change")
+  } else {
+    expect(result.assertions).toBeUndefined()
+    if (playback === "blank") expect(result.observation?.note).toContain("playback image did not paint")
+  }
+})
 
-test("placeholders decide from pixels, with the quiet transmit and an ordinary placement alive", async () => {
+test("placeholders decide from pixels, with a queried virtual transfer and an ordinary placement alive", async () => {
   const { context, writes, captures } = surface({
     // grid with image (twice), grid with the image deleted, blank, then the ordinary placement of the
     // same pixels — which must land on the SAME digest as the with-image rectangle.
@@ -281,9 +311,9 @@ test("placeholders decide from pixels, with the quiet transmit and an ordinary p
   })
   const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
   const joined = writes.join("")
-  // Quiet virtual placement: no reply can be inherited as evidence.
+  // The virtual-placement reply distinguishes a refused command from a broken measurement.
   expect(joined).toContain("a=T,U=1")
-  expect(joined).toContain("q=2")
+  expect(writes.find((bytes) => bytes.startsWith("\x1b_Ga=T,U=1"))).toContain("q=0")
   // The placeholder characters and the id in the foreground colour, in BOTH states.
   expect(joined.split("\u{10EEEE}").length - 1).toBe(8)
   expect(joined).toContain("[38;5;")
@@ -359,18 +389,49 @@ test.each([
   }
 })
 
-test("an accepted quiet transmit with identical pixels is not placeholder support", async () => {
-  const { context } = surface({
-    region: ["same", "same", "same", "blank", "ordinary"],
-    guard: ["guard", "guard"],
-    cells: ["placeholder-cells", "placeholder-cells"],
-    ack: "ok",
-  })
-  const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
-  expect(result.observation?.outcome).toBe("unsupported")
-  expect(result.pass).toBe(false)
-  expect(result.assertions).toMatchObject([{ kind: "negative" }])
-})
+test.each(["silent", "ok", "refused", "foreign-error"] as const)(
+  "blank placeholders with %s reply need an exact refusal",
+  async (reply) => {
+    const { context, writes } = surface({
+      region: ["same", "same", "same", "blank", "ordinary"],
+      guard: ["guard", "guard"],
+      cells: ["placeholder-cells", "placeholder-cells"],
+    })
+    const query = context.queryWithSentinelOutcome
+    let virtualRaw = ""
+    context.queryWithSentinelOutcome = async (sequence, pattern) => {
+      if (!sequence.startsWith("\x1b_Ga=T,U=1")) return query(sequence, pattern)
+      writes.push(sequence)
+      const imageId = /,i=(\d+)/u.exec(sequence)![1]
+      virtualRaw =
+        reply === "silent"
+          ? "\x1b[?62;52;c"
+          : `\x1b_Gi=${reply === "foreign-error" ? Number(imageId) + 1 : imageId};${reply === "ok" ? "OK" : "ERROR: unimplemented virtual placement"}\x1b\\`
+      const match = pattern.exec(virtualRaw)
+      return { match, reason: match ? "reply" : "sentinel", raw: virtualRaw, rawBase64: btoa(virtualRaw) }
+    }
+    const featureId = "extensions.kitty-graphics.unicode-placeholders"
+    const result = await term(featureId)(context)
+    const recorded = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: new Date(0).toISOString() },
+      ...result,
+      observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
+      assertions: (result.assertions ?? []).map((assertion) => ({ ...assertion, featureId, rawReplyRef: featureId })),
+    })
+    expect(recorded.status).toBe(reply === "refused" ? "unsupported" : "probe-invalid")
+    expect(JSON.parse(result.response!)).toMatchObject({ virtualPlacement: { raw: virtualRaw } })
+    expect(virtualRaw).not.toBe("")
+    expect(result.pass).toBe(false)
+    if (reply === "refused") {
+      expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "query_reply" }])
+      expect(result.observation?.note).toContain("ERROR: unimplemented virtual placement")
+    } else {
+      expect(result.assertions).toBeUndefined()
+      expect(result.observation?.note).toContain("observed replies")
+    }
+  },
+)
 
 test("text painted by an ordinary placement fails image qualification and records the placement reply", async () => {
   const { context } = surface({

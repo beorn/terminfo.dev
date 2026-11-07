@@ -4971,7 +4971,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             )
             retry = [playbackSecond.regionDigest, retried.regionDigest]
           }
-          // Hand selection qualifies a moving playback result; static-only negatives do not require it.
+          // Hand selection qualifies moving playback. A negative also needs an exact animation refusal.
           await command("stop playback", kittyStopPlayback(playbackId))
           await command("select frame 1", kittySelectFrame(playbackId, 1))
           const clientFirst = await shoot("control", "Client-driven frame selection, frame 1 of a stopped animation")
@@ -4981,6 +4981,14 @@ const extensionDefinitions: ProbeDefinition[] = [
             "Client-driven frame selection, frame 2 of the same stopped animation",
           )
           ctx.write(kittyDeleteImage(playbackId))
+          const errors = replies.flatMap(({ label, readback }) => {
+            const message = readback.match?.[2]
+            return readback.reason === "reply" && message && message !== "OK" ? [{ label, message }] : []
+          })
+          const animationRefusal = errors
+            .filter(({ label }) => label === "second frame" || label === "root frame gap" || label === "start playback")
+            .map(({ label, message }) => `${label}: ${message}`)
+            .join("; ")
           const captureDecision = decideKittyAnimation({
             playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
             retry,
@@ -4991,14 +4999,17 @@ const extensionDefinitions: ProbeDefinition[] = [
             cursorOnly: [cursorFirst.regionDigest, cursorSecond.regionDigest],
             redraw: [redrawFirst.pixelsDigest, redrawSecond.pixelsDigest],
             playbackElapsedMs,
+            refusal: animationRefusal,
           })
-          const errors = replies.flatMap(({ label, readback }) => {
-            const message = readback.match?.[2]
-            return message && message !== "OK" ? [`${label}: ${message}`] : []
-          })
-          const note = errors.length
-            ? `${captureDecision.note}; terminal errors: ${errors.join("; ")}`
-            : captureDecision.note
+          const replyNotes = replies
+            .map(
+              ({ label, readback }) =>
+                `${label}: ${readback.match?.[2] ?? readback.reason} (${readback.reason}), raw ${JSON.stringify(readback.raw)}`,
+            )
+            .join("; ")
+          const note = `${captureDecision.note}; observed replies: ${replyNotes}`
+          const assertionType =
+            captureDecision.outcome === "unsupported" ? ("query_reply" as const) : ("screenshot" as const)
           const observed = JSON.stringify({
             id,
             region: KITTY_REGION,
@@ -5024,7 +5035,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             observation: {
               outcome: captureDecision.outcome,
               ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
-              assertionType: "screenshot",
+              assertionType,
               screenshotRef: playbackSecond.ref,
               frames,
               note,
@@ -5040,10 +5051,10 @@ const extensionDefinitions: ProbeDefinition[] = [
               : {
                   assertions: [
                     {
-                      assertionType: "screenshot" as const,
+                      assertionType,
                       kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                       expected:
-                        "The static image matches the independent nonblank reference and holds still; the cursor-only pair is equal and redraw differs. Moving playback requires differing hand-selected frames. A negative requires an equal retry and initial playback matching the static image",
+                        "The static image matches the independent nonblank reference and holds still; the cursor-only pair is equal and redraw differs. Moving playback requires differing hand-selected frames. A negative requires an exact animation-command refusal, an equal retry and initial playback matching the static image",
                       observed,
                       note: `decided by ${captureDecision.decidedBy}`,
                     },
@@ -5134,7 +5145,10 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(KITTY_CLEAR)
           const placeholderId = kittyPlaceholderNumber()
           ids.push(placeholderId)
-          ctx.write(kittyVirtualPlacement(placeholderId, { ...size, rgb: KITTY_FRAME_RED }))
+          const virtualPlacement = await ctx.queryWithSentinelOutcome(
+            kittyVirtualPlacement(placeholderId, { ...size, rgb: KITTY_FRAME_RED }),
+            kittyReplyFrame({ i: String(placeholderId) }),
+          )
           ctx.write(kittyPlaceholderText(placeholderId))
           const withImageFirst = await shoot(
             "target",
@@ -5186,6 +5200,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(kittyDeleteImage(ordinaryId))
           kittyPaintReference(ctx)
           const reference = await shoot("control", "Independent SGR opaque-red reference in the same rectangle")
+          const virtualMessage = virtualPlacement.match?.[2]
           const captureDecision = decideKittyPlaceholders({
             withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
             withoutImage: withoutImage.regionDigest,
@@ -5197,7 +5212,14 @@ const extensionDefinitions: ProbeDefinition[] = [
               cellsWithImage === undefined || cellsWithoutImage === undefined
                 ? null
                 : [cellsWithImage, cellsWithoutImage],
+            refusal:
+              virtualPlacement.reason === "reply" && virtualMessage && virtualMessage !== "OK"
+                ? virtualMessage
+                : undefined,
           })
+          const note = `${captureDecision.note}; observed replies: virtual placement: ${virtualPlacement.reason}, raw ${JSON.stringify(virtualPlacement.raw)}`
+          const assertionType =
+            captureDecision.outcome === "unsupported" ? ("query_reply" as const) : ("screenshot" as const)
           const observed = JSON.stringify({
             id,
             region: KITTY_REGION,
@@ -5205,6 +5227,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             placeholderId,
             ordinaryId,
             placementAck: placement.raw,
+            virtualPlacement,
             guard: { withImage: guardWithImage.regionDigest, withoutImage: guardWithoutImage.regionDigest },
             digests: {
               withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
@@ -5223,15 +5246,15 @@ const extensionDefinitions: ProbeDefinition[] = [
             observation: {
               outcome: captureDecision.outcome,
               ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
-              assertionType: "screenshot",
+              assertionType,
               screenshotRef: withImageSecond.ref,
               frames,
-              note: captureDecision.note,
+              note,
             },
             ...(captureDecision.decidedBy === "a missing region digest"
               ? {
                   criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-                  tests: [{ id: "review" as const, status: "probe-todo" as const, reason: captureDecision.note }],
+                  tests: [{ id: "review" as const, status: "probe-todo" as const, reason: note }],
                 }
               : {}),
             ...(captureDecision.outcome === "inconclusive"
@@ -5239,10 +5262,10 @@ const extensionDefinitions: ProbeDefinition[] = [
               : {
                   assertions: [
                     {
-                      assertionType: "screenshot" as const,
+                      assertionType,
                       kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                       expected:
-                        "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move; the ordinary placement matches an independent SGR-painted reference that differs from blank",
+                        "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move; the ordinary placement matches an independent SGR-painted reference that differs from blank. A negative requires an exact virtual-placement refusal and equal with/without-image pixels",
                       observed,
                       note: `decided by ${captureDecision.decidedBy}`,
                     },
