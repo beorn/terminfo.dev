@@ -24,6 +24,7 @@ import {
   type HeadlessModel,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+import type { TermProbeSource } from "./types.ts"
 
 // Row 2.1: replies must follow the actual query/set/reset operations; canned replies cannot
 // prove that disabling one feature changes its result while its same-path control still works.
@@ -95,6 +96,21 @@ function semanticSurfaceSource(mutations: readonly string[] = []) {
     },
   }
 }
+
+// #32573: the App arm must use the bound title surface, not merely send OSC 2.
+// Library-only contract tests stay green while that App arm is an unmeasured stub.
+test.each([false, true])("App OSC 2 measures and restores its owned title, disabled=%s", async (disabled) => {
+  const library = semanticSurfaceSource(disabled ? ["osc2-noop"] : [])
+  const before = library.getTitle()
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const result = await definition.term!({
+    write: (text: string) => library.feed(text),
+    readTitle: async () => library.getTitle(),
+  } as unknown as TermProbeSource)
+  if (disabled) expect(result.observation?.outcome).not.toBe("supported")
+  else expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "supported" })
+  expect(library.getTitle()).toBe(before)
+})
 
 // #32451: Kitty's absent B needs its working A reader, while the lifecycle requires A/C/D
 // and an inert unknown letter. Generic opposite-namespace controls miss this reader shape.

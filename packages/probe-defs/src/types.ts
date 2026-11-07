@@ -1029,6 +1029,8 @@ export type TermFeaturesReading =
 
 export interface TermProbeSource {
   readonly kind: ProbeSourceKind
+  /** This run's owned public title surface; empty is a title, and a failed read throws its cause. */
+  readTitle?: () => Promise<string>
   /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */
   readTermFeatures?: () => Promise<TermFeaturesReading>
   /** Complete same-run raster geometry, installed only after witnessed paint and restore. */

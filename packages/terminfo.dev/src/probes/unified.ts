@@ -453,6 +453,7 @@ export async function runProbeBatch(
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []
     const clipboardEvents: ClipboardTraceEvent[] = []
+    const titleReads: Array<{ title: string } | { error: string }> = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
@@ -533,6 +534,19 @@ export async function runProbeBatch(
     })
     if (ownsTerminal && options.subject?.kind === "term" && !options.ownedTerminal?.muxAttachmentProof) {
       probeSource.readTermFeatures = options.ownedTerminal?.readTermFeatures
+    }
+    const readTitle = ownsTerminal ? options.ownedTerminal?.readTitle : undefined
+    if (readTitle) {
+      probeSource.readTitle = async () => {
+        try {
+          const title = await withTTYOperation(readTitle, out, verify)
+          titleReads.push({ title })
+          return title
+        } catch (error) {
+          titleReads.push({ error: error instanceof Error ? error.message : String(error) })
+          throw error
+        }
+      }
     }
     if (captureGeometry) probeSource.captureGeometry = captureGeometry
     if (
@@ -898,6 +912,7 @@ export async function runProbeBatch(
         queries,
         events,
         ...(clipboardEvents.length ? { clipboard: clipboardEvents } : {}),
+        ...(titleReads.length ? { titleReads } : {}),
         ...(captureAttempted ? { captures } : {}),
       })
       if (probe.id === "device.primary-da" || probe.id === "device.secondary-da" || probe.id === "device.xtversion") {

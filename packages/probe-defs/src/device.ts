@@ -1,4 +1,10 @@
-import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
+import type {
+  LibProbeSource,
+  TermProbeSource,
+  ProbeDefinition,
+  ProbeCallbackResult,
+  TerminalQueryOutcome,
+} from "./types.ts"
 import { hasAuditedOscInterfaceAbsence } from "./extensions.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
@@ -300,6 +306,57 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
       set(before)
     }
   }
+}
+
+/** Both App IDs measure the same two joint fixtures, through the owned title surface. */
+async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const read = ctx.readTitle
+  if (!read) return notTestedResult("No owned title reader is installed for this run", {})
+  const before = await read()
+  const saved = before === "pushed-title" ? "other-pushed-title" : "pushed-title"
+  const set = (title: string) => ctx.write(`\x1b]2;${title}\x07`)
+  let pushed = false
+  const state: Record<string, unknown> = { before }
+  let result: ProbeCallbackResult
+  try {
+    const fixture = async (originalTitle: string, changedTitle: string) => {
+      set(saved)
+      set(originalTitle)
+      const original = await read()
+      pushed = true
+      ctx.write("\x1b[22;0t")
+      set(changedTitle)
+      const changed = await read()
+      ctx.write("\x1b[23;0t")
+      pushed = false
+      return { original, changed, restored: await read() }
+    }
+    const popFixture = await fixture(saved, "new-title")
+    state.popFixture = popFixture
+    const pushFixture = await fixture("new-title", "next-title")
+    state.pushFixture = pushFixture
+    const controlled =
+      popFixture.original === saved &&
+      popFixture.changed === "new-title" &&
+      pushFixture.original === "new-title" &&
+      pushFixture.changed === "next-title"
+    result = controlled
+      ? stackStateResult(
+          { pass: popFixture.restored === saved && pushFixture.restored === "new-title" },
+          "XTWINOPS 22/23 restores both controlled pushed titles",
+          state,
+        )
+      : { ...replyFailure("Owned title reader failed the OSC 2 controls"), response: JSON.stringify(state) }
+  } finally {
+    try {
+      if (pushed) ctx.write("\x1b[23;0t")
+    } finally {
+      set(before)
+      state.restored = await read()
+      if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+    }
+  }
+  return { ...result, response: JSON.stringify(state) }
 }
 
 function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
@@ -720,30 +777,8 @@ export const deviceProbes: ProbeDefinition[] = [
     ...probe(
       "device.xtwinops-22",
       (ctx) => titleStackHeadless(ctx, "XTWINOPS 22/23 restores the pushed title after a controlled title change"),
-      async (ctx) => {
-        ctx.write("\x1b]2;pushed-title\x07")
-        ctx.write("\x1b[22;0t") // push
-        try {
-          ctx.write("\x1b]2;new-title\x07") // overwrite
-          const pos = await ctx.queryCursorPosition()
-          const note = pos
-            ? "Cursor answered after title push; title stack was not measured"
-            : "No DSR response after title push"
-          return {
-            pass: false,
-            note,
-            tests: [
-              {
-                id: "criterion",
-                status: "probe-todo",
-                reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
-              },
-            ],
-          }
-        } finally {
-          ctx.write("\x1b[23;0t")
-        }
-      },
+      titleStackApp,
+      "buffer_state",
     ),
     libAssertionType: "buffer_state",
   },
@@ -753,25 +788,8 @@ export const deviceProbes: ProbeDefinition[] = [
     ...probe(
       "device.xtwinops-23",
       (ctx) => titleStackHeadless(ctx, "XTWINOPS 22/23 restores the pushed title after a controlled title change"),
-      async (ctx) => {
-        ctx.write("\x1b[22;0t") // push first so we have something to pop
-        ctx.write("\x1b[23;0t")
-        const pos = await ctx.queryCursorPosition()
-        const note = pos
-          ? "Cursor answered after title pop; restored title was not measured"
-          : "No DSR response after title pop"
-        return {
-          pass: false,
-          note,
-          tests: [
-            {
-              id: "criterion",
-              status: "probe-todo",
-              reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
-            },
-          ],
-        }
-      },
+      titleStackApp,
+      "buffer_state",
     ),
     libAssertionType: "buffer_state",
   },

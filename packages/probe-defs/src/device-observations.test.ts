@@ -61,29 +61,18 @@ function callback(id: string) {
  * @consumer Application device observations sharing one owned terminal.
  * @testonly none
  */
-test.each([false, true])("title push restores its checkpoint when CPR rejects=%s", async (rejectQuery) => {
+test("an absent App title reader leaves the terminal untouched", async () => {
   const writes: string[] = []
   const context = {
     write: (bytes: string) => writes.push(bytes),
-    queryCursorPosition: async () => {
-      if (rejectQuery) throw new Error("injected title CPR failure")
-      return { row: 1, col: 1 }
-    },
   } as unknown as TermProbeSource
 
-  const result = callback("device.xtwinops-22").terminal(context)
-  if (rejectQuery) {
-    await expect(result).rejects.toThrow("injected title CPR failure")
-  } else {
-    const callbackResult = await result
+  for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+    const callbackResult = await callback(id).terminal(context)
     expect(callbackResult.observation).toBeUndefined()
-    expect(callbackResult.tests).toMatchObject([
-      expect.objectContaining({ status: "probe-todo", reason: expect.any(String) }),
-    ])
+    expect(callbackResult.notTested).toMatchObject({ reason: "no-semantic-observable" })
   }
-  expect(writes.filter((bytes) => bytes === "\x1b[22;0t")).toHaveLength(1)
-  expect(writes.filter((bytes) => bytes === "\x1b[23;0t")).toHaveLength(1)
-  expect(writes.at(-1)).toBe("\x1b[23;0t")
+  expect(writes).toEqual([])
 })
 
 const DECRQSS_SGR_QUERY = "\x1bP$qm\x1b\\"
@@ -727,6 +716,34 @@ describe("window-operation qualification", () => {
   }
 
   test.each(["working", "stale", "none", "unobservable"] as const)(
+    "App title stack reads its owned state and restores it: %s",
+    async (behavior) => {
+      // #32573: the library fixture models title/stack state; the App callback must actually read it.
+      // Existing library-only cases cannot catch an App arm that merely receives a cursor reply.
+      for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+        const fixture = titleContext(behavior)
+        const source = {
+          write: fixture.ctx.feed,
+          readTitle: async () => fixture.ctx.getTitle(),
+          queryCursorPosition: async () => ({ row: 1, col: 1 }),
+        } as unknown as TermProbeSource
+        const result = await callback(id).terminal(source)
+        if (behavior === "unobservable") {
+          expect(result.observation).toBeUndefined()
+          expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+        } else {
+          expect(result.observation).toMatchObject({
+            assertionType: "buffer_state",
+            outcome: behavior === "working" ? "supported" : "unsupported",
+          })
+          expect(fixture.title()).toBe("incoming-title")
+        }
+        expect(fixture.depth()).toBe(0)
+      }
+    },
+  )
+
+  test.each(["working", "stale", "none", "unobservable"] as const)(
     "title stack measures the controlled joint round trip and cleans up: %s",
     (behavior) => {
       for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
@@ -770,6 +787,23 @@ describe("window-operation qualification", () => {
         return read()
       }
       expect(() => callback(id).headless(fixture.ctx)).toThrow(failure)
+      expect(fixture.title()).toBe("incoming-title")
+      expect(fixture.depth()).toBe(0)
+    }
+  })
+
+  test("App title-stack fixtures restore their title and checkpoint after a read error", async () => {
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+      const fixture = titleContext("working")
+      let reads = 0
+      const source = {
+        write: fixture.ctx.feed,
+        readTitle: async () => {
+          if (++reads === 3) throw new Error("injected App title read error")
+          return fixture.ctx.getTitle()
+        },
+      } as unknown as TermProbeSource
+      await expect(callback(id).terminal(source)).rejects.toThrow("injected App title read error")
       expect(fixture.title()).toBe("incoming-title")
       expect(fixture.depth()).toBe(0)
     }

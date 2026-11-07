@@ -5416,7 +5416,52 @@ export const extensionsProbes: ProbeDefinition[] = [
           if (beforeIcon !== undefined) ctx.feed(`\x1b]1;${beforeIcon}\x07`)
         }
       },
-      () => Promise.resolve(unmeasuredStateEffect("OSC 2 window title")),
+      async (ctx) => {
+        const read = ctx.readTitle
+        if (!read) return unmeasuredStateEffect("OSC 2 window title")
+        const before = await read()
+        const values = [
+          "terminfo-title-control-A",
+          "terminfo-title-control-B",
+          "terminfo-title-target-A",
+          "terminfo-title-target-B",
+        ]
+        const readings: string[] = []
+        const state = { before, values, readings, negative: "", restored: "" }
+        let result: ProbeCallbackResult
+        try {
+          for (const value of values) {
+            ctx.write(`\x1b]2;${value}\x07`)
+            readings.push(await read())
+          }
+          ctx.write("\x1b]7654;terminfo-title-negative\x07")
+          state.negative = await read()
+          const controls = readings[0] === values[0] && readings[1] === values[1]
+          result =
+            controls && state.negative === readings[3]
+              ? parserStateResult(
+                  readings[2] === values[2] && readings[3] === values[3],
+                  "OSC 2 sets both exact requested titles after two title controls; a made-up OSC is inert",
+                  state,
+                )
+              : {
+                  pass: false,
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "probe-invalid",
+                      reason: "Owned title positive or negative control failed",
+                    },
+                  ],
+                }
+        } finally {
+          ctx.write(`\x1b]2;${before}\x07`)
+          state.restored = await read()
+          if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+        }
+        return { ...result, response: JSON.stringify(state) }
+      },
+      "buffer_state",
     ),
     libAssertionType: "buffer_state",
   },
