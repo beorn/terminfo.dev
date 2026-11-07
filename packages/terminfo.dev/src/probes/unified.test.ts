@@ -2773,6 +2773,8 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
   let clipboardText = baseline
   process.stdout.write = ((text: string) => {
     writes.push(text)
+    // No SGR readback: answer its DA1 sentinel so this pixel-ordering case does not wait for a timeout.
+    if (text === "\x1bP$qm\x1b\\\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?1;2c"))
     if (text.startsWith("\x1b]52;c;")) {
       order.push("osc52")
       clipboardText = atob(/\x1b\]52;c;([^\x07]+)\x07/.exec(text)?.[1] ?? "")
