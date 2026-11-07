@@ -231,6 +231,41 @@ export function appSemanticDeclarations(
   )
 }
 
+/** One file-custody owner for App reports and the outer command stream. */
+export function openAppCommandLog(capture: string) {
+  const log = join(dirname(capture), "daemon.log")
+  const identity = statSync(log)
+  const mark = () => {
+    const now = statSync(log)
+    if (now.dev !== identity.dev || now.ino !== identity.ino) throw new Error("Owned App log rotated")
+    return now.size
+  }
+  return {
+    mark,
+    async read(offset: number, artifact: string, complete: (text: string) => number | undefined) {
+      const deadline = Date.now() + 5000
+      let text = ""
+      const retain = (end: number, completed: boolean) => {
+        const bytes = Buffer.from(text.slice(0, end))
+        const path = join(capture, artifact)
+        writeFileSync(path, bytes)
+        return { complete: completed, offset, endOffset: offset + bytes.length, path, text: bytes.toString("utf8") }
+      }
+      do {
+        const now = statSync(log)
+        if (now.dev !== identity.dev || now.ino !== identity.ino || now.size < offset) {
+          throw new Error("Owned App log changed identity or truncated")
+        }
+        text = readFileSync(log).subarray(offset).toString("utf8")
+        const end = complete(text)
+        if (end !== undefined) return retain(end, true)
+        await Bun.sleep(25)
+      } while (Date.now() < deadline)
+      return retain(text.length, false)
+    },
+  }
+}
+
 /** Owned Linux App/mux read, using only the public actions qualified by #32566. */
 export async function readAppSemanticState(input: {
   featureId: string
@@ -363,39 +398,31 @@ export async function readAppSemanticState(input: {
       const title = () => run(["xdotool", "getwindowname", window]).trimEnd()
       const original = title()
       if (/[\x00-\x1f\x7f]/.test(original)) throw new Error("App semantic reader cannot restore Kitty title")
-      const log = join(dirname(capture), "daemon.log")
-      const identity = statSync(log)
+      const log = openAppCommandLog(capture)
       let phase = 0
       const readPhase = async (name: string, feed: string) => {
-        const before = statSync(log)
-        if (before.dev !== identity.dev || before.ino !== identity.ino) throw new Error("Owned App log rotated")
-        const offset = before.size
+        const offset = log.mark()
         const sentinel = `7655;${nonce}-${phase++}`
-        const read = () => {
-          const now = statSync(log)
-          if (now.dev !== identity.dev || now.ino !== identity.ino || now.size < offset) {
-            throw new Error("Owned App log changed identity or truncated")
-          }
-          return readFileSync(log).subarray(offset).toString("utf8")
-        }
         input.write(feed + osc(sentinel))
-        const appended = await until(read, (value) => value.includes(`Unknown OSC escape code: ${sentinel}\n`), name)
-        const end =
-          appended.indexOf(`Unknown OSC escape code: ${sentinel}\n`) + `Unknown OSC escape code: ${sentinel}\n`.length
-        const bytes = Buffer.from(appended.slice(0, end))
-        const path = join(capture, `app-semantic-${nonce}-${name}.log`)
-        writeFileSync(path, bytes)
+        const completion = `Unknown OSC escape code: ${sentinel}\n`
+        const reading = await log.read(offset, `app-semantic-${nonce}-${name}.log`, (text) => {
+          const end = text.indexOf(completion)
+          return end < 0 ? undefined : end + completion.length
+        })
+        if (!reading.complete) {
+          detail.phases.push({ name, incomplete: reading.text, path: reading.path, offset })
+          throw new Error(`App semantic reader did not observe ${name} completion`)
+        }
         detail.phases.push({
           name,
           offset,
-          endOffset: offset + bytes.length,
+          endOffset: reading.endOffset,
           feed,
           sentinel,
-          path,
-          appended: bytes.toString("utf8"),
+          path: reading.path,
+          appended: reading.text,
         })
-        return bytes
-          .toString("utf8")
+        return reading.text
           .split("\n")
           .filter((value) => value.includes("[PARSE ERROR]") && !value.endsWith(`Unknown OSC escape code: ${sentinel}`))
           .map((value) => {
