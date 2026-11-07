@@ -1010,6 +1010,8 @@ export interface InputFixture {
   }
   injectKey(keys: string): Promise<void>
   injectClick(button: 1 | 4 | 5): Promise<void>
+  /** Buttonless motion in owned-window pixels; absent adapters stay click-only. */
+  injectMove?(x: number, y: number): Promise<void>
   /** Button-event (1002) motion. Absent adapters stay click-only. */
   injectDrag?(button: 1): Promise<void>
 }
@@ -1053,6 +1055,8 @@ export type AppSemanticReading =
 
 export interface TermProbeSource {
   readonly kind: ProbeSourceKind
+  /** This run's owned public title surface; empty is a title, and a failed read throws its cause. */
+  readTitle?: () => Promise<string>
   /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */
   readTermFeatures?: () => Promise<TermFeaturesReading>
   /** Writes use the callback's recorder; reads bind to this run's verified App or mux. */

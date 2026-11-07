@@ -22,7 +22,7 @@ import {
   readHyperlinkMetadata,
   readSentinelReply,
   recordExecutedProbe,
-  finalizeSgrResult,
+  finalizeVisualResult,
   ASSERTION_TYPES,
   sentinelAnswer,
   sentinelGraceMs,
@@ -1011,7 +1011,7 @@ async function collectPass(
         ...(Object.hasOwn(batch.rawReplies, probe.id) ? { rawReplyRef: probe.id } : {}),
         criterionBranch,
       })
-      const result = finalizeSgrResult(recorded, { kind: "lib" }, [])
+      const result = finalizeVisualResult(recorded, { kind: "lib" }, [])
       const index = batch.results.findIndex((entry) => entry.featureId === probe.id)
       if (index < 0) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)
       batch.results[index] = result

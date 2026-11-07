@@ -807,7 +807,7 @@ test("modes.application-keypad is not tested without an OS XTEST adapter", async
   expect(result.observation).toBeUndefined()
 })
 
-test("modes.application-keypad aborts when plain a does not reach the app, does not enable DECKPAM, and does not inject KP_5", async () => {
+test("modes.application-keypad aborts when plain a does not reach the app, does not enable DECKPAM, and does not inject KP_Add", async () => {
   const writes: string[] = []
   const { ctx, keys } = inputAndRead({ keys: {} }, writes)
   await expect(modeProbe("modes.application-keypad").term!(ctx)).rejects.toThrow(/delivery control|plain a/i)
@@ -816,33 +816,112 @@ test("modes.application-keypad aborts when plain a does not reach the app, does 
   expect(writes.join("")).not.toContain("\x1b>")
 })
 
-test("modes.application-keypad records supported interaction for KP_5 as SS3 u", async () => {
+/**
+ * A keypad model: KP_Add answers by the keypad mode the arm last set, so a second KP_Add sent before DECKPNM reads the
+ * application answer twice. `null` is a silent key.
+ */
+function keypadTerminal(application: string | null, numeric: string | null) {
+  const keys: string[] = []
   const writes: string[] = []
-  const { ctx, keys } = inputAndRead({ keys: { a: "a", KP_5: "\x1bOu" } }, writes)
+  let keypad: "application" | "numeric" = "numeric"
+  const pending: string[] = []
+  const ctx = term({
+    write(text) {
+      writes.push(text)
+      if (text === "\x1b=") keypad = "application"
+      if (text === "\x1b>") keypad = "numeric"
+    },
+    input: {
+      async injectKey(key) {
+        keys.push(key)
+        const reply = key === "a" ? "a" : key === "KP_Add" ? (keypad === "application" ? application : numeric) : null
+        if (reply !== null) pending.push(reply)
+      },
+      async injectClick() {},
+    },
+    readInput: async (pattern, _timeoutMs, inject) => {
+      if (!inject) throw new Error("readInput requires the inject callback so stdin is already listening")
+      await inject()
+      return pending.shift()?.match(pattern) ?? null
+    },
+  })
+  return { ctx, keys, writes }
+}
+
+// #32582 (@cto d590724a): KP_5 is the NumLock level of its key, and xterm turns keypad mode off for a key arriving under
+// NumLock (input.c:1130-1137), so the stored "5" on all seven Apps said nothing about DECKPAM. KP_Add has no NumLock
+// level; xterm's table gives it SS3 k under DECKPAM (kypd_apl, index 43).
+test("modes.application-keypad reads KP_Add as SS3 k under DECKPAM, then + under DECKPNM: Supported", async () => {
+  const { ctx, keys, writes } = keypadTerminal("\x1bOk", "+")
   const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeCallbackResult
-  expect(keys).toEqual(["a", "KP_5"])
-  expect(writes.join("")).toContain("\x1b=")
-  expect(writes.join("")).toContain("\x1b>")
+  expect(keys).toEqual(["a", "KP_Add", "KP_Add"])
+  expect(writes).toEqual(["\x1b=", "\x1b>"])
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "application-keypad:KP_5" })
-  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ mode: "application-keypad", control: "a", report: "\x1bOu" })
-  expect(result.assertions?.[0]?.expected).toMatch(/SS3 u/)
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "application-keypad:KP_Add" })
+  expect(JSON.parse(result.assertions?.[0]?.observed ?? "null")).toEqual({
+    mode: "application-keypad",
+    control: "a",
+    application: "\x1bOk",
+    numeric: "+",
+  })
+  expect(result.assertions?.[0]?.expected).toMatch(/SS3 k/)
+})
+
+test("modes.application-keypad records unsupported interaction when KP_Add reads + under both modes", async () => {
+  const { ctx, keys, writes } = keypadTerminal("+", "+")
+  const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeCallbackResult
+  expect(keys).toEqual(["a", "KP_Add", "KP_Add"])
+  expect(writes).toEqual(["\x1b=", "\x1b>"])
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "application-keypad:KP_Add" })
+  expect(JSON.parse(result.assertions?.[0]?.observed ?? "null")).toEqual({
+    mode: "application-keypad",
+    control: "a",
+    application: "+",
+    numeric: "+",
+  })
+})
+
+// Anything other than SS3 k then +, or + in both, is PROBE INVALID by name, DECKPNM still written.
+test.each([
+  ["SS3 k under both modes", "\x1bOk", "\x1bOk"],
+  ["+ under DECKPAM, SS3 k under DECKPNM", "+", "\x1bOk"],
+  ["silent under DECKPAM", null, "+"],
+  ["silent under DECKPNM", "\x1bOk", null],
+  ["silent under both", null, null],
+] as const)("modes.application-keypad reads PROBE INVALID by name: %s", async (_label, application, numeric) => {
+  const { ctx, keys, writes } = keypadTerminal(application, numeric)
+  const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeCallbackResult
+  expect(keys).toEqual(["a", "KP_Add", "KP_Add"])
+  expect(writes).toEqual(["\x1b=", "\x1b>"])
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "probe-invalid", reason: expect.stringMatching(/KP_Add.*DECKPAM.*DECKPNM/) },
+  ])
+  expect(JSON.parse(result.response ?? "null")).toEqual({
+    mode: "application-keypad",
+    control: "a",
+    application,
+    numeric,
+  })
 })
 
 // The real reader sees a byte stream, not one framed report per stdin chunk.
 test.each([
-  ["coalesced suffix", ["\x1bOu\x1b[12~"]],
-  ["coalesced prefix", ["\x1b[15~\x1bOu"]],
-  ["fragmented", ["\x1bO", "u\x1b[12~"]],
-  ["separate chunks", ["\x1bOu", "\x1b[12~"]],
-  ["coalesced OSC prefix", ["\x1b]lterm5\x1b\\\x1bOu"]],
-  ["separate OSC prefix", ["\x1b]lterm5\x1b\\", "\x1bOu"]],
-] as const)("modes.application-keypad reads SS3 u from %s through actual stdin", async (_label, chunks) => {
+  ["coalesced suffix", ["\x1bOk\x1b[12~"]],
+  ["coalesced prefix", ["\x1b[15~\x1bOk"]],
+  ["fragmented", ["\x1bO", "k\x1b[12~"]],
+  ["separate chunks", ["\x1bOk", "\x1b[12~"]],
+  ["coalesced OSC prefix", ["\x1b]lterm+\x1b\\\x1bOk"]],
+  ["separate OSC prefix", ["\x1b]lterm+\x1b\\", "\x1bOk"]],
+] as const)("modes.application-keypad reads SS3 k from %s through actual stdin", async (_label, chunks) => {
+  const replies: (readonly string[])[] = [chunks, ["+"]]
   const ctx = term({
     input: {
       async injectKey(key) {
-        for (const bytes of key === "a" ? ["a"] : chunks) process.stdin.emit("data", Buffer.from(bytes))
+        for (const bytes of key === "a" ? ["a"] : (replies.shift() ?? [])) {
+          process.stdin.emit("data", Buffer.from(bytes))
+        }
       },
       async injectClick() {},
     },
@@ -850,39 +929,21 @@ test.each([
   })
   const result = await modeProbe("modes.application-keypad").term!(ctx)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
-  expect(JSON.parse(result.response ?? "null")).toMatchObject({ report: "\x1bOu" })
+  expect(JSON.parse(result.response ?? "null")).toMatchObject({ application: "\x1bOk", numeric: "+" })
 })
 
-// The real input reader returns only regex matches: a digit inside another report is not KP_5.
-test.each(["15", "\x1b[15~", "\x1b[<0;15;1M", "\x1b]lterm5\x1b\\", "\x1b]5;0;rgb:ffff/ffff/ffff\x07"])(
-  "modes.application-keypad rejects unrelated input containing 5: %s",
+// The real input reader returns only regex matches: a + inside another report is not the numeric keypad's +.
+test.each(["1+", "\x1b[43;1u+", "\x1b]lterm+\x1b\\"])(
+  "modes.application-keypad does not read a + inside another report as KP_Add: %s",
   async (report) => {
-    const { ctx } = inputAndRead({ keys: { a: "a", KP_5: report } })
-    await expect(modeProbe("modes.application-keypad").term!(ctx)).rejects.toThrow(/KP_5/)
+    const { ctx } = keypadTerminal("\x1bOk", report)
+    const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeCallbackResult
+    expect(result.tests).toEqual([
+      { id: "criterion", status: "probe-invalid", reason: expect.stringMatching(/KP_Add/) },
+    ])
+    expect(JSON.parse(result.response ?? "null")).toMatchObject({ application: "\x1bOk", numeric: null })
   },
 )
-
-test("modes.application-keypad records unsupported interaction when KP_5 still reports 5", async () => {
-  const writes: string[] = []
-  const { ctx, keys } = inputAndRead({ keys: { a: "a", KP_5: "5" } }, writes)
-  const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeCallbackResult
-  expect(keys).toEqual(["a", "KP_5"])
-  expect(writes.join("")).toContain("\x1b=")
-  expect(writes.join("")).toContain("\x1b>")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "application-keypad:KP_5" })
-  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ mode: "application-keypad", control: "a", report: "5" })
-})
-
-test("modes.application-keypad throws when KP_5 is silent after delivery control, and still resets DECKPNM", async () => {
-  const writes: string[] = []
-  const { ctx, keys } = inputAndRead({ keys: { a: "a" } }, writes)
-  await expect(modeProbe("modes.application-keypad").term!(ctx)).rejects.toThrow(/KP_5|keypad|silent/i)
-  expect(keys).toEqual(["a", "KP_5"])
-  expect(writes.join("")).toContain("\x1b=")
-  expect(writes.join("")).toContain("\x1b>")
-})
 
 test("modes.alt-scroll-1007 is not tested without an OS XTEST adapter", async () => {
   const definition = modeProbe("modes.alt-scroll-1007")
@@ -1337,7 +1398,16 @@ test("input.x10-mouse records supported interaction when mode 9 reports CSI M pl
   expect(observed).toMatchObject({ mode: "9", control, report })
 })
 
-test("input.x10-mouse records unsupported interaction when mode 9 still reports SGR with <", async () => {
+// #32582 (@cto d590724a): the control runs under 1000+1006 and leaves them, so mode 9 is the only mouse mode set
+// for the target. The stored xterm row clicked with 1000 and 1006 still on and read its SGR answer as Unsupported.
+test("input.x10-mouse resets 1000 and 1006 before it sets mode 9", async () => {
+  const writes: string[] = []
+  const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "\x1b[M\x20\x2a\x25"] }, writes)
+  await probe("input.x10-mouse").term!(ctx)
+  expect(writes).toEqual(["\x1b[?1000h\x1b[?1006h", "\x1b[?1000l\x1b[?1006l", "\x1b[?9h", "\x1b[?9l"])
+})
+
+test("input.x10-mouse reads PROBE INVALID by name when mode 9 alone still reports SGR", async () => {
   const writes: string[] = []
   const sgr = "\x1b[<0;10;5M"
   const { ctx, clicks } = inputAndRead({ clickReports: [sgr, sgr] }, writes)
@@ -1345,10 +1415,11 @@ test("input.x10-mouse records unsupported interaction when mode 9 still reports 
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?9h")
   expect(writes.join("")).toContain("\x1b[?9l")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "x10-mouse:1" })
-  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ mode: "9", control: sgr, report: sgr })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "probe-invalid", reason: expect.stringMatching(/SGR report.*1000 and 1006 reset/) },
+  ])
+  expect(JSON.parse(result.response ?? "null")).toEqual({ mode: "9", control: sgr, report: sgr })
 })
 
 // #32569 (@cto third-table ruling 2026-11-06): a passing delivery control then a silent target is Unsupported.
@@ -1462,10 +1533,28 @@ test("input.button-event-mouse records supported interaction when 1002 reports S
   expect(observed).toMatchObject({ mode: "1002", control, report })
 })
 
-test("input.button-event-mouse records unsupported interaction when 1002 still reports press-only SGR", async () => {
+// #32582 (@cto d590724a): a drag always opens with its press, under 1000 as under 1002, so the arm reads past it to
+// the first motion or release. xterm's and Kitty's stored rows retained only the press and read a false Unsupported.
+test("input.button-event-mouse reads the motion after the press: press, motion, release is Supported", async () => {
+  const control = "\x1b[<0;10;5M"
+  const drag = "\x1b[<0;31;12M\x1b[<32;32;12M\x1b[<0;32;12m"
+  const { ctx } = inputAndRead({ clickReports: [control], dragReports: [drag] })
+  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeCallbackResult
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+  expect(JSON.parse(result.assertions?.[0]?.observed ?? "null")).toEqual({
+    mode: "1002",
+    control,
+    report: "\x1b[<32;32;12M",
+  })
+})
+
+test("input.button-event-mouse records unsupported interaction when the release comes before any motion", async () => {
   const writes: string[] = []
-  const sgr = "\x1b[<0;10;5M"
-  const { ctx, clicks, drags } = inputAndRead({ clickReports: [sgr], dragReports: [sgr] }, writes)
+  const control = "\x1b[<0;10;5M"
+  const { ctx, clicks, drags } = inputAndRead(
+    { clickReports: [control], dragReports: ["\x1b[<0;31;12M\x1b[<0;32;12m"] },
+    writes,
+  )
   const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1])
   expect(drags).toEqual([1])
@@ -1474,7 +1563,12 @@ test("input.button-event-mouse records unsupported interaction when 1002 still r
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "button-event-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ mode: "1002", control: sgr, report: sgr })
+  expect(observed).toEqual({ mode: "1002", control, report: "\x1b[<0;32;12m" })
+})
+
+test("input.button-event-mouse throws when the drag reports only its press", async () => {
+  const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"], dragReports: ["\x1b[<0;31;12M"] })
+  await expect(probe("input.button-event-mouse").term!(ctx)).rejects.toThrow(/motion or release/)
 })
 
 test("input.button-event-mouse throws when the 1002 drag is silent after delivery control, and still resets 1002", async () => {

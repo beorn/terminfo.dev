@@ -20,6 +20,7 @@ import {
   type ObservationFrame,
   type TextQualification,
   type TermProbeSource,
+  type AppSemanticReading,
 } from "@terminfo/probe-defs"
 import { replyFailure, notTestedResult } from "../../../probe-defs/src/helpers.ts"
 import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
@@ -151,14 +152,23 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 16, feature: "extensions.osc633-e" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 16, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 3, feature: "extensions.osc133-b" },
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc633-e" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc133-a" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc133-b" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc3008-context" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 4, feature: "extensions.osc133-d" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 7, feature: "extensions.osc633-e" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 7, feature: "extensions.osc666-termprop" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 16, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 16, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc633-e" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc666-termprop" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc176-app-id" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc3008-context" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
@@ -227,7 +237,7 @@ it.each(["address present", "socket present", "socket unreadable", "both absent"
       expect(JSON.stringify(record)).not.toContain("secret-address-never-retained")
       const selected = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" }, record)
       const absent = state === "both absent" || state === "not a directory"
-      expect(Object.keys(selected)).toHaveLength(absent ? 7 : 3)
+      expect(Object.keys(selected)).toHaveLength(absent ? 9 : 5)
       if (absent) expect(selected["extensions.osc133-d"]).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
       else expect(selected["extensions.osc133-d"]).toBeUndefined()
       if (state === "socket unreadable") expect(record.socket.code).toBe("EACCES")
@@ -393,6 +403,84 @@ function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>, ownManifest = m
   )
   return draft
 }
+
+// @failure Write-only owned App state produces a real assertion with no rawReplyRef and the daemon reader rejects the run.
+// Grader unit cases and query-backed native cases never cross this write-only recorder/parser boundary.
+// @level l1
+// @consumer Registered App semantic callback -> native recorder -> strict daemon capture reader.
+it.each([
+  { id: "extensions.osc133-a", positive: true, report: false },
+  { id: "extensions.osc-633-vscode", positive: false, report: false },
+  { id: "extensions.osc633-a", positive: false, report: true },
+])("binds write-only App state assertions through the strict reader: $id", async ({ id, positive, report }) => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const cycle = id === "extensions.osc-633-vscode"
+  const empty = cycle ? JSON.stringify(["NONE", "NONE", "NONE"]) : "NONE"
+  const handled = cycle
+    ? JSON.stringify(["START_PROMPT@0", "START_OUTPUT@0", "END_OUTPUT@0:0;status=0"])
+    : "START_OUTPUT@0"
+  const expected = cycle
+    ? JSON.stringify(["START_PROMPT@0", "START_OUTPUT@0", "END_OUTPUT@0:17;status=17"])
+    : "START_PROMPT@0"
+  const reading: AppSemanticReading = report
+    ? {
+        status: "measured",
+        reader: "report",
+        runId: "a".repeat(32),
+        unknown: { code: "7654", reports: ["7654"] },
+        handled: { applied: true, reports: [] },
+        target: { code: "633", reports: ["633"] },
+        detail: {},
+      }
+    : {
+        status: "measured",
+        reader: "state",
+        runId: "a".repeat(32),
+        unknown: { before: "NONE", after: "NONE" },
+        handled: { before: empty, after: handled, expected: handled },
+        target: { before: empty, after: positive ? expected : empty, expected },
+        detail: {},
+      }
+  const read = vi.fn(async (featureId: string, write: (text: string) => void) => {
+    expect(featureId).toBe(id)
+    if (report) {
+      write("\x1b]7654;fixture\x07")
+      write("\x1b]2;fixture\x07")
+      write("\x1b]633;A\x07")
+    } else {
+      write("\x1b]133;Z\x07")
+      write(cycle ? "\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;0\x07" : "\x1b]133;C\x07")
+      write(cycle ? "\x1b]633;A\x07\x1b]633;C\x07\x1b]633;D;17\x07" : "\x1b]133;A\x07")
+    }
+    return reading
+  })
+  const batch = await runProbeBatch({
+    ids: [id],
+    ownedTerminal: { ...geometryOwner(noGeometry), readAppSemanticState: read },
+  })
+  expect(read).toHaveBeenCalledOnce()
+  expect(writes).toHaveLength(3)
+  const raw = batch.rawReplies[id]
+  if (raw === undefined) throw new Error(`Missing recorded trace for ${id}`)
+  expect(JSON.parse(raw)).toHaveProperty("queries", [])
+  const expectedStatus = positive ? "supported" : "unsupported"
+  expect(batch.results.find((row) => row.featureId === id)?.status).toBe(expectedStatus)
+  const decoded = decodeCollectorDraft(
+    "owned-app-state.json",
+    JSON.stringify(asRun(batch)),
+    manifest,
+    sourceRevision,
+  ).run
+  expect(decoded.results.find((row) => row.featureId === id)?.status).toBe(expectedStatus)
+  expect(decoded.assertions).toContainEqual(
+    expect.objectContaining({ featureId: id, kind: positive ? "positive" : "negative", rawReplyRef: id }),
+  )
+})
 
 // Callback-returned responses survive current transport without becoming measured evidence.
 it.each([
@@ -718,6 +806,62 @@ afterEach(() => {
 function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
+
+it.each(
+  ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
+    ["controls", "query"].map((failure) => ({ id, failure })),
+  ),
+)("names Screen's missing own-title reader after $failure fails: $id", async ({ id, failure }) => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: [id],
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    ownedTerminal: {
+      ...geometryOwner(noGeometry),
+      readTitle: async () => {
+        if (failure === "query") throw new Error("screen -Q title is unavailable")
+        return "unchanged Screen title"
+      },
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === id)!
+  expect(row.status).toBe("probe-todo")
+  expect(row.reason).toMatch(/Screen.*screen -Q title/)
+  expect(batch.assertions).toEqual([])
+  const reads = (JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }).titleReads
+  if (failure === "query") expect(reads).toEqual([{ error: "screen -Q title is unavailable" }])
+  else expect(reads.length).toBeGreaterThan(1)
+})
+
+// #32573: direct callback cases cannot detect a collector that drops or exposes a foreign title reader.
+it.each([false, true])("binds the title reader and its raw readings only to the owned run: %s", async (owned) => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(owned)
+  let title = "incoming App title"
+  const readTitle = vi.fn(async () => title)
+  process.stdout.write = ((bytes: string) => {
+    const match = /^\x1b\]2;([^\x07]*)\x07$/.exec(bytes)
+    if (match) title = match[1]!
+    return true
+  }) as typeof process.stdout.write
+  const id = "extensions.osc2-title"
+  const batch = await runProbeBatch({
+    ids: [id],
+    ownedTerminal: { ...geometryOwner(noGeometry), readTitle },
+  })
+  expect(batch.results.find((row) => row.featureId === id)?.status).toBe(owned ? "supported" : "probe-todo")
+  expect(title).toBe("incoming App title")
+  const trace = JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }
+  if (owned) {
+    expect(readTitle).toHaveBeenCalledTimes(7)
+    expect(trace.titleReads).toHaveLength(7)
+    expect(trace.titleReads[0]).toEqual({ title: "incoming App title" })
+    expect(trace.titleReads.at(-1)).toEqual({ title: "incoming App title" })
+  } else {
+    expect(readTitle).not.toHaveBeenCalled()
+    expect(trace.titleReads).toBeUndefined()
+  }
+})
 
 // A DECRQSS style result is not a visual observation (#30590). The unrelated screenshot
 // assertion exercises the same-run feature binding, not just global screenshot presence.
@@ -1722,55 +1866,65 @@ it("reports undeclared geometry reads as collector errors without invented evide
 
 // Plain-number callback fixtures bypass the collector's guarded rows/cols getters. These native
 // failures must consume measured geometry, while removing their declaration must still refuse it.
-it.each(["extensions.kitty-graphics.animation", "extensions.kitty-graphics.unicode-placeholders", "input.pixel-mouse"])(
-  "delivers owned geometry to %s and preserves its declaration guard",
-  async (id) => {
-    verifiedBatchFixture()
-    const definition = ALL_PROBES.find((item) => item.id === id)!
-    const original = definition.termNeedsGeometry
-    process.stdout.write = (() => true) as typeof process.stdout.write
-    const collect = () =>
-      runProbeBatch({
-        ids: [id],
-        ownedTerminal: geometryOwner(measured(1, 1)),
-        capture: async () => {
-          throw new Error("Undersized geometry must decline before capture")
+it.each([
+  ["extensions.kitty-graphics.animation", "probe-todo"],
+  ["extensions.kitty-graphics.unicode-placeholders", "probe-todo"],
+  ["input.pixel-mouse", "probe-todo"],
+  ["modes.auto-wrap", "probe-invalid"],
+] as const)("delivers owned geometry to %s and preserves its declaration guard", async (id, undersizedStatus) => {
+  verifiedBatchFixture()
+  if (id === "modes.auto-wrap") {
+    vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
+  }
+  const definition = ALL_PROBES.find((item) => item.id === id)!
+  const original = definition.termNeedsGeometry
+  process.stdout.write = ((sequence: string) => {
+    // Qualify image allocation so the Kitty rows reach the geometry contract under test.
+    const imageNumber = /\x1b_Ga=t,[^;]*I=(\d+);/.exec(sequence)?.[1]
+    if (imageNumber) process.stdin.emit("data", Buffer.from(`\x1b_Gi=41,I=${imageNumber};OK\x1b\\`))
+    return true
+  }) as typeof process.stdout.write
+  const collect = () =>
+    runProbeBatch({
+      ids: [id],
+      ownedTerminal: geometryOwner(measured(1, 1)),
+      capture: async () => {
+        throw new Error("Undersized geometry must decline before capture")
+      },
+      input: {
+        injectKey: async () => {},
+        injectClick: async () => {
+          // A genuine delivery-control report outside the measured 1x1 cell reaches the size read.
+          process.stdin.emit("data", Buffer.from("\x1b[<0;2;2M"))
         },
-        input: {
-          injectKey: async () => {},
-          injectClick: async () => {
-            // A genuine delivery-control report outside the measured 1x1 cell reaches the size read.
-            process.stdin.emit("data", Buffer.from("\x1b[<0;2;2M"))
-          },
+      },
+    })
+  try {
+    const batch = await collect()
+    expect(batch.ungradedDiagnostics[id], id).toBeUndefined()
+    expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
+      checks: [
+        {
+          featureId: id,
+          pre: { status: "measured", rows: 1, cols: 1 },
+          post: { status: "measured", rows: 1, cols: 1 },
         },
-      })
-    try {
-      const batch = await collect()
-      expect(batch.ungradedDiagnostics[id], id).toBeUndefined()
-      expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
-        checks: [
-          {
-            featureId: id,
-            pre: { status: "measured", rows: 1, cols: 1 },
-            post: { status: "measured", rows: 1, cols: 1 },
-          },
-        ],
-      })
-      expect(batch.observations, id).toEqual([])
-      expect(batch.results.find((result) => result.featureId === id)?.status, id).toBe("probe-todo")
-      definition.termNeedsGeometry = undefined
-      const undeclared = await collect()
-      expect(undeclared.ungradedDiagnostics[id], id).toMatchObject({
-        kind: "collector-error",
-        name: "UndeclaredTerminalGeometry",
-        message: expect.stringContaining(id),
-      })
-      expect(undeclared.observations, id).toEqual([])
-    } finally {
-      definition.termNeedsGeometry = original
-    }
-  },
-)
+      ],
+    })
+    expect(batch.observations, id).toEqual([])
+    expect(batch.results.find((result) => result.featureId === id)?.status, id).toBe(undersizedStatus)
+    definition.termNeedsGeometry = undefined
+    const undeclared = await collect()
+    expect(undeclared.ungradedDiagnostics[id], id).toMatchObject({
+      kind: "collector-error",
+      name: "UndeclaredTerminalGeometry",
+      message: expect.stringContaining(id),
+    })
+    expect(undeclared.observations, id).toEqual([])
+  } finally {
+    definition.termNeedsGeometry = original
+  }
+})
 
 it.each([
   "modes.left-right-margin",
@@ -2324,6 +2478,9 @@ it.each(["start", "read", "write"])(
               permissions: "fixture",
               summary: "{}",
               assertOwned,
+              readTitle: async () => {
+                throw new Error("This clipboard fixture has no title reader")
+              },
               dispose: async () => {},
               async withClipboardFixture(work, _trace, verify) {
                 try {
@@ -2430,6 +2587,9 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     permissions: "clipboard: read=ask,write=allow; OSC52=not-run",
     summary: "{}",
     assertOwned: async () => {},
+    readTitle: async () => {
+      throw new Error("This clipboard fixture has no title reader")
+    },
     dispose: async () => {},
     withClipboardFixture,
     ...(scenario.attached && {
@@ -2522,6 +2682,9 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
         permissions: "fixture",
         summary: "{}",
         assertOwned: async () => {},
+        readTitle: async () => {
+          throw new Error("This clipboard fixture has no title reader")
+        },
         dispose: async () => {},
         withClipboardFixture: createClipboardTransaction(baseline, {
           async readText(trace, kind, verify) {
@@ -2579,6 +2742,9 @@ it("records failed clipboard restoration as collector error rather than retainin
         permissions: "fixture",
         summary: "{}",
         assertOwned: async () => {},
+        readTitle: async () => {
+          throw new Error("This clipboard fixture has no title reader")
+        },
         dispose: async () => {},
         async withClipboardFixture(_work, trace) {
           trace({ kind: "clipboard-restore", at: new Date().toISOString(), sha256: "b".repeat(64), length: 8 })

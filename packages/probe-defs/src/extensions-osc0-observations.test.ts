@@ -110,6 +110,22 @@ const exactReplies = {
   [TITLE_QUERY]: `\x1b]l${PAYLOAD}\x07`,
 }
 
+// The App's independent window-title effect can disprove the conjunction; it cannot prove its icon clause.
+test.each([false, true])("App OSC 0 reads its title clause and restores it, effect=%s", async (effect) => {
+  let title = "incoming App title"
+  const source = Object.assign(terminal({}), {
+    readTitle: async () => title,
+    write: (bytes: string) => {
+      const match = /^\x1b\](0|2);([^\x07]*)\x07$/.exec(bytes)
+      if (match && (match[1] === "2" || effect)) title = match[2]!
+    },
+  })
+  const result = await termCallback()(source)
+  if (effect) expect(result.observation?.outcome).not.toBe("supported")
+  else expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "unsupported" })
+  expect(title).toBe("incoming App title")
+})
+
 test("OSC 0 declares qualified library state evidence and application query evidence", () => {
   const definition = find()
   expect(definition.termAssertionType).toBe("query_reply")

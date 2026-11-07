@@ -123,6 +123,16 @@ export interface RegionReadback {
   /** Independently authored full setup; the observed seed must match before any reset verdict. */
   setupReference?: string
   /**
+   * Two row groups of `region`, read on the seed, target and expected frames right after each
+   * frame's region read: the rows `above` the cursor and the rows `atOrBelow` it. Consulted only when
+   * the region reads a third frame: the target's rows above equal the seed's, the expected frame's
+   * rows above differ from the seed's, and the target's rows at and below equal the expected
+   * frame's — all three by exact digest over matching rectangles — is the measured negative,
+   * `unsupportedNote`. Anything else keeps the third-frame verdict. erase.screen.above alone
+   * declares it (#32581, @cto 52b0229c and a290eaa2); a second row needing it goes back to @cto.
+   */
+  cursorRowGroups?: { above: CellRegion; atOrBelow: CellRegion; unsupportedNote: string }
+  /**
    * Set when the expected frame cannot be produced without the sequence under test: a row whose
    * reset clears TWO OR MORE of its setup attributes (reset.sgr, sgr.reset, sgr.selective-reset.bold)
    * can leave the reset under test and the reference both missing the same part of that cleared set,
@@ -475,6 +485,88 @@ export function cropPositionRefusal(input: {
       note: `${id}: the compared frames were cropped from different screen positions, so their region digests were not taken over the same cells: ${named}`,
     },
   }
+}
+
+/** One row-group read of one compared frame: its region digest and the rectangle it was cropped at. */
+interface RowGroupRead {
+  digest: string
+  rectangle: CaptureRectangle | undefined
+}
+
+/**
+ * One frame's declared row groups, read right after its region read. Nothing is written between the
+ * reads, so they see the same screen; each keeps its own frame and digest, and a repaint between them
+ * fails an equality in rowGroupsNegative instead of producing a negative.
+ */
+async function readRowGroups(
+  read: RegionRead,
+  step: { role: ObservationFrame["role"]; label: string },
+  groups: NonNullable<RegionReadback["cursorRowGroups"]>,
+  pixelGeometry: RegionReadback["pixelGeometry"],
+  frames: ObservationFrame[],
+): Promise<RowGroupRead[]> {
+  const reads: RowGroupRead[] = []
+  for (const [name, region] of [
+    ["rows above the cursor", groups.above],
+    ["rows at and below the cursor", groups.atOrBelow],
+  ] as const) {
+    const group = await read({ role: step.role, label: `${step.label} — ${name}`, region, pixelGeometry })
+    reads.push({ digest: group.regionDigest, rectangle: group.regionRectangle })
+    frames.push(group.frame)
+  }
+  return reads
+}
+
+/** The declared row groups' Unsupported, citing every frame the region verdict would have cited. */
+function rowGroupsUnsupported(
+  id: string,
+  edit: string,
+  groups: NonNullable<RegionReadback["cursorRowGroups"]>,
+  reads: RowGroupRead[][],
+  response: string,
+  evidence: { assertionType: "buffer_state" | "screenshot"; screenshotRef?: string; frames: ObservationFrame[] },
+): ProbeCallbackResult {
+  return {
+    pass: false,
+    response,
+    observation: { outcome: "unsupported", ...evidence, note: groups.unsupportedNote },
+    assertions: [
+      {
+        assertionType: evidence.assertionType,
+        kind: "negative",
+        expected: `${id}: the rows above the cursor ${JSON.stringify(groups.above)} change from the seed to the same-run expected frame, and the rows at and below it ${JSON.stringify(groups.atOrBelow)} match that frame after ${JSON.stringify(edit)}`,
+        observed: JSON.stringify({
+          above: reads.map(([above]) => above?.digest),
+          atOrBelow: reads.map(([, atOrBelow]) => atOrBelow?.digest),
+        }),
+      },
+    ],
+  }
+}
+
+/**
+ * The declared row groups' measured negative (#32581, @cto a290eaa2), over the seed, target and
+ * expected frames' [above, at-or-below] reads. All three must hold by exact digest: the target's rows
+ * above the cursor equal the seed's; the expected frame's rows above differ from the seed's, without
+ * which an unchanged row shows nothing; and the target's rows at and below equal the expected
+ * frame's. A group cropped at different rectangles was never read over the same cells, so it decides
+ * nothing, and neither does a missing read.
+ */
+function rowGroupsNegative(reads: RowGroupRead[][]): boolean {
+  const frames = reads.map(([above, atOrBelow]) => (above && atOrBelow ? { above, atOrBelow } : undefined))
+  const [seed, target, expected] = frames
+  if (frames.length !== 3 || !seed || !target || !expected) return false
+  const sameCrop = (left: CaptureRectangle | undefined, right: CaptureRectangle | undefined) =>
+    left === undefined ? right === undefined : right !== undefined && sameRectangle(left, right)
+  const sameCells = (group: "above" | "atOrBelow") =>
+    [target, expected].every((frame) => sameCrop(frame[group].rectangle, seed[group].rectangle))
+  return (
+    sameCells("above") &&
+    sameCells("atOrBelow") &&
+    target.above.digest === seed.above.digest &&
+    expected.above.digest !== seed.above.digest &&
+    target.atOrBelow.digest === expected.atOrBelow.digest
+  )
 }
 
 /**
@@ -1124,6 +1216,9 @@ export async function captureRegionReadbackDecision(
   // Each digest's own crop rectangle, pushed in lockstep with it: two digests mean the same cells
   // only when their rectangles match (29580).
   const cropRectangles: Array<CaptureRectangle | undefined> = []
+  // The declared row groups' [above, at-or-below] reads of the seed, target and expected frames.
+  const rowGroups = spec.cursorRowGroups
+  const groupReads: RowGroupRead[][] = []
   try {
     beginCaptureLifecycle(ctx)
     // Stability belongs to this run's cleared canvas, not the preceding probe's glyphs.
@@ -1219,6 +1314,9 @@ export async function captureRegionReadbackDecision(
       cropRectangles.push(measured.regionRectangle)
       frames.push(measured.frame)
       if (step.role === "target") targetScreenshotRef = measured.frame.ref
+      if (rowGroups && index < 3) {
+        groupReads.push(await readRowGroups(read, step, rowGroups, spec.pixelGeometry, frames))
+      }
     }
     const seed = digests[0]
     const after = digests[1]
@@ -1324,6 +1422,12 @@ export async function captureRegionReadbackDecision(
     // only its distinct ignored control can establish the measured negative.
     const unsupported =
       (discriminator?.expected !== "no-change" && after === seed) || (ignored !== undefined && after === ignored)
+    if (!supported && !unsupported && rowGroups && rowGroupsNegative(groupReads)) {
+      return rowGroupsUnsupported(id, spec.edit, rowGroups, groupReads, observed, {
+        assertionType,
+        ...cite(targetScreenshotRef, frames),
+      })
+    }
     if (!supported && !unsupported) {
       // The three compared planes are pairwise distinct: the seed and the expected frame already
       // differ (the earlier `seed === expected` branch would have fired otherwise), and `after`

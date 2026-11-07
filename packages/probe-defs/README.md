@@ -35,7 +35,7 @@ does not establish Untestable. Without explicit tests, a diagnostic or a conclus
 missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
 to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclaredUntestable` is the only form the finalizer and run reader admit. Its reason names the cause: **passed to the app**, **no way**, or **no setup** (and the more specific **no way to tell** or **app** where applicable). The operator's per-kind declarations remain, including OSC720 on libvterm and WezTerm, whose libraries keep history without their own scrolling window. Any other untestable test folds to PROBE TODO.
 
-The collector also selects the specifically reviewed OSC133/633 and OSC666 App/mux declarations from
+The collector also selects the specifically reviewed OSC133/633, OSC176/440/3008 and OSC666 App/mux declarations from
 `app-semantic-state.ts`, matching kind, id, exact version and OS. The native batch uses that
 feature-to-reason map only after an unresolved callback; observations, command reports and invalid
 results keep precedence. Unknown versions select nothing. Ghostty's command-end and full-cycle
@@ -44,6 +44,11 @@ socket, retained as `collector.sessionBus`; unreadable socket paths remain unres
 The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 411 on Linux,
 with their exact parser citations and missing public property readback. They declare the
 unresolved observation unavailable; they supply no command report or measured negative.
+The same exact versions additionally declare OSC176/440 observation gaps, and Screen/xterm
+declare OSC3008 gaps. Kitty 0.49.2 on Linux additionally declares OSC3008's context gap:
+its recognized command reaches an empty callback, with no stored context or public readback.
+Generic OSC consumption tracing supplies no deciding observation. Ghostty's recognized OSC3008
+parser and named optional debug diagnostic remain outside this declaration group.
 
 For library results, a feature is the library's job unless the app-job table in [extensions.ts](src/extensions.ts) assigns it to the app. A real state reading or typed notification store can establish Supported. A generic handoff of an app-job command is Untestable (passed to the app), even when its payload is intact. Libvterm and vt100-rust qualify their report in this cell's run: a made-up OSC and the target are reported, while a handled title command applies without a report. Xterm.js and vterm.js generic taps require their declared engine identity; a different engine identity remains Open. Missing report controls also remain Open. Library-job negatives keep `unhandledSequenceVerdict`; these are Unsupported when the library reports the target with its same-run controls.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
@@ -52,6 +57,8 @@ For the approved reset/colour-stack no-setup route, a silent setup query with it
 control and no target report returns the existing declared Untestable result with the no-setup cause.
 A missing control or ambiguous target report stays Open; verified seeded-colour effects keep their
 existing result. This route adds no post-collection classification or dependency on another cell.
+The same decision helper serves the App OSC 113/114/117/119 reset fallbacks, with an App-specific
+cause. Other App reset families keep their existing routes; real colour readback still decides.
 App palette-stack captures also declare Untestable (no setup) when all three fixtures paint equal
 expected and ignored-reference cells behind changed paint witnesses: OSC 4 supplies no palette change
 to push or pop. A missing paint witness stays Open; differing references retain the normal stack
@@ -77,6 +84,19 @@ then the allocated image attached to that cell. This decides a silent placement
 as Supported through buffer state; it does not claim rendered pixels. Missing
 or inconsistent controls remain PROBE TODO. Existing placement acknowledgements
 retain their query-reply criterion.
+
+App Kitty placeholder captures qualify their ordinary image placement against an independently
+SGR-painted opaque reference in the same crop. The reference must differ from blank and the
+ordinary placement must match it exactly; leaked protocol text is not an image control.
+Failed qualification remains PROBE INVALID. Before capture, this row qualifies its own image
+transmit and canonical graphics-query windows: only silence after both DA1 controls declares
+Untestable (no setup), retaining both replies. A query reply with a silent transmit stays open.
+The library placeholder arm remains Untestable (no rendered placeholder images).
+The animation arm shares those prerequisite and SGR-reference paths. Its one-frame image must
+match that reference and remain stable. A moving playback pair needs a differing hand-selected
+pair for Supported. An equal delayed retry reads Unsupported only when the initial playback
+image matches the qualified one-frame image; hand selection need not work for that negative.
+Missing or failed controls remain undecided; graphics replies are retained as detail.
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
@@ -876,6 +896,20 @@ new comparison or support conclusion.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
+The optional `TermProbeSource.readTitle` reads this run's owned public title surface.
+The existing Linux ownership adapter supplies the recorded App window's `xdotool getwindowname`,
+or the attached mux's own title query; mux rows never substitute the outer window.
+An empty string is an observed title; configured read errors keep their cause.
+The collector retains each raw reading, including failures. OSC 2 and App XTWINOPS 22/23
+use this same reader, qualify distinct title values and verify incoming-title restoration.
+Failed App controls are PROBE INVALID; an absent reader leaves the terminal untouched.
+Screen's unqualified `screen -Q title` or failed title controls retain a named missing-reader
+cause, without reading the outer window. OSC 0 uses title state only for its title clause;
+title success still needs independent icon evidence for the conjunction.
+The Linux Ghostty OSC 7 arm uses that same reader after empty OSC 2, reads two
+`file://localhost` paths exactly, checks an inert made-up OSC, then clears OSC 7 and
+restores the prior title. Other Apps keep their existing unbound-CWD result.
+
 The app exit/1047/insert-mode rows declare character readback and use that same region oracle.
 Exit and 1047 paint primary then alternate markers; leaving the alternate is compared with a plainly
 painted primary reference. Text reads use the existing character change criterion; pixel reads retain
@@ -922,11 +956,17 @@ That order matters: a failed test wins over a pending one. Timeout or lack of an
 
 For new app and mux results, every member of the existing `sgrProbes`
 registry (including colors and resets) requires a screenshot for that feature in the same run. The shared
-`finalizeSgrResult` applies this requirement in the native batch writer before checkpointing.
+`finalizeVisualResult` applies this requirement in the native batch writer before checkpointing.
 Only the result's own screenshot reference matched to a non-text-cells frame in that probe's captures counts;
 a batch-wide reference or an assertion labelled screenshot does not. A missing frame retains a pending `visual` test with
 reason `visual effect not observed in this run` when a Supported or Unsupported result lacks that evidence.
 Existing pending and failure results retain their causes; a screenshot never establishes support by presence alone.
+Selected same-run pixel branches share one mux-negative rewrite at this finalise site. The small
+branch table names the decisive test and, for non-SGR rows, its feature; query-only cursor results
+remain outside it. The rewrite preserves positive capture tests and screenshot evidence, keeps
+the concrete observation reason with its row, and adds the outer-terminal ambiguity or missing
+identity reason. Mux positives, libraries and unselected branches retain their original results.
+The collector supplies the existing full draft subject when available, not new callback metadata.
 Library SGR results retain their existing cell-state criterion results, including through headless checkpointing
 and library replay. They describe the effect on observed cells; they do not establish a rendered pixel effect.
 Ghostty web 0.4.0's canvas draws double, curly, dotted and dashed underline styles as a single line.

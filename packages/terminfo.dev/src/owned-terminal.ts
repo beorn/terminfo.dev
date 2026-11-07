@@ -239,6 +239,7 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
 }
 
 export interface OwnedTerminal {
+  readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
   readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
   readonly geometryAtGrant: GeometryMeasurement
@@ -1199,6 +1200,7 @@ export async function createOwnedTerminal(options: {
       )
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
+    const readTitle = clipboard?.readTitle.bind(clipboard)
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
     const summary = JSON.stringify({
@@ -1265,6 +1267,12 @@ export async function createOwnedTerminal(options: {
       ...(appPid !== undefined && { appPid }),
       ...(hostedAppId && { hostedAppId }),
       ...(clipboard && { clipboard }),
+      ...(readTitle && {
+        async readTitle() {
+          if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
+          return readTitle()
+        },
+      }),
       ...(muxAttachmentProof && { muxAttachmentProof }),
       ...((binding.platform === "linux" || binding.platform === "darwin") && {
         async readTermFeatures() {

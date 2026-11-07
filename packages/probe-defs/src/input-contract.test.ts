@@ -30,8 +30,8 @@ import {
  * input.csi-u negotiates Kitty keyboard protocol flag 1;
  * input.pixel-mouse grades SGR pixel coords under 1016 after a 1000+1006 cell control;
  * input.urxvt-mouse grades CSI btn;x;yM under 1015 after a 1000+1006 SGR control;
- * input.x10-mouse grades CSI M + 3 bytes under mode 9 after a 1000+1006 SGR control;
- * input.button-event-mouse grades SGR motion (Pb+32) under 1002 after a 1000+1006 SGR control;
+ * input.x10-mouse grades CSI M + 3 bytes under mode 9 alone after a 1000+1006 SGR control it leaves;
+ * input.button-event-mouse grades SGR motion (Pb+32) before the release under 1002 after a 1000+1006 SGR control;
  * remaining catalog mouse event probes stay inconclusive pending their regrade;
  * input.xtest-key, input.xtest-click, and input.xtest-wheel execute OS-level injection with same-run delivery control;
  * input.kitty-click-events marks an OSC 133 prompt and grades the click report with mouse modes off.
@@ -60,7 +60,7 @@ const INPUT_CONTRACT: GroupContract = [
     id: "input.x10-mouse",
     expected: "decided",
     claim:
-      "x10-mouse: CSI ? 9 then click reports CSI M + 3 bytes (btn+32,x+32,y+32) after the 1000+1006 SGR control; SGR after 9 is unsupported",
+      "x10-mouse: after the 1000+1006 SGR control, reset both, then CSI ? 9 and click reports CSI M + 3 bytes (btn+32,x+32,y+32); silence is unsupported; SGR after 9 is PROBE INVALID",
   },
   {
     id: "input.modify-other-keys-3",
@@ -72,7 +72,7 @@ const INPUT_CONTRACT: GroupContract = [
     id: "input.button-event-mouse",
     expected: "decided",
     claim:
-      "button-event-mouse: CSI ? 1002 then drag reports SGR motion (Pb+32) after the 1000+1006 SGR control; press-only SGR after 1002 is unsupported",
+      "button-event-mouse: CSI ? 1002 then drag reports SGR motion (Pb+32) before the release after the 1000+1006 SGR control; a release with no motion is unsupported",
   },
   {
     id: "input.xtest-key",
