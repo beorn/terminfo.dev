@@ -100,8 +100,9 @@ The library placeholder arm remains Untestable (no rendered placeholder images).
 The animation arm shares those prerequisite and SGR-reference paths. Its one-frame image must
 match that reference and remain stable. A moving playback pair needs a differing hand-selected
 pair for Supported. An equal delayed retry reads Unsupported only when the initial playback
-image matches the qualified one-frame image and the terminal refuses this image's tested animation
-command; hand selection need not work for that negative. Equal placeholder pixels likewise need
+image matches the qualified one-frame image and the terminal refuses this image's second-frame
+transfer, root-frame timing or playback-start command. A later stop or hand-selection refusal
+does not qualify; hand selection need not work for that negative. Equal placeholder pixels likewise need
 the tested virtual placement's refusal, with the ordinary-image and layout controls passing.
 Without the exact refusal, either row remains PROBE INVALID and names the observed replies.
 Missing or failed controls remain undecided. Animation frame

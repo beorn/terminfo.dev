@@ -200,7 +200,7 @@ test("an equal playback pair needs live controls, a retry and an animation refus
   expect(decideKittyAnimation(evidence({ playback: ["a", "a"], retry: ["a", "b"] })).outcome).toBe("supported")
   // Static setup can qualify a refusal even when frame selection is also rejected.
   const staticOnly = decideKittyAnimation(
-    evidence({ ...equal, clientFrame: ["a", "a"], refusal: "select frame 2: ERROR: unimplemented action" }),
+    evidence({ ...equal, clientFrame: ["a", "a"], refusal: "second frame: ERROR: unimplemented action" }),
   )
   expect(staticOnly.outcome).toBe("unsupported")
   expect(staticOnly.note).toContain("hand selection did not change")

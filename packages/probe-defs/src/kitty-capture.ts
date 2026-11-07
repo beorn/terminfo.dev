@@ -296,7 +296,7 @@ export interface KittyAnimationEvidence {
   readonly redraw: KittyDigestPair
   /** Milliseconds actually elapsed between the playback pair, measured from the first capture. */
   readonly playbackElapsedMs: number
-  /** Refusal of this image's animation command, excluding base-image transmission and placement. */
+  /** Refusal of this image's second frame, root timing or playback start; later controls do not qualify. */
   readonly refusal?: string
 }
 

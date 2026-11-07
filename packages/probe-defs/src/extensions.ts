@@ -4986,7 +4986,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             return readback.reason === "reply" && message && message !== "OK" ? [{ label, message }] : []
           })
           const animationRefusal = errors
-            .filter(({ label }) => label !== "base image")
+            .filter(({ label }) => label === "second frame" || label === "root frame gap" || label === "start playback")
             .map(({ label, message }) => `${label}: ${message}`)
             .join("; ")
           const captureDecision = decideKittyAnimation({

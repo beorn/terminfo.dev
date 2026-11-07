@@ -243,6 +243,8 @@ test.each([
   ["red", "ok", "probe-invalid"],
   ["red", "base-error", "probe-invalid"],
   ["red", "foreign-error", "probe-invalid"],
+  ["red", "stop-only-error", "probe-invalid"],
+  ["red", "selection-only-error", "probe-invalid"],
 ] as const)("equal animation pixels %s with %s replies record %s", async (playback, reply, status) => {
   const { context, writes } = surface({
     region: ["blank", "red", "red", "red", "cursor", "cursor", playback, playback, playback, playback, playback],
@@ -256,7 +258,10 @@ test.each([
       writes.push(sequence)
       const imageId = /,i=(\d+)/u.exec(sequence)![1]
       const raw =
-        reply === "refused" || (reply === "base-error" && !target)
+        reply === "refused" ||
+        (reply === "base-error" && !target) ||
+        (reply === "stop-only-error" && sequence.includes(",s=1,")) ||
+        (reply === "selection-only-error" && sequence.includes(",c=2,"))
           ? `\x1b_Gi=${imageId};ERROR: unimplemented action\x1b\\`
           : reply === "ok"
             ? `\x1b_Gi=${imageId};OK\x1b\\`
