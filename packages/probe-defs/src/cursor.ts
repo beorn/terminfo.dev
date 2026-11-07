@@ -9,6 +9,7 @@ import {
   cursorProbe,
   HEADLESS_OBSERVABLE_REVIEW,
   cursorStyleReadbackDecision,
+  focusWithPlainKeyReadback,
   decrpmReading,
   parserStateResult,
   probe,
@@ -16,7 +17,14 @@ import {
   queryDecrpm,
   type DecrpmPs,
 } from "./helpers.ts"
-import { captureRegionCallbackResult, cropPositionRefusal, type RegionReadback } from "./region-readback.ts"
+import {
+  captureRegionCallbackResult,
+  captureStabilityPair,
+  collectorRegionRead,
+  cropPositionRefusal,
+  queryPixelGeometry,
+  type RegionReadback,
+} from "./region-readback.ts"
 
 /**
  * CUP inside a DECSTBM region with DECOM on is region-relative, so the marker must land on the
@@ -484,8 +492,6 @@ export const cursorProbes: ProbeDefinition[] = [
       async (ctx) => {
         const decided = await cursorStyleReadbackDecision(ctx, "\x1b[6 q", 6)
         if (decided) return decided
-        // No usable cursor-style report survived the projection: keep the pixel control/target
-        // pair as evidence, though no same-run check compares their shapes.
         if (!ctx.capture) {
           const note =
             "no usable DECRQSS cursor-style reply; the public projection returned null and retained no bytes; no pixel readback for shape"
@@ -494,27 +500,72 @@ export const cursorProbes: ProbeDefinition[] = [
             note,
           }
         }
-        const control = await ctx.capture({ role: "control", label: "Default cursor shape" })
         try {
-          ctx.write("\x1b[5 q") // blinking bar
-          const target = await ctx.capture({ role: "target", label: "Bar cursor shape" })
+          const focusRefusal = await focusWithPlainKeyReadback(ctx)
+          if (focusRefusal) return focusRefusal
+          const measured = ctx.captureGeometry ?? (await queryPixelGeometry(ctx))
+          if ("missing" in measured) {
+            return replyFailure(`Cursor shape cannot locate its pixels: ${measured.missing}`)
+          }
+          ctx.write("\x1b[0m\x1b[2J\x1b[2;1HL  R\x1b[2;3H")
+          const cursorCell = await ctx.queryCursorPosition()
+          if (cursorCell?.row !== 2 || cursorCell.col !== 3) {
+            return replyFailure(`Cursor shape fixture CPR did not locate row 2 column 3: ${JSON.stringify(cursorCell)}`)
+          }
+          const read = collectorRegionRead(ctx)
+          if (!read) return replyFailure("Cursor shape has no owned region reader")
+          const region = { top: cursorCell.row, left: cursorCell.col, bottom: cursorCell.row, right: cursorCell.col }
+          const capture = (label: string, role: "control" | "target" = "control") =>
+            read({ role, label, region, pixelGeometry: measured.geometry })
+          ctx.write("\x1b[?25h\x1b[2 q")
+          const pair = await captureStabilityPair(
+            "cursor.shape",
+            "screenshot",
+            () => capture("Steady block stability first"),
+            () => capture("Steady block stability second"),
+          )
+          if (pair.refusal) return pair.refusal
+          const block = pair.second
+          ctx.write("\x1b[6 q")
+          const bar = await capture("Steady bar cursor", "target")
+          ctx.write("\x1b[4 q")
+          const underline = await capture("Steady underline cursor")
+          ctx.write("\x1b[2 q\x1b[99 q")
+          const madeUp = await capture("Made-up cursor style 99 on steady block")
+          ctx.write("\x1b[2 q\x1b[?25l")
+          const hidden = await capture("Hidden steady block cursor")
+          const frames = [block, bar, underline, madeUp, hidden].map((reading) => reading.frame)
+          const response = JSON.stringify({
+            cursorCell,
+            region,
+            geometry: measured,
+            stability: pair.stability,
+            block,
+            bar,
+            underline,
+            madeUp,
+            hidden,
+          })
+          const cropRefusal = cropPositionRefusal({
+            id: "cursor.shape",
+            compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+            response,
+            frames,
+            screenshotRef: bar.frame.ref,
+          })
+          if (cropRefusal) return cropRefusal
+          const note =
+            "Steady cursor controls retained for the single installed-Alacritty qualification; deciding reader pending that stop point"
           return {
             pass: false,
-            response: JSON.stringify({
-              rows: ctx.rows,
-              cols: ctx.cols,
-              cursorCell: null,
-              detail: "DECSCUSR shape fixture does not establish the cursor cell; only measured geometry and roles",
-              control: control.label,
-              target: target.label,
-            }),
+            response,
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               assertionType: "screenshot",
-              screenshotRef: target.ref,
-              frames: [control, target],
-              note: "DECRQSS cursor-style report unanswered; cursor pixels captured; no same-run pixel check decides the shape difference",
+              screenshotRef: bar.frame.ref,
+              frames,
+              note,
             },
             criterionBranch: "visual-review",
             tests: [
@@ -522,22 +573,20 @@ export const cursorProbes: ProbeDefinition[] = [
               {
                 id: "review",
                 status: "probe-todo",
-                reason:
-                  "Cursor shape frames captured; cursor discriminator #31812 is undeclared (cursor cell and blink phase unmeasured), so this run cannot decide it",
+                reason: note,
               },
             ],
             assertions: [
               {
                 assertionType: "screenshot",
                 kind: "positive",
-                expected:
-                  "Compare default control with requested blinking bar target; cursor cell is unmeasured, so location or blink-phase absence cannot establish a shape negative",
-                observed: JSON.stringify({ control, target }),
+                expected: "Same-run steady block, bar, underline, made-up and hidden cursor-cell pixels",
+                observed: response,
               },
             ],
           }
         } finally {
-          ctx.write("\x1b[0 q")
+          ctx.write("\x1b[0 q\x1b[?25h")
         }
       },
     ),
