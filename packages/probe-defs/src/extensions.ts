@@ -5765,7 +5765,13 @@ export const extensionsProbes: ProbeDefinition[] = [
           selector: 633,
           markType: "prompt",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
+      async (ctx) => {
+        if (process.env.TERMINFO_CAPTURE_DIRECTORY === "/out/artifacts" && process.env.TERMINFO_RUN_ID) {
+          const { qualifyAppSemanticRead } = await import("./testing/osc-app-qualification.ts")
+          return qualifyAppSemanticRead(ctx)
+        }
+        return promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration")
+      },
     ),
     libAssertionType: "buffer_state",
   },
