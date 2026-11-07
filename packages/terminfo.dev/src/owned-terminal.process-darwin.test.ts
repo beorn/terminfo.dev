@@ -350,22 +350,22 @@ function runDarwinArm(scenario: {
         delete process.env.TERMINFO_DISPOSABLE_RECEIPT
         const { runProbeBatch } = await import("./packages/terminfo.dev/src/probes/unified.ts")
         const replies = ${JSON.stringify([
-          "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
-          "\x1b]10;rgb:aa/bb/cc\x07\x1b[?62;c",
-          "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+          "\x1b]11;rgb:0000/0000/0000\x07\x1b[?62;c",
+          "\x1b]11;rgb:aa/bb/cc\x07\x1b[?62;c",
+          "\x1b]11;rgb:0000/0000/0000\x07\x1b[?62;c",
         ])}
         const originalWrite = process.stdout.write
         const writes = []
         let read = 0
         process.stdout.write = (text) => {
           writes.push(text)
-          if (text === "\\x1b]10;?\\x07\\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
+          if (text === "\\x1b]11;?\\x07\\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
           return true
         }
         let batch
         try {
           batch = await runProbeBatch({
-            ids: ["extensions.osc110-reset-fg"],
+            ids: ["extensions.osc111-reset-bg"],
             ownedTerminal: owner,
             captureRunId: ${JSON.stringify(captureRunId)},
             out: process.stdout,
@@ -376,8 +376,8 @@ function runDarwinArm(scenario: {
         }
         console.log("BATCH " + JSON.stringify({
           writes,
-          observation: batch.observations.find((row) => row.featureId === "extensions.osc110-reset-fg"),
-          result: batch.results.find((row) => row.featureId === "extensions.osc110-reset-fg"),
+          observation: batch.observations.find((row) => row.featureId === "extensions.osc111-reset-bg"),
+          result: batch.results.find((row) => row.featureId === "extensions.osc111-reset-bg"),
           assertions: batch.assertions,
           ownership: JSON.parse(batch.rawReplies["collector.disposableOwnership"]),
         }))
@@ -528,6 +528,7 @@ test("a disposed Kitty owner cannot read cells", () => {
 
 // Existing owner tests stop at construction; receipt-based batch tests do not carry the real
 // private grant across this boundary. These cases keep both constructor and callback real.
+// Background reset isolates that authority from the foreground pixel fallback's geometry.
 test.each([
   { batch: "process" as const, allowed: true },
   { batch: "terminal-app" as const, allowed: false },
@@ -561,11 +562,11 @@ test.each([
     expect(recorded.result).toMatchObject({ status: "supported", attempt: { scope: "probe" } })
     expect(recorded.assertions).toContainEqual(expect.objectContaining({ kind: "positive" }))
     expect(recorded.writes).toEqual([
-      "\x1b]10;?\x07\x1b[c",
-      "\x1b]10;rgb:aa/bb/cc\x07",
-      "\x1b]10;?\x07\x1b[c",
-      "\x1b]110\x07",
-      "\x1b]10;?\x07\x1b[c",
+      "\x1b]11;?\x07\x1b[c",
+      "\x1b]11;rgb:aa/bb/cc\x07",
+      "\x1b]11;?\x07\x1b[c",
+      "\x1b]111\x07",
+      "\x1b]11;?\x07\x1b[c",
     ])
   } else {
     const refusal =
