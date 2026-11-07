@@ -1709,6 +1709,7 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
       assertions: [
         {
           assertionType: "input_bytes",
+          action: "modes.application-cursor:decckm-reset-set-reset-up",
           kind: pass ? "positive" : "negative",
           expected:
             "Up is CSI A with DECCKM reset, SS3 A with it set, then CSI A after reset; every read ends with injected plain a",

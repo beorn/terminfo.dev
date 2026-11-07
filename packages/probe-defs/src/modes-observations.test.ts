@@ -313,7 +313,6 @@ test.each([null, 0] as const)("App cursor keys use controlled effects after DECR
         ...entry,
         featureId: feature,
         rawReplyRef: feature,
-        action: "injectKey(a), then injectKey(Up) and injectKey(a) in each reset/set/reset arm",
       }))
       const recorded = recordExecutedProbe({
         featureId: feature,

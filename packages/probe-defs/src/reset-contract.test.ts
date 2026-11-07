@@ -24,6 +24,7 @@ import {
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import { recordExecutedProbe } from "./helpers.ts"
+import { parseProbeResults } from "@terminfo/run-parser"
 
 // Ask 3: absent/Ps0 mode replies cannot block DECSTR's same-run input effect.
 // The real semantic parser changes DECCKM; only its Up encoder is supplied by the owned input fixture.
@@ -57,16 +58,31 @@ test.each([null, 0] as const)("App soft reset reads its controlled input effect 
       },
     })
     const result = await definition.term(source)
+    const feature = definition.id
+    const assertions = (result.assertions ?? []).map((assertion) => ({
+      featureId: feature,
+      ...assertion,
+      rawReplyRef: feature,
+    }))
     const recorded = recordExecutedProbe({
-      featureId: definition.id,
+      featureId: feature,
       attempt: { scope: "probe", startedAt: new Date().toISOString() },
+      rawReplyRef: feature,
       tests: result.tests,
-      observation: result.observation ? { featureId: definition.id, ...result.observation } : undefined,
-      assertions: (result.assertions ?? []).map((assertion) => ({ featureId: definition.id, ...assertion })),
+      observation: result.observation ? { featureId: feature, ...result.observation, rawReplyRef: feature } : undefined,
+      assertions,
     })
     expect(recorded.status, mutation ?? "working DECSTR").toBe(
       mutation === "decstr-noop" ? "unsupported" : mutation ? "probe-invalid" : "supported",
     )
+    // Callback outcomes alone missed input assertions that the native run reader refuses.
+    // Keep the producer's performed actions; this fixture must not supply missing evidence.
+    if (!mutation || mutation === "decstr-noop") {
+      expect(
+        parseProbeResults([recorded], "soft-reset-effect.json", new Set([feature]), { [feature]: result.response! }, assertions)[0]
+          ?.status,
+      ).toBe(recorded.status)
+    }
     if (ps === 0 && !mutation) expect(result.note).toContain("Ps 0")
     expect(surface.getMode("applicationCursor")).toBe(false)
   }
