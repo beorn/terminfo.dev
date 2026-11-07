@@ -1048,7 +1048,7 @@
     "url": "https://vt100.net/docs/vt510-rm/DECAWM.html",
     "tags": ["dec-private-modes", "vt100"],
     "body": "DECAWM controls whether text automatically wraps to the next line when it reaches the right margin. Enable with <code>ESC [ ? 7 h</code> (default on), disable with <code>ESC [ ? 7 l</code>. When disabled, characters written past the right margin overwrite the last column. Most terminals default to auto-wrap enabled.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and this probe asks exactly <code>CSI ? mode $p</code>: tmux's private-mode query switch answers only 12, 2004, 1004, 1006 and 2031 (input.c:1608-1641), and mutation handlers elsewhere add no query reply. There is no exact local query answer for mode 7, the same missing path as the DECRPM device row: the answering rationale is unsupported.",
-    "probe": "App probe: query DECRPM for private mode 7. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is PROBE INVALID. This does not measure line wrapping (the headless probe measures wrapping separately).",
+    "probe": "App probe: query DECRPM for private mode 7. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is PROBE INVALID. The DECRPM reply does not measure line wrapping (the headless probe measures wrapping separately). App arm: where DECRPM gives no reply or Ps 0, a controlled effect read in the same run decides: the effect appears with the mode set and not with it reset. A missing reply alone decides nothing and stays PROBE INVALID when no effect read is made.",
     "baseline": "core",
     "sequence": "ESC [ ? 7 h"
   },

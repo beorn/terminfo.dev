@@ -7,7 +7,7 @@
 import { expect, test, vi } from "vitest"
 import { isDeclaredUntestable, NO_SAME_PATH_CONTROL, recordExecutedProbe } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
-import { libProbeSource } from "./testing/group-harness.ts"
+import { libProbeSource, replayTermProbeSource, type StoredQuery } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type {
   CaptureRectangle,
@@ -17,6 +17,45 @@ import type {
   TermProbeSource,
   LibProbeSource,
 } from "./types.ts"
+
+// Ask 3 permits a same-run mode effect when DECRPM is silent or Ps 0. The reply
+// contract does not exercise that path. Reuse the semantic terminal so removing
+// DECAWM alone loses the positive without breaking the cursor-delivery control.
+test.each([null, 0] as const)("App auto-wrap uses controlled effects after DECRPM %s", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.auto-wrap")
+  if (!definition?.term) throw new Error("Missing App auto-wrap callback")
+  const stored = new Map<string, StoredQuery>()
+  if (ps !== null) {
+    stored.set("\x1b[?7$p", { sequence: "\x1b[?7$p", match: null, reason: "reply", raw: `\x1b[?7;${ps}$y` })
+  }
+
+  for (const mutation of [undefined, "decawm-noop", "wrap-noop"] as const) {
+    const surface = createSemanticSurface({ cols: 8, rows: 4, mutations: mutation ? [mutation] : [] })
+    const source = replayTermProbeSource(stored, {
+      cols: 8,
+      rows: 4,
+      write: (bytes) => surface.feed(bytes),
+      queryCursorPosition: async () => {
+        const cursor = surface.getCursor()
+        return { row: cursor.y + 1, col: cursor.x + 1 }
+      },
+    })
+    const result = await definition.term(source)
+    expect(result.observation?.outcome, mutation ?? "working auto-wrap").toBe(mutation ? "unsupported" : "supported")
+    expect(result.assertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ assertionType: "query_reply", kind: mutation ? "negative" : "positive" }),
+      ]),
+    )
+  }
+
+  const inert = await definition.term(replayTermProbeSource(stored))
+  expect(inert.observation?.outcome).not.toBe("supported")
+  expect(inert.observation?.outcome).not.toBe("unsupported")
+  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(definition.termNeedsDisposable).toBe(true)
+  expect(definition.termWrites).toBeUndefined()
+})
 
 // The existing mode contract exercises app replies; it misses these library
 // callbacks retaining presentation reviews even when the engine answers DECRPM.
