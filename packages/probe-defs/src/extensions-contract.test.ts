@@ -759,13 +759,11 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
   // the arm cannot map its rectangle onto cells and names the unanswered geometry queries.
   "extensions.kitty-graphics.animation": {
     status: "probe-invalid",
-    reason:
-      "extensions.kitty-graphics.animation: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
+    reason: "No matching image allocation reply; no image ownership or transmission conclusion",
   },
   "extensions.kitty-graphics.unicode-placeholders": {
     status: "probe-invalid",
-    reason:
-      "extensions.kitty-graphics.unicode-placeholders: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
+    reason: "No matching image allocation reply; no image ownership or transmission conclusion",
   },
   "extensions.sixel": {
     status: "probe-invalid",

@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { extensionsProbes } from "./extensions.ts"
+import { recordExecutedProbe } from "./helpers.ts"
 import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT, KITTY_REGION } from "./kitty-capture.ts"
 import type { ObservationFrame, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 import { finishCapture } from "../../terminfo.dev/src/capture-core.ts"
@@ -48,9 +49,13 @@ function surface(options: Surface) {
   let regionIndex = 0
   let guardIndex = 0
   let wholeIndex = 0
-  const ack = (): TerminalQueryOutcome => {
+  const ack = (sequence: string): TerminalQueryOutcome => {
     if (options.ack === "silent") return { match: null, reason: "timeout", raw: "", rawBase64: "" }
-    const raw = "\x1b_Gi=1;OK\x1b\\"
+    const imageNumber = /(?:,|_)I=(\d+)/.exec(sequence)?.[1]
+    const raw = imageNumber ? `\x1b_Gi=1,I=${imageNumber};OK\x1b\\` : "\x1b_Gi=1;OK\x1b\\"
+    if (imageNumber) {
+      return { match: raw.match(/\x1b_G([^;]+);([^\x1b]+)\x1b\\/u), reason: "reply", raw, rawBase64: btoa(raw) }
+    }
     const match = raw.match(/\x1b_Gi=(\d+);([^\x1b]+)\x1b\\/u)
     return { match, reason: "reply", raw, rawBase64: btoa(raw) }
   }
@@ -68,13 +73,13 @@ function surface(options: Surface) {
     queryWithSentinel: async () => null,
     queryOutcome: async (sequence) => {
       writes.push(sequence)
-      return ack()
+      return ack(sequence)
     },
     // The owned adapter writes the sequence and then reads its reply, so the command is part of the
     // write trace exactly as it is on a real run.
     queryWithSentinelOutcome: async (sequence) => {
       writes.push(sequence)
-      return ack()
+      return ack(sequence)
     },
     queryMode: async () => null,
     capture: async ({ role, label, cells }) => {
@@ -167,7 +172,7 @@ for (const featureId of ["extensions.kitty-graphics.animation", "extensions.kitt
 
 test("animation decides from two target frames with no write between them", async () => {
   const { context, captures } = surface({
-    region: ["red", "blue", "frame1", "frame2", "still", "still", "cursor", "cursor"],
+    region: ["blank", "red", "red", "red", "cursor", "cursor", "red", "blue", "red", "blue"],
     whole: ["before", "after"],
   })
   const result = await term("extensions.kitty-graphics.animation")(context)
@@ -176,7 +181,7 @@ test("animation decides from two target frames with no write between them", asyn
   // The collapse this row must prevent: one target frame, or a second target read after a write.
   expect(targets.length).toBeGreaterThanOrEqual(2)
   expect(targets[0]?.ref).not.toBe(targets[1]?.ref)
-  const playbackCaptures = captures.slice(0, 2)
+  const playbackCaptures = captures.filter((capture) => capture.role === "target").slice(0, 2)
   expect(playbackCaptures.map((capture) => capture.cells)).toEqual([true, true])
   expect(playbackCaptures[0]?.writesBefore).toBe(playbackCaptures[1]?.writesBefore)
   expect(result.observation?.outcome).toBe("supported")
@@ -191,7 +196,7 @@ test("animation decides from two target frames with no write between them", asyn
 // Exercise that boundary here; keep the existing playback-on/off cases as the feature's owner.
 test("animation whole-window redraw checkpoints satisfy the production capture finalizer", async () => {
   const { context } = surface({
-    region: ["red", "blue", "frame1", "frame2", "still", "still", "cursor", "cursor"],
+    region: ["blank", "red", "red", "red", "cursor", "cursor", "red", "blue", "red", "blue"],
     whole: ["before", "after"],
   })
   const capture = context.capture!
@@ -225,21 +230,29 @@ test("an acknowledgement with unchanging pixels is not animation support", async
   const result = await term("extensions.kitty-graphics.animation")(context)
   expect(result.observation?.outcome).not.toBe("supported")
   expect(result.pass).toBe(false)
-  // Frame selection could not differ either, so the row names the pipeline rather than the timer.
-  expect(result.observation?.note).toContain("selecting frame 2 by hand left the rectangle unchanged")
+  // Blank, reference and static image are identical, so the image control cannot qualify.
+  expect(result.observation?.note).toContain("static image control failed")
 })
 
-test("an equal playback pair on a live pipeline with a stable still image is a negative", async () => {
-  const { context } = surface({
-    // same, same (playback), same (retry at twice the gap), then the controls.
-    region: ["same", "same", "same", "frame1", "frame2", "still", "still", "cursor", "cursor"],
-    whole: ["before", "after"],
-  })
-  const result = await term("extensions.kitty-graphics.animation")(context)
-  expect(result.observation?.outcome).toBe("unsupported")
-  expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "screenshot" }])
-  expect(result.observation?.note).toContain("twice the gap")
-})
+// CTO animation acceptance: a painting static-only terminal can be denied, a broken playback setup cannot.
+test.each(["red", "blank"])(
+  "an equal playback pair with first image %s qualifies against the static control",
+  async (playback) => {
+    const { context } = surface({
+      region: ["blank", "red", "red", "red", "cursor", "cursor", playback, playback, playback, playback, playback],
+      whole: ["before", "after"],
+    })
+    const result = await term("extensions.kitty-graphics.animation")(context)
+    expect(result.observation?.outcome).toBe(playback === "red" ? "unsupported" : "inconclusive")
+    if (playback === "red") {
+      expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "screenshot" }])
+      expect(result.observation?.note).toContain("hand selection did not change")
+    } else {
+      expect(result.assertions).toBeUndefined()
+      expect(result.observation?.note).toContain("playback image did not paint")
+    }
+  },
+)
 
 test("placeholders decide from pixels, with the quiet transmit and an ordinary placement alive", async () => {
   const { context, writes, captures } = surface({
@@ -266,6 +279,65 @@ test("placeholders decide from pixels, with the quiet transmit and an ordinary p
   expect(result.observation?.outcome).toBe("supported")
   expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "screenshot" }])
   expect(result.response).toContain('"guard"')
+  const reference = captures.filter((capture) => capture.label.includes("SGR"))
+  expect(reference).toMatchObject([{ role: "control", cells: true }])
+  expect(writes.slice(0, reference[0]!.writesBefore).join("")).toContain("\x1b[48;2;255;0;0m")
+  expect(JSON.parse(result.response!).digests.reference).toBe("with-image")
+})
+
+// AC6: prerequisite silence is a declared absence only when BOTH owned query windows qualify.
+// Pixel-only tests cannot detect an unqualified early return or lost query evidence.
+test.each([
+  ["silent", "silent", "untestable"],
+  ["silent", "reply", "probe-todo"],
+  ["timeout", "silent", "probe-invalid"],
+  ["silent", "unmatched", "probe-todo"],
+] as const)("pixel setup transfer=%s/query=%s retains both windows as %s", async (transfer, query, status) => {
+  for (const featureId of ["extensions.kitty-graphics.animation", "extensions.kitty-graphics.unicode-placeholders"]) {
+    const { context, captures, writes } = surface({ region: ["unused"] })
+    const outcomes: TerminalQueryOutcome[] = []
+    context.queryWithSentinelOutcome = async (sequence, pattern) => {
+      writes.push(sequence)
+      const mode = outcomes.length === 0 ? transfer : query
+      const raw =
+        mode === "reply"
+          ? "\x1b_Gi=31;OK\x1b\\"
+          : mode === "timeout"
+            ? ""
+            : `${mode === "unmatched" ? "unexpected" : ""}\x1b[?1;2c`
+      const outcome: TerminalQueryOutcome = {
+        match: raw.match(pattern),
+        reason: mode === "reply" ? "reply" : mode === "timeout" ? "timeout" : "sentinel",
+        raw,
+        rawBase64: btoa(raw),
+        ...(mode !== "timeout" && mode !== "reply" ? { sentinel: { atMs: 10, graceMs: 250 } } : {}),
+      }
+      outcomes.push(outcome)
+      return outcome
+    }
+    const result = await term(featureId)(context)
+    const recorded = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: new Date(0).toISOString() },
+      ...result,
+      coverage: result.notTested,
+      assertions: result.assertions ?? [],
+    })
+    expect(recorded.status).toBe(status)
+    expect(captures).toHaveLength(0)
+    expect(writes.filter((bytes) => bytes.startsWith("\x1b_G"))).toHaveLength(2)
+    expect(writes[0]).toContain("a=t,")
+    expect(writes[1]).toContain("a=q,")
+    expect(JSON.parse(result.response!)).toMatchObject({
+      transfer: { raw: outcomes[0]!.raw, reason: outcomes[0]!.reason },
+      query: { raw: outcomes[1]!.raw, reason: outcomes[1]!.reason },
+    })
+    if (status === "untestable") {
+      const retained = JSON.parse(result.response!)
+      expect(retained.transfer.sentinel).toEqual({ atMs: 10, graceMs: 250 })
+      expect(retained.query.sentinel).toEqual({ atMs: 10, graceMs: 250 })
+    }
+  }
 })
 
 test("an accepted quiet transmit with identical pixels is not placeholder support", async () => {
@@ -279,6 +351,33 @@ test("an accepted quiet transmit with identical pixels is not placeholder suppor
   expect(result.observation?.outcome).toBe("unsupported")
   expect(result.pass).toBe(false)
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
+})
+
+test("text painted by an ordinary placement fails image qualification and records the placement reply", async () => {
+  const { context } = surface({
+    region: ["same", "same", "same", "blank", "base64-text", "red-reference"],
+  })
+  const query = context.queryWithSentinelOutcome
+  context.queryWithSentinelOutcome = async (sequence, pattern) => {
+    if (sequence.includes("a=p,")) {
+      const raw = "\x1b_Gi=40;ENOENT:No such image\x1b\\"
+      return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
+    }
+    return query(sequence, pattern)
+  }
+  const featureId = "extensions.kitty-graphics.unicode-placeholders"
+  const result = await term(featureId)(context)
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: new Date(0).toISOString() },
+    observation: result.observation,
+    tests: result.tests,
+    assertions: [],
+  })
+  expect(recorded.status).toBe("probe-invalid")
+  expect(result.assertions).toBeUndefined()
+  expect(result.observation?.note).toContain("reference")
+  expect(JSON.parse(result.response!).placementAck).toContain("ENOENT:No such image")
 })
 
 test("a pixel arm with no cell adapter decides from pixels and records the absent adapter", async () => {
