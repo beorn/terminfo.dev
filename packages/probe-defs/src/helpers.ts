@@ -2637,7 +2637,7 @@ export function sentinelNegativeResult(
   return {
     pass: false,
     response: raw,
-    observation: { outcome: "unsupported", assertionType: "query_reply", note: "negative by sentinel" },
+    observation: { outcome: "unsupported", assertionType: "query_reply", note: observed },
     assertions: [{ assertionType: "query_reply" as const, kind: "negative", expected, observed }],
   }
 }

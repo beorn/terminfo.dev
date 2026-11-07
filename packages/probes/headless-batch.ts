@@ -160,7 +160,13 @@ const CPR_SPOTS = [
   [9, 17],
   [11, 19],
 ] as const
-type QueryFact = { sequence: string; matched: boolean; empty: boolean; controlError?: string }
+type QueryFact = {
+  sequence: string
+  matched: boolean
+  empty: boolean
+  reason?: TerminalQueryOutcome["reason"]
+  controlError?: string
+}
 type QueryPass = {
   control: boolean
   wait: boolean
@@ -871,7 +877,12 @@ async function collectPass(
           const answer = replyCaptures[start + 1]?.response ?? ""
           const sentinel = sentinelAnswer(answer)
           const clean = answer === "" || (sentinel?.start === 0 && answer.slice(sentinel.end) === "")
-          queryFacts.push({ sequence, matched: outcome.reason === "reply", empty: target === "" && clean })
+          queryFacts.push({
+            sequence,
+            reason: outcome.reason,
+            matched: outcome.reason === "reply",
+            empty: target === "" && clean,
+          })
           return outcome
         }
       }
@@ -1070,8 +1081,13 @@ export async function collectBatch(
     if (!result) throw new Error(`Missing first-pass result for ${backendName}:${probe.id}`)
     // A callback's own review stays intact. A bare missing-control refusal can still
     // become a negative when fresh CPR passes establish the previously missing control.
-    const candidate = result.reason === "negative by sentinel" || result.reason === NO_SAME_PATH_CONTROL
-    return candidate && facts(first, probe.id).queries.some((query) => query.empty && !query.matched)
+    const measuredNegative = result.status === "unsupported" && result.assertionType === "query_reply"
+    return facts(first, probe.id).queries.some(
+      (query) =>
+        query.empty &&
+        !query.matched &&
+        ((measuredNegative && query.reason === "sentinel") || result.reason === NO_SAME_PATH_CONTROL),
+    )
   })
   if (!selected.length) return first
   const repeatDraft = () =>

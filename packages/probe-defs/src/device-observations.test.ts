@@ -245,7 +245,7 @@ describe("device query observations", () => {
       expect(result.observation, item.id).toMatchObject({
         outcome: "unsupported",
         assertionType: "query_reply",
-        note: "negative by sentinel",
+        note: "DA1 answered at +9ms; no reply through the 250 ms window",
       })
       expect(result.assertions, item.id).toMatchObject([
         { kind: "negative", observed: "DA1 answered at +9ms; no reply through the 250 ms window" },
@@ -537,7 +537,6 @@ describe("device query observations", () => {
       reason: "insufficient-evidence",
       assertionType: "query_reply",
     })
-    expect(result.observation?.note).not.toBe("negative by sentinel")
     expect(result.assertions).toBeUndefined()
 
     // Unlike DA1-only, the empty second read retains no reply. The library collector keeps only
@@ -600,7 +599,7 @@ describe("device query observations", () => {
     expect(result.observation).toMatchObject({
       outcome: "unsupported",
       assertionType: "query_reply",
-      note: "negative by sentinel",
+      note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
     })
   })
 

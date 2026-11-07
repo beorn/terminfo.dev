@@ -74,18 +74,18 @@ const FACTS = { atMs: 9, graceMs: 250 }
 // #30559 (@cto 86260f80 rule 3): a read is silence only when nothing precedes the sentinel's own answer, the LAST
 // DA1-shaped answer. Whitespace after it is tolerated, as before; nothing before it is.
 test.each([
-  { name: "the DA1 answer alone", raw: DA1, facts: FACTS, note: "negative by sentinel" },
-  { name: "whitespace after the DA1 answer", raw: `${DA1}\r\n`, facts: FACTS, note: "negative by sentinel" },
-  { name: "a DA1-shaped reply before the DA1 answer", raw: `${DA1}${DA1}`, facts: FACTS, note: null },
-  { name: "whitespace before the DA1 answer", raw: ` ${DA1}`, facts: FACTS, note: null },
-  { name: "bytes before the DA1 answer", raw: `x${DA1}`, facts: FACTS, note: null },
-  { name: "a partial frame after the DA1 answer", raw: `${DA1}\x1b[3;`, facts: FACTS, note: null },
-  { name: "no DA1 answer in the read", raw: "", facts: FACTS, note: null },
-  { name: "no measured sentinel facts", raw: DA1, facts: undefined, note: null },
-])("sentinel negative: $name", ({ raw, facts, note }) => {
+  { name: "the DA1 answer alone", raw: DA1, facts: FACTS, negative: true },
+  { name: "whitespace after the DA1 answer", raw: `${DA1}\r\n`, facts: FACTS, negative: true },
+  { name: "a DA1-shaped reply before the DA1 answer", raw: `${DA1}${DA1}`, facts: FACTS, negative: false },
+  { name: "whitespace before the DA1 answer", raw: ` ${DA1}`, facts: FACTS, negative: false },
+  { name: "bytes before the DA1 answer", raw: `x${DA1}`, facts: FACTS, negative: false },
+  { name: "a partial frame after the DA1 answer", raw: `${DA1}\x1b[3;`, facts: FACTS, negative: false },
+  { name: "no DA1 answer in the read", raw: "", facts: FACTS, negative: false },
+  { name: "no measured sentinel facts", raw: DA1, facts: undefined, negative: false },
+])("sentinel negative: $name", ({ raw, facts, negative }) => {
   const result = sentinelNegativeResult(raw, facts, "complete reply")
   // The reason must tell readers what was measured, rather than only name a bucket (#32629).
-  if (note === null) {
+  if (!negative) {
     expect(result).toBeNull()
   } else {
     expect(result?.observation?.note).toContain("DA1 answered at +9ms")

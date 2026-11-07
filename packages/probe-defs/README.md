@@ -1033,6 +1033,11 @@ The run retains screenshot/text references and assertion references. A captured 
 
 ## How execution becomes status
 
+Sentinel-negative notes retain the measured DA1 or CPR arrival and completed grace window.
+The headless collector keeps the existing typed query outcome in its private query facts;
+fresh-CPR selection uses those facts together with an Unsupported query-reply result,
+independently of the human explanation. Conclusive observations carry no unknown-cause reason.
+
 Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded probe statuses are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`.
 
 [recordExecutedProbe](src/helpers.ts) uses explicit callback tests when valid. Diagnostics and errors retain precedence. Otherwise its default criterion preserves supported/unsupported observations and maps the other cases:

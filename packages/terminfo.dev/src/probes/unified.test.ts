@@ -805,7 +805,7 @@ it("projects Terminal.app identity replies without mistaking the DA1 sentinel fo
       featureId: "device.xtversion",
       outcome: "unsupported",
       assertionType: "query_reply",
-      note: "negative by sentinel",
+      note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
     },
   ])
   expect(batch.assertions).toContainEqual({

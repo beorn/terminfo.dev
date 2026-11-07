@@ -60,7 +60,7 @@ test.each(F4)("%s: qualified silence distinguishes reply negatives and absent co
     expect(result.observation).toMatchObject({
       outcome: "unsupported",
       assertionType: "query_reply",
-      note: "negative by sentinel",
+      note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
     })
     expect(result.response).toBe(da1)
     expect(result.assertions?.map(({ kind }) => kind)).toEqual(["negative"])

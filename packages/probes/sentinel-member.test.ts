@@ -13,6 +13,7 @@ import { createVt220Backend } from "@termless/vt220"
 import { createVtermBackend } from "@termless/vterm"
 import { createXtermBackend } from "@termless/xtermjs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
+import { validateObservationOutcome } from "@terminfo/run-parser"
 import {
   ALL_PROBES,
   initializeRunDraft,
@@ -572,7 +573,9 @@ test.each(ARM_CASES)(
       expect(headless.replyFailureTestIds, id).toEqual(["criterion"])
       expect(headless.observation, id).toBeUndefined()
     } else expect(headless.observation?.outcome, id).toBe(outcome)
-    if (outcome === "unsupported") expect(headless.observation?.note, id).toBe("negative by sentinel")
+    if (outcome === "unsupported") {
+      expect(headless.observation?.note, id).toMatch(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/)
+    }
     expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
     // Without the member the arm keeps today's capture-only reading, where silence never decides a probe result.
     const plain = lib(queryOnly(sourceOf(scripted((text) => replies[text] ?? ""))))
@@ -629,7 +632,10 @@ test("extensions.kitty-keyboard: once detection answers, a silent flags query re
   const headless = lib(ctx)
   // Detection stays the DA1-qualified capture both collectors already share; the flags query takes the member.
   expect(fed).toEqual(["\x1b[?u\x1b[c", "\x1b[>1u", "\x1b[?u", DA1_QUERY, "\x1b[<u"])
-  expect(headless.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
+  expect(headless.observation).toMatchObject({
+    outcome: "unsupported",
+    note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
+  })
   const answered: TerminalQueryOutcome = {
     match: ["\x1b[?0u", "0"],
     reason: "reply",
@@ -730,6 +736,9 @@ test("G1: a silent proven engine publishes the sentinel negative once the grace 
       rawReplyRef: "device.xtversion",
     },
   ])
+  // Recorded conclusive observations must survive the actual parser, which forbids unknown-cause reasons.
+  const recorded = JSON.parse(JSON.stringify(batch.observations[0])) as Record<string, unknown>
+  validateObservationOutcome(recorded, "sentinel negative observation", "device.xtversion", 4)
   expect(batch.assertions).toMatchObject([
     {
       kind: "negative",

@@ -2760,7 +2760,10 @@ describe("Kitty protocol detection", () => {
         }),
       )
       if (id === "extensions.osc52-read") {
-        expect(measuredSilence.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
+        expect(measuredSilence.observation).toMatchObject({
+          outcome: "unsupported",
+          note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
+        })
         expect(measuredSilence.assertions).toMatchObject([{ kind: "negative" }])
         expect(measuredSilence.response).toBe(da1)
 

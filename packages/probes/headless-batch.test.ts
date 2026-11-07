@@ -6117,7 +6117,13 @@ test("a silent loaded binary uses the measured control and retains its observed 
   const batch = await collectBatch(backend, "xtermjs", definitions)
   expect(batch.results.find((row) => row.featureId === "device.xtgettcap")).toMatchObject({
     status: "unsupported",
-    tests: [{ id: "criterion", status: "unsupported", reason: "negative by sentinel" }],
+    tests: [
+      {
+        id: "criterion",
+        status: "unsupported",
+        reason: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
+      },
+    ],
   })
   expect(batch.observations.find((row) => row.featureId === "sgr.bold")).toMatchObject({
     outcome: "supported",

@@ -384,7 +384,6 @@ test.each([10, 11, 12] as const)("OSC %i reset reviews a verified control instea
   const result = callback(`extensions.osc${code + 100}-reset-${{ 10: "fg", 11: "bg", 12: "cursor" }[code]}`).lib!(
     source,
   )
-  expect(result.observation?.note).not.toBe("negative by sentinel")
   expect(result.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
   expect(JSON.stringify(result)).toContain("reset produced neither the baseline nor the verified seed")
 })
@@ -1194,7 +1193,7 @@ test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grad
   expect(silent.observation).toMatchObject({
     outcome: "unsupported",
     assertionType: "query_reply",
-    note: "negative by sentinel",
+    note: "DA1 answered at +7ms; no reply through the 250 ms window",
   })
   expect(silent.assertions).toMatchObject([
     { kind: "negative", observed: "DA1 answered at +7ms; no reply through the 250 ms window" },
@@ -1238,7 +1237,7 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
   expect(silent.observation).toMatchObject({
     outcome: "unsupported",
     assertionType: "query_reply",
-    note: "negative by sentinel",
+    note: "DA1 answered at +5ms; no reply through the 250 ms window",
   })
   expect(silent.assertions).toMatchObject([
     { kind: "negative", observed: "DA1 answered at +5ms; no reply through the 250 ms window" },
