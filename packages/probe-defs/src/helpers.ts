@@ -25,6 +25,7 @@ import type {
   UnhandledSequence,
 } from "./types.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
+import { sgrAttributeCaptureResult } from "./region-readback.ts"
 
 /** Translate a screen row into the absolute buffer retained by the library source. */
 export function activeScreenRow(ctx: LibProbeSource, row: number): number {
@@ -1505,6 +1506,8 @@ export function sgrProbe(
         const sample = "AaBb 0123456789 - terminal text"
         try {
           if (capture) return await capture(ctx, { sequence, sample, row: 3, col: 3 })
+          const attribute = await sgrAttributeCaptureResult(ctx, id, sequence)
+          if (attribute) return attribute
           return await sgrCaptureFrames(
             ctx,
             "\x1b[0m\x1b[2J\x1b[3;3H" + sample,
@@ -1525,7 +1528,7 @@ export function sgrProbe(
           sequence,
           readback,
           undefined,
-          capture ? captureResult : undefined,
+          ctx.capture ? captureResult : undefined,
         )
         if (decided) return decided
       }

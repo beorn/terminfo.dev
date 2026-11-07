@@ -10,10 +10,12 @@ import {
   ALL_PROBES as PROBE_DEFS,
   resolveProbeIds,
   recordExecutedProbe,
+  finalizeProbeResult,
   finalizeVisualResult,
   withReplyFailureEvidence,
   declaredUntestableResult,
   type ProbeResult,
+  type ProbeSubject,
   type RunDraft,
   type CaptureCells,
   type CapturePixelGeometry,
@@ -54,6 +56,7 @@ import {
   type OwnedTerminal,
 } from "../owned-terminal.ts"
 import { bindReceiptToRun, readDisposableReceipt, type DisposableReceipt } from "../disposable-receipt.ts"
+import { beginMuxSgrCommandRead } from "../app-semantic-state.ts"
 
 /**
  * Resolve the disposable-ownership receipt once per batch (27832 amendment 1). No receipt is
@@ -748,6 +751,17 @@ export async function runProbeBatch(
     options.onCheckpoint?.(batch)
     let callbackTests: ProbeCallbackResult["tests"]
     let criterionBranch: string | undefined
+    const subject: (Pick<ProbeSubject, "kind" | "id" | "os"> & Partial<ProbeSubject>) | undefined =
+      options.draft?.subject ?? options.subject
+    const muxProof = options.ownedTerminal?.muxAttachmentProof
+    const outerCommands =
+      ownsTerminal && subject?.kind === "mux" && probe.id.startsWith("sgr.")
+        ? beginMuxSgrCommandRead({
+            featureId: probe.id,
+            subject,
+            proof: muxProof?.platform === "linux" ? muxProof : undefined,
+          })
+        : undefined
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
@@ -997,15 +1011,61 @@ export async function runProbeBatch(
         rawReplyRef: probe.id,
         criterionBranch,
       })
-      // This owner runs app/mux callbacks. Only frames captured by this probe can witness its effect.
-      batch.results[index] =
-        options.subject?.kind === "term" || options.subject?.kind === "mux"
+      const commands =
+        recorded.status === "unsupported" &&
+        recorded.criterionBranch === "sgr-attribute-same-run" &&
+        subject?.kind === "mux"
+          ? outerCommands?.status === "ready"
+            ? await outerCommands.read(batch.rawReplies[`${probe.id}.callLog`])
+            : (outerCommands ?? {
+                status: "unavailable" as const,
+                reason: "Outer command read not attempted: no verified owned mux terminal",
+              })
+          : undefined
+      if (commands) batch.rawReplies[`${probe.id}.outerCommands`] = JSON.stringify(commands)
+      // Completed command evidence resolves the mux ambiguity, while the existing
+      // visual finalizer must still validate this probe's own captured frame first.
+      const visualInput =
+        commands?.status === "measured" ? { ...recorded, criterionBranch: "sgr-attribute-outer-command" } : recorded
+      let finalized =
+        subject?.kind === "term" || subject?.kind === "mux"
           ? finalizeVisualResult(
-              recorded,
-              options.draft?.subject ?? options.subject,
+              visualInput,
+              subject,
               captures.map(({ frame }) => frame),
             )
           : recorded
+      if (commands?.status === "measured" && finalized.status === "unsupported") {
+        if (commands.targetSent) {
+          const reason = `${subject?.id}: SGR ${commands.target} was passed to outer terminal ${subject?.outerTerminal}; the controlled sample still drew no distinct target effect`
+          const declared = declaredUntestableResult(reason, commands)
+          finalized = {
+            ...finalized,
+            ...recordExecutedProbe({
+              featureId: probe.id,
+              attempt,
+              coverage: { featureId: probe.id, ...declared.notTested, rawReplyRef: `${probe.id}.outerCommands` },
+              criterionBranch: declared.criterionBranch,
+              tests: declared.tests,
+              assertions: [],
+              rawReplyRef: `${probe.id}.outerCommands`,
+            }),
+          }
+        } else {
+          const reason = `${subject?.id} did not forward SGR ${commands.target} to outer terminal ${subject?.outerTerminal}`
+          finalized = finalizeProbeResult({ ...finalized, reason })
+        }
+      } else if (commands?.status === "unavailable" && finalized.status === "probe-todo" && subject?.outerTerminal) {
+        const reason = `${finalized.reason}; ${commands.reason}`
+        finalized = finalizeProbeResult({
+          ...finalized,
+          reason,
+          tests: finalized.tests.map((test) =>
+            test.id === "attribute" && test.status === "probe-todo" ? { ...test, reason } : test,
+          ),
+        })
+      }
+      batch.results[index] = finalized
       options.onCheckpoint?.(batch)
     }
   }

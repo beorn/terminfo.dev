@@ -114,15 +114,19 @@ test.each(["cursor.hide", "modes.insert-replace"] as const)(
 )
 
 test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
-  "%s never grades unsupported when the readback reply is missing",
+  "%s without a pixel oracle never grades unsupported when the readback reply is missing",
   async (id) => {
     const source = kittySource(false)
-    // IRM falls through to capture after DECRQM silence; select its query-only path for this missing-reply check.
+    // Pixel SGR now has an independent same-run oracle; this table owns query-only silence.
     const { capture: _capture, ...queryOnly } = source
     const result = await termProbe(id)(
-      id === "modes.insert-replace" ? { ...queryOnly, queryCursorPosition: async () => null } : source,
+      id === "modes.insert-replace"
+        ? { ...queryOnly, queryCursorPosition: async () => null }
+        : id === "sgr.bold"
+          ? queryOnly
+          : source,
     )
-    expect(result.pass).toBe(false)
+    if (id !== "sgr.bold") expect(result.pass).toBe(false)
     if (id === "modes.insert-replace") {
       // IRM falls through to its cell fixture; a missing cursor reply is an execution failure, not a verdict.
       expect(result.tests).toEqual([
@@ -134,6 +138,9 @@ test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
       ])
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
+    } else if (id === "sgr.bold") {
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
     } else {
       expect(result.observation?.outcome).toBe("inconclusive")
       expect(result.observation?.outcome).not.toBe("unsupported")

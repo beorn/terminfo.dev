@@ -1016,6 +1016,27 @@ Kitty remains undeclared because its internal Screen bridge has no separate publ
 this boundary. The current synchronous library route captures no pixels.
 No new capture API or pixel predicate is supplied here. Historical run bytes and reader interpretation stay unchanged.
 
+The twelve non-blink SGR attribute App callbacks additionally use the same-run attribute kind in
+[region-readback.ts](src/region-readback.ts) when pixel capture exists, including after a valid DECRQSS
+reply. It reads the measured sample through the existing region reader and stability pair, with
+witnessed plain, target, made-up SGR99 and handled controls. A changed made-up sample is Test broken;
+an unchanged handled control leaves PROBE TODO. A target equal to plain is Unsupported; equality
+with a distinct single-underline or inverse reference names the collapsed effect as Unsupported.
+Hidden requires equality with a same-cell blank reference; another changed hidden sample is Test
+broken. Otherwise the target differs from plain while made-up does not, and reads Supported.
+Negative mux rows additionally need the outer command read in the existing
+[App reader](../terminfo.dev/src/app-semantic-state.ts). It retains this callback's appended
+Kitty command reports through four paint-witness roundtrips and joins them to the recorded
+plain, target, made-up and handled writes. A completed, controlled read selects
+`sgr-attribute-outer-command`; the native visual finalizer still requires this probe's own frame.
+The witness carries a nonce derived from that callback's retained stability captures. Buffered
+output from an earlier callback cannot satisfy it, and trace replay derives the same nonce.
+A target not forwarded is Unsupported. A forwarded target without a distinct rendered effect
+uses the existing Untestable declaration route and names the outer terminal. Missing, unreadable
+or unfinished command evidence stays PROBE TODO with its cause; missing outer identity stays named.
+Positive effects stand. Blink, resets, colours, text-cell routes and library callbacks retain their
+existing readers. Pixel presence alone still decides nothing, and no probe-source or run field is added.
+
 The headless OSC 52 read callback seeds an isolated nonce and accepts measured silence only through
 an available, collector-qualified sentinel query member. Its retained raw response and measured sentinel
 facts distinguish that negative from an unanswered capture. Malformed or unmatched replies remain

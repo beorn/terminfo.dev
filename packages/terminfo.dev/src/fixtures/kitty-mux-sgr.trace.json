@@ -1,0 +1,435 @@
+{
+  "calls": [
+    {
+      "args": [
+        "\u001b[0m"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 0,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.054893,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 7.935025
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[4:3m"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 1,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.080792,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.071544
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[0m"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 2,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.088817,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.084108
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[0m"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 3,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.093416,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.091121
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[?25l"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 4,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.097113,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.09573
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[2J\u001b[H"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 5,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.101982,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.098726
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[0m\u001b[2J\u001b[3;3HAaBb 0123456789 - terminal text\u001b[0m\u001b[2;1H\u001b[1;1H "
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 6,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.105729,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.104577
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H0-0123456789abcdef01234567"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 7,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.107963,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.106922
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H "
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 8,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.110198,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.108985
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H0-0123456789abcdef01234567"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 9,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.113604,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.112181
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[0m\u001b[2J\u001b[3;3H\u001b[4:3mAaBb 0123456789 - terminal text\u001b[0m\u001b[2;1H\u001b[1;1H "
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 10,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.115598,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.114536
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H1-0123456789abcdef01234567"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 11,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.117421,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.11656
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H "
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 12,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.119525,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.118784
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H1-0123456789abcdef01234567"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 13,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.121108,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.120167
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[0m\u001b[2J\u001b[3;3H\u001b[99mAaBb 0123456789 - terminal text\u001b[0m\u001b[2;1H\u001b[1;1H "
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 14,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951262,
+        "settledPerformanceMs": 8.122972,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.12203
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H2-0123456789abcdef01234567"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 15,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951263,
+        "settledPerformanceMs": 8.360353,
+        "startedAtMs": 1794043951262,
+        "startedPerformanceMs": 8.123533
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H "
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 16,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951263,
+        "settledPerformanceMs": 8.372316,
+        "startedAtMs": 1794043951263,
+        "startedPerformanceMs": 8.364431
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H2-0123456789abcdef01234567"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 17,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951263,
+        "settledPerformanceMs": 8.386202,
+        "startedAtMs": 1794043951263,
+        "startedPerformanceMs": 8.378908
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[0m\u001b[2J\u001b[3;3H\u001b[7mAaBb 0123456789 - terminal text\u001b[0m\u001b[2;1H\u001b[1;1H "
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 18,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951263,
+        "settledPerformanceMs": 8.388707,
+        "startedAtMs": 1794043951263,
+        "startedPerformanceMs": 8.387515
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H3-0123456789abcdef01234567"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 19,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951263,
+        "settledPerformanceMs": 8.391262,
+        "startedAtMs": 1794043951263,
+        "startedPerformanceMs": 8.389849
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H "
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 20,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951263,
+        "settledPerformanceMs": 8.394959,
+        "startedAtMs": 1794043951263,
+        "startedPerformanceMs": 8.393446
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    },
+    {
+      "args": [
+        "\u001b[1;1H3-0123456789abcdef01234567"
+      ],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 21,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794043951263,
+        "settledPerformanceMs": 8.399878,
+        "startedAtMs": 1794043951263,
+        "startedPerformanceMs": 8.397664
+      },
+      "value": {
+        "kind": "undefined"
+      }
+    }
+  ],
+  "format": "viprobe.call-log",
+  "root": {
+    "entries": [
+      [
+        "write",
+        {
+          "kind": "function"
+        }
+      ]
+    ],
+    "kind": "object"
+  },
+  "version": 1
+}

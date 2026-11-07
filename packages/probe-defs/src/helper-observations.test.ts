@@ -12,6 +12,7 @@ import {
   recordExecutedProbe,
   NO_SAME_PATH_CONTROL,
   sgrProbe,
+  sgrCaptureFrames,
   unmeasuredCellResult,
   type DecrpmPs,
 } from "./helpers.ts"
@@ -390,8 +391,25 @@ test("SGR consumption stays inconclusive while headless cell state supports an a
 
 // A consumed SGR and two screenshots are not comparable when the fixed text
 // fixture wraps or lands outside the measured grid.
-test("SGR app fixtures refuse undersized grids before writes and retain valid branch evidence", async () => {
-  const definition = sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold)
+test("SGR app fixtures refuse undersized grids before writes and retain custom capture evidence", async () => {
+  const definition = sgrProbe(
+    "sgr.bold",
+    "\x1b[1m",
+    (cell) => cell.bold,
+    undefined,
+    undefined,
+    undefined,
+    (ctx, fixture) =>
+      sgrCaptureFrames(
+        ctx,
+        `\x1b[0m\x1b[2J\x1b[3;3H${fixture.sample}`,
+        `\x1b[0m\x1b[2J\x1b[3;3H${fixture.sequence}${fixture.sample}`,
+        "sgr.bold",
+        { sample: fixture.sample, startRow: 3, startCol: 3, sampleCells: fixture.sample.length },
+        undefined,
+        "Unstyled text sample",
+      ),
+  )
   if (!definition.term) throw new Error("Missing SGR app callback")
 
   for (const geometry of [

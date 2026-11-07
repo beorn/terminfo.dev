@@ -936,6 +936,181 @@ export async function captureStabilityPair<T extends StabilityCapture>(
   }
 }
 
+/** The approved same-run SGR attribute kind. Other SGR capture callers and text arms stay on
+ * their existing paths. Equality is read only over the measured sample, never the cursor. */
+export async function sgrAttributeCaptureResult(
+  ctx: TermProbeSource,
+  id: string,
+  sequence: string,
+): Promise<ProbeCallbackResult | null> {
+  if (!ctx.capture || ctx.captureKind === "text-cells" || id === "sgr.blink") return null
+  const read = collectorRegionRead(ctx)
+  if (!read) return null
+  const sample = "AaBb 0123456789 - terminal text"
+  const region = { top: 3, left: 3, bottom: 3, right: 2 + sample.length }
+  const spec = { region, sentinel: SENTINEL, cursorRow: 2, minRows: 3, minCols: 34 }
+  const reported = await captureRegionGeometry(ctx, id, spec, true)
+  if ("pass" in reported) return reported
+  const pixelGeometry = reported.geometry
+  const witnessCell = { top: 1, left: 1, bottom: 1, right: 1 }
+  const phases = [
+    { name: "plain", sequence: "", sample },
+    { name: "target", sequence, sample },
+    { name: "made-up", sequence: "\x1b[99m", sample },
+    { name: "handled", sequence: id === "sgr.inverse" ? "\x1b[4m" : "\x1b[7m", sample },
+    ...(id !== "sgr.inverse" ? [{ name: "inverse", sequence: "\x1b[7m", sample }] : []),
+    ...((id.startsWith("sgr.underline.") && id !== "sgr.underline.single") ||
+    id === "sgr.overline" ||
+    id === "sgr.strikethrough"
+      ? [{ name: "single underline", sequence: "\x1b[4m", sample }]
+      : []),
+    ...(id === "sgr.hidden" ? [{ name: "blank", sequence: "", sample: " ".repeat(sample.length) }] : []),
+  ]
+  const frames: ObservationFrame[] = []
+  const measured: Array<{ name: string; capture: RegionCapture }> = []
+  let stability: unknown
+  const finish = (
+    status: "supported" | "unsupported" | "probe-todo" | "probe-invalid",
+    note: string,
+  ): ProbeCallbackResult => {
+    const target = measured.find(({ name }) => name === "target")?.capture.frame
+    const decided = status === "supported" || status === "unsupported"
+    const response = JSON.stringify({
+      region,
+      pixelGeometry,
+      geometrySource: reported.source,
+      stability,
+      samples: Object.fromEntries(measured.map(({ name, capture }) => [name, capture.regionDigest])),
+    })
+    return {
+      pass: status === "supported",
+      note,
+      response,
+      criterionBranch: "sgr-attribute-same-run",
+      tests: [{ id: "attribute", status, ...(decided ? { assertionRefs: [0] } : { reason: note }) }],
+      observation: {
+        outcome: decided ? status : "inconclusive",
+        assertionType: "screenshot",
+        ...(decided ? {} : { reason: "insufficient-evidence" as const }),
+        screenshotRef: target?.ref ?? frames.at(-1)?.ref,
+        frames,
+        note,
+      },
+      ...(decided
+        ? {
+            assertions: [
+              {
+                assertionType: "screenshot" as const,
+                kind: status === "supported" ? ("positive" as const) : ("negative" as const),
+                expected: `${id}: same-run plain, made-up and handled controls qualify the attribute`,
+                observed: response,
+              },
+            ],
+          }
+        : {}),
+    }
+  }
+  try {
+    beginCaptureLifecycle(ctx)
+    ctx.write("\x1b[2J\x1b[H")
+    const stableRead = async (label: string) => {
+      const capture = await read({ role: "control", label, region, pixelGeometry })
+      frames.push(capture.frame)
+      return capture
+    }
+    const pair = await captureStabilityPair(
+      id,
+      "screenshot",
+      () => stableRead(`${id}: capture stability 1`),
+      () => stableRead(`${id}: capture stability 2`),
+    )
+    stability = pair.stability
+    if (pair.refusal) return finish("probe-todo", pair.refusal.observation?.note ?? `${id}: capture is not stable`)
+    // Bind the existing witness to these retained captures. Replaying those
+    // captures derives the same nonce; another callback cannot borrow buffered output.
+    const nonceBytes = await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(JSON.stringify([id, ...frames.map(({ ref, capturedAt }) => [ref, capturedAt])])),
+    )
+    const witnessNonce = Array.from(new Uint8Array(nonceBytes), (byte) => byte.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 24)
+    for (const [index, phase] of phases.entries()) {
+      const label = `${id}: ${phase.name}`
+      ctx.write(`\x1b[0m\x1b[2J\x1b[3;3H${phase.sequence}${phase.sample}\x1b[0m\x1b[2;1H\x1b[1;1H `)
+      const baseline = await read({ role: "control", label: `${label} — baseline`, region: witnessCell, pixelGeometry })
+      const options = {
+        read,
+        id,
+        label,
+        witnessCell,
+        pixelGeometry,
+        geometrySource: reported.source,
+        baseline,
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+        pollMs: DEFAULT_POLL_MS,
+        requireSameCrop: true,
+      }
+      const glyph = `${witnessGlyph(index)}-${witnessNonce}`
+      ctx.write(`\x1b[1;1H${glyph}`)
+      const painted = await awaitPaintWitness(options)
+      if (!witnessed(painted)) return finish("probe-todo", painted.observation?.note ?? `${id}: no paint witness`)
+      frames.push(baseline.frame, painted.witness.frame)
+      // Reuse the existing witness roundtrip: a transient clear cannot impersonate the requested paint.
+      for (const [write, expectedDigest] of [
+        [" ", baseline.regionDigest],
+        [glyph, painted.witness.regionDigest],
+      ] as const) {
+        ctx.write(`\x1b[1;1H${write}`)
+        const returned = await awaitPaintWitness({ ...options, expectedDigest })
+        if (!witnessed(returned)) {
+          return finish("probe-todo", returned.observation?.note ?? `${id}: no paint witness return`)
+        }
+        frames.push(returned.witness.frame)
+      }
+      const capture = await read({ role: phase.name === "target" ? "target" : "control", label, region, pixelGeometry })
+      if (!capture.regionRectangle) throw new Error(`${label}: pixel capture omitted the measured sample rectangle`)
+      frames.push(capture.frame)
+      measured.push({ name: phase.name, capture })
+    }
+    const moved = cropPositionRefusal({
+      id,
+      compared: measured.map(({ name, capture }) => ({ role: name, rectangle: capture.regionRectangle })),
+      response: JSON.stringify({ stability }),
+      frames,
+      screenshotRef: measured.find(({ name }) => name === "target")?.capture.frame.ref,
+    })
+    if (moved) return moved
+    const digest = (name: string) => {
+      const value = measured.find((entry) => entry.name === name)?.capture.regionDigest
+      if (value === undefined) throw new Error(`${id}: missing same-run ${name} sample`)
+      return value
+    }
+    const plain = digest("plain")
+    const target = digest("target")
+    // This order is the ruling: bad controls never become a terminal negative.
+    if (digest("made-up") !== plain) {
+      return finish("probe-invalid", `${id}: made-up SGR 99 changed the sample; Test broken`)
+    }
+    if (digest("handled") === plain) {
+      return finish("probe-todo", `${id}: handled control drew nothing; capture is blind`)
+    }
+    if (target === plain) return finish("unsupported", `${id}: drew nothing for this SGR`)
+    if (phases.some(({ name }) => name === "single underline") && target === digest("single underline")) {
+      return finish("unsupported", `${id}: drawn as single underline`)
+    }
+    if (id !== "sgr.inverse" && target === digest("inverse")) return finish("unsupported", `${id}: drawn as inverse`)
+    if (id === "sgr.hidden") {
+      return target === digest("blank")
+        ? finish("supported", `${id}: target equals the same-cell blank reference`)
+        : finish("probe-invalid", `${id}: hidden changed the sample without matching blank; Test broken`)
+    }
+    return finish("supported", `${id}: target differs from plain, made-up does not`)
+  } finally {
+    endCaptureLifecycle(ctx)
+  }
+}
+
 /**
  * Decide `id` from three cell-aligned captures of one run, each taken behind its own paint witness.
  * `read` is null when this run has no owned capture, in which case the caller's existing
