@@ -836,11 +836,11 @@ export function beginCaptureLifecycle(ctx: TermProbeSource): void {
   ctx.write("\x1b[?25l")
 }
 
-/** Close the shared capture lifecycle, running the arm's mode cleanup before DECTCEM is restored. */
-export function endCaptureLifecycle(ctx: TermProbeSource, cleanup?: string): void {
+/** Close the shared lifecycle; an independently saved rendition can replace the default SGR0. */
+export function endCaptureLifecycle(ctx: TermProbeSource, cleanup?: string, rendition = "\x1b[0m"): void {
   if (cleanup !== undefined) ctx.write(cleanup)
   ctx.write("\x1b[?25h")
-  ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  ctx.write(`${rendition}\x1b[2J\x1b[H`)
 }
 
 /** What a capture must report to enter the stability control: its digests and its frame. */
@@ -963,6 +963,7 @@ export async function captureRegionReadbackDecision(
     checks: Array<{ phase: string; label: string; digest: string }>
     failedAt?: string
   } = { qualified: false, checks: [] }
+  let initialRenditionSaved = false
   // Declared visual rows must tell the writer exactly why review remains open. Legacy callers
   // retain their existing observation-only result, including its historical timeout semantics.
   const review = (result: ProbeCallbackResult, reason?: string): ProbeCallbackResult => {
@@ -1248,7 +1249,10 @@ export async function captureRegionReadbackDecision(
         if (step.phase === "baseline") {
           failed = measured.regionDigest !== stableBaseline.regionDigest
           // Save exactly once. Restores never redefine the reference to match a faulty reset.
-          if (!failed) ctx.write(`${park}\x1b7`)
+          if (!failed) {
+            ctx.write(`${park}\x1b7`)
+            initialRenditionSaved = true
+          }
         } else if (step.phase === "before" || step.phase === "restored") {
           failed = measured.regionDigest !== initial
         } else if (step.phase === "styled") {
@@ -1467,6 +1471,8 @@ export async function captureRegionReadbackDecision(
       ],
     }
   } finally {
-    endCaptureLifecycle(ctx, spec.cleanup)
+    // A failed reference must reach DECRQSS without sending the reset under test as cleanup.
+    // Before our save exists, leave rendition alone rather than borrowing another saved slot.
+    endCaptureLifecycle(ctx, spec.cleanup, savedRendition ? (initialRenditionSaved ? "\x1b8" : "") : undefined)
   }
 }

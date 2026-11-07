@@ -1557,7 +1557,7 @@ test.each(subsets<SgrAttr>(["bold", "italic", "inverse"]).map((retained) => ({ r
     expect(restored.every((check) => check.digest === baseline)).toBe(true)
     expect(terminal.writes.join("").match(/\x1b7/g)).toHaveLength(1)
     expect(terminal.writes.at(-2)).toBe("\x1b[?25h")
-    expect(terminal.writes.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
+    expect(terminal.writes.at(-1)).toBe("\x1b8\x1b[2J\x1b[H")
     // This is the exact strict decoder used by the daemon client. A prior feature assertion
     // catches local/global ref confusion: reset's callback [0] must become run-global [1].
     const decoded = decodeResetCallback(result, terminal)
@@ -1653,7 +1653,16 @@ test.each([
   "unqualified saved reset reference tries DECRQSS and retains its named refusal: $name",
   async ({ options, failed }) => {
     const terminal = statefulTerminal(ALL_ATTRS, options)
+    const firstQueryWrites: string[] = []
+    const query = terminal.ctx.queryWithSentinelOutcome
+    terminal.ctx.queryWithSentinelOutcome = async (...args) => {
+      if (firstQueryWrites.length === 0) firstQueryWrites.push(...terminal.writes)
+      return query(...args)
+    }
     const result = await resetProbes.find((candidate) => candidate.id === "reset.sgr")!.term!(terminal.ctx)
+    // The first SGR0 belongs to DECRQSS's baseline, never to failed capture cleanup.
+    expect(firstQueryWrites.join("").match(/\x1b\[0m/g)).toHaveLength(1)
+    expect(firstQueryWrites).not.toContain("\x1b[0m\x1b[2J\x1b[H")
     expect(result.observation).toBeUndefined()
     expect(result.tests).toMatchObject([{ status: "probe-invalid", reason: expect.stringMatching(failed) }])
     expect(result.tests?.[0]?.reason).toContain("no independent reference")

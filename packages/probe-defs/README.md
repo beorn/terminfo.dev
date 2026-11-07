@@ -777,7 +777,8 @@ restores against that immutable crop. Every subset must differ; every restore mu
 the repeated full setup, made-up SGR 99 must leave the crop unchanged. SGR 0 returning the initial
 crop is Supported; a retained subset is Unsupported on a bare terminal. A changed made-up control
 or unmatched target is PROBE INVALID. Failed qualification names its step and tries DECRQSS;
-silence retains `noIndependentReference` and never runs a reset-derived reference. The library
+silence retains `noIndependentReference` and never runs a reset-derived reference. Cleanup restores
+the saved rendition, so a failed reference never sends SGR 0 before the query fallback. The library
 arm, `sgr.reset` and SGR 22 retain their existing behavior. A mux subset result stays PROBE TODO
 naming its outer terminal through `finalizeVisualResult`; positive captures and query fallbacks retain their results.
 Without a deciding independent capture, an omitted setup attribute retains named PROBE TODO coverage
