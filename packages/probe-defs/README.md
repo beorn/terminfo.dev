@@ -23,8 +23,9 @@ a failed control is PROBE INVALID. Qualified state transitions can decide suppor
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
-Ghostty 1.4.0 highlight resets use implemented OSC 110 as the handled control and OSC 113's
-exact reset warning after the target as the logged control and completion marker. Only the target's
+Ghostty 1.4.0 highlight and pointer resets use implemented OSC 110 as the handled control and OSC 113's
+exact reset warning after the target as the logged control and completion marker; OSC 113 itself
+uses OSC 116's tektronix-background warning as its independent control. Only the target's
 `resetting` warning counts; a `reporting` query warning does not. Without the target warning,
 the existing no-setup result stands; a failed control is PROBE INVALID. Kitty retains its unknown-OSC controls.
 

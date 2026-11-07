@@ -86,12 +86,15 @@ const declarations: readonly AppSemanticCapability[] = [
   // Ghostty v1.4.0 stream_handler.zig:383-390 drops unknown OSC; :1680-1690
   // handles OSC110, while :1713 logs exact reset refusals. OSC113 after the
   // target qualifies this log path and bounds the appended bytes (CTO ef675012).
+  // OSC113 uses OSC116 instead so its target cannot qualify its own control (CTO face495c).
   ...(
     [
-      ["extensions.osc117-reset-highlight-bg", "117", "background"],
-      ["extensions.osc119-reset-highlight-fg", "119", "foreground"],
+      ["extensions.osc117-reset-highlight-bg", "117", "highlight_background"],
+      ["extensions.osc119-reset-highlight-fg", "119", "highlight_foreground"],
+      ["extensions.osc113-reset-pointer-fg", "113", "pointer_foreground"],
+      ["extensions.osc114-reset-pointer-bg", "114", "pointer_background"],
     ] as const
-  ).map(([featureId, code, slot]) => ({
+  ).map(([featureId, code, colour]) => ({
     kind: "term",
     id: "ghostty",
     version: "1.4.0",
@@ -100,9 +103,12 @@ const declarations: readonly AppSemanticCapability[] = [
     reader: "report" as const,
     command: { code, body: code },
     reportControls: {
-      sentinel: { code: "113", body: "113", line: "resetting dynamic color pointer_foreground not implemented" },
+      sentinel:
+        code === "113"
+          ? { code: "116", body: "116", line: "resetting dynamic color tektronix_background not implemented" }
+          : { code: "113", body: "113", line: "resetting dynamic color pointer_foreground not implemented" },
       handled: { code: "110", body: "110", line: "resetting dynamic color foreground not implemented" },
-      targetLine: `resetting dynamic color highlight_${slot} not implemented`,
+      targetLine: `resetting dynamic color ${colour} not implemented`,
     },
   })),
   // CTO third-table Ask4: preserve the separately delivered fourteen bus-dependent rows.
