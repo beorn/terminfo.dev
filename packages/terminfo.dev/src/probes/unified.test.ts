@@ -2931,6 +2931,7 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
   const result = await callback(replay.context)
   replay.finish()
   expect(result.observation).toBeUndefined()
+  expect(result.notTested).toBeUndefined()
   expect(result.tests).toMatchObject([
     { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("no cell size can be mapped") },
   ])

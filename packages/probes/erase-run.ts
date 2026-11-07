@@ -236,7 +236,8 @@ export async function runEraseReplay(
           tests: result.tests,
           criterionBranch: result.criterionBranch,
           observation: result.observation && { ...result.observation, featureId, rawReplyRef },
-          coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef },
+          // Coverage requires retained raw state; its absent trace must still fail the parser.
+          coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
           diagnostic:
             precondition && !result.tests?.some((test) => test.id === "criterion" && test.status === "probe-invalid")
               ? {
