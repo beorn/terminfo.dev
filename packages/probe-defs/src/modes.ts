@@ -8,7 +8,7 @@ import type {
   LibProbeSource,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
-import { hasAuditedOscInterfaceAbsence } from "./extensions.ts"
+import { extensionsProbes, hasAuditedOscInterfaceAbsence } from "./extensions.ts"
 import {
   activeScreenRow,
   probe,
@@ -1898,7 +1898,30 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 
   // Bracketed paste
-  decrpmModeProbe("modes.bracketed-paste", 2004, headlessDecrpmArm(2004, "bracketedPaste", { stateReadback: true })),
+  {
+    ...decrpmModeProbe(
+      "modes.bracketed-paste",
+      2004,
+      headlessDecrpmArm(2004, "bracketedPaste", { stateReadback: true }),
+    ),
+    term: async (ctx) => {
+      const decrpm = await queryDecrpm(ctx, 2004)
+      if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 2004)
+      if (!ctx.input || !ctx.readInput || !ctx.withClipboardFixture) {
+        return replyFailure("Bracketed-paste effect needs owned clipboard, key injection and input readback")
+      }
+      const paste = extensionsProbes.find((entry) => entry.id === "extensions.clipboard-paste")?.term
+      if (!paste) throw new Error("Missing existing clipboard-paste App callback")
+      const result = await paste(ctx)
+      const detail = result.note ?? result.observation?.note
+      const note = `${decrpm === 0 ? "DECRPM mode 2004 returned Ps 0" : "No usable DECRPM reply for mode 2004"}; controlled reset/set/reset paste read${detail ? `; ${detail}` : ""}`
+      result.note = note
+      if (result.observation) result.observation.note = note
+      return result
+    },
+    termWrites: undefined,
+    termNeedsDisposable: true,
+  },
 
   // Application cursor keys
   {

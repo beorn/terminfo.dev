@@ -3978,15 +3978,27 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
     if (!control) throw new Error("XTEST delivery control failed: plain a did not reach the app")
     const nonce = `terminfo-paste-${randomUUID()}`
     await fixture.writeText(nonce)
-    ctx.write("\x1b[?2004h")
-    try {
+    const readPaste = async (enabled: boolean) => {
+      ctx.write(enabled ? "\x1b[?2004h" : "\x1b[?2004l")
       const arrival = new RegExp(`\\x1b\\[200~[\\s\\S]*?\\x1b\\[201~|${escapeRegex(nonce)}`)
-      // The owned fixture seeds CLIPBOARD; Shift+Insert reads X11 PRIMARY instead.
       const report = (await readInput(arrival, 1000, () => input.injectKey("ctrl+shift+v")))?.[0]
       if (!report) {
         throw new Error("XTEST clipboard paste ctrl+shift+v did not reach the app after a successful delivery control")
       }
-      const observed = { mode: "clipboard-paste", control, report }
+      return report
+    }
+    try {
+      // The owned fixture seeds CLIPBOARD; Shift+Insert reads X11 PRIMARY instead.
+      const reset = await readPaste(false)
+      const report = await readPaste(true)
+      const resetAgain = await readPaste(false)
+      if (reset !== nonce || resetAgain !== nonce || (report !== nonce && report !== `\x1b[200~${nonce}\x1b[201~`)) {
+        return {
+          ...replyFailure("Paste framing lacks exact raw reset controls or a complete target nonce"),
+          response: JSON.stringify({ reset, report, resetAgain }),
+        }
+      }
+      const observed = { mode: "clipboard-paste", control, reset, report, resetAgain }
       const expected =
         "OS XTEST ctrl+shift+v paste of clipboard nonce as CSI 200~nonce201~ after plain-a delivery control"
       const encoding = new RegExp(`\\x1b\\[200~${escapeRegex(nonce)}\\x1b\\[201~`)

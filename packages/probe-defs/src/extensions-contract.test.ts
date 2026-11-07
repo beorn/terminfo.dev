@@ -1290,11 +1290,13 @@ test("clipboard paste follows injected keys and nonce framing while its library 
     expect(injected, "the read must execute plain-a and paste injection, not return canned input").toEqual([
       "a",
       "ctrl+shift+v",
+      "ctrl+shift+v",
+      "ctrl+shift+v",
     ])
     expect(
       writes.filter((text) => text.includes("2004")),
       "the callback restores bracketed-paste mode",
-    ).toEqual(["\x1b[?2004h", "\x1b[?2004l"])
+    ).toEqual(["\x1b[?2004l", "\x1b[?2004h", "\x1b[?2004l", "\x1b[?2004l"])
     expect(
       await context.readInput!(/^$/, 1000, () => context.input!.injectKey("ctrl+shift+v")),
       "after the owned fixture closes, the empty clipboard is pasted without bracket framing",
