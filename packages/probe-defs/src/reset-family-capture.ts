@@ -106,7 +106,26 @@ function row(
  */
 export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
   "reset.sgr": {
-    ...row("\x1b[1;3;7m", "\x1b[0m", ""),
+    region: { ...REGION },
+    sentinel: { ...SENTINEL },
+    cursorRow: CURSOR_ROW,
+    expected: `\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
+    seed: `\x1b[1;3;7m\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
+    edit: `\x1b[0m\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
+    savedRendition: {
+      subsets: [[1], [3], [7], [1, 3], [1, 7], [3, 7], [1, 3, 7]].map((codes) => ({
+        label: `SGR ${codes.join(";")}`,
+        sequence: `\x1b[${codes.join(";")}m`,
+      })),
+      control: { label: "made-up SGR 99", sequence: "\x1b[99m" },
+      signal: "reset",
+      branch: "reset-saved-rendition",
+    },
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: CURSOR_ROW,
+    minCols: REGION.right,
+    // Query fallback and text captures must never reach a circular RIS reference.
     noIndependentReference: NO_INDEPENDENT_REFERENCE,
   },
   "sgr.reset": {

@@ -179,7 +179,7 @@ test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => 
 })
 
 /**
- * @failure reset.sgr is graded from something other than the terminal's own DECRQSS report: a
+ * @failure reset.sgr's query route is graded from something other than the terminal's own DECRQSS report: a
  *   missing reply is turned into a negative, or a terminal that keeps reporting 1/3/7 after the
  *   reset is still graded supported.
  * @level l1
@@ -187,14 +187,14 @@ test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => 
  *   shape that sgr.reset binds from sgr.ts.
  * @testonly none
  *
- * reset.sgr is an SGR-state claim, so the terminal's own DECRQSS report decides it (the shared
- * sgrReadbackDecision shape sgr.reset binds from sgr.ts) and no pixel review is needed: after
+ * Without capture, the terminal's own DECRQSS report decides reset.sgr (the shared
+ * sgrReadbackDecision shape sgr.reset binds from sgr.ts): after
  * a qualified setup and the reset the terminal reports no style code. Covers the four cases below: the
  * plain supported report, Kitty's normalized negation-list report, a retained 1/3/7 report
  * (negative), and a silent terminal (inconclusive, never negative).
  */
 test("reset.sgr is decided supported when the terminal reports no styles after the reset", async () => {
-  const ctx = kittySource(true)
+  const { capture: _capture, ...ctx } = kittySource(true)
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(true)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
@@ -202,7 +202,7 @@ test("reset.sgr is decided supported when the terminal reports no styles after t
 })
 
 test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
-  const ctx = kittySource(true)
+  const { capture: _capture, ...ctx } = kittySource(true)
   // What Kitty's normalized list reports after the reset: explicit negation codes, no 1/3/7.
   const payload = "0;22;23;24;27"
   const readState = ctx.queryWithSentinelOutcome
@@ -231,7 +231,7 @@ test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
  * is the required code alone and is unchanged.
  */
 test("a forbid-only SGR claim names the forbidden codes in its expected text", async () => {
-  const ctx = kittySource(true)
+  const { capture: _capture, ...ctx } = kittySource(true)
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.assertions?.[0]?.expected).toContain("reset.sgr: DECRQSS reports none of 1;3;7 after")
 })
@@ -243,7 +243,7 @@ test("an SGR claim that requires a code keeps the required code as its expected 
 })
 
 test("reset.sgr is a negative when the terminal keeps reporting the styles after the reset", async () => {
-  const ctx = kittySource(true, false)
+  const { capture: _capture, ...ctx } = kittySource(true, false)
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(false)
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })

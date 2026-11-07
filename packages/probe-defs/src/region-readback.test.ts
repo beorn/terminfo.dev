@@ -9,6 +9,7 @@
  * @consumer App-mode cell-readback decisions for editing and reset rows on owned contexts.
  * @testonly none
  */
+import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
 import {
   captureRegionReadbackDecision,
@@ -28,13 +29,16 @@ import type {
   MeasuredProbeCallbackResult,
   ObservationFrame,
   PixelObservationFrame,
+  ProbeCallbackResult,
+  ProbeSuiteManifest,
   TermProbeSource,
   TerminalQueryOutcome,
 } from "./types.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { sgrProbes } from "./sgr.ts"
 import { resetProbes } from "./reset.ts"
-import { recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
+import { initializeRunDraft, recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
+import { decodeCollectorDraft } from "../../run-parser/src/index.ts"
 
 const SEED = "\x1b[1;1Hseed"
 const EDIT = "\x1b[1;3H\x1b[1P"
@@ -1164,7 +1168,10 @@ test("every reset-family row keeps its witness and cursor outside the compared c
       row.cursorRow >= row.region.top && row.cursorRow <= row.region.bottom,
       `${id}: the cursor row lies outside the compared region`,
     ).toBe(false)
-    if (id === "sgr.fg.default" || id === "sgr.bg.default" || (NO_REFERENCE_ROWS as readonly string[]).includes(id)) {
+    if (
+      id !== "reset.sgr" &&
+      (id === "sgr.fg.default" || id === "sgr.bg.default" || (NO_REFERENCE_ROWS as readonly string[]).includes(id))
+    ) {
       expect(row.ignored, `${id}: the ignored frame IS the seed frame`).toBe(row.seed)
       expect(row.setupReference, `${id}: unchanged reference scope`).toBeUndefined()
     }
@@ -1213,7 +1220,7 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
       "no same-run pixel check decides the visual effect",
     )
   }
-  for (const id of NO_REFERENCE_ROWS) {
+  for (const id of NO_REFERENCE_ROWS.filter((id) => id !== "reset.sgr")) {
     const probe = probes.find((candidate) => candidate.id === id)
     expect(probe, `${id}: a probe definition`).toBeDefined()
     const result = await probe!.term!(familyTerminal("expected"))
@@ -1235,7 +1242,7 @@ test("a silent DECRQSS readback retains a named failure, and an answering one st
   // The DECRQSS-supported path must survive: a terminal that reports its actual baseline, setup
   // and post-reset state is still graded structurally; only a silent one reaches the named refusal.
   const probes = [...sgrProbes, ...resetProbes]
-  for (const id of NO_REFERENCE_ROWS) {
+  for (const id of NO_REFERENCE_ROWS.filter((id) => id !== "reset.sgr")) {
     const probe = probes.find((candidate) => candidate.id === id)
     expect(probe, `${id}: a probe definition`).toBeDefined()
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
@@ -1255,6 +1262,8 @@ test("a silent DECRQSS readback retains a named failure, and an answering one st
   for (const id of NO_REFERENCE_ROWS) {
     const probe = probes.find((candidate) => candidate.id === id)
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
+    // The saved-reference capture now decides first; retain separate proof of the query-only route.
+    if (id === "reset.sgr") delete terminal.ctx.capture
     terminal.ctx.queryWithSentinelOutcome = async () => {
       const state = terminal.snapshot()
       const reported =
@@ -1308,6 +1317,11 @@ interface StatefulTerminal {
 
 interface StatefulOptions {
   ris?: boolean
+  initial?: readonly SgrAttr[]
+  restoreRetains?: readonly SgrAttr[]
+  invisible?: readonly SgrAttr[]
+  invalidSgrChanges?: boolean
+  resetAddsUnderline?: boolean
   /** Attributes the reference does NOT clear: a partial-RIS terminal. */
   risRetains?: readonly (SgrAttr | SgrColor)[]
   risClearsCells?: boolean
@@ -1322,6 +1336,7 @@ interface StatefulOptions {
 /** A terminal that paints cells under real SGR state; `sgr0` lists what its SGR 0 actually clears. */
 function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {}): StatefulTerminal {
   const state: Record<SgrAttr, boolean> = { bold: false, italic: false, inverse: false, underline: false, faint: false }
+  for (const attribute of options.initial ?? []) state[attribute] = true
   const color: Record<SgrColor, string | undefined> = { fg: undefined, bg: undefined, uc: undefined }
   const cells = new Map<string, string>()
   const writes: string[] = []
@@ -1330,10 +1345,12 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
   let row = 1
   let col = 1
   let reads = 0
-  const paint = () =>
+  let saved: { state: typeof state; color: typeof color; row: number; col: number } | undefined
+  const visible = (attribute: SgrAttr) => state[attribute] && !options.invisible?.includes(attribute)
+  const paint = (char: string) =>
     cells.set(
       `${row},${col}`,
-      `${state.bold ? "b" : "-"}${state.faint ? "f" : "-"}${state.italic ? "i" : "-"}${state.inverse ? "v" : "-"}${state.underline ? "u" : "-"}|${color.fg ?? ""}|${color.bg ?? ""}|${state.underline ? (color.uc ?? "") : ""}`,
+      `${char}|${visible("bold") ? "b" : "-"}${visible("faint") ? "f" : "-"}${visible("italic") ? "i" : "-"}${visible("inverse") ? "v" : "-"}${visible("underline") ? "u" : "-"}|${color.fg ?? ""}|${color.bg ?? ""}|${state.underline ? (color.uc ?? "") : ""}`,
     )
   const miss = new Set<SgrAttr | SgrColor>(options.resetMisses ?? [])
   const clear = (attribute: SgrAttr) => {
@@ -1352,6 +1369,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         clearColour("fg")
         clearColour("bg")
         clearColour("uc")
+        if (options.resetAddsUnderline) state.underline = true
       } else if (code === 1) {
         if (options.ignoreBold !== "always" && !(options.ignoreBold === "combined" && codes.length > 1)) {
           state.bold = true
@@ -1383,6 +1401,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         color.uc = codes.slice(index).join(";")
         index = codes.length
       } else if (code === 59) clearColour("uc")
+      else if (code === 99 && options.invalidSgrChanges) state.underline = true
     }
   }
   const snapshot = () =>
@@ -1395,6 +1414,19 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     let index = 0
     while (index < sequence.length) {
       const char = sequence[index]!
+      if (char === "\x1b" && (sequence[index + 1] === "7" || sequence[index + 1] === "8")) {
+        if (sequence[index + 1] === "7") saved = { state: { ...state }, color: { ...color }, row, col }
+        else if (saved) {
+          for (const attribute of SGR_ATTRS) {
+            if (!options.restoreRetains?.includes(attribute)) state[attribute] = saved.state[attribute]
+          }
+          Object.assign(color, saved.color)
+          row = saved.row
+          col = saved.col
+        }
+        index += 2
+        continue
+      }
       if (char === "\x1b" && sequence[index + 1] === "c") {
         // A terminal that ignores RIS leaves both the cells and the SGR state exactly as they were.
         if (options.ris !== false) {
@@ -1424,7 +1456,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         index = end + 1
         continue
       }
-      paint()
+      paint(char)
       col += 1
       index += 1
     }
@@ -1442,18 +1474,24 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         role: request.role,
         label: request.label,
         capturedAt: reads,
-        ref: `sha256:${String(reads).repeat(64)}`,
+        ref: `sha256:${createHash("sha256").update(String(reads)).digest("hex")}`,
       }
       const key = `${request.cells.top},${request.cells.left},${request.cells.bottom},${request.cells.right}`
-      const digest =
+      const contents =
         key === FAMILY_SENTINEL
           ? `witness|${cells.get("1,1") ?? ""}`
           : `${cells.get("3,5") ?? "empty"}/${cells.get("3,6") ?? "empty"}`
+      const digest = `sha256:${createHash("sha256").update(contents).digest("hex")}`
       return {
         ...frame,
         regionDigest: digest,
-        pixelsDigest: `window|${digest}`,
-        regionRectangle: { x: 0, y: 0, width: 16, height: 16 },
+        pixelsDigest: `sha256:${createHash("sha256").update(`window|${digest}`).digest("hex")}`,
+        regionRectangle: {
+          x: (request.cells.left - 1) * GEOMETRY.cellWidth,
+          y: (request.cells.top - 1) * GEOMETRY.cellHeight,
+          width: (request.cells.right - request.cells.left + 1) * GEOMETRY.cellWidth,
+          height: (request.cells.bottom - request.cells.top + 1) * GEOMETRY.cellHeight,
+        },
       }
     },
     queryCursorPosition: async () => ({ row: 4, col: 1 }),
@@ -1477,6 +1515,182 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
 }
 
 const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
+
+// #32590: the immutable pre-setter reference must distinguish a complete reset from every
+// retained subset. The old tests only refused these captures and never exercised restoration.
+test.each(subsets<SgrAttr>(["bold", "italic", "inverse"]).map((retained) => ({ retained })))(
+  "saved reset reference grades the retained subset $retained and survives the daemon decoder",
+  async ({ retained }) => {
+    const terminal = statefulTerminal(ALL_ATTRS, { resetMisses: retained, risRetains: retained })
+    const capture = terminal.ctx.capture!
+    const capturedWrites: Array<{ role: ObservationFrame["role"]; label: string; writes: string }> = []
+    terminal.ctx.capture = async (request) => {
+      if (request.cells?.top === 3 && request.cells.left === 5) {
+        capturedWrites.push({ role: request.role, label: request.label, writes: terminal.writes.join("") })
+      }
+      return capture(request)
+    }
+    const result = await resetProbes.find((candidate) => candidate.id === "reset.sgr")!.term!(terminal.ctx)
+    const status = retained.length ? "unsupported" : "supported"
+    expect(result.observation).toMatchObject({ outcome: status, assertionType: "screenshot" })
+    expect(result.tests).toMatchObject([{ id: "reset", status, assertionRefs: [0] }])
+    expect(result.criterionBranch).toBe("reset-saved-rendition")
+    expect(terminal.queries).toEqual([])
+    const target = capturedWrites.find((frame) => frame.role === "target")
+    expect(target?.writes).toContain("\x1b[99m")
+    expect(target?.writes.match(/\x1b\[0m/g)).toHaveLength(1)
+    // Every reference, including the inert SGR99 control, precedes the first target SGR0.
+    for (const frame of capturedWrites.filter((frame) => frame.role !== "target")) {
+      expect(frame.writes).not.toContain("\x1b[0m")
+      expect(frame.writes).not.toContain("\x1bc")
+    }
+    const evidence = JSON.parse(result.response!) as {
+      resetReference: { checks: Array<{ phase: string; digest: string }> }
+    }
+    const checks = evidence.resetReference.checks
+    const baseline = checks[0]!.digest
+    const styled = checks.filter((check) => check.phase === "styled")
+    expect(styled).toHaveLength(7)
+    expect(styled.every((check) => check.digest !== baseline)).toBe(true)
+    const restored = checks.filter((check) => check.phase === "restored")
+    expect(restored).toHaveLength(7)
+    expect(restored.every((check) => check.digest === baseline)).toBe(true)
+    expect(terminal.writes.join("").match(/\x1b7/g)).toHaveLength(1)
+    expect(terminal.writes.at(-2)).toBe("\x1b[?25h")
+    expect(terminal.writes.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
+    // This is the exact strict decoder used by the daemon client. A prior feature assertion
+    // catches local/global ref confusion: reset's callback [0] must become run-global [1].
+    const decoded = decodeResetCallback(result, terminal)
+    expect(decoded.kind).toBe("captured")
+    expect(decoded.run.results[0]).toMatchObject({ status, tests: [{ assertionRefs: [1] }] })
+  },
+)
+
+function decodeResetCallback(result: ProbeCallbackResult, terminal: StatefulTerminal) {
+  const id = "reset.sgr"
+  const sourceRevision = "a".repeat(40)
+  const measuredAt = "2026-11-07T09:00:00.000Z"
+  const manifest: ProbeSuiteManifest & { schemaVersion: 4 } = {
+    schemaVersion: 4,
+    probeHash: "abcdef123456",
+    sourceRevision,
+    generatedAt: measuredAt,
+    adapterVersion: "test",
+    catalogIds: [id, "sgr.bold"],
+    probes: { term: [id], lib: [], mux: [] },
+  }
+  const assertions = [
+    {
+      featureId: "sgr.bold",
+      rawReplyRef: "sgr.bold",
+      assertionType: "buffer_state" as const,
+      kind: "positive" as const,
+      expected: "bold",
+      observed: '{"bold":true}',
+    },
+    ...(result.assertions ?? []).map((assertion) => ({ ...assertion, featureId: id, rawReplyRef: id })),
+  ]
+  const recorded = recordExecutedProbe({
+    featureId: id,
+    attempt: { scope: "probe", startedAt: measuredAt },
+    rawReplyRef: id,
+    ...(result.observation && { observation: { ...result.observation, featureId: id, rawReplyRef: id } }),
+    assertions,
+    tests: result.tests,
+    criterionBranch: result.criterionBranch,
+  })
+  const initialized = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "1234567890abcdef1234567890abcdef",
+    sourceRevision,
+    manifest,
+    intendedSubject: { kind: "term", id: "alacritty", version: "0.17.0" },
+  })
+  const run = {
+    ...initialized,
+    subject: {
+      kind: "term",
+      id: "alacritty",
+      version: "0.17.0",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt,
+    origin: { kind: "collector" },
+    rawReplies: {
+      "sgr.bold": '{"bold":true}',
+      [id]: JSON.stringify({
+        writes: terminal.writes,
+        queries: terminal.queries,
+        events: [],
+        callbackResponse: result.response,
+      }),
+    },
+    assertions,
+    results: initialized.results.map((entry) => (entry.featureId === id ? recorded : entry)),
+    screenshotRefs: (result.observation?.frames ?? [])
+      .filter((frame) => frame.kind !== "text-cells")
+      .map((frame) => frame.ref),
+  }
+  return decodeCollectorDraft("reset-saved-rendition.json", JSON.stringify(run), manifest, sourceRevision)
+}
+
+test.each([
+  { name: "invisible italic", options: { invisible: ["italic"] }, failed: /subset.*3/ },
+  { name: "initial italic", options: { initial: ["italic"] }, failed: /subset.*3/ },
+  { name: "restore retains italic", options: { restoreRetains: ["italic"] }, failed: /restored.*3/ },
+  {
+    name: "reset and restore share a fault",
+    options: { resetMisses: ["italic"], restoreRetains: ["italic"] },
+    failed: /restored.*3/,
+  },
+] satisfies Array<{ name: string; options: StatefulOptions; failed: RegExp }>)(
+  "unqualified saved reset reference tries DECRQSS and retains its named refusal: $name",
+  async ({ options, failed }) => {
+    const terminal = statefulTerminal(ALL_ATTRS, options)
+    const result = await resetProbes.find((candidate) => candidate.id === "reset.sgr")!.term!(terminal.ctx)
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toMatchObject([{ status: "probe-invalid", reason: expect.stringMatching(failed) }])
+    expect(result.tests?.[0]?.reason).toContain("no independent reference")
+    expect(terminal.queries).toContain("\x1bP$qm\x1b\\")
+    expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(false)
+    expect(terminal.writes.join("")).not.toContain("\x1bc")
+  },
+)
+
+test.each([
+  { name: "made-up SGR99 changes the crop", options: { invalidSgrChanges: true }, reason: /SGR 99/, target: false },
+  {
+    name: "target matches no reference",
+    options: { resetAddsUnderline: true },
+    reason: /matches no retained/,
+    target: true,
+  },
+] satisfies Array<{ name: string; options: StatefulOptions; reason: RegExp; target: boolean }>)(
+  "saved reset reference invalidates a corrupt measurement without querying: $name",
+  async ({ options, reason, target }) => {
+    const terminal = statefulTerminal(ALL_ATTRS, options)
+    const result = await resetProbes.find((candidate) => candidate.id === "reset.sgr")!.term!(terminal.ctx)
+    expect(result.tests).toMatchObject([{ status: "probe-invalid", reason: expect.stringMatching(reason) }])
+    expect(result.assertions ?? []).toEqual([])
+    expect(terminal.queries).toEqual([])
+    expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(target)
+  },
+)
+
+test("an answering DECRQSS decides after a saved reset subset fails, retaining the failed step", async () => {
+  const terminal = statefulTerminal(ALL_ATTRS, { invisible: ["italic"], replies: ["0", "1;3;7", "0"] })
+  const result = await resetProbes.find((candidate) => candidate.id === "reset.sgr")!.term!(terminal.ctx)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+  expect(result.observation?.note).toMatch(/subset.*3/)
+  expect(terminal.queries).toHaveLength(3)
+  expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(false)
+})
 
 // A reset verdict requires a separately witnessed FULL setup. Older models always honoured every
 // setter; those tests could not expose a reset graded after its preserved bold was never painted.
@@ -1611,12 +1825,11 @@ function subsets<T>(items: readonly T[]): T[][] {
   return items.reduce<T[][]>((sets, item) => [...sets, ...sets.map((set) => [...set, item])], [[]])
 }
 
-test("the three no-reference rows are inconclusive by name on the pixel path, whatever the terminal does", async () => {
+test("the two remaining no-reference rows decline on the pixel path, whatever the terminal does", async () => {
   // A row whose reset clears two or more attributes can be
   // fooled by a reset and a RIS that miss the same part of the cleared set. Each case below WOULD read
   // supported without the refusal; the refusal comes before a byte and says why.
   const cases: Array<{ id: (typeof NO_REFERENCE_ROWS)[number]; miss: SgrAttr[]; keep: (SgrAttr | SgrColor)[] }> = [
-    { id: "reset.sgr", miss: ["italic"], keep: ["italic"] },
     { id: "sgr.reset", miss: ["underline"], keep: ["underline"] },
     { id: "sgr.selective-reset.bold", miss: ["faint"], keep: ["faint"] },
   ]
@@ -1635,7 +1848,7 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
     expect(terminal.queries, `${entry.id}: the direct refusal queried nothing`).toEqual([])
   }
   const correct = statefulTerminal(ALL_ATTRS, { ris: true })
-  for (const id of NO_REFERENCE_ROWS) {
+  for (const id of NO_REFERENCE_ROWS.filter((id) => id !== "reset.sgr")) {
     const result = await captureRegionCallbackResult(correct.ctx, id, familyRow(id))
     expect(result?.observation, id).toBeUndefined()
     expect(result?.tests, id).toMatchObject([
@@ -1647,7 +1860,7 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
   }
 })
 
-test("the refused rows are exactly the rows whose reset clears two or more attributes, and each would read supported without the refusal", async () => {
+test("multi-attribute rows retain their query fallback refusal; unchanged refusals prevent circular grades", async () => {
   // Both directions of the refused set. First: membership is derived from the model, not restated.
   const clearsTwoOrMore = RESET_FAMILY_ROWS.filter((id) => {
     const probe = statefulTerminal(ALL_ATTRS, { ris: true })
@@ -1665,7 +1878,6 @@ test("the refused rows are exactly the rows whose reset clears two or more attri
   // Second: strip the flag and grade the same cases. Each one reads supported, so the refusal is
   // what prevents the false pass rather than a coincidence of the fixtures.
   const cases: Array<{ id: (typeof NO_REFERENCE_ROWS)[number]; miss: SgrAttr[]; keep: (SgrAttr | SgrColor)[] }> = [
-    { id: "reset.sgr", miss: ["italic"], keep: ["italic"] },
     { id: "sgr.reset", miss: ["underline"], keep: ["underline"] },
     { id: "sgr.selective-reset.bold", miss: ["faint"], keep: ["faint"] },
   ]
