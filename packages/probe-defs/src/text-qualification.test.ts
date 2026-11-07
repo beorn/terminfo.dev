@@ -84,7 +84,7 @@ describe("text qualification recipes", () => {
   it("keeps a retained version-1 suite's macOS qualification", () => {
     const retained = JSON.parse(
       readFileSync(new URL("../../../content/suites/00da53623456.json", import.meta.url), "utf8"),
-    )
+    ) as { textQualification: TextQualificationSpec }
     expect(retained.textQualification).toEqual({ version: 1, recipe: "macos-text-cells-v1" })
     const recorded = run(macos, "macos-text-cells-v1", [], retained.textQualification)
     expect(assessTextQualification(recorded.run, recorded.snapshots)).toEqual({ qualified: true })

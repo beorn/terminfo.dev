@@ -603,7 +603,7 @@ it.each([
                 ),
                 screenshotRefs: [],
                 textSnapshotRefs: [...refs],
-                textQualification: { version: 1, recipe: "macos-text-cells-v1", grid: { rows: 4, cols: 12 }, shapes },
+                textQualification: { version: 2, recipe: "macos-text-cells-v1", grid: { rows: 4, cols: 12 }, shapes },
               }
               writeFileSync(join(folder, "run.json"), JSON.stringify(appRun))
               const artifact = join(artifactsDirectory, `${[...refs][0]!.slice(7)}.txt`)
