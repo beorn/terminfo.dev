@@ -1662,8 +1662,9 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
   const decrpm = await queryDecrpm(ctx, 1)
   if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1)
   const { input, readInput } = ctx
-  if (!input || !readInput)
+  if (!input || !readInput) {
     return replyFailure("Application cursor effect needs owned key injection and input readback")
+  }
   try {
     ctx.write("\x1b[?1l")
     const control = (await readInput(/^a$/, 1000, () => input.injectKey("a")))?.[0]
