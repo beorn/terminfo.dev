@@ -1468,7 +1468,7 @@ test("app cursor replies and mode recognition do not prove alternate-buffer beha
   }
 })
 
-test.each(modes)("$id uses one DECRPM query without changing the terminal", async ({ id, number }) => {
+test.each(modes)("$id preserves known DECRPM replies and rejects a missing effect reader", async ({ id, number }) => {
   const definition = modesProbes.find((probe) => probe.id === id)
   if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
 
@@ -1497,24 +1497,17 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
     }
 
     const result = await definition.term(context)
-    expect(queried, `${id}: Ps ${ps}`).toEqual([`\x1b[?${number}$p`])
-    if (ps === null) {
+    expect(queried, `${id}: Ps ${ps}`).toEqual(
+      ps === null || ps === 0 ? [`\x1b[?${number}$p`, "\x1b[18t"] : [`\x1b[?${number}$p`],
+    )
+    if (ps === null || ps === 0) {
       expect(result.pass).toBe(false)
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       expect(result.tests).toMatchObject([
-        expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("DECRPM") }),
+        expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("owned width frame") }),
       ])
-    } else if (ps === 0) {
-      expect(result.pass).toBe(false)
-      expect(result.response).toBe("not recognized (Ps 0)")
-      expect(result.observation).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        assertionType: "query_reply",
-      })
-      expect(result.observation?.note, `${id}: note must survive projection`).toMatch(/not recognized/)
-      expect(result.assertions ?? []).toEqual([])
+      if (ps === 0) expect(result.tests?.[0]?.reason).toContain("Ps 0")
     } else if (ps === 4) {
       expect(result.pass).toBe(false)
       expect(result.response).toBe("permanently reset (Ps 4)")
@@ -1531,7 +1524,8 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: reading }])
     }
   }
-  expect(definition.termWrites).toBe("query")
+  expect(definition.termWrites).toBeUndefined()
+  expect(definition.termNeedsDisposable).toBe(true)
   expect(definition.termAssertionType).toBe("query_reply")
 })
 
