@@ -40,8 +40,9 @@ test.runIf(OWNED_LAYOUT).each(["real", "disagree", "other-cause"] as const)(
       if (
         typeof chunk === "string" &&
         /^headless ghostty-native probe extensions\.osc(?:117-reset-highlight-bg|119-reset-highlight-fg)\n$/.test(chunk)
-      )
+      ) {
         return true
+      }
       return write(chunk)
     })
     const batch = await collectBatch(async () => createGhosttyNativeBackend(), "ghostty-native", definitions).finally(
