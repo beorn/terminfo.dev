@@ -49,6 +49,12 @@ and its slower-period limit; the existing subject-aware finalizer keeps mux flat
 and names the recorded outer terminal. These controls use existing input and capture fixtures.
 
 Callback observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`, not five result statuses.
+The App 47/1047 callbacks share the existing region reader: after primary-marker restoration,
+47 re-entry must retain an independently painted alternate marker. Only a passing same-run
+47 retention control allows the 1047 callback to attribute an empty alternate buffer to its
+1047 exit; it reads that buffer through 47, not another 1047 entry. A measured 47 retention
+failure declares the 1047 clearing witness Untestable (no setup). Existing geometry, paint
+controls and cleanup apply to each phase; 1049 cursor and scrollback facets stay separate.
 The [writer and finalizer](src/helpers.ts) fold explicit tests and diagnostics into the result:
 a supported observation can still have a failed or pending required test; an inconclusive observation alone
 does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named

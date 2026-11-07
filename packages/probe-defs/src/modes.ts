@@ -140,12 +140,16 @@ async function primaryRestoreCapture(
   // An alternate seed makes restoration a change in the existing character oracle.
   // Keep the unrelated ?47 recipe and its no-change pixel criterion intact.
   const changesSeed = mode !== 47
-  const result = await captureRegionCallbackResult(ctx, id, {
+  const fixture = {
     region: { top: 1, left: 1, bottom: 1, right: Math.max(primary.length, alternate.length) },
     sentinel: { row: 2, col: 1 },
     cursorRow: 3,
     minRows: 3,
     minCols: 8,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  }
+  const result = await captureRegionCallbackResult(ctx, id, {
+    ...fixture,
     seed: changesSeed ? `${baseline}${alternateFrame}` : baseline,
     edit: changesSeed ? leave : `${alternateFrame}${leave}`,
     expected: baseline,
@@ -157,7 +161,6 @@ async function primaryRestoreCapture(
       },
     }),
     cleanup: leave,
-    timeoutMs: DEFAULT_TIMEOUT_MS,
   })
   if (!result) throw new Error(`${id}: owned primary restoration capture disappeared`)
   if (result.observation?.outcome === "supported" || result.observation?.outcome === "unsupported") {
@@ -168,12 +171,7 @@ async function primaryRestoreCapture(
   const remainingFacets = {
     id: "remaining-facets",
     status: "probe-todo" as const,
-    reason:
-      mode === 1049
-        ? "Primary-marker capture does not measure saved cursor or retained scrollback restoration"
-        : mode === 1047
-          ? "Primary-marker roundtrip does not measure exact alternate-buffer clear-on-exit; same-1047 re-entry cannot establish it"
-          : "Single alternate-screen roundtrip does not measure alternate contents surviving the next entry",
+    reason: "Primary-marker capture does not measure saved cursor or retained scrollback restoration",
   }
   const failedRestoration = result.tests?.find(
     (test) => test.id === "primary-marker-restored" && test.status === "unsupported",
@@ -220,11 +218,85 @@ async function primaryRestoreCapture(
       const reason = `After a ?${mode} round trip the primary marker was not restored`
       failedRestoration.reason = reason
       if (result.observation) result.observation.note = reason
-    } else if (!gradesEntry) {
+    } else if (!gradesEntry && mode === 1049) {
       result.tests.push(remainingFacets)
     }
   }
-  return result
+  if (mode === 1049 || result.observation?.outcome !== "supported") return result
+
+  // Qualify the independent ?47 access before using it to attribute ?1047's clearing.
+  // The target only re-enters: painting the expected marker happens after that read.
+  const legacyEnter = "\x1b[?47h"
+  const legacyLeave = "\x1b[?47l"
+  const blankAlternate = `${legacyEnter}\x1b[0m\x1b[2J\x1b[H`
+  const paintedAlternate = `${blankAlternate}${alternate}`
+  const retention = await captureRegionCallbackResult(ctx, `${id} retention`, {
+    ...fixture,
+    seed: `${legacyLeave}\x1b[0m\x1b[2J\x1b[H${primary}${paintedAlternate}${legacyLeave}`,
+    edit: legacyEnter,
+    expected: paintedAlternate,
+    ignored: blankAlternate,
+    cleanup: legacyLeave,
+  })
+  if (!retention) throw new Error(`${id}: owned alternate retention capture disappeared`)
+  const parts = [result, retention]
+  let last = retention
+  if (mode === 1047 && retention.observation?.outcome === "unsupported") {
+    return declaredUntestableResult(
+      "Untestable (no setup): this run does not retain alternate content through DECSET47, so its cleared reading cannot establish whether DECRST1047 cleared the buffer.",
+      {
+        primary: result.response,
+        retention: retention.response,
+        frames: parts.flatMap((part) => part.observation?.frames ?? []),
+      },
+    )
+  }
+  if (mode === 1047 && retention.observation?.outcome === "supported") {
+    const cleared = await captureRegionCallbackResult(ctx, `${id} clear-on-exit`, {
+      ...fixture,
+      seed: `${baseline}${alternateFrame}`,
+      edit: `${leave}${legacyEnter}`,
+      expected: blankAlternate,
+      ignored: paintedAlternate,
+      cleanup: legacyLeave,
+    })
+    if (!cleared) throw new Error(`${id}: owned alternate clearing capture disappeared`)
+    parts.push(cleared)
+    last = cleared
+  }
+  let assertionOffset = 0
+  const tests = parts.flatMap((part, index) => {
+    const outcome = part.observation?.outcome
+    const own = part.tests ?? [
+      {
+        id:
+          index === 0
+            ? "primary-marker-restored"
+            : index === 1
+              ? "alternate-retained-on-reentry"
+              : "alternate-cleared-on-exit",
+        status: outcome === "supported" || outcome === "unsupported" ? outcome : ("probe-todo" as const),
+        ...(outcome === "supported" || outcome === "unsupported"
+          ? { assertionRefs: [0] }
+          : { reason: part.observation?.note ?? "Alternate-buffer witness did not qualify" }),
+      },
+    ]
+    const adjusted = own.map((test) => ({
+      ...test,
+      ...(test.assertionRefs && { assertionRefs: test.assertionRefs.map((ref) => ref + assertionOffset) }),
+    }))
+    assertionOffset += part.assertions?.length ?? 0
+    return adjusted
+  })
+  const response = JSON.stringify(parts.map((part) => ({ response: part.response, tests: part.tests })))
+  if (!last.observation) return { ...last, response }
+  return {
+    ...last,
+    tests,
+    assertions: parts.flatMap((part) => part.assertions ?? []),
+    response,
+    observation: { ...last.observation, frames: parts.flatMap((part) => part.observation?.frames ?? []) },
+  }
 }
 
 /**

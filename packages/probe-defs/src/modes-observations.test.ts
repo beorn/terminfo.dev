@@ -2012,27 +2012,117 @@ test("alt-screen exit capture frames the primary, alternate and restored buffers
   expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
 })
 
-test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
-  "%s capture frames the swapped and restored buffers without grading",
-  async (id) => {
-    const definition = modesProbes.find((item) => item.id === id)
-    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
-    const writes: string[] = []
-    const frames: ObservationFrame[] = []
-    const result = await definition.term(captureSource(24, 80, writes, frames))
-    expect(result.tests).toMatchObject([
-      { id: "primary-marker-restored", status: "supported" },
-      { id: "alternate-marker-control", status: "supported" },
-      {
-        id: "remaining-facets",
-        status: "probe-todo",
-        reason: expect.stringMatching(id === "modes.altscreen-1047" ? /clear.*exit/i : /next entry/),
-      },
-    ])
-    expect(result.assertions).toHaveLength(2)
-    expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
-  },
-)
+// The old positive pinned only primary restoration. Exercise actual semantic buffer writes:
+// a clear-on-entry 1047 must not hide its broken exit, and 47 must qualify that independent access.
+test.each([
+  ["modes.altscreen-47", "working", "pixels", "supported"],
+  ["modes.altscreen-47", "47-clears", "pixels", "unsupported"],
+  ["modes.altscreen-1047", "working", "pixels", "supported"],
+  ["modes.altscreen-1047", "1047-no-clear", "pixels", "unsupported"],
+  ["modes.altscreen-1047", "1047-entry-masks", "pixels", "unsupported"],
+  ["modes.altscreen-1047", "47-clears", "pixels", "untestable"],
+  ["modes.altscreen-1047", "retention-stale", "pixels", "probe-todo"],
+  ["modes.altscreen-1047", "working", "text-cells", "supported"],
+] as const)("%s measures coupled re-entry witnesses with %s on %s as %s", async (id, fault, kind, expected) => {
+  const definition = modesProbes.find((item) => item.id === id)
+  if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+  const cols = 80
+  const rows = 24
+  const surface = createSemanticSurface({ cols, rows })
+  const writes: string[] = []
+  const captureLabels: string[] = []
+  let sequence = 0
+  const plane = (cells: CaptureCells) => {
+    const chars: string[] = []
+    for (let row = cells.top; row <= cells.bottom; row++) {
+      for (let col = cells.left; col <= cells.right; col++) chars.push(surface.getCell(row - 1, col - 1).char)
+    }
+    return JSON.stringify(chars)
+  }
+  const source = replayTermProbeSource(new Map(), {
+    cols,
+    rows,
+    captureKind: kind,
+    write(bytes) {
+      writes.push(bytes)
+      let actual = bytes
+      if (fault === "1047-no-clear" || fault === "1047-entry-masks") {
+        actual = actual.replaceAll("\x1b[?1047l", "\x1b[?47l")
+      }
+      if (fault === "1047-entry-masks") actual = actual.replaceAll("\x1b[?1047h", "\x1b[?1047h\x1b[2J")
+      if (fault === "47-clears") actual = actual.replaceAll("\x1b[?47h", "\x1b[?47h\x1b[2J")
+      surface.feed(actual)
+    },
+    captureGeometry: {
+      geometry: { cellWidth: 10, cellHeight: 20, textWidth: cols * 10, textHeight: rows * 20 },
+      source: "measured by complete raster calibration",
+    },
+    capture: async ({ role, label, cells, pixelGeometry }) => {
+      if (!cells || !pixelGeometry) throw new Error("Alternate-buffer fixture requires its measured crop")
+      captureLabels.push(label)
+      return {
+        kind: "pixels",
+        role,
+        label,
+        capturedAt: ++sequence,
+        ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
+        regionDigest: fault === "retention-stale" && label.includes(" retention") ? "stale" : plane(cells),
+        pixelsDigest: plane({ top: 1, left: 1, bottom: rows, right: cols }),
+        regionRectangle: {
+          x: (cells.left - 1) * pixelGeometry.cellWidth,
+          y: (cells.top - 1) * pixelGeometry.cellHeight,
+          width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+          height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+        },
+      }
+    },
+    cells: async ({ role, label, cells }) => {
+      if (!cells) throw new Error("Alternate-buffer fixture requires its cell region")
+      return {
+        kind: "text-cells",
+        role,
+        label,
+        capturedAt: ++sequence,
+        ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
+        cellDigest: plane(cells),
+        frameDigest: plane({ top: 1, left: 1, bottom: rows, right: cols }),
+        cellRectangle: cells,
+      }
+    },
+  })
+  if (kind === "pixels") source.cells = undefined
+  else {
+    source.capture = undefined
+    source.captureGeometry = undefined
+  }
+  let result: ProbeCallbackResult
+  if (fault === "retention-stale") {
+    vi.useFakeTimers()
+    try {
+      const pending = definition.term(source)
+      await vi.runAllTimersAsync()
+      result = await pending
+    } finally {
+      vi.useRealTimers()
+    }
+  } else result = await definition.term(source)
+  const recorded = recordExecutedProbe({
+    featureId: id,
+    attempt: { scope: "probe", startedAt: new Date().toISOString() },
+    criterionBranch: result.criterionBranch,
+    ...(result.notTested ? { coverage: { featureId: id, rawReplyRef: id, ...result.notTested } } : {}),
+    tests: result.tests,
+    observation: result.observation ? { featureId: id, ...result.observation } : undefined,
+    assertions: (result.assertions ?? []).map((assertion) => ({ featureId: id, ...assertion })),
+  })
+  expect(recorded.status).toBe(expected)
+  if (fault === "retention-stale") {
+    expect(recorded.reason).toMatch(/witness/)
+    expect(captureLabels.some((label) => label.includes("clear-on-exit"))).toBe(false)
+  }
+  expect(surface.getMode("altScreen")).toBe(false)
+  expect(writes.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
+})
 
 test("insert-replace capture contrasts replacement with IRM insertion", async () => {
   const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
