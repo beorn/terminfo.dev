@@ -944,10 +944,16 @@ an unchanged handled control leaves PROBE TODO. A target equal to plain is Unsup
 with a distinct single-underline or inverse reference names the collapsed effect as Unsupported.
 Hidden requires equality with a same-cell blank reference; another changed hidden sample is Test
 broken. Otherwise the target differs from plain while made-up does not, and reads Supported.
-The native SGR finalizer leaves these negative mux rows PROBE TODO naming the same run's outer
-terminal, since the capture cannot separate its failure from the mux; positive changes stand.
-A missing outer identity is named and stays open. Blink, resets, colours, text-cell routes and
-library callbacks retain their existing readers. Pixel presence alone still decides nothing.
+Negative mux rows additionally need the outer command read in the existing
+[App reader](../terminfo.dev/src/app-semantic-state.ts). It retains this callback's appended
+Kitty command reports through the four paint-witness roundtrips and joins them to the recorded
+plain, target, made-up and handled writes. A completed, controlled read selects
+`sgr-attribute-outer-command`; the native visual finalizer still requires this probe's own frame.
+A target not forwarded is Unsupported. A forwarded target without a distinct rendered effect
+uses the existing Untestable declaration route and names the outer terminal. Missing, unreadable
+or unfinished command evidence stays PROBE TODO with its cause; missing outer identity stays named.
+Positive effects stand. Blink, resets, colours, text-cell routes and library callbacks retain their
+existing readers. Pixel presence alone still decides nothing, and no probe-source or run field is added.
 
 The headless OSC 52 read callback seeds an isolated nonce and accepts measured silence only through
 an available, collector-qualified sentinel query member. Its retained raw response and measured sentinel

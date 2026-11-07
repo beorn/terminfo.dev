@@ -2,7 +2,12 @@ import { statSync, readFileSync, readlinkSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import type { AppSemanticReading, ProbeSubject } from "@terminfo/probe-defs"
+import {
+  sgrProbes,
+  type AppSemanticReading,
+  type LinuxMuxAttachmentProof,
+  type ProbeSubject,
+} from "@terminfo/probe-defs"
 import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 
 // Reviewed declarations match the exact App/mux version.
@@ -31,11 +36,16 @@ type AppSemanticCapability = {
   featureId: string
   reason?: string
   requiresMissingSessionBus?: true
+  outerCommands?: true
   reader?: "grid" | "cycle" | "cwd" | "report"
   command?: { code: string; body: string }
 }
 
 const declarations: readonly AppSemanticCapability[] = [
+  ...[
+    { kind: "mux", id: "tmux", version: "3.8", os: "linux" },
+    { kind: "mux", id: "screen", version: "5.0.2", os: "linux" },
+  ].flatMap((subject) => sgrProbes.map(({ id }) => ({ ...subject, featureId: id, outerCommands: true as const }))),
   ...promptFeatures
     .filter((featureId) => featureId !== "extensions.osc633-e")
     .map((featureId) => ({
@@ -263,6 +273,166 @@ export function openAppCommandLog(capture: string) {
       } while (Date.now() < deadline)
       return retain(text.length, false)
     },
+  }
+}
+
+// These are command reports, not a second terminal emulator. Only the qualified
+// four ordinal paint-witness roundtrips bound this callback's command phases.
+function muxSgrCommandPhases(text: string) {
+  const commands: [string[], string[], string[], string[]] = [[], [], [], []]
+  let phase = 0
+  let witnesses = 0
+  let row: number | undefined
+  let column: number | undefined
+  let error: string | undefined
+  for (const match of text.matchAll(/([^\n]*)\n/g)) {
+    const line = match[1]!
+    const position = /^screen_cursor_position (\d+) (\d+)$/.exec(line)
+    if (position) {
+      row = Number(position[1])
+      column = Number(position[2])
+    } else if (line.startsWith("screen_cursor_")) {
+      row = undefined
+      column = undefined
+    } else if (line === "screen_carriage_return") {
+      column = 1
+    } else if (line === "screen_linefeed") {
+      row = row === undefined ? undefined : row + 1
+    } else if (line.startsWith("select_graphic_rendition")) {
+      const parameters = /^select_graphic_rendition ([0-9;:]+)$/.exec(line)?.[1]
+      if (!parameters || !/^(?:\d+(?::\d+)*)(?:;\d+(?::\d+)*)*$/.test(parameters)) {
+        error = `Unrecognized outer SGR command report: ${line}`
+      } else {
+        commands[phase]!.push(
+          ...parameters.split(";").map((value) => (value === "21" ? "4:2" : value === "4:1" ? "4" : value)),
+        )
+      }
+    } else if (line.startsWith("draw ")) {
+      const value = line.slice(5)
+      if (row === 1 && column === 1 && /^[0-3]$/.test(value)) {
+        if (value !== String(phase)) {
+          error = `Outer SGR phase witness ${value} arrived during phase ${phase}`
+        } else if (++witnesses === 2) {
+          witnesses = 0
+          if (++phase === 4) return { commands, error, end: match.index + match[0].length }
+        }
+      }
+      column = column === undefined ? undefined : column + Array.from(value).length
+    }
+  }
+  return { commands, error, end: undefined }
+}
+
+/** Collector-local read: ownership comes from the existing live terminal owner. */
+export function beginMuxSgrCommandRead(input: {
+  featureId: string
+  subject: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "id" | "version" | "os" | "outerTerminal">>
+  proof?: Pick<LinuxMuxAttachmentProof, "platform" | "mux" | "launchRunId" | "collector">
+}) {
+  try {
+    const { subject, proof } = input
+    const env = process.env
+    if (
+      subject.kind !== "mux" ||
+      !declarations.some(
+        (entry) =>
+          entry.outerCommands &&
+          entry.featureId === input.featureId &&
+          entry.kind === subject.kind &&
+          entry.id === subject.id &&
+          entry.version === subject.version &&
+          entry.os === subject.os,
+      )
+    ) {
+      throw new Error(`No qualified outer command reader for ${subject.id} ${subject.version} ${input.featureId}`)
+    }
+    if (
+      subject.outerTerminal !== "kitty" ||
+      env.TERMINFO_TARGET_ID !== "kitty" ||
+      env.TERMINFO_TARGET_VERSION !== "0.49.2"
+    ) {
+      throw new Error("Outer command read requires this run's qualified Kitty 0.49.2")
+    }
+    if (
+      !proof ||
+      proof.platform !== "linux" ||
+      proof.mux !== subject.id ||
+      proof.mux !== env.TERMINFO_MUX_KIND ||
+      proof.launchRunId !== env.TERMINFO_RUN_ID ||
+      proof.collector.pid !== process.pid
+    ) {
+      throw new Error("Outer command read has no matching owned mux launch")
+    }
+    const capture = env.TERMINFO_CAPTURE_DIRECTORY
+    if (!capture || !isAbsolute(capture)) throw new Error("Outer command read has no owned artifact directory")
+    const log = openAppCommandLog(capture)
+    const offset = log.mark()
+    return {
+      status: "ready" as const,
+      async read(callLog: string | undefined) {
+        const detail: { offset: number; endOffset?: number; path?: string; appended?: string; commands?: string[][] } =
+          { offset }
+        try {
+          if (callLog === undefined) throw new Error(`Missing same-run callback trace: ${input.featureId}.callLog`)
+          const trace = JSON.parse(callLog) as {
+            format?: string
+            version?: number
+            calls?: Array<{ path?: string; args?: unknown[] }>
+          }
+          if (trace.format !== "viprobe.call-log" || trace.version !== 1 || !Array.isArray(trace.calls)) {
+            throw new Error("Outer SGR command read has no same-run callback write trace")
+          }
+          const paint = /^\x1b\[0m\x1b\[2J\x1b\[3;3H((?:\x1b\[[0-9;:]*m)*)([^\x1b]*)\x1b\[0m\x1b\[2;1H\x1b\[1;1H $/
+          const phases = trace.calls
+            .flatMap((call) => {
+              const value = call?.path === "context.write" ? call.args?.[0] : undefined
+              const match = typeof value === "string" ? paint.exec(value) : null
+              return match ? [{ sequence: match[1], sample: match[2] }] : []
+            })
+            .slice(0, 4)
+          const target = /^\x1b\[([0-9:]+)m$/.exec(phases[1]?.sequence ?? "")?.[1]
+          const handled = /^\x1b\[([47])m$/.exec(phases[3]?.sequence ?? "")?.[1]
+          if (
+            phases.length !== 4 ||
+            phases[0]?.sequence !== "" ||
+            phases[2]?.sequence !== "\x1b[99m" ||
+            !target ||
+            !handled ||
+            phases.some((phase) => phase.sample !== phases[0]?.sample)
+          ) {
+            throw new Error("Outer SGR command read cannot join the four controlled paint phases")
+          }
+          const reading = await log.read(
+            offset,
+            `mux-sgr-${input.featureId}-${randomUUID()}.log`,
+            (text) => muxSgrCommandPhases(text).end,
+          )
+          detail.path = reading.path
+          detail.endOffset = reading.endOffset
+          detail.appended = reading.text
+          const parsed = muxSgrCommandPhases(reading.text)
+          detail.commands = parsed.commands
+          if (parsed.error) throw new Error(parsed.error)
+          if (!reading.complete) throw new Error("Outer SGR command read did not observe phase completion")
+          if (!parsed.commands[3].includes(handled)) throw new Error("Outer SGR handled control was not forwarded")
+          const normalizedTarget = target === "21" ? "4:2" : target === "4:1" ? "4" : target
+          return {
+            status: "measured" as const,
+            target: normalizedTarget,
+            targetSent: parsed.commands[1].includes(normalizedTarget),
+            detail,
+          }
+        } catch (error) {
+          return {
+            status: "unavailable" as const,
+            reason: error instanceof Error ? error.message : String(error),
+            detail,
+          }
+        }
+      },
+    }
+  } catch (error) {
+    return { status: "unavailable" as const, reason: error instanceof Error ? error.message : String(error) }
   }
 }
 

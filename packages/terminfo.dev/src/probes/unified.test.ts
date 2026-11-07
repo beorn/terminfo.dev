@@ -6,7 +6,7 @@
  * @reach fs-walk <fixture-only: /tmp/terminfo-disposable-receipts>
  */
 import { createHash, randomUUID } from "node:crypto"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import * as nodeFs from "node:fs"
 import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
 import { tmpdir } from "node:os"
@@ -792,6 +792,143 @@ it.each([
     expect(batch.results.find((result) => result.featureId === "device.primary-da")?.status).toBe("supported")
   } finally {
     definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+  }
+})
+
+// @failure A completed outer-command read is dropped, the full draft subject is lost,
+// or command evidence bypasses the existing same-probe screenshot requirement.
+// Pixel control decisions belong to sgr-readback.test.ts; this exercises their collector handoff.
+it.each([
+  { forwarded: true, ownFrame: true, expected: "untestable" },
+  { forwarded: false, ownFrame: true, expected: "unsupported" },
+  { forwarded: true, ownFrame: false, expected: "probe-todo" },
+] as const)("attributes mux pixel negatives at the existing finalise site: $forwarded/$ownFrame", async (scenario) => {
+  verifiedBatchFixture()
+  const id = "sgr.underline.curly"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = {
+    term: definition.term,
+    termWrites: definition.termWrites,
+    termNeedsGeometry: definition.termNeedsGeometry,
+  }
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const capture = join(directory, "artifacts")
+  mkdirSync(capture)
+  const logPath = join(directory, "daemon.log")
+  writeFileSync(logPath, "")
+  const runId = "a".repeat(32)
+  const native = readFileSync(new URL("../fixtures/kitty-mux-sgr.txt", import.meta.url), "utf8")
+  const writes = JSON.parse(readFileSync(new URL("../fixtures/kitty-mux-sgr.trace.json", import.meta.url), "utf8")) as {
+    calls: Array<{ args: [string] }>
+  }
+  const processIdentity = { pid: process.pid, startTicks: "1", ttyRdev: 1 }
+  const subject = {
+    kind: "mux" as const,
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    osVersion: null,
+    outerTerminal: "kitty",
+    mux: "tmux",
+    config: null,
+    permissions: null,
+  }
+  const draft = initializeRunDraft({
+    runId,
+    sourceRevision,
+    manifest,
+    source: { kind: "live" },
+    intendedSubject: { kind: "mux", id: "tmux" },
+  })
+  draft.subject = subject
+  const frameRef = `sha256:${"a".repeat(64)}`
+  try {
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", "tmux")
+    vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
+    vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    definition.termWrites = "query"
+    delete definition.termNeedsGeometry
+    definition.term = async (ctx) => {
+      for (const call of writes.calls) ctx.write(call.args[0])
+      appendFileSync(logPath, scenario.forwarded ? native : native.replace("select_graphic_rendition 4:3\n", ""))
+      const frames = [
+        await ctx.capture!({ role: "control", label: "Prequalified plain sample" }),
+        await ctx.capture!({ role: "target", label: "Prequalified pixel negative" }),
+      ]
+      return {
+        pass: false,
+        criterionBranch: "sgr-attribute-same-run",
+        tests: [{ id: "attribute", status: "unsupported", assertionRefs: [0] }],
+        observation: {
+          outcome: "unsupported",
+          assertionType: "screenshot",
+          frames,
+          screenshotRef: scenario.ownFrame ? frameRef : `sha256:${"b".repeat(64)}`,
+        },
+        assertions: [
+          {
+            assertionType: "screenshot",
+            kind: "negative",
+            expected: "Same-run SGR pixel controls",
+            observed: `Controlled plain and target samples: ${frameRef}`,
+          },
+        ],
+      }
+    }
+    const batch = await runProbeBatch({
+      ids: [id],
+      draft,
+      subject: { kind: "mux", id: "tmux", os: "linux" },
+      ownedTerminal: {
+        ...geometryOwner(measured(24, 80)),
+        muxAttachmentProof: {
+          platform: "linux",
+          mux: "tmux",
+          launchRunId: runId,
+          captureRunId: runId,
+          bootId: "fixture",
+          receiptSha256: "a".repeat(64),
+          preflightCollector: processIdentity,
+          outerShell: processIdentity,
+          outerTerminal: processIdentity,
+          collector: processIdentity,
+          attachedClient: processIdentity,
+          chain: [],
+          executable: { path: "/fixture/tmux", sha256: "a".repeat(64), version: "3.8" },
+          config: { path: "/fixture/mux-empty.conf", sha256: "a".repeat(64) },
+          socketPath: "/fixture/tmux.sock",
+          session: "fixture",
+        },
+      },
+      capture: async ({ role, label }) => ({ frame: { ref: frameRef, role, label, capturedAt: 1 }, trace: {} }),
+    })
+    const result = batch.results.find((row) => row.featureId === id)!
+    expect(result.status).toBe(scenario.expected)
+    if (scenario.expected === "untestable") expect(result.reason).toMatch(/passed.*outer terminal kitty/i)
+    if (scenario.expected === "unsupported") expect(result.reason).toMatch(/tmux.*did not forward/i)
+    if (scenario.expected !== "probe-todo") {
+      expect(JSON.parse(batch.rawReplies[`${id}.outerCommands`]!)).toMatchObject({
+        status: "measured",
+        targetSent: scenario.forwarded,
+      })
+      expect(JSON.parse(batch.rawReplies[`${id}.outerCommands`]!).detail.appended).toBe(
+        scenario.forwarded ? native : native.replace("select_graphic_rendition 4:3\n", ""),
+      )
+      const retained = { ...asRun(batch), subject, intendedSubject: { kind: "mux", id: "tmux" } }
+      const decoded = decodeCollectorDraft(
+        "mux-sgr-command.json",
+        JSON.stringify(retained),
+        manifest,
+        sourceRevision,
+      ).run
+      expect(decoded.results.find((row) => row.featureId === id)?.status).toBe(scenario.expected)
+    }
+  } finally {
+    Object.assign(definition, original)
+    vi.unstubAllEnvs()
   }
 })
 
