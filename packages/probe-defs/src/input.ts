@@ -463,6 +463,64 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
   )
 }
 
+export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const { input, readInput } = ctx
+  if (!input || !readInput) return replyFailure("Mouse tracking effect needs owned click injection and input readback")
+  const untilKey = new RegExp(`^(?:${X10_OR_SGR_MOUSE.source})*a$`)
+  const readClick = async () =>
+    (
+      await readInput(untilKey, 1000, async () => {
+        await input.injectClick(1)
+        await input.injectKey("a")
+      })
+    )?.[0]
+  const hasClick = (bytes: string | undefined) =>
+    (bytes?.match(new RegExp(X10_OR_SGR_MOUSE.source, "g")) ?? []).some((report) =>
+      isX10Mouse(report) ? report.charCodeAt(3) === 32 : sgrMouseButton(report) === 0 && report.endsWith("M"),
+    )
+  return withMouseModes(ctx, async () => {
+    ctx.write("\x1b[?1002l\x1b[?1003l\x1b[?1000l")
+    const reset = await readClick()
+    ctx.write("\x1b[?1000h")
+    const set = await readClick()
+    ctx.write("\x1b[?1000l")
+    const resetAgain = await readClick()
+    const observed: Record<string, unknown> = { reset, set, resetAgain }
+    if (!reset || !set || !resetAgain) {
+      return {
+        ...replyFailure("Mouse tracking effect needs plain-a delivery in every arm"),
+        response: JSON.stringify(observed),
+      }
+    }
+    if (X10_OR_SGR_MOUSE.test(reset) || X10_OR_SGR_MOUSE.test(resetAgain)) {
+      return {
+        ...replyFailure("Mouse tracking reset arm emitted a report, so the set/reset contrast is unqualified"),
+        response: JSON.stringify(observed),
+      }
+    }
+    const expected =
+      "left-click reports only with 1000 set, plain a in every arm, and independent click delivery for a negative"
+    if (hasClick(set)) return interactionResult("mouse-tracking-1000", expected, observed)
+    // An absent target report is negative only when another tracking mode
+    // demonstrates the same owned click path in this callback.
+    ctx.write("\x1b[?1003h")
+    let control: string | undefined
+    try {
+      control = await readClick()
+    } finally {
+      ctx.write("\x1b[?1003l")
+    }
+    observed.control = control
+    if (!hasClick(control)) {
+      return {
+        ...replyFailure("Mouse tracking negative lacks an independent 1003 left-click delivery control"),
+        response: JSON.stringify(observed),
+      }
+    }
+    return unsupportedInteraction("mouse-tracking-1000", expected, observed)
+  })
+}
+
 export async function sgrMouse1006(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const { input, readInput } = ctx
   if (!input || !readInput) return replyFailure("SGR mouse effect needs owned click injection and input readback")
