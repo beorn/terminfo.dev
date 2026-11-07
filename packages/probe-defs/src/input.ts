@@ -537,7 +537,7 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
   let result: ProbeCallbackResult
   try {
     original = await resizeWindow(1400, 600)
-    const resized = await poll((reading) => reading.cols !== before.cols || reading.cols > 95)
+    const resized = await poll((reading) => reading.cols > 95)
     observed.resized = resized
     if (!resized.reading) {
       result = invalidInteraction("UTF8 mouse resized-window CSI18t read is missing or invalid", observed)
