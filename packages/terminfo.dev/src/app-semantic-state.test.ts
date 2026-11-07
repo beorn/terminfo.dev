@@ -59,83 +59,86 @@ test.each([
   ["119", "highlight", "foreground", "113", "pointer_foreground"],
   ["113", "pointer", "foreground", "116", "tektronix_background"],
   ["114", "pointer", "background", "113", "pointer_foreground"],
-] as const)("Ghostty OSC %s reads only its reset warning behind an independent logged control", async (code, family, slot, sentinel, sentinelSlot) => {
-  const root = mkdtempSync(join(tmpdir(), "app-semantic-ghostty-"))
-  const capture = join(root, "capture")
-  mkdirSync(capture)
-  const log = join(root, "daemon.log")
-  const line = (name: string) => `warning(stream): resetting dynamic color ${name} not implemented\n`
-  const featureId = `extensions.osc${code}-reset-${family}-${slot === "background" ? "bg" : "fg"}`
-  vi.stubEnv("TERMINFO_RUN_ID", "a".repeat(32))
-  vi.stubEnv("TERMINFO_MUX_KIND", undefined)
-  vi.stubEnv("TERMINFO_TARGET_ID", "ghostty")
-  vi.stubEnv("TERMINFO_TARGET_VERSION", "1.4.0")
-  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
-  vi.mocked(execFileSync).mockReturnValue("Ghostty 1.4.0\n")
-  try {
-    for (const variant of [
-      "exact",
-      "query-only",
-      "handled-refusal",
-      "late-handled-refusal",
-      "missing-sentinel",
-    ] as const) {
-      // A stale matching line before this row must never become its target report.
-      writeFileSync(log, line(`${family}_${slot}`))
-      const writes: string[] = []
-      const clock =
-        variant === "missing-sentinel"
-          ? vi
-              .spyOn(Date, "now")
-              .mockImplementationOnce(() => 0)
-              .mockImplementation(() => 6001)
-          : undefined
-      const result = await readAppSemanticState({
-        featureId,
-        runId: "a".repeat(32),
-        executable: { path: "/owned/ghostty", sha256: "b".repeat(64) },
-        write: (bytes) => {
-          writes.push(bytes)
-          if (bytes.includes("\x1b]110\x07") && variant === "handled-refusal") appendFileSync(log, line("foreground"))
-          if (bytes.includes(`\x1b]${code}\x07`)) {
-            if (variant === "late-handled-refusal") appendFileSync(log, line("foreground"))
-            appendFileSync(
-              log,
-              variant === "exact"
-                ? line(`${family}_${slot}`)
-                : `info(stream): reporting dynamic color ${family}_${slot} not implemented\n`,
-            )
-          }
-          if (bytes.includes(`\x1b]${sentinel}\x07`) && variant !== "missing-sentinel") {
-            appendFileSync(log, line(sentinelSlot))
-          }
-        },
-      })
-      clock?.mockRestore()
-      if (variant === "handled-refusal" || variant === "late-handled-refusal" || variant === "missing-sentinel") {
-        expect(result).toMatchObject({
-          status: "invalid",
-          reason: expect.stringContaining(variant === "missing-sentinel" ? sentinel : "110"),
+] as const)(
+  "Ghostty OSC %s reads only its reset warning behind an independent logged control",
+  async (code, family, slot, sentinel, sentinelSlot) => {
+    const root = mkdtempSync(join(tmpdir(), "app-semantic-ghostty-"))
+    const capture = join(root, "capture")
+    mkdirSync(capture)
+    const log = join(root, "daemon.log")
+    const line = (name: string) => `warning(stream): resetting dynamic color ${name} not implemented\n`
+    const featureId = `extensions.osc${code}-reset-${family}-${slot === "background" ? "bg" : "fg"}`
+    vi.stubEnv("TERMINFO_RUN_ID", "a".repeat(32))
+    vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+    vi.stubEnv("TERMINFO_TARGET_ID", "ghostty")
+    vi.stubEnv("TERMINFO_TARGET_VERSION", "1.4.0")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.mocked(execFileSync).mockReturnValue("Ghostty 1.4.0\n")
+    try {
+      for (const variant of [
+        "exact",
+        "query-only",
+        "handled-refusal",
+        "late-handled-refusal",
+        "missing-sentinel",
+      ] as const) {
+        // A stale matching line before this row must never become its target report.
+        writeFileSync(log, line(`${family}_${slot}`))
+        const writes: string[] = []
+        const clock =
+          variant === "missing-sentinel"
+            ? vi
+                .spyOn(Date, "now")
+                .mockImplementationOnce(() => 0)
+                .mockImplementation(() => 6001)
+            : undefined
+        const result = await readAppSemanticState({
+          featureId,
+          runId: "a".repeat(32),
+          executable: { path: "/owned/ghostty", sha256: "b".repeat(64) },
+          write: (bytes) => {
+            writes.push(bytes)
+            if (bytes.includes("\x1b]110\x07") && variant === "handled-refusal") appendFileSync(log, line("foreground"))
+            if (bytes.includes(`\x1b]${code}\x07`)) {
+              if (variant === "late-handled-refusal") appendFileSync(log, line("foreground"))
+              appendFileSync(
+                log,
+                variant === "exact"
+                  ? line(`${family}_${slot}`)
+                  : `info(stream): reporting dynamic color ${family}_${slot} not implemented\n`,
+              )
+            }
+            if (bytes.includes(`\x1b]${sentinel}\x07`) && variant !== "missing-sentinel") {
+              appendFileSync(log, line(sentinelSlot))
+            }
+          },
         })
-      } else {
-        expect(result).toMatchObject({
-          status: "measured",
-          reader: "report",
-          unknown: { code: sentinel, reports: [sentinel] },
-          handled: { applied: true, reports: [] },
-          target: { code, reports: variant === "exact" ? [code] : [] },
-        })
+        clock?.mockRestore()
+        if (variant === "handled-refusal" || variant === "late-handled-refusal" || variant === "missing-sentinel") {
+          expect(result).toMatchObject({
+            status: "invalid",
+            reason: expect.stringContaining(variant === "missing-sentinel" ? sentinel : "110"),
+          })
+        } else {
+          expect(result).toMatchObject({
+            status: "measured",
+            reader: "report",
+            unknown: { code: sentinel, reports: [sentinel] },
+            handled: { applied: true, reports: [] },
+            target: { code, reports: variant === "exact" ? [code] : [] },
+          })
+        }
+        expect(writes.join("")).toContain("\x1b]110\x07")
+        if (variant === "exact" || variant === "query-only") {
+          expect(writes.join("")).toContain(`\x1b]${code}\x07\x1b]${sentinel}\x07`)
+        }
+        expect(writes.join("")).not.toContain("7654")
       }
-      expect(writes.join("")).toContain("\x1b]110\x07")
-      if (variant === "exact" || variant === "query-only") {
-        expect(writes.join("")).toContain(`\x1b]${code}\x07\x1b]${sentinel}\x07`)
-      }
-      expect(writes.join("")).not.toContain("7654")
+    } finally {
+      rmSync(root, { recursive: true })
     }
-  } finally {
-    rmSync(root, { recursive: true })
-  }
-})
+  },
+)
 
 test("Kitty keeps unknown-command controls, unique logged sentinels and title restoration", async () => {
   const root = mkdtempSync(join(tmpdir(), "app-semantic-kitty-"))

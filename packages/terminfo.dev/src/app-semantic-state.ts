@@ -103,9 +103,10 @@ const declarations: readonly AppSemanticCapability[] = [
     reader: "report" as const,
     command: { code, body: code },
     reportControls: {
-      sentinel: code === "113"
-        ? { code: "116", body: "116", line: "resetting dynamic color tektronix_background not implemented" }
-        : { code: "113", body: "113", line: "resetting dynamic color pointer_foreground not implemented" },
+      sentinel:
+        code === "113"
+          ? { code: "116", body: "116", line: "resetting dynamic color tektronix_background not implemented" }
+          : { code: "113", body: "113", line: "resetting dynamic color pointer_foreground not implemented" },
       handled: { code: "110", body: "110", line: "resetting dynamic color foreground not implemented" },
       targetLine: `resetting dynamic color ${colour} not implemented`,
     },
