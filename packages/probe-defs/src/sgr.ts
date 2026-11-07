@@ -330,14 +330,29 @@ export function sgrTermReadback(
     const retainReference = (result: ProbeCallbackResult): ProbeCallbackResult => {
       if (!referenceFailure) return result
       const note = referenceFailure.tests?.[0]?.reason
+      const response = JSON.stringify({ reference: referenceFailure.response, decrqss: result.response })
+      if (result.observation) {
+        return {
+          ...result,
+          response,
+          observation: { ...result.observation, note: [note, result.observation.note].filter(Boolean).join("; ") },
+        }
+      }
+      if (result.notTested) {
+        return {
+          ...result,
+          response,
+          tests: result.tests?.map((test) => ({ ...test, reason: [note, test.reason].filter(Boolean).join("; ") })),
+        }
+      }
+      const [first, ...rest] = result.tests
       return {
         ...result,
-        response: JSON.stringify({ reference: referenceFailure.response, decrqss: result.response }),
-        ...(result.observation
-          ? { observation: { ...result.observation, note: [note, result.observation.note].filter(Boolean).join("; ") } }
-          : {
-              tests: result.tests?.map((test) => ({ ...test, reason: [note, test.reason].filter(Boolean).join("; ") })),
-            }),
+        response,
+        tests: [
+          { ...first, reason: [note, first.reason].filter(Boolean).join("; ") },
+          ...rest.map((test) => ({ ...test, reason: [note, test.reason].filter(Boolean).join("; ") })),
+        ],
       }
     }
     const captureResult = async () => {

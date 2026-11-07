@@ -99,11 +99,7 @@ function row(
   }
 }
 
-/**
- * The nine reset-family rows, keyed by the probe id that owns each claim.
- * `residual` is the SGR the expected frame paints on YY: the attribute set the row says the reset
- * preserves. Empty means the row's claim is "back to the terminal default".
- */
+/** Both full-SGR-reset claims share one saved-rendition recipe. */
 const SAVED_SGR0_CAPTURE = {
   region: { ...REGION },
   sentinel: { ...SENTINEL },
@@ -128,6 +124,11 @@ const SAVED_SGR0_CAPTURE = {
   noIndependentReference: NO_INDEPENDENT_REFERENCE,
 } satisfies Omit<RegionReadback, "pixelGeometry">
 
+/**
+ * The nine reset-family rows, keyed by the probe id that owns each claim.
+ * `residual` is the SGR the expected frame paints on YY: the attribute set the row says the reset
+ * preserves. Empty means the row's claim is "back to the terminal default".
+ */
 export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
   "reset.sgr": SAVED_SGR0_CAPTURE,
   "sgr.reset": {
