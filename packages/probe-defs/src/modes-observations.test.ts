@@ -25,7 +25,12 @@ test("App focus tracking grades delivered set/reset input rather than DECRPM", a
   const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
   for (const [enabled, reset, outcome] of [
     ["\x1b[O\x1b[Ia", "a", "supported"],
+    ["\x1b[I\x1b[O\x1b[Ia", "a", "supported"],
+    ["\x1b[O\x1b[O\x1b[Ia", "a", "supported"],
     ["a", "a", "unsupported"],
+    ["\x1b[Ia", "a", "unsupported"],
+    ["\x1b[Oa", "a", "unsupported"],
+    ["\x1b[I\x1b[I\x1b[O\x1b[Ia", "a", "invalid"],
     ["\x1b[I\x1b[Oa", "a", "invalid"],
     ["\x1b[O\x1b[I", "a", "invalid"],
     ["\x1b[O\x1b[Ia", "\x1b[O\x1b[Ia", "invalid"],
@@ -38,6 +43,11 @@ test("App focus tracking grades delivered set/reset input rather than DECRPM", a
       },
       focusRoundTrip: async () => {
         bytes += arm++ === 0 ? enabled.replace(/a$/, "") : reset.replace(/a$/, "")
+        return {
+          ownedWindowId: "42",
+          rootWindowId: "543",
+          focusedWindowIds: ["42", "543", "42"] as [string, string, string],
+        }
       },
       injectKey: async () => {
         if ((arm === 1 ? enabled : reset).endsWith("a")) bytes += "a"
@@ -604,6 +614,8 @@ test(
       let cols = 61
       let pending = Buffer.alloc(0)
       let finish: (() => void) | undefined
+      let responsePattern: RegExp | undefined
+      const actions: string[] = []
       const source = replayTermProbeSource(new Map(), {
         write: (bytes) => {
           for (const match of bytes.matchAll(/\x1b\[\?(\d+)([hl])/g)) {
@@ -618,6 +630,7 @@ test(
         },
         queryOutcome: async (_sequence, pattern) => {
           pending = Buffer.alloc(0)
+          responsePattern = pattern
           await new Promise<void>((resolve) => {
             finish = resolve
           })
@@ -630,17 +643,21 @@ test(
             if (mutation === "intermediate" && width !== 800) cols = 80
             return { width: 800, height: 600 }
           },
-          injectClick: async () => {
+          injectClick: async (_button, position) => {
+            actions.push(`click:${position?.x},${position?.y}`)
             if (!modes.has(1000) && mutation !== "reset-report") return
             if (modes.has(1006)) {
-              pending = Buffer.from(`\x1b[<0;${mutation === "wrong-position" ? 50 : 101};10M\x1b[<0;101;10m`)
+              const x = position?.x === 400 ? 32 : 101
+              pending = Buffer.from(`\x1b[<0;${mutation === "wrong-position" ? 50 : x};10M\x1b[<0;${x};10m`)
             } else {
               const utf8 = mutation === "utf8-both" || (modes.has(1005) && mutation !== "legacy")
               const coordinate = utf8 ? [0xc2, 0x85] : [0x85]
               pending = Buffer.from([27, 91, 77, 32, ...coordinate, 42, 27, 91, 77, 35, ...coordinate, 42])
             }
+            if (responsePattern?.test(pending.toString())) finish?.()
           },
           injectKey: async () => {
+            actions.push("key")
             if (mutation !== "missing-key") pending = Buffer.concat([pending, Buffer.from("a")])
             finish?.()
           },
@@ -649,6 +666,7 @@ test(
       const result = await definition.term!(source)
       if (mutation === "working" || mutation === "intermediate" || mutation === "legacy") {
         expect(result.observation?.outcome, mutation).toBe(mutation === "legacy" ? "unsupported" : "supported")
+        expect(actions.slice(0, 2), mutation).toEqual(["click:400,300", "click:1300,120"])
       } else {
         expect(result.tests, mutation).toEqual(
           expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]),

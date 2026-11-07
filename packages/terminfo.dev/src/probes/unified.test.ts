@@ -840,12 +840,26 @@ it("retains the focus report emitted while enabling 1004", async () => {
       },
       focusRoundTrip: async () => {
         if (enabled) process.stdin.emit("data", Buffer.from("\x1b[O\x1b[I"))
+        return {
+          ownedWindowId: "42",
+          rootWindowId: "543",
+          focusedWindowIds: ["42", "543", "42"] as [string, string, string],
+        }
       },
     },
   })
   expect(batch.ungradedDiagnostics).toEqual({})
   const trace = JSON.parse(batch.rawReplies["modes.focus-tracking"]!) as { queries: Array<{ raw: string }> }
   expect(trace.queries.slice(1).map((query) => query.raw)).toEqual(["\x1b[I\x1b[O\x1b[Ia", "a"])
+  expect(batch.results.find((row) => row.featureId === "modes.focus-tracking")?.status).toBe("supported")
+  expect(JSON.parse(batch.assertions[0]!.observed)).toMatchObject({
+    enableTimeReport: "\x1b[I",
+    roundTrip: "\x1b[O\x1b[I",
+    focus: {
+      enabled: { ownedWindowId: "42", rootWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
+      reset: { ownedWindowId: "42", rootWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
+    },
+  })
 })
 
 it.each(
