@@ -2044,7 +2044,7 @@ const modeDefinitions: ProbeDefinition[] = [
   // All-motion mouse tracking
   decrpmModeProbe("modes.mouse-all", 1003, headlessDecrpmArm(1003, "mouseTracking", { stateReadback: true })),
 
-  // Application keypad: DECKPAM then KP_5 encoding (SS3 u vs 5)
+  // Application keypad: DECKPAM then KP_Add encoding (SS3 k vs +)
   probe(
     "modes.application-keypad",
     (ctx) => {

@@ -2559,10 +2559,11 @@ describe("Kitty protocol detection", () => {
   })
 
   // #32569 (@cto third-table ruling 2026-11-06): the terminal arm reads the same silent-sibling control as the
-  // library arm, so a terminal that answers no DECRPM at all (Screen) is untested rather than invalid. The cases
-  // above drive only the library callback, and an answering terminal must stay byte for byte as before.
+  // library arm. #32582 (@cto fd9e55b1): a terminal that answers no DECRPM at all (Screen) has no report to read, so it
+  // is Untestable through the one declared route, naming the silent control query. The cases above drive only the
+  // library callback, which stays PROBE TODO, and an answering terminal must stay byte for byte as before.
   test.each([
-    ["every sibling is silent", "\x1b[?1;2c", true, "probe-todo"],
+    ["every sibling is silent", "\x1b[?1;2c", true, "untestable"],
     ["a sibling answers", "\x1b[?7;1$y\x1b[?1;2c", true, "probe-invalid"],
     ["the silence is unmeasured", "\x1b[?1;2c", false, "probe-invalid"],
   ] as const)(
@@ -2596,11 +2597,17 @@ describe("Kitty protocol detection", () => {
         return
       }
       expect(queries[1]).toBe("\x1b[?7$p")
-      if (expected === "probe-todo") {
+      if (expected === "untestable") {
         expect(queries).toHaveLength(15)
-        expect(result.tests?.[0]?.reason).toBe(
-          "Open: this test judges OSC 5522 by whether the terminal replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing.",
-        )
+        expect(isDeclaredUntestable(result)).toBe(true)
+        expect(result.tests).toEqual([
+          {
+            id: "declared-untestable",
+            status: "untestable",
+            reason:
+              "Untestable (no way to tell): no mode query in this run got a DECRPM reply. CSI ? 5522 $ p and its control query CSI ? Pm $ p for modes 7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031 all went unanswered, so this terminal has no report to read.",
+          },
+        ])
         expect(JSON.parse(result.response!)).toMatchObject({
           detection: da1,
           decrpmSiblings: expect.arrayContaining([
