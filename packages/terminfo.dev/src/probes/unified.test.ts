@@ -1702,6 +1702,8 @@ it("refuses app named coverage that arrives beside supported observation and ass
 
 it("reports undeclared geometry reads as collector errors without invented evidence", async () => {
   verifiedBatchFixture()
+  // Reach the geometry contract after the wrap probe's disposable-process prerequisite.
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
   const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
   const original = definition.termNeedsGeometry
   const originalAssertionType = definition.termAssertionType
@@ -2117,6 +2119,8 @@ it("records a text run's collector throw as text evidence", async () => {
 // The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
 it("uses the injected TTY for callback writes, columns, and nested cursor queries", async () => {
   verifiedBatchFixture()
+  // Qualify disposable ownership without changing the selected TTY or its recorded traffic.
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
   const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
   const original = definition.termNeedsGeometry
   definition.termNeedsGeometry = true
