@@ -470,17 +470,17 @@ export async function focusTracking1004(ctx: TermProbeSource): Promise<ProbeCall
   if (!input?.focusRoundTrip || !readInput) return xtestCoverage("owned focus roundtrip")
   const focusRoundTrip = input.focusRoundTrip.bind(input)
   const decrpm = await queryDecrpm(ctx, 1004)
-  const readArm = async () =>
+  const readArm = async (enable = false) =>
     (
       await readInput(/^[\s\S]*a/, 1000, async () => {
+        if (enable) ctx.write("\x1b[?1004h")
         await focusRoundTrip()
         await input.injectKey("a")
       })
     )?.[0] ?? null
   let enabled: string | null
-  ctx.write("\x1b[?1004h")
   try {
-    enabled = await readArm()
+    enabled = await readArm(true)
   } finally {
     ctx.write("\x1b[?1004l")
   }
