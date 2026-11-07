@@ -214,6 +214,16 @@ Terminal-query timeouts and apparatus errors without a native capture-command ca
 - `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
 
+OSC22's Library query arm and App arm share query text, reply parsing and controlled
+evaluation. The App reads the incoming selected shape before any mutation, checks
+a distinct control and `pointer`, then restores and reads the incoming shape in
+`finally`; an initial `0` uses the empty assignment to restore the default.
+Qualified replies decide selected shape, with reason text stating that the visible
+pointer was not read. A target that remains at the control is Unsupported; an
+unexpected target, missing control or failed restore stays open. No initial reply
+means no shape write and no negative, including on terminals that set OSC22 without
+offering the query. This uses existing owned-job query APIs, not a pointer-image observer.
+
 The reflow callback retains optional `getReflowState()` instance evidence as
 `response.reflowSetting`, independently of `declaredReflow`. An absent reader means
 not reported: the response omits the setting, without inferring false or using the
