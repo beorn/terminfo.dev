@@ -314,7 +314,15 @@ export const resetProbes: ProbeDefinition[] = [
         if (before === null || before === 0) {
           const { input, readInput } = ctx
           if (!input || !readInput) {
-            return replyFailure("Soft-reset effect needs owned key injection and input readback")
+            const reason = "Soft-reset effect needs owned key injection and input readback"
+            if (before === null) return replyFailure(reason)
+            // Ps 0 is a complete reply; missing actuation is not a failed reply window.
+            return {
+              pass: false,
+              response: JSON.stringify({ before }),
+              note: `DECRPM mode 1 returned Ps 0; ${reason}`,
+              tests: [{ id: "criterion", status: "probe-invalid", reason }],
+            }
           }
           const readUp = async () =>
             (

@@ -11,6 +11,7 @@ import {
   renderedWidthFailure,
 } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
+import { controlledWrapEffect } from "./modes.ts"
 
 /**
  * The measured region-readback rows of Text (28450; @cto 218ec7fe's rule applied to Text). A row
@@ -638,12 +639,7 @@ export const textProbes: ProbeDefinition[] = [
           }
         }
         const decawm = await ctx.queryMode(DECAWM_MODE)
-        if (decawm === null) {
-          return {
-            response: JSON.stringify({ cols, decawm }),
-            ...replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes"),
-          }
-        }
+        if (decawm === null || decawm === "unknown") return controlledWrapEffect(ctx, decawm === "unknown" ? 0 : null)
         if (decawm !== "set") {
           return {
             pass: false,
@@ -735,6 +731,7 @@ export const textProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    termNeedsDisposable: true,
   },
 
   {
