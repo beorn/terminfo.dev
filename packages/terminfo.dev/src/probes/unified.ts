@@ -10,7 +10,7 @@ import {
   ALL_PROBES as PROBE_DEFS,
   resolveProbeIds,
   recordExecutedProbe,
-  finalizeSgrResult,
+  finalizeVisualResult,
   withReplyFailureEvidence,
   declaredUntestableResult,
   type ProbeResult,
@@ -295,7 +295,7 @@ export async function runProbeBatch(
     subject?: { kind: "term" | "lib" | "mux"; id: string; os: string }
     /** Exact-version App declarations selected by the collector; only unresolved callbacks use them. */
     appDeclarations?: Readonly<Record<string, string>>
-    draft?: Pick<RunDraft, "results">
+    draft?: Pick<RunDraft, "results"> & Partial<Pick<RunDraft, "subject">>
     onCheckpoint?: (batch: ProbeBatch) => void
   } = {},
 ): Promise<ProbeBatch> {
@@ -990,9 +990,9 @@ export async function runProbeBatch(
       // This owner runs app/mux callbacks. Only frames captured by this probe can witness its effect.
       batch.results[index] =
         options.subject?.kind === "term" || options.subject?.kind === "mux"
-          ? finalizeSgrResult(
+          ? finalizeVisualResult(
               recorded,
-              options.subject,
+              options.draft?.subject ?? options.subject,
               captures.map(({ frame }) => frame),
             )
           : recorded
