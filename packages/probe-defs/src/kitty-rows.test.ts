@@ -7,9 +7,13 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { extensionsProbes } from "./extensions.ts"
 import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT, KITTY_REGION } from "./kitty-capture.ts"
 import type { ObservationFrame, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
+import { finishCapture } from "../../terminfo.dev/src/capture-core.ts"
 
 const GEOMETRY = {
   geometry: { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 480 },
@@ -180,6 +184,40 @@ test("animation decides from two target frames with no write between them", asyn
   expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "screenshot" }])
   // Both playback frames are target frames of the SAME run, which the reader requires.
   expect(result.observation?.screenshotRef).toBe(targets[1]?.ref)
+})
+
+// The feature model above deliberately supplies digests, but does not finalize checkpoints.
+// Seven retained App runs fail at the real finalizer before their redraw control can decide.
+// Exercise that boundary here; keep the existing playback-on/off cases as the feature's owner.
+test("animation whole-window redraw checkpoints satisfy the production capture finalizer", async () => {
+  const { context } = surface({
+    region: ["red", "blue", "frame1", "frame2", "still", "still", "cursor", "cursor"],
+    whole: ["before", "after"],
+  })
+  const capture = context.capture!
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-animation-finalizer-"))
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0])
+  try {
+    context.capture = async (checkpoint) => {
+      if (!checkpoint.cells) {
+        await finishCapture({
+          directory,
+          onRetained: () => {},
+          checkpoint: { featureId: "extensions.kitty-graphics.animation", ...checkpoint },
+          source: { bytes: png, format: "png", width: 1, height: 1, capturedAt: 1 },
+          png,
+          decoded: { width: 1, height: 1, rgba: Uint8Array.from([0, 0, 0, 255]) },
+          origin: { origin: { x: 0, y: 0 }, basis: "predecoded whole-window fixture" },
+          trace: {},
+        })
+      }
+      return capture(checkpoint)
+    }
+    const result = await term("extensions.kitty-graphics.animation")(context)
+    expect(result.observation?.outcome).toBe("supported")
+  } finally {
+    rmSync(directory, { recursive: true })
+  }
 })
 
 test("an acknowledgement with unchanging pixels is not animation support", async () => {

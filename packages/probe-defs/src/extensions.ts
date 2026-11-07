@@ -4718,7 +4718,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           return frame
         }
         const whole = async (role: "control" | "target", label: string) => {
-          const frame = await capture({ role, label, pixelGeometry: geometry })
+          const frame = await capture({ role, label })
           frames.push(frame)
           return frame
         }
