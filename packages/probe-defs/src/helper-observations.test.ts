@@ -520,7 +520,8 @@ test("SGR app fixtures refuse undersized grids before writes and retain custom c
 
 // Every SGR capture fixture shares one guard, so a measured small terminal refuses before writes.
 // The region fixture that now owns these rows needs a fourth row for its cursor park, so a 3-row
-// terminal passes the guard and is then declined BY NAME — after the DECRQSS readback's bytes.
+// terminal passes the guard and is then declined BY NAME. Saved-rendition references run first;
+// the other reset rows retain the DECRQSS readback's attempted bytes before the region refusal.
 test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for the region fixture", async () => {
   const ids = [
     "sgr.fg.default",
@@ -571,22 +572,24 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
         },
       }),
     )
-    // A 3-row grid passes the SGR guard but cannot map the 4-row region fixture. The trace is not
-    // empty (the silent DECRQSS baseline wrote neutralization and queried), so the evidence is "query"
-    // and no capture is ever requested.
+    // A 3-row grid cannot map the 4-row region fixture. Saved-rendition references now refuse
+    // before writes; the other rows first attempt the silent DECRQSS baseline. Neither captures.
+    const referenceFirst = id === "sgr.reset" || id === "sgr.selective-reset.bold"
     expect(ok.observation, id).toBeUndefined()
     expect(ok.tests, id).toMatchObject([
       {
         id: "criterion",
-        status: "probe-invalid",
-        reason: expect.stringContaining("the caller wrote before this refusal"),
+        status: referenceFirst ? "probe-todo" : "probe-invalid",
+        reason: referenceFirst
+          ? `${id}: capture-region readback needs a measured grid of at least 4x6; measured 3x34`
+          : expect.stringContaining("the caller wrote before this refusal"),
       },
     ])
     expect(ok.assertions, id).toBeUndefined()
     expect(roles, id).toEqual([])
     expect(ok.observation?.frames, id).toBeUndefined()
-    // An unanswered baseline stops before setup; cleanup still runs before the region refusal.
-    expect(writes, id).toEqual(["\x1b[0m", "\x1b[0m"])
+    // An unanswered DECRQSS baseline cleans up; an unavailable reference does not start it.
+    expect(writes, id).toEqual(referenceFirst ? [] : ["\x1b[0m", "\x1b[0m"])
   }
 })
 

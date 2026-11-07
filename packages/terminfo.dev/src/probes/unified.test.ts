@@ -1287,31 +1287,32 @@ it("a verified disposable receipt runs the reset exchange and records its kind a
   const path = join(directory, "host-measured.json")
   writeFileSync(path, bytes)
   process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  // Background reset isolates disposable authority from the foreground pixel fallback's geometry.
   const replies = [
-    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
-    "\x1b]10;rgb:aa/bb/cc\x07\x1b[?62;c",
-    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+    "\x1b]11;rgb:0000/0000/0000\x07\x1b[?62;c",
+    "\x1b]11;rgb:aa/bb/cc\x07\x1b[?62;c",
+    "\x1b]11;rgb:0000/0000/0000\x07\x1b[?62;c",
   ]
   let read = 0
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
     writes.push(text)
-    if (text === "\x1b]10;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
+    if (text === "\x1b]11;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
-    ids: ["extensions.osc110-reset-fg"],
+    ids: ["extensions.osc111-reset-bg"],
     subject: { kind: "term", id: "kitty", os: "linux" },
   })
   expect(batch.observations).toMatchObject([
-    { featureId: "extensions.osc110-reset-fg", outcome: "supported", assertionType: "query_reply" },
+    { featureId: "extensions.osc111-reset-bg", outcome: "supported", assertionType: "query_reply" },
   ])
   expect(writes).toEqual([
-    "\x1b]10;?\x07\x1b[c",
-    "\x1b]10;rgb:aa/bb/cc\x07",
-    "\x1b]10;?\x07\x1b[c",
-    "\x1b]110\x07",
-    "\x1b]10;?\x07\x1b[c",
+    "\x1b]11;?\x07\x1b[c",
+    "\x1b]11;rgb:aa/bb/cc\x07",
+    "\x1b]11;?\x07\x1b[c",
+    "\x1b]111\x07",
+    "\x1b]11;?\x07\x1b[c",
   ])
   const recorded = JSON.parse(batch.rawReplies["collector.disposableOwnership"]!) as {
     kind: string
@@ -1402,31 +1403,32 @@ it("authorizes write probes and records receipt kind and digest when disposable-
   const path = join(directory, "host-measured.json")
   writeFileSync(path, bytes)
   process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  // Background reset isolates disposable authority from the foreground pixel fallback's geometry.
   const replies = [
-    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
-    "\x1b]10;rgb:aa/bb/cc\x07\x1b[?62;c",
-    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+    "\x1b]11;rgb:0000/0000/0000\x07\x1b[?62;c",
+    "\x1b]11;rgb:aa/bb/cc\x07\x1b[?62;c",
+    "\x1b]11;rgb:0000/0000/0000\x07\x1b[?62;c",
   ]
   let read = 0
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
     writes.push(text)
-    if (text === "\x1b]10;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
+    if (text === "\x1b]11;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
-    ids: ["extensions.osc110-reset-fg"],
+    ids: ["extensions.osc111-reset-bg"],
     subject: { kind: "term", id: "kitty", os: "linux" },
   })
   expect(batch.observations).toMatchObject([
-    { featureId: "extensions.osc110-reset-fg", outcome: "supported", assertionType: "query_reply" },
+    { featureId: "extensions.osc111-reset-bg", outcome: "supported", assertionType: "query_reply" },
   ])
   expect(writes).toEqual([
-    "\x1b]10;?\x07\x1b[c",
-    "\x1b]10;rgb:aa/bb/cc\x07",
-    "\x1b]10;?\x07\x1b[c",
-    "\x1b]110\x07",
-    "\x1b]10;?\x07\x1b[c",
+    "\x1b]11;?\x07\x1b[c",
+    "\x1b]11;rgb:aa/bb/cc\x07",
+    "\x1b]11;?\x07\x1b[c",
+    "\x1b]111\x07",
+    "\x1b]11;?\x07\x1b[c",
   ])
   const recorded = JSON.parse(batch.rawReplies["collector.disposableOwnership"]!) as {
     kind: string
@@ -2859,10 +2861,10 @@ it("records failed clipboard restoration as collector error rather than retainin
   expect(batch.suiteComplete).toBe(false)
 })
 
-// #30932 AC3: a TTY-only log loses the source's optional capture method even when
-// DECRQSS decides a state-only reset before calling it. Existing reply/trace tests cannot
-// establish that the same source shape reaches the callback during offline replay.
-it("retains SGR query-reply source shape for strict offline replay", async (context) => {
+// #30932 AC3: a TTY-only log loses the source's optional capture method. The saved-rendition
+// reference now needs pixel geometry before capture; replay must retain that same source shape
+// and named refusal rather than taking a different no-capture path.
+it("retains SGR capture source shape and pixel-geometry refusal for strict offline replay", async (context) => {
   verifiedBatchFixture()
   const writes: string[] = []
   let sgrState = "0"
@@ -2876,7 +2878,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     return true
   }) as typeof process.stdout.write
   const capture = vi.fn(async () => {
-    throw new Error("A deciding DECRQSS reply must not invoke pixel capture")
+    throw new Error("Missing pixel geometry must not invoke capture")
   })
   const batch = await runProbeBatch({
     ids: ["sgr.reset"],
@@ -2885,8 +2887,8 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     capture,
   })
   expect(batch.results.find(({ featureId }) => featureId === "sgr.reset")).toMatchObject({
-    status: "probe-todo",
-    reason: "visual effect not observed in this run",
+    status: "probe-invalid",
+    reason: expect.stringContaining("no cell size can be mapped"),
   })
   // The persistence boundary must accept a terminal query-reply capture without
   // inventing an erase buffer/geometry manifest or a headless runtime identity.
@@ -2931,7 +2933,11 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
   const beforeReplay = writes.length
   const result = await callback(replay.context)
   replay.finish()
-  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+  expect(result.observation).toBeUndefined()
+  expect(result.notTested).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("no cell size can be mapped") },
+  ])
   expect(writes).toHaveLength(beforeReplay)
   expect(capture).not.toHaveBeenCalled()
   const nativeIdentity = vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockImplementation(async () => {
@@ -2945,11 +2951,15 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       expect(assertion.runId).not.toBe(draft.runId)
       expect(assertion.source).toEqual(source)
       expect(assertion.subject).toEqual(draft.subject)
-      expect(assertion.results.find(({ featureId }) => featureId === "sgr.reset")).toMatchObject({
-        status: "probe-todo",
-        reason: "visual effect not observed in this run",
-        assertionType: "query_reply",
+      const replayed = assertion.results.find(({ featureId }) => featureId === "sgr.reset")
+      expect(replayed).toMatchObject({
+        status: "probe-invalid",
+        reason: expect.stringContaining("no cell size can be mapped"),
       })
+      // An unavailable pixel mapping records the failure, without a deciding observation type.
+      expect(replayed?.assertionType).toBeUndefined()
+      expect(replayed?.rawReplyRef).toBeUndefined()
+      expect(replayed?.tests.map(({ rawReplyRef }) => rawReplyRef)).toEqual([undefined])
       const assertionPath = record.files.find((file) => file.endsWith(assertion.runId + ".assertion.draft.json"))
       if (!assertionPath) throw new Error("Missing persisted assertion")
       const executingManifest = derivedSuiteManifest()
@@ -3105,7 +3115,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     expect(boundRecord.files).toContain(join(directory, blobRef))
     expect(
       boundRecord.assertions.map(({ results }) => results.find(({ featureId }) => featureId === "sgr.reset")?.status),
-    ).toEqual(["probe-todo", "probe-todo"])
+    ).toEqual(["probe-invalid", "probe-invalid"])
     expect(nativeIdentity).not.toHaveBeenCalled()
     expect(writes).toHaveLength(beforeReplay)
     expect(capture).not.toHaveBeenCalled()
@@ -3282,12 +3292,16 @@ it("retains same-callback control and target frames without declaring visual sup
   expect(structuredClone(replayed)).toEqual(replayed)
   const live = batch.results.find(({ featureId }) => featureId === "sgr.blink")!
   for (const assertion of replayed.assertions) {
-    expect(assertion.results.find(({ featureId }) => featureId === live.featureId)).toMatchObject({
+    const result = assertion.results.find(({ featureId }) => featureId === live.featureId)
+    expect(result).toMatchObject({
       status: live.status,
       reason: live.reason,
       assertionType: live.assertionType,
       frames: live.frames,
+      rawReplyRef: live.featureId,
     })
+    expect(result?.tests).toContainEqual(expect.objectContaining({ rawReplyRef: live.featureId }))
+    expect(typeof assertion.rawReplies[live.featureId]).toBe("string")
   }
   expect(writes).toHaveLength(beforeOffline)
 }, 30_000)

@@ -224,8 +224,9 @@ export async function runEraseReplay(
           throw new Error("Erase result outside catalogue: " + featureId)
         }
         if (result.response !== undefined) assertion.rawReplies[featureId] = result.response
+        const rawReplyRef = Object.hasOwn(assertion.rawReplies, featureId) ? featureId : undefined
         for (const item of result.assertions ?? []) {
-          assertion.assertions.push({ ...item, featureId, rawReplyRef: featureId })
+          assertion.assertions.push({ ...item, featureId, rawReplyRef })
         }
         const precondition = checks.find((check) => check.kind === "precondition" && !check.ok)
         const domain = recordExecutedProbe({
@@ -234,7 +235,8 @@ export async function runEraseReplay(
           assertions: assertion.assertions,
           tests: result.tests,
           criterionBranch: result.criterionBranch,
-          observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
+          observation: result.observation && { ...result.observation, featureId, rawReplyRef },
+          // Coverage requires retained raw state; its absent trace must still fail the parser.
           coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
           diagnostic:
             precondition && !result.tests?.some((test) => test.id === "criterion" && test.status === "probe-invalid")
@@ -244,7 +246,7 @@ export async function runEraseReplay(
                   message: "Erase precondition failed: " + precondition.matcher,
                 }
               : undefined,
-          rawReplyRef: featureId,
+          rawReplyRef,
         })
         const index = assertion.results.findIndex((entry) => entry.featureId === featureId)
         if (index < 0) throw new Error("Erase result missing from declared catalogue: " + featureId)
