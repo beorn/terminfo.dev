@@ -167,6 +167,14 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
     seedNote: "ED1 seed was not measured",
     controlNote: "ED1 names no control: its preserved row is the claim",
     reset: "",
+    // #32581 (@cto 52b0229c, a290eaa2): Alacritty 0.17.0 skips the line above a cursor on row 2, which
+    // the whole-region digest can only call a third frame. The cursor stays on row 2: moving it would
+    // hide that fault.
+    cursorRowGroups: {
+      rowsAbove: 1,
+      unsupportedNote:
+        "ED1 left the row above the cursor unchanged, with the cursor on row 2; the rows at and below the cursor match the expected frame. A lower cursor is not run.",
+    },
   },
   {
     id: "erase.screen.all",
