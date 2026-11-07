@@ -135,6 +135,25 @@ test.each(["erase.character", "modes.alt-screen.exit", "modes.altscreen-1047", "
     }
     try {
       const result = await probe.term(context)
+      if (id === "modes.altscreen-1047") {
+        // This real parser clears on ?47 entry. Its cleared reading cannot decide
+        // ?1047 exit, while both retained fixtures must still survive strict ASCII mapping.
+        expect(result.tests).toMatchObject([{ id: "declared-untestable", status: "untestable" }])
+        const retained = JSON.parse(result.response ?? "{}") as {
+          primary: string
+          retention: string
+          frames: probeDefs.ObservationFrame[]
+        }
+        const primary = JSON.parse(retained.primary) as { after: string; expected: string }
+        const retention = JSON.parse(retained.retention) as { after: string; ignored: string; expected: string }
+        expect(primary.after).toMatch(/^sha256:/)
+        expect(retention.after).toMatch(/^sha256:/)
+        expect(primary.after).toBe(primary.expected)
+        expect(retention.after).toBe(retention.ignored)
+        expect(retention.after).not.toBe(retention.expected)
+        expect(retained.frames.every((frame: probeDefs.ObservationFrame) => frame.kind === "text-cells")).toBe(true)
+        return
+      }
       expect(result.observation, JSON.stringify(result)).toMatchObject({
         outcome: "supported",
         assertionType: "buffer_state",
@@ -143,15 +162,13 @@ test.each(["erase.character", "modes.alt-screen.exit", "modes.altscreen-1047", "
       expect(result.assertions?.every((assertion) => assertion.assertionType === "buffer_state")).toBe(true)
       expect(result.observation?.screenshotRef).toBeUndefined()
       expect(result.observation?.frames?.every((frame) => frame.kind === "text-cells")).toBe(true)
-      if (id === "modes.alt-screen.exit" || id === "modes.altscreen-1047") {
+      if (id === "modes.alt-screen.exit") {
         expect(result.tests).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
               id: "remaining-facets",
               status: "probe-todo",
-              reason: expect.stringMatching(
-                id === "modes.altscreen-1047" ? /clear.*exit/i : /saved cursor.*scrollback/,
-              ),
+              reason: expect.stringMatching(/saved cursor.*scrollback/),
             }),
           ]),
         )
