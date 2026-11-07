@@ -133,9 +133,16 @@ function calibratedPixelArm(geometry = GEOMETRY, captureKind: "pixels" | "text-c
 
 /** Screen's retained failure: truecolor paints nothing, indexed red works, DCS prints its body. */
 function printedSixelArm(
-  options: { truecolor?: boolean; indexed?: boolean; target?: "printed" | "third"; movedCrop?: boolean } = {},
+  options: {
+    truecolor?: boolean
+    indexed?: boolean
+    target?: "printed" | "third" | "blank" | "red"
+    movedCrop?: boolean
+    da1?: string
+  } = {},
 ) {
   const { context, writes } = calibratedPixelArm()
+  const queries: string[] = []
   let plane = "blank"
   let glyph = ""
   let reads = 0
@@ -162,16 +169,27 @@ function printedSixelArm(
     }
     return frame
   }
-  return { context, writes }
+  context.queryOutcome = async (sequence, pattern) => {
+    queries.push(sequence)
+    const raw = options.da1 ?? ""
+    const match = pattern.exec(raw)
+    return { match, reason: match ? "reply" : "timeout", raw, rawBase64: Buffer.from(raw).toString("base64") }
+  }
+  return { context, writes, queries }
 }
 
 // The whole callback, not the generic oracle, owns the sixel bytes and retry boundary.
 test.each([
-  { name: "printed body with indexed fallback", options: {}, outcome: "unsupported", indexed: true },
+  {
+    name: "printed body with indexed fallback",
+    options: { da1: "\x1b[?1;2;4c" },
+    outcome: "unsupported",
+    indexed: true,
+  },
   { name: "printed body with working truecolor", options: { truecolor: true }, outcome: "unsupported", indexed: false },
   {
     name: "nonmatching target after fallback",
-    options: { target: "third" as const },
+    options: { target: "third" as const, da1: "\x1b[?1;2;4c" },
     outcome: "inconclusive",
     indexed: true,
   },
@@ -181,21 +199,71 @@ test.each([
     outcome: "inconclusive",
     indexed: false,
   },
-  { name: "collapsed indexed reference", options: { indexed: false }, outcome: "inconclusive", indexed: true },
+  {
+    name: "collapsed indexed reference",
+    options: { indexed: false, da1: "\x1b[?1;2;4c" },
+    outcome: "inconclusive",
+    indexed: true,
+  },
   {
     name: "invalid crop with equal control digests",
-    options: { movedCrop: true },
+    options: { movedCrop: true, da1: "\x1b[?1;2;4c" },
     outcome: "inconclusive",
     indexed: false,
   },
-])("sixel controls: $name", async ({ options, outcome, indexed }) => {
-  const { context, writes } = printedSixelArm(options)
+  {
+    name: "unchanged rectangle with own DA1 attribute4",
+    options: { truecolor: true, target: "blank" as const, da1: "\x1b[?1;2;4c" },
+    outcome: "unsupported",
+    indexed: false,
+    advertised: true,
+  },
+  {
+    name: "unchanged rectangle without DA1 attribute4",
+    options: { truecolor: true, target: "blank" as const, da1: "\x1b[?62;52c" },
+    outcome: "unsupported",
+    indexed: false,
+  },
+  {
+    name: "unchanged rectangle without DA1 reply",
+    options: { truecolor: true, target: "blank" as const },
+    outcome: "unsupported",
+    indexed: false,
+  },
+  {
+    name: "unchanged rectangle with malformed DA1",
+    options: { truecolor: true, target: "blank" as const, da1: "\x1b[?1;2;4" },
+    outcome: "unsupported",
+    indexed: false,
+  },
+  {
+    name: "rendered image despite DA1 attribute4",
+    options: { truecolor: true, target: "red" as const, da1: "\x1b[?1;2;4c" },
+    outcome: "supported",
+    indexed: false,
+  },
+])("sixel controls: $name", async (row) => {
+  const { options, outcome, indexed } = row
+  const { context, writes, queries } = printedSixelArm(options)
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
   if (!definition?.term) throw new Error("missing sixel callback")
   const result = await definition.term(context)
   expect(result.observation?.outcome).toBe(outcome)
   expect(writes.some((bytes) => bytes.includes("\x1b[48;5;196m"))).toBe(indexed)
-  if (outcome === "unsupported") {
+  const unchanged = "target" in options && options.target === "blank"
+  const advertised = "advertised" in row && row.advertised
+  if (unchanged) expect(result.criterionBranch).toBe(advertised ? "sixel-advertised-unchanged" : undefined)
+  else expect(result.criterionBranch).not.toBe("sixel-advertised-unchanged")
+  expect(queries).toEqual(unchanged ? ["\x1b[c"] : [])
+  if (unchanged) {
+    expect(result.observation?.assertionType).toBe("screenshot")
+    expect(result.tests).toBeUndefined() // The pixel observation still owns the existing decisive criterion.
+    if (advertised) {
+      expect(result.observation?.note).toBe(
+        "DA1 in this run advertises sixel (attribute 4) and the rectangle did not change",
+      )
+    }
+  } else if (outcome === "unsupported") {
     expect(result.observation?.note).toBe(
       "the post-sequence frame equals the sixel's own bytes written as plain text, so this terminal drew no image and passed none on",
     )
@@ -203,7 +271,7 @@ test.each([
     expect(result.observation?.note).toContain("third distinct frame")
   } else if ("movedCrop" in options && options.movedCrop) {
     expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
-  } else {
+  } else if (outcome === "inconclusive") {
     expect(result.observation?.note).toContain("seed frame and the expected frame read the same cells")
   }
 })

@@ -5381,6 +5381,20 @@ const extensionDefinitions: ProbeDefinition[] = [
                 "the post-sequence frame equals the sixel's own bytes written as plain text, so this terminal drew no image and passed none on"
               decided.note = note
               decided.observation.note = note
+            } else if (
+              decided.observation?.outcome === "unsupported" &&
+              !decided.tests?.some((test) => test.status === "probe-invalid") &&
+              seed &&
+              after === seed
+            ) {
+              const reply = await ctx.queryOutcome("\x1b[c", sixelDa1Reply)
+              const claim = sixelDa1Result(reply.raw, reply.reason === "reply" ? (reply.match?.[0] ?? null) : null)
+              if (claim.pass) {
+                const note = "DA1 in this run advertises sixel (attribute 4) and the rectangle did not change"
+                decided.note = note
+                decided.observation.note = note
+                decided.criterionBranch = "sixel-advertised-unchanged"
+              }
             }
             return decided
           }
