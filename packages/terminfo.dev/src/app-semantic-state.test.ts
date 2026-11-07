@@ -146,52 +146,70 @@ test.each([
   },
 )
 
-test("Kitty keeps unknown-command controls, unique logged sentinels and title restoration", async () => {
-  const root = mkdtempSync(join(tmpdir(), "app-semantic-kitty-"))
-  const capture = join(root, "capture")
-  mkdirSync(capture)
-  const log = join(root, "daemon.log")
-  writeFileSync(log, "")
-  vi.stubEnv("TERMINFO_RUN_ID", "a".repeat(32))
-  vi.stubEnv("TERMINFO_MUX_KIND", undefined)
-  vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
-  vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
-  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
-  vi.stubEnv("KITTY_PID", "123")
-  let title = "original title"
-  vi.mocked(execFileSync).mockImplementation((file, args) => {
-    if (file === "/owned/kitty") return "kitty 0.49.2 created by Kovid Goyal\n"
-    return Array.isArray(args) && args[0] === "search" ? "123\n" : title
-  })
-  const writes: string[] = []
-  try {
-    const result = await readAppSemanticState({
-      featureId: "extensions.osc176-app-id",
-      runId: "a".repeat(32),
-      executable: { path: "/owned/kitty", sha256: "b".repeat(64) },
-      write: (bytes) => {
-        writes.push(bytes)
-        for (const match of bytes.matchAll(/\x1b\]([^\x07]*)\x07/g)) {
-          const body = match[1]!
-          if (body.startsWith("2;")) title = body.slice(2)
-          else appendFileSync(log, `[PARSE ERROR] Unknown OSC escape code: ${body}\n`)
-        }
-      },
+// The real WezTerm warnings qualify only these two cells; Kitty's log grammar
+// cannot catch a lost WezTerm route, wrong 710 payload or borrowed old warning.
+test.each([
+  ["kitty", "0.49.2", "extensions.osc176-app-id", "176", "176;terminfo-test"],
+  ["wezterm", "0-unstable-2026-10-10", "extensions.osc555-flash", "555", "555"],
+  ["wezterm", "0-unstable-2026-10-10", "extensions.osc710-font-normal", "710", "710;fixed"],
+] as const)(
+  "%s %s %s keeps fresh log controls and restores its title",
+  async (app, version, featureId, code, targetBody) => {
+    const root = mkdtempSync(join(tmpdir(), "app-semantic-kitty-"))
+    const capture = join(root, "capture")
+    mkdirSync(capture)
+    const log = join(root, "daemon.log")
+    writeFileSync(log, "")
+    vi.stubEnv("TERMINFO_RUN_ID", "a".repeat(32))
+    vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+    vi.stubEnv("TERMINFO_TARGET_ID", app)
+    vi.stubEnv("TERMINFO_TARGET_VERSION", version)
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("KITTY_PID", "123")
+    const executable = app === "kitty" ? "/owned/kitty" : "/owned/wezterm-gui"
+    const line = (body: string) =>
+      app === "kitty"
+        ? `[PARSE ERROR] Unknown OSC escape code: ${body}\n`
+        : `14:01:40.193  WARN   wezterm_term::terminalstate::performer > Unhandled OSC  ${body.replaceAll(";", " ")}\n`
+    // Only the newly appended target window counts, never this older matching warning.
+    writeFileSync(log, line(targetBody))
+    if (app === "wezterm") writeFileSync(join(root, "owner-executable.sha256"), `${"b".repeat(64)}  ${executable}\n`)
+    let title = "original title"
+    vi.mocked(execFileSync).mockImplementation((file, args) => {
+      if (file === executable) return app === "kitty" ? "kitty 0.49.2 created by Kovid Goyal\n" : `wezterm ${version}\n`
+      return Array.isArray(args) && args[0] === "search" ? "123\n" : title
     })
-    expect(result).toMatchObject({
-      status: "measured",
-      reader: "report",
-      unknown: { code: "7654", reports: ["7654"] },
-      handled: { applied: true, reports: [] },
-      target: { code: "176", reports: ["176"] },
-    })
-    const sentinels = writes.flatMap((bytes) => [...bytes.matchAll(/7655;([^\x07]+)/g)].map((match) => match[1]))
-    expect(new Set(sentinels).size).toBe(3)
-    expect(title).toBe("original title")
-  } finally {
-    rmSync(root, { recursive: true })
-  }
-})
+    const writes: string[] = []
+    try {
+      const result = await readAppSemanticState({
+        featureId,
+        runId: "a".repeat(32),
+        executable: { path: executable, sha256: "b".repeat(64) },
+        write: (bytes) => {
+          writes.push(bytes)
+          for (const match of bytes.matchAll(/\x1b\]([^\x07]*)\x07/g)) {
+            const body = match[1]!
+            if (body.startsWith("2;")) title = body.slice(2)
+            else appendFileSync(log, line(body))
+          }
+        },
+      })
+      expect(result).toMatchObject({
+        status: "measured",
+        reader: "report",
+        unknown: { code: "7654", reports: ["7654"] },
+        handled: { applied: true, reports: [] },
+        target: { code, reports: [code] },
+      })
+      const sentinels = writes.flatMap((bytes) => [...bytes.matchAll(/7655;([^\x07]+)/g)].map((match) => match[1]))
+      expect(new Set(sentinels).size).toBe(3)
+      expect(writes.join("")).toContain(`\x1b]${targetBody}\x07`)
+      expect(title).toBe("original title")
+    } finally {
+      rmSync(root, { recursive: true })
+    }
+  },
+)
 
 // The existing OSC reader and mux command reader must cite only their own completed phase.
 // An old handled command must never qualify a later negative.
