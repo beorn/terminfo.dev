@@ -990,6 +990,14 @@ Only the result's own screenshot reference matched to a non-text-cells frame in 
 a batch-wide reference or an assertion labelled screenshot does not. A missing frame retains a pending `visual` test with
 reason `visual effect not observed in this run` when a Supported or Unsupported result lacks that evidence.
 Existing pending and failure results retain their causes; a screenshot never establishes support by presence alone.
+The cursor-shape pixel branch uses that same own-frame requirement after a focus key is injected and
+read, CPR locates the cursor's cell and a stable block pair qualifies its capture. A made-up style
+changing the block invalidates the probe; hidden pixels equal to block stay pending as a blind or
+wrong-cell capture. A bar equal to block reads Unsupported (drew no bar), equal to underline reads
+Unsupported (drawn as underline), and otherwise reads Supported. Default shape and visibility restore
+on exit. The shared finalizer leaves screenshot-backed mux negatives pending, naming the outer
+terminal, for the selected cursor review or same-run SGR attribute test; positives remain measured.
+Cursor DECRQSS replies and library criteria do not enter this pixel branch. Blinking is not inferred.
 Selected same-run pixel branches share one mux-negative rewrite at this finalise site. The small
 branch table names the decisive test and, for non-SGR rows, its feature; query-only cursor results
 remain outside it. The rewrite preserves positive capture tests and screenshot evidence, keeps

@@ -220,7 +220,7 @@ test("cursor shape without style readback and reverse-wrap CPR remain ungraded",
   expect(reverse.assertions).toBeUndefined()
 })
 
-test("cursor.shape capture names measured geometry and roles without inventing a cursor cell", async () => {
+test("cursor.shape without owned focus input cannot read cursor pixels", async () => {
   const context = {
     ...app({ row: 1, col: 1 }),
     capture: async ({ role, label }: { role: "control" | "target"; label: string }) => ({
@@ -231,19 +231,9 @@ test("cursor.shape capture names measured geometry and roles without inventing a
     }),
   } as TermProbeSource
   const result = await byId("cursor.shape").term!(context)
-  expect(JSON.parse(result.response ?? "")).toMatchObject({
-    rows: 24,
-    cols: 80,
-    cursorCell: null,
-    control: "Default cursor shape",
-    target: "Bar cursor shape",
-  })
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "screenshot",
-  })
-  expect(result.observation?.frames).toHaveLength(2)
+  expect(JSON.parse(result.response ?? "")).toEqual({ key: "a" })
+  expect(result.notTested).toMatchObject({ noObservable: "Focus needs owned key injection and stdin readback" })
+  expect(result.observation).toBeUndefined()
   expect(result).not.toHaveProperty("replyFailureTestIds")
 })
 
