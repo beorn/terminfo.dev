@@ -1,7 +1,7 @@
 /**
  * @failure Recorder checks lose their task, evaluate twice, stop at a soft mismatch, reach the reporter before attachments finish, or get reported from native pass counts instead of retained domain results.
  * @level l2
- * @consumer The approved Phase0 Terminfo recorder/check adapter on installed Vitest5.0.4.
+ * @consumer The approved Phase0 Terminfo recorder/check adapter on installed Vitest5.1.0.
  * @reach runs an isolated Vitest fixture with concurrent native soft failures, TaskMeta and artifact delivery.
  * @reach fs-walk <fixture-only: generated erase capture, assertion, report and attachment directory>
  * @testonly none
@@ -15,7 +15,7 @@ import { createVitest, version, type Reporter } from "vitest/node"
 import type { RuntimeArtifact } from "./fixtures/vitest-runtime.fixture.ts"
 
 test("installed Vitest preserves task-owned checks and awaited reporter attachments", async () => {
-  expect(version).toBe("5.0.4")
+  expect(version).toBe("5.1.0")
   const artifacts = new Map<string, RuntimeArtifact>()
   const artifactBytes = new Map<string, unknown>()
   const finalRecordBytes = new Map<string, unknown>()
