@@ -32,6 +32,18 @@ export function activeScreenRow(ctx: LibProbeSource, row: number): number {
   return Math.max(0, totalLines - screenLines) + row
 }
 
+export async function focusWithPlainKeyReadback(ctx: TermProbeSource): Promise<ProbeCallbackResult | null> {
+  if (!ctx.input || !ctx.readInput) {
+    return notTestedResult("Focus needs owned key injection and stdin readback", { key: "a" })
+  }
+  const input = ctx.input
+  const readback = await ctx.readInput(/(a)/, 2000, () => input.injectKey("a"))
+  if (readback?.[1] !== "a") {
+    return notTestedResult("The row's injected plain focus key a was not read back", { key: "a", readback })
+  }
+  return null
+}
+
 export const ADAPTER_SOURCE_AUDITS = {
   ghosttyNativeH4: {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
