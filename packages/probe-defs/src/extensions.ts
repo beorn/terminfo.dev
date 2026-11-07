@@ -322,6 +322,28 @@ function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentine
   }
 }
 
+/** Current library DECRQM siblings in device.ts/modes.ts; one silent mode is insufficient. */
+const OSC5522_DECRPM_SIBLINGS = [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031] as const
+
+/**
+ * What a measured-silent OSC 5522 detector means, from its DECRPM siblings, on both arms (#32569): every sibling
+ * silent leaves recognition untested (PROBE TODO); an answering sibling keeps the detector's own reading. Both
+ * readings retain the detector and sibling replies.
+ */
+function osc5522AfterSiblings(
+  replier: "library" | "terminal",
+  reply: TerminalQueryOutcome,
+  controls: { mode: number; raw: string }[],
+  allSilent: boolean,
+): ProbeCallbackResult {
+  const response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
+  if (allSilent) {
+    const reason = `Open: this test judges OSC 5522 by whether the ${replier} replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing.`
+    return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
+  }
+  return { ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined), response }
+}
+
 /**
  * Bind a complete reply from this query; a prefix or unrelated output is not a result. When the
  * collector measured a DA1 sentinel before the reply, the ordering rides along as a note.
@@ -6161,12 +6183,10 @@ export const extensionsProbes: ProbeDefinition[] = [
           const pattern = decrpmReplyPattern(5522)
           if (ctx.queryWithSentinelOutcome) {
             const reply = ctx.queryWithSentinelOutcome("\x1b[?5522$p", pattern)
-            let response = reply.raw
             if (sentinelSilenceResult(reply, "OSC5522 detection reply") !== null) {
-              // Current library DECRQM siblings in device.ts/modes.ts; one silent mode is insufficient.
               const controls = []
               let allSilent = true
-              for (const mode of [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031]) {
+              for (const mode of OSC5522_DECRPM_SIBLINGS) {
                 const control = ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
                 controls.push({ mode, raw: control.raw })
                 if (sentinelSilenceResult(control, "DECRPM prerequisite reply") === null) {
@@ -6174,21 +6194,11 @@ export const extensionsProbes: ProbeDefinition[] = [
                   break
                 }
               }
-              response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
-              if (allSilent) {
-                const reason =
-                  "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing."
-                return {
-                  pass: false,
-                  response,
-                  note: reason,
-                  tests: [{ id: "criterion", status: "probe-todo", reason }],
-                }
-              }
+              return osc5522AfterSiblings("library", reply, controls, allSilent)
             }
             return {
               ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined),
-              response,
+              response: reply.raw,
             }
           }
           const raw = ctx.feedCapture("\x1b[?5522$p")
@@ -6196,6 +6206,20 @@ export const extensionsProbes: ProbeDefinition[] = [
         },
         async (ctx) => {
           const reply = await ctx.queryWithSentinelOutcome("\x1b[?5522$p", decrpmReplyPattern(5522))
+          // #32569 (@cto third-table ruling 2026-11-06): the same silent-sibling control as the library arm.
+          if (sentinelSilenceResult(reply, "OSC5522 detection reply") !== null) {
+            const controls = []
+            let allSilent = true
+            for (const mode of OSC5522_DECRPM_SIBLINGS) {
+              const control = await ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
+              controls.push({ mode, raw: control.raw })
+              if (sentinelSilenceResult(control, "DECRPM prerequisite reply") === null) {
+                allSilent = false
+                break
+              }
+            }
+            return osc5522AfterSiblings("terminal", reply, controls, allSilent)
+          }
           return osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined)
         },
         "query_reply",

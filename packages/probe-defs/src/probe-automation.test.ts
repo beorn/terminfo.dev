@@ -2558,6 +2558,62 @@ describe("Kitty protocol detection", () => {
     }
   })
 
+  // #32569 (@cto third-table ruling 2026-11-06): the terminal arm reads the same silent-sibling control as the
+  // library arm, so a terminal that answers no DECRPM at all (Screen) is untested rather than invalid. The cases
+  // above drive only the library callback, and an answering terminal must stay byte for byte as before.
+  test.each([
+    ["every sibling is silent", "\x1b[?1;2c", true, "probe-todo"],
+    ["a sibling answers", "\x1b[?7;1$y\x1b[?1;2c", true, "probe-invalid"],
+    ["the silence is unmeasured", "\x1b[?1;2c", false, "probe-invalid"],
+  ] as const)(
+    "OSC 5522 terminal arm when the detector is silent and %s",
+    async (_name, control, qualified, expected) => {
+      const da1 = "\x1b[?1;2c"
+      const queries: string[] = []
+      const result = await probe("extensions.osc5522-clipboard").term!(
+        terminalSource({
+          async queryWithSentinelOutcome(sequence, pattern) {
+            queries.push(sequence)
+            const raw = sequence === "\x1b[?5522$p" ? da1 : control
+            const match = raw.match(pattern)
+            return {
+              raw,
+              rawBase64: btoa(raw),
+              match,
+              reason: match ? "reply" : qualified ? "sentinel" : "timeout",
+              ...(qualified && { sentinel: { atMs: 1, graceMs: 250 } }),
+            }
+          },
+        }),
+      )
+      expect(result.tests?.[0]?.status).toBe(expected)
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(queries[0]).toBe("\x1b[?5522$p")
+      if (!qualified) {
+        expect(queries).toHaveLength(1)
+        expect(result.response).toBeUndefined()
+        return
+      }
+      expect(queries[1]).toBe("\x1b[?7$p")
+      if (expected === "probe-todo") {
+        expect(queries).toHaveLength(15)
+        expect(result.tests?.[0]?.reason).toBe(
+          "Open: this test judges OSC 5522 by whether the terminal replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing.",
+        )
+        expect(JSON.parse(result.response!)).toMatchObject({
+          detection: da1,
+          decrpmSiblings: expect.arrayContaining([
+            { mode: 7, raw: da1 },
+            { mode: 2031, raw: da1 },
+          ]),
+        })
+      } else {
+        expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmSiblings: [{ mode: 7, raw: control }] })
+      }
+    },
+  )
+
   // Q16: retained bytes outside the matching reply window must never become a detector negative.
   // Happy-path Ps fixtures do not distinguish a valid target negative from a late frame in raw evidence.
   test.each([
