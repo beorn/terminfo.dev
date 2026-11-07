@@ -4992,6 +4992,13 @@ const extensionDefinitions: ProbeDefinition[] = [
             redraw: [redrawFirst.pixelsDigest, redrawSecond.pixelsDigest],
             playbackElapsedMs,
           })
+          const errors = replies.flatMap(({ label, readback }) => {
+            const message = readback.match?.[2]
+            return message && message !== "OK" ? [`${label}: ${message}`] : []
+          })
+          const note = errors.length
+            ? `${captureDecision.note}; terminal errors: ${errors.join("; ")}`
+            : captureDecision.note
           const observed = JSON.stringify({
             id,
             region: KITTY_REGION,
@@ -5020,12 +5027,12 @@ const extensionDefinitions: ProbeDefinition[] = [
               assertionType: "screenshot",
               screenshotRef: playbackSecond.ref,
               frames,
-              note: captureDecision.note,
+              note,
             },
             ...(captureDecision.decidedBy === "a missing region digest"
               ? {
                   criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-                  tests: [{ id: "review" as const, status: "probe-todo" as const, reason: captureDecision.note }],
+                  tests: [{ id: "review" as const, status: "probe-todo" as const, reason: note }],
                 }
               : {}),
             ...(captureDecision.outcome === "inconclusive"
