@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { createHash } from "node:crypto"
 import { inputProbes } from "./input.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
@@ -2023,5 +2024,95 @@ test.each(["xtermjs", "ghostty", "alacritty", "vt100-rust"])("%s keeps the other
     expect(JSON.parse(result.response!), id).toEqual({ tracking: true, negativeControl: null, report })
     expect(tracking, id).toBe(false)
     expect(feeds.at(-1), id).toContain("1015;1016l")
+  }
+})
+
+/** A readable owned canvas whose selection colours change independently of its silent OSC query. */
+function highlightSelectionTerminal(setCode: number, resetCode: number, ignoresReset: boolean) {
+  let colour = "1111/2222/3333"
+  let selected = false
+  let witness = " "
+  let captures = 0
+  const writes: string[] = []
+  const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
+  const ctx: TermProbeSource = {
+    ...replayTermProbeSource(new Map()),
+    rows: 33,
+    cols: 80,
+    captureKind: "pixels",
+    captureGeometry: {
+      source: "measured by complete raster calibration",
+      geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 528 },
+    },
+    write(bytes) {
+      writes.push(bytes)
+      if (bytes.includes("\x1b[2J")) selected = false
+      const painted = /\x1b\[1;1H([^\x1b])/.exec(bytes)
+      if (painted?.[1]) witness = painted[1]
+      const set = new RegExp(`\\x1b\\]${setCode};rgb:([0-9a-f/]+)\\x07`, "i").exec(bytes)
+      if (set?.[1]) colour = set[1]
+      if (bytes.includes(`\x1b]${resetCode}\x07`) && !ignoresReset) colour = "1111/2222/3333"
+    },
+    async queryWithSentinelOutcome(sequence) {
+      writes.push(sequence)
+      return {
+        match: null,
+        reason: "sentinel",
+        raw: "\x1b[?6c",
+        rawBase64: "G1s/NmM=",
+        sentinel: { atMs: 7, graceMs: 250 },
+      }
+    },
+    input: {
+      async injectKey() {},
+      async injectClick() {
+        selected = false
+      },
+      async injectDrag() {
+        selected = true
+      },
+    },
+    async capture({ role, label, cells }) {
+      // The real adapter drags window pixels400,300→450,300: row19, columns51–57 here.
+      const seesSelection = cells && cells.top <= 19 && cells.bottom >= 19 && cells.left <= 57 && cells.right >= 51
+      const seesWitness = cells?.top === 1 && cells.bottom === 1 && cells.left === 1 && cells.right === 1
+      const pixelsDigest = digest({ witness, selected, colour })
+      return {
+        role,
+        label,
+        capturedAt: ++captures,
+        ref: `sha256:${pixelsDigest}`,
+        pixelsDigest,
+        ...(cells && {
+          regionDigest: digest(seesWitness ? witness : seesSelection && selected ? colour : "plain readable cells"),
+          regionRectangle: {
+            x: (cells.left - 1) * 8,
+            y: (cells.top - 1) * 16,
+            width: (cells.right - cells.left + 1) * 8,
+            height: (cells.bottom - cells.top + 1) * 16,
+          },
+        }),
+      }
+    },
+  }
+  return { ctx, writes, selected: () => selected }
+}
+
+// CTO Ask1: a silent colour query does not hide a selectable App's measured set/reset effect.
+// Existing highlight tests only model query replies; disabling just reset must lose support here.
+test.each([
+  ["extensions.osc117-reset-highlight-bg", 17, 117],
+  ["extensions.osc119-reset-highlight-fg", 19, 119],
+] as const)("%s highlight reset pixels decide against their own changed setup", async (id, setCode, resetCode) => {
+  for (const ignoresReset of [false, true]) {
+    const fixture = highlightSelectionTerminal(setCode, resetCode, ignoresReset)
+    const result = await callback(id).term!(fixture.ctx)
+    expect(result.observation).toMatchObject({
+      outcome: ignoresReset ? "unsupported" : "supported",
+      assertionType: "screenshot",
+    })
+    expect(result.assertions?.[0]?.kind).toBe(ignoresReset ? "negative" : "positive")
+    expect(fixture.writes).toContain(`\x1b]${resetCode}\x07`)
+    expect(fixture.selected()).toBe(false)
   }
 })
