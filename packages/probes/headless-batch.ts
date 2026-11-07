@@ -1189,6 +1189,28 @@ export async function collectBatch(
             ...(test.assertionRefs && { assertionRefs: test.assertionRefs.map((ref) => ref + offset) }),
           })),
         }
+      } else if (
+        prior.status === "probe-todo" &&
+        next.status === "untestable" &&
+        last.status === "untestable" &&
+        next.reason === last.reason &&
+        // The reason prefix is the only mark a no-setup result carries.
+        next.reason?.startsWith("Untestable (no setup):")
+      ) {
+        const response = second.rawReplies[probe.id]
+        if (response === undefined) throw new Error(`Missing repeat target response for ${backendName}:${probe.id}`)
+        first.rawReplies[repeatRef(probe.id)] = response
+        first.results[index] = {
+          ...next,
+          ...(next.rawReplyRef && { rawReplyRef: repeatRef(next.rawReplyRef) }),
+          tests: next.tests.map((test) => ({
+            ...test,
+            ...(test.rawReplyRef && { rawReplyRef: repeatRef(test.rawReplyRef) }),
+            ...(test.assertionRefs && {
+              assertionRefs: test.assertionRefs.map((ref) => ref + repeatedAssertionOffset),
+            }),
+          })),
+        }
       }
     }
   }

@@ -944,7 +944,7 @@ describe("vterm 0.13.1 D2 nine-cell interface-absence declarations", () => {
 
 // The Ghostty source census declares semantic absence, not parser recognition.
 // Existing vterm/Alacritty cases do not cover its native source-and-lock cohort.
-describe("Ghostty native 1.3.1 D2 six-cell interface-absence declarations", () => {
+describe("Ghostty native 1.3.1 D2 interface-absence declarations and observed highlight setup", () => {
   const identity: HeadlessRuntimeIdentity = {
     kind: "native",
     engineVersion: "1.3.1",
@@ -966,8 +966,6 @@ describe("Ghostty native 1.3.1 D2 six-cell interface-absence declarations", () =
     "extensions.osc1-icon",
     "extensions.osc113-reset-pointer-fg",
     "extensions.osc114-reset-pointer-bg",
-    "extensions.osc117-reset-highlight-bg",
-    "extensions.osc119-reset-highlight-fg",
     "modes.decsscls",
   ] as const
   const definition = (id: string) => ALL_PROBES.find((entry) => entry.id === id)!
@@ -977,6 +975,30 @@ describe("Ghostty native 1.3.1 D2 six-cell interface-absence declarations", () =
     runtimeIdentity: identity,
     ...overrides,
   })
+
+  // #31398: source identity cannot replace the reset callback's same-run control.
+  test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-highlight-fg"])(
+    "%s keeps missing control Open and controlled missing setup Untestable",
+    (id) => {
+      const lib = definition(id).lib!
+      const missingControl = lib(nativeSource())
+      expect(isDeclaredUntestable(missingControl)).toBe(false)
+      expect(missingControl.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      const controlled = lib(
+        nativeSource({
+          queryWithSentinelOutcome: () => ({
+            match: null,
+            reason: "sentinel",
+            raw: "\x1b[?1;2c",
+            rawBase64: btoa("\x1b[?1;2c"),
+            sentinel: { atMs: 0, graceMs: 250 },
+          }),
+        }),
+      )
+      expect(isDeclaredUntestable(controlled)).toBe(true)
+      expect(controlled.tests?.[0]?.reason).toMatch(/^Untestable \(no setup\):/)
+    },
+  )
 
   test.each(declared)("%s declares only at the audited native source and lock", (id) => {
     const lib = definition(id).lib!
