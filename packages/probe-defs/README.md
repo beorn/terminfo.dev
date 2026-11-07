@@ -18,11 +18,16 @@ The six assertion types classify the deciding observation: `query_reply` reads a
 
 The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
-Kitty/Ghostty command-report bytes. Each row retains its own report-path and handled-command controls;
+Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;
 a failed control is PROBE INVALID. Qualified state transitions can decide support. An exact-command
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
+WezTerm 0-unstable-2026-10-10 Linux OSC 555/710 use exact unknown-OSC warnings behind
+a nonce-bearing made-up command and a handled OSC 2 title change/restoration. The launcher
+records its logging flag in argv and measures the GUI executable before launch; absent
+evidence invalidates these report rows. This logging flag changes every WezTerm row's
+launch identity, so the first graded run compares every row's reason with the preceding run.
 Ghostty 1.4.0 highlight and pointer resets use implemented OSC 110 as the handled control and OSC 113's
 exact reset warning after the target as the logged control and completion marker; OSC 113 itself
 uses OSC 116's tektronix-background warning as its independent control. Only the target's

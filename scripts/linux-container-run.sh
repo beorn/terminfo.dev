@@ -533,7 +533,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       # config with nothing in it. Measured 2026-10-07 in wezterm-visual-default-image:
       # --config-file /dev/null -> 2 visible owned windows, `return {}` -> exactly 1. (27892)
       printf 'return {}\n' > "$HOME/wezterm-config.lua"
-      target_launch_args=(--config-file "$HOME/wezterm-config.lua")
+      target_launch_args=(--config-file "$HOME/wezterm-config.lua" --config log_unknown_escape_sequences=true)
       target_command_lead=(start --)
       # Measured 2026-10-07: with libglvnd on LD_LIBRARY_PATH and __EGL_VENDOR_LIBRARY_DIRS pointing
       # at mesa's egl_vendor.d the image opens exactly one owned window under software EGL, so the
@@ -717,6 +717,14 @@ if [[ "${1:-}" == "--inside" ]]; then
   # The declared invocation: what the descriptor table launches, exactly and uniformly.
   printf -v target_config '%q ' nice -n 10 "$target_binary" "${target_launch_args[@]}" \
     "${target_clipboard_args[@]}" "${target_command_lead[@]}" "${collector_command[@]}"
+  if [[ "$target_id" == wezterm ]]; then
+    printf '%s\n' "$target_config" > /out/target-config.txt
+    # A missing measurement invalidates the report rows through their existing reader,
+    # rather than introducing another run-level launch refusal.
+    if ! sha256sum "${target_binary%/*}/wezterm-gui" > /out/owner-executable.sha256 2> /out/owner-executable.stderr; then
+      echo "WezTerm prelaunch owner digest unavailable; report rows remain invalid" >&2
+    fi
+  fi
   unset TERM_FEATURES
   export TERMINFO_TERM_FEATURES_LAUNCH="$TERMINFO_RUN_ID"
   nice -n 10 "$target_binary" "${target_launch_args[@]}" "${target_clipboard_args[@]}" "${target_command_lead[@]}" \

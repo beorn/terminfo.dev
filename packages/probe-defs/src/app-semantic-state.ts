@@ -6,6 +6,7 @@ const reportFeatures = new Set([
   "extensions.osc440-audio",
   "extensions.osc666-termprop",
   "extensions.osc555-flash",
+  "extensions.osc710-font-normal",
   "extensions.osc113-reset-pointer-fg",
   "extensions.osc114-reset-pointer-bg",
   "extensions.osc117-reset-highlight-bg",
