@@ -1794,6 +1794,65 @@ async function autoWrapApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   }
 }
 
+const reverseVideoProtocol = decrpmModeProbe(
+  "modes.reverse-video",
+  5,
+  headlessDecrpmArm(5, "reverseVideo", { requireReadback: true, stateReadback: true }),
+  true,
+)
+
+async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const reading: { firstReply?: string[] | null } = {}
+  // Keep the existing Ps2 set/query/restore path exactly; observe its initial
+  // reply through the existing query primitive instead of issuing a second query.
+  const protocol = await reverseVideoProtocol.term!({
+    ...ctx,
+    queryWithSentinel: async (sequence, pattern, timeout) => {
+      const reply = await ctx.queryWithSentinel(sequence, pattern, timeout)
+      if (reading.firstReply === undefined) reading.firstReply = reply
+      return reply
+    },
+  })
+  const ps = decrpmPs(reading.firstReply?.[1])
+  if (ps !== null && ps !== 0) return protocol
+  if (!ctx.capture || ctx.captureKind === "text-cells") {
+    return {
+      pass: false,
+      response: protocol.response,
+      tests: [
+        {
+          id: "criterion",
+          status: "probe-invalid",
+          reason: "Reverse-video effect needs owned pixel readback; text cells cannot show it",
+        },
+      ],
+    }
+  }
+  const refusal = captureRefusal(ctx, 3, 8, "Reverse video")
+  if (refusal) return refusal
+  const plain = "\x1b[?5l\x1b[0m\x1b[2J\x1b[HREVERSED"
+  const result = await captureRegionCallbackResult(ctx, "modes.reverse-video", {
+    region: { top: 1, left: 1, bottom: 1, right: 8 },
+    sentinel: { row: 2, col: 1 },
+    cursorRow: 3,
+    minRows: 3,
+    minCols: 8,
+    seed: plain,
+    edit: "\x1b[?5h",
+    expected: "\x1b[?5l\x1b[0;7m\x1b[2J\x1b[HREVERSED",
+    ignored: plain,
+    discriminator: { signal: "reverse-video-pixels", expected: "change" },
+    cleanup: "\x1b[?5l\x1b[0m",
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  })
+  if (!result) throw new Error("Reverse-video owned pixel readback disappeared")
+  const detail = result.note ?? result.observation?.note
+  const note = `${ps === 0 ? "DECRPM mode 5 returned Ps 0" : "No usable DECRPM reply for mode 5"}; controlled reverse-video pixel read${detail ? `; ${detail}` : ""}`
+  result.note = note
+  if (result.observation) result.observation.note = note
+  return result
+}
+
 const modeDefinitions: ProbeDefinition[] = [
   // Alt screen enter — measured roundtrip (narrow CTO-approved 1049 slice)
   {
@@ -1991,12 +2050,9 @@ const modeDefinitions: ProbeDefinition[] = [
 
   // Reverse video
   {
-    ...decrpmModeProbe(
-      "modes.reverse-video",
-      5,
-      headlessDecrpmArm(5, "reverseVideo", { requireReadback: true, stateReadback: true }),
-      true,
-    ),
+    ...reverseVideoProtocol,
+    term: reverseVideoApp,
+    termNeedsGeometry: true,
     libAssertionType: undefined,
   },
 

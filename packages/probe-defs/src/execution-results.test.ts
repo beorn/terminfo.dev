@@ -46,6 +46,28 @@ import type {
 } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
 
+// Ask 2c: pixels through a mux do not attribute a negative to that mux.
+it("keeps mux reverse-video pixel negatives pending without changing query or bare-App results", () => {
+  const ref = `sha256:${"f".repeat(64)}`
+  const frame: ObservationFrame = { kind: "pixels", role: "target", ref, capturedAt: 1, label: "Owned target pixels" }
+  const result = (status: "supported" | "unsupported"): ProbeResult => ({
+    featureId: "modes.reverse-video",
+    status,
+    attempt,
+    tests: [{ id: "criterion", status, attempt }],
+    screenshotRef: ref,
+  })
+  const negative = result("unsupported")
+  const mux = finalizeSgrResult(negative, { kind: "mux" }, [frame])
+  expect(mux).toMatchObject({ status: "probe-todo", reason: expect.stringContaining("outer") })
+  expect(mux.reason).toContain("dump-commands")
+  for (const kind of ["term", "lib"] as const) expect(finalizeSgrResult(negative, { kind }, [frame])).toEqual(negative)
+  const positive = result("supported")
+  expect(finalizeSgrResult(positive, { kind: "mux" }, [frame])).toEqual(positive)
+  const query = { ...negative, screenshotRef: undefined }
+  expect(finalizeSgrResult(query, { kind: "mux" }, [])).toEqual(query)
+})
+
 // One shared owner covers the whole registry and status fold. Native tests retain only the
 // distinct capture-transport binding; headless tests retain manifest-to-checkpoint delivery.
 it("requires app and mux visual evidence while preserving library cell and non-SGR results", () => {

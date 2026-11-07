@@ -19,6 +19,90 @@ import type {
   LibProbeSource,
 } from "./types.ts"
 
+// Constructed pixel-equivalence planes are derived from the semantic parser's
+// cells and global reverse flag. They test callback wiring, not native App rendering.
+test.each([null, 0] as const)("App reverse video reads controlled pixels after DECRPM %s", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.reverse-video")
+  if (!definition?.term) throw new Error("Missing App reverse-video callback")
+  const stored = new Map<string, StoredQuery>()
+  if (ps === 0) stored.set("\x1b[?5$p", { sequence: "\x1b[?5$p", match: null, reason: "reply", raw: "\x1b[?5;0$y" })
+  for (const mutation of [undefined, "decscnm-noop", "inverse-noop", "stale-pixels"] as const) {
+    const cols = 20
+    const rows = 5
+    const surface = createSemanticSurface({
+      cols,
+      rows,
+      mutations: mutation && mutation !== "stale-pixels" ? [mutation] : [],
+    })
+    let sequence = 0
+    const plane = (rectangle: CaptureCells) => {
+      const cells: unknown[] = []
+      for (let row = rectangle.top; row <= rectangle.bottom; row++) {
+        for (let col = rectangle.left; col <= rectangle.right; col++) {
+          const cell = surface.getCell(row - 1, col - 1)
+          cells.push([cell.char, cell.inverse !== (surface.getMode("reverseVideo") === true)])
+        }
+      }
+      return mutation === "stale-pixels" ? "unchanged pixels" : JSON.stringify(cells)
+    }
+    const source = replayTermProbeSource(stored, {
+      cols,
+      rows,
+      captureKind: "pixels",
+      write: (text) => surface.feed(text),
+      queryCursorPosition: async () => {
+        const cursor = surface.getCursor()
+        return { row: cursor.y + 1, col: cursor.x + 1 }
+      },
+      captureGeometry: {
+        geometry: { cellWidth: 10, cellHeight: 20, textWidth: cols * 10, textHeight: rows * 20 },
+        source: "measured by complete raster calibration",
+      },
+      capture: async ({ role, label, cells, pixelGeometry }) => {
+        if (!cells || !pixelGeometry) throw new Error("Reverse pixel fixture needs its measured crop")
+        return {
+          kind: "pixels",
+          role,
+          label,
+          capturedAt: ++sequence,
+          ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
+          regionDigest: plane(cells),
+          pixelsDigest: plane({ top: 1, left: 1, bottom: rows, right: cols }),
+          regionRectangle: {
+            x: (cells.left - 1) * pixelGeometry.cellWidth,
+            y: (cells.top - 1) * pixelGeometry.cellHeight,
+            width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+            height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+          },
+        }
+      },
+    })
+    vi.useFakeTimers()
+    let result: ProbeCallbackResult
+    try {
+      const pending = definition.term(source)
+      await vi.runAllTimersAsync()
+      result = await pending
+    } finally {
+      vi.useRealTimers()
+    }
+    const recorded = recordExecutedProbe({
+      featureId: definition.id,
+      attempt: { scope: "probe", startedAt: new Date().toISOString() },
+      tests: result.tests,
+      observation: result.observation ? { featureId: definition.id, ...result.observation } : undefined,
+      assertions: (result.assertions ?? []).map((assertion) => ({ featureId: definition.id, ...assertion })),
+    })
+    if (mutation === "inverse-noop" || mutation === "stale-pixels") {
+      expect(["probe-todo", "probe-invalid"]).toContain(recorded.status)
+    } else expect(recorded.status, mutation ?? "working reverse video").toBe(mutation ? "unsupported" : "supported")
+    if (ps === 0 && !mutation) expect(result.note).toContain("Ps 0")
+    expect(surface.getMode("reverseVideo")).toBe(false)
+  }
+  const missing = await definition.term(replayTermProbeSource(stored))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+})
+
 // Ask 3 permits a same-run mode effect when DECRPM is silent or Ps 0. The reply
 // contract does not exercise that path. Reuse the semantic terminal so removing
 // DECAWM alone loses the positive without breaking the cursor-delivery control.

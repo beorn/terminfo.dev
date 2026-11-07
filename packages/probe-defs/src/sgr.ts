@@ -1279,13 +1279,36 @@ export function finalizeSgrResult(
   target: { kind: "term" | "mux" | "lib" },
   captures: readonly ObservationFrame[],
 ): ProbeResult {
+  const hasScreenshot =
+    recorded.screenshotRef !== undefined &&
+    captures.some((frame) => frame.kind !== "text-cells" && frame.ref === recorded.screenshotRef)
+  if (
+    recorded.featureId === "modes.reverse-video" &&
+    target.kind === "mux" &&
+    recorded.status === "unsupported" &&
+    hasScreenshot
+  ) {
+    const reason =
+      "Open: reverse-video pixels did not change through the mux and its outer terminal. Needed: the outer terminal command trace (the named Kitty --dump-commands reader)."
+    return finalizeProbeResult({
+      ...recorded,
+      reason,
+      tests: [
+        ...recorded.tests,
+        {
+          id: "outer-command-reader",
+          status: "probe-todo",
+          attempt: { scope: "none" },
+          assertionRefs: [],
+          reason,
+        },
+      ],
+    })
+  }
   if (!visualSgrIds.has(recorded.featureId) || (recorded.status !== "supported" && recorded.status !== "unsupported")) {
     return recorded
   }
   if (target.kind === "lib") return recorded
-  const hasScreenshot =
-    recorded.screenshotRef !== undefined &&
-    captures.some((frame) => frame.kind !== "text-cells" && frame.ref === recorded.screenshotRef)
   if (hasScreenshot) return recorded
   const reason = "visual effect not observed in this run"
   return finalizeProbeResult({
