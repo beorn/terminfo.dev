@@ -661,6 +661,37 @@ describe("device query observations", () => {
       else process.env.TERM_FEATURES = prior
     }
   })
+
+  // 32569: inside a mux, absence with this run's marker seen is Unsupported as on a bare App; presence may come from
+  // the outer terminal, so it stays PROBE TODO naming the outer and retains no value (@cto ruling 2026-11-06).
+  test.each([{ present: false }, { present: true }])(
+    "inside screen, TERM_FEATURES present=$present",
+    async ({ present }) => {
+      const definition = deviceProbes.find((item) => item.id === "device.term-features")
+      if (!definition?.term) throw new Error("missing TERM_FEATURES callback")
+      const reading = {
+        status: "measured" as const,
+        present,
+        value: present ? "outer-terminal-value" : "",
+        runId: "e".repeat(32),
+        launchMarker: "e".repeat(32),
+        pid: 42,
+        tty: "tty_nr=34816;fd=1;rdev=34816",
+        mux: "screen" as const,
+      }
+      const result = await definition.term({ readTermFeatures: async () => reading } as unknown as TermProbeSource)
+      if (present) {
+        expect(result.observation).toBeUndefined()
+        expect(result.notTested?.noObservable).toBe(
+          "TERM_FEATURES present inside screen; it may come from the outer terminal, and presence cannot be attributed without an authenticated source",
+        )
+        expect(JSON.stringify(result)).not.toContain("outer-terminal-value")
+      } else {
+        expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "process_environment" })
+        expect(result.assertions).toMatchObject([{ kind: "negative", observed: "absent" }])
+      }
+    },
+  )
 })
 
 /**

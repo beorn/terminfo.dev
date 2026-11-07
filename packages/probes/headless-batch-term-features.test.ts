@@ -222,3 +222,72 @@ test
   },
   15000,
 )
+
+// 32569: the mux gate is lifted. A tmux child's absent value reads Unsupported as on a bare App; a present one stays
+// PROBE TODO naming the outer terminal, because it may come from there (@cto third-table ruling 2026-11-06).
+test.each([
+  { present: false, status: "unsupported" },
+  { present: true, status: "probe-todo" },
+])("a tmux run reads TERM_FEATURES through the lifted mux gate: present=$present", async ({ present, status }) => {
+  vi.spyOn(ownership, "ownedTerminalVerifiedFor").mockReturnValue(true)
+  const geometry = {
+    status: "unavailable" as const,
+    at: new Date().toISOString(),
+    source: "unavailable: no verified output device" as const,
+    diagnostic: "Fixture has no measured grid",
+    stdout: "",
+    stderr: "",
+  }
+  const reading: TermFeaturesReading = {
+    status: "measured",
+    present,
+    value: present ? "outer-terminal-value" : "",
+    runId: "e".repeat(32),
+    launchMarker: "e".repeat(32),
+    pid: process.pid,
+    tty: "tty_nr=34816;fd=1;rdev=34816",
+  }
+  const identity = { pid: 42, startTicks: "1", ttyRdev: 34816 }
+  const owner: ownership.OwnedTerminal = {
+    geometryAtGrant: geometry,
+    geometrySource: "stty size on a /proc/self/fd reopen of the verified output device",
+    summary: "fixture",
+    readGeometry: async () => geometry,
+    dispose: async () => {},
+    readTermFeatures: async () => reading,
+    muxAttachmentProof: {
+      platform: "linux",
+      mux: "tmux",
+      bootId: "00000000-0000-0000-0000-000000000001",
+      receiptSha256: "a".repeat(64),
+      launchRunId: "e".repeat(32),
+      captureRunId: "d".repeat(32),
+      preflightCollector: identity,
+      outerShell: identity,
+      outerTerminal: identity,
+      collector: identity,
+      attachedClient: identity,
+      chain: [{ ...identity, executablePath: "/fixture/tmux" }],
+      executable: { path: "/fixture/tmux", sha256: "c".repeat(64), version: "3.8" },
+      config: { path: "/fixture/empty.conf", sha256: "d".repeat(64) },
+      socketPath: "/fixture/tmux.sock",
+      session: "fixture",
+    },
+  }
+  const batch = await runProbeBatch({
+    ids: ["device.term-features"],
+    subject: { kind: "mux", id: "tmux", os: process.platform },
+    ownedTerminal: owner,
+    captureRunId: "d".repeat(32),
+  })
+  const recorded = batch.results.find((x) => x.featureId === "device.term-features")
+  expect(recorded?.status).toBe(status)
+  if (present) {
+    expect(recorded?.reason).toMatch(/^TERM_FEATURES present inside tmux; it may come from the outer terminal/)
+    expect(JSON.stringify(batch)).not.toContain("outer-terminal-value")
+  } else {
+    expect(batch.observations).toContainEqual(
+      expect.objectContaining({ featureId: "device.term-features", outcome: "unsupported" }),
+    )
+  }
+})

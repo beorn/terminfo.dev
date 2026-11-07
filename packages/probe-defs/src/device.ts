@@ -539,6 +539,15 @@ export const deviceProbes: ProbeDefinition[] = [
           tests: [{ id: "terminal-child-environment", status: "probe-invalid", reason: reading.reason }],
         }
       }
+      // 32569: inside a mux the value may come from the outer terminal, and presence cannot be attributed without an
+      // authenticated source, so it stays PROBE TODO naming the outer; absence with this run's marker seen is
+      // Unsupported, as on a bare App (@cto third-table ruling 2026-11-06).
+      if (reading.present && reading.mux) {
+        return notTestedResult(
+          `TERM_FEATURES present inside ${reading.mux}; it may come from the outer terminal, and presence cannot be attributed without an authenticated source`,
+          { present: true, mux: reading.mux },
+        )
+      }
       const supported = reading.present
       const note = supported
         ? "TERM_FEATURES exported by this terminal child"

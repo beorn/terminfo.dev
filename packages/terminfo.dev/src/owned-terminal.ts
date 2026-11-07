@@ -1264,21 +1264,20 @@ export async function createOwnedTerminal(options: {
       ...(hostedAppId && { hostedAppId }),
       ...(clipboard && { clipboard }),
       ...(muxAttachmentProof && { muxAttachmentProof }),
-      ...(!muxAttachmentProof &&
-        (binding.platform === "linux" || binding.platform === "darwin") && {
-          async readTermFeatures() {
-            if (!verifiedTerminalOwners.has(owner)) {
-              return { status: "unavailable" as const, reason: "TERM_FEATURES child read has no live owned capture" }
-            }
-            // Reuses this owner's device check; geometry need not be measurable to bind the TTY.
-            await owner.readGeometry()
-            const tty =
-              binding.platform === "linux"
-                ? `tty_nr=${binding.controllingTtyNr};fd=${binding.selectedFd};rdev=${binding.outputRdev}`
-                : binding.controllingTty
-            return readTermFeaturesEnvironment(process.env, expectedLaunchRunId, process.pid, tty)
-          },
-        }),
+      ...((binding.platform === "linux" || binding.platform === "darwin") && {
+        async readTermFeatures() {
+          if (!verifiedTerminalOwners.has(owner)) {
+            return { status: "unavailable" as const, reason: "TERM_FEATURES child read has no live owned capture" }
+          }
+          // Reuses this owner's device check; geometry need not be measurable to bind the TTY.
+          await owner.readGeometry()
+          const tty =
+            binding.platform === "linux"
+              ? `tty_nr=${binding.controllingTtyNr};fd=${binding.selectedFd};rdev=${binding.outputRdev}`
+              : binding.controllingTty
+          return readTermFeaturesEnvironment(process.env, expectedLaunchRunId, process.pid, tty)
+        },
+      }),
       async readGeometry() {
         if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned geometry read has no live bound capture")
         // A Windows console has no device to re-open, so the re-read is the console's own identity:
