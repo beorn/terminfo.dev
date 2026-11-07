@@ -1278,6 +1278,7 @@ const muxVisualTests = new Map<string, { featureId: string | null; testId: strin
   ["cursor-shape-same-run", { featureId: "cursor.shape", testId: "review" }],
   ["reset-saved-rendition", { featureId: "reset.sgr", testId: "reset" }],
   ["iterm2-images-no-change", { featureId: "extensions.iterm2-images", testId: "criterion" }],
+  ["sixel-advertised-unchanged", { featureId: "extensions.sixel", testId: "criterion" }],
 ])
 
 function finalizeMuxVisualNegative(
