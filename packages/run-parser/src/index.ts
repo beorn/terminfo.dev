@@ -1352,16 +1352,18 @@ export function parseRun(
         !["supported", "unsupported"].includes(result.status) ||
         result.assertionType !== "buffer_state" ||
         !result.frames?.some((frame) => frame.kind === "text-cells")
-      )
+      ) {
         continue
+      }
       if (
         !textQualification ||
         textQualification.version !== 2 ||
         !manifest.textQualification.recipes.includes(textQualification.recipe) ||
         !textQualificationRecipeMatchesSubject(textQualification.recipe, subject) ||
         !admitsTextObservation({ subject, textClaims: manifest.textClaims }, result)
-      )
+      ) {
         fail(path, `${result.featureId} text qualification does not match its declared observer context`)
+      }
     }
   }
   if (schemaVersion === 4) {
