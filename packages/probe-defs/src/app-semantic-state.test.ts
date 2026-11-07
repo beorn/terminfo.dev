@@ -86,9 +86,19 @@ test("missing reader stays pending and a broken owned read stays invalid", () =>
 
 test("registered OSC callbacks forward their own feature and recorded writer to the owned reader", async () => {
   for (const id of [
-    "extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-d", "extensions.osc133-p",
-    "extensions.semantic-prompts", "extensions.osc633-a", "extensions.osc633-b", "extensions.osc633-c",
-    "extensions.osc633-d", "extensions.osc633-e", "extensions.osc633-p", "extensions.osc-633-vscode",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.semantic-prompts",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc633-p",
+    "extensions.osc-633-vscode",
   ]) {
     const ctx = replayTermProbeSource(new Map())
     const seen: string[] = []

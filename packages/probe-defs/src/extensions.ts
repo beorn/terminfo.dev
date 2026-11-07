@@ -6709,14 +6709,17 @@ const extensionDefinitions: ProbeDefinition[] = [
 
 export const extensionsProbes: ProbeDefinition[] = extensionDefinitions.map((definition) => {
   const term = definition.term
-  const semantic = /^extensions\.osc(?:133|633)-[abcdep]$/.test(definition.id) ||
-    definition.id === "extensions.semantic-prompts" || definition.id === "extensions.osc-633-vscode"
+  const semantic =
+    /^extensions\.osc(?:133|633)-[abcdep]$/.test(definition.id) ||
+    definition.id === "extensions.semantic-prompts" ||
+    definition.id === "extensions.osc-633-vscode"
   if (!term || !semantic) return definition
   return {
     ...definition,
-    term: async (ctx) => ctx.readAppSemanticState
-      ? gradeAppSemanticState(await ctx.readAppSemanticState(definition.id, ctx.write))
-      : term(ctx),
+    term: async (ctx) =>
+      ctx.readAppSemanticState
+        ? gradeAppSemanticState(await ctx.readAppSemanticState(definition.id, ctx.write))
+        : term(ctx),
   }
 })
 

@@ -16,18 +16,21 @@ export function gradeAppSemanticState(reading: AppSemanticReading): ProbeCallbac
       reading.unknown.reports.some((code) => code !== reading.unknown.code) ||
       !reading.handled.applied ||
       reading.handled.reports.length !== 0
-    ) return pending("App exact-command log controls failed in this row", true)
-    if (
-      reading.target.reports.length > 0 &&
-      reading.target.reports.every((code) => code === reading.target.code)
-    ) return parserStateResult(false, "App reported this exact command as unhandled", reading)
+    ) {
+      return pending("App exact-command log controls failed in this row", true)
+    }
+    if (reading.target.reports.length > 0 && reading.target.reports.every((code) => code === reading.target.code)) {
+      return parserStateResult(false, "App reported this exact command as unhandled", reading)
+    }
     return pending("App log has no qualified exact-command refusal; silence does not decide support")
   }
   if (
     reading.unknown.before !== reading.unknown.after ||
     reading.handled.before === reading.handled.expected ||
     reading.handled.after !== reading.handled.expected
-  ) return pending("App semantic-state controls failed in this row", true)
+  ) {
+    return pending("App semantic-state controls failed in this row", true)
+  }
   if (reading.target.before === reading.target.expected) {
     return pending("App target state was already present before this row's command")
   }
@@ -35,7 +38,11 @@ export function gradeAppSemanticState(reading: AppSemanticReading): ProbeCallbac
     return parserStateResult(true, "App stores this row's semantic state; unknown command leaves it unchanged", reading)
   }
   if (reading.target.after === reading.target.before) {
-    return parserStateResult(false, "App semantic control changes its own state; this command leaves it unchanged", reading)
+    return parserStateResult(
+      false,
+      "App semantic control changes its own state; this command leaves it unchanged",
+      reading,
+    )
   }
   return pending("App semantic target changed to an unexpected state")
 }
