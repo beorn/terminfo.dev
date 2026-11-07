@@ -97,6 +97,30 @@ it("demotes only the selected mux pixel test while preserving query, library and
   }
 })
 
+// Ask 2c: pixels through a mux do not attribute a negative to that mux.
+it("keeps mux reverse-video pixel negatives pending without changing query or bare-App results", () => {
+  const ref = `sha256:${"f".repeat(64)}`
+  const frame: ObservationFrame = { kind: "pixels", role: "target", ref, capturedAt: 1, label: "Owned target pixels" }
+  const result = (status: "supported" | "unsupported"): ProbeResult => ({
+    featureId: "modes.reverse-video",
+    status,
+    attempt,
+    tests: [{ id: "criterion", status, attempt }],
+    screenshotRef: ref,
+  })
+  const negative = result("unsupported")
+  const mux = finalizeVisualResult(negative, { kind: "mux" }, [frame])
+  expect(mux).toMatchObject({ status: "probe-todo", reason: expect.stringContaining("outer") })
+  expect(mux.reason).toContain("dump-commands")
+  for (const kind of ["term", "lib"] as const) {
+    expect(finalizeVisualResult(negative, { kind }, [frame])).toEqual(negative)
+  }
+  const positive = result("supported")
+  expect(finalizeVisualResult(positive, { kind: "mux" }, [frame])).toEqual(positive)
+  const query = { ...negative, screenshotRef: undefined }
+  expect(finalizeVisualResult(query, { kind: "mux" }, [])).toEqual(query)
+})
+
 // One shared owner covers the whole registry and status fold. Native tests retain only the
 // distinct capture-transport binding; headless tests retain manifest-to-checkpoint delivery.
 it("requires app and mux visual evidence while preserving library cell and non-SGR results", () => {
@@ -460,17 +484,18 @@ it.each([
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
-it("retains erased DECAWM evidence before wrap emits fixture bytes", async () => {
+it("retains erased DECAWM evidence when wrap cursor controls cannot qualify", async () => {
   const writes: string[] = []
   const callback = await ALL_PROBES.find((entry) => entry.id === "text.wrap")!.term!({
     rows: 24,
     cols: 80,
     write: (sequence: string) => writes.push(sequence),
     queryMode: async () => null,
+    queryCursorPosition: async () => null,
   } as unknown as TermProbeSource)
-  expect(writes).toEqual([])
+  expect(writes).toEqual(["\x1b[?7l\x1b[2J\x1b[H", "W".repeat(79), "\x1b[?7h"])
   expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
-  expect(callback.response).toBe(JSON.stringify({ cols: 80, decawm: null }))
+  expect(JSON.parse(callback.response!)).toEqual({ decrpm: null, cols: 80, home: null, control: null })
   const stored = record(
     withReplyFailureEvidence("text.wrap", callback, {
       producer: "TTY",
@@ -478,12 +503,13 @@ it("retains erased DECAWM evidence before wrap emits fixture bytes", async () =>
     }),
   )
   expect(stored.status).toBe("probe-invalid")
-  expect(stored.reason).toContain("no usable DECRPM reply; the public projection returned null and retained no bytes")
+  expect(stored.reason).toContain("Auto-wrap cursor control did not measure home and ordinary text")
   expect(stored.reason).toContain('query 1: sent "\\u001b[?7$p"; received "\\u001b?"')
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
-// Mode2031's missing protocol facility is TODO; reset needs owned input when its mode read is unavailable.
+// Mode2031's missing protocol facility is TODO. Soft reset can use input effects,
+// but this context supplies no actuator; preserve the real reply failure only for null.
 it.each([
   ["modes.color-scheme-reporting", 2031, null],
   ["reset.soft", 1, null],
@@ -504,7 +530,7 @@ it.each([
   expect(writes).toEqual([])
   expect(callback.observation).toBeUndefined()
   expect(callback.assertions).toBeUndefined()
-  if (id === "modes.color-scheme-reporting") expect(callback).not.toHaveProperty("replyFailureTestIds")
+  if (id === "modes.color-scheme-reporting" || ps === 0) expect(callback).not.toHaveProperty("replyFailureTestIds")
   else expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
   const stored = record(
     withReplyFailureEvidence(id, callback, {
@@ -523,6 +549,9 @@ it.each([
   expect(stored.status).toBe(id === "modes.color-scheme-reporting" ? "probe-todo" : "probe-invalid")
   if (id === "modes.color-scheme-reporting") {
     expect(stored.reason).toBe("no DECRPM reply")
+  } else if (ps === 0) {
+    expect(stored.reason).toBe("Soft-reset effect needs owned key injection and input readback")
+    expect(callback.note).toContain("DECRPM mode 1 returned Ps 0")
   } else {
     expect(stored.reason).toContain("Soft-reset effect needs owned key injection and input readback")
     expect(stored.reason).toContain(
