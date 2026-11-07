@@ -706,25 +706,9 @@ test("every DECSACE pixel return carries target frames with a valid screenshot c
   }
 })
 
-/**
- * An attribute-blind pixel double leaves both extents as the same measured cell region. That must be inconclusive BY NAME — never a pass (nothing was separated) and never a
- * negative (the attribute may well have been applied).
- */
+// Both extents changed from seed but agree: DECCARA worked, so this is not missing setup.
 test("editing.decsace reads equal extents inconclusive by name, never supported", async () => {
-  const { context, frames } = decsacePixelSource()
-  context.capture = async ({ role, label }) => {
-    const frame = {
-      role,
-      label,
-      capturedAt: 1,
-      ref: `sha256:${"a".repeat(64)}`,
-      regionDigest: `sha256:${"a".repeat(64)}`,
-      pixelsDigest: `sha256:${"a".repeat(64)}`,
-      regionRectangle: DECSACE_RECTANGLE,
-    }
-    frames.push(frame)
-    return frame
-  }
+  const { context, frameWrites } = decsaceCaptureSource(["decsace-noop"])
   const result = await find("editing.decsace").term!(context)
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
@@ -733,8 +717,11 @@ test("editing.decsace reads equal extents inconclusive by name, never supported"
   })
   expect(String(result.observation?.note)).toContain("Both DECSACE extent modes left the same frame")
   expect(result.assertions).toBeUndefined()
-  // Two seed reads, two unchanged extent frames, and the required inverse-visibility control.
-  expect(frames).toHaveLength(5)
+  expect(result.notTested).toBeUndefined()
+  const evidence = JSON.parse(String(result.response)) as { digests: string[] }
+  expect(evidence.digests[0]).not.toBe(evidence.digests[1])
+  expect(evidence.digests[1]).toBe(evidence.digests[2])
+  expect(frameWrites).toHaveLength(4)
 })
 
 /**
