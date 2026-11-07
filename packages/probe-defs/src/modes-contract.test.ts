@@ -55,7 +55,8 @@ const MODES_CONTRACT: GroupContract = [
   {
     id: "modes.application-keypad",
     expected: "decided",
-    claim: "Application keypad: ESC = then KP_5 reports SS3 u after plain-a delivery control; bare 5 is unsupported",
+    claim:
+      "Application keypad: KP_Add reports SS3 k after ESC = and + after ESC >, after plain-a delivery control; + under both is unsupported",
   },
   {
     id: "modes.left-right-margin",
@@ -205,12 +206,15 @@ function modeQuerySource(ps: 0 | 1 | 2 | 3 | 4 | null) {
 
 function modesTermSource(id: string) {
   if (id === "modes.application-keypad") {
+    // KP_Add answers SS3 k under DECKPAM, then + under DECKPNM (#32582); each run reads it twice, and the replay runs twice.
+    let keypadReads = 0
     return replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async (pattern: RegExp) => {
         if (pattern.test("a")) return ["a"]
-        if (pattern.test("\x1bOu")) return ["\x1bOu"]
-        return null
+        keypadReads += 1
+        const report = keypadReads % 2 === 1 ? "\x1bOk" : "+"
+        return pattern.test(report) ? [report] : null
       },
     })
   }

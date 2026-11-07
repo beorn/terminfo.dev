@@ -327,9 +327,11 @@ function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentine
 const OSC5522_DECRPM_SIBLINGS = [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031] as const
 
 /**
- * What a measured-silent OSC 5522 detector means, from its DECRPM siblings, on both arms (#32569): every sibling
- * silent leaves recognition untested (PROBE TODO); an answering sibling keeps the detector's own reading. Both
- * readings retain the detector and sibling replies.
+ * What a measured-silent OSC 5522 detector means, from its DECRPM siblings, on both arms (#32569). When every sibling
+ * is silent too, a library leaves recognition untested (PROBE TODO), and a terminal has no report to read, so it is
+ * Untestable through the one declared route, its reason built from this run's silent control query (#32582, @cto
+ * fd9e55b1). An answering sibling keeps the detector's own reading. Every reading retains the detector and sibling
+ * replies.
  */
 function osc5522AfterSiblings(
   replier: "library" | "terminal",
@@ -337,9 +339,18 @@ function osc5522AfterSiblings(
   controls: { mode: number; raw: string }[],
   allSilent: boolean,
 ): ProbeCallbackResult {
-  const response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
+  const evidence = { detection: reply.raw, decrpmSiblings: controls }
+  const response = JSON.stringify(evidence)
+  if (allSilent && replier === "terminal") {
+    const modes = controls.map(({ mode }) => mode).join(", ")
+    return declaredUntestableResult(
+      `Untestable (no way to tell): no mode query in this run got a DECRPM reply. CSI ? 5522 $ p and its control query CSI ? Pm $ p for modes ${modes} all went unanswered, so this terminal has no report to read.`,
+      evidence,
+    )
+  }
   if (allSilent) {
-    const reason = `Open: this test judges OSC 5522 by whether the ${replier} replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing.`
+    const reason =
+      "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing."
     return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
   }
   return { ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined), response }
