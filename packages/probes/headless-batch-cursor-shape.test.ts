@@ -65,7 +65,7 @@ function recordShape(callback: ProbeCallbackResult) {
     featureId,
     attempt: { scope: "probe", startedAt: "2026-11-07T07:44:35.809Z" },
     ...(callback.observation && { observation: { ...callback.observation, featureId } }),
-    ...(callback.notTested && { coverage: { ...callback.notTested, featureId } }),
+    ...(callback.notTested && { coverage: { ...callback.notTested, featureId, rawReplyRef: featureId } }),
     assertions: (callback.assertions ?? []).map((assertion) => ({ ...assertion, featureId })),
     tests: callback.tests,
     criterionBranch: callback.criterionBranch,

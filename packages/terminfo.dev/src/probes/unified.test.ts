@@ -1559,9 +1559,8 @@ it("grades cursor.shape and cursor.reverse-wrap when each declares its measured-
     ownedTerminal: geometryOwner(measured(24, 61)),
   })
   expect(batch.ungradedDiagnostics).toEqual({})
-  expect(batch.observations.find((item) => item.featureId === "cursor.shape")).toMatchObject({
-    outcome: "inconclusive",
-    assertionType: "screenshot",
+  expect(batch.notTested.find((item) => item.featureId === "cursor.shape")).toMatchObject({
+    noObservable: "Focus needs owned key injection and stdin readback",
   })
   expect(batch.observations.find((item) => item.featureId === "cursor.reverse-wrap")).toMatchObject({
     outcome: "supported",
@@ -3397,25 +3396,30 @@ it.each([
         // Constructed fixture planes prove that the collector maps each requested crop to pixels
         // and carries the witness through the new reader. The distinct third target stays unknown
         // to the comparison; it is never evidence of terminal qualification.
-        const phase = unchangingPixels
-          ? "unchanged"
-          : lowerLabel.includes("stability")
-            ? "stable"
-            : lowerLabel.includes("paint witness") || lowerLabel.includes("baseline")
-              ? witness
-              : lowerLabel.includes("pre-edit seed")
-                ? "seed"
-                : lowerLabel.includes("post-sequence target")
-                  ? id === "modes.alt-screen.exit"
-                    ? "expected"
-                    : "third"
-                  : lowerLabel.includes("expected frame")
-                    ? "expected"
-                    : lowerLabel.includes("ignored-attribute")
-                      ? "ignored"
-                      : lowerLabel.includes("setup reference")
-                        ? "seed"
-                        : "fixture"
+        const phase =
+          id === "cursor.shape"
+            ? lowerLabel.includes("stability") || lowerLabel.includes("made-up")
+              ? "stable"
+              : lowerLabel
+            : unchangingPixels
+              ? "unchanged"
+              : lowerLabel.includes("stability")
+                ? "stable"
+                : lowerLabel.includes("paint witness") || lowerLabel.includes("baseline")
+                  ? witness
+                  : lowerLabel.includes("pre-edit seed")
+                    ? "seed"
+                    : lowerLabel.includes("post-sequence target")
+                      ? id === "modes.alt-screen.exit"
+                        ? "expected"
+                        : "third"
+                      : lowerLabel.includes("expected frame")
+                        ? "expected"
+                        : lowerLabel.includes("ignored-attribute")
+                          ? "ignored"
+                          : lowerLabel.includes("setup reference")
+                            ? "seed"
+                            : "fixture"
         const regionRectangle = cells
           ? {
               x: (cells.left - 1) * pixelGeometry.cellWidth,
@@ -3443,6 +3447,7 @@ it.each([
       }
     process.stdout.write = ((chunk: string | Uint8Array) => {
       const bytes = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
+      if (id === "cursor.shape" && bytes === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[2;3R"))
       if (/^\x1b\[\d+;\d+H.$/.test(bytes)) witness = bytes.slice(-1)
       return true
     }) as typeof process.stdout.write
@@ -3455,18 +3460,38 @@ it.each([
           source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
         },
         capture: makeCapture(),
+        ...(id === "cursor.shape" && {
+          input: {
+            injectKey: async () => {
+              process.stdin.emit("data", Buffer.from("a"))
+            },
+            injectClick: async () => {},
+          },
+        }),
       })
       const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
       expect(batch.ungradedDiagnostics).toEqual({})
       const result = batch.results.find((entry) => entry.featureId === id)!
-      if (id === "modes.alt-screen.exit") {
+      if (id === "modes.alt-screen.exit" || id === "cursor.shape") {
         // A real successful alternate-marker control cites the initial stability pair in its response.
         // Those cleared-canvas digests differ from every later primary/alternate/witness capture.
-        expect(result.tests).toMatchObject([
-          { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
-          { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
-          { id: "remaining-facets", status: "probe-todo" },
-        ])
+        if (id === "cursor.shape") {
+          expect(result).toMatchObject({
+            status: "supported",
+            criterionBranch: "cursor-shape-same-run",
+            assertionType: "screenshot",
+          })
+          expect(result.tests).toMatchObject([
+            { id: "capture", status: "supported" },
+            { id: "review", status: "supported" },
+          ])
+          expect(result.frames).toHaveLength(5)
+        } else
+          expect(result.tests).toMatchObject([
+            { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
+            { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
+            { id: "remaining-facets", status: "probe-todo" },
+          ])
         expect(batch.assertions).toHaveLength(2)
         Object.assign(draft.rawReplies, batch.rawReplies)
         draft.results = batch.results
@@ -3478,8 +3503,14 @@ it.each([
           [id],
           new Map([[probeHash, ownManifest]]),
         )
-        expect(read.results?.[0]).toMatchObject({ status: "probe-todo", frames: result.frames })
-        expect(read.results?.[0]?.frames?.filter((frame) => frame.label.includes("capture stability"))).toHaveLength(2)
+        expect(read.results?.[0]).toMatchObject({
+          status: id === "cursor.shape" ? "supported" : "probe-todo",
+          frames: result.frames,
+        })
+        if (id !== "cursor.shape")
+          expect(read.results?.[0]?.frames?.filter((frame) => frame.label.includes("capture stability"))).toHaveLength(
+            2,
+          )
         expect(read.assertions).toHaveLength(2)
         return
       }
