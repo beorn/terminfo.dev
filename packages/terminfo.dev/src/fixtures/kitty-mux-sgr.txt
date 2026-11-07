@@ -9,7 +9,7 @@ screen_set_margins 1 20
 screen_cursor_position 1 2
 screen_reset_mode 2026 1
 screen_cursor_position 1 1
-draw 0
+draw 0-0123456789abcdef01234567
 screen_cursor_position 1 1
 draw  
 screen_cursor_position 1 1
@@ -28,7 +28,7 @@ screen_designate_charset 0 66
 select_graphic_rendition 0
 screen_reset_mode 2026 1
 screen_cursor_position 1 1
-draw 1
+draw 1-0123456789abcdef01234567
 screen_cursor_position 1 1
 draw  
 screen_cursor_position 1 1
@@ -44,7 +44,7 @@ screen_set_margins 1 20
 screen_cursor_position 1 2
 screen_reset_mode 2026 1
 screen_cursor_position 1 1
-draw 2
+draw 2-0123456789abcdef01234567
 screen_cursor_position 1 1
 draw  
 screen_cursor_position 1 1
@@ -63,7 +63,7 @@ screen_designate_charset 0 66
 select_graphic_rendition 0
 screen_reset_mode 2026 1
 screen_cursor_position 1 1
-draw 3
+draw 3-0123456789abcdef01234567
 screen_cursor_position 1 1
 draw  
 screen_cursor_position 1 1

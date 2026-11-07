@@ -77,13 +77,21 @@ test("owned command phases retain fresh completed bytes and refuse changed file 
   }
 })
 
-// Native tmux 3.8 / Kitty 0.49.2 run adebe1dc, daemon.log lines 3028..3097
-// and the same callback's four paint writes. The variants remove only one deciding input.
+// Protocol fixtures project native run adebe1dc lines 3028..3097 and its first four phases.
+// Opaque invocation nonces are added to the existing paint witnesses; these are not new App readings.
 const nativeMuxCommands = readFileSync(new URL("./fixtures/kitty-mux-sgr.txt", import.meta.url), "utf8")
 const nativeMuxTrace = readFileSync(new URL("./fixtures/kitty-mux-sgr.trace.json", import.meta.url), "utf8")
 
 test.each([
   ["forwarded", nativeMuxCommands, true, undefined],
+  [
+    "buffered previous callback",
+    nativeMuxCommands
+      .replaceAll("0123456789abcdef01234567", "fedcba9876543210fedcba98")
+      .replace("select_graphic_rendition 4:3\n", "select_graphic_rendition 1\n") + nativeMuxCommands,
+    true,
+    undefined,
+  ],
   ["dropped", nativeMuxCommands.replace("select_graphic_rendition 4:3\n", ""), false, undefined],
   [
     "unreadable",

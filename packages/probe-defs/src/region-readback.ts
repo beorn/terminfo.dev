@@ -922,6 +922,15 @@ export async function sgrAttributeCaptureResult(
     )
     stability = pair.stability
     if (pair.refusal) return finish("probe-todo", pair.refusal.observation?.note ?? `${id}: capture is not stable`)
+    // Bind the existing witness to these retained captures. Replaying those
+    // captures derives the same nonce; another callback cannot borrow buffered output.
+    const nonceBytes = await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(JSON.stringify([id, ...frames.map(({ ref, capturedAt }) => [ref, capturedAt])])),
+    )
+    const witnessNonce = Array.from(new Uint8Array(nonceBytes), (byte) => byte.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 24)
     for (const [index, phase] of phases.entries()) {
       const label = `${id}: ${phase.name}`
       ctx.write(`\x1b[0m\x1b[2J\x1b[3;3H${phase.sequence}${phase.sample}\x1b[0m\x1b[2;1H\x1b[1;1H `)
@@ -938,7 +947,7 @@ export async function sgrAttributeCaptureResult(
         pollMs: DEFAULT_POLL_MS,
         requireSameCrop: true,
       }
-      const glyph = witnessGlyph(index)
+      const glyph = `${witnessGlyph(index)}-${witnessNonce}`
       ctx.write(`\x1b[1;1H${glyph}`)
       const painted = await awaitPaintWitness(options)
       if (!witnessed(painted)) return finish("probe-todo", painted.observation?.note ?? `${id}: no paint witness`)

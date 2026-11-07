@@ -946,9 +946,11 @@ Hidden requires equality with a same-cell blank reference; another changed hidde
 broken. Otherwise the target differs from plain while made-up does not, and reads Supported.
 Negative mux rows additionally need the outer command read in the existing
 [App reader](../terminfo.dev/src/app-semantic-state.ts). It retains this callback's appended
-Kitty command reports through the four paint-witness roundtrips and joins them to the recorded
+Kitty command reports through four paint-witness roundtrips and joins them to the recorded
 plain, target, made-up and handled writes. A completed, controlled read selects
 `sgr-attribute-outer-command`; the native visual finalizer still requires this probe's own frame.
+The witness carries a nonce derived from that callback's retained stability captures. Buffered
+output from an earlier callback cannot satisfy it, and trace replay derives the same nonce.
 A target not forwarded is Unsupported. A forwarded target without a distinct rendered effect
 uses the existing Untestable declaration route and names the outer terminal. Missing, unreadable
 or unfinished command evidence stays PROBE TODO with its cause; missing outer identity stays named.

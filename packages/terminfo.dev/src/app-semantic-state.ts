@@ -2,6 +2,7 @@ import { statSync, readFileSync, readlinkSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
+import { readCallLog } from "viprobe"
 import {
   sgrProbes,
   type AppSemanticReading,
@@ -277,11 +278,13 @@ export function openAppCommandLog(capture: string) {
 }
 
 // These are command reports, not a second terminal emulator. Only the qualified
-// four ordinal paint-witness roundtrips bound this callback's command phases.
-function muxSgrCommandPhases(text: string) {
+// four invocation-bound paint-witness roundtrips bound this callback's command phases.
+function muxSgrCommandPhases(text: string, nonce: string) {
   const commands: [string[], string[], string[], string[]] = [[], [], [], []]
   let phase = 0
   let witnesses = 0
+  let cleared = false
+  let start: number | undefined
   let row: number | undefined
   let column: number | undefined
   let error: string | undefined
@@ -298,7 +301,7 @@ function muxSgrCommandPhases(text: string) {
       column = 1
     } else if (line === "screen_linefeed") {
       row = row === undefined ? undefined : row + 1
-    } else if (line.startsWith("select_graphic_rendition")) {
+    } else if (start !== undefined && line.startsWith("select_graphic_rendition")) {
       const parameters = /^select_graphic_rendition ([0-9;:]+)$/.exec(line)?.[1]
       if (!parameters || !/^(?:\d+(?::\d+)*)(?:;\d+(?::\d+)*)*$/.test(parameters)) {
         error = `Unrecognized outer SGR command report: ${line}`
@@ -309,18 +312,27 @@ function muxSgrCommandPhases(text: string) {
       }
     } else if (line.startsWith("draw ")) {
       const value = line.slice(5)
-      if (row === 1 && column === 1 && /^[0-3]$/.test(value)) {
-        if (value !== String(phase)) {
-          error = `Outer SGR phase witness ${value} arrived during phase ${phase}`
-        } else if (++witnesses === 2) {
-          witnesses = 0
-          if (++phase === 4) return { commands, error, end: match.index + match[0].length }
+      if (row === 1 && column === 1) {
+        const full = /^([0-3])-([a-f0-9]{24})$/.exec(value)
+        if (start === undefined && full?.[1] === "0" && full[2] === nonce) start = match.index
+        if (start !== undefined) {
+          if (value === " " && witnesses === 1) cleared = true
+          const matches = full?.[1] === String(phase) && full[2] === nonce
+          if (matches && witnesses === 0) {
+            witnesses = 1
+          } else if (witnesses === 1 && cleared && (matches || value === String(phase))) {
+            witnesses = 0
+            cleared = false
+            if (++phase === 4) return { commands, error, start, end: match.index + match[0].length }
+          } else if (full && !matches) {
+            error = `Outer SGR command read encountered a different invocation or phase witness: ${value}`
+          }
         }
       }
       column = column === undefined ? undefined : column + Array.from(value).length
     }
   }
-  return { commands, error, end: undefined }
+  return { commands, error, start, end: undefined }
 }
 
 /** Collector-local read: ownership comes from the existing live terminal owner. */
@@ -370,23 +382,30 @@ export function beginMuxSgrCommandRead(input: {
     return {
       status: "ready" as const,
       async read(callLog: string | undefined) {
-        const detail: { offset: number; endOffset?: number; path?: string; appended?: string; commands?: string[][] } =
-          { offset }
+        const detail: {
+          offset: number
+          endOffset?: number
+          phaseStartOffset?: number
+          nonce?: string
+          path?: string
+          appended?: string
+          commands?: string[][]
+        } = { offset }
         try {
           if (callLog === undefined) throw new Error(`Missing same-run callback trace: ${input.featureId}.callLog`)
-          const trace = JSON.parse(callLog) as {
-            format?: string
-            version?: number
-            calls?: Array<{ path?: string; args?: unknown[] }>
-          }
-          if (trace.format !== "viprobe.call-log" || trace.version !== 1 || !Array.isArray(trace.calls)) {
-            throw new Error("Outer SGR command read has no same-run callback write trace")
-          }
+          const writes: string[] = []
+          readCallLog(JSON.parse(callLog), {
+            onOperation(operation) {
+              if (operation.path !== "context.write") return
+              const text = operation.args[0]
+              if (typeof text !== "string") throw new Error("Outer SGR trace contains a non-text context.write")
+              writes.push(text)
+            },
+          })
           const paint = /^\x1b\[0m\x1b\[2J\x1b\[3;3H((?:\x1b\[[0-9;:]*m)*)([^\x1b]*)\x1b\[0m\x1b\[2;1H\x1b\[1;1H $/
-          const phases = trace.calls
-            .flatMap((call) => {
-              const value = call?.path === "context.write" ? call.args?.[0] : undefined
-              const match = typeof value === "string" ? paint.exec(value) : null
+          const phases = writes
+            .flatMap((value) => {
+              const match = paint.exec(value)
               return match ? [{ sequence: match[1], sample: match[2] }] : []
             })
             .slice(0, 4)
@@ -402,15 +421,32 @@ export function beginMuxSgrCommandRead(input: {
           ) {
             throw new Error("Outer SGR command read cannot join the four controlled paint phases")
           }
+          const witnesses = writes
+            .flatMap((value) => {
+              const match = /^\x1b\[1;1H([0-3])-([a-f0-9]{24})$/.exec(value)
+              return match ? [{ phase: match[1], nonce: match[2] }] : []
+            })
+            .slice(0, 8)
+          const nonce = witnesses[0]?.nonce
+          if (
+            !nonce ||
+            witnesses.length !== 8 ||
+            witnesses.some((entry, index) => entry.nonce !== nonce || entry.phase !== String(Math.floor(index / 2)))
+          ) {
+            throw new Error("Outer SGR command read has no unique same-run phase witnesses")
+          }
+          detail.nonce = nonce
           const reading = await log.read(
             offset,
             `mux-sgr-${input.featureId}-${randomUUID()}.log`,
-            (text) => muxSgrCommandPhases(text).end,
+            (text) => muxSgrCommandPhases(text, nonce).end,
           )
           detail.path = reading.path
           detail.endOffset = reading.endOffset
           detail.appended = reading.text
-          const parsed = muxSgrCommandPhases(reading.text)
+          const parsed = muxSgrCommandPhases(reading.text, nonce)
+          if (parsed.start !== undefined)
+            detail.phaseStartOffset = offset + Buffer.byteLength(reading.text.slice(0, parsed.start))
           detail.commands = parsed.commands
           if (parsed.error) throw new Error(parsed.error)
           if (!reading.complete) throw new Error("Outer SGR command read did not observe phase completion")

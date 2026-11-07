@@ -16,6 +16,7 @@ import type { CaptureRequest, ObservationFrame, TermProbeSource } from "../probe
 const sample = "AaBb 0123456789 - terminal text"
 const geometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
+let captureClock = 1_700_000_000_000
 type Fault = "none" | "unknown+blind" | "blind+ignored" | "ignored" | "single" | "inverse" | "hidden" | "unstable"
 
 /** A tiny paint adapter, not a grader: independently supplied style failures change pixels.
@@ -77,7 +78,7 @@ async function measure(id: string, fault: Fault = "none", reply = true) {
       const frame: ObservationFrame = {
         role: request.role,
         label: request.label,
-        capturedAt: count,
+        capturedAt: ++captureClock,
         ref: `sha256:${hash(`${digest}:${count}`)}`,
         kind: "pixels",
         regionDigest: digest,
@@ -159,4 +160,28 @@ test("mux attribution preserves positives and non-mux negatives", async () => {
   }
   expect(finalizeSgrResult(negative.recorded, { kind: "term" }, negative.frames)).toEqual(negative.recorded)
   expect(finalizeSgrResult(negative.recorded, { kind: "lib" }, [])).toEqual(negative.recorded)
+})
+
+// A late stdout flush from a previous invocation cannot qualify this one's command read.
+test("paint witnesses bind fresh captures and replay the same invocation", async () => {
+  const beforeFirst = captureClock
+  const first = await measure("sgr.bold")
+  const second = await measure("sgr.bold")
+  const afterSecond = captureClock
+  captureClock = beforeFirst
+  const replay = await measure("sgr.bold")
+  captureClock = afterSecond
+  const markers = (writes: string[]) =>
+    writes.flatMap((value) => {
+      const match = /^\x1b\[1;1H([0-9])-([a-f0-9]{24})$/.exec(value)
+      return match ? [{ phase: match[1], nonce: match[2] }] : []
+    })
+  const before = markers(first.writes)
+  const after = markers(second.writes)
+  expect(before.length).toBeGreaterThanOrEqual(8)
+  expect(before.slice(0, 8).map((entry) => entry.phase)).toEqual(["0", "0", "1", "1", "2", "2", "3", "3"])
+  expect(new Set(before.map((entry) => entry.nonce)).size).toBe(1)
+  expect(new Set(after.map((entry) => entry.nonce)).size).toBe(1)
+  expect(before[0]?.nonce).not.toBe(after[0]?.nonce)
+  expect(markers(replay.writes)).toEqual(before)
 })
