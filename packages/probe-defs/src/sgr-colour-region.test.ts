@@ -735,12 +735,12 @@ for (const id of REVIEW_IDS) {
     }
     const result = await run(id, ctx)
     if (id === "sgr.blink") {
-      // Steady colour pixels are four equal blink samples (#31812): inconclusive, never a colour grade.
+      // Steady colour pixels lack the row-local focus/input controls: inconclusive, never a colour grade.
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
         assertionType: "screenshot",
         reason: "insufficient-evidence",
-        note: expect.stringContaining("no blink period is recorded"),
+        note: expect.stringContaining("missing focus read before and after sampling"),
       })
       expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(5)
       expect(result.assertions).toMatchObject([
