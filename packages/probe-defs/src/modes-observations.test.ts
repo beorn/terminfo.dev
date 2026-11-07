@@ -116,8 +116,9 @@ test.each([null, 0] as const)("App all-motion mouse uses controlled effects afte
   const definition = modesProbes.find((entry) => entry.id === "modes.mouse-all")
   if (!definition?.term) throw new Error("Missing App all-motion callback")
   const stored = new Map<string, StoredQuery>()
-  if (ps !== null)
+  if (ps !== null) {
     stored.set("\x1b[?1003$p", { sequence: "\x1b[?1003$p", match: null, reason: "reply", raw: "\x1b[?1003;0$y" })
+  }
   for (const mutation of [undefined, "mouse-1003-noop", "reset-reports", "missing-a"] as const) {
     const surface = createSemanticSurface({ mutations: mutation === "mouse-1003-noop" ? [mutation] : [] })
     let bytes = ""
