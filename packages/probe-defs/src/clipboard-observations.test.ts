@@ -313,9 +313,9 @@ function pasteAndRead(
         // X11 PRIMARY and CLIPBOARD are distinct; the fixture seeds only CLIPBOARD.
         const pasted = key === "ctrl+shift+v" ? clipboard : key === "shift+Insert" ? "primary-selection-control" : null
         if (pasted !== null) {
-          if (script.paste === "bracketed" || (script.paste === "controlled" && surface.getMode("bracketedPaste")))
+          if (script.paste === "bracketed" || (script.paste === "controlled" && surface.getMode("bracketedPaste"))) {
             pending.push(`\x1b[200~${pasted}\x1b[201~`)
-          else if (script.paste === "controlled") pending.push(pasted)
+          } else if (script.paste === "controlled") pending.push(pasted)
           else if (script.paste === "raw") pending.push(pasted)
         }
       },

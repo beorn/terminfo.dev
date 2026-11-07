@@ -3947,8 +3947,9 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       ctx.write(enabled ? "\x1b[?2004h" : "\x1b[?2004l")
       const arrival = new RegExp(`\\x1b\\[200~[\\s\\S]*?\\x1b\\[201~|${escapeRegex(nonce)}`)
       const report = (await readInput(arrival, 1000, () => input.injectKey("ctrl+shift+v")))?.[0]
-      if (!report)
+      if (!report) {
         throw new Error("XTEST clipboard paste ctrl+shift+v did not reach the app after a successful delivery control")
+      }
       return report
     }
     try {

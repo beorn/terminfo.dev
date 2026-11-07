@@ -1899,8 +1899,9 @@ const modeDefinitions: ProbeDefinition[] = [
     term: async (ctx) => {
       const decrpm = await queryDecrpm(ctx, 2004)
       if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 2004)
-      if (!ctx.input || !ctx.readInput || !ctx.withClipboardFixture)
+      if (!ctx.input || !ctx.readInput || !ctx.withClipboardFixture) {
         return replyFailure("Bracketed-paste effect needs owned clipboard, key injection and input readback")
+      }
       const paste = extensionsProbes.find((entry) => entry.id === "extensions.clipboard-paste")?.term
       if (!paste) throw new Error("Missing existing clipboard-paste App callback")
       const result = await paste(ctx)
