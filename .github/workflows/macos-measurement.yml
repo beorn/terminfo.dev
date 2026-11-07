@@ -558,8 +558,8 @@ jobs:
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
           # The receipt exists before strict parsing. Release collection ONLY after producer success.
           touch "$OUT/collector-ready"
-          # WezTerm's collect step measured 200 s, 200 s, 307 s and >333 s (30655); 600 s keeps it inside the bound.
-          for attempt in {1..600}; do
+          # Full pixel-controlled selections can exceed ten minutes; retain a finite collector bound inside the job budget.
+          for attempt in {1..900}; do
             if [ -f "$OUT/collector-exit" ]; then
               status="$(cat "$OUT/collector-exit")"
               test "$status" = 0 || {
@@ -578,7 +578,7 @@ jobs:
             fi
             sleep 1
           done
-          echo "$APP_ID collector did not finish within 600 seconds; see launcher/collector artifacts" >&2
+          echo "$APP_ID collector did not finish within 900 seconds; see launcher/collector artifacts" >&2
           if [ "$APP_ID" = iterm2 ]; then echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"; fi
           exit 1
 
