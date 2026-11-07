@@ -835,7 +835,9 @@ it("retains the focus report emitted while enabling 1004", async () => {
     ownedTerminal: geometryOwner(noGeometry),
     input: {
       injectClick: async () => {},
-      injectKey: async () => { process.stdin.emit("data", Buffer.from("a")) },
+      injectKey: async () => {
+        process.stdin.emit("data", Buffer.from("a"))
+      },
       focusRoundTrip: async () => {
         if (enabled) process.stdin.emit("data", Buffer.from("\x1b[O\x1b[I"))
       },
