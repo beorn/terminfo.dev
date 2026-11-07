@@ -948,6 +948,7 @@ it.each([
   { forwarded: true, ownFrame: false, expected: "probe-todo" },
 ] as const)("attributes mux pixel negatives at the existing finalise site: $forwarded/$ownFrame", async (scenario) => {
   verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
   const id = "sgr.underline.curly"
   const definition = ALL_PROBES.find((probe) => probe.id === id)!
   const original = {

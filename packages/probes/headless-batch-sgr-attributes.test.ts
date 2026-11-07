@@ -9,7 +9,7 @@
  */
 import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
-import { sgrProbes, finalizeSgrResult } from "../probe-defs/src/sgr.ts"
+import { sgrProbes, finalizeVisualResult } from "../probe-defs/src/sgr.ts"
 import { recordExecutedProbe } from "../probe-defs/src/helpers.ts"
 import type { CaptureRequest, ObservationFrame, TermProbeSource } from "../probe-defs/src/types.ts"
 
@@ -132,7 +132,7 @@ test.each([
   expect(recorded.status).toBe(status)
   expect([recorded.reason, callback.note, callback.observation?.note].join(" ")).toContain(reason)
   if (status === "supported" || status === "unsupported") {
-    expect(finalizeSgrResult(recorded, { kind: "term" }, frames).status).toBe(status)
+    expect(finalizeVisualResult(recorded, { kind: "term" }, frames).status).toBe(status)
     expect(writes.some((entry) => entry.includes("\x1b[99m"))).toBe(true)
     expect(frames.some((entry) => entry.role === "target" && entry.regionRectangle?.width === sample.length * 8)).toBe(
       true,
@@ -151,15 +151,15 @@ test("mux attribution preserves positives and non-mux negatives", async () => {
   const negative = await measure("sgr.overline", "ignored")
   const positive = await measure("sgr.bold")
   for (const outerTerminal of ["kitty", null]) {
-    const result = finalizeSgrResult(negative.recorded, { kind: "mux", outerTerminal }, negative.frames)
+    const result = finalizeVisualResult(negative.recorded, { kind: "mux", outerTerminal }, negative.frames)
     expect(result.status).toBe("probe-todo")
     expect(result.reason?.toLowerCase()).toContain(outerTerminal ?? "missing outer terminal")
-    expect(finalizeSgrResult(positive.recorded, { kind: "mux", outerTerminal }, positive.frames).status).toBe(
+    expect(finalizeVisualResult(positive.recorded, { kind: "mux", outerTerminal }, positive.frames).status).toBe(
       "supported",
     )
   }
-  expect(finalizeSgrResult(negative.recorded, { kind: "term" }, negative.frames)).toEqual(negative.recorded)
-  expect(finalizeSgrResult(negative.recorded, { kind: "lib" }, [])).toEqual(negative.recorded)
+  expect(finalizeVisualResult(negative.recorded, { kind: "term" }, negative.frames)).toEqual(negative.recorded)
+  expect(finalizeVisualResult(negative.recorded, { kind: "lib" }, [])).toEqual(negative.recorded)
 })
 
 // A late stdout flush from a previous invocation cannot qualify this one's command read.

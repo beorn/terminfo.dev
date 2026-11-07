@@ -1030,18 +1030,18 @@ export async function runProbeBatch(
         if (commands.targetSent) {
           const reason = `${subject?.id}: SGR ${commands.target} was passed to outer terminal ${subject?.outerTerminal}; the controlled sample still drew no distinct target effect`
           const declared = declaredUntestableResult(reason, commands)
-          finalized = finalizeProbeResult({
+          finalized = {
             ...finalized,
-            criterionBranch: declared.criterionBranch,
-            reason,
-            rawReplyRef: `${probe.id}.outerCommands`,
-            tests: declared.tests!.map((test) => ({
-              ...test,
+            ...recordExecutedProbe({
+              featureId: probe.id,
               attempt,
-              assertionRefs: [],
+              coverage: { featureId: probe.id, ...declared.notTested },
+              criterionBranch: declared.criterionBranch,
+              tests: declared.tests,
+              assertions: [],
               rawReplyRef: `${probe.id}.outerCommands`,
-            })),
-          })
+            }),
+          }
         } else {
           const reason = `${subject?.id} did not forward SGR ${commands.target} to outer terminal ${subject?.outerTerminal}`
           finalized = finalizeProbeResult({ ...finalized, reason })

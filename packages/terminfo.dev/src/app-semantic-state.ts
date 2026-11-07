@@ -362,7 +362,7 @@ export function openAppCommandLog(capture: string) {
 // four invocation-bound paint-witness roundtrips bound this callback's command phases.
 function muxSgrCommandPhases(text: string, nonce: string) {
   const commands: [string[], string[], string[], string[]] = [[], [], [], []]
-  let phase = 0
+  let phase: 0 | 1 | 2 | 3 = 0
   let witnesses = 0
   let cleared = false
   let start: number | undefined
@@ -370,7 +370,7 @@ function muxSgrCommandPhases(text: string, nonce: string) {
   let column: number | undefined
   let error: string | undefined
   for (const match of text.matchAll(/([^\n]*)\n/g)) {
-    const line = match[1]!
+    const line = match[0].slice(0, -1)
     const position = /^screen_cursor_position (\d+) (\d+)$/.exec(line)
     if (position) {
       row = Number(position[1])
@@ -387,7 +387,7 @@ function muxSgrCommandPhases(text: string, nonce: string) {
       if (!parameters || !/^(?:\d+(?::\d+)*)(?:;\d+(?::\d+)*)*$/.test(parameters)) {
         error = `Unrecognized outer SGR command report: ${line}`
       } else {
-        commands[phase]!.push(
+        commands[phase].push(
           ...parameters.split(";").map((value) => (value === "21" ? "4:2" : value === "4:1" ? "4" : value)),
         )
       }
@@ -404,7 +404,8 @@ function muxSgrCommandPhases(text: string, nonce: string) {
           } else if (witnesses === 1 && cleared && (matches || value === String(phase))) {
             witnesses = 0
             cleared = false
-            if (++phase === 4) return { commands, error, start, end: match.index + match[0].length }
+            if (phase === 3) return { commands, error, start, end: match.index + match[0].length }
+            phase = phase === 0 ? 1 : phase === 1 ? 2 : 3
           } else if (full && !matches) {
             error = `Outer SGR command read encountered a different invocation or phase witness: ${value}`
           }
@@ -526,8 +527,9 @@ export function beginMuxSgrCommandRead(input: {
           detail.endOffset = reading.endOffset
           detail.appended = reading.text
           const parsed = muxSgrCommandPhases(reading.text, nonce)
-          if (parsed.start !== undefined)
+          if (parsed.start !== undefined) {
             detail.phaseStartOffset = offset + Buffer.byteLength(reading.text.slice(0, parsed.start))
+          }
           detail.commands = parsed.commands
           if (parsed.error) throw new Error(parsed.error)
           if (!reading.complete) throw new Error("Outer SGR command read did not observe phase completion")
