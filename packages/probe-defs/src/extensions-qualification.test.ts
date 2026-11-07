@@ -1140,6 +1140,18 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
 
   const answered = await run(position)
   expect(answered.pass, id).toBe(false)
+  if (id === "extensions.osc555-flash") {
+    // Flash now uses owned pixels; neither an answered nor a silent CPR supplies that reader.
+    expect(answered.tests).toEqual([
+      expect.objectContaining({
+        status: "probe-todo",
+        reason: expect.stringContaining("no owned whole-window pixel capture"),
+      }),
+    ])
+    expect(answered.observation).toBeUndefined()
+    expect(await run(null)).toEqual(answered)
+    return
+  }
   expect(answered.response, id).toBe("3;1")
   expect(answered.observation, id).toBeUndefined()
   expect(answered.criterionBranch, id).toBe("headless-observable-review")

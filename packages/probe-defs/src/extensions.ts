@@ -55,6 +55,9 @@ import { sgrTermReadback } from "./sgr.ts"
 import {
   beginCaptureLifecycle,
   captureRegionGeometry,
+  captureRegionCallbackResult,
+  captureStabilityPair,
+  cropPositionRefusal,
   captureRegionReadbackDecision,
   collectorRegionRead,
   endCaptureLifecycle,
@@ -1393,6 +1396,217 @@ function probeForeground(before: string): string {
   return sameRgbText(before, "rgb:aa/bb/cc") ? "rgb:12/34/56" : "rgb:aa/bb/cc"
 }
 
+/** Original App colour rows: query silence is only the prerequisite, never the no-setup proof. */
+async function colorSetupAppCapture(
+  ctx: TermProbeSource,
+  id: string,
+  setCode: number,
+  reset: string,
+  fallback: ProbeCallbackResult,
+): Promise<ProbeCallbackResult> {
+  if (!ctx.capture || ctx.captureKind === "text-cells") return fallback
+  const index = setCode === 4 ? "0;" : ""
+  const paint = `\x1b[0m\x1b[3;2H${setCode === 4 ? "\x1b[38;5;0m" : ""}XX\x1b[0m`
+  const expected = "\x1b[0m\x1b[3;2H\x1b[38;2;18;52;86mXX\x1b[0m"
+  const spec = {
+    region: { top: 3, left: 2, bottom: 3, right: 3 },
+    sentinel: { row: 1, col: 1 },
+    cursorRow: 2,
+    seed: paint,
+    expected,
+    cleanup: reset,
+    timeoutMs: 5000,
+  }
+  // The same independent SGR contrast must distinguish both the unknown control and the setter.
+  const control = await captureRegionCallbackResult(
+    ctx,
+    id,
+    { ...spec, edit: `\x1b]7110;rgb:12/34/56\x07${paint}` },
+    true,
+  )
+  if (control?.observation?.outcome === "supported") {
+    return {
+      pass: false,
+      response: JSON.stringify({ initial: fallback.response, control }),
+      tests: [
+        {
+          id: "criterion",
+          status: "probe-invalid",
+          reason:
+            "Made-up OSC colour control changed the sample into the reference; this run cannot qualify colour setup",
+        },
+      ],
+    }
+  }
+  if (control?.observation?.outcome !== "unsupported") {
+    return control ?? fallback
+  }
+  const setup = await captureRegionCallbackResult(
+    ctx,
+    id,
+    {
+      ...spec,
+      edit: `\x1b]${setCode};${index}rgb:12/34/56\x07${paint}`,
+    },
+    true,
+  )
+  if (setup?.observation?.outcome === "unsupported") {
+    return declaredUntestableResult(
+      `Untestable (no setup): OSC ${setCode} did not change the painted colour after a stable made-up OSC control and a distinct same-run SGR reference; the reset or colour stack has no changed colour to act on.`,
+      { initial: fallback.response, control, setup },
+    )
+  }
+  if (setup?.observation?.outcome !== "supported") return setup ?? fallback
+  // This cut decides absent setup only; a changed setter is not a reset/stack verdict.
+  return notTestedResult(
+    `Open: OSC ${setCode} colour setup was not proved absent; the reset or colour-stack effect still needs its own readback`,
+    { initial: fallback.response, control, setup },
+  )
+}
+
+/** OSC112 keeps the cursor visible at its measured cell, as cursor.shape does. */
+async function cursorColorSetupAppCapture(
+  ctx: TermProbeSource,
+  fallback: ProbeCallbackResult,
+): Promise<ProbeCallbackResult> {
+  const id = "extensions.osc112-reset-cursor"
+  const read = collectorRegionRead(ctx)
+  if (!ctx.capture || ctx.captureKind === "text-cells" || !read) return fallback
+  const region = { top: 2, left: 3, bottom: 2, right: 3 }
+  const measured = await captureRegionGeometry(ctx, id, { region, sentinel: { row: 1, col: 1 }, cursorRow: 3 }, true)
+  if ("pass" in measured) return measured
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[2;1HL  R\x1b[2;3H\x1b[2 q\x1b[?25h")
+    const cursor = await ctx.queryCursorPosition()
+    if (cursor?.row !== 2 || cursor.col !== 3) {
+      return notTestedResult("Cursor-colour fixture CPR did not locate row 2 column 3", { cursor })
+    }
+    const capture = (label: string, role: "control" | "target" = "control") =>
+      read({ role, label: `${id}: ${label}`, region, pixelGeometry: measured.geometry })
+    const pair = await captureStabilityPair(
+      id,
+      "screenshot",
+      () => capture("shown first"),
+      () => capture("shown second"),
+    )
+    if (pair.refusal) return pair.refusal
+    ctx.write("\x1b[?25l")
+    const hidden = await capture("hidden")
+    ctx.write("\x1b[?25h")
+    const restored = await capture("shown restored")
+    ctx.write("\x1b]7110;rgb:12/34/56\x07")
+    const unknown = await capture("made-up OSC")
+    ctx.write("\x1b]12;rgb:12/34/56\x07")
+    const target = await capture("colour set", "target")
+    const readings = [pair.second, hidden, restored, unknown, target]
+    const frames = readings.map((entry) => entry.frame)
+    const state = { initial: fallback.response, cursor, stability: pair.stability, frames }
+    const cropped = cropPositionRefusal({
+      id,
+      compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+      response: JSON.stringify(state),
+      frames,
+      screenshotRef: target.frame.ref,
+    })
+    if (cropped) return cropped
+    if (frames.some((frame) => !frame.regionRectangle)) {
+      return notTestedResult("Cursor-colour capture lacks registered crop rectangles", state)
+    }
+    const before = pair.second.regionDigest
+    if (hidden.regionDigest === before || restored.regionDigest !== before || unknown.regionDigest !== before) {
+      return notTestedResult(
+        "Cursor-colour shown/hidden/restored or made-up OSC controls failed; no visible unchanged cursor was qualified",
+        state,
+      )
+    }
+    return target.regionDigest === before
+      ? declaredUntestableResult(
+          "Untestable (no setup): OSC 12 left the visible steady cursor unchanged after shown/hidden/restored and made-up OSC controls; OSC112 has no changed cursor colour to reset.",
+          state,
+        )
+      : notTestedResult("Open: OSC 12 changed the visible cursor; OSC112 restoration remains unmeasured", state)
+  } finally {
+    ctx.write("\x1b]112\x07\x1b[0 q\x1b[?25h")
+  }
+}
+
+/** Original whole-window recipes: qualify capture sensitivity before progress/flash no-change. */
+async function wholeWindowOscAppCapture(
+  ctx: TermProbeSource,
+  kind: "progress" | "flash",
+): Promise<ProbeCallbackResult> {
+  const id = kind === "progress" ? "extensions.osc9-progress" : "extensions.osc555-flash"
+  const fallback: ProbeCallbackResult = {
+    pass: false,
+    tests: [
+      { id: "criterion", status: "probe-todo", reason: `${id}: no owned whole-window pixel capture for this effect` },
+    ],
+  }
+  if (!ctx.capture || ctx.captureKind === "text-cells" || ctx.rows < 3 || ctx.cols < 3) return fallback
+  const capture = ctx.capture
+  const frames: ObservationFrame[] = []
+  const shoot = async (label: string, role: "control" | "target" = "control") => {
+    const frame = await capture({ role, label: `${id}: ${label}` })
+    const digest = frameDigests(frame).whole
+    if (frame.kind === "text-cells" || !digest) {
+      throw new Error(`${id}: whole-window pixel capture returned no pixel digest`)
+    }
+    frames.push(frame)
+    return { frame, pixelsDigest: digest, regionDigest: digest }
+  }
+  const clear = kind === "progress" ? "\x1b]9;4;0\x07" : ""
+  beginCaptureLifecycle(ctx)
+  try {
+    ctx.write(`${clear}\x1b[2J\x1b[H`)
+    const pair = await captureStabilityPair(
+      id,
+      "screenshot",
+      () => shoot("stable first"),
+      () => shoot("stable second"),
+    )
+    if (pair.refusal) return pair.refusal
+    const baseline = pair.second.pixelsDigest
+    ctx.write("\x1b[2;2HX")
+    const painted = await shoot("plain paint sensitivity")
+    ctx.write("\x1b[2;2H \x1b[H")
+    const restored = await shoot("plain paint restored")
+    ctx.write(kind === "progress" ? "\x1b]9;99999\x07" : "\x1b]99999\x07")
+    const unknown = await shoot("made-up OSC control")
+    const state = () => ({ stability: pair.stability, frames })
+    if (painted.pixelsDigest === baseline || restored.pixelsDigest !== baseline || unknown.pixelsDigest !== baseline) {
+      return notTestedResult(
+        `${id}: whole-window paint/restore or made-up OSC controls failed; no unchanged effect was qualified`,
+        state(),
+      )
+    }
+    ctx.write(kind === "progress" ? "\x1b]9;4;1;50\x07" : "\x1b]555\x07")
+    const targets: string[] = []
+    const start = Date.now()
+    // The existing blink recipe's finite capture schedule, without adding a sampler API.
+    for (const offset of kind === "flash" ? [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000] : [0]) {
+      const wait = start + offset - Date.now()
+      if (wait > 0) await kittyWait(wait)
+      targets.push((await shoot(`effect sample +${offset}ms`, "target")).pixelsDigest)
+    }
+    ctx.write(clear)
+    const cleared = await shoot("effect cleared")
+    if (cleared.pixelsDigest !== baseline || targets.some((digest) => digest !== baseline)) {
+      return notTestedResult(
+        `${id}: the whole-window effect changed or did not restore its baseline; this no-change branch does not decide that effect`,
+        state(),
+      )
+    }
+    return declaredUntestableResult(
+      kind === "progress"
+        ? "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
+        : "Untestable (no way to tell): OSC555 left all nine whole-window samples unchanged after plain paint/restore and made-up OSC controls; finite sampling can miss a flash and cannot prove Unsupported.",
+      state(),
+    )
+  } finally {
+    endCaptureLifecycle(ctx, clear)
+  }
+}
+
 /**
  * App-side reset exchange (27832): read the colour, set it, read the change back, reset it, read
  * the restoration back — the termless restore discipline against a real terminal. The collector
@@ -1423,7 +1637,11 @@ async function colorResetAppProbe(
       )
       return spec.setCode === 13 || spec.setCode === 14
         ? noColorSetupResult(ctx, reset, spec.setCode, before.outcome, result)
-        : result
+        : spec.setCode === 12
+          ? cursorColorSetupAppCapture(ctx, result)
+          : spec.setCode === 4 || spec.setCode === 10
+            ? colorSetupAppCapture(ctx, `extensions.osc${spec.resetCode}`, spec.setCode, reset, result)
+            : result
     }
     return oscReplyResult(before.outcome.raw, null, `Complete OSC ${spec.setCode} color reply`, before.outcome.sentinel)
   }
@@ -1478,6 +1696,7 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
       "query_reply",
     ),
     termNeedsDisposable: true,
+    ...([4, 10, 12].includes(setCode) ? { termNeedsGeometry: true } : {}),
     ...([4, 10, 11, 12].includes(setCode)
       ? {
           libHostRecipes: [
@@ -2535,12 +2754,15 @@ async function colorStackTermProbe(
   const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
   const before = foregroundValue(originalReply.match?.[0] ?? "")
   if (!before && originalReply.reason === "sentinel") {
-    return notTestedResult(
-      "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
-      {
-        query: foregroundQuery,
-        initialReadback: originalReply,
-      },
+    return colorSetupAppCapture(
+      ctx,
+      `extensions.osc${operation === "push" ? "30001" : "30101"}`,
+      10,
+      "\x1b]110\x07",
+      notTestedResult(
+        "Open: the text-colour query (OSC 10) got no answer, leaving saving and restoring colours unseen",
+        { query: foregroundQuery, initialReadback: originalReply },
+      ),
     )
   }
   if (!before) return unansweredQuery(originalReply, "No original OSC 10 foreground reply; color stack was not changed")
@@ -6529,9 +6751,10 @@ const extensionDefinitions: ProbeDefinition[] = [
           "Measures stored OSC 9;4 state, not progress display; states 2/4, 100%, stored values for 0/3 and never-reported history are not graded. Incoming reported state is restored; an unset report is left cleared because OSC cannot restore absent history",
         )
       },
-      () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),
+      (ctx) => wholeWindowOscAppCapture(ctx, "progress"),
       null,
     ),
+    termNeedsGeometry: true,
     libAssertionType: "buffer_state",
   },
 
@@ -7059,6 +7282,7 @@ const extensionDefinitions: ProbeDefinition[] = [
       (ctx) => colorStackTermProbe(ctx, "push"),
       "query_reply",
     ),
+    termNeedsGeometry: true,
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
@@ -7070,6 +7294,7 @@ const extensionDefinitions: ProbeDefinition[] = [
       (ctx) => colorStackTermProbe(ctx, "pop"),
       "query_reply",
     ),
+    termNeedsGeometry: true,
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
@@ -7087,17 +7312,15 @@ const extensionDefinitions: ProbeDefinition[] = [
   ),
 
   // OSC 555 — foot screen flash (visual bell)
-  probe(
-    "extensions.osc555-flash",
-    noSamePathControl("\x1b]555\x07"),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]555\x07")
-      const pos = await ctx.queryCursorPosition()
-      return unmeasuredCellResult(pos, "OSC 555 screen flash")
-    },
-    null,
-  ),
+  {
+    ...probe(
+      "extensions.osc555-flash",
+      noSamePathControl("\x1b]555\x07"),
+      (ctx) => wholeWindowOscAppCapture(ctx, "flash"),
+      null,
+    ),
+    termNeedsGeometry: true,
+  },
 
   // OSC 440 — mintty audio sound
   probe(

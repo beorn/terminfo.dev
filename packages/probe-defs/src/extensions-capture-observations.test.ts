@@ -62,6 +62,9 @@ function calibratedIterm2Arm(
     target?: "red" | "blank" | "printed" | "third"
     truecolor?: boolean
     captureKind?: "pixels" | "text-cells"
+    colour?: { applies?: boolean; unknownApplies?: boolean; sentinel?: boolean }
+    effect?: "cursor" | "progress" | "flash"
+    blind?: boolean
   } = {},
 ) {
   const writes: string[] = []
@@ -69,6 +72,8 @@ function calibratedIterm2Arm(
   let plane = "blank"
   let glyph = ""
   let reads = 0
+  let defaultColour = "initial"
+  let cursorShown = true
   const context = {
     kind: "live" as const,
     rows: 24,
@@ -81,6 +86,18 @@ function calibratedIterm2Arm(
       if (bytes.includes("\x1b]1337;File=inline=1")) plane = options.target ?? "red"
       else if (bytes.includes("1337;File=inline=1")) plane = "printed"
       if (bytes.includes("\x1b[48;2;255;0;0m") && options.truecolor !== false) plane = "red"
+      if (options.effect) {
+        if (bytes.includes("\x1b[?25h")) cursorShown = true
+        if (bytes.includes("\x1b[?25l")) cursorShown = false
+        if (bytes.includes("\x1b[2;2HX") && !options.blind) plane = "damage"
+        if (bytes.includes("\x1b[2;2H ")) plane = "blank"
+      }
+      if (options.colour) {
+        if (bytes.includes("\x1b]7110") && options.colour.unknownApplies) defaultColour = "wrong"
+        if (/\x1b\](?:4;0|10);rgb:12\/34\/56/.test(bytes) && options.colour.applies) defaultColour = "requested"
+        if (bytes.includes("\x1b[3;2HXX")) plane = defaultColour
+        if (bytes.includes("\x1b[38;2;18;52;86mXX")) plane = "requested"
+      }
       if (/^\x1b\[1;1H.$/.test(bytes)) glyph = bytes.slice(-1)
     },
     capture: async ({
@@ -90,7 +107,7 @@ function calibratedIterm2Arm(
     }: {
       role: "control" | "target"
       label: string
-      cells?: { top: number; left: number }
+      cells?: { top: number; left: number; bottom: number; right: number }
     }) => {
       const frame: ObservationFrame = {
         kind: "pixels",
@@ -98,8 +115,21 @@ function calibratedIterm2Arm(
         label,
         capturedAt: ++reads,
         ref: `sha256:frame${reads}`,
-        regionDigest: cells?.top === 1 && cells.left === 1 ? `witness:${glyph}` : `plane:${plane}`,
+        regionDigest:
+          cells?.top === 1 && cells.left === 1
+            ? `witness:${glyph}`
+            : options.effect === "cursor"
+              ? `cursor:${options.blind ? true : cursorShown}:${defaultColour}`
+              : `plane:${plane}`,
         pixelsDigest: `window:${plane}:${glyph}`,
+        ...(cells && {
+          regionRectangle: {
+            x: (cells.left - 1) * 8,
+            y: (cells.top - 1) * 17,
+            width: (cells.right - cells.left + 1) * 8,
+            height: (cells.bottom - cells.top + 1) * 17,
+          },
+        }),
       }
       frames.push(frame)
       return frame
@@ -109,9 +139,17 @@ function calibratedIterm2Arm(
     queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
     queryWithSentinelOutcome: async (sequence: string) => {
       writes.push(sequence)
-      return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+      return options.colour?.sentinel !== false && options.colour
+        ? {
+            match: null,
+            reason: "sentinel" as const,
+            raw: "\x1b[?1;2c",
+            rawBase64: "G1s/MTsyYw==",
+            sentinel: { atMs: 1, graceMs: 1 },
+          }
+        : { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
     },
-    queryCursorPosition: async () => null,
+    queryCursorPosition: async () => (options.effect === "cursor" ? { row: 2, col: 3 } : null),
     queryMode: async () => null,
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
   } as unknown as TermProbeSource
@@ -285,4 +323,85 @@ test("extensions.font-ligatures refuses an undersized capture terminal before an
   expect(result.assertions).toBeUndefined()
   expect(frames).toEqual([])
   expect(writes).toEqual([])
+})
+
+// 32604: query silence cannot substitute for the same-run made-up OSC and paint controls.
+// Existing image tests do not exercise the colour-reset/stack App fallback.
+test.each([
+  "extensions.osc104-reset-palette",
+  "extensions.osc110-reset-fg",
+  "extensions.osc30001-color-stack-push",
+  "extensions.osc30101-color-stack-pop",
+])("%s declares no setup only after controlled unchanged paint", async (id) => {
+  const { context, writes } = calibratedIterm2Arm({ colour: {} })
+  const result = await find(id).term!(context)
+  expect(result.tests ?? []).toContainEqual(
+    expect.objectContaining({ id: "declared-untestable", status: "untestable" }),
+  )
+  expect(result.note).toContain("no setup")
+  expect(writes.some((bytes) => bytes.includes("\x1b]7110"))).toBe(true)
+  const recorded = recordExecutedProbe({
+    featureId: id,
+    attempt: { scope: "probe", startedAt: "2026-11-07T00:00:00.000Z" },
+    coverage: result.notTested && { featureId: id, ...result.notTested, rawReplyRef: id },
+    assertions: [],
+    tests: result.tests,
+    rawReplyRef: id,
+    criterionBranch: result.criterionBranch,
+  })
+  const subject = { kind: "mux" as const, id: "screen", outerTerminal: "kitty" }
+  const finalized = finalizeVisualResult(recorded, subject, [])
+  expect(finalized.status).toBe("untestable")
+  expect(finalized.reason).toContain("screen")
+  expect(finalized.reason).toContain("kitty")
+  expect(finalizeVisualResult(recorded, { kind: "term" }, [])).toEqual(recorded)
+})
+
+test.each([
+  { label: "colour setup works", colour: { applies: true }, invalid: false },
+  { label: "made-up OSC changes the sample", colour: { unknownApplies: true }, invalid: true },
+  { label: "query delivery control absent", colour: { sentinel: false }, invalid: false },
+])("colour no-setup refuses $label", async ({ colour, invalid }) => {
+  const { context } = calibratedIterm2Arm({ colour })
+  const result = await find("extensions.osc110-reset-fg").term!(context)
+  expect(result.tests?.some((entry) => entry.status === "untestable")).not.toBe(true)
+  // A failed shared-oracle control must keep its invalid measurement status.
+  if (invalid) {
+    const featureId = "extensions.osc110-reset-fg"
+    const recorded = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: "2026-11-07T00:00:00.000Z" },
+      observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
+      coverage: result.notTested && { featureId, ...result.notTested, rawReplyRef: featureId },
+      assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId })),
+      tests: result.tests,
+      rawReplyRef: featureId,
+      criterionBranch: result.criterionBranch,
+    })
+    expect(recorded.status).toBe("probe-invalid")
+  }
+})
+
+// Whole-window effects and a visible cursor need their own sensitivity control, not CPR credit.
+test.each([
+  { id: "extensions.osc112-reset-cursor", effect: "cursor" as const, cause: "no setup" },
+  { id: "extensions.osc9-progress", effect: "progress" as const, cause: "no setup" },
+  { id: "extensions.osc555-flash", effect: "flash" as const, cause: "no way" },
+])("$id qualifies its original no-change ending", async ({ id, effect, cause }) => {
+  const { context } = calibratedIterm2Arm({ colour: {}, effect })
+  const result = await find(id).term!(context)
+  expect(result.tests ?? []).toContainEqual(
+    expect.objectContaining({ id: "declared-untestable", status: "untestable" }),
+  )
+  expect(result.note).toContain(cause)
+})
+
+test.each([
+  { id: "extensions.osc112-reset-cursor", effect: "cursor" as const },
+  { id: "extensions.osc9-progress", effect: "progress" as const },
+  { id: "extensions.osc555-flash", effect: "flash" as const },
+])("$id cannot declare no-change with a blind capture", async ({ id, effect }) => {
+  const { context } = calibratedIterm2Arm({ colour: {}, effect, blind: true })
+  const result = await find(id).term!(context)
+  expect(result.tests?.some((entry) => entry.status === "untestable")).not.toBe(true)
 })

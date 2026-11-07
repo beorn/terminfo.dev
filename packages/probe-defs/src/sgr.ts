@@ -1347,6 +1347,30 @@ export function finalizeVisualResult(
   target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
   captures: readonly ObservationFrame[],
 ): ProbeResult {
+  // CTO Ask2b: owning callbacks qualify no-change; this finalizer only adds actual subject identity.
+  const mux = "id" in target && typeof target.id === "string" ? target.id : undefined
+  const noChangeIds = ["extensions.osc112-reset-cursor", "extensions.osc9-progress", "extensions.osc555-flash"]
+  if (mux === "screen") {
+    noChangeIds.push(
+      "extensions.osc104-reset-palette",
+      "extensions.osc110-reset-fg",
+      "extensions.osc30001-color-stack-push",
+      "extensions.osc30101-color-stack-pop",
+    )
+  }
+  if (
+    target.kind === "mux" &&
+    (mux === "screen" || mux === "tmux") &&
+    recorded.status === "untestable" &&
+    noChangeIds.includes(recorded.featureId)
+  ) {
+    const reason = `${recorded.reason}; unchanged effect could have stopped at ${mux} or its outer terminal ${target.outerTerminal ?? "(identity unavailable)"}`
+    return finalizeProbeResult({
+      ...recorded,
+      reason,
+      tests: recorded.tests.map((test) => (test.id === "declared-untestable" ? { ...test, reason } : test)),
+    })
+  }
   const hasScreenshot =
     recorded.screenshotRef !== undefined &&
     captures.some((frame) => frame.kind !== "text-cells" && frame.ref === recorded.screenshotRef)
