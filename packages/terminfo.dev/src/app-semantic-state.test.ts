@@ -163,6 +163,7 @@ test.each(
   (
     [
       ["kitty", "0.49.2", "extensions.osc176-app-id", "176", "176;terminfo-test"],
+      ["kitty", "0.49.2", "extensions.osc710-font-normal", "710", "710;monospace"],
       ["wezterm", "0-unstable-2026-10-10", "extensions.osc555-flash", "555", "555"],
       ["wezterm", "0-unstable-2026-10-10", "extensions.osc710-font-normal", "710", "710;fixed"],
     ] as const
@@ -285,9 +286,9 @@ test.each(
   },
 )
 
-// CTO046c89ce: registering the 710 wrapper must not lend WezTerm's reader to other Apps.
+// A reviewed 710 reader must not lend its identity to another version or App.
 test.each([
-  ["kitty", "0.49.2", "kitty 0.49.2 created by Kovid Goyal\n"],
+  ["kitty", "unreviewed", "kitty unreviewed created by Kovid Goyal\n"],
   ["ghostty", "1.4.0", "Ghostty 1.4.0\n"],
   ["alacritty", "0.17.0", "alacritty 0.17.0\n"],
   ["xterm", "411", "XTerm(411)\n"],
