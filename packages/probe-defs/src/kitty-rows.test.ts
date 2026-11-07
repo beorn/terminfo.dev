@@ -10,6 +10,7 @@ import { expect, test } from "vitest"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { parseProbeResults } from "@terminfo/run-parser"
 import { extensionsProbes } from "./extensions.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT, KITTY_REGION } from "./kitty-capture.ts"
@@ -246,7 +247,7 @@ test.each([
   ["red", "stop-only-error", "probe-invalid"],
   ["red", "selection-only-error", "probe-invalid"],
 ] as const)("equal animation pixels %s with %s replies record %s", async (playback, reply, status) => {
-  const { context, writes } = surface({
+  const { context, writes, captures } = surface({
     region: ["blank", "red", "red", "red", "cursor", "cursor", playback, playback, playback, playback, playback],
     whole: ["before", "after"],
   })
@@ -295,6 +296,20 @@ test.each([
   if (status === "unsupported") {
     expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "query_reply" }])
     expect(result.observation?.note).toContain("hand selection did not change")
+    const [parsed] = parseProbeResults(
+      [recorded],
+      "animation callback",
+      new Set([featureId]),
+      { [featureId]: result.response! },
+      (result.assertions ?? []).map((assertion) => ({ ...assertion, featureId, rawReplyRef: featureId })),
+      captures.map(({ ref }) => ref),
+    )
+    expect(parsed).toMatchObject({ status: "unsupported", assertionType: "query_reply" })
+    expect(parsed?.frames).toBeUndefined()
+    expect(JSON.parse(result.response!)).toHaveProperty(
+      "frames",
+      captures.map(({ role, ref, label }) => ({ role, ref, label })),
+    )
   } else {
     expect(result.assertions).toBeUndefined()
     if (playback === "blank") expect(result.observation?.note).toContain("playback image did not paint")
@@ -392,7 +407,7 @@ test.each([
 test.each(["silent", "ok", "refused", "foreign-error"] as const)(
   "blank placeholders with %s reply need an exact refusal",
   async (reply) => {
-    const { context, writes } = surface({
+    const { context, writes, captures } = surface({
       region: ["same", "same", "same", "blank", "ordinary"],
       guard: ["guard", "guard"],
       cells: ["placeholder-cells", "placeholder-cells"],
@@ -426,6 +441,20 @@ test.each(["silent", "ok", "refused", "foreign-error"] as const)(
     if (reply === "refused") {
       expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "query_reply" }])
       expect(result.observation?.note).toContain("ERROR: unimplemented virtual placement")
+      const [parsed] = parseProbeResults(
+        [recorded],
+        "placeholder callback",
+        new Set([featureId]),
+        { [featureId]: result.response! },
+        (result.assertions ?? []).map((assertion) => ({ ...assertion, featureId, rawReplyRef: featureId })),
+        captures.map(({ ref }) => ref),
+      )
+      expect(parsed).toMatchObject({ status: "unsupported", assertionType: "query_reply" })
+      expect(parsed?.frames).toBeUndefined()
+      expect(JSON.parse(result.response!)).toHaveProperty(
+        "frames",
+        captures.map(({ role, ref, label }) => ({ role, ref, label })),
+      )
     } else {
       expect(result.assertions).toBeUndefined()
       expect(result.observation?.note).toContain("observed replies")

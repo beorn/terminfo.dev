@@ -135,7 +135,10 @@ transfers and controls use `q=1`: successful acknowledgements stay quiet, while 
 remain in the command readbacks and the result's reason. Virtual placement uses `q=0` on every chunk
 and retains its success or error readback. Base-image and ordinary-placement errors cannot establish
 the feature's refusal. Positive pixels retain their screenshot assertion; a qualified negative's
-deciding assertion is the exact command's `query_reply`, with all pixel controls retained.
+deciding assertion is the exact command's `query_reply`, with all pixel controls and frame references
+retained in the raw response JSON. Typed observation frames are attached only to screenshot-decided
+results. Every animation frame transfer declares its pixel width and height; continuation chunks
+retain their existing chunk-control fields.
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 

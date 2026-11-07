@@ -168,7 +168,7 @@ export function kittyFrameTransfer(
   frame: { readonly width: number; readonly height: number; readonly rgb: readonly [number, number, number] },
   options: { readonly root?: boolean; readonly gapMs?: number } = {},
 ): string {
-  const size = options.root ? `,s=${frame.width},v=${frame.height}` : ""
+  const size = `,s=${frame.width},v=${frame.height}`
   const gap = options.root ? "" : `,z=${String(options.gapMs ?? KITTY_GAP_MS)}`
   return kittyPayloadTransfer(
     options.root ? "t" : "f",

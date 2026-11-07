@@ -5279,7 +5279,7 @@ const extensionDefinitions: ProbeDefinition[] = [
               ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
               assertionType,
               screenshotRef: playbackSecond.ref,
-              frames,
+              ...(assertionType === "screenshot" ? { frames } : {}),
               note,
             },
             ...(captureDecision.decidedBy === "a missing region digest"
@@ -5490,7 +5490,7 @@ const extensionDefinitions: ProbeDefinition[] = [
               ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
               assertionType,
               screenshotRef: withImageSecond.ref,
-              frames,
+              ...(assertionType === "screenshot" ? { frames } : {}),
               note,
             },
             ...(captureDecision.decidedBy === "a missing region digest"
