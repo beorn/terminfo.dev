@@ -12,6 +12,7 @@ import type {
   ObservationFrame,
   UnhandledSequence,
 } from "./types.ts"
+import { frameDigests } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   HEADLESS_OBSERVABLE_REVIEW,
@@ -6211,28 +6212,92 @@ const extensionDefinitions: ProbeDefinition[] = [
         })
       },
       async (ctx) => {
-        if (ctx.capture) {
-          const refusal = sgrCaptureTooSmall(ctx, "extensions.iterm2-images")
-          if (refusal) return refusal
-          try {
-            return await sgrCaptureFrames(
-              ctx,
-              "\x1b[0m\x1b[2J\x1b[H",
-              "\x1b[0m\x1b[2J\x1b[3;3H\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07\x1b[1;1H",
-              "extensions.iterm2-images",
-              { startRow: 3, startCol: 3, image: "8x8 solid red PNG" },
-              "A red inline image appears only if the OSC 1337 payload was decoded; compare against the blank control",
-            )
-          } finally {
-            // SGR 0 alone does not remove a drawn inline image; clear the owned disposable surface.
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+        if (!ctx.capture || ctx.captureKind === "text-cells") {
+          const note =
+            "iTerm2 inline images paint pixels outside the cell grid; this arm has no pixel capture, so the missing adapter is pixel capture and the rendering is not observable here"
+          return {
+            pass: false,
+            note,
+            tests: [{ id: "criterion", status: "probe-todo", reason: note }],
           }
         }
-        const note = "No pixel readback for iTerm2 inline image rendering"
-        return {
-          pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+        const refusal = sgrCaptureTooSmall(ctx, "extensions.iterm2-images")
+        if (refusal) return refusal
+        const reported = await captureRegionGeometry(ctx, "extensions.iterm2-images", {
+          region: { ...SIXEL_REGION },
+          ...SIXEL_BOUNDS,
+        })
+        if ("pass" in reported) return reported
+        const geometry = reported.geometry
+        if (!geometry) {
+          const note =
+            "extensions.iterm2-images: this pixel arm reported no cell-to-pixel geometry, so the interior cell cannot be mapped"
+          return {
+            pass: false,
+            note,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note,
+            },
+          }
+        }
+        const read = collectorRegionRead(ctx)
+        if (!read) {
+          throw new Error("extensions.iterm2-images: a pixel arm reached the region oracle without an owned capture")
+        }
+        try {
+          const base = sixelReadback(geometry)
+          const body = `1337;File=inline=1;width=3;height=3;preserveAspectRatio=0:${ITERM2_RED_PNG}`
+          const park = `\x1b[${base.cursorRow};1H`
+          const decided = await captureRegionReadbackDecision(
+            ctx,
+            "extensions.iterm2-images",
+            {
+              ...base,
+              edit: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H\x1b]${body}\x07${park}`,
+              ignored: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H${body}${park}`,
+              pixelGeometry: geometry,
+              geometrySource: reported.source,
+            },
+            read,
+          )
+          if (decided) {
+            const digest = (plane: string) => {
+              const frame = decided.observation?.frames?.find(
+                (entry) => entry.label === `extensions.iterm2-images: ${plane}`,
+              )
+              return frame === undefined ? undefined : frameDigests(frame).cells
+            }
+            const after = digest("post-sequence target")
+            if (decided.observation?.outcome === "unsupported" && after !== undefined) {
+              if (after === digest("ignored-attribute frame")) {
+                const note =
+                  "the post-sequence frame equals the OSC 1337 body written as plain text, so this terminal drew no image and passed none on"
+                decided.note = note
+                decided.observation.note = note
+              } else if (after === digest("pre-edit seed")) {
+                decided.criterionBranch = "iterm2-images-no-change"
+              }
+            }
+            return decided
+          }
+          const note =
+            "extensions.iterm2-images: the region oracle answered nothing for this arm, so the rendering was not compared"
+          return {
+            pass: false,
+            note,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note,
+            },
+          }
+        } finally {
+          // SGR 0 alone does not remove a drawn inline image; clear the owned disposable surface.
+          ctx.write("\x1b[0m\x1b[2J\x1b[H")
         }
       },
     ),

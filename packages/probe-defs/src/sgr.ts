@@ -6,6 +6,7 @@ import type {
   TermProbeSource,
   LibProbeSource,
   ProbeResult,
+  ProbeSubject,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import {
@@ -1273,20 +1274,59 @@ export const sgrProbes: ProbeDefinition[] = [
 
 const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
 
+const MUX_NO_CHANGE_BRANCHES: Readonly<
+  Record<string, { testId: string; outerReason: (outerTerminal: string) => string }>
+> = {
+  "sgr-attribute-same-run": {
+    testId: "attribute",
+    outerReason: (outerTerminal) =>
+      `The sample drew nothing or collapsed a style through outer terminal ${outerTerminal}; this capture cannot separate the multiplexer from its outer terminal`,
+  },
+  "iterm2-images-no-change": {
+    testId: "criterion",
+    outerReason: (outerTerminal) =>
+      `An unchanged cell through outer terminal ${outerTerminal} cannot show which one stopped the image`,
+  },
+}
+
+function finalizeMuxNoChangeResult(
+  recorded: ProbeResult,
+  target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
+): ProbeResult {
+  if (target.kind !== "mux" || recorded.status !== "unsupported" || !recorded.criterionBranch) {
+    return recorded
+  }
+  const branch = MUX_NO_CHANGE_BRANCHES[recorded.criterionBranch]
+  if (!branch) return recorded
+  const reason = target.outerTerminal
+    ? branch.outerReason(target.outerTerminal)
+    : "Missing outer terminal identity: this capture cannot separate the multiplexer from its outer terminal"
+  return finalizeProbeResult({
+    ...recorded,
+    reason,
+    tests: recorded.tests.map((entry) =>
+      entry.id === branch.testId ? { ...entry, status: "probe-todo", assertionRefs: [], reason } : entry,
+    ),
+  })
+}
+
 /** Require app/mux rendered evidence while preserving library cell criteria after execution. */
 export function finalizeSgrResult(
   recorded: ProbeResult,
-  target: { kind: "term" | "mux" | "lib" },
+  target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
   captures: readonly ObservationFrame[],
 ): ProbeResult {
-  if (!visualSgrIds.has(recorded.featureId) || (recorded.status !== "supported" && recorded.status !== "unsupported")) {
+  if (recorded.status !== "supported" && recorded.status !== "unsupported") {
     return recorded
   }
   if (target.kind === "lib") return recorded
   const hasScreenshot =
     recorded.screenshotRef !== undefined &&
     captures.some((frame) => frame.kind !== "text-cells" && frame.ref === recorded.screenshotRef)
-  if (hasScreenshot) return recorded
+  if (!visualSgrIds.has(recorded.featureId)) {
+    return hasScreenshot ? finalizeMuxNoChangeResult(recorded, target) : recorded
+  }
+  if (hasScreenshot) return finalizeMuxNoChangeResult(recorded, target)
   const reason = "visual effect not observed in this run"
   return finalizeProbeResult({
     ...recorded,
