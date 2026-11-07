@@ -519,7 +519,7 @@ export const deviceProbes: ProbeDefinition[] = [
             assertionType: "process_environment",
             kind: supported ? "positive" : "negative",
             expected: "TERM_FEATURES exported by the terminal",
-            observed: reading.present ? reading.value : "absent",
+            observed: reading.present ? JSON.stringify(reading.value) : "absent",
           },
         ],
       }

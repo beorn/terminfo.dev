@@ -86,9 +86,13 @@ test("the actual CLI spawn input excludes a hostile parent advertisement and bin
   expect(launch.env.TERMINFO_TERM_FEATURES_LAUNCH).toBe(run.id)
 })
 
-test.runIf(process.platform === "linux" || process.platform === "darwin").each([true, false])(
+// Empty is still an exported value; its deciding assertion must survive canonical parsing.
+test
+  .runIf(process.platform === "linux" || process.platform === "darwin")
+  .each([undefined, "fixture-terminal-export", ""])(
   "real terminal-child fixture export=%s survives native finalization; startup hooks cannot decide",
-  async (exported) => {
+  async (value) => {
+    const exported = value !== undefined
     const directory = mkdtempSync(join(tmpdir(), "terminfo-child-process-"))
     directories.push(directory)
     const run = { id: "b".repeat(32), directory, scriptPath: join(directory, "serve.sh") }
@@ -108,7 +112,7 @@ test.runIf(process.platform === "linux" || process.platform === "darwin").each([
       ",process.pid,tty)));"
     const command =
       "unset TERM_FEATURES; " +
-      (exported ? "export TERM_FEATURES=fixture-terminal-export; " : "") +
+      (exported ? "export TERM_FEATURES=" + quote(value) + "; " : "") +
       "export BASH_ENV=" +
       quote(hook) +
       "; exec /bin/bash -p -c " +
@@ -141,7 +145,7 @@ test.runIf(process.platform === "linux" || process.platform === "darwin").each([
     expect(reading.status).toBe("measured")
     if (reading.status !== "measured") throw Error(reading.reason)
     expect(reading.present).toBe(exported)
-    expect(reading.value).toBe(exported ? "fixture-terminal-export" : "")
+    expect(reading.value).toBe(value ?? "")
     const source = replayTermProbeSource(new Map()),
       callback = deviceProbes.find((x) => x.id === "device.term-features")!.term!
     source.readTermFeatures = async () => reading
