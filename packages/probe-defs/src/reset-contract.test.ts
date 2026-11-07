@@ -16,11 +16,64 @@ import {
   missingContractTests,
   regradeCommand,
   regradeRow,
+  replayTermProbeSource,
   satisfiesContract,
+  type StoredQuery,
   type GroupContract,
   type GroupContractSpec,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+import { recordExecutedProbe } from "./helpers.ts"
+
+// Ask 3: absent/Ps0 mode replies cannot block DECSTR's same-run input effect.
+// The real semantic parser changes DECCKM; only its Up encoder is supplied by the owned input fixture.
+test.each([null, 0] as const)("App soft reset reads its controlled input effect after DECRPM %s", async (ps) => {
+  const definition = resetProbes.find((entry) => entry.id === "reset.soft")
+  if (!definition?.term) throw new Error("Missing App soft-reset callback")
+  const stored = new Map<string, StoredQuery>()
+  if (ps === 0) {
+    stored.set("\x1b[?1$p", { sequence: "\x1b[?1$p", match: null, reason: "reply", raw: "\x1b[?1;0$y" })
+  }
+  for (const mutation of [undefined, "decstr-noop", "decckm-noop", "missing-up"] as const) {
+    const surface = createSemanticSurface({ mutations: mutation && mutation !== "missing-up" ? [mutation] : [] })
+    let bytes = ""
+    const source = replayTermProbeSource(stored, {
+      write: (text) => surface.feed(text),
+      input: {
+        injectClick: async () => {
+          throw new Error("Soft reset fixture received a click")
+        },
+        injectKey: async (key) => {
+          if (key === "a") bytes += "a"
+          else if (key === "Up") {
+            if (mutation !== "missing-up") bytes += surface.getMode("applicationCursor") === true ? "\x1bOA" : "\x1b[A"
+          } else throw new Error(`Soft-reset fixture received ${key}`)
+        },
+      },
+      readInput: async (pattern, _timeout, inject) => {
+        bytes = ""
+        await inject?.()
+        return pattern.exec(bytes)
+      },
+    })
+    const result = await definition.term(source)
+    const recorded = recordExecutedProbe({
+      featureId: definition.id,
+      attempt: { scope: "probe", startedAt: new Date().toISOString() },
+      tests: result.tests,
+      observation: result.observation ? { featureId: definition.id, ...result.observation } : undefined,
+      assertions: (result.assertions ?? []).map((assertion) => ({ featureId: definition.id, ...assertion })),
+    })
+    expect(recorded.status, mutation ?? "working DECSTR").toBe(
+      mutation === "decstr-noop" ? "unsupported" : mutation ? "probe-invalid" : "supported",
+    )
+    if (ps === 0 && !mutation) expect(result.note).toContain("Ps 0")
+    expect(surface.getMode("applicationCursor")).toBe(false)
+  }
+  const missing = await definition.term(replayTermProbeSource(stored))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(definition.termNeedsDisposable).toBe(true)
+})
 
 const RESET_SEMANTIC_SURFACE_CONTROLS: readonly {
   readonly id: string

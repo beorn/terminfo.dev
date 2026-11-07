@@ -278,19 +278,68 @@ export const resetProbes: ProbeDefinition[] = [
           }
         }
         const before = await queryDecrpm(ctx, 1)
-        if (before === null) {
-          return replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes")
-        }
-        if (before === 0) {
-          return {
-            pass: false,
-            tests: [
-              {
-                id: "criterion",
-                status: "probe-invalid",
-                reason: "Cannot restore prior application-cursor mode without its readback",
-              },
-            ],
+        if (before === null || before === 0) {
+          const { input, readInput } = ctx
+          if (!input || !readInput) {
+            return replyFailure("Soft-reset effect needs owned key injection and input readback")
+          }
+          const readUp = async () =>
+            (
+              await readInput(/^(?:\x1b(?:\[|O)A)?a$/, 1000, async () => {
+                await input.injectKey("Up")
+                await input.injectKey("a")
+              })
+            )?.[0]
+          try {
+            ctx.write("\x1b[?1l")
+            const control = await readUp()
+            ctx.write("\x1b[?1h")
+            const enabled = await readUp()
+            if (control !== "\x1b[Aa" || enabled !== "\x1bOAa") {
+              return {
+                ...replyFailure(
+                  "Soft-reset setup did not read distinct normal/application Up encodings with plain-a delivery controls",
+                ),
+                response: JSON.stringify({ before, control, enabled }),
+              }
+            }
+            ctx.write("\x1b[!p")
+            const after = await readUp()
+            const response = JSON.stringify({ before, control, enabled, after })
+            if (after !== "\x1b[Aa" && after !== "\x1bOAa") {
+              return {
+                ...replyFailure(
+                  "Soft-reset target did not read an Up encoding followed by its plain-a delivery control",
+                ),
+                response,
+              }
+            }
+            const pass = after === "\x1b[Aa"
+            const note = `${before === 0 ? "DECRPM mode 1 returned Ps 0" : "No usable DECRPM reply for mode 1"}; DECSTR ${pass ? "cleared" : "did not clear"} the qualified application-cursor input effect`
+            return {
+              pass,
+              response,
+              note,
+              observation: { outcome: pass ? "supported" : "unsupported", assertionType: "input_bytes", note },
+              assertions: [
+                {
+                  assertionType: "input_bytes",
+                  kind: "positive",
+                  expected: "Up+a changes from CSI A+a to SS3 A+a with DECCKM enabled",
+                  observed: JSON.stringify({ control, enabled }),
+                },
+                {
+                  assertionType: "input_bytes",
+                  kind: pass ? "positive" : "negative",
+                  expected:
+                    "DECSTR returns the qualified SS3 Up encoding to normal CSI Up; injected plain a still arrives",
+                  observed: response,
+                },
+              ],
+            }
+          } finally {
+            // Unknown incoming state is confined to this disposable fixture's canonical normal-key setup.
+            ctx.write("\x1b[?1l")
           }
         }
         ctx.write("\x1b[?1h")
@@ -337,6 +386,7 @@ export const resetProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    termNeedsDisposable: true,
   },
 
   // DECALN — screen alignment test (fill screen with 'E')
