@@ -466,7 +466,7 @@ it.each([
   expect(writes).toHaveLength(3)
   const raw = batch.rawReplies[id]
   if (raw === undefined) throw new Error(`Missing recorded trace for ${id}`)
-  expect(JSON.parse(raw).queries).toEqual([])
+  expect(JSON.parse(raw)).toHaveProperty("queries", [])
   const expectedStatus = positive ? "supported" : "unsupported"
   expect(batch.results.find((row) => row.featureId === id)?.status).toBe(expectedStatus)
   const decoded = decodeCollectorDraft(
