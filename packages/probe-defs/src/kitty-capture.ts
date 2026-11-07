@@ -133,7 +133,7 @@ export function kittyPixelPayload(width: number, height: number, rgb: readonly [
 function kittyPayloadTransfer(action: "t" | "T" | "f", control: string, payload: string): string {
   const chunks: string[] = []
   for (let offset = 0; offset < payload.length; offset += 4096) {
-    const header = offset === 0 ? `a=${action},${control}` : action === "f" ? "a=f,q=2" : "q=2"
+    const header = offset === 0 ? `a=${action},${control}` : action === "f" ? "a=f,q=1" : `q=${action === "T" ? 2 : 1}`
     const more = offset + 4096 < payload.length ? 1 : 0
     chunks.push(`\x1b_G${header},m=${more};${payload.slice(offset, offset + 4096)}\x1b\\`)
   }
@@ -160,8 +160,8 @@ export function kittyBlockPixels(geometry: { readonly cellWidth: number; readonl
  *
  * The ROOT frame is different and is NOT given a gap here: the spec states the first frame is created
  * with the base image data and "has no gap, so its gap must be set using this control code" — that is
- * `kittyRootGap` below. Quiet transmission keeps the reply stream free of acks that the trace could
- * later mistake for evidence.
+ * `kittyRootGap` below. q=1 suppresses successful acknowledgements but preserves terminal errors;
+ * pixels still decide support.
  */
 export function kittyFrameTransfer(
   imageId: number,
@@ -172,7 +172,7 @@ export function kittyFrameTransfer(
   const gap = options.root ? "" : `,z=${String(options.gapMs ?? KITTY_GAP_MS)}`
   return kittyPayloadTransfer(
     options.root ? "t" : "f",
-    `i=${imageId},f=24${size}${gap},q=2`,
+    `i=${imageId},f=24${size}${gap},q=1`,
     kittyPixelPayload(frame.width, frame.height, frame.rgb),
   )
 }
@@ -184,7 +184,7 @@ export function kittyFrameTransfer(
  * Without it the root would run on the zero default and two equal captures would mean nothing.
  */
 export function kittyRootGap(imageId: number, gapMs: number = KITTY_GAP_MS): string {
-  return `\x1b_Ga=a,i=${imageId},r=1,z=${String(gapMs)},q=2\x1b\\`
+  return `\x1b_Ga=a,i=${imageId},r=1,z=${String(gapMs)},q=1\x1b\\`
 }
 
 /** Place the image. The ack is read as the live placement path, never as pixels. */
@@ -194,17 +194,17 @@ export function kittyPlace(imageId: number): string {
 
 /** Start terminal-driven playback: `s=3` with the explicit loop count. */
 export function kittyStartPlayback(imageId: number): string {
-  return `\x1b_Ga=a,i=${imageId},s=3,v=${KITTY_LOOP_FOREVER},q=2\x1b\\`
+  return `\x1b_Ga=a,i=${imageId},s=3,v=${KITTY_LOOP_FOREVER},q=1\x1b\\`
 }
 
 /** Stop playback, so the client-driven control can select a frame itself. */
 export function kittyStopPlayback(imageId: number): string {
-  return `\x1b_Ga=a,i=${imageId},s=1,q=2\x1b\\`
+  return `\x1b_Ga=a,i=${imageId},s=1,q=1\x1b\\`
 }
 
 /** Client-driven frame selection. This is the update CONTROL, never the animation observation. */
 export function kittySelectFrame(imageId: number, frame: number): string {
-  return `\x1b_Ga=a,i=${imageId},c=${frame},q=2\x1b\\`
+  return `\x1b_Ga=a,i=${imageId},c=${frame},q=1\x1b\\`
 }
 
 /** Free one image, and only the image this row allocated. */

@@ -64,10 +64,10 @@ test("every animation frame carries an explicit gap and the loop count is explic
 })
 
 test("image, animation and virtual-placement payloads obey the same bounded transfer contract", () => {
-  for (const [wire, continuationKeys] of [
-    [kittyFrameTransfer(7, frame, { root: true }), ["m", "q"]],
-    [kittyFrameTransfer(7, frame), ["a", "m", "q"]],
-    [kittyVirtualPlacement(7, frame), ["m", "q"]],
+  for (const [wire, continuationKeys, quiet] of [
+    [kittyFrameTransfer(7, frame, { root: true }), ["m", "q"], "1"],
+    [kittyFrameTransfer(7, frame), ["a", "m", "q"], "1"],
+    [kittyVirtualPlacement(7, frame), ["m", "q"], "2"],
   ] as const) {
     const chunks = [...wire.matchAll(/\x1b_G([^;]+);([A-Za-z0-9+/=]*)\x1b\\/gu)]
     expect(chunks.length).toBeGreaterThan(1)
@@ -77,7 +77,8 @@ test("image, animation and virtual-placement payloads obey the same bounded tran
       expect(chunk[2]!.length).toBeLessThanOrEqual(4096)
       expect(chunk[2]!.length % 4).toBe(0)
       expect(control.m).toBe(index === chunks.length - 1 ? "0" : "1")
-      expect(control.q).toBe("2")
+      // Errors must survive every animation chunk; virtual placement remains completely quiet.
+      expect(control.q).toBe(quiet)
       if (index > 0) {
         expect(Object.keys(control).sort()).toEqual(continuationKeys)
         if (control.a !== undefined) expect(control.a).toBe("f")
@@ -93,6 +94,9 @@ test("frame selection is a control command, never the playback start", () => {
   expect(kittySelectFrame(7, 2)).not.toContain("s=3")
   expect(kittyStopPlayback(7)).toContain("s=1")
   expect(kittyStartPlayback(7)).not.toContain(",c=")
+  for (const command of [kittyRootGap(7), kittySelectFrame(7, 2), kittyStopPlayback(7), kittyStartPlayback(7)]) {
+    expect(command).toContain(",q=1\x1b\\")
+  }
 })
 
 test("the delete frees exactly the named image", () => {

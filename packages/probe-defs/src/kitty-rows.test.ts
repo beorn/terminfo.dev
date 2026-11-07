@@ -242,8 +242,25 @@ test.each(["red", "blank"])(
       region: ["blank", "red", "red", "red", "cursor", "cursor", playback, playback, playback, playback, playback],
       whole: ["before", "after"],
     })
+    // Ghostty's animation rejection is diagnostic detail, never a substitute for the pixel controls.
+    const query = context.queryWithSentinelOutcome
+    context.queryWithSentinelOutcome = async (...args) => {
+      const [sequence, pattern] = args
+      if (sequence.startsWith("\x1b_Ga=f,") || sequence.startsWith("\x1b_Ga=a,")) {
+        const imageId = /,i=(\d+)/u.exec(sequence)![1]
+        const raw = `\x1b_Gi=${imageId};ERROR: unimplemented action\x1b\\`
+        return { match: pattern.exec(raw), reason: "reply", raw, rawBase64: btoa(raw) }
+      }
+      return query(...args)
+    }
     const result = await term("extensions.kitty-graphics.animation")(context)
     expect(result.observation?.outcome).toBe(playback === "red" ? "unsupported" : "inconclusive")
+    expect(result.observation?.note).toContain("second frame: ERROR: unimplemented action")
+    expect(result.observation?.note).toContain("start playback: ERROR: unimplemented action")
+    const retained = JSON.parse(result.response!) as { replies: Array<{ label: string; readback: { raw: string } }> }
+    expect(retained.replies.find((reply) => reply.label === "second frame")?.readback.raw).toContain(
+      "ERROR: unimplemented action",
+    )
     if (playback === "red") {
       expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "screenshot" }])
       expect(result.observation?.note).toContain("hand selection did not change")

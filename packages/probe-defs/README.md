@@ -101,7 +101,9 @@ The animation arm shares those prerequisite and SGR-reference paths. Its one-fra
 match that reference and remain stable. A moving playback pair needs a differing hand-selected
 pair for Supported. An equal delayed retry reads Unsupported only when the initial playback
 image matches the qualified one-frame image; hand selection need not work for that negative.
-Missing or failed controls remain undecided; graphics replies are retained as detail.
+Missing or failed controls remain undecided; graphics replies are retained as detail. Animation frame
+transfers and controls use `q=1`: successful acknowledgements stay quiet, while returned terminal errors
+remain in the command readbacks and the result's reason. Errors do not replace the pixel criterion.
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
