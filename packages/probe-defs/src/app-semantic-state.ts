@@ -8,6 +8,8 @@ const reportFeatures = new Set([
   "extensions.osc555-flash",
   "extensions.osc113-reset-pointer-fg",
   "extensions.osc114-reset-pointer-bg",
+  "extensions.osc117-reset-highlight-bg",
+  "extensions.osc119-reset-highlight-fg",
 ])
 
 /** App-only alternative. Existing effects win; a qualified report beats a no-setup fallback. */

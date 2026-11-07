@@ -114,7 +114,7 @@ test("registered OSC callbacks forward their own feature and recorded writer to 
   }
 })
 
-test("the six added log rows preserve decided measurements and override only unresolved or no-setup results", async () => {
+test("log rows preserve decided measurements and override only unresolved or no-setup results", async () => {
   for (const id of [
     "extensions.osc176-app-id",
     "extensions.osc440-audio",
@@ -122,6 +122,8 @@ test("the six added log rows preserve decided measurements and override only unr
     "extensions.osc555-flash",
     "extensions.osc113-reset-pointer-fg",
     "extensions.osc114-reset-pointer-bg",
+    "extensions.osc117-reset-highlight-bg",
+    "extensions.osc119-reset-highlight-fg",
   ]) {
     const source = replayTermProbeSource(new Map(), { readAppSemanticState: async () => report() })
     for (const previous of [
@@ -139,4 +141,32 @@ test("the six added log rows preserve decided measurements and override only unr
     source.readAppSemanticState = async () => ({ status: "invalid", reason: "handled command wrote a refusal" })
     expect(await wrapped.term!(source)).toMatchObject({ tests: [{ status: "probe-invalid" }] })
   }
+})
+
+// A reset's own report must be collected after the initial silent query; a query's
+// warning alone cannot establish that the reset command was rejected.
+test.each([
+  ["extensions.osc117-reset-highlight-bg", "117"],
+  ["extensions.osc119-reset-highlight-fg", "119"],
+] as const)("%s observes its exact reset after controlled query silence", async (id, code) => {
+  const writes: string[] = []
+  const source = replayTermProbeSource(new Map())
+  source.write = (bytes) => writes.push(bytes)
+  source.queryWithSentinelOutcome = async () => ({
+    reason: "sentinel",
+    raw: "\x1b[?1;2c",
+    rawBase64: btoa("\x1b[?1;2c"),
+    match: null,
+    sentinel: { atMs: 7, graceMs: 250 },
+  })
+  source.readAppSemanticState = async (featureId, write) => {
+    expect(featureId).toBe(id)
+    write(`\x1b]${code}\x07`)
+    const reading = report()
+    if (reading.status !== "measured" || reading.reader !== "report") throw Error("report fixture")
+    return { ...reading, target: { code, reports: [code] } }
+  }
+  const definition = extensionsProbes.find((probe) => probe.id === id)!
+  expect(await definition.term!(source)).toMatchObject({ observation: { outcome: "unsupported" } })
+  expect(writes).toEqual([`\x1b]${code}\x07`])
 })
