@@ -2947,11 +2947,13 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
       expect(assertion.runId).not.toBe(draft.runId)
       expect(assertion.source).toEqual(source)
       expect(assertion.subject).toEqual(draft.subject)
-      expect(assertion.results.find(({ featureId }) => featureId === "sgr.reset")).toMatchObject({
+      const replayed = assertion.results.find(({ featureId }) => featureId === "sgr.reset")
+      expect(replayed).toMatchObject({
         status: "probe-invalid",
         reason: expect.stringContaining("no cell size can be mapped"),
-        assertionType: "query_reply",
       })
+      // An unavailable pixel mapping records the failure, without a deciding observation type.
+      expect(replayed?.assertionType).toBeUndefined()
       const assertionPath = record.files.find((file) => file.endsWith(assertion.runId + ".assertion.draft.json"))
       if (!assertionPath) throw new Error("Missing persisted assertion")
       const executingManifest = derivedSuiteManifest()
