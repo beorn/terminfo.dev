@@ -93,6 +93,11 @@ function harness(mode: Mode): Harness {
     } else if (isWitness(request)) {
       regionDigest = digest(`witness:${witnessVersion}`)
       pixelsDigest = digest(`window:${witnessVersion}`)
+    } else if (request.label.includes(" — rows ")) {
+      // erase.screen.above's row-group reads (#32581) follow a frame's region read without being a
+      // frame of their own; only a third frame consults them, and its rule is erase-above-row-groups.test.ts.
+      regionDigest = digest(`group:${request.label}`)
+      pixelsDigest = digest("window:group")
     } else {
       const step = measured
       measured += 1
