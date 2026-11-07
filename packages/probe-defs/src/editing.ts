@@ -10,6 +10,7 @@ import {
 } from "./region-readback.ts"
 import {
   activeScreenRow,
+  noSetupResult,
   parserStateResult,
   probe,
   replyFailure,
@@ -807,14 +808,15 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           const frames = [seed, rectangle, stream]
           const kind = "cells"
           const measured = frames.map((frame) => frameDigests(frame).cells)
-          const observed = JSON.stringify({
+          const evidence = {
             stability,
             kind,
             seed: seed.ref,
             rectangle: rectangle.ref,
             stream: stream.ref,
             digests: measured,
-          })
+          }
+          const observed = JSON.stringify(evidence)
           const frameRefusal = captureEligibilityRefusal(allFrames)
           if (frameRefusal) return frameRefusal
           const cropRefusal = cropPositionRefusal({
@@ -828,6 +830,44 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             })),
           })
           if (cropRefusal) return cropRefusal
+          if (measured[0] === measured[1] && measured[0] === measured[2]) {
+            ctx.write(DECSACE_PAINT + "\x1b[1;1H\x1b[7mabcdefgh\x1b[2;1Hijklmnop\x1b[0m")
+            const visibilityControl = await capture({
+              role: "control",
+              label: "editing.decsace: SGR inverse visibility control",
+              cells,
+              pixelGeometry: reported.geometry,
+            })
+            const controlRefusal = captureEligibilityRefusal([visibilityControl])
+            if (controlRefusal) return controlRefusal
+            const controlCropRefusal = cropPositionRefusal({
+              id: "editing.decsace",
+              response: observed,
+              frames: [...frames, visibilityControl],
+              screenshotRef: visibilityControl.ref,
+              compared: [...allFrames, visibilityControl].map((frame) => ({
+                role: frame.label,
+                rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+              })),
+            })
+            if (controlCropRefusal) return controlCropRefusal
+            if (frameDigests(visibilityControl).cells !== measured[0]) {
+              return noSetupResult(
+                {
+                  pass: false,
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: "insufficient-evidence",
+                    assertionType: "screenshot",
+                    frames,
+                  },
+                },
+                "Untestable (no setup): DECCARA produces no attribute change on this app under either DECSACE extent, though the same-run SGR inverse control is visible; DECSACE has no setup effect to distinguish.",
+                { ...evidence, visibilityControl },
+              )
+            }
+            frames.push(visibilityControl)
+          }
           if (measured[1] === measured[2]) {
             return {
               pass: false,

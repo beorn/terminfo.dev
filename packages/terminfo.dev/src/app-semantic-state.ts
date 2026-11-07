@@ -303,6 +303,33 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Kitty 0.49.2 recognizes OSC 3008 but its context callback stores no state and exposes no readback. Read tag v0.49.2 kitty/vt-parser.c:645-677, kitty/screen.c:3523-3524 and kitty/window.py:1582-1583: dispatch reaches the empty Window.osc_context callback. Generic OSC consumption tracing is not a command-specific rejection or context reading.",
   },
+  {
+    kind: "term",
+    id: "xterm",
+    version: "411",
+    os: "linux",
+    featureId: "extensions.osc7-cwd",
+    reason:
+      "Untestable (no way): xterm 411 has no OSC 7 working-directory state or public readback. Read the complete do_osc dispatch in misc.c:3988-4360 and numeric OSC aliases at 3480-3502 in xterm-411.tgz (SHA256 969be283); OSC 7 reaches the unnamed default trace at 4353-4358. That generic trace is not a command-specific rejection or directory reading.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.2",
+    os: "linux",
+    featureId: "extensions.osc7-cwd",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.2 drops OSC 7 without storing, forwarding or reporting a working directory. Read the complete StringEnd OSC dispatch in ansi.c:1233-1307 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e); OSC 7 is outside the accepted title/colour list and reaches the non-title break. The outer terminal cannot supply Screen's missing own directory reading.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.2",
+    os: "linux",
+    featureId: "modes.decsclm",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.2 exposes no smooth-scrolling state or public readback for DECSCLM. Read SetMode in ansi.c:1090-1122 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): case 4 SCLM is commented out between cases 3 and 5. A static capture cannot read scroll timing, and the outer terminal cannot supply Screen's missing own mode reading.",
+  },
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */

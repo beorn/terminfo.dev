@@ -854,6 +854,24 @@ export async function runProbeBatch(
           ...(response === undefined ? {} : { response }),
         }
       }
+      if (
+        probe.id === "editing.decsace" &&
+        subject &&
+        subject.kind !== "lib" &&
+        result.notTested?.noObservable.startsWith("Untestable (no setup): DECCARA") &&
+        result.tests?.every((test) => test.status === "untestable")
+      ) {
+        const route =
+          subject.kind === "mux"
+            ? `the ${subject.id} mux route with outer terminal ${subject.outerTerminal ?? "unrecorded"} (either may stop DECCARA)`
+            : `the ${subject.id} app`
+        const reason = result.notTested.noObservable.replace("this app", route)
+        result = {
+          ...result,
+          notTested: { ...result.notTested, noObservable: reason },
+          tests: result.tests.map((test) => ({ ...test, reason })),
+        }
+      }
       callbackTests = result.tests
       criterionBranch = result.criterionBranch
       if (result.notTested) {

@@ -308,13 +308,13 @@ function decsacePixelSource() {
  * regressed to `ref` is caught by the digest-versus-ref row below, which gives one measured screen
  * three different refs.
  */
-function decsaceCaptureSource() {
+function decsaceCaptureSource(mutations: readonly string[] = []) {
   const DECSACE_SEED_PAINT = "\x1b[0m\x1b[2J\x1b[H\x1b[1;1Habcdefgh\x1b[2;1Hijklmnop"
   const DECSACE_CARA = "\x1b[1;2;2;3;7$r"
   // The screen is the EXISTING semantic surface, not a private CUP/ED/DECSACE/DECCARA interpreter:
   // createSemanticSurface already models every one of those sequences, so this
   // double cannot drift from the terminal the probe says it models.
-  const surface = createSemanticSurface({ rows: 2, cols: 8 })
+  const surface = createSemanticSurface({ rows: 2, cols: 8, mutations })
   const frameWrites: string[] = []
   const writes: string[] = []
   let sinceCapture = ""
@@ -399,6 +399,56 @@ test("editing.decsace grades the frames its own writes produced", async () => {
   expect(writes).toContain("\x1b[?25h")
   expect(writes.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
 })
+
+// Equal extent frames establish absent setup only when this run's pixel reader can see inverse video.
+test.each(["visible", "blind", "text-cells"] as const)(
+  "editing.decsace requires a pixel inverse control (%s)",
+  async (control) => {
+    const { context, frameWrites, seed } = decsaceCaptureSource([
+      "deccara-noop",
+      ...(control === "blind" ? ["inverse-noop"] : []),
+    ])
+    if (control === "text-cells") {
+      const capture = context.capture!
+      context.capture = async (request) => {
+        const frame = await capture(request)
+        if (request.label !== "editing.decsace: SGR inverse visibility control") return frame
+        return {
+          role: frame.role,
+          ref: frame.ref,
+          capturedAt: frame.capturedAt,
+          label: frame.label,
+          kind: "text-cells",
+          cellDigest: `sha256:${"a".repeat(64)}`,
+          frameDigest: `sha256:${"b".repeat(64)}`,
+          cellRectangle: { top: 1, left: 1, bottom: 2, right: 8 },
+        }
+      }
+    }
+    const result = await find("editing.decsace").term!(context)
+    expect(frameWrites.at(-1)).toBe(`${seed}\x1b[1;1H\x1b[7mabcdefgh\x1b[2;1Hijklmnop\x1b[0m`)
+    if (control !== "visible") {
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(result.notTested).toBeUndefined()
+    } else {
+      expect(result.tests).toEqual([
+        {
+          id: "declared-untestable",
+          status: "untestable",
+          reason: expect.stringMatching(/^Untestable \(no setup\): .*DECCARA/u),
+        },
+      ])
+      expect(result.notTested?.noObservable).toContain("DECCARA")
+      const evidence = JSON.parse(String(result.response)) as {
+        digests: string[]
+        visibilityControl: { regionDigest: string }
+      }
+      expect(evidence.digests[0]).toBe(evidence.digests[1])
+      expect(evidence.digests[0]).toBe(evidence.digests[2])
+      expect(evidence.visibilityControl.regionDigest).not.toBe(evidence.digests[0])
+    }
+  },
+)
 
 test("editing.decsace restores the cursor when a capture throws", async () => {
   const { context, writes } = decsaceCaptureSource()
@@ -656,25 +706,9 @@ test("every DECSACE pixel return carries target frames with a valid screenshot c
   }
 })
 
-/**
- * An attribute-blind pixel double leaves both extents as the same measured cell region. That must be inconclusive BY NAME — never a pass (nothing was separated) and never a
- * negative (the attribute may well have been applied).
- */
+// Both extents changed from seed but agree: DECCARA worked, so this is not missing setup.
 test("editing.decsace reads equal extents inconclusive by name, never supported", async () => {
-  const { context, frames } = decsacePixelSource()
-  context.capture = async ({ role, label }) => {
-    const frame = {
-      role,
-      label,
-      capturedAt: 1,
-      ref: `sha256:${"a".repeat(64)}`,
-      regionDigest: `sha256:${"a".repeat(64)}`,
-      pixelsDigest: `sha256:${"a".repeat(64)}`,
-      regionRectangle: DECSACE_RECTANGLE,
-    }
-    frames.push(frame)
-    return frame
-  }
+  const { context, frameWrites } = decsaceCaptureSource(["decsace-noop"])
   const result = await find("editing.decsace").term!(context)
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
@@ -683,10 +717,11 @@ test("editing.decsace reads equal extents inconclusive by name, never supported"
   })
   expect(String(result.observation?.note)).toContain("Both DECSACE extent modes left the same frame")
   expect(result.assertions).toBeUndefined()
-  // The seed paint, the pair's two reads of that seeded screen, then the two extent frames: the pair
-  // is the shared control every pixel arm runs, so it is part of this arm's sequence and the seed
-  // frame is its second read.
-  expect(frames).toHaveLength(4)
+  expect(result.notTested).toBeUndefined()
+  const evidence = JSON.parse(String(result.response)) as { digests: string[] }
+  expect(evidence.digests[0]).not.toBe(evidence.digests[1])
+  expect(evidence.digests[1]).toBe(evidence.digests[2])
+  expect(frameWrites).toHaveLength(4)
 })
 
 /**

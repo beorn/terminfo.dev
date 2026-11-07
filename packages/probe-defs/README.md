@@ -54,6 +54,16 @@ declare OSC3008 gaps. Kitty 0.49.2 on Linux additionally declares OSC3008's cont
 its recognized command reaches an empty callback, with no stored context or public readback.
 Generic OSC consumption tracing supplies no deciding observation. Ghostty's recognized OSC3008
 parser and named optional debug diagnostic remain outside this declaration group.
+The same selector declares the reviewed OSC7 observation gaps for xterm 411 and Screen 5.0.2,
+and Screen 5.0.2's DECSCLM gap, on Linux only. Their parser citations qualify an unavailable
+observation; they establish no measured negative and do not apply to other versions.
+
+The native DECSACE capture declares missing setup only when seed, rectangle and stream cell-region
+pixel digests all agree and an SGR7 repaint of those same cells visibly changes that digest in the
+same run. Equal or text-cell controls remain insufficient evidence. Changed-but-equal extent frames
+and one unchanged extent retain their existing inconclusive results. The existing collector names
+the App, or both mux and recorded outer terminal as possible DECCARA stop points; it changes no
+grade. This shares the private no-setup result builder with colour fallbacks and adds no log reader.
 
 For library results, a feature is the library's job unless the app-job table in [extensions.ts](src/extensions.ts) assigns it to the app. A real state reading or typed notification store can establish Supported. A generic handoff of an app-job command is Untestable (passed to the app), even when its payload is intact. Libvterm and vt100-rust qualify their report in this cell's run: a made-up OSC and the target are reported, while a handled title command applies without a report. Xterm.js and vterm.js generic taps require their declared engine identity; a different engine identity remains Open. Missing report controls also remain Open. Library-job negatives keep `unhandledSequenceVerdict`; these are Unsupported when the library reports the target with its same-run controls.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but

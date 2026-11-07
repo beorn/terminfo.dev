@@ -2418,6 +2418,12 @@ export function declaredUntestableResult(reason: string, state: object): NotTest
   }
 }
 
+/** Internal fallback after a caller has qualified its own missing-setup controls. */
+export function noSetupResult(result: ProbeCallbackResult, reason: string, state: object): ProbeCallbackResult {
+  if (reportsDecidedOutcome(result) || result.tests?.some((test) => test.status === "probe-invalid")) return result
+  return declaredUntestableResult(reason, state)
+}
+
 /** Shared declared-absent viewport branch; callers retain their actuator contradiction check. */
 export function productViewportAbsenceResult(ctx: LibProbeSource, reason: string, state: object): ProbeCallbackResult {
   const version = ctx.runtimeIdentity?.engineVersion

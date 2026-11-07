@@ -22,7 +22,7 @@ import {
   type TermProbeSource,
   type AppSemanticReading,
 } from "@terminfo/probe-defs"
-import { replyFailure, notTestedResult } from "../../../probe-defs/src/helpers.ts"
+import { replyFailure, notTestedResult, declaredUntestableResult } from "../../../probe-defs/src/helpers.ts"
 import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
@@ -152,23 +152,26 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc633-e" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc133-a" },
+  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc7-cwd" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc7-cwd" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "modes.decsclm" },
+  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc633-e" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc133-b" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc3008-context" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 4, feature: "extensions.osc133-d" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc666-termprop" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc666-termprop" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc440-audio" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc176-app-id" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc440-audio" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc3008-context" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc176-app-id" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc3008-context" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
@@ -179,17 +182,19 @@ it.each([
       socket: { path: "/fixture/bus", outcome: "absent" as const, code: "ENOENT" },
     }
     const declarations = appSemanticDeclarations(subject, bus)
-    expect(Object.keys(declarations)).toHaveLength(count)
     expect(declarations[feature]).toContain(version)
+    expect(Object.keys(declarations)).toHaveLength(count)
     expect(appSemanticDeclarations({ ...subject, version: version + "-new" }, bus)).toEqual({})
     expect(appSemanticDeclarations({ ...subject, version: "" }, bus)).toEqual({})
     expect(appSemanticDeclarations({ ...subject, version: "unknown" }, bus)).toEqual({})
     expect(appSemanticDeclarations({ ...subject, os: "darwin" }, bus)).toEqual({})
     expect(appSemanticDeclarations({ ...subject, kind: "lib" }, bus)).toEqual({})
     const probe = ALL_PROBES.find((entry) => entry.id === feature)!
-    const original = { term: probe.term, termWrites: probe.termWrites }
+    const original = { term: probe.term, termWrites: probe.termWrites, termNeedsDisposable: probe.termNeedsDisposable }
     try {
       probe.termWrites = "query"
+      // This recorder-only fixture replaces the mutating callback with a no-I/O coverage result.
+      probe.termNeedsDisposable = undefined
       probe.term = async () => notTestedResult("No prompt reading", {})
       const batch = await runProbeBatch({ ids: [feature], appDeclarations: declarations })
       expect(batch.results.find((row) => row.featureId === feature)).toMatchObject({
@@ -206,6 +211,36 @@ it.each([
     }
   },
 )
+
+// A native callback has no App identity; the collector must preserve its grade while naming the route.
+it.each([
+  { kind: "term", id: "alacritty", outerTerminal: null, route: "the alacritty app" },
+  { kind: "mux", id: "tmux", outerTerminal: "kitty", route: "the tmux mux route with outer terminal kitty" },
+  { kind: "mux", id: "screen", outerTerminal: "kitty", route: "the screen mux route with outer terminal kitty" },
+] as const)("names the $id DECSACE no-setup route without assigning a stop point", async (subject) => {
+  const probe = ALL_PROBES.find((entry) => entry.id === "editing.decsace")!
+  const original = {
+    term: probe.term,
+    termWrites: probe.termWrites,
+    termNeedsDisposable: probe.termNeedsDisposable,
+    termNeedsGeometry: probe.termNeedsGeometry,
+  }
+  try {
+    probe.termWrites = "query"
+    probe.termNeedsDisposable = undefined
+    probe.termNeedsGeometry = undefined
+    probe.term = async () =>
+      declaredUntestableResult("Untestable (no setup): DECCARA produces no change on this app", { controlled: true })
+    const batch = await runProbeBatch({ ids: [probe.id], subject: { ...subject, os: "linux" } })
+    const row = batch.results.find((entry) => entry.featureId === probe.id)!
+    expect(row.status, JSON.stringify(row)).toBe("untestable")
+    expect(row.reason).toContain(subject.route)
+    expect(row.tests[0]?.reason).toBe(row.reason)
+    if (subject.kind === "mux") expect(row.reason).toContain("either may stop DECCARA")
+  } finally {
+    Object.assign(probe, original)
+  }
+})
 
 // @failure An unreadable socket or a present address is mistaken for a missing current-run bus.
 it.each(["address present", "socket present", "socket unreadable", "both absent", "not a directory"] as const)(
