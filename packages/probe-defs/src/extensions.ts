@@ -22,6 +22,7 @@ import {
   decrpmReading,
   decrpmResult,
   notTestedResult,
+  noSetupResult,
   NO_SAME_PATH_CONTROL,
   colorReadbackReviewResult,
   parserStateResult,
@@ -745,7 +746,8 @@ function noColorSetupResult(
     library.feed(sequence)
     if (library.getUnhandledSequences().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
   }
-  return declaredUntestableResult(
+  return noSetupResult(
+    reported,
     `Untestable (no setup): OSC ${setCode} colour setup does not work on this ${library ? "library" : "app"}, so this command has nothing to act on.`,
     { query, body: reported.response },
   )
