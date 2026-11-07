@@ -153,22 +153,22 @@ it.each([
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc7-cwd" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc7-cwd" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "modes.decsclm" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc7-cwd" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "modes.decsclm" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc633-e" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc133-a" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc133-b" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc3008-context" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 4, feature: "extensions.osc133-d" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc633-e" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc666-termprop" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 11, feature: "extensions.osc633-e" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 11, feature: "extensions.osc666-termprop" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc440-audio" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc176-app-id" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc440-audio" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 11, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 11, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc176-app-id" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc3008-context" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc440-audio" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc3008-context" },
@@ -280,7 +280,7 @@ it.each(["address present", "socket present", "socket unreadable", "both absent"
       expect(JSON.stringify(record)).not.toContain("secret-address-never-retained")
       const selected = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" }, record)
       const absent = state === "both absent" || state === "not a directory"
-      expect(Object.keys(selected)).toHaveLength(absent ? 9 : 5)
+      expect(Object.keys(selected)).toHaveLength(absent ? 11 : 7)
       if (absent) expect(selected["extensions.osc133-d"]).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
       else expect(selected["extensions.osc133-d"]).toBeUndefined()
       if (state === "socket unreadable") expect(record.socket.code).toBe("EACCES")
