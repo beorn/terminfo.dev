@@ -7,6 +7,8 @@
  */
 import { createHash, randomUUID } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import * as nodeFs from "node:fs"
+import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
@@ -43,6 +45,12 @@ vi.mock("../tty.ts", async (importOriginal) => {
   return { ...actual, measureUtf8Decoding: vi.fn(actual.measureUtf8Decoding) }
 })
 
+// The prerequisite read needs deterministic permission errors; all other filesystem calls stay real.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>()
+  return { ...actual, statSync: vi.fn(actual.statSync) }
+})
+
 const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
 
 // @failure An approved exact-version declaration is dropped by either unresolved callback path.
@@ -75,6 +83,123 @@ it.each(["coverage", "explicit todo"] as const)(
     } finally {
       definition.term = original.term
       definition.termWrites = original.termWrites
+    }
+  },
+)
+
+// Exact-version routing is not covered by the generic map-consumption cases above.
+// @failure New versions inherit an audit, or an audited subject loses its declaration.
+it.each([
+  { kind: "term", id: "xterm", version: "411", count: 13, feature: "extensions.osc633-e" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 13, feature: "extensions.osc133-a" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 1, feature: "extensions.osc133-b" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 2, feature: "extensions.osc133-d" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 4, feature: "extensions.osc633-e" },
+] as const)(
+  "routes only the audited $id version through the canonical recorder",
+  async ({ kind, id, version, count, feature }) => {
+    const subject = { kind, id, version, os: "linux" }
+    const bus = {
+      observedAt: new Date().toISOString(),
+      address: "absent" as const,
+      socket: { path: "/fixture/bus", outcome: "absent" as const, code: "ENOENT" },
+    }
+    const declarations = appSemanticDeclarations(subject, bus)
+    expect(Object.keys(declarations)).toHaveLength(count)
+    expect(declarations[feature]).toContain(version)
+    expect(appSemanticDeclarations({ ...subject, version: version + "-new" }, bus)).toEqual({})
+    expect(appSemanticDeclarations({ ...subject, version: "" }, bus)).toEqual({})
+    expect(appSemanticDeclarations({ ...subject, version: "unknown" }, bus)).toEqual({})
+    expect(appSemanticDeclarations({ ...subject, os: "darwin" }, bus)).toEqual({})
+    expect(appSemanticDeclarations({ ...subject, kind: "lib" }, bus)).toEqual({})
+    const probe = ALL_PROBES.find((entry) => entry.id === feature)!
+    const original = { term: probe.term, termWrites: probe.termWrites }
+    try {
+      probe.termWrites = "query"
+      probe.term = async () => notTestedResult("No prompt reading", {})
+      const batch = await runProbeBatch({ ids: [feature], appDeclarations: declarations })
+      expect(batch.results.find((row) => row.featureId === feature)).toMatchObject({
+        status: "untestable",
+        reason: declarations[feature],
+      })
+      const newer = await runProbeBatch({
+        ids: [feature],
+        appDeclarations: appSemanticDeclarations({ ...subject, version: version + "-new" }, bus),
+      })
+      expect(newer.results.find((row) => row.featureId === feature)?.status).toBe("probe-todo")
+    } finally {
+      Object.assign(probe, original)
+    }
+  },
+)
+
+// @failure An unreadable socket or a present address is mistaken for a missing current-run bus.
+it.each(["address present", "socket present", "socket unreadable", "both absent", "not a directory"] as const)(
+  "selects Ghostty no-setup only from current-run absence: %s",
+  (state) => {
+    const stat = vi.mocked(nodeFs.statSync)
+    const originalStat = stat.getMockImplementation()!
+    stat.mockImplementation(() => {
+      if (state === "socket present" || state === "address present") return {} as ReturnType<typeof nodeFs.statSync>
+      throw Object.assign(new Error("Fixture stat outcome"), {
+        code: state === "socket unreadable" ? "EACCES" : state === "not a directory" ? "ENOTDIR" : "ENOENT",
+      })
+    })
+    try {
+      const record = readSessionBus({
+        XDG_RUNTIME_DIR: "/fixture/runtime",
+        ...(state === "address present" ? { DBUS_SESSION_BUS_ADDRESS: "secret-address-never-retained" } : {}),
+      })
+      expect(stat).toHaveBeenCalledWith("/fixture/runtime/bus")
+      expect(record.socket).toMatchObject({
+        path: "/fixture/runtime/bus",
+        outcome:
+          state === "socket unreadable"
+            ? "error"
+            : state === "both absent" || state === "not a directory"
+              ? "absent"
+              : "present",
+      })
+      expect(JSON.stringify(record)).not.toContain("secret-address-never-retained")
+      const selected = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" }, record)
+      const absent = state === "both absent" || state === "not a directory"
+      expect(Object.keys(selected)).toHaveLength(absent ? 4 : 2)
+      if (absent) expect(selected["extensions.osc133-d"]).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
+      else expect(selected["extensions.osc133-d"]).toBeUndefined()
+      if (state === "socket unreadable") expect(record.socket.code).toBe("EACCES")
+      stat.mockClear()
+      readSessionBus({})
+      expect(stat).toHaveBeenCalledWith(`/run/user/${process.getuid!()}/bus`)
+    } finally {
+      stat.mockImplementation(originalStat)
+      stat.mockClear()
+    }
+  },
+)
+
+// @failure A declaration overwrites a decided observation or hides invalid callback evidence.
+it.each(["supported", "unsupported", "probe-invalid"] as const)(
+  "preserves %s ahead of an App declaration",
+  async (status) => {
+    const id = "extensions.osc133-a",
+      probe = ALL_PROBES.find((entry) => entry.id === id)!
+    const original = { term: probe.term, termWrites: probe.termWrites }
+    try {
+      probe.termWrites = "query"
+      probe.term = async () =>
+        status === "probe-invalid"
+          ? { pass: false, tests: [{ id: "criterion", status, reason: "Broken fixture read" }] }
+          : {
+              pass: status === "supported",
+              observation: { outcome: status, assertionType: "query_reply", note: "Own-command fixture reply" },
+            }
+      const batch = await runProbeBatch({
+        ids: [id],
+        appDeclarations: { [id]: "Untestable (no way): must not replace evidence" },
+      })
+      expect(batch.results.find((row) => row.featureId === id)?.status).toBe(status)
+    } finally {
+      Object.assign(probe, original)
     }
   },
 )
