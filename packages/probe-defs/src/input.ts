@@ -470,27 +470,55 @@ export async function focusTracking1004(ctx: TermProbeSource): Promise<ProbeCall
   if (!input?.focusRoundTrip || !readInput) return xtestCoverage("owned focus roundtrip")
   const focusRoundTrip = input.focusRoundTrip.bind(input)
   const decrpm = await queryDecrpm(ctx, 1004)
-  const readArm = async () =>
-    (
-      await readInput(/^[\s\S]*a/, 1000, async () => {
-        await focusRoundTrip()
-        await input.injectKey("a")
-      })
-    )?.[0] ?? null
-  let enabled: string | null
-  ctx.write("\x1b[?1004h")
+  const readArm = async () => {
+    let focus: Awaited<ReturnType<typeof focusRoundTrip>> | undefined
+    const report =
+      (
+        await readInput(/^[\s\S]*a/, 1000, async () => {
+          focus = await focusRoundTrip()
+          await input.injectKey("a")
+        })
+      )?.[0] ?? null
+    return { report, focus }
+  }
+  let enabledArm: Awaited<ReturnType<typeof readArm>>
+  let enableTimeRaw: string | null
   try {
-    enabled = await readArm()
+    enableTimeRaw =
+      (
+        await readInput(/^[\s\S]*a/, 1000, async () => {
+          ctx.write("\x1b[?1004h")
+          await input.injectKey("a")
+        })
+      )?.[0] ?? null
+    enabledArm = await readArm()
   } finally {
     ctx.write("\x1b[?1004l")
   }
-  const reset = await readArm()
-  const observed = { decrpm, enabled, reset }
-  const expected = "CSI O then CSI I before a with 1004 set; only a with 1004 reset"
-  if (reset === "a" && enabled === "\x1b[O\x1b[Ia") {
+  const resetArm = await readArm()
+  const enabled = enabledArm.report
+  const reset = resetArm.report
+  const enableTime = /^(\x1b\[[IO])?a$/.exec(enableTimeRaw ?? "")
+  const enableTimeReport = enableTime?.[1] ?? null
+  const roundTrip = enabled === "\x1b[O\x1b[Ia" ? "\x1b[O\x1b[I" : null
+  const observed = {
+    decrpm,
+    enabled,
+    reset,
+    enableTimeRaw,
+    enableTimeReport,
+    roundTrip,
+    focus: { enabled: enabledArm.focus, reset: resetArm.focus },
+  }
+  if (!enabledArm.focus || !resetArm.focus) {
+    return invalidInteraction("Focus roundtrip did not retain its owned/root/owned X focus witness", observed)
+  }
+  const expected =
+    "at most one separate enable-time report, then CSI O and CSI I before a with 1004 set; only a with 1004 reset"
+  if (reset === "a" && enableTime && roundTrip === "\x1b[O\x1b[I") {
     return interactionResult("focus-tracking:roundtrip", expected, observed)
   }
-  if (reset === "a" && enabled === "a") {
+  if (reset === "a" && enableTime && enabled === "a") {
     return unsupportedInteraction("focus-tracking:roundtrip", expected, observed)
   }
   return invalidInteraction(
@@ -550,6 +578,12 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
     } else {
       result = await withMouseModes(ctx, async () => {
         ctx.write("\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1015l\x1b[?1016l")
+        const sgrClick = async (position: { x: number; y: number }) => {
+          const pending = ctx.queryOutcome("", /^\x1b\[<0;\d+;\d+M\x1b\[<0;\d+;\d+m$/, 1000)
+          await input.injectClick(1, position)
+          const read = await pending
+          return { text: read.raw, bytes: Array.from(atob(read.rawBase64), (byte) => byte.charCodeAt(0)) }
+        }
         const click = async () => {
           // Reuse the existing reader/recorder; rawBase64 preserves legacy bytes
           // that the text match necessarily decodes as replacement characters.
@@ -559,14 +593,26 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
           const read = await pending
           return { text: read.raw, bytes: Array.from(atob(read.rawBase64), (byte) => byte.charCodeAt(0)) }
         }
-        const control = await click()
+        const pair = /^\x1b\[<0;(\d+);(\d+)M\x1b\[<0;\1;\2m$/
+        const ordinaryControl = await sgrClick({ x: 400, y: 300 })
+        observed.ordinaryControl = ordinaryControl
+        const ordinary = pair.exec(ordinaryControl.text)
+        const ordinaryX = Number(ordinary?.[1])
+        const ordinaryY = Number(ordinary?.[2])
+        if (!ordinary || ordinaryX < 1 || ordinaryX > 95 || ordinaryY < 1 || ordinaryY > 223) {
+          return invalidInteraction(
+            "UTF8 mouse ordinary-position SGR press/release control did not prove coordinates within columns 1 through 95",
+            observed,
+          )
+        }
+        const control = await sgrClick({ x: 1300, y: 120 })
         observed.control = control
-        const sgr = /^\x1b\[<0;(\d+);(\d+)M\x1b\[<0;\1;\2ma$/.exec(control.text)
+        const sgr = pair.exec(control.text)
         const x = Number(sgr?.[1])
         const y = Number(sgr?.[2])
         if (!sgr || x <= 95 || x > 223 || y < 1 || y > 223) {
           return invalidInteraction(
-            "UTF8 mouse SGR position/key control did not prove a sensitive same-position click",
+            "UTF8 mouse SGR press/release control did not prove a sensitive same-position click after the ordinary click arrived",
             observed,
           )
         }

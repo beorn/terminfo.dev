@@ -807,6 +807,61 @@ function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
 
+// @failure The native focus recorder loses an enable-time report before it attaches stdin.
+// The mode-only fixtures emit during focusRoundTrip, after the listener is already attached.
+// @level l1
+// @consumer App native batch -> focus tracking callback -> retained TTY query bytes.
+it("retains the focus report emitted while enabling 1004", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const receiptPath = join(directory, "host-measured.json")
+  writeFileSync(receiptPath, JSON.stringify(validContainerReceipt()))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = receiptPath
+  let enabled = false
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    const text = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
+    if (text === "\x1b[?1004$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?1004;2$y"))
+    if (text === "\x1b[?1004h") {
+      enabled = true
+      process.stdin.emit("data", Buffer.from("\x1b[I"))
+    }
+    if (text === "\x1b[?1004l") enabled = false
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["modes.focus-tracking"],
+    subject: { kind: "term", id: "kitty", os: "linux" },
+    ownedTerminal: geometryOwner(noGeometry),
+    input: {
+      injectClick: async () => {},
+      injectKey: async () => {
+        process.stdin.emit("data", Buffer.from("a"))
+      },
+      focusRoundTrip: async () => {
+        if (enabled) process.stdin.emit("data", Buffer.from("\x1b[O\x1b[I"))
+        return {
+          ownedWindowId: "42",
+          rootWindowId: "543",
+          focusedWindowIds: ["42", "543", "42"] as [string, string, string],
+        }
+      },
+    },
+  })
+  expect(batch.ungradedDiagnostics).toEqual({})
+  const trace = JSON.parse(batch.rawReplies["modes.focus-tracking"]!) as { queries: Array<{ raw: string }> }
+  expect(trace.queries.slice(1).map((query) => query.raw)).toEqual(["\x1b[Ia", "\x1b[O\x1b[Ia", "a"])
+  expect(batch.results.find((row) => row.featureId === "modes.focus-tracking")?.status).toBe("supported")
+  expect(JSON.parse(batch.assertions[0]!.observed)).toMatchObject({
+    enableTimeReport: "\x1b[I",
+    roundTrip: "\x1b[O\x1b[I",
+    focus: {
+      enabled: { ownedWindowId: "42", rootWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
+      reset: { ownedWindowId: "42", rootWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
+    },
+  })
+})
+
 it.each(
   ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
     ["controls", "query"].map((failure) => ({ id, failure })),

@@ -279,13 +279,18 @@ capability declaration. The setting does not decide the measured resize phases.
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support result. Callbacks retain it explicitly.
 App focus tracking uses the optional owned focus roundtrip fixture under both DECSET1004
-and DECRST1004, reading through a plain key in each arm. Ordered focus-out/in only
-while set is Supported; key-only reads in both arms are Unsupported. A wrong read,
-missing key or focus report while reset is PROBE INVALID. DECRPM is retained as detail;
+and DECRST1004. Separate key-terminated reads retain enable-time input and the enabled
+roundtrip; the first reader starts before enabling. The reset roundtrip has its own key-terminated read.
+The existing fixture returns its verified owned/root/owned X window IDs, retained in the assertion.
+At most one enable-time focus report is retained separately; it does not satisfy the roundtrip.
+Ordered focus-out/in only while set is Supported; no roundtrip reports in either arm is Unsupported.
+A wrong read, missing key or focus report while reset is PROBE INVALID. DECRPM is retained as detail;
 the library callback is unchanged.
 App UTF8 mouse uses the optional owned-window resize and positioned-click fixture.
 CSI18t polling runs every100ms under one absolute2s deadline for resize and restoration.
-An SGR click beyond column95 and a plain key control the same-position raw-byte
+SGR press/release controls run first at an ordinary position, then beyond column95,
+without an immediate key sentinel. Both raw controls are retained before the encoding arms.
+The sensitive SGR position and plain key control the same-position raw-byte
 comparison with1006 reset: UTF8/legacy is Supported, legacy/legacy is Unsupported,
 and every other pair or failed control is PROBE INVALID. Tracking reset must leave
 only the key; failed size restoration is invalid. The row requires a disposable

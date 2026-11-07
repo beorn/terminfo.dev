@@ -1010,7 +1010,11 @@ export interface InputFixture {
   }
   injectKey(keys: string): Promise<void>
   /** Move focus to the display root and back, verifying both owned X focus reads. */
-  focusRoundTrip?(): Promise<void>
+  focusRoundTrip?(): Promise<{
+    ownedWindowId: string
+    rootWindowId: string
+    focusedWindowIds: [string, string, string]
+  }>
   injectClick(button: 1 | 4 | 5, position?: { x: number; y: number }): Promise<void>
   /** Resize the owned disposable window, returning its previous pixel size. */
   resizeWindow?(width: number, height: number): Promise<{ width: number; height: number }>

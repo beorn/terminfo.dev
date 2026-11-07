@@ -136,7 +136,11 @@ test.runIf(process.platform === "linux")(
     const { log } = fixture()
     const input = await createLinuxInput(liveExecutable())
     if (!input.focusRoundTrip) throw new Error("Missing owned focus roundtrip")
-    await input.focusRoundTrip()
+    expect(await input.focusRoundTrip()).toEqual({
+      ownedWindowId: "42",
+      rootWindowId: "543",
+      focusedWindowIds: ["42", "543", "42"],
+    })
     expect(argvLines(log).filter((line) => line.startsWith("windowfocus "))).toEqual([
       "windowfocus 42",
       "windowfocus 543",
