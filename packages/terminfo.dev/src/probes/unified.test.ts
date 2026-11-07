@@ -104,12 +104,14 @@ it.each([
   const probes = ids.map((id) => ALL_PROBES.find((probe) => probe.id === id)!)
   const originals = probes.map((probe) => ({ term: probe.term, termWrites: probe.termWrites }))
   try {
-    for (const probe of probes) {
+    for (const [index, probe] of probes.entries()) {
       probe.termWrites = "query"
-      probe.term = async () => ({
-        pass: false,
-        tests: [{ id: "criterion", status: "probe-todo", reason: "No delivery reader" }],
-      })
+      // Keep the actual callback/result producer; model only its TTY operations.
+      probe.term = async () =>
+        originals[index]!.term!({
+          write() {},
+          queryCursorPosition: async () => ({ row: 1, col: 1 }),
+        } as TermProbeSource)
     }
     const base = {
       observedAt: new Date().toISOString(),
@@ -126,7 +128,7 @@ it.each([
     ]) {
       const absent = bus?.address === "absent" && bus.socket.outcome === "absent"
       const declarations = appSemanticDeclarations({ ...subject, os: "linux" }, bus)
-      const batch = await runProbeBatch({ ids, appDeclarations: declarations })
+      const batch = await runProbeBatch({ ids, subject: { ...subject, os: "linux" }, appDeclarations: declarations })
       for (const id of ids) {
         const result = batch.results.find((row) => row.featureId === id)!
         expect(result.status).toBe(absent ? "untestable" : "probe-todo")
