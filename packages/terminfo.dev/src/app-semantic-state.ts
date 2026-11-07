@@ -60,21 +60,23 @@ const declarations: readonly AppSemanticCapability[] = [
       featureId,
       reader: "report" as const,
     })),
-  ...[
-    ["extensions.osc176-app-id", "176", "176;terminfo-test"],
-    ["extensions.osc440-audio", "440", "440;bell.wav"],
-    ["extensions.osc666-termprop", "666", "666;test-prop=value"],
-    ["extensions.osc555-flash", "555", "555"],
-    ["extensions.osc113-reset-pointer-fg", "113", "113"],
-    ["extensions.osc114-reset-pointer-bg", "114", "114"],
-  ].map(([featureId, code, body]) => ({
+  ...(
+    [
+      ["extensions.osc176-app-id", "176", "176;terminfo-test"],
+      ["extensions.osc440-audio", "440", "440;bell.wav"],
+      ["extensions.osc666-termprop", "666", "666;test-prop=value"],
+      ["extensions.osc555-flash", "555", "555"],
+      ["extensions.osc113-reset-pointer-fg", "113", "113"],
+      ["extensions.osc114-reset-pointer-bg", "114", "114"],
+    ] as const
+  ).map(([featureId, code, body]) => ({
     kind: "term",
     id: "kitty",
     version: "0.49.2",
     os: "linux",
-    featureId: featureId!,
+    featureId,
     reader: "report" as const,
-    command: { code: code!, body: body! },
+    command: { code, body },
   })),
   ...promptFeatures.map((featureId) => ({
     kind: "term",
@@ -209,8 +211,8 @@ export async function readAppSemanticState(input: {
     }
     const capture = env.TERMINFO_CAPTURE_DIRECTORY
     if (!capture || !isAbsolute(capture)) throw new Error("App semantic reader has no owned artifact directory")
-    const run = (argv: string[]) => {
-      const stdout = execFileSync(argv[0]!, argv.slice(1), {
+    const run = (argv: [string, ...string[]]) => {
+      const stdout = execFileSync(argv[0], argv.slice(1), {
         encoding: "utf8",
         timeout: 5000,
         maxBuffer: 8 * 1024 * 1024,
@@ -245,8 +247,9 @@ export async function readAppSemanticState(input: {
         binding?.[0] !== socket ||
         !statSync(socket).isSocket() ||
         !socket.endsWith(`/terminfo-${input.runId}.sock`)
-      )
+      ) {
         throw new Error("App semantic reader tmux socket/pane changed")
+      }
       tmux = (...args) => run(["tmux", "-S", socket, ...args])
       const identity = tmux(
         "display-message",
@@ -257,7 +260,9 @@ export async function readAppSemanticState(input: {
       )
         .trim()
         .split("\t")
+      const version = identity[0]
       if (
+        !version ||
         identity[1] !== binding[1] ||
         identity[2] !== pane ||
         Number(identity[3]) !== process.pid ||
@@ -267,17 +272,20 @@ export async function readAppSemanticState(input: {
         throw new Error(`App semantic reader tmux owner changed: ${JSON.stringify(identity)}`)
       }
       detail.identity = { identity, runId: input.runId }
-      subject = { kind: "mux", id: "tmux", version: identity[0]!, os: "linux" }
+      subject = { kind: "mux", id: "tmux", version, os: "linux" }
     } else {
-      if (env.TERMINFO_TARGET_ID !== "kitty")
+      if (env.TERMINFO_TARGET_ID !== "kitty") {
         return { status: "unavailable", reason: "No semantic reader for this App", detail }
+      }
       const pid = kittyAncestor(input.executable)
-      if (String(pid) !== env.KITTY_PID)
+      if (String(pid) !== env.KITTY_PID) {
         throw new Error("App semantic reader Kitty PID differs from its owned ancestor")
+      }
       const versionText = run([input.executable.path, "--version"])
       const version = /^kitty (\S+) created by /m.exec(versionText)?.[1]
-      if (!version || version !== env.TERMINFO_TARGET_VERSION)
+      if (!version || version !== env.TERMINFO_TARGET_VERSION) {
         throw new Error("App semantic reader Kitty version differs from its launch")
+      }
       detail.identity = { pid, executable: input.executable, version, runId: input.runId }
       subject = { kind: "term", id: "kitty", version, os: "linux" }
     }
@@ -290,21 +298,24 @@ export async function readAppSemanticState(input: {
         entry.featureId === input.featureId &&
         entry.reader !== undefined,
     )
-    if (!row?.reader)
+    if (!row?.reader) {
       return {
         status: "unavailable",
         reason: `No reviewed App semantic reader for ${subject.id} ${subject.version} ${input.featureId}`,
         detail,
       }
+    }
     const namespace = input.featureId.includes("633") ? "633" : "133"
     const letter = input.featureId.slice(-1).toUpperCase()
     if (row.reader === "report") {
       const windows = run(["xdotool", "search", "--onlyvisible", "--pid", String(env.KITTY_PID)])
         .trim()
         .split(/\s+/)
-      if (windows.length !== 1 || !/^\d+$/.test(windows[0]!))
+      const window = windows[0]
+      if (windows.length !== 1 || !window || !/^\d+$/.test(window)) {
         throw new Error("App semantic reader has no unique owned Kitty window")
-      const title = () => run(["xdotool", "getwindowname", windows[0]!]).trimEnd()
+      }
+      const title = () => run(["xdotool", "getwindowname", window]).trimEnd()
       const original = title()
       if (/[\x00-\x1f\x7f]/.test(original)) throw new Error("App semantic reader cannot restore Kitty title")
       const log = join(dirname(capture), "daemon.log")
@@ -317,8 +328,9 @@ export async function readAppSemanticState(input: {
         const sentinel = `7655;${nonce}-${phase++}`
         const read = () => {
           const now = statSync(log)
-          if (now.dev !== identity.dev || now.ino !== identity.ino || now.size < offset)
+          if (now.dev !== identity.dev || now.ino !== identity.ino || now.size < offset) {
             throw new Error("Owned App log changed identity or truncated")
+          }
           return readFileSync(log).subarray(offset).toString("utf8")
         }
         input.write(feed + osc(sentinel))
@@ -388,8 +400,9 @@ export async function readAppSemanticState(input: {
       )
       const grid = command("capture-pane", "-p", "-R", "-t", targetPane)
       const line = grid.split("\n").find((value) => new RegExp(`^\\s*L \\d+ \\(${number - 1}\\) flags=`).test(value))
-      if (!line || !/flags=[A-Z_|,]+\[[0-9a-f]+\]/.test(line))
+      if (!line || !/flags=[A-Z_|,]+\[[0-9a-f]+\]/.test(line)) {
         throw new Error(`Unreadable tmux diagnostic row${number}`)
+      }
       const data = /osc133=(\d+),(\d+),(\d+),(\d+),(\d+)/.exec(line)
       const [status, cwd] = format()
       const flags = ["START_PROMPT", "START_COMMAND", "START_OUTPUT", "END_OUTPUT"].filter((flag) =>
@@ -399,8 +412,17 @@ export async function readAppSemanticState(input: {
       const value =
         flags
           .map((flag) => {
-            const index = { START_PROMPT: 1, START_COMMAND: 2, START_OUTPUT: 3, END_OUTPUT: 4 }[flag]!
-            return `${flag}@${data![index]}${flag === "END_OUTPUT" ? `:${data![5]};status=${status}` : ""}`
+            const indices: Record<string, number> = {
+              START_PROMPT: 1,
+              START_COMMAND: 2,
+              START_OUTPUT: 3,
+              END_OUTPUT: 4,
+            }
+            const index = indices[flag]
+            if (index === undefined || !data || data[index] === undefined || data[5] === undefined) {
+              throw new Error(`tmux diagnostic lacks ${flag} fields`)
+            }
+            return `${flag}@${data[index]}${flag === "END_OUTPUT" ? `:${data[5]};status=${status}` : ""}`
           })
           .join("|") || "NONE"
       const reading = { value, status, cwd }
@@ -475,7 +497,8 @@ export async function readAppSemanticState(input: {
       C: "START_OUTPUT",
       D: "END_OUTPUT",
       P: "START_PROMPT",
-    }[handledLetter]!
+    }[handledLetter]
+    if (!handledFlag) throw new Error(`No tmux semantic control for ${handledLetter}`)
     const handledBefore = await sample(2, "")
     const handled = await sample(2, osc(`133;${handledLetter}${handledLetter === "D" ? ";0" : ""}`))
     const targetBefore = await sample(3, "")
