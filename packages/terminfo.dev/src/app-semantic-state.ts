@@ -82,6 +82,7 @@ const declarations: readonly AppSemanticCapability[] = [
       ["extensions.osc440-audio", "440", "440;bell.wav"],
       ["extensions.osc666-termprop", "666", "666;test-prop=value"],
       ["extensions.osc555-flash", "555", "555"],
+      ["extensions.osc710-font-normal", "710", "710;monospace"],
       ["extensions.osc113-reset-pointer-fg", "113", "113"],
       ["extensions.osc114-reset-pointer-bg", "114", "114"],
     ] as const
