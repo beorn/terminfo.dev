@@ -494,8 +494,37 @@ export const deviceProbes: ProbeDefinition[] = [
   probe(
     "device.term-features",
     termFeaturesLibraryReview,
-    () => Promise.resolve(notTestedResult("terminal child environment", {})),
-    null,
+    async (ctx) => {
+      if (!ctx.readTermFeatures) return notTestedResult("terminal child environment", {})
+      const reading = await ctx.readTermFeatures()
+      if (reading.status === "unavailable") return notTestedResult(reading.reason, {})
+      if (reading.status === "invalid") {
+        return {
+          pass: false,
+          note: reading.reason,
+          tests: [{ id: "terminal-child-environment", status: "probe-invalid", reason: reading.reason }],
+        }
+      }
+      const supported = reading.present
+      const note = supported
+        ? "TERM_FEATURES exported by this terminal child"
+        : "TERM_FEATURES absent with this terminal child's same-run control"
+      return {
+        pass: supported,
+        note,
+        response: JSON.stringify(reading),
+        observation: { outcome: supported ? "supported" : "unsupported", assertionType: "process_environment", note },
+        assertions: [
+          {
+            assertionType: "process_environment",
+            kind: supported ? "positive" : "negative",
+            expected: "TERM_FEATURES exported by the terminal",
+            observed: reading.present ? reading.value : "absent",
+          },
+        ],
+      }
+    },
+    "process_environment",
   ),
 
   // DSR ?996 — color-scheme query: CSI ? 996 n → CSI ? 997 ; Ps n

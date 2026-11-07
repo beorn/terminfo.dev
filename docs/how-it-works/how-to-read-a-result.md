@@ -27,7 +27,7 @@ Supported: the effect happened. Unsupported: the same kind of test showed it did
 
 ## Assertion types and decisions
 
-An observation's **assertion type** says what kind of evidence the probe read: `query_reply`, `buffer_state`, `screenshot`, `input_bytes` or `clipboard`. The decision rule says what that evidence establishes. A query reply, an engine-state reader, a terminal text-buffer readback and a screen capture answer different questions; they are not a ranked ladder. For example, reading a changed and restored color value can decide a color-reset claim, while a claim about the rendered color needs appropriate image evidence.
+An observation's **assertion type** says what kind of evidence the probe read: `query_reply`, `buffer_state`, `screenshot`, `input_bytes`, `clipboard` or `process_environment`. The last reads an allowlisted export in the terminal's child with matching launch, run, process and TTY controls; it does not describe the collector parent's environment. The decision rule says what that evidence establishes. A query reply, an engine-state reader, a terminal text-buffer readback and a screen capture answer different questions; they are not a ranked ladder. For example, reading a changed and restored color value can decide a color-reset claim, while a claim about the rendered color needs appropriate image evidence.
 
 A successful capture does not itself establish the visual effect; only a same-run pixel check decides it. Missing authorization or a tool we have not built yet can leave a required test unstarted; other evidence does not turn that missing measurement into Unsupported or Untestable.
 

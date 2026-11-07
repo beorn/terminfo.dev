@@ -3,7 +3,14 @@ import { createHash } from "node:crypto"
 import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
 import { isatty, WriteStream } from "node:tty"
 import { dirname, isAbsolute, join } from "node:path"
-import type { DarwinMuxAttachmentProof, MuxAttachmentProof, OuterAppProof, ProbeSubject } from "@terminfo/probe-defs"
+import type {
+  DarwinMuxAttachmentProof,
+  MuxAttachmentProof,
+  OuterAppProof,
+  ProbeSubject,
+  TermProbeSource,
+} from "@terminfo/probe-defs"
+import { readTermFeaturesRecord } from "./terminal-child-environment.ts"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
 import {
@@ -221,6 +228,7 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
 }
 
 export interface OwnedTerminal {
+  readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
   readonly geometryAtGrant: GeometryMeasurement
   readonly geometrySource: Exclude<GeometrySource, "unavailable: no verified output device">
   readonly summary: string
@@ -1208,6 +1216,7 @@ export async function createOwnedTerminal(options: {
     })
     const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
     const appPid = hostedAncestor?.pid ?? processOwnerPid
+    const termFeaturesRecordPath = process.env.TERMINFO_TERM_FEATURES_RECORD
     const owner: OwnedTerminal = {
       geometryAtGrant,
       geometrySource: source,
@@ -1216,6 +1225,26 @@ export async function createOwnedTerminal(options: {
       ...(hostedAppId && { hostedAppId }),
       ...(clipboard && { clipboard }),
       ...(muxAttachmentProof && { muxAttachmentProof }),
+      ...(processOwner &&
+        !darwinAttachment &&
+        binding.platform === "darwin" &&
+        termFeaturesRecordPath && {
+          async readTermFeatures() {
+            if (!verifiedTerminalOwners.has(owner)) {
+              return { status: "unavailable" as const, reason: "TERM_FEATURES child read has no live owned capture" }
+            }
+            // Reuses this owner's device check; geometry need not be measurable to bind the TTY.
+            await owner.readGeometry()
+            const assertion = parseProcessOwnerAssertion(processOwner)
+            return readTermFeaturesRecord({
+              recordPath: termFeaturesRecordPath,
+              runId: expectedLaunchRunId,
+              workerPid: process.pid,
+              ownerPid: assertion.ownerPid,
+              tty: assertion.tty,
+            })
+          },
+        }),
       async readGeometry() {
         if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned geometry read has no live bound capture")
         // A Windows console has no device to re-open, so the re-read is the console's own identity:

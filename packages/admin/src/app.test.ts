@@ -304,19 +304,22 @@ describe("WezTerm cli-process arm", () => {
       flag: "--config-file",
       value: "/private/run/wezterm-private-run.lua",
     })
-    expect(spawn).toHaveBeenCalledWith(
-      "/Applications/WezTerm.app/Contents/MacOS/wezterm",
-      [
-        "--config-file",
-        "/private/run/wezterm-private-run.lua",
-        "start",
-        "--always-new-process",
-        "--",
-        "/bin/bash",
-        "/private/run/serve.sh",
-      ],
-      { detached: true, stdio: "ignore", env: expect.any(Object) },
-    )
+    // Compare argv separately: a mismatch must never dump the inherited spawn environment.
+    const call = vi.mocked(spawn).mock.calls[0]
+    expect(call?.[0]).toBe("/Applications/WezTerm.app/Contents/MacOS/wezterm")
+    expect(call?.[1]).toEqual([
+      "--config-file",
+      "/private/run/wezterm-private-run.lua",
+      "start",
+      "--always-new-process",
+      "--",
+      "/bin/bash",
+      "-p",
+      "/private/run/serve.sh",
+    ])
+    expect(call?.[2]?.detached).toBe(true)
+    expect(call?.[2]?.stdio).toBe("ignore")
+    expect(call?.[2]?.env !== undefined).toBe(true)
     expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "wezterm")
     expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
       executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
@@ -700,7 +703,7 @@ test.each([
     const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
     expect(script?.[2]).toEqual({ flag: "wx", mode: 0o600 })
     const terminalJson =
-      '{"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["/private/run/serve.sh"],"cwd":"/private/run"}'
+      '{"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["-p","/private/run/serve.sh"],"cwd":"/private/run"}'
     const vscodeFixture = `const vscode = require("vscode");
 exports.activate = (context) => {
   const terminal = vscode.window.createTerminal(${terminalJson});
@@ -760,7 +763,7 @@ exports.activate = async (context) => {
     expect(createTerminal).toHaveBeenCalledWith({
       name: "terminfo-private-run",
       shellPath: "/bin/bash",
-      shellArgs: ["/private/run/serve.sh"],
+      shellArgs: ["-p", "/private/run/serve.sh"],
       cwd: "/private/run",
     })
     expect(terminal.show).toHaveBeenCalledOnce()

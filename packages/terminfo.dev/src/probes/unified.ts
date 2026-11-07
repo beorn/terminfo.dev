@@ -522,6 +522,9 @@ export async function runProbeBatch(
       utf8Decoding: readUtf8Decoding,
       captureGeometryRefusal,
     })
+    if (ownsTerminal && options.subject?.kind === "term" && !options.ownedTerminal?.muxAttachmentProof) {
+      probeSource.readTermFeatures = options.ownedTerminal?.readTermFeatures
+    }
     if (captureGeometry) probeSource.captureGeometry = captureGeometry
     if (
       clipboard &&
@@ -768,7 +771,12 @@ export async function runProbeBatch(
         if (result.response !== undefined) {
           batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
         }
-        const rawReplyRef = queries.length || captureAttempted || clipboardEvents.length ? probe.id : undefined
+        const rawReplyRef =
+          result.observation.assertionType === "process_environment" && result.response !== undefined
+            ? `${probe.id}.callbackResponse`
+            : queries.length || captureAttempted || clipboardEvents.length
+              ? probe.id
+              : undefined
         const post = geometryCheck?.post
         const resized =
           preGeometry?.status === "measured" &&
