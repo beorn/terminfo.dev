@@ -1446,9 +1446,19 @@ describe("Sixel geometry item-2 report", () => {
     expect(result.assertions?.[0]).toMatchObject({ kind: "positive", observed: frame })
   })
 
+  // 32569: status 3 is the terminal's own failure report on this exact query, with or without a value, so it reads
+  // Unsupported with the reply retained (@cto third-table ruling 2026-11-06).
+  test("a status-3 failure carrying a value reads Unsupported, retaining the reply", async () => {
+    const raw = "\x1b[?2;3;0S"
+    for (const result of [fromHeadless(raw), await fromTerminal(raw)]) {
+      expect(result).toMatchObject({ pass: false, response: raw })
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+      expect(result.assertions).toMatchObject([{ kind: "negative", observed: raw }])
+    }
+  })
+
   test("invalid Sixel replies retain query observations while silence records a named execution failure", async () => {
     for (const [raw, reason] of [
-      ["\x1b[?2;3;0S", "insufficient-evidence"],
       ["\x1b[?1;0;256S", "invalid-reply"],
       ["\x1b[?2;0;640S", "invalid-reply"],
       ["\x1b[?2;0;0;480S", "insufficient-evidence"],
