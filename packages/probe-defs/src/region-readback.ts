@@ -844,7 +844,7 @@ export async function sgrAttributeCaptureResult(
   if (!read) return null
   const sample = "AaBb 0123456789 - terminal text"
   const region = { top: 3, left: 3, bottom: 3, right: 2 + sample.length }
-  const spec = { region, sentinel: SENTINEL, cursorRow: 5, minRows: 5, minCols: region.right }
+  const spec = { region, sentinel: SENTINEL, cursorRow: 2, minRows: 3, minCols: 34 }
   const reported = await captureRegionGeometry(ctx, id, spec, true)
   if ("pass" in reported) return reported
   const pixelGeometry = reported.geometry
@@ -924,7 +924,7 @@ export async function sgrAttributeCaptureResult(
     if (pair.refusal) return finish("probe-todo", pair.refusal.observation?.note ?? `${id}: capture is not stable`)
     for (const [index, phase] of phases.entries()) {
       const label = `${id}: ${phase.name}`
-      ctx.write(`\x1b[0m\x1b[2J\x1b[3;3H${phase.sequence}${phase.sample}\x1b[0m\x1b[5;1H\x1b[1;1H `)
+      ctx.write(`\x1b[0m\x1b[2J\x1b[3;3H${phase.sequence}${phase.sample}\x1b[0m\x1b[2;1H\x1b[1;1H `)
       const baseline = await read({ role: "control", label: `${label} — baseline`, region: witnessCell, pixelGeometry })
       const options = {
         read,

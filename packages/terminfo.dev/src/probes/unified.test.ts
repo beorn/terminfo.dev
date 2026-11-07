@@ -2149,7 +2149,7 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
-    ids: ["extensions.osc52-write", "sgr.underline.curly"],
+    ids: ["extensions.osc52-write", "sgr.blink"],
     capture: async ({ role, label }) => {
       order.push(`capture-${role}`)
       return { frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` }, trace: {} }
@@ -2188,7 +2188,7 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
       },
     },
   })
-  expect(order).toEqual(["capture-control", "capture-target", "osc52"])
+  expect(order).toEqual(["capture-control", ...Array.from({ length: 9 }, () => "capture-target"), "osc52"])
   expect(batch.observations.find((item) => item.featureId === "extensions.osc52-write")).toMatchObject({
     outcome: "supported",
     rawReplyRef: "extensions.osc52-write",
@@ -2234,15 +2234,18 @@ it("records failed clipboard restoration as collector error rather than retainin
 })
 
 // #30932 AC3: a TTY-only log loses the source's optional capture method even when
-// DECRQSS decides the result before calling it. Existing reply/trace tests cannot
+// DECRQSS decides a state-only reset before calling it. Existing reply/trace tests cannot
 // establish that the same source shape reaches the callback during offline replay.
 it("retains SGR query-reply source shape for strict offline replay", async (context) => {
   verifiedBatchFixture()
   const writes: string[] = []
+  let sgrState = "0"
   process.stdout.write = ((value: string) => {
     writes.push(value)
+    if (value === "\x1b[0m") sgrState = "0"
+    if (value === "\x1b[1;3;4m") sgrState = "1;3;4"
     if (value.includes("\x1bP$qm")) {
-      process.stdin.emit("data", Buffer.from("\x1bP1$r0;1m\x1b\\\x1b[?1;2c"))
+      process.stdin.emit("data", Buffer.from(`\x1bP1$r${sgrState}m\x1b\\\x1b[?1;2c`))
     }
     return true
   }) as typeof process.stdout.write
@@ -2250,12 +2253,12 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     throw new Error("A deciding DECRQSS reply must not invoke pixel capture")
   })
   const batch = await runProbeBatch({
-    ids: ["sgr.bold"],
+    ids: ["sgr.reset"],
     subject: { kind: "term", id: "kitty", os: "linux" },
     ownedTerminal: geometryOwner(measured(24, 80)),
     capture,
   })
-  expect(batch.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({
+  expect(batch.results.find(({ featureId }) => featureId === "sgr.reset")).toMatchObject({
     status: "probe-todo",
     reason: "visual effect not observed in this run",
   })
@@ -2279,7 +2282,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
   }
   const expected = { manifest, sourceRevision, subject: draft.subject }
   const { capture: validated } = readProbeCapture(directory, source, expected)
-  const log = readCallLog(JSON.parse(validated.rawReplies["sgr.bold.callLog"]!))
+  const log = readCallLog(JSON.parse(validated.rawReplies["sgr.reset.callLog"]!))
   for (const invalid of [
     { ...source, captureRunId: "other-capture" },
     { ...source, captureSuiteId: "other-suite" },
@@ -2297,8 +2300,8 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
   )
   const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
   expect(typeof replay.context.capture).toBe("function")
-  const callback = ALL_PROBES.find(({ id }) => id === "sgr.bold")?.term
-  if (!callback) throw new Error("Missing SGR bold callback")
+  const callback = ALL_PROBES.find(({ id }) => id === "sgr.reset")?.term
+  if (!callback) throw new Error("Missing SGR reset callback")
   const beforeReplay = writes.length
   const result = await callback(replay.context)
   replay.finish()
@@ -2309,14 +2312,14 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
     throw new Error("Offline SGR assertion attempted native runtime discovery")
   })
   try {
-    const record = await runEraseReplay(context, { directory, source, expected, featureId: "sgr.bold" })
+    const record = await runEraseReplay(context, { directory, source, expected, featureId: "sgr.reset" })
     expect(record.assertions).toHaveLength(2)
     expect(new Set(record.assertions.map(({ runId }) => runId)).size).toBe(2)
     for (const assertion of record.assertions) {
       expect(assertion.runId).not.toBe(draft.runId)
       expect(assertion.source).toEqual(source)
       expect(assertion.subject).toEqual(draft.subject)
-      expect(assertion.results.find(({ featureId }) => featureId === "sgr.bold")).toMatchObject({
+      expect(assertion.results.find(({ featureId }) => featureId === "sgr.reset")).toMatchObject({
         status: "probe-todo",
         reason: "visual effect not observed in this run",
         assertionType: "query_reply",
@@ -2348,11 +2351,11 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
       "non-live",
     ] as const) {
       const rawReplies = { ...draft.rawReplies }
-      const stored = JSON.parse(rawReplies["sgr.bold.callLog"]!) as {
+      const stored = JSON.parse(rawReplies["sgr.reset.callLog"]!) as {
         root: { entries: Array<[string, unknown]> }
         calls: Array<Record<string, unknown>>
       }
-      if (fault === "missing-log") delete rawReplies["sgr.bold.callLog"]
+      if (fault === "missing-log") delete rawReplies["sgr.reset.callLog"]
       else {
         if (fault === "tty-root") stored.root.entries = stored.root.entries.filter(([key]) => key !== "kind")
         if (fault === "missing-call") stored.calls.pop()
@@ -2361,7 +2364,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
           if (!last) throw new Error("Fixture has no ordered calls")
           stored.calls.push({ ...last, id: stored.calls.length })
         }
-        rawReplies["sgr.bold.callLog"] = JSON.stringify(stored)
+        rawReplies["sgr.reset.callLog"] = JSON.stringify(stored)
       }
       if (fault === "resized") {
         const geometry = JSON.parse(rawReplies["collector.geometry"]!) as { checks: [{ post: { cols: number } }] }
@@ -2393,11 +2396,11 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         },
       }
       await expect(
-        runEraseReplay(context, { directory, source: invalidSource, expected, featureId: "sgr.bold" }),
+        runEraseReplay(context, { directory, source: invalidSource, expected, featureId: "sgr.reset" }),
         fault,
       ).rejects.toThrow(fault === "tty-root" ? /SGR source shape does not match its live capture/ : /SGR replay:/)
       expect(context.task.meta.terminfoErase?.failureResults, fault).toMatchObject([
-        { featureId: "sgr.bold", status: "probe-invalid" },
+        { featureId: "sgr.reset", status: "probe-invalid" },
       ])
     }
     await expect(
@@ -2408,7 +2411,7 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
         directory,
         source: { ...source, trace: { ...source.trace, path: "missing-trace.json" } },
         expected,
-        featureId: "sgr.bold",
+        featureId: "sgr.reset",
       }),
     ).rejects.toThrow(/SGR replay:.*ENOENT/)
     // A batch may retain another probe's blob beside this query-only log. Its
@@ -2464,18 +2467,18 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
           },
         },
         expected,
-        featureId: "sgr.bold",
+        featureId: "sgr.reset",
       }),
     ).rejects.toThrow(/SGR replay:.*ENOENT/)
     const boundRecord = await runEraseReplay(context, {
       directory,
       source: boundSource,
       expected,
-      featureId: "sgr.bold",
+      featureId: "sgr.reset",
     })
     expect(boundRecord.files).toContain(join(directory, blobRef))
     expect(
-      boundRecord.assertions.map(({ results }) => results.find(({ featureId }) => featureId === "sgr.bold")?.status),
+      boundRecord.assertions.map(({ results }) => results.find(({ featureId }) => featureId === "sgr.reset")?.status),
     ).toEqual(["probe-todo", "probe-todo"])
     expect(nativeIdentity).not.toHaveBeenCalled()
     expect(writes).toHaveLength(beforeReplay)
@@ -2486,7 +2489,8 @@ it("retains SGR query-reply source shape for strict offline replay", async (cont
   expect(readFileSync(path)).toEqual(bytes)
 })
 
-// AC1/AC3: images belong to the callback's run before it is sealed. Existing
+// AC1/AC3: retain the unchanged blink capture/replay path; the attribute kind has its own deciding tests.
+// Images belong to the callback's run before it is sealed. Existing
 // transport tests only observe replies and cannot detect a detached screenshot.
 it("retains same-callback control and target frames without declaring visual support", async (context) => {
   verifiedBatchFixture()
@@ -2504,7 +2508,7 @@ it("retains same-callback control and target frames without declaring visual sup
   const frames: ObservationFrame[] = []
   const checkpoints: Array<{ featureId: string; role: string; writes: string }> = []
   const batch = await runProbeBatch({
-    ids: ["sgr.underline.curly"],
+    ids: ["sgr.blink"],
     ownedTerminal: geometryOwner(measured(24, 80)),
     capture: async ({ featureId, role, label }) => {
       checkpoints.push({ featureId, role, writes: writes.join("") })
@@ -2527,32 +2531,32 @@ it("retains same-callback control and target frames without declaring visual sup
     },
   })
   expect(checkpoints.map(({ featureId, role }) => ({ featureId, role }))).toEqual([
-    { featureId: "sgr.underline.curly", role: "control" },
-    { featureId: "sgr.underline.curly", role: "target" },
+    { featureId: "sgr.blink", role: "control" },
+    ...Array.from({ length: 9 }, () => ({ featureId: "sgr.blink", role: "target" })),
   ])
   // The DECRQSS readback attempt writes the styled sequence to set the state it queries, so assert
   // on the rendered sample: the control frame renders it unstyled, the target frame styled.
-  const styledSample = "\x1b[4:3mAaBb 0123456789 - terminal text"
+  const styledSample = "\x1b[5mAaBb 0123456789 - terminal text"
   expect(checkpoints[0]?.writes).not.toContain(styledSample)
   expect(checkpoints[1]?.writes).toContain(styledSample)
   expect(batch.screenshotRefs).toEqual([...new Set(frames.map(({ ref }) => ref))])
   expect(batch.observations).toEqual([
     expect.objectContaining({
-      featureId: "sgr.underline.curly",
+      featureId: "sgr.blink",
       outcome: "inconclusive",
       assertionType: "screenshot",
       reason: "insufficient-evidence",
       screenshotRef: frames[1]?.ref,
       frames,
-      rawReplyRef: "sgr.underline.curly",
+      rawReplyRef: "sgr.blink",
     }),
   ])
-  const trace = JSON.parse(batch.rawReplies["sgr.underline.curly"]!) as { captures: unknown[] }
-  expect(trace.captures).toHaveLength(2)
+  const trace = JSON.parse(batch.rawReplies["sgr.blink"]!) as { captures: unknown[] }
+  expect(trace.captures).toHaveLength(10)
   // The capture writer clones the batch before persistence; recorder proxies must not escape.
   expect(structuredClone(batch)).toEqual(batch)
   expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
-    checks: [{ featureId: "sgr.underline.curly", pre: { rows: 24, cols: 80 }, post: { rows: 24, cols: 80 } }],
+    checks: [{ featureId: "sgr.blink", pre: { rows: 24, cols: 80 }, post: { rows: 24, cols: 80 } }],
   })
   expect(batch.suiteComplete).toBe(false)
   batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
@@ -2574,7 +2578,7 @@ it("retains same-callback control and target frames without declaring visual sup
     )
   }
   expect(open(draft, "source-log-positive").files.length).toBeGreaterThan(1)
-  const log = readCallLog(JSON.parse(batch.rawReplies["sgr.underline.curly.callLog"]!))
+  const log = readCallLog(JSON.parse(batch.rawReplies["sgr.blink.callLog"]!))
   const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
   const negativeLog = createCallLog()
   const changedSource = Object.defineProperties(
@@ -2593,13 +2597,13 @@ it("retains same-callback control and target frames without declaring visual sup
     sourceRef: "sha256:" + "e".repeat(64),
   })
   const recording = withCallLog(changedSource, { mode: "record", log: negativeLog })
-  const callback = ALL_PROBES.find(({ id }) => id === "sgr.underline.curly")?.term
+  const callback = ALL_PROBES.find(({ id }) => id === "sgr.blink")?.term
   if (!callback) throw new Error("Missing retained SGR callback")
   await callback(recording.context)
   recording.finish()
   replay.finish()
   const negative = structuredClone(draft)
-  negative.rawReplies["sgr.underline.curly.callLog"] = JSON.stringify(negativeLog)
+  negative.rawReplies["sgr.blink.callLog"] = JSON.stringify(negativeLog)
   expect(() => open(negative, "source-log-negative")).toThrow(/unbound blob/)
 
   // The same producer-made SGR bundle must survive launch cleanup and reach the
@@ -2646,11 +2650,11 @@ it("retains same-callback control and target frames without declaring visual sup
     directory: finalRoot,
     source,
     expected,
-    featureId: "sgr.underline.curly",
+    featureId: "sgr.blink",
   })
   expect(replayed.assertions).toHaveLength(2)
   expect(structuredClone(replayed)).toEqual(replayed)
-  const live = batch.results.find(({ featureId }) => featureId === "sgr.underline.curly")!
+  const live = batch.results.find(({ featureId }) => featureId === "sgr.blink")!
   for (const assertion of replayed.assertions) {
     expect(assertion.results.find(({ featureId }) => featureId === live.featureId)).toMatchObject({
       status: live.status,
@@ -2660,7 +2664,7 @@ it("retains same-callback control and target frames without declaring visual sup
     })
   }
   expect(writes).toHaveLength(beforeOffline)
-})
+}, 30_000)
 
 // 27875: a controlled-Linux run with no capture directory cannot make a frame. A probe that needs
 // one must say so by name, in its own result, and must not claim pixels that do not exist.
@@ -2668,7 +2672,7 @@ it("records a FrameUnavailable capture as a named collector error, never invente
   verifiedBatchFixture()
   process.stdout.write = (() => true) as typeof process.stdout.write
   const batch = await runProbeBatch({
-    ids: ["sgr.underline.curly"],
+    ids: ["sgr.blink"],
     ownedTerminal: geometryOwner(measured(24, 80)),
     captureRunId: "a".repeat(32),
     capture: async () => {
@@ -2677,12 +2681,12 @@ it("records a FrameUnavailable capture as a named collector error, never invente
       throw error
     },
   })
-  expect(batch.ungradedDiagnostics["sgr.underline.curly"]).toMatchObject({
+  expect(batch.ungradedDiagnostics["sgr.blink"]).toMatchObject({
     kind: "collector-error",
     name: "FrameUnavailable",
     message: expect.stringContaining("no capture directory"),
   })
-  expect(batch.results.find((result) => result.featureId === "sgr.underline.curly")).toMatchObject({
+  expect(batch.results.find((result) => result.featureId === "sgr.blink")).toMatchObject({
     status: "probe-todo",
     reason: "This run has no capture directory, so no frame is available for a probe that needs one",
     tests: [
@@ -2725,12 +2729,12 @@ it("records an installed capture adapter failure as an error rather than quietly
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
-    ids: ["sgr.underline.curly"],
+    ids: ["sgr.blink"],
     ownedTerminal: geometryOwner(measured(24, 80)),
     capture: () => Promise.reject(new Error("Owned window disappeared")),
   })
-  expect(batch.results.filter((result) => ["sgr.underline.curly"].includes(result.featureId))).toMatchObject([
-    { status: "probe-invalid", featureId: "sgr.underline.curly", reason: "Owned window disappeared" },
+  expect(batch.results.filter((result) => ["sgr.blink"].includes(result.featureId))).toMatchObject([
+    { status: "probe-invalid", featureId: "sgr.blink", reason: "Owned window disappeared" },
   ])
   expect(batch.screenshotRefs).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
