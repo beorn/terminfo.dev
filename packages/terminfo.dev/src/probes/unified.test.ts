@@ -3733,295 +3733,290 @@ it.each([
   ["modes.left-right-margin", 2, /column 6/],
   ["modes.insert-replace", 2, /XABCD/],
   ["cursor.shape", 2, /cursor cell/i],
-] as const)(
-  "retains actual %s capture through its criterion and the canonical reader",
-  async (id, count, expected) => {
-    verifiedBatchFixture()
-    vi.useFakeTimers()
-    const ownManifest = {
-      ...manifest,
-      schemaVersion: 4 as const,
-      catalogIds: [id],
-      probes: { term: [id], lib: [], mux: [] },
-    } satisfies ProbeSuiteManifest
-    const draft = initializeRunDraft({
-      runId: `native-visual-${id}`,
-      sourceRevision,
-      source: { kind: "live" },
-      manifest: ownManifest,
-      intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
-    })
-    draft.subject = {
-      kind: "term",
-      id: "kitty",
-      version: "0.49.1",
-      os: "linux",
-      osVersion: null,
-      outerTerminal: null,
-      mux: null,
-      config: null,
-      permissions: "fixture capture",
-    }
-    draft.identity = "verified"
-    draft.measuredAt = "2026-10-29T15:00:00.000Z"
-    draft.origin = { kind: "collector" }
-    let captures = 0
-    let witness = "blank"
-    const pixelGeometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
-    const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
-    const makeCapture =
-      (unchangingPixels = false) =>
-      async ({
-        role,
-        label,
-        cells,
-      }: {
-        role: "control" | "target"
-        label: string
-        cells?: { top: number; left: number; bottom: number; right: number }
-      }) => {
-        const capturedAt = ++captures
-        const lowerLabel = label.toLowerCase()
-        // Constructed fixture planes prove that the collector maps each requested crop to pixels
-        // and carries the witness through the new reader. The distinct third target stays unknown
-        // to the comparison; it is never evidence of terminal qualification.
-        const phase =
-          id === "cursor.shape"
-            ? lowerLabel.includes("stability") || lowerLabel.includes("made-up")
+] as const)("retains actual %s capture through its criterion and the canonical reader", async (id, count, expected) => {
+  verifiedBatchFixture()
+  vi.useFakeTimers()
+  const ownManifest = {
+    ...manifest,
+    schemaVersion: 4 as const,
+    catalogIds: [id],
+    probes: { term: [id], lib: [], mux: [] },
+  } satisfies ProbeSuiteManifest
+  const draft = initializeRunDraft({
+    runId: `native-visual-${id}`,
+    sourceRevision,
+    source: { kind: "live" },
+    manifest: ownManifest,
+    intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
+  })
+  draft.subject = {
+    kind: "term",
+    id: "kitty",
+    version: "0.49.1",
+    os: "linux",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: "fixture capture",
+  }
+  draft.identity = "verified"
+  draft.measuredAt = "2026-10-29T15:00:00.000Z"
+  draft.origin = { kind: "collector" }
+  let captures = 0
+  let witness = "blank"
+  const pixelGeometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
+  const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
+  const makeCapture =
+    (unchangingPixels = false) =>
+    async ({
+      role,
+      label,
+      cells,
+    }: {
+      role: "control" | "target"
+      label: string
+      cells?: { top: number; left: number; bottom: number; right: number }
+    }) => {
+      const capturedAt = ++captures
+      const lowerLabel = label.toLowerCase()
+      // Constructed fixture planes prove that the collector maps each requested crop to pixels
+      // and carries the witness through the new reader. The distinct third target stays unknown
+      // to the comparison; it is never evidence of terminal qualification.
+      const phase =
+        id === "cursor.shape"
+          ? lowerLabel.includes("stability") || lowerLabel.includes("made-up")
+            ? "stable"
+            : lowerLabel
+          : unchangingPixels
+            ? "unchanged"
+            : lowerLabel.includes("stability")
               ? "stable"
-              : lowerLabel
-            : unchangingPixels
-              ? "unchanged"
-              : lowerLabel.includes("stability")
-                ? "stable"
-                : lowerLabel.includes("paint witness") || lowerLabel.includes("baseline")
-                  ? witness
-                  : lowerLabel.includes("pre-edit seed")
-                    ? "seed"
-                    : lowerLabel.includes("post-sequence target")
-                      ? id === "modes.alt-screen.exit"
-                        ? "expected"
-                        : "third"
-                      : lowerLabel.includes("expected frame")
-                        ? "expected"
-                        : lowerLabel.includes("ignored-attribute")
-                          ? "ignored"
-                          : lowerLabel.includes("setup reference")
-                            ? "seed"
-                            : "fixture"
-        const regionRectangle = cells
-          ? {
-              x: (cells.left - 1) * pixelGeometry.cellWidth,
-              y: (cells.top - 1) * pixelGeometry.cellHeight,
-              width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
-              height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
-            }
-          : undefined
-        return {
-          frame: {
-            role,
-            label,
-            capturedAt,
-            ref: `sha256:${createHash("sha256").update(`fixture frame ${capturedAt}`).digest("hex")}`,
-            ...(cells && regionRectangle
-              ? {
-                  pixelsDigest: digest(`whole:${phase}`),
-                  regionDigest: digest(`crop:${cells.top},${cells.left},${cells.bottom},${cells.right}:${phase}`),
-                  regionRectangle,
-                }
-              : {}),
-          },
-          trace: {},
-        }
-      }
-    process.stdout.write = ((chunk: string | Uint8Array) => {
-      const bytes = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
-      if (id === "cursor.shape" && bytes === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[2;3R"))
-      if (/^\x1b\[\d+;\d+H.$/.test(bytes)) witness = bytes.slice(-1)
-      return true
-    }) as typeof process.stdout.write
-    try {
-      const pending = runProbeBatch({
-        ids: [id],
-        draft,
-        ownedTerminal: geometryOwner(measured(24, 80)),
-        prepareCapture: async ({ source }) => {
-          source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
+              : lowerLabel.includes("paint witness") || lowerLabel.includes("baseline")
+                ? witness
+                : lowerLabel.includes("pre-edit seed")
+                  ? "seed"
+                  : lowerLabel.includes("post-sequence target")
+                    ? id === "modes.alt-screen.exit"
+                      ? "expected"
+                      : "third"
+                    : lowerLabel.includes("expected frame")
+                      ? "expected"
+                      : lowerLabel.includes("ignored-attribute")
+                        ? "ignored"
+                        : lowerLabel.includes("setup reference")
+                          ? "seed"
+                          : "fixture"
+      const regionRectangle = cells
+        ? {
+            x: (cells.left - 1) * pixelGeometry.cellWidth,
+            y: (cells.top - 1) * pixelGeometry.cellHeight,
+            width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+            height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+          }
+        : undefined
+      return {
+        frame: {
+          role,
+          label,
+          capturedAt,
+          ref: `sha256:${createHash("sha256").update(`fixture frame ${capturedAt}`).digest("hex")}`,
+          ...(cells && regionRectangle
+            ? {
+                pixelsDigest: digest(`whole:${phase}`),
+                regionDigest: digest(`crop:${cells.top},${cells.left},${cells.bottom},${cells.right}:${phase}`),
+                regionRectangle,
+              }
+            : {}),
         },
-        capture: makeCapture(),
-        ...(id === "cursor.shape" && {
-          input: {
-            injectKey: async () => {
-              process.stdin.emit("data", Buffer.from("a"))
-            },
-            injectClick: async () => {},
+        trace: {},
+      }
+    }
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    const bytes = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
+    if (id === "cursor.shape" && bytes === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[2;3R"))
+    if (/^\x1b\[\d+;\d+H.$/.test(bytes)) witness = bytes.slice(-1)
+    return true
+  }) as typeof process.stdout.write
+  try {
+    const pending = runProbeBatch({
+      ids: [id],
+      draft,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      prepareCapture: async ({ source }) => {
+        source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
+      },
+      capture: makeCapture(),
+      ...(id === "cursor.shape" && {
+        input: {
+          injectKey: async () => {
+            process.stdin.emit("data", Buffer.from("a"))
           },
-        }),
-      })
-      const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
-      expect(batch.ungradedDiagnostics).toEqual({})
-      const result = batch.results.find((entry) => entry.featureId === id)!
-      if (id === "modes.alt-screen.exit" || id === "cursor.shape") {
-        // A real successful alternate-marker control cites the initial stability pair in its response.
-        // Those cleared-canvas digests differ from every later primary/alternate/witness capture.
-        if (id === "cursor.shape") {
-          expect(result).toMatchObject({
-            status: "supported",
-            criterionBranch: "cursor-shape-same-run",
-            assertionType: "screenshot",
-          })
-          expect(result.tests).toMatchObject([
-            { id: "capture", status: "supported" },
-            { id: "review", status: "supported" },
-          ])
-          expect(result.frames).toHaveLength(6)
-        } else {
-          expect(result.tests).toMatchObject([
-            { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
-            { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
-            { id: "remaining-facets", status: "probe-todo" },
-          ])
-        }
-        expect(batch.assertions).toHaveLength(2)
-        Object.assign(draft.rawReplies, batch.rawReplies)
-        draft.results = batch.results
-        draft.assertions = batch.assertions
-        draft.screenshotRefs = batch.screenshotRefs
-        const read = parseRun(
-          "native-visual-stability-fixture.json",
-          JSON.stringify(draft),
-          [id],
-          new Map([[probeHash, ownManifest]]),
-        )
-        expect(read.results?.[0]).toMatchObject({
-          status: id === "cursor.shape" ? "supported" : "probe-todo",
-          frames: result.frames,
+          injectClick: async () => {},
+        },
+      }),
+    })
+    const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
+    expect(batch.ungradedDiagnostics).toEqual({})
+    const result = batch.results.find((entry) => entry.featureId === id)!
+    if (id === "modes.alt-screen.exit" || id === "cursor.shape") {
+      // A real successful alternate-marker control cites the initial stability pair in its response.
+      // Those cleared-canvas digests differ from every later primary/alternate/witness capture.
+      if (id === "cursor.shape") {
+        expect(result).toMatchObject({
+          status: "supported",
+          criterionBranch: "cursor-shape-same-run",
+          assertionType: "screenshot",
         })
-        if (id !== "cursor.shape") {
-          expect(read.results?.[0]?.frames?.filter((frame) => frame.label.includes("capture stability"))).toHaveLength(
-            2,
-          )
-        }
-        expect(read.assertions).toHaveLength(2)
-        return
+        expect(result.tests).toMatchObject([
+          { id: "capture", status: "supported" },
+          { id: "review", status: "supported" },
+        ])
+        expect(result.frames).toHaveLength(6)
+      } else {
+        expect(result.tests).toMatchObject([
+          { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
+          { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
+          { id: "remaining-facets", status: "probe-todo" },
+        ])
       }
-      if (batch.assertions.length === 0) {
-        expect(result).toMatchObject({ status: "probe-todo" })
-        expect(result.tests.some((check) => check.status === "probe-todo")).toBe(true)
-        expect(result.frames!.length).toBeGreaterThanOrEqual(8)
-        expect(
-          result.frames!.every((frame) => Boolean(frame.regionDigest && frame.pixelsDigest && frame.regionRectangle)),
-        ).toBe(true)
-        Object.assign(draft.rawReplies, batch.rawReplies)
-        draft.results = batch.results
-        draft.assertions = batch.assertions
-        draft.screenshotRefs = batch.screenshotRefs
-        if (!result.tests.some((check) => check.id === "review")) {
-          expect(
-            result.tests.every(
-              (check) => check.status === "probe-todo" && check.reason?.includes("a third distinct frame"),
-            ),
-          ).toBe(true)
-          const decoded = decodeCollectorDraft(
-            "native-visual-collector-fixture.json",
-            JSON.stringify({ ...asRun(batch), screenshotRefs: batch.screenshotRefs }),
-            manifest,
-            sourceRevision,
-          ).run
-          expect(decoded.results.find((result) => result.featureId === id)?.frames).toEqual(result.frames)
-          return
-        }
-        const read = parseRun(
-          "native-visual-fixture.json",
-          JSON.stringify(draft),
-          [id],
-          new Map([[probeHash, ownManifest]]),
-        )
-        expect(read.results?.[0]).toMatchObject({ status: "probe-todo", frames: result.frames })
-        expect(read.assertions).toEqual([])
-        if (id === "modes.insert-replace") {
-          const noFreshDraft = initializeRunDraft({
-            runId: `native-visual-no-freshness-${id}`,
-            sourceRevision,
-            source: { kind: "live" },
-            manifest: ownManifest,
-            intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
-          })
-          noFreshDraft.subject = structuredClone(draft.subject)
-          noFreshDraft.identity = "verified"
-          noFreshDraft.measuredAt = "2026-10-29T15:02:00.000Z"
-          noFreshDraft.origin = { kind: "collector" }
-          const unchangedPending = runProbeBatch({
-            ids: [id],
-            draft: noFreshDraft,
-            ownedTerminal: geometryOwner(measured(24, 80)),
-            prepareCapture: async ({ source }) => {
-              source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
-            },
-            capture: makeCapture(true),
-          })
-          const [unchanged] = await Promise.all([unchangedPending, vi.runAllTimersAsync()])
-          expect(unchanged.ungradedDiagnostics).toEqual({})
-          const noFreshDecoded = decodeCollectorDraft(
-            "native-visual-no-freshness.json",
-            JSON.stringify(asRun(unchanged, ownManifest)),
-            ownManifest,
-            sourceRevision,
-          ).run
-          expect(unchanged.observations).toEqual([])
-          expect(noFreshDecoded.results.find((entry) => entry.featureId === id)).toEqual(
-            unchanged.results.find((entry) => entry.featureId === id),
-          )
-          expect(unchanged.results.find((entry) => entry.featureId === id)).toMatchObject({
-            status: "probe-todo",
-            tests: [
-              expect.objectContaining({
-                id: "review",
-                status: "probe-todo",
-                reason: expect.stringContaining("no freshness witness"),
-              }),
-            ],
-          })
-        }
-        return
-      }
-      expect(result).toMatchObject({
-        status: "probe-todo",
-        criterionBranch: "visual-review",
-        tests: [
-          { id: "capture", status: "supported", assertionRefs: [0] },
-          { id: "review", status: "probe-todo", attempt: { scope: "none" } },
-        ],
-      })
-      expect(result.frames).toHaveLength(count)
-      expect(batch.observations[0]).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
-      expect(batch.assertions).toHaveLength(1)
-      expect(batch.assertions[0]).toMatchObject({
-        featureId: id,
-        assertionType: "screenshot",
-        expected: expect.stringMatching(expected),
-      })
-      const retained = JSON.parse(batch.assertions[0]!.observed)
-      expect(retained).toEqual(
-        count === 3
-          ? { control: result.frames![0], alternate: result.frames![1], restored: result.frames![2] }
-          : { control: result.frames![0], target: result.frames![1] },
-      )
+      expect(batch.assertions).toHaveLength(2)
       Object.assign(draft.rawReplies, batch.rawReplies)
+      draft.results = batch.results
       draft.assertions = batch.assertions
       draft.screenshotRefs = batch.screenshotRefs
-      const before = structuredClone(result.frames)
+      const read = parseRun(
+        "native-visual-stability-fixture.json",
+        JSON.stringify(draft),
+        [id],
+        new Map([[probeHash, ownManifest]]),
+      )
+      expect(read.results?.[0]).toMatchObject({
+        status: id === "cursor.shape" ? "supported" : "probe-todo",
+        frames: result.frames,
+      })
+      if (id !== "cursor.shape") {
+        expect(read.results?.[0]?.frames?.filter((frame) => frame.label.includes("capture stability"))).toHaveLength(2)
+      }
+      expect(read.assertions).toHaveLength(2)
+      return
+    }
+    if (batch.assertions.length === 0) {
+      expect(result).toMatchObject({ status: "probe-todo" })
+      expect(result.tests.some((check) => check.status === "probe-todo")).toBe(true)
+      expect(result.frames!.length).toBeGreaterThanOrEqual(8)
+      expect(
+        result.frames!.every((frame) => Boolean(frame.regionDigest && frame.pixelsDigest && frame.regionRectangle)),
+      ).toBe(true)
+      Object.assign(draft.rawReplies, batch.rawReplies)
       draft.results = batch.results
+      draft.assertions = batch.assertions
+      draft.screenshotRefs = batch.screenshotRefs
+      if (!result.tests.some((check) => check.id === "review")) {
+        expect(
+          result.tests.every(
+            (check) => check.status === "probe-todo" && check.reason?.includes("a third distinct frame"),
+          ),
+        ).toBe(true)
+        const decoded = decodeCollectorDraft(
+          "native-visual-collector-fixture.json",
+          JSON.stringify({ ...asRun(batch), screenshotRefs: batch.screenshotRefs }),
+          manifest,
+          sourceRevision,
+        ).run
+        expect(decoded.results.find((result) => result.featureId === id)?.frames).toEqual(result.frames)
+        return
+      }
       const read = parseRun(
         "native-visual-fixture.json",
         JSON.stringify(draft),
         [id],
         new Map([[probeHash, ownManifest]]),
       )
-      expect(read.results?.[0]).toMatchObject({ status: "probe-todo", frames: before })
-      expect(read.assertions[0]?.expected).toMatch(expected)
-    } finally {
-      vi.useRealTimers()
+      expect(read.results?.[0]).toMatchObject({ status: "probe-todo", frames: result.frames })
+      expect(read.assertions).toEqual([])
+      if (id === "modes.insert-replace") {
+        const noFreshDraft = initializeRunDraft({
+          runId: `native-visual-no-freshness-${id}`,
+          sourceRevision,
+          source: { kind: "live" },
+          manifest: ownManifest,
+          intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
+        })
+        noFreshDraft.subject = structuredClone(draft.subject)
+        noFreshDraft.identity = "verified"
+        noFreshDraft.measuredAt = "2026-10-29T15:02:00.000Z"
+        noFreshDraft.origin = { kind: "collector" }
+        const unchangedPending = runProbeBatch({
+          ids: [id],
+          draft: noFreshDraft,
+          ownedTerminal: geometryOwner(measured(24, 80)),
+          prepareCapture: async ({ source }) => {
+            source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
+          },
+          capture: makeCapture(true),
+        })
+        const [unchanged] = await Promise.all([unchangedPending, vi.runAllTimersAsync()])
+        expect(unchanged.ungradedDiagnostics).toEqual({})
+        const noFreshDecoded = decodeCollectorDraft(
+          "native-visual-no-freshness.json",
+          JSON.stringify(asRun(unchanged, ownManifest)),
+          ownManifest,
+          sourceRevision,
+        ).run
+        expect(unchanged.observations).toEqual([])
+        expect(noFreshDecoded.results.find((entry) => entry.featureId === id)).toEqual(
+          unchanged.results.find((entry) => entry.featureId === id),
+        )
+        expect(unchanged.results.find((entry) => entry.featureId === id)).toMatchObject({
+          status: "probe-todo",
+          tests: [
+            expect.objectContaining({
+              id: "review",
+              status: "probe-todo",
+              reason: expect.stringContaining("no freshness witness"),
+            }),
+          ],
+        })
+      }
+      return
     }
-  },
-)
+    expect(result).toMatchObject({
+      status: "probe-todo",
+      criterionBranch: "visual-review",
+      tests: [
+        { id: "capture", status: "supported", assertionRefs: [0] },
+        { id: "review", status: "probe-todo", attempt: { scope: "none" } },
+      ],
+    })
+    expect(result.frames).toHaveLength(count)
+    expect(batch.observations[0]).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
+    expect(batch.assertions).toHaveLength(1)
+    expect(batch.assertions[0]).toMatchObject({
+      featureId: id,
+      assertionType: "screenshot",
+      expected: expect.stringMatching(expected),
+    })
+    const retained = JSON.parse(batch.assertions[0]!.observed)
+    expect(retained).toEqual(
+      count === 3
+        ? { control: result.frames![0], alternate: result.frames![1], restored: result.frames![2] }
+        : { control: result.frames![0], target: result.frames![1] },
+    )
+    Object.assign(draft.rawReplies, batch.rawReplies)
+    draft.assertions = batch.assertions
+    draft.screenshotRefs = batch.screenshotRefs
+    const before = structuredClone(result.frames)
+    draft.results = batch.results
+    const read = parseRun(
+      "native-visual-fixture.json",
+      JSON.stringify(draft),
+      [id],
+      new Map([[probeHash, ownManifest]]),
+    )
+    expect(read.results?.[0]).toMatchObject({ status: "probe-todo", frames: before })
+    expect(read.assertions[0]?.expected).toMatch(expected)
+  } finally {
+    vi.useRealTimers()
+  }
+})
