@@ -18,7 +18,10 @@ vi.mock("./linux-capture.ts", async (original) => ({
   kittyAncestor: vi.fn(() => 123),
 }))
 
-afterEach(() => vi.unstubAllEnvs())
+afterEach(() => {
+  vi.unstubAllEnvs()
+  vi.restoreAllMocks()
+})
 
 test("Screen never borrows the outer Kitty reader and mismatched attachments are invalid", async () => {
   const runId = "a".repeat(32)
@@ -67,10 +70,23 @@ test.each([
   vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
   vi.mocked(execFileSync).mockReturnValue("Ghostty 1.4.0\n")
   try {
-    for (const variant of ["exact", "query-only", "handled-refusal"] as const) {
+    for (const variant of [
+      "exact",
+      "query-only",
+      "handled-refusal",
+      "late-handled-refusal",
+      "missing-sentinel",
+    ] as const) {
       // A stale matching line before this row must never become its target report.
       writeFileSync(log, line(`highlight_${slot}`))
       const writes: string[] = []
+      const clock =
+        variant === "missing-sentinel"
+          ? vi
+              .spyOn(Date, "now")
+              .mockImplementationOnce(() => 0)
+              .mockImplementation(() => 6001)
+          : undefined
       const result = await readAppSemanticState({
         featureId,
         runId: "a".repeat(32),
@@ -79,25 +95,87 @@ test.each([
           writes.push(bytes)
           if (bytes.includes("\x1b]110\x07") && variant === "handled-refusal") appendFileSync(log, line("foreground"))
           if (bytes.includes(`\x1b]${code}\x07`)) {
-            appendFileSync(log, variant === "exact" ? line(`highlight_${slot}`) : `info(stream): reporting dynamic color highlight_${slot} not implemented\n`)
+            if (variant === "late-handled-refusal") appendFileSync(log, line("foreground"))
+            appendFileSync(
+              log,
+              variant === "exact"
+                ? line(`highlight_${slot}`)
+                : `info(stream): reporting dynamic color highlight_${slot} not implemented\n`,
+            )
           }
-          if (bytes.includes("\x1b]113\x07")) appendFileSync(log, line("pointer_foreground"))
+          if (bytes.includes("\x1b]113\x07") && variant !== "missing-sentinel") {
+            appendFileSync(log, line("pointer_foreground"))
+          }
         },
       })
-      if (variant === "handled-refusal") {
-        expect(result).toMatchObject({ status: "invalid", reason: expect.stringContaining("110") })
+      clock?.mockRestore()
+      if (variant === "handled-refusal" || variant === "late-handled-refusal" || variant === "missing-sentinel") {
+        expect(result).toMatchObject({
+          status: "invalid",
+          reason: expect.stringContaining(variant === "missing-sentinel" ? "113" : "110"),
+        })
       } else {
         expect(result).toMatchObject({
-          status: "measured", reader: "report",
+          status: "measured",
+          reader: "report",
           unknown: { code: "113", reports: ["113"] },
           handled: { applied: true, reports: [] },
           target: { code, reports: variant === "exact" ? [code] : [] },
         })
       }
       expect(writes.join("")).toContain("\x1b]110\x07")
-      expect(writes.join("")).toContain(`\x1b]${code}\x07\x1b]113\x07`)
+      if (variant === "exact" || variant === "query-only") {
+        expect(writes.join("")).toContain(`\x1b]${code}\x07\x1b]113\x07`)
+      }
       expect(writes.join("")).not.toContain("7654")
     }
+  } finally {
+    rmSync(root, { recursive: true })
+  }
+})
+
+test("Kitty keeps unknown-command controls, unique logged sentinels and title restoration", async () => {
+  const root = mkdtempSync(join(tmpdir(), "app-semantic-kitty-"))
+  const capture = join(root, "capture")
+  mkdirSync(capture)
+  const log = join(root, "daemon.log")
+  writeFileSync(log, "")
+  vi.stubEnv("TERMINFO_RUN_ID", "a".repeat(32))
+  vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+  vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
+  vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
+  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+  vi.stubEnv("KITTY_PID", "123")
+  let title = "original title"
+  vi.mocked(execFileSync).mockImplementation((file, args) => {
+    if (file === "/owned/kitty") return "kitty 0.49.2 created by Kovid Goyal\n"
+    return Array.isArray(args) && args[0] === "search" ? "123\n" : title
+  })
+  const writes: string[] = []
+  try {
+    const result = await readAppSemanticState({
+      featureId: "extensions.osc176-app-id",
+      runId: "a".repeat(32),
+      executable: { path: "/owned/kitty", sha256: "b".repeat(64) },
+      write: (bytes) => {
+        writes.push(bytes)
+        for (const match of bytes.matchAll(/\x1b\]([^\x07]*)\x07/g)) {
+          const body = match[1]!
+          if (body.startsWith("2;")) title = body.slice(2)
+          else appendFileSync(log, `[PARSE ERROR] Unknown OSC escape code: ${body}\n`)
+        }
+      },
+    })
+    expect(result).toMatchObject({
+      status: "measured",
+      reader: "report",
+      unknown: { code: "7654", reports: ["7654"] },
+      handled: { applied: true, reports: [] },
+      target: { code: "176", reports: ["176"] },
+    })
+    const sentinels = writes.flatMap((bytes) => [...bytes.matchAll(/7655;([^\x07]+)/g)].map((match) => match[1]))
+    expect(new Set(sentinels).size).toBe(3)
+    expect(title).toBe("original title")
   } finally {
     rmSync(root, { recursive: true })
   }

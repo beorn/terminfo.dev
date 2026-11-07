@@ -17,12 +17,16 @@ This describes the implemented system. Callbacks still perform live I/O and eval
 The six assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard; `process_environment` reads a terminal child's allowlisted export with its same-run launch, PID and TTY controls. Probe setup and feed writes retain their existing order and bytes; they are not assertion types.
 
 The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
-table beside the child-environment reader selects tmux's public diagnostic grid/formats or Kitty's
-fresh command-report bytes. Each row retains its own unknown-command and handled-command controls;
+table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
+Kitty/Ghostty command-report bytes. Each row retains its own report-path and handled-command controls;
 a failed control is PROBE INVALID. Qualified state transitions can decide support. An exact-command
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through that row's unique completion sentinel. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
+Ghostty 1.4.0 highlight resets use implemented OSC 110 as the handled control and OSC 113's
+exact reset warning after the target as the logged control and completion marker. Only the target's
+`resetting` warning counts; a `reporting` query warning does not. Without the target warning,
+the existing no-setup result stands; a failed control is PROBE INVALID. Kitty retains its unknown-OSC controls.
 
 The five probe-result labels are Supported, Unsupported, Untestable, PROBE TODO and PROBE INVALID. Their code values are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`. Immutable stored runs retain their original `test-todo` and `test-failure` words; the run reader decodes those as `probe-todo` and `probe-invalid` without rewriting the stored bytes. A missing same-run control is a reason under PROBE TODO, not an additional status.
 
