@@ -1864,8 +1864,9 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       ctx.write("\x1b[?40h\x1b[?3l")
     }
   }
-  if (!ctx.capture && !ctx.cells)
+  if (!ctx.capture && !ctx.cells) {
     return replyFailure(`${prefix}; DECCOLM effect needs a size reply or owned width frame`)
+  }
   const refusal = captureRefusal(ctx, 4, 54, "DECCOLM")
   if (refusal) return refusal
   const setup = "\x1b[?40h\x1b[?3l\x1b[?7h\x1b[2J\x1b[H"

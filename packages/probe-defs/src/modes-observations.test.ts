@@ -997,11 +997,12 @@ test.each([null, 0] as const)("App DECCOLM reads controlled width frames after D
       assertions: (result.assertions ?? []).map((a) => ({ featureId: definition.id, ...a })),
     })
     if (mutation === "wrap-noop") expect(["probe-invalid", "probe-todo"]).toContain(recorded.status)
-    else
+    else {
       expect(
         recorded.status,
         JSON.stringify({ mutation, reason: recorded.reason, tests: result.tests, notTested: result.notTested }),
       ).toBe(mutation ? "unsupported" : "supported")
+    }
     if (ps === 0 && !mutation) expect(result.note).toContain("Ps 0")
   }
   const missing = await definition.term(replayTermProbeSource(stored))
