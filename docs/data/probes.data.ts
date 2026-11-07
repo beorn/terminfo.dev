@@ -13,7 +13,12 @@ import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "@terminfo/catalog"
 import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
-import { publicResults, type PublicProjection, type PublicCurrentResult, type PublicVersion } from "./public-results.ts"
+import {
+  publicResults,
+  type PublicProjection,
+  type PublicCurrentResult,
+  type PublicRunMetadata,
+} from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { siteWorkingHistory, type WorkingView } from "./working-runs.ts"
 import type { ProbeStatus, FeatureResultStatus } from "@terminfo/probe-defs"
@@ -175,7 +180,7 @@ function loadBackendMeta(): Record<string, BackendMeta> {
  */
 export type ClientProbeData = Omit<ProbeData, "selected"> & {
   workingHistory?: WorkingView[]
-  workingOriginals?: Record<string, Array<Omit<PublicVersion, "results"> & { states: Record<string, ProbeStatus> }>>
+  workingOriginals?: Record<string, Array<PublicRunMetadata & { states: Record<string, ProbeStatus> }>>
 }
 
 declare const data: ClientProbeData
