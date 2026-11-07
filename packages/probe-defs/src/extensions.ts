@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
 import type {
   ProbeDefinition,
@@ -5322,13 +5323,49 @@ const extensionDefinitions: ProbeDefinition[] = [
         const read = collectorRegionRead(ctx)
         if (!read) throw new Error("extensions.sixel: a pixel arm reached the region oracle without an owned capture")
         try {
-          const decided = await captureRegionReadbackDecision(
+          let decided = await captureRegionReadbackDecision(
             ctx,
             "extensions.sixel",
             { ...sixelReadback(geometry), pixelGeometry: geometry, geometrySource: reported.source },
             read,
           )
-          if (decided) return decided
+          const digest = (plane: string) => {
+            const frame = decided?.observation?.frames?.find((frame) => frame.label === `extensions.sixel: ${plane}`)
+            return frame === undefined ? undefined : frameDigests(frame).cells
+          }
+          const seed = digest("pre-edit seed")
+          // Retry only this run's witnessed collapsed truecolor reference, never a third frame or failed capture.
+          if (
+            decided?.observation?.outcome === "inconclusive" &&
+            !decided.tests?.some((test) => test.status === "probe-invalid") &&
+            seed &&
+            seed === digest("expected frame")
+          ) {
+            decided = await captureRegionReadbackDecision(
+              ctx,
+              "extensions.sixel",
+              {
+                ...sixelReadback(geometry, "\x1b[48;5;196m"),
+                pixelGeometry: geometry,
+                geometrySource: reported.source,
+              },
+              read,
+            )
+          }
+          if (decided) {
+            const after = digest("post-sequence target")
+            if (
+              decided.observation?.outcome === "unsupported" &&
+              after !== undefined &&
+              after === digest("ignored-attribute frame")
+            ) {
+              const note =
+                "the post-sequence frame equals the sixel's own bytes written as plain text, so this terminal drew no image and passed none on"
+              decided.note = note
+              decided.observation.note = note
+            }
+            return decided
+          }
           const note =
             "extensions.sixel: the region oracle answered nothing for this arm, so the rendering was not compared"
           return {

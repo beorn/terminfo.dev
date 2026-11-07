@@ -76,11 +76,11 @@ export function sixelPayload(size: SixelTileSize): string {
 }
 
 /** The same block painted plainly: three rows of spaces on the exact truecolor background. */
-function sgrBlock(): string {
+function sgrBlock(background: string): string {
   const row = " ".repeat(BLOCK_COLS)
   return Array.from(
     { length: BLOCK_ROWS },
-    (_, index) => `\x1b[${BLOCK_TOP + index};${BLOCK_LEFT}H${SGR_RED}${row}\x1b[0m`,
+    (_, index) => `\x1b[${BLOCK_TOP + index};${BLOCK_LEFT}H${background}${row}\x1b[0m`,
   ).join("")
 }
 
@@ -89,7 +89,7 @@ function park(): string {
 }
 
 /** The row's readback: blank seed, sixel edit, SGR-background expected frame, interior-cell region. */
-export function sixelReadback(geometry: PixelGeometry): Omit<RegionReadback, "pixelGeometry"> {
+export function sixelReadback(geometry: PixelGeometry, background = SGR_RED): Omit<RegionReadback, "pixelGeometry"> {
   const payload = sixelPayload(sixelTileSize(geometry))
   return {
     region: { ...SIXEL_REGION },
@@ -97,7 +97,8 @@ export function sixelReadback(geometry: PixelGeometry): Omit<RegionReadback, "pi
     cursorRow: SIXEL_CURSOR_ROW,
     seed: `${CLEAR}${park()}`,
     edit: `${CLEAR}\x1b[${BLOCK_TOP};${BLOCK_LEFT}H${payload}${park()}`,
-    expected: `${CLEAR}${sgrBlock()}${park()}`,
+    expected: `${CLEAR}${sgrBlock(background)}${park()}`,
+    ignored: `${CLEAR}\x1b[${BLOCK_TOP};${BLOCK_LEFT}H${payload.slice(2, -2)}${park()}`,
     timeoutMs: 8000,
     pollMs: 250,
     minRows: SIXEL_BOUNDS.minRows,
