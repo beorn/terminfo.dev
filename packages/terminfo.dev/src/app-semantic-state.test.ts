@@ -9,6 +9,7 @@ import { afterEach, expect, test, vi } from "vitest"
 import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import nativeScreen from "./fixtures/screen-sgr-backspace.json"
 import {
   appSemanticDeclarations,
   beginMuxSgrCommandRead,
@@ -84,6 +85,16 @@ const nativeMuxTrace = readFileSync(new URL("./fixtures/kitty-mux-sgr.trace.json
 
 test.each([
   ["forwarded", nativeMuxCommands, true, undefined],
+  // Screen 5.0.2 clears then backspaces before the exact retained nonce witness.
+  [
+    "Screen backspace before witness",
+    nativeScreen.commands,
+    false,
+    undefined,
+    "sgr.hidden",
+    nativeScreen.callLog,
+    "screen",
+  ],
   [
     "buffered previous callback",
     nativeMuxCommands
@@ -119,7 +130,15 @@ test.each([
   ["unfinished", nativeMuxCommands.slice(0, nativeMuxCommands.lastIndexOf("draw 3\n")), undefined, /completion/],
 ] as const)(
   "mux command read: %s",
-  async (_name, commands, forwarded, refusal, featureId: string = "sgr.underline.curly") => {
+  async (
+    _name,
+    commands,
+    forwarded,
+    refusal,
+    featureId: string = "sgr.underline.curly",
+    trace: string = nativeMuxTrace,
+    mux: "tmux" | "screen" = "tmux",
+  ) => {
     const directory = mkdtempSync(join(tmpdir(), "terminfo-mux-sgr-"))
     const capture = join(directory, "artifacts")
     const path = join(directory, "daemon.log")
@@ -129,16 +148,22 @@ test.each([
       writeFileSync(path, nativeMuxCommands)
       const runId = "a".repeat(32)
       vi.stubEnv("TERMINFO_RUN_ID", runId)
-      vi.stubEnv("TERMINFO_MUX_KIND", "tmux")
+      vi.stubEnv("TERMINFO_MUX_KIND", mux)
       vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
       vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
       vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
       const reader = beginMuxSgrCommandRead({
         featureId,
-        subject: { kind: "mux", id: "tmux", version: "3.8", os: "linux", outerTerminal: "kitty" },
+        subject: {
+          kind: "mux",
+          id: mux,
+          version: mux === "tmux" ? "3.8" : "5.0.2",
+          os: "linux",
+          outerTerminal: "kitty",
+        },
         proof: {
           platform: "linux",
-          mux: "tmux",
+          mux,
           launchRunId: runId,
           collector: { pid: process.pid, startTicks: "1", ttyRdev: 1 },
         },
@@ -146,13 +171,14 @@ test.each([
       expect(reader.status).toBe("ready")
       if (reader.status !== "ready") throw new Error(reader.reason)
       appendFileSync(path, commands)
-      const target = featureId === "sgr.bold" ? "1" : featureId === "sgr.overline" ? "53" : "4:3"
-      const result = await reader.read(nativeMuxTrace.replaceAll("[4:3m", `[${target}m`))
+      const target =
+        featureId === "sgr.bold" ? "1" : featureId === "sgr.overline" ? "53" : featureId === "sgr.hidden" ? "8" : "4:3"
+      const result = await reader.read(trace.replaceAll("[4:3m", `[${target}m`))
       if (refusal) {
         expect(result.status).toBe("unavailable")
         if (result.status === "unavailable") expect(result.reason).toMatch(refusal)
       } else {
-        expect(result).toMatchObject({ status: "measured", targetSent: forwarded, target: "4:3" })
+        expect(result).toMatchObject({ status: "measured", targetSent: forwarded, target })
       }
       expect(result.detail.offset).toBe(Buffer.byteLength(nativeMuxCommands))
     } finally {

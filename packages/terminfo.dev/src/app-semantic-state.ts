@@ -378,6 +378,8 @@ function muxSgrCommandPhases(text: string, nonce: string) {
     } else if (line.startsWith("screen_cursor_")) {
       row = undefined
       column = undefined
+    } else if (line === "screen_backspace") {
+      column = column !== undefined && column > 1 ? column - 1 : undefined
     } else if (line === "screen_carriage_return") {
       column = 1
     } else if (line === "screen_linefeed") {
