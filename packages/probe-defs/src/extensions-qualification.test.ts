@@ -1630,6 +1630,16 @@ test.each([
   expect(definition.termWrites).toBeUndefined()
   expect(definition.termNeedsDisposable).toBe(true)
   const honest = highlightTerminal(setCode, resetCode, "1111/2222/3333")
+  honest.ctx.input = {
+    async injectKey() {},
+    async injectClick() {},
+    async injectDrag() {
+      throw new Error("a replying colour query must not inject selection")
+    },
+  }
+  honest.ctx.capture = async () => {
+    throw new Error("a replying colour query must not capture pixels")
+  }
   const supported = await definition.term!(honest.ctx)
   expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   // The initial colour is asked for first, and the run leaves the slot as it found it.
@@ -2101,10 +2111,13 @@ function highlightSelectionTerminal(setCode: number, resetCode: number, ignoresR
 // CTO Ask1: a silent colour query does not hide a selectable App's measured set/reset effect.
 // Existing highlight tests only model query replies; disabling just reset must lose support here.
 test.each([
-  ["extensions.osc117-reset-highlight-bg", 17, 117],
-  ["extensions.osc119-reset-highlight-fg", 19, 119],
-] as const)("%s highlight reset pixels decide against their own changed setup", async (id, setCode, resetCode) => {
-  for (const ignoresReset of [false, true]) {
+  ["extensions.osc117-reset-highlight-bg", 17, 117, false],
+  ["extensions.osc117-reset-highlight-bg", 17, 117, true],
+  ["extensions.osc119-reset-highlight-fg", 19, 119, false],
+  ["extensions.osc119-reset-highlight-fg", 19, 119, true],
+] as const)(
+  "%s (%i/%i) highlight reset pixels decide against their own changed setup (ignored=%s)",
+  async (id, setCode, resetCode, ignoresReset) => {
     const fixture = highlightSelectionTerminal(setCode, resetCode, ignoresReset)
     const result = await callback(id).term!(fixture.ctx)
     expect(result.observation).toMatchObject({
@@ -2114,5 +2127,5 @@ test.each([
     expect(result.assertions?.[0]?.kind).toBe(ignoresReset ? "negative" : "positive")
     expect(fixture.writes).toContain(`\x1b]${resetCode}\x07`)
     expect(fixture.selected()).toBe(false)
-  }
-})
+  },
+)
