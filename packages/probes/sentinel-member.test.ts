@@ -700,10 +700,23 @@ test("G1: a silent proven engine publishes the sentinel negative once the grace 
   vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
   // collectBatch names each probe on stderr, and the root test setup refuses a test's output.
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+  const definition = definitionOf("device.xtversion")
+  const lib = definition.lib!
+  // Explanation wording must not decide whether the collector establishes fresh CPR controls (#32629).
+  const explanation = "Control answered; the query remained silent through the measured window"
   const batch = await collectBatch(
     async () => fixture.create((text) => (text === DA1_QUERY ? DA1 : "")),
     "xtermjs",
-    [definitionOf("device.xtversion")],
+    [
+      {
+        ...definition,
+        lib: (ctx) => {
+          const result = lib(ctx)
+          if (!result.observation) throw new Error("The real XTVERSION arm did not retain an observation")
+          return { ...result, observation: { ...result.observation, note: explanation } }
+        },
+      },
+    ],
     undefined,
     undefined,
     fixture.runtime,
@@ -713,7 +726,7 @@ test("G1: a silent proven engine publishes the sentinel negative once the grace 
       featureId: "device.xtversion",
       outcome: "unsupported",
       assertionType: "query_reply",
-      note: "negative by sentinel",
+      note: explanation,
       rawReplyRef: "device.xtversion",
     },
   ])

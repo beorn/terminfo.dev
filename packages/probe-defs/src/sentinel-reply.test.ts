@@ -83,5 +83,12 @@ test.each([
   { name: "no DA1 answer in the read", raw: "", facts: FACTS, note: null },
   { name: "no measured sentinel facts", raw: DA1, facts: undefined, note: null },
 ])("sentinel negative: $name", ({ raw, facts, note }) => {
-  expect(sentinelNegativeResult(raw, facts, "complete reply")?.observation?.note ?? null).toBe(note)
+  const result = sentinelNegativeResult(raw, facts, "complete reply")
+  // The reason must tell readers what was measured, rather than only name a bucket (#32629).
+  if (note === null) {
+    expect(result).toBeNull()
+  } else {
+    expect(result?.observation?.note).toContain("DA1 answered at +9ms")
+    expect(result?.observation?.note).toContain("no reply through the 250 ms window")
+  }
 })
