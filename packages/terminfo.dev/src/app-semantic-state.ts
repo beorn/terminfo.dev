@@ -250,6 +250,15 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): xterm 411 has no OSC 3008 context handler or public context readback. Read misc.c do_osc and its default at 4353-4358 in xterm-411.tgz (SHA256 969be283); the target stores no context tag and returns no response. The conditional rejection trace names no command, so it supplies no target report.",
   },
+  {
+    kind: "term",
+    id: "kitty",
+    version: "0.49.2",
+    os: "linux",
+    featureId: "extensions.osc3008-context",
+    reason:
+      "Untestable (no way): Kitty 0.49.2 recognizes OSC 3008 but its context callback stores no state and exposes no readback. Read tag v0.49.2 kitty/vt-parser.c:645-677, kitty/screen.c:3523-3524 and kitty/window.py:1582-1583: dispatch reaches the empty Window.osc_context callback. Generic OSC consumption tracing is not a command-specific rejection or context reading.",
+  },
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */

@@ -45,7 +45,10 @@ The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 411
 with their exact parser citations and missing public property readback. They declare the
 unresolved observation unavailable; they supply no command report or measured negative.
 The same exact versions additionally declare OSC176/440 observation gaps, and Screen/xterm
-declare OSC3008 gaps. Ghostty's recognized OSC3008 parser is outside this declaration group.
+declare OSC3008 gaps. Kitty 0.49.2 on Linux additionally declares OSC3008's context gap:
+its recognized command reaches an empty callback, with no stored context or public readback.
+Generic OSC consumption tracing supplies no deciding observation. Ghostty's recognized OSC3008
+parser and named optional debug diagnostic remain outside this declaration group.
 
 For library results, a feature is the library's job unless the app-job table in [extensions.ts](src/extensions.ts) assigns it to the app. A real state reading or typed notification store can establish Supported. A generic handoff of an app-job command is Untestable (passed to the app), even when its payload is intact. Libvterm and vt100-rust qualify their report in this cell's run: a made-up OSC and the target are reported, while a handled title command applies without a report. Xterm.js and vterm.js generic taps require their declared engine identity; a different engine identity remains Open. Missing report controls also remain Open. Library-job negatives keep `unhandledSequenceVerdict`; these are Unsupported when the library reports the target with its same-run controls.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but

@@ -153,7 +153,8 @@ it.each([
 it.each([
   { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 3, feature: "extensions.osc133-b" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc133-b" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc3008-context" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 4, feature: "extensions.osc133-d" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc666-termprop" },
