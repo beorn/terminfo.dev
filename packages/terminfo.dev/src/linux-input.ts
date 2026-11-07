@@ -1,6 +1,6 @@
 import type { InputFixture } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
-import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
+import { kittyAncestor, windowPixels, type LiveExecutable } from "./linux-capture.ts"
 
 export type LinuxInputAdapter = InputFixture
 
@@ -64,20 +64,27 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
     }
   }
 
-  async function preparePointer(): Promise<void> {
+  async function preparePointer(position = { x: 400, y: 300 }): Promise<void> {
     await focusOwnedWindow()
-    await command("xdotool", ["mousemove", "--window", ownedWindowId, "400", "300"])
+    await command("xdotool", ["mousemove", "--window", ownedWindowId, String(position.x), String(position.y)])
   }
 
   return {
     focusRoundTrip,
+    async resizeWindow(width: number, height: number) {
+      const original = windowPixels(
+        (await command("xdotool", ["getwindowgeometry", "--shell", ownedWindowId])).toString(),
+      )
+      await command("xdotool", ["windowsize", ownedWindowId, String(width), String(height)])
+      return original
+    },
     async injectKey(keys: string) {
       if (keys.length === 0) throw new Error("XTEST key injection requires a nonempty keysym")
       await focusOwnedWindow()
       await command("xdotool", ["key", "--window", "0", "--clearmodifiers", keys])
     },
-    async injectClick(button: 1 | 4 | 5) {
-      await preparePointer()
+    async injectClick(button: 1 | 4 | 5, position?: { x: number; y: number }) {
+      await preparePointer(position)
       await command("xdotool", ["click", "--window", "0", "--clearmodifiers", String(button)])
     },
     async injectMove(x: number, y: number) {

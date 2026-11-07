@@ -55,7 +55,8 @@ case "$1" in
       done
     fi
     ;;
-  key|click|mousedown|mouseup) ;;
+  getwindowgeometry) printf 'WIDTH=800\\nHEIGHT=600\\n' ;;
+  key|click|mousedown|mouseup|windowsize) ;;
   *) exit 18 ;;
 esac`,
   )
@@ -84,6 +85,22 @@ function liveExecutable(sha256?: string) {
 function argvLines(log: string): string[] {
   return readFileSync(log, "utf8").trim().split("\n").filter(Boolean)
 }
+
+// The owned transport must retain the caller's sensitive pixel position and
+// return original dimensions so the probe can restore its disposable window.
+test.runIf(process.platform === "linux")(
+  "owned resize returns old pixels and click preserves the requested position",
+  async () => {
+    const { log } = fixture()
+    const input = await createLinuxInput(liveExecutable())
+    if (!input.resizeWindow) throw new Error("Missing owned resize fixture")
+    expect(await input.resizeWindow(1400, 600)).toEqual({ width: 800, height: 600 })
+    await input.injectClick(1, { x: 1300, y: 120 })
+    expect(argvLines(log)).toContain("windowsize 42 1400 600")
+    expect(argvLines(log)).toContain("mousemove --window 42 1300 120")
+    expect(argvLines(log).some((line) => line.includes("--sync"))).toBe(false)
+  },
+)
 
 afterEach(() => {
   for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true })

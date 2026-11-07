@@ -520,10 +520,82 @@ function captureSource(
   return source
 }
 
-const modes = [
-  { id: "modes.utf8-mouse-1005", number: 1005 },
-  { id: "modes.deccolm", number: 3 },
-] as const
+// Raw 0x85 must not be confused with a replacement character after UTF-8 decoding.
+// The reply-only mode suite cannot witness same-position clicks or restoration.
+test("App UTF8 mouse uses sensitive raw coordinates, reset controls and restored size", { timeout: 15_000 }, async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.utf8-mouse-1005")!
+  for (const mutation of [
+    "working",
+    "legacy",
+    "utf8-both",
+    "wrong-position",
+    "reset-report",
+    "restore-failed",
+    "missing-key",
+    "unchanged",
+    "missing-size",
+  ] as const) {
+    const modes = new Set<number>()
+    let cols = 61
+    let pending = Buffer.alloc(0)
+    let finish: (() => void) | undefined
+    const source = replayTermProbeSource(new Map(), {
+      write: (bytes) => {
+        for (const match of bytes.matchAll(/\x1b\[\?(\d+)([hl])/g)) {
+          if (match[2] === "h") modes.add(Number(match[1]))
+          else modes.delete(Number(match[1]))
+        }
+      },
+      query: async (_sequence, pattern) => mutation === "missing-size" && cols === 107 ? null : pattern.exec(`\x1b[8;24;${cols}t`),
+      queryOutcome: async (_sequence, pattern) => {
+        pending = Buffer.alloc(0)
+        await new Promise<void>((resolve) => {
+          finish = resolve
+        })
+        const raw = pending.toString()
+        return { raw, rawBase64: pending.toString("base64"), match: pattern.exec(raw), reason: "reply" }
+      },
+      input: {
+        resizeWindow: async (width: number, _height: number) => {
+          cols = mutation === "unchanged" || (width === 800 && mutation !== "restore-failed") ? 61 : 107
+          return { width: 800, height: 600 }
+        },
+        injectClick: async () => {
+          if (!modes.has(1000) && mutation !== "reset-report") return
+          if (modes.has(1006)) {
+            pending = Buffer.from(`\x1b[<0;${mutation === "wrong-position" ? 50 : 101};10M\x1b[<0;101;10m`)
+          } else {
+            const utf8 = mutation === "utf8-both" || (modes.has(1005) && mutation !== "legacy")
+            const coordinate = utf8 ? [0xc2, 0x85] : [0x85]
+            pending = Buffer.from([27, 91, 77, 32, ...coordinate, 42, 27, 91, 77, 35, ...coordinate, 42])
+          }
+        },
+        injectKey: async () => {
+          if (mutation !== "missing-key") pending = Buffer.concat([pending, Buffer.from("a")])
+          finish?.()
+        },
+      },
+    })
+    const result = await definition.term!(source)
+    if (mutation === "working" || mutation === "legacy") {
+      expect(result.observation?.outcome, mutation).toBe(mutation === "working" ? "supported" : "unsupported")
+    } else {
+      expect(result.tests, mutation).toEqual(
+        expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]),
+      )
+    }
+    expect(modes.has(1000)).toBe(false)
+    expect(modes.has(1005)).toBe(false)
+    expect(modes.has(1006)).toBe(false)
+    expect(cols, mutation).toBe(mutation === "restore-failed" ? 107 : 61)
+    if (mutation === "unchanged") {
+      expect(result.note).toContain("this window is 61 columns wide, so no click here can separate them")
+    }
+  }
+  expect(definition.termNeedsDisposable).toBe(true)
+})
+
+const modes = [{ id: "modes.deccolm", number: 3 }] as const
 
 // These four claims require settable protocol state, not the old recognition-only Ps 2.
 // Existing query-only cases never checked the snapshot, DECSET result or restoration.

@@ -1011,7 +1011,9 @@ export interface InputFixture {
   injectKey(keys: string): Promise<void>
   /** Move focus to the display root and back, verifying both owned X focus reads. */
   focusRoundTrip?(): Promise<void>
-  injectClick(button: 1 | 4 | 5): Promise<void>
+  injectClick(button: 1 | 4 | 5, position?: { x: number; y: number }): Promise<void>
+  /** Resize the owned disposable window, returning its previous pixel size. */
+  resizeWindow?(width: number, height: number): Promise<{ width: number; height: number }>
   /** Buttonless motion in owned-window pixels; absent adapters stay click-only. */
   injectMove?(x: number, y: number): Promise<void>
   /** Button-event (1002) motion. Absent adapters stay click-only. */

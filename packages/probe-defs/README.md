@@ -276,6 +276,13 @@ and DECRST1004, reading through a plain key in each arm. Ordered focus-out/in on
 while set is Supported; key-only reads in both arms are Unsupported. A wrong read,
 missing key or focus report while reset is PROBE INVALID. DECRPM is retained as detail;
 the library callback is unchanged.
+App UTF8 mouse uses the optional owned-window resize and positioned-click fixture.
+CSI18t polling runs every100ms under one absolute2s deadline for resize and restoration.
+An SGR click beyond column95 and a plain key control the same-position raw-byte
+comparison with1006 reset: UTF8/legacy is Supported, legacy/legacy is Unsupported,
+and every other pair or failed control is PROBE INVALID. Tracking reset must leave
+only the key; failed size restoration is invalid. The row requires a disposable
+terminal. DECRPM is detail and the library callback is unchanged.
 Library `cell.hidden: null` means conceal is not reported; missing cell observables retain their named PROBE TODO cause without deciding terminal support.
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO
