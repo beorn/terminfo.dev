@@ -104,7 +104,7 @@ function row(
  * `residual` is the SGR the expected frame paints on YY: the attribute set the row says the reset
  * preserves. Empty means the row's claim is "back to the terminal default".
  */
-const SAVED_SGR0_CAPTURE: Omit<RegionReadback, "pixelGeometry"> = {
+const SAVED_SGR0_CAPTURE = {
   region: { ...REGION },
   sentinel: { ...SENTINEL },
   cursorRow: CURSOR_ROW,
@@ -126,14 +126,14 @@ const SAVED_SGR0_CAPTURE: Omit<RegionReadback, "pixelGeometry"> = {
   minCols: REGION.right,
   // Query fallback and text captures must never reach a circular RIS reference.
   noIndependentReference: NO_INDEPENDENT_REFERENCE,
-}
+} satisfies Omit<RegionReadback, "pixelGeometry">
 
 export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
   "reset.sgr": SAVED_SGR0_CAPTURE,
   "sgr.reset": {
     ...SAVED_SGR0_CAPTURE,
     savedRendition: {
-      ...SAVED_SGR0_CAPTURE.savedRendition!,
+      ...SAVED_SGR0_CAPTURE.savedRendition,
       signal: "criterion",
       branch: "sgr-reset-saved-rendition",
     },

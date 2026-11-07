@@ -322,8 +322,8 @@ export function sgrTermReadback(
       (region?.savedRendition?.branch === "sgr-reset-saved-rendition" ||
         region?.savedRendition?.branch === "sgr-selective-reset-saved-rendition")
     let referenceFailure: ProbeCallbackResult | undefined
-    if (referenceFirst) {
-      const captured = await captureRegionCallbackResult(ctx, id, region!)
+    if (referenceFirst && region) {
+      const captured = await captureRegionCallbackResult(ctx, id, region)
       if (captured && captured.criterionBranch !== "saved-rendition-unqualified") return captured
       referenceFailure = captured ?? undefined
     }
