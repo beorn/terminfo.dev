@@ -49,8 +49,7 @@ const COLOUR_IDS = [
   "sgr.bg.truecolor",
 ] as const
 
-/** Rows that must stay inconclusive BY NAME: one frame cannot separate a blink phase, and the two
- * reset rows have no reference independent of the reset under test. */
+/** Colour-only captures cannot qualify a blink period or an independent reset-rendition crop. */
 const REVIEW_IDS = ["sgr.blink", "sgr.reset", "sgr.selective-reset.bold"] as const
 
 interface Palette {
@@ -726,8 +725,14 @@ for (const { ids, mode, cause } of QUANTISATION) {
 }
 
 for (const id of REVIEW_IDS) {
-  test(`${id} stays inconclusive by name, never graded from colour pixels`, async () => {
+  test(`${id} is never graded from the colour-only fixture`, async () => {
     const { ctx } = colourTerminal("render", PALETTES[0] as Palette)
+    if (id !== "sgr.blink") {
+      // These rows now own an independent rendition reference. This colour fixture supplies
+      // whole-window metadata, not the requested reset crop, so the collector must fail loudly.
+      await expect(run(id, ctx)).rejects.toThrow(/requires actual pixel.*matching cell-sized crop metadata/)
+      return
+    }
     const result = await run(id, ctx)
     if (id === "sgr.blink") {
       // Steady colour pixels are four equal blink samples (#31812): inconclusive, never a colour grade.
