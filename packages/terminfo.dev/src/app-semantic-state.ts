@@ -504,8 +504,16 @@ export async function readAppSemanticState(input: {
     if (!tmux || !pane) throw new Error("App state reader has no bound tmux command")
     const command = tmux
     const targetPane = pane
-    const format = () =>
-      command("display-message", "-p", "-t", targetPane, "#{pane_command_status}\t#{pane_path}").trimEnd().split("\t")
+    const format = () => {
+      const fields = command("display-message", "-p", "-t", targetPane, "#{pane_command_status}\t#{pane_path}")
+        .replace(/\n$/, "")
+        .split("\t")
+      const [status, cwd] = fields
+      if (fields.length !== 2 || status === undefined || cwd === undefined) {
+        throw new Error(`tmux state field count: expected 2, received ${fields.length}`)
+      }
+      return [status, cwd] as const
+    }
     let serial = 0
     const sample = async (number: number, feed: string) => {
       const marker = `Q-${nonce}-${serial++}`
@@ -551,11 +559,14 @@ export async function readAppSemanticState(input: {
     const unknown = await sample(1, osc("133;Z"))
     const unknownReading = { before: JSON.stringify(initial), after: JSON.stringify(unknown) }
     if (row.reader === "cwd") {
-      if (!initial.cwd || /[\x00-\x1f\x7f]/.test(initial.cwd)) throw new Error("tmux pane_path cannot be restored")
-      const controlPath = `/terminfo-control-${nonce}`
+      if (/[\x00-\x1f\x7f]/.test(initial.cwd)) throw new Error("tmux pane_path cannot be restored")
+      if (!initial.cwd) {
+        detail.phases.push({ note: "tmux's pane_path cannot tell an unset path from an empty one" })
+      }
+      const controlPath = `file://localhost/terminfo-control-${nonce}`
       const targetPath = `/terminfo-target-${nonce}`
       try {
-        const handled = await sample(2, osc(`7;file://localhost${controlPath}`))
+        const handled = await sample(2, osc(`7;${controlPath}`))
         const target = await sample(3, osc(`633;P;Cwd=${targetPath}`))
         return {
           status: "measured",
@@ -567,7 +578,12 @@ export async function readAppSemanticState(input: {
           detail,
         }
       } finally {
-        input.write(osc(`7;file://localhost${initial.cwd}`))
+        input.write(osc(`7;${initial.cwd}`))
+        await until(
+          () => format()[1],
+          (value) => value === initial.cwd,
+          "tmux pane_path restoration",
+        )
       }
     }
     if (row.reader === "cycle") {
