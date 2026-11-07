@@ -2021,6 +2021,7 @@ test.each([
   ["modes.altscreen-1047", "1047-no-clear", "pixels", "unsupported"],
   ["modes.altscreen-1047", "1047-entry-masks", "pixels", "unsupported"],
   ["modes.altscreen-1047", "47-clears", "pixels", "untestable"],
+  ["modes.altscreen-1047", "retention-stale", "pixels", "probe-todo"],
   ["modes.altscreen-1047", "working", "text-cells", "supported"],
 ] as const)("%s measures coupled re-entry witnesses with %s on %s as %s", async (id, fault, kind, expected) => {
   const definition = modesProbes.find((item) => item.id === id)
@@ -2029,6 +2030,7 @@ test.each([
   const rows = 24
   const surface = createSemanticSurface({ cols, rows })
   const writes: string[] = []
+  const captureLabels: string[] = []
   let sequence = 0
   const plane = (cells: CaptureCells) => {
     const chars: string[] = []
@@ -2057,13 +2059,14 @@ test.each([
     },
     capture: async ({ role, label, cells, pixelGeometry }) => {
       if (!cells || !pixelGeometry) throw new Error("Alternate-buffer fixture requires its measured crop")
+      captureLabels.push(label)
       return {
         kind: "pixels",
         role,
         label,
         capturedAt: ++sequence,
         ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
-        regionDigest: plane(cells),
+        regionDigest: fault === "retention-stale" && label.includes(" retention") ? "stale" : plane(cells),
         pixelsDigest: plane({ top: 1, left: 1, bottom: rows, right: cols }),
         regionRectangle: {
           x: (cells.left - 1) * pixelGeometry.cellWidth,
@@ -2092,7 +2095,17 @@ test.each([
     source.capture = undefined
     source.captureGeometry = undefined
   }
-  const result = await definition.term(source)
+  let result: ProbeCallbackResult
+  if (fault === "retention-stale") {
+    vi.useFakeTimers()
+    try {
+      const pending = definition.term(source)
+      await vi.runAllTimersAsync()
+      result = await pending
+    } finally {
+      vi.useRealTimers()
+    }
+  } else result = await definition.term(source)
   const recorded = recordExecutedProbe({
     featureId: id,
     attempt: { scope: "probe", startedAt: new Date().toISOString() },
@@ -2103,6 +2116,10 @@ test.each([
     assertions: (result.assertions ?? []).map((assertion) => ({ featureId: id, ...assertion })),
   })
   expect(recorded.status).toBe(expected)
+  if (fault === "retention-stale") {
+    expect(recorded.reason).toMatch(/witness/)
+    expect(captureLabels.some((label) => label.includes("clear-on-exit"))).toBe(false)
+  }
   expect(surface.getMode("altScreen")).toBe(false)
   expect(writes.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
 })
