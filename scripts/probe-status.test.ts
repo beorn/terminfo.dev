@@ -70,9 +70,8 @@ describe("probeStatusOf", () => {
   })
 
   it("reads undeclared, never automated, for a row the definitions cannot settle", () => {
-    // extensions.truecolor stopped being this example: it now declares consumed + parser-state and
-    // decides from the shared SGR oracle. extensions.osc2-title still leaves both arms undeclared.
-    expect(probeStatusOf("extensions.osc2-title", catalog({}))).toBe("undeclared")
+    // extensions.sixel still leaves both callback arms undeclared.
+    expect(probeStatusOf("extensions.sixel", catalog({}))).toBe("undeclared")
   })
 
   it("reads unprobed for a row with no probe definition at all", () => {
@@ -86,13 +85,13 @@ describe("probeStatusSummary", () => {
       catalog({
         "sgr.bold": "", // settled by the definitions: automated
         "extensions.osc52-read": "partial", // gated: a review stands over a settled derivation
-        "extensions.osc2-title": "", // unsettled: shown as undeclared, and counted
+        "extensions.sixel": "", // unsettled: shown as undeclared, and counted
         "device.env-term": "manual", // no definition at all, reviewed by hand
         "absent.probe": "", // no definition at all, unreviewed
       }),
     )
     expect(summary.counts).toEqual({ automated: 1, partial: 1, manual: 1, unprobed: 1, undeclared: 1 })
-    expect(summary.undeclared).toEqual(["extensions.osc2-title"])
+    expect(summary.undeclared).toEqual(["extensions.sixel"])
     expect(summary.gated).toEqual(["extensions.osc52-read"])
     expect(summary.noDefinition).toEqual(["device.env-term"])
   })
