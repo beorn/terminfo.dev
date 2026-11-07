@@ -57,6 +57,15 @@ test("reader capability rows do not become declarations or lend their identity t
   expect(Object.keys(appSemanticDeclarations(kitty))).toEqual(["extensions.osc133-b", "extensions.osc3008-context"])
   expect(appSemanticDeclarations({ ...kitty, version: "unreviewed" })).toEqual({})
   expect(appSemanticDeclarations({ kind: "mux", id: "tmux", version: "3.8", os: "linux" })).toEqual({})
+  const screen = { kind: "mux" as const, id: "screen", version: "5.0.2", os: "linux" }
+  expect(appSemanticDeclarations(screen)["modes.color-scheme-reporting"]).toMatch(/Untestable \(no way\):.*2031/)
+  for (const subject of [
+    { ...screen, version: "5.0.3" },
+    { ...screen, os: "darwin" },
+    { ...screen, kind: "term" as const },
+  ]) {
+    expect(appSemanticDeclarations(subject)).not.toHaveProperty("modes.color-scheme-reporting")
+  }
 })
 
 // Existing Kitty coverage cannot detect Ghostty's silently dropped unknown OSC,

@@ -387,6 +387,15 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Ghostty 1.4.0 has no OSC 710 font-selection command or public font readback. In ghostty-derived-source-tar (SHA256 5b317a83), osc.zig:637-641 rejects the digit 1 after 7; end() at 691-695 returns no command and logs nothing; Parser.zig:270 then dispatches no OSC. That silent parser rejection is not a command-specific refusal or font reading.",
   },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.2",
+    os: "linux",
+    featureId: "modes.color-scheme-reporting",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.2 has no private-mode 2031 handler. Read the complete private SetMode dispatch in ansi.c:1071-1191 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): CSI ?2031h has no dispatch case, so this version exposes no color-scheme-reporting test path. A silent query is not an observed negative.",
+  },
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */
