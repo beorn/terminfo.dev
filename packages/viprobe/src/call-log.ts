@@ -580,7 +580,7 @@ export function withCallLog<Subject extends object>(
       if (Array.isArray(value)) {
         return {
           kind: "array",
-          values: Array.prototype.map.call(value, (item: unknown) => encode(item, seen)),
+          values: (Array.prototype.map<Encoded>).call(value, (item: unknown) => encode(item, seen)),
           entries: Object.entries(value)
             .filter(([key]) => !/^(0|[1-9][0-9]*)$/.test(key))
             .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
