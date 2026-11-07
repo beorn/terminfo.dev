@@ -481,17 +481,18 @@ it.each([
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
-it("retains erased DECAWM evidence before wrap emits fixture bytes", async () => {
+it("retains erased DECAWM evidence when wrap cursor controls cannot qualify", async () => {
   const writes: string[] = []
   const callback = await ALL_PROBES.find((entry) => entry.id === "text.wrap")!.term!({
     rows: 24,
     cols: 80,
     write: (sequence: string) => writes.push(sequence),
     queryMode: async () => null,
+    queryCursorPosition: async () => null,
   } as unknown as TermProbeSource)
-  expect(writes).toEqual([])
+  expect(writes).toEqual(["\x1b[?7l\x1b[2J\x1b[H", "W".repeat(79), "\x1b[?7h"])
   expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
-  expect(callback.response).toBe(JSON.stringify({ cols: 80, decawm: null }))
+  expect(JSON.parse(callback.response!)).toEqual({ decrpm: null, cols: 80, home: null, control: null })
   const stored = record(
     withReplyFailureEvidence("text.wrap", callback, {
       producer: "TTY",
@@ -499,7 +500,7 @@ it("retains erased DECAWM evidence before wrap emits fixture bytes", async () =>
     }),
   )
   expect(stored.status).toBe("probe-invalid")
-  expect(stored.reason).toContain("no usable DECRPM reply; the public projection returned null and retained no bytes")
+  expect(stored.reason).toContain("Auto-wrap cursor control did not measure home and ordinary text")
   expect(stored.reason).toContain('query 1: sent "\\u001b[?7$p"; received "\\u001b?"')
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
