@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
 import type {
   ProbeDefinition,
@@ -12,7 +13,6 @@ import type {
   ObservationFrame,
   UnhandledSequence,
 } from "./types.ts"
-import { frameDigests } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   HEADLESS_OBSERVABLE_REVIEW,
@@ -328,9 +328,11 @@ function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentine
 const OSC5522_DECRPM_SIBLINGS = [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031] as const
 
 /**
- * What a measured-silent OSC 5522 detector means, from its DECRPM siblings, on both arms (#32569): every sibling
- * silent leaves recognition untested (PROBE TODO); an answering sibling keeps the detector's own reading. Both
- * readings retain the detector and sibling replies.
+ * What a measured-silent OSC 5522 detector means, from its DECRPM siblings, on both arms (#32569). When every sibling
+ * is silent too, a library leaves recognition untested (PROBE TODO), and a terminal has no report to read, so it is
+ * Untestable through the one declared route, its reason built from this run's silent control query (#32582, @cto
+ * fd9e55b1). An answering sibling keeps the detector's own reading. Every reading retains the detector and sibling
+ * replies.
  */
 function osc5522AfterSiblings(
   replier: "library" | "terminal",
@@ -338,9 +340,18 @@ function osc5522AfterSiblings(
   controls: { mode: number; raw: string }[],
   allSilent: boolean,
 ): ProbeCallbackResult {
-  const response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
+  const evidence = { detection: reply.raw, decrpmSiblings: controls }
+  const response = JSON.stringify(evidence)
+  if (allSilent && replier === "terminal") {
+    const modes = controls.map(({ mode }) => mode).join(", ")
+    return declaredUntestableResult(
+      `Untestable (no way to tell): no mode query in this run got a DECRPM reply. CSI ? 5522 $ p and its control query CSI ? Pm $ p for modes ${modes} all went unanswered, so this terminal has no report to read.`,
+      evidence,
+    )
+  }
   if (allSilent) {
-    const reason = `Open: this test judges OSC 5522 by whether the ${replier} replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing.`
+    const reason =
+      "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing."
     return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
   }
   return { ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined), response }
@@ -714,25 +725,28 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
 const HIGHLIGHT_TEST_COLOURS = ["3030/6060/9090", "9090/3030/6060", "6060/9090/3030"] as const
 
 function noColorSetupResult(
-  ctx: LibProbeSource,
+  ctx: LibProbeSource | TermProbeSource,
   sequence: string,
   setCode: number,
   query: TerminalQueryOutcome | undefined,
   result: ProbeCallbackResult,
 ): ProbeCallbackResult {
+  const library = "feed" in ctx ? ctx : undefined
   const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
   const reported =
-    code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code) ? unhandledOscReportResult(ctx, sequence, result) : result
+    library && code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code)
+      ? unhandledOscReportResult(library, sequence, result)
+      : result
   if (reportsDecidedOutcome(reported) || !query || !sentinelSilenceResult(query, `OSC ${setCode} colour setup`)) {
     return reported
   }
   // A duplicate or otherwise unqualified report is still a report, not absent setup.
-  if (ctx.getUnhandledSequences) {
-    ctx.feed(sequence)
-    if (ctx.getUnhandledSequences().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
+  if (library?.getUnhandledSequences) {
+    library.feed(sequence)
+    if (library.getUnhandledSequences().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
   }
   return declaredUntestableResult(
-    `Untestable (no setup): OSC ${setCode} colour setup does not work on this library, so this command has nothing to act on.`,
+    `Untestable (no setup): OSC ${setCode} colour setup does not work on this ${library ? "library" : "app"}, so this command has nothing to act on.`,
     { query, body: reported.response },
   )
 }
@@ -775,7 +789,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     const initial = initialRead.colour
     if (!initial) {
       if (initialRead.reply.reason === "sentinel") {
-        return {
+        return noColorSetupResult(ctx, `\x1b]${resetCode}\x07`, setCode, initialRead.reply, {
           pass: false,
           response: JSON.stringify({ query: querySeq, initialSentinel: initialRead.reply }),
           tests: [
@@ -785,7 +799,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
               reason: `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`,
             },
           ],
-        }
+        })
       }
       return inconclusive(
         `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
@@ -1399,18 +1413,21 @@ async function colorResetAppProbe(
     const outcome = await ctx.queryWithSentinelOutcome(query, reply)
     return { outcome, rgb: outcome.match?.[1] ?? null }
   }
+  const reset = `\x1b]${spec.resetCode}${spec.index === undefined ? "" : `;${spec.index}`}\x07`
   const before = await read()
   if (!before.rgb) {
     if (before.outcome.reason === "sentinel") {
-      return notTestedResult(
+      const result = notTestedResult(
         `Open: the colour query (OSC ${spec.setCode}) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen`,
         { query, initialReadback: before.outcome },
       )
+      return spec.setCode === 13 || spec.setCode === 14
+        ? noColorSetupResult(ctx, reset, spec.setCode, before.outcome, result)
+        : result
     }
     return oscReplyResult(before.outcome.raw, null, `Complete OSC ${spec.setCode} color reply`, before.outcome.sentinel)
   }
   const requested = probeForeground(before.rgb)
-  const reset = `\x1b]${spec.resetCode}${spec.index === undefined ? "" : `;${spec.index}`}\x07`
   ctx.write(`\x1b]${spec.setCode};${indexPart}${requested}\x07`)
   const changed = await read()
   ctx.write(reset)
@@ -3310,11 +3327,27 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         const imageNumber = newNumber()
         let imageId: number | null = null
         try {
-          const uploaded = allocationOutcomeResult(
-            await ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber)),
-            imageNumber,
+          const transfer = await ctx.queryWithSentinelOutcome(
+            imageTransferRequest(imageNumber),
+            allocationReply(imageNumber),
           )
+          const uploaded = allocationOutcomeResult(transfer, imageNumber)
           imageId = uploaded.imageId
+          if (uploaded.silent) {
+            // App-only: both owned windows must be controlled silence; a query reply leaves transfer open.
+            const query = await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)
+            const transferNegative = sentinelSilenceResult(transfer, "The RGB image transfer is acknowledged")
+            const queryNegative = sentinelSilenceResult(query, "The canonical RGB graphics query is acknowledged")
+            if (transferNegative?.observation && queryNegative?.observation) {
+              if (display) return kittyDisplayWithoutTransmit(null, imageNumber)
+              return {
+                pass: false,
+                observation: queryNegative.observation,
+                response: JSON.stringify({ transfer, query }),
+                assertions: [...(transferNegative.assertions ?? []), ...(queryNegative.assertions ?? [])],
+              }
+            }
+          }
           if (uploaded.refusal && display) {
             return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
           }
@@ -5296,13 +5329,49 @@ const extensionDefinitions: ProbeDefinition[] = [
         const read = collectorRegionRead(ctx)
         if (!read) throw new Error("extensions.sixel: a pixel arm reached the region oracle without an owned capture")
         try {
-          const decided = await captureRegionReadbackDecision(
+          let decided = await captureRegionReadbackDecision(
             ctx,
             "extensions.sixel",
             { ...sixelReadback(geometry), pixelGeometry: geometry, geometrySource: reported.source },
             read,
           )
-          if (decided) return decided
+          const digest = (plane: string) => {
+            const frame = decided?.observation?.frames?.find((frame) => frame.label === `extensions.sixel: ${plane}`)
+            return frame === undefined ? undefined : frameDigests(frame).cells
+          }
+          const seed = digest("pre-edit seed")
+          // Retry only this run's witnessed collapsed truecolor reference, never a third frame or failed capture.
+          if (
+            decided?.observation?.outcome === "inconclusive" &&
+            !decided.tests?.some((test) => test.status === "probe-invalid") &&
+            seed &&
+            seed === digest("expected frame")
+          ) {
+            decided = await captureRegionReadbackDecision(
+              ctx,
+              "extensions.sixel",
+              {
+                ...sixelReadback(geometry, "\x1b[48;5;196m"),
+                pixelGeometry: geometry,
+                geometrySource: reported.source,
+              },
+              read,
+            )
+          }
+          if (decided) {
+            const after = digest("post-sequence target")
+            if (
+              decided.observation?.outcome === "unsupported" &&
+              after !== undefined &&
+              after === digest("ignored-attribute frame")
+            ) {
+              const note =
+                "the post-sequence frame equals the sixel's own bytes written as plain text, so this terminal drew no image and passed none on"
+              decided.note = note
+              decided.observation.note = note
+            }
+            return decided
+          }
           const note =
             "extensions.sixel: the region oracle answered nothing for this arm, so the rendering was not compared"
           return {

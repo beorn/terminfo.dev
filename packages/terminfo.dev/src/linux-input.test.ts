@@ -163,6 +163,19 @@ test.runIf(process.platform === "linux")(
   },
 )
 
+// The approved 1003 route needs an owned-window move with no button gesture;
+// click/drag tests do not prove this separate delivery path.
+test.runIf(process.platform === "linux")(
+  "injectMove focuses the owned window and moves without a button or --sync",
+  async () => {
+    const { log } = fixture()
+    const input = await createLinuxInput(liveExecutable())
+    expect(input.injectMove).toBeTypeOf("function")
+    await input.injectMove!(32, 48)
+    expect(argvLines(log).slice(-3)).toEqual(["windowfocus 42", "getwindowfocus", "mousemove --window 42 32 48"])
+  },
+)
+
 test.runIf(process.platform === "linux")(
   "injectDrag mousedowns, moves off the prepare cell, and mouseups through --window 0",
   async () => {

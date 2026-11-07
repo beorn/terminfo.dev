@@ -37,7 +37,7 @@ import {
   type StackReading,
   validSize,
 } from "./helpers.ts"
-import { applicationKeypad, altScroll1007 } from "./input.ts"
+import { applicationKeypad, altScroll1007, allMotion1003 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { captureRegionCallbackResult, cropPositionRefusal, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
 
@@ -1658,6 +1658,67 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   }
 }
 
+async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const decrpm = await queryDecrpm(ctx, 1)
+  if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1)
+  const { input, readInput } = ctx
+  if (!input || !readInput) {
+    return replyFailure("Application cursor effect needs owned key injection and input readback")
+  }
+  try {
+    ctx.write("\x1b[?1l")
+    const control = (await readInput(/^a$/, 1000, () => input.injectKey("a")))?.[0]
+    if (control !== "a") return replyFailure("Application cursor delivery control did not read the injected plain a")
+    const readUp = async (enabled: boolean) => {
+      ctx.write(`\x1b[?1${enabled ? "h" : "l"}`)
+      return (
+        await readInput(/^(?:\x1b(?:\[|O)A)?a$/, 1000, async () => {
+          await input.injectKey("Up")
+          await input.injectKey("a")
+        })
+      )?.[0]
+    }
+    const reset = await readUp(false)
+    const set = await readUp(true)
+    const resetAgain = await readUp(false)
+    const response = JSON.stringify({ decrpm, control, reset, set, resetAgain })
+    if ([reset, set, resetAgain].some((report) => report !== "\x1b[Aa" && report !== "\x1bOAa")) {
+      return {
+        ...replyFailure(
+          "Application cursor effect did not read an Up encoding followed by the plain-a delivery control in every arm",
+        ),
+        response,
+      }
+    }
+    const pass = reset === "\x1b[Aa" && set === "\x1bOAa" && resetAgain === "\x1b[Aa"
+    const note = `${decrpm === 0 ? "DECRPM mode 1 returned Ps 0" : "No usable DECRPM reply for mode 1"}; same-run set/reset input ${pass ? "establishes application cursor keys" : "does not show controlled application cursor keys"}`
+    return {
+      pass,
+      response,
+      note,
+      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "input_bytes", note },
+      assertions: [
+        {
+          assertionType: "input_bytes",
+          kind: "positive",
+          expected: "injected plain a returns in the same run",
+          observed: control,
+        },
+        {
+          assertionType: "input_bytes",
+          kind: pass ? "positive" : "negative",
+          expected:
+            "Up is CSI A with DECCKM reset, SS3 A with it set, then CSI A after reset; every read ends with injected plain a",
+          observed: response,
+        },
+      ],
+    }
+  } finally {
+    // A disposable fixture owns the canonical normal-cursor-key setup.
+    ctx.write("\x1b[?1l")
+  }
+}
+
 async function autoWrapApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const decrpm = await queryDecrpm(ctx, 7)
   if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 7)
@@ -1813,7 +1874,15 @@ const modeDefinitions: ProbeDefinition[] = [
   decrpmModeProbe("modes.bracketed-paste", 2004, headlessDecrpmArm(2004, "bracketedPaste", { stateReadback: true })),
 
   // Application cursor keys
-  decrpmModeProbe("modes.application-cursor", 1, headlessDecrpmArm(1, "applicationCursor", { stateReadback: true })),
+  {
+    ...probe(
+      "modes.application-cursor",
+      headlessDecrpmArm(1, "applicationCursor", { stateReadback: true }),
+      applicationCursorApp,
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+  },
 
   // Auto wrap
   {
@@ -1853,6 +1922,7 @@ const modeDefinitions: ProbeDefinition[] = [
       "query_reply",
     ),
     termNeedsDisposable: true,
+    termNeedsGeometry: true,
   },
 
   // Mouse tracking
@@ -2042,9 +2112,25 @@ const modeDefinitions: ProbeDefinition[] = [
   decrpmModeProbe("modes.mouse-sgr", 1006, headlessDecrpmArm(1006, "sgrMouse", { stateReadback: true })),
 
   // All-motion mouse tracking
-  decrpmModeProbe("modes.mouse-all", 1003, headlessDecrpmArm(1003, "mouseTracking", { stateReadback: true })),
+  {
+    ...probe(
+      "modes.mouse-all",
+      headlessDecrpmArm(1003, "mouseTracking", { stateReadback: true }),
+      async (ctx) => {
+        const decrpm = await queryDecrpm(ctx, 1003)
+        if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1003)
+        const result = await allMotion1003(ctx)
+        const note = `${decrpm === 0 ? "DECRPM mode 1003 returned Ps 0" : "No usable DECRPM reply for mode 1003"}; controlled buttonless-movement read`
+        result.note = note
+        if (result.observation) result.observation.note = note
+        return result
+      },
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+  },
 
-  // Application keypad: DECKPAM then KP_5 encoding (SS3 u vs 5)
+  // Application keypad: DECKPAM then KP_Add encoding (SS3 k vs +)
   probe(
     "modes.application-keypad",
     (ctx) => {
