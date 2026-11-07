@@ -21,7 +21,7 @@ table beside the child-environment reader selects tmux's public diagnostic grid/
 Kitty/Ghostty command-report bytes. Each row retains its own report-path and handled-command controls;
 a failed control is PROBE INVALID. Qualified state transitions can decide support. An exact-command
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
-appended bytes through that row's unique completion sentinel. Silence supplies no positive answer.
+appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
 Ghostty 1.4.0 highlight resets use implemented OSC 110 as the handled control and OSC 113's
 exact reset warning after the target as the logged control and completion marker. Only the target's
