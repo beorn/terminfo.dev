@@ -57,6 +57,66 @@ test.each([null, 0] as const)("App auto-wrap uses controlled effects after DECRP
   expect(definition.termWrites).toBeUndefined()
 })
 
+// Ask 3 permits a same-run alternate-buffer marker read after absent/Ps0 DECRPM.
+// Read actual semantic cells, so ignoring 1049 alone loses the positive while
+// ordinary paint/witness controls still work; no label-selected frame verdict.
+test.each([null, 0] as const)("App alternate-screen entry uses controlled effects after DECRPM %s", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.alt-screen.enter")
+  if (!definition?.term) throw new Error("Missing App alternate-screen entry callback")
+  const stored = new Map<string, StoredQuery>()
+  if (ps !== null) {
+    stored.set("\x1b[?1049$p", { sequence: "\x1b[?1049$p", match: null, reason: "reply", raw: "\x1b[?1049;0$y" })
+  }
+  for (const mutation of [undefined, "altscreen-noop"] as const) {
+    const cols = 20
+    const rows = 5
+    const surface = createSemanticSurface({ cols, rows, mutations: mutation ? [mutation] : [] })
+    let sequence = 0
+    const source = replayTermProbeSource(stored, {
+      cols,
+      rows,
+      write: (bytes) => surface.feed(bytes),
+      captureKind: "text-cells",
+      cells: async (request) => {
+        if (!request.cells) throw new Error("Semantic marker read needs its named cells")
+        const text = (rectangle: CaptureCells) =>
+          Array.from({ length: rectangle.bottom - rectangle.top + 1 }, (_, row) =>
+            Array.from(
+              { length: rectangle.right - rectangle.left + 1 },
+              (_, col) => surface.getCell(rectangle.top - 1 + row, rectangle.left - 1 + col).char,
+            ).join(""),
+          ).join("\n")
+        return {
+          kind: "text-cells",
+          role: request.role,
+          label: request.label,
+          capturedAt: ++sequence,
+          ref: `semantic-marker:${sequence}`,
+          cellRectangle: request.cells,
+          cellDigest: text(request.cells),
+          frameDigest: text({ top: 1, left: 1, bottom: rows, right: cols }),
+        }
+      },
+    })
+    const result = await definition.term(source)
+    const recorded = recordExecutedProbe({
+      featureId: definition.id,
+      attempt: { scope: "probe", startedAt: new Date().toISOString() },
+      observation: result.observation ? { featureId: definition.id, ...result.observation } : undefined,
+      assertions: (result.assertions ?? []).map((assertion) => ({ featureId: definition.id, ...assertion })),
+      tests: result.tests,
+    })
+    expect(recorded.status, mutation ?? "working 1049").toBe(mutation ? "unsupported" : "supported")
+    if (ps === 0) expect(result.note).toContain("Ps 0")
+    expect(surface.getMode("altScreen")).toBe(false)
+  }
+  const missing = await definition.term(replayTermProbeSource(stored))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(definition.termNeedsDisposable).toBe(true)
+  expect(definition.termNeedsGeometry).toBe(true)
+  expect(definition.termWrites).toBeUndefined()
+})
+
 // The reply-only contract misses an absent-query App that really switches Up
 // encodings. Ask 3 requires set/reset effects, a live delivery control and an
 // invalid result when no target bytes were read. Reuse the semantic mode parser.

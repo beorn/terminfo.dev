@@ -170,7 +170,8 @@ async function primaryRestoreCapture(
   const failedRestoration = result.tests?.find(
     (test) => test.id === "primary-marker-restored" && test.status === "unsupported",
   )
-  if (mode === 1049 && result.observation && failedRestoration) {
+  const gradesEntry = id === "modes.alt-screen.enter"
+  if (mode === 1049 && !gradesEntry && result.observation && failedRestoration) {
     // Distinct painted markers do not independently establish entry into another buffer.
     // Without that prerequisite the failed roundtrip cannot be attributed to exit.
     return {
@@ -211,7 +212,7 @@ async function primaryRestoreCapture(
       const reason = `After a ?${mode} round trip the primary marker was not restored`
       failedRestoration.reason = reason
       if (result.observation) result.observation.note = reason
-    } else {
+    } else if (!gradesEntry) {
       result.tests.push(remainingFacets)
     }
   }
@@ -1795,14 +1796,32 @@ async function autoWrapApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 
 const modeDefinitions: ProbeDefinition[] = [
   // Alt screen enter — measured roundtrip (narrow CTO-approved 1049 slice)
-  decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) =>
-    altScreenRoundtrip(
-      ctx,
-      ALT_SCREEN_1049,
-      "enter",
-      "CSI ? 1049 h switches to a cleared alternate buffer (full seeded roundtrip)",
+  {
+    ...decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) =>
+      altScreenRoundtrip(
+        ctx,
+        ALT_SCREEN_1049,
+        "enter",
+        "CSI ? 1049 h switches to a cleared alternate buffer (full seeded roundtrip)",
+      ),
     ),
-  ),
+    term: async (ctx) => {
+      const decrpm = await queryDecrpm(ctx, 1049)
+      if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1049)
+      if (!ctx.capture && !ctx.cells) return replyFailure("Alternate-screen effect needs owned marker readback")
+      const refusal = captureRefusal(ctx, 3, 8, "Alt-screen entry")
+      if (refusal) return refusal
+      const result = await primaryRestoreCapture(ctx, "modes.alt-screen.enter", 1049, "PRIMARY", "ALTONLY")
+      const detail = result.note ?? result.observation?.note
+      const note = `${decrpm === 0 ? "DECRPM mode 1049 returned Ps 0" : "No usable DECRPM reply for mode 1049"}; controlled alternate-buffer marker read${detail ? `; ${detail}` : ""}`
+      result.note = note
+      if (result.observation) result.observation.note = note
+      return result
+    },
+    termWrites: undefined,
+    termNeedsDisposable: true,
+    termNeedsGeometry: true,
+  },
 
   // Alt screen exit
   {
