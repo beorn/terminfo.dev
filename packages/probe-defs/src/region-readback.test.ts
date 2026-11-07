@@ -1169,7 +1169,7 @@ test("every reset-family row keeps its witness and cursor outside the compared c
       `${id}: the cursor row lies outside the compared region`,
     ).toBe(false)
     if (
-      id !== "reset.sgr" &&
+      !row.savedRendition &&
       (id === "sgr.fg.default" || id === "sgr.bg.default" || (NO_REFERENCE_ROWS as readonly string[]).includes(id))
     ) {
       expect(row.ignored, `${id}: the ignored frame IS the seed frame`).toBe(row.seed)
@@ -1223,7 +1223,7 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
   for (const id of NO_REFERENCE_ROWS.filter((id) => id !== "reset.sgr")) {
     const probe = probes.find((candidate) => candidate.id === id)
     expect(probe, `${id}: a probe definition`).toBeDefined()
-    const result = await probe!.term!(familyTerminal("expected"))
+    const result = await probe!.term!(statefulTerminal(ALL_ATTRS, { invisible: ["italic"] }).ctx)
     expect(result.observation, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
       {
@@ -1245,7 +1245,7 @@ test("a silent DECRQSS readback retains a named failure, and an answering one st
   for (const id of NO_REFERENCE_ROWS.filter((id) => id !== "reset.sgr")) {
     const probe = probes.find((candidate) => candidate.id === id)
     expect(probe, `${id}: a probe definition`).toBeDefined()
-    const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true, invisible: ["italic"] })
     const result = await probe!.term!(terminal.ctx)
     expect(result.observation, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([
@@ -1263,7 +1263,7 @@ test("a silent DECRQSS readback retains a named failure, and an answering one st
     const probe = probes.find((candidate) => candidate.id === id)
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
     // The saved-reference capture now decides first; retain separate proof of the query-only route.
-    if (id === "reset.sgr") delete terminal.ctx.capture
+    delete terminal.ctx.capture
     terminal.ctx.queryWithSentinelOutcome = async () => {
       const state = terminal.snapshot()
       const reported =
@@ -1322,6 +1322,8 @@ interface StatefulOptions {
   invisible?: readonly SgrAttr[]
   invalidSgrChanges?: boolean
   resetAddsUnderline?: boolean
+  resetDropsItalic?: boolean
+  hideBoldWithItalic?: boolean
   /** Attributes the reference does NOT clear: a partial-RIS terminal. */
   risRetains?: readonly (SgrAttr | SgrColor)[]
   risClearsCells?: boolean
@@ -1346,7 +1348,10 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
   let col = 1
   let reads = 0
   let saved: { state: typeof state; color: typeof color; row: number; col: number } | undefined
-  const visible = (attribute: SgrAttr) => state[attribute] && !options.invisible?.includes(attribute)
+  const visible = (attribute: SgrAttr) =>
+    state[attribute] &&
+    !options.invisible?.includes(attribute) &&
+    !(attribute === "bold" && options.hideBoldWithItalic && state.italic)
   const paint = (char: string) =>
     cells.set(
       `${row},${col}`,
@@ -1381,6 +1386,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
       else if (code === 22) {
         if (!miss.has("bold")) state.bold = false
         if (!miss.has("faint")) state.faint = false
+        if (options.resetDropsItalic) state.italic = false
       } else if (code === 23) {
         if (!miss.has("italic")) state.italic = false
         if (options.resetDropsBold) state.bold = false
@@ -1518,9 +1524,13 @@ const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline",
 
 // #32590: the immutable pre-setter reference must distinguish a complete reset from every
 // retained subset. The old tests only refused these captures and never exercised restoration.
-test.each(subsets<SgrAttr>(["bold", "italic", "inverse"]).map((retained) => ({ retained })))(
-  "saved reset reference grades the retained subset $retained and survives the daemon decoder",
-  async ({ retained }) => {
+test.each(
+  ["reset.sgr", "sgr.reset"].flatMap((id) =>
+    subsets<SgrAttr>(["bold", "italic", "inverse"]).map((retained) => ({ id, retained })),
+  ),
+)(
+  "$id saved reset reference grades the retained subset $retained and survives the daemon decoder",
+  async ({ id, retained }) => {
     const terminal = statefulTerminal(ALL_ATTRS, { resetMisses: retained, risRetains: retained })
     const capture = terminal.ctx.capture!
     const capturedWrites: Array<{ role: ObservationFrame["role"]; label: string; writes: string }> = []
@@ -1530,11 +1540,11 @@ test.each(subsets<SgrAttr>(["bold", "italic", "inverse"]).map((retained) => ({ r
       }
       return capture(request)
     }
-    const result = await resetProbes.find((candidate) => candidate.id === "reset.sgr")!.term!(terminal.ctx)
+    const result = await [...resetProbes, ...sgrProbes].find((candidate) => candidate.id === id)!.term!(terminal.ctx)
     const status = retained.length ? "unsupported" : "supported"
     expect(result.observation).toMatchObject({ outcome: status, assertionType: "screenshot" })
-    expect(result.tests).toMatchObject([{ id: "reset", status, assertionRefs: [0] }])
-    expect(result.criterionBranch).toBe("reset-saved-rendition")
+    expect(result.tests).toMatchObject([{ id: id === "reset.sgr" ? "reset" : "criterion", status, assertionRefs: [0] }])
+    expect(result.criterionBranch).toBe(id === "reset.sgr" ? "reset-saved-rendition" : "sgr-reset-saved-rendition")
     expect(terminal.queries).toEqual([])
     const target = capturedWrites.find((frame) => frame.role === "target")
     expect(target?.writes).toContain("\x1b[99m")
@@ -1560,14 +1570,13 @@ test.each(subsets<SgrAttr>(["bold", "italic", "inverse"]).map((retained) => ({ r
     expect(terminal.writes.at(-1)).toBe("\x1b8\x1b[2J\x1b[H")
     // This is the exact strict decoder used by the daemon client. A prior feature assertion
     // catches local/global ref confusion: reset's callback [0] must become run-global [1].
-    const decoded = decodeResetCallback(result, terminal)
+    const decoded = decodeResetCallback(result, terminal, id)
     expect(decoded.kind).toBe("captured")
     expect(decoded.run.results[0]).toMatchObject({ status, tests: [{ assertionRefs: [1] }] })
   },
 )
 
-function decodeResetCallback(result: ProbeCallbackResult, terminal: StatefulTerminal) {
-  const id = "reset.sgr"
+function decodeResetCallback(result: ProbeCallbackResult, terminal: StatefulTerminal, id = "reset.sgr") {
   const sourceRevision = "a".repeat(40)
   const measuredAt = "2026-11-07T09:00:00.000Z"
   const manifest: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -1639,6 +1648,64 @@ function decodeResetCallback(result: ProbeCallbackResult, terminal: StatefulTerm
   }
   return decodeCollectorDraft("reset-saved-rendition.json", JSON.stringify(run), manifest, sourceRevision)
 }
+
+// SGR22's criterion also preserves italic. The full-reset cases cannot catch an intensity
+// survivor, an over-reset, or a wrong-state crop that aliases the expected italic crop.
+test.each([
+  { retained: [] },
+  { retained: ["bold"] },
+  { retained: ["faint"] },
+  { retained: ["bold", "faint"] },
+] satisfies Array<{ retained: SgrAttr[] }>)(
+  "SGR22 clears both intensities while preserving italic, retained $retained",
+  async ({ retained }) => {
+    const terminal = statefulTerminal(ALL_ATTRS, { resetMisses: retained })
+    const id = "sgr.selective-reset.bold"
+    const result = await sgrProbes.find((candidate) => candidate.id === id)!.term!(terminal.ctx)
+    const status = retained.length ? "unsupported" : "supported"
+    expect(result.observation).toMatchObject({ outcome: status, assertionType: "screenshot" })
+    expect(result.tests).toMatchObject([{ id: "criterion", status, assertionRefs: [0] }])
+    expect(terminal.queries).toEqual([])
+    expect(terminal.writes.join("")).not.toContain("\x1b[0m")
+    expect(terminal.writes.join("")).not.toContain("\x1bc")
+    expect(decodeResetCallback(result, terminal, id).run.results[0]).toMatchObject({ status })
+  },
+)
+
+test("SGR22 clearing the preserved italic is a measured negative", async () => {
+  const terminal = statefulTerminal(ALL_ATTRS, { resetDropsItalic: true })
+  const result = await sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.bold")!.term!(terminal.ctx)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
+  expect(terminal.queries).toEqual([])
+})
+
+test("SGR22 rejects an expected/wrong-subset collision before sending the target", async () => {
+  const terminal = statefulTerminal(ALL_ATTRS, { hideBoldWithItalic: true })
+  const result = await sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.bold")!.term!(terminal.ctx)
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([{ reason: expect.stringMatching(/expected.*(collid|separat)/i) }])
+  expect(terminal.writes.join("")).not.toContain("\x1b[22m")
+  expect(terminal.queries).toContain("\x1bP$qm\x1b\\")
+})
+
+test("a reset declaration with multiple expected subsets throws with its row name", async () => {
+  const original = familyRow("reset.sgr")
+  const terminal = statefulTerminal(ALL_ATTRS)
+  const spec = {
+    ...original,
+    savedRendition: {
+      ...original.savedRendition!,
+      subsets: original.savedRendition!.subsets.map((subset, index) => ({
+        ...subset,
+        ...(index < 2 ? { expected: true as const } : {}),
+      })),
+    },
+  }
+  await expect(captureRegionCallbackResult(terminal.ctx, "reset.sgr", spec)).rejects.toThrow(
+    /reset\.sgr.*(multiple|more than one).*expected/i,
+  )
+  expect(terminal.writes).toEqual([])
+})
 
 test.each([
   { name: "invisible italic", options: { invisible: ["italic"] }, failed: /subset.*3/ },
@@ -1834,7 +1901,7 @@ function subsets<T>(items: readonly T[]): T[][] {
   return items.reduce<T[][]>((sets, item) => [...sets, ...sets.map((set) => [...set, item])], [[]])
 }
 
-test("the two remaining no-reference rows decline on the pixel path, whatever the terminal does", async () => {
+test("reset rows without a qualified saved reference decline on the pixel path", async () => {
   // A row whose reset clears two or more attributes can be
   // fooled by a reset and a RIS that miss the same part of the cleared set. Each case below WOULD read
   // supported without the refusal; the refusal comes before a byte and says why.
@@ -1844,7 +1911,10 @@ test("the two remaining no-reference rows decline on the pixel path, whatever th
   ]
   for (const entry of cases) {
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
-    const result = await captureRegionCallbackResult(terminal.ctx, entry.id, familyRow(entry.id))
+    const result = await captureRegionCallbackResult(terminal.ctx, entry.id, {
+      ...familyRow(entry.id),
+      savedRendition: undefined,
+    })
     expect(result?.observation, entry.id).toBeUndefined()
     expect(result?.tests, entry.id).toMatchObject([
       {
@@ -1858,7 +1928,7 @@ test("the two remaining no-reference rows decline on the pixel path, whatever th
   }
   const correct = statefulTerminal(ALL_ATTRS, { ris: true })
   for (const id of NO_REFERENCE_ROWS.filter((id) => id !== "reset.sgr")) {
-    const result = await captureRegionCallbackResult(correct.ctx, id, familyRow(id))
+    const result = await captureRegionCallbackResult(correct.ctx, id, { ...familyRow(id), savedRendition: undefined })
     expect(result?.observation, id).toBeUndefined()
     expect(result?.tests, id).toMatchObject([
       {
@@ -1891,9 +1961,12 @@ test("multi-attribute rows retain their query fallback refusal; unchanged refusa
     { id: "sgr.selective-reset.bold", miss: ["faint"], keep: ["faint"] },
   ]
   for (const entry of cases) {
-    const { noIndependentReference: _refusal, ...bare } = familyRow(entry.id)
+    const { noIndependentReference: _refusal, savedRendition: _saved, ...bare } = familyRow(entry.id)
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
-    const refused = await captureRegionCallbackResult(terminal.ctx, entry.id, familyRow(entry.id))
+    const refused = await captureRegionCallbackResult(terminal.ctx, entry.id, {
+      ...familyRow(entry.id),
+      savedRendition: undefined,
+    })
     expect(refused?.observation, `${entry.id}: with the refusal`).toBeUndefined()
     expect(refused?.tests, entry.id).toMatchObject([
       {
@@ -1911,11 +1984,10 @@ test("the bold row's faint case is the third no-reference row", async () => {
   // 22 and RIS both keeping faint left the row reading supported. This is the case the named grade
   // removes; with the grade removed it reads supported.
   const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: ["faint"], risRetains: ["faint"] })
-  const result = await captureRegionCallbackResult(
-    terminal.ctx,
-    "sgr.selective-reset.bold",
-    familyRow("sgr.selective-reset.bold"),
-  )
+  const result = await captureRegionCallbackResult(terminal.ctx, "sgr.selective-reset.bold", {
+    ...familyRow("sgr.selective-reset.bold"),
+    savedRendition: undefined,
+  })
   expect(result?.observation).toBeUndefined()
   expect(result?.tests).toMatchObject([
     {

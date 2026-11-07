@@ -316,11 +316,36 @@ export function sgrTermReadback(
     }
     const region = RESET_FAMILY_CAPTURE[id]
     const colour = COLOUR_CAPTURE[id]
+    const referenceFirst =
+      ctx.capture &&
+      ctx.captureKind !== "text-cells" &&
+      (region?.savedRendition?.branch === "sgr-reset-saved-rendition" ||
+        region?.savedRendition?.branch === "sgr-selective-reset-saved-rendition")
+    let referenceFailure: ProbeCallbackResult | undefined
+    if (referenceFirst) {
+      const captured = await captureRegionCallbackResult(ctx, id, region!)
+      if (captured && captured.criterionBranch !== "saved-rendition-unqualified") return captured
+      referenceFailure = captured ?? undefined
+    }
+    const retainReference = (result: ProbeCallbackResult): ProbeCallbackResult => {
+      if (!referenceFailure) return result
+      const note = referenceFailure.tests?.[0]?.reason
+      return {
+        ...result,
+        response: JSON.stringify({ reference: referenceFailure.response, decrqss: result.response }),
+        ...(result.observation
+          ? { observation: { ...result.observation, note: [note, result.observation.note].filter(Boolean).join("; ") } }
+          : {
+              tests: result.tests?.map((test) => ({ ...test, reason: [note, test.reason].filter(Boolean).join("; ") })),
+            }),
+      }
+    }
     const captureResult = async () => {
       // DECRQSS already wrote/queried, so any refusal retains that attempted evidence path.
       if (region) {
-        const verdict = await captureRegionCallbackResult(ctx, id, region, true)
-        if (verdict) return verdict
+        const { savedRendition: _savedRendition, ...queryFallback } = region
+        const verdict = await captureRegionCallbackResult(ctx, id, referenceFirst ? queryFallback : region, true)
+        if (verdict) return retainReference(verdict)
       }
       if (colour) {
         const verdict = await captureRegionCallbackResult(ctx, id, colour, true)
@@ -334,7 +359,7 @@ export function sgrTermReadback(
         ? captureResult
         : undefined
     const decided = await sgrReadbackDecision(ctx, id, sequence, readback, setup, independentCapture)
-    if (decided) return decided
+    if (decided) return retainReference(decided)
     return captureResult()
   }
 }
@@ -1277,6 +1302,8 @@ const muxVisualTests = new Map<string, { featureId: string | null; testId: strin
   ["sgr-attribute-same-run", { featureId: null, testId: "attribute" }],
   ["cursor-shape-same-run", { featureId: "cursor.shape", testId: "review" }],
   ["reset-saved-rendition", { featureId: "reset.sgr", testId: "reset" }],
+  ["sgr-reset-saved-rendition", { featureId: "sgr.reset", testId: "criterion" }],
+  ["sgr-selective-reset-saved-rendition", { featureId: "sgr.selective-reset.bold", testId: "criterion" }],
   ["iterm2-images-no-change", { featureId: "extensions.iterm2-images", testId: "criterion" }],
   ["sixel-advertised-unchanged", { featureId: "extensions.sixel", testId: "criterion" }],
 ])

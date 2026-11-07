@@ -126,10 +126,13 @@ export interface RegionReadback {
    * Qualify an immutable initial rendition with DECSC/DECRC before testing a reset. `expected`
    * paints the sample without setters, `seed` sets the full rendition and `edit` applies the reset.
    * Every subset must differ from the initial sample and every restore must return it exactly.
+   * One subset may declare `expected: true`: its crop replaces initial N as the target's expected
+   * state, and must differ from N and every other subset before the target is sent. With no flag,
+   * the initial-N verdict is unchanged. Multiple expected subsets are a declaration error.
    * The made-up control must preserve the repeated seed. Uses this oracle's capture lifecycle.
    */
   savedRendition?: {
-    subsets: readonly { label: string; sequence: string }[]
+    subsets: readonly { label: string; sequence: string; expected?: true }[]
     control: { label: string; sequence: string }
     signal: string
     branch: string
@@ -1132,6 +1135,10 @@ export async function captureRegionReadbackDecision(
   })
   const discriminator = spec.discriminator
   const savedRendition = spec.savedRendition
+  if ((savedRendition?.subsets.filter((subset) => subset.expected).length ?? 0) > 1) {
+    throw new Error(`${id}: more than one expected saved-rendition subset`)
+  }
+  const expectedSubset = savedRendition?.subsets.findIndex((subset) => subset.expected) ?? -1
   const witnessedPixels = discriminator !== undefined || savedRendition !== undefined
   const resetReference: {
     qualified: boolean
@@ -1433,17 +1440,32 @@ export async function captureRegionReadbackDecision(
         } else if (step.phase === "styled") {
           failed = measured.regionDigest === initial
         } else if (step.phase === "setup") {
+          if (expectedSubset >= 0) {
+            const styled = resetReference.checks.filter((check) => check.phase === "styled")
+            const expected = styled[expectedSubset]?.digest
+            if (
+              expected === undefined ||
+              expected === initial ||
+              styled.some((check, index) => index !== expectedSubset && check.digest === expected)
+            ) {
+              return invalid(`${id}: expected subset is not separated from every wrong-state crop`)
+            }
+          }
           const full = resetReference.checks.findLast((check) => check.phase === "styled")
           failed = measured.regionDigest !== full?.digest
           resetReference.qualified = !failed
         } else if (step.phase === "control") {
           failed = measured.regionDigest !== digests[index - 1]
         } else if (step.phase === "target") {
-          const supported = measured.regionDigest === initial
+          const expected =
+            expectedSubset < 0
+              ? initial
+              : resetReference.checks.filter((check) => check.phase === "styled")[expectedSubset]?.digest
+          const supported = measured.regionDigest === expected
           const subset = resetReference.checks.find(
             (check) => check.phase === "styled" && check.digest === measured.regionDigest,
           )
-          if (!supported && !subset) {
+          if (!supported && measured.regionDigest !== initial && !subset) {
             return invalid(`${step.label}: target matches no retained baseline or styled subset`)
           }
           return {
@@ -1455,13 +1477,16 @@ export async function captureRegionReadbackDecision(
               outcome: supported ? "supported" : "unsupported",
               assertionType,
               ...cite(targetScreenshotRef, frames),
-              ...(subset && { note: `${id}: target retains ${subset.label}` }),
+              ...(subset && !supported && { note: `${id}: target retains ${subset.label}` }),
             },
             assertions: [
               {
                 assertionType,
                 kind: supported ? "positive" : "negative",
-                expected: `${id}: reset returns the crop to immutable initial rendition ${initial}, after qualified subsets, restores and ${savedRendition.control.label}`,
+                expected:
+                  expectedSubset < 0
+                    ? `${id}: reset returns the crop to immutable initial rendition ${initial}, after qualified subsets, restores and ${savedRendition.control.label}`
+                    : `${id}: reset returns the crop to the independently separated expected subset ${expected}, after qualified subsets, restores and ${savedRendition.control.label}`,
                 observed: measured.regionDigest,
               },
             ],

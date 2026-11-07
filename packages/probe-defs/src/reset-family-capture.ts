@@ -104,40 +104,57 @@ function row(
  * `residual` is the SGR the expected frame paints on YY: the attribute set the row says the reset
  * preserves. Empty means the row's claim is "back to the terminal default".
  */
-export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "reset.sgr": {
-    region: { ...REGION },
-    sentinel: { ...SENTINEL },
-    cursorRow: CURSOR_ROW,
-    expected: `\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
-    seed: `\x1b[1;3;7m\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
-    edit: `\x1b[0m\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
-    savedRendition: {
-      subsets: [[1], [3], [7], [1, 3], [1, 7], [3, 7], [1, 3, 7]].map((codes) => ({
-        label: `SGR ${codes.join(";")}`,
-        sequence: `\x1b[${codes.join(";")}m`,
-      })),
-      control: { label: "made-up SGR 99", sequence: "\x1b[99m" },
-      signal: "reset",
-      branch: "reset-saved-rendition",
-    },
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: CURSOR_ROW,
-    minCols: REGION.right,
-    // Query fallback and text captures must never reach a circular RIS reference.
-    noIndependentReference: NO_INDEPENDENT_REFERENCE,
+const SAVED_SGR0_CAPTURE: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { ...REGION },
+  sentinel: { ...SENTINEL },
+  cursorRow: CURSOR_ROW,
+  expected: `\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
+  seed: `\x1b[1;3;7m\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
+  edit: `\x1b[0m\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
+  savedRendition: {
+    subsets: [[1], [3], [7], [1, 3], [1, 7], [3, 7], [1, 3, 7]].map((codes) => ({
+      label: `SGR ${codes.join(";")}`,
+      sequence: `\x1b[${codes.join(";")}m`,
+    })),
+    control: { label: "made-up SGR 99", sequence: "\x1b[99m" },
+    signal: "reset",
+    branch: "reset-saved-rendition",
   },
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: CURSOR_ROW,
+  minCols: REGION.right,
+  // Query fallback and text captures must never reach a circular RIS reference.
+  noIndependentReference: NO_INDEPENDENT_REFERENCE,
+}
+
+export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
+  "reset.sgr": SAVED_SGR0_CAPTURE,
   "sgr.reset": {
-    ...row("\x1b[1;3;4m", "\x1b[0m", ""),
-    noIndependentReference: NO_INDEPENDENT_REFERENCE,
+    ...SAVED_SGR0_CAPTURE,
+    savedRendition: {
+      ...SAVED_SGR0_CAPTURE.savedRendition!,
+      signal: "criterion",
+      branch: "sgr-reset-saved-rendition",
+    },
   },
   "sgr.fg.default": row("\x1b[31m", "\x1b[39m", ""),
   "sgr.bg.default": row("\x1b[42m", "\x1b[49m", ""),
   "sgr.underline-color-reset": row("\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m", "\x1b[58;2;255;0;128m\x1b[4m"),
   "sgr.selective-reset.bold": {
-    ...row("\x1b[1;2;3m", "\x1b[22m", "\x1b[3m"),
-    noIndependentReference: NO_INDEPENDENT_REFERENCE,
+    ...SAVED_SGR0_CAPTURE,
+    seed: "\x1b[1;2;3m" + SAVED_SGR0_CAPTURE.expected,
+    edit: "\x1b[22m" + SAVED_SGR0_CAPTURE.expected,
+    savedRendition: {
+      subsets: [[1], [2], [3], [1, 2], [1, 3], [2, 3], [1, 2, 3]].map((codes) => ({
+        label: `SGR ${codes.join(";")}`,
+        sequence: `\x1b[${codes.join(";")}m`,
+        ...(codes.length === 1 && codes[0] === 3 ? { expected: true as const } : {}),
+      })),
+      control: { label: "made-up SGR 99", sequence: "\x1b[99m" },
+      signal: "criterion",
+      branch: "sgr-selective-reset-saved-rendition",
+    },
   },
   "sgr.selective-reset.underline": row("\x1b[1;4m", "\x1b[24m", "\x1b[1m", "\x1b[1m\x1b[4m"),
   "sgr.selective-reset.italic": row("\x1b[1;3m", "\x1b[23m", "\x1b[1m", "\x1b[1m\x1b[3m"),
