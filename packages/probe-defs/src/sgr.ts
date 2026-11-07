@@ -1276,6 +1276,7 @@ const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
 const muxVisualTests = new Map<string, { featureId: string | null; testId: string }>([
   ["sgr-attribute-same-run", { featureId: null, testId: "attribute" }],
   ["cursor-shape-same-run", { featureId: "cursor.shape", testId: "review" }],
+  ["reset-saved-rendition", { featureId: "reset.sgr", testId: "reset" }],
   ["iterm2-images-no-change", { featureId: "extensions.iterm2-images", testId: "criterion" }],
 ])
 

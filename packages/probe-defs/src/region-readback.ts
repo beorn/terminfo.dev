@@ -123,6 +123,18 @@ export interface RegionReadback {
   /** Independently authored full setup; the observed seed must match before any reset verdict. */
   setupReference?: string
   /**
+   * Qualify an immutable initial rendition with DECSC/DECRC before testing a reset. `expected`
+   * paints the sample without setters, `seed` sets the full rendition and `edit` applies the reset.
+   * Every subset must differ from the initial sample and every restore must return it exactly.
+   * The made-up control must preserve the repeated seed. Uses this oracle's capture lifecycle.
+   */
+  savedRendition?: {
+    subsets: readonly { label: string; sequence: string }[]
+    control: { label: string; sequence: string }
+    signal: string
+    branch: string
+  }
+  /**
    * Two row groups of `region`, read on the seed, target and expected frames right after each
    * frame's region read: the rows `above` the cursor and the rows `atOrBelow` it. Consulted only when
    * the region reads a third frame: the target's rows above equal the seed's, the expected frame's
@@ -794,7 +806,7 @@ export async function captureRegionCallbackResult(
   // reset, so this oracle declines it BY NAME before a byte: a reference that misses the same part of
   // the cleared set would reproduce the fault and grade it supported.
   // A caller that already queried keeps that attempted failure when this oracle cannot proceed.
-  if (spec.noIndependentReference) {
+  if (spec.noIndependentReference && (!spec.savedRendition || ctx.captureKind === "text-cells")) {
     return afterCallerBytes(refused(id, `${id}: ${spec.noIndependentReference}`), callerHasQuery)
   }
   const reported = await captureRegionGeometry(ctx, id, spec, callerHasQuery)
@@ -807,7 +819,7 @@ export async function captureRegionCallbackResult(
   )
   // A completed declared visual review is a deliberate TODO, including after caller query bytes.
   // Geometry and bounds refusals took earlier paths and keep their existing failure disposition.
-  if (spec.discriminator && decided?.criterionBranch === "visual-review") return decided
+  if (spec.savedRendition || (spec.discriminator && decided?.criterionBranch === "visual-review")) return decided
   return afterCallerBytes(decided, callerHasQuery)
 }
 
@@ -824,11 +836,11 @@ export function beginCaptureLifecycle(ctx: TermProbeSource): void {
   ctx.write("\x1b[?25l")
 }
 
-/** Close the shared capture lifecycle, running the arm's mode cleanup before DECTCEM is restored. */
-export function endCaptureLifecycle(ctx: TermProbeSource, cleanup?: string): void {
+/** Close the shared lifecycle; an independently saved rendition can replace the default SGR0. */
+export function endCaptureLifecycle(ctx: TermProbeSource, cleanup?: string, rendition = "\x1b[0m"): void {
   if (cleanup !== undefined) ctx.write(cleanup)
   ctx.write("\x1b[?25h")
-  ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  ctx.write(`${rendition}\x1b[2J\x1b[H`)
 }
 
 /** What a capture must report to enter the stability control: its digests and its frame. */
@@ -944,9 +956,32 @@ export async function captureRegionReadbackDecision(
     frames,
   })
   const discriminator = spec.discriminator
+  const savedRendition = spec.savedRendition
+  const witnessedPixels = discriminator !== undefined || savedRendition !== undefined
+  const resetReference: {
+    qualified: boolean
+    checks: Array<{ phase: string; label: string; digest: string }>
+    failedAt?: string
+  } = { qualified: false, checks: [] }
+  let initialRenditionSaved = false
   // Declared visual rows must tell the writer exactly why review remains open. Legacy callers
   // retain their existing observation-only result, including its historical timeout semantics.
   const review = (result: ProbeCallbackResult, reason?: string): ProbeCallbackResult => {
+    if (savedRendition) {
+      const note = reason ?? result.observation?.note ?? `${id}: saved rendition could not be qualified`
+      resetReference.failedAt ??= note
+      const response = JSON.stringify({
+        resetReference,
+        ...(result.response === undefined ? {} : { capture: result.response }),
+        ...(result.observation?.frames === undefined ? {} : { frames: result.observation.frames }),
+      })
+      return {
+        pass: false,
+        response,
+        criterionBranch: resetReference.qualified ? savedRendition.branch : "saved-rendition-unqualified",
+        tests: [{ id: savedRendition.signal, status: "probe-invalid", reason: note }],
+      }
+    }
     if (!discriminator) return result
     const reviewReason = reason ?? result.observation?.note ?? `${id}: insufficient visual evidence`
     const targetFrameExists = result.observation?.frames?.some((frame) => frame.role === "target") ?? false
@@ -973,11 +1008,11 @@ export async function captureRegionReadbackDecision(
       tests: [{ id: "review", status: "probe-todo", reason: reviewReason }],
     }
   }
-  if (!read) return discriminator ? review(refused(id, "no freshness witness"), "no freshness witness") : null
-  if (discriminator && ctx.captureKind === "text-cells") {
+  if (!read) return witnessedPixels ? review(refused(id, "no freshness witness"), "no freshness witness") : null
+  if (witnessedPixels && ctx.captureKind === "text-cells") {
     return refused(id, `${id}: declared visual signal requires pixel capture`)
   }
-  if (discriminator) {
+  if (witnessedPixels) {
     const capture = read
     read = async (request) => {
       const measured = await capture(request)
@@ -1024,17 +1059,55 @@ export async function captureRegionReadbackDecision(
   const park = `\x1b[${spec.cursorRow};1H`
   const timeoutMs = spec.timeoutMs > 0 ? spec.timeoutMs : DEFAULT_TIMEOUT_MS
   const pollMs = spec.pollMs ?? DEFAULT_POLL_MS
-  const steps = [
-    { role: "control" as const, label: `${id}: pre-edit seed`, writes: spec.seed },
-    { role: "target" as const, label: `${id}: post-sequence target`, writes: `${spec.seed}${spec.edit}` },
-    { role: "control" as const, label: `${id}: expected frame`, writes: spec.expected },
-    ...(spec.ignored === undefined
-      ? []
-      : [{ role: "control" as const, label: `${id}: ignored-attribute frame`, writes: spec.ignored }]),
-    ...(spec.setupReference === undefined
-      ? []
-      : [{ role: "control" as const, label: `${id}: setup reference frame`, writes: spec.setupReference }]),
-  ]
+  const steps: Array<{
+    role: ObservationFrame["role"]
+    label: string
+    writes: string
+    phase?: "baseline" | "before" | "styled" | "restored" | "setup" | "control" | "target"
+  }> = savedRendition
+    ? [
+        { role: "control", label: `${id}: initial N`, writes: spec.expected, phase: "baseline" },
+        ...savedRendition.subsets.flatMap((subset) => [
+          {
+            role: "control" as const,
+            label: `${id}: N before ${subset.label}`,
+            writes: `\x1b8${spec.expected}`,
+            phase: "before" as const,
+          },
+          {
+            role: "control" as const,
+            label: `${id}: subset ${subset.label}`,
+            writes: `${subset.sequence}${spec.expected}`,
+            phase: "styled" as const,
+          },
+          {
+            role: "control" as const,
+            label: `${id}: N restored after ${subset.label}`,
+            writes: `\x1b8${spec.expected}`,
+            phase: "restored" as const,
+          },
+        ]),
+        { role: "control", label: `${id}: N before full setup`, writes: `\x1b8${spec.expected}`, phase: "before" },
+        { role: "control", label: `${id}: repeated full setup`, writes: spec.seed, phase: "setup" },
+        {
+          role: "control",
+          label: `${id}: ${savedRendition.control.label}`,
+          writes: `${savedRendition.control.sequence}${spec.expected}`,
+          phase: "control",
+        },
+        { role: "target", label: `${id}: reset target`, writes: spec.edit, phase: "target" },
+      ]
+    : [
+        { role: "control" as const, label: `${id}: pre-edit seed`, writes: spec.seed },
+        { role: "target" as const, label: `${id}: post-sequence target`, writes: `${spec.seed}${spec.edit}` },
+        { role: "control" as const, label: `${id}: expected frame`, writes: spec.expected },
+        ...(spec.ignored === undefined
+          ? []
+          : [{ role: "control" as const, label: `${id}: ignored-attribute frame`, writes: spec.ignored }]),
+        ...(spec.setupReference === undefined
+          ? []
+          : [{ role: "control" as const, label: `${id}: setup reference frame`, writes: spec.setupReference }]),
+      ]
   const frames: ObservationFrame[] = []
   let targetScreenshotRef: string | undefined
   const digests: string[] = []
@@ -1045,13 +1118,19 @@ export async function captureRegionReadbackDecision(
   const rowGroups = spec.cursorRowGroups
   const groupReads: RowGroupRead[][] = []
   try {
-    beginCaptureLifecycle(ctx)
+    if (savedRendition) ctx.write("\x1b[?25l")
+    else beginCaptureLifecycle(ctx)
     // Stability belongs to this run's cleared canvas, not the preceding probe's glyphs.
     // Each declared frame still gets its own seed writes and paint witness below.
     ctx.write("\x1b[2J\x1b[H")
+    if (savedRendition) ctx.write(spec.expected)
     // Two reads of one static frame, before the first verdict: an unstable capture cannot decide.
     // The rule itself lives in captureStabilityPair, the one home both pixel arms call.
-    const { refusal: instability, stability } = await captureStabilityPair(
+    const {
+      refusal: instability,
+      stability,
+      second: stableBaseline,
+    } = await captureStabilityPair(
       id,
       assertionType,
       async () => {
@@ -1082,7 +1161,7 @@ export async function captureRegionReadbackDecision(
       // Writes can still be waiting for paint when this baseline is captured. Declared rows
       // challenge a space/glyph pair in both directions before trusting the requested paint.
       const sentinelWrite = `\x1b[${spec.sentinel.row};${spec.sentinel.col}H`
-      if (discriminator) ctx.write(`${sentinelWrite} `)
+      if (witnessedPixels) ctx.write(`${sentinelWrite} `)
       const baseline = await read({
         role: "control",
         label: `${step.label} — baseline`,
@@ -1100,14 +1179,14 @@ export async function captureRegionReadbackDecision(
         baseline,
         timeoutMs,
         pollMs,
-        requireSameCrop: discriminator !== undefined,
+        requireSameCrop: witnessedPixels,
         assertionType,
       }
       const result = await awaitPaintWitness(witnessOptions)
       if (!witnessed(result)) {
         return review(result, result.observation?.reason === "timeout" ? "no freshness witness" : undefined)
       }
-      if (discriminator) {
+      if (witnessedPixels) {
         const roundtripFrames = [baseline.frame, result.witness.frame]
         for (const [write, expectedDigest, label] of [
           [" ", baseline.regionDigest, "space return"],
@@ -1139,6 +1218,82 @@ export async function captureRegionReadbackDecision(
       cropRectangles.push(measured.regionRectangle)
       frames.push(measured.frame)
       if (step.role === "target") targetScreenshotRef = measured.frame.ref
+      if (savedRendition && step.phase) {
+        resetReference.checks.push({ phase: step.phase, label: step.label, digest: measured.regionDigest })
+        const response = () =>
+          JSON.stringify({
+            resetReference,
+            stability,
+            region: spec.region,
+            pixelGeometry: spec.pixelGeometry,
+            geometrySource: spec.geometrySource,
+          })
+        const invalid = (note: string) =>
+          review({
+            ...inconclusive(id, note, "insufficient-evidence", assertionType, cite(frames.at(-1)?.ref, frames)),
+            response: response(),
+          })
+        const moved = cropPositionRefusal({
+          id,
+          compared: [
+            { role: "initial stability", rectangle: stableBaseline.regionRectangle },
+            { role: "initial N", rectangle: cropRectangles[0] },
+            { role: step.label, rectangle: measured.regionRectangle },
+          ],
+          response: response(),
+          frames,
+        })
+        if (moved) return invalid(`${step.label}: capture moved away from initial N`)
+        const initial = digests[0]
+        let failed = false
+        if (step.phase === "baseline") {
+          failed = measured.regionDigest !== stableBaseline.regionDigest
+          // Save exactly once. Restores never redefine the reference to match a faulty reset.
+          if (!failed) {
+            ctx.write(`${park}\x1b7`)
+            initialRenditionSaved = true
+          }
+        } else if (step.phase === "before" || step.phase === "restored") {
+          failed = measured.regionDigest !== initial
+        } else if (step.phase === "styled") {
+          failed = measured.regionDigest === initial
+        } else if (step.phase === "setup") {
+          const full = resetReference.checks.findLast((check) => check.phase === "styled")
+          failed = measured.regionDigest !== full?.digest
+          resetReference.qualified = !failed
+        } else if (step.phase === "control") {
+          failed = measured.regionDigest !== digests[index - 1]
+        } else if (step.phase === "target") {
+          const supported = measured.regionDigest === initial
+          const subset = resetReference.checks.find(
+            (check) => check.phase === "styled" && check.digest === measured.regionDigest,
+          )
+          if (!supported && !subset) {
+            return invalid(`${step.label}: target matches no retained baseline or styled subset`)
+          }
+          return {
+            pass: supported,
+            criterionBranch: savedRendition.branch,
+            tests: [{ id: savedRendition.signal, status: supported ? "supported" : "unsupported", assertionRefs: [0] }],
+            response: response(),
+            observation: {
+              outcome: supported ? "supported" : "unsupported",
+              assertionType,
+              ...cite(targetScreenshotRef, frames),
+              ...(subset && { note: `${id}: target retains ${subset.label}` }),
+            },
+            assertions: [
+              {
+                assertionType,
+                kind: supported ? "positive" : "negative",
+                expected: `${id}: reset returns the crop to immutable initial rendition ${initial}, after qualified subsets, restores and ${savedRendition.control.label}`,
+                observed: measured.regionDigest,
+              },
+            ],
+          }
+        }
+        if (failed) return invalid(`${step.label}: saved rendition qualification failed; target was not sent`)
+      }
       if (rowGroups && index < 3) {
         groupReads.push(await readRowGroups(read, step, rowGroups, spec.pixelGeometry, frames))
       }
@@ -1316,6 +1471,8 @@ export async function captureRegionReadbackDecision(
       ],
     }
   } finally {
-    endCaptureLifecycle(ctx, spec.cleanup)
+    // A failed reference must reach DECRQSS without sending the reset under test as cleanup.
+    // Before our save exists, leave rendition alone rather than borrowing another saved slot.
+    endCaptureLifecycle(ctx, spec.cleanup, savedRendition ? (initialRenditionSaved ? "\x1b8" : "") : undefined)
   }
 }

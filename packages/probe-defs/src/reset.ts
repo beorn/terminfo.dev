@@ -1,4 +1,4 @@
-import type { ProbeDefinition } from "./types.ts"
+import type { ProbeCallbackResult, ProbeDefinition } from "./types.ts"
 import { captureRegionCallbackResult, type RegionReadback } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
@@ -75,13 +75,17 @@ export const resetProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
-        // The shared DECRQSS readback decides this SGR-state claim structurally wherever the
-        // terminal answers — sgr.reset binds the same shape from sgr.ts — and a terminal that
-        // stays silent keeps the capture/cursor evidence below, so a missing readback is never a
-        // negative. Both guards run first: an invalid or undersized terminal is never written to
-        // or queried.
         const captureRefusal = ctx.capture ? sgrCaptureTooSmall(ctx, "reset.sgr") : undefined
         if (captureRefusal) return captureRefusal
+        const regionReadback = RESET_FAMILY_CAPTURE["reset.sgr"]
+        let referenceFailure: ProbeCallbackResult | undefined
+        // The immutable initial reference must precede DECRQSS's SGR0 prelude. Only a failed
+        // qualification falls through: a changed made-up control or an unknown target is invalid.
+        if (ctx.capture && ctx.captureKind !== "text-cells" && regionReadback?.savedRendition) {
+          const captured = await captureRegionCallbackResult(ctx, "reset.sgr", regionReadback)
+          if (captured && captured.criterionBranch !== "saved-rendition-unqualified") return captured
+          if (captured) referenceFailure = captured
+        }
         const measuredRoom =
           Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= 1 && ctx.cols >= 2
         // A silent DECRQSS attempt still wrote its sequence and query, so the named refusal from
@@ -100,16 +104,45 @@ export const resetProbes: ProbeDefinition[] = [
               readback: { require: [1, 3, 7] },
             },
           )
-          if (readback) return readback
+          if (readback) {
+            if (!referenceFailure) return readback
+            const note = referenceFailure.tests?.[0]?.reason
+            const retained = {
+              response: JSON.stringify({ reference: referenceFailure.response, decrqss: readback.response }),
+              note,
+            }
+            return readback.observation
+              ? {
+                  ...readback,
+                  ...retained,
+                  observation: {
+                    ...readback.observation,
+                    note: [note, readback.observation.note].filter(Boolean).join("; "),
+                  },
+                }
+              : { ...readback, ...retained }
+          }
         }
         if (ctx.capture) {
-          // The same-run region oracle owns this row wherever the run can map cells onto its own
-          // window: a reset with no independent reference is declined by name, and every other row
-          // is graded against expected and ignored frames painted in this same run.
-          const regionReadback = RESET_FAMILY_CAPTURE["reset.sgr"]
           if (regionReadback) {
-            const verdict = await captureRegionCallbackResult(ctx, "reset.sgr", regionReadback, readbackAttempted)
-            if (verdict) return verdict
+            // Qualification cannot be retried after the query reset. Keep the existing named
+            // refusal: a silent DECRQSS never reaches the old reset-derived frames.
+            const { savedRendition: _savedRendition, ...fallback } = regionReadback
+            const verdict = await captureRegionCallbackResult(ctx, "reset.sgr", fallback, readbackAttempted)
+            if (verdict) {
+              if (!referenceFailure) return verdict
+              return {
+                pass: false,
+                response: referenceFailure.response,
+                tests: [
+                  {
+                    id: "criterion",
+                    status: "probe-invalid",
+                    reason: `${referenceFailure.tests?.[0]?.reason}; ${verdict.tests?.[0]?.reason}`,
+                  },
+                ],
+              }
+            }
           }
           try {
             return await sgrCaptureFrames(

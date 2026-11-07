@@ -51,6 +51,7 @@ it("demotes only the selected mux pixel test while preserving query, library and
   for (const [featureId, criterionBranch, testId] of [
     ["sgr.bold", "sgr-attribute-same-run", "attribute"],
     ["cursor.shape", "cursor-shape-same-run", "review"],
+    ["reset.sgr", "reset-saved-rendition", "reset"],
   ] as const) {
     for (const status of ["supported", "unsupported"] as const) {
       const recorded = finalizeProbeResult({
@@ -83,7 +84,7 @@ it("demotes only the selected mux pixel test while preserving query, library and
           expect(result.screenshotRef).toBe(frame.ref)
         }
       }
-      if (featureId === "cursor.shape") {
+      if (featureId === "cursor.shape" || featureId === "reset.sgr") {
         const query = { ...recorded, assertionType: "query_reply" as const, criterionBranch: undefined }
         expect(finalizeVisualResult(query, { kind: "mux" }, [])).toEqual(query)
         const anotherFeature = { ...recorded, featureId: "modes.bracketed-paste" }
