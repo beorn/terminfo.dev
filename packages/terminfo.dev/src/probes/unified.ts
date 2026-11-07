@@ -15,6 +15,7 @@ import {
   withReplyFailureEvidence,
   declaredUntestableResult,
   type ProbeResult,
+  type ProbeSubject,
   type RunDraft,
   type CaptureCells,
   type CapturePixelGeometry,
@@ -743,7 +744,8 @@ export async function runProbeBatch(
     options.onCheckpoint?.(batch)
     let callbackTests: ProbeCallbackResult["tests"]
     let criterionBranch: string | undefined
-    const subject = options.draft?.subject ?? options.subject
+    const subject: (Pick<ProbeSubject, "kind" | "id" | "os"> & Partial<ProbeSubject>) | undefined =
+      options.draft?.subject ?? options.subject
     const muxProof = options.ownedTerminal?.muxAttachmentProof
     const outerCommands =
       ownsTerminal && subject?.kind === "mux" && probe.id.startsWith("sgr.")
@@ -1035,7 +1037,7 @@ export async function runProbeBatch(
             ...recordExecutedProbe({
               featureId: probe.id,
               attempt,
-              coverage: { featureId: probe.id, ...declared.notTested },
+              coverage: { featureId: probe.id, ...declared.notTested, rawReplyRef: `${probe.id}.outerCommands` },
               criterionBranch: declared.criterionBranch,
               tests: declared.tests,
               assertions: [],

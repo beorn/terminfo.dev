@@ -119,7 +119,7 @@ test.each([
   ["unfinished", nativeMuxCommands.slice(0, nativeMuxCommands.lastIndexOf("draw 3\n")), undefined, /completion/],
 ] as const)(
   "mux command read: %s",
-  async (_name, commands, forwarded, refusal, featureId = "sgr.underline.curly") => {
+  async (_name, commands, forwarded, refusal, featureId: string = "sgr.underline.curly") => {
     const directory = mkdtempSync(join(tmpdir(), "terminfo-mux-sgr-"))
     const capture = join(directory, "artifacts")
     const path = join(directory, "daemon.log")
@@ -136,7 +136,12 @@ test.each([
       const reader = beginMuxSgrCommandRead({
         featureId,
         subject: { kind: "mux", id: "tmux", version: "3.8", os: "linux", outerTerminal: "kitty" },
-        proof: { platform: "linux", mux: "tmux", launchRunId: runId, collector: { pid: process.pid, startTicks: "1" } },
+        proof: {
+          platform: "linux",
+          mux: "tmux",
+          launchRunId: runId,
+          collector: { pid: process.pid, startTicks: "1", ttyRdev: 1 },
+        },
       })
       expect(reader.status).toBe("ready")
       if (reader.status !== "ready") throw new Error(reader.reason)

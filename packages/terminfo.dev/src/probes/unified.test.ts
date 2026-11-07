@@ -1058,10 +1058,8 @@ it.each([
       expect(JSON.parse(batch.rawReplies[`${id}.outerCommands`]!)).toMatchObject({
         status: "measured",
         targetSent: scenario.forwarded,
+        detail: { appended: scenario.forwarded ? native : native.replace("select_graphic_rendition 4:3\n", "") },
       })
-      expect(JSON.parse(batch.rawReplies[`${id}.outerCommands`]!).detail.appended).toBe(
-        scenario.forwarded ? native : native.replace("select_graphic_rendition 4:3\n", ""),
-      )
       const retained = { ...asRun(batch), subject, intendedSubject: { kind: "mux", id: "tmux" } }
       const decoded = decodeCollectorDraft(
         "mux-sgr-command.json",
