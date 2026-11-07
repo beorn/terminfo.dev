@@ -133,7 +133,7 @@ export function kittyPixelPayload(width: number, height: number, rgb: readonly [
 function kittyPayloadTransfer(action: "t" | "T" | "f", control: string, payload: string): string {
   const chunks: string[] = []
   for (let offset = 0; offset < payload.length; offset += 4096) {
-    const header = offset === 0 ? `a=${action},${control}` : action === "f" ? "a=f,q=1" : `q=${action === "T" ? 2 : 1}`
+    const header = offset === 0 ? `a=${action},${control}` : action === "f" ? "a=f,q=1" : `q=${action === "T" ? 0 : 1}`
     const more = offset + 4096 < payload.length ? 1 : 0
     chunks.push(`\x1b_G${header},m=${more};${payload.slice(offset, offset + 4096)}\x1b\\`)
   }
@@ -230,8 +230,8 @@ export function kittyDiacritic(index: number): string {
 }
 
 /**
- * Quiet virtual placement: `a=T,U=1` stores the image without displaying it, `c`/`r` declare the
- * cell grid it will be tiled across, and `q=2` suppresses every reply. Nothing here is evidence.
+ * Virtual placement: `a=T,U=1` stores the image without displaying it, `c`/`r` declare the
+ * cell grid it will be tiled across, and `q=0` requests its success or refusal reply.
  */
 export function kittyVirtualPlacement(
   imageId: number,
@@ -239,7 +239,7 @@ export function kittyVirtualPlacement(
 ): string {
   return kittyPayloadTransfer(
     "T",
-    `U=1,i=${imageId},f=24,s=${frame.width},v=${frame.height},c=${KITTY_BLOCK_COLS},r=${KITTY_BLOCK_ROWS},q=2`,
+    `U=1,i=${imageId},f=24,s=${frame.width},v=${frame.height},c=${KITTY_BLOCK_COLS},r=${KITTY_BLOCK_ROWS},q=0`,
     kittyPixelPayload(frame.width, frame.height, frame.rgb),
   )
 }
@@ -296,6 +296,8 @@ export interface KittyAnimationEvidence {
   readonly redraw: KittyDigestPair
   /** Milliseconds actually elapsed between the playback pair, measured from the first capture. */
   readonly playbackElapsedMs: number
+  /** Refusal of this image's animation command, excluding base-image transmission and placement. */
+  readonly refusal?: string
 }
 
 export interface KittyCaptureDecision {
@@ -312,7 +314,7 @@ function pairNames(pair: KittyDigestPair): string {
 /**
  * The animation decision table, one branch per control so a failed control names itself. Two frames
  * that agree are never a negative until the pipeline and the surface are both shown alive and the
- * pair is retried at twice the gap.
+ * pair is retried at twice the gap, with a refusal of the tested animation command.
  */
 export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCaptureDecision {
   const missing = (
@@ -395,10 +397,17 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCap
       decidedBy: "the playback image setup",
     }
   }
+  if (!evidence.refusal) {
+    return {
+      outcome: "inconclusive",
+      note: "Kitty animation: the playback pair and delayed retry were equal, but no exact animation-command refusal was observed; unchanged pixels alone cannot establish Unsupported",
+      decidedBy: "a missing animation-command refusal",
+    }
+  }
   return {
     outcome: "unsupported",
-    note: `Kitty animation: the playback image matches the verified one-frame image and two captures at twice the gap were equal (${pairNames(evidence.retry)}); hand selection ${evidence.clientFrame[0] === evidence.clientFrame[1] ? "did not change" : "changed"} the rectangle, so the terminal did not advance the image on its own timer`,
-    decidedBy: "the retried playback pair, with static image setup qualified",
+    note: `Kitty animation: the playback image matches the verified one-frame image and two captures at twice the gap were equal (${pairNames(evidence.retry)}); hand selection ${evidence.clientFrame[0] === evidence.clientFrame[1] ? "did not change" : "changed"} the rectangle, and the terminal refused the tested animation command: ${evidence.refusal}`,
+    decidedBy: "the animation-command refusal, with an equal retry and static image setup qualified",
   }
 }
 
@@ -427,13 +436,15 @@ export interface KittyPlaceholderEvidence {
    * control carry the job the readback was doing.
    */
   readonly cellReadback: KittyDigestPair | null
+  /** Refusal of this image's virtual a=T,U=1 placement, never its ordinary-placement control. */
+  readonly refusal?: string
 }
 
 /**
  * The placeholder decision table, from pixels on a pixel arm. Two in-run controls stand where the cell
  * readback used to: the layout guard must hold still between the states, and the with-image rectangle
- * must equal the ordinary `a=p` placement of the same opaque image over the same cells. Quiet mode
- * means no acknowledgement exists to inherit, and a cells adapter, where present, can only veto.
+ * must equal the ordinary `a=p` placement of the same opaque image over the same cells. Equal pixels
+ * require an exact virtual-placement refusal for a negative; a cells adapter can only veto.
  */
 export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): KittyCaptureDecision {
   const [withFirst, withSecond] = evidence.withImage
@@ -511,9 +522,17 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
         "the with-image and without-image pair, with the ordinary placement identical and the layout guard equal",
     }
   }
+  if (!evidence.refusal) {
+    return {
+      outcome: "inconclusive",
+      note: "Kitty unicode placeholders: the placeholder rectangle is pixel-identical with and without the image, but no exact virtual-placement refusal was observed; unchanged pixels alone cannot establish Unsupported",
+      decidedBy: "a missing virtual-placement refusal",
+    }
+  }
   return {
     outcome: "unsupported",
-    note: `Kitty unicode placeholders: the placeholder rectangle is pixel-identical with and without the image (${withSecond} against ${evidence.withoutImage}) while the ordinary placement of the same pixels painted and the layout guard held still, so the same pixels render through a=p and not through placeholders`,
-    decidedBy: "the with-image and without-image pair, after the delayed re-capture, with the layout guard equal",
+    note: `Kitty unicode placeholders: the placeholder rectangle is pixel-identical with and without the image (${withSecond} against ${evidence.withoutImage}) while the ordinary placement of the same pixels painted and the layout guard held still; the terminal refused the tested virtual placement: ${evidence.refusal}`,
+    decidedBy:
+      "the virtual-placement refusal, with an equal pixel pair, layout guard equal and qualified ordinary placement",
   }
 }

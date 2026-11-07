@@ -100,10 +100,16 @@ The library placeholder arm remains Untestable (no rendered placeholder images).
 The animation arm shares those prerequisite and SGR-reference paths. Its one-frame image must
 match that reference and remain stable. A moving playback pair needs a differing hand-selected
 pair for Supported. An equal delayed retry reads Unsupported only when the initial playback
-image matches the qualified one-frame image; hand selection need not work for that negative.
-Missing or failed controls remain undecided; graphics replies are retained as detail. Animation frame
+image matches the qualified one-frame image and the terminal refuses this image's tested animation
+command; hand selection need not work for that negative. Equal placeholder pixels likewise need
+the tested virtual placement's refusal, with the ordinary-image and layout controls passing.
+Without the exact refusal, either row remains PROBE INVALID and names the observed replies.
+Missing or failed controls remain undecided. Animation frame
 transfers and controls use `q=1`: successful acknowledgements stay quiet, while returned terminal errors
-remain in the command readbacks and the result's reason. Errors do not replace the pixel criterion.
+remain in the command readbacks and the result's reason. Virtual placement uses `q=0` on every chunk
+and retains its success or error readback. Base-image and ordinary-placement errors cannot establish
+the feature's refusal. Positive pixels retain their screenshot assertion; a qualified negative's
+deciding assertion is the exact command's `query_reply`, with all pixel controls retained.
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
@@ -952,15 +958,17 @@ A restored primary marker still leaves 47 next-entry persistence, exact 1047 cle
 cursor/scrollback unmeasured. Same-1047 re-entry does not prove clearing. IRM keeps its query-first
 positives and recognized negatives; only an undecided query reaches the existing insertion fixture.
 
-**Timed and composited rows decide by pixels, never by an acknowledgement.** The kitty animation and
-unicode-placeholder rows read `capture` and compare region digests as raw bytes; neither a `_G` reply nor
-a first painted frame is evidence. Animation's observation is two target frames of one rectangle with no
+**Timed and composited positives need pixels; negatives also need an exact refusal.** The kitty animation and
+unicode-placeholder rows read `capture` and compare region digests as raw bytes; a successful `_G` reply
+or a first painted frame alone does not establish support. Animation's positive observation is two target frames of one rectangle with no
 write between them, taken only behind four controls of the same run: a client-driven frame selection that
 must differ, a one-frame image that must hold still, a cursor-only capture that must leave the rectangle
 alone, and a redraw that must change the screen outside it. Placeholders compare the placeholder rectangle
 with the image composited over it against the same characters on the same foreground colour with the image
 deleted, with an ordinary `a=p` placement of the same pixels — measured against a captured blank — as the
-live control; this queue transmits quietly, so no acknowledgement exists to inherit. The placeholder row
+live control. The virtual `a=T,U=1` transfer requests and retains its reply; an equal pixel comparison
+without that command's refusal is PROBE INVALID. Animation's equal retry likewise needs a refusal of
+its tested animation command, after the static-image controls pass. The placeholder row
 adds two in-run pixel controls in place of the cell readback it used to require: a layout guard — the same
 short ASCII written immediately right of the grid and captured with the row below it, byte-identical in both
 states, so a terminal that reflows when the image arrives is inconclusive by name rather than judged on a

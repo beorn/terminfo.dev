@@ -67,7 +67,7 @@ test("image, animation and virtual-placement payloads obey the same bounded tran
   for (const [wire, continuationKeys, quiet] of [
     [kittyFrameTransfer(7, frame, { root: true }), ["m", "q"], "1"],
     [kittyFrameTransfer(7, frame), ["a", "m", "q"], "1"],
-    [kittyVirtualPlacement(7, frame), ["m", "q"], "2"],
+    [kittyVirtualPlacement(7, frame), ["m", "q"], "0"],
   ] as const) {
     const chunks = [...wire.matchAll(/\x1b_G([^;]+);([A-Za-z0-9+/=]*)\x1b\\/gu)]
     expect(chunks.length).toBeGreaterThan(1)
@@ -77,7 +77,7 @@ test("image, animation and virtual-placement payloads obey the same bounded tran
       expect(chunk[2]!.length).toBeLessThanOrEqual(4096)
       expect(chunk[2]!.length % 4).toBe(0)
       expect(control.m).toBe(index === chunks.length - 1 ? "0" : "1")
-      // Errors must survive every animation chunk; virtual placement remains completely quiet.
+      // Animation errors survive; virtual placement must answer both success and failure.
       expect(control.q).toBe(quiet)
       if (index > 0) {
         expect(Object.keys(control).sort()).toEqual(continuationKeys)
@@ -111,12 +111,12 @@ test("the pixel payload is raw RGB of the requested size, base64 encoded", () =>
   expect(() => kittyBlockPixels({ cellWidth: 0, cellHeight: 1 })).toThrow(/positive whole pixels/u)
 })
 
-test("the quiet virtual placement suppresses replies and declares its cell grid", () => {
-  const quiet = kittyVirtualPlacement(9, frame)
-  expect(quiet).toContain("a=T,U=1,i=9")
-  expect(quiet).toContain(",c=2,r=2")
-  expect(quiet).toContain("q=2")
-  // An acknowledgement is never the evidence here, so no acking command exists on this path.
+test("virtual placement requests replies and declares its cell grid", () => {
+  const wire = kittyVirtualPlacement(9, frame)
+  expect(wire).toContain("a=T,U=1,i=9")
+  expect(wire).toContain(",c=2,r=2")
+  expect(wire).toContain("q=0")
+  // A success reply still cannot establish rendered pixels.
   expect(kittyPlace(9)).toContain("a=p")
 })
 
@@ -187,16 +187,20 @@ test("animation is supported only by two differing frames of one run with every 
   expect(verdict.note).toContain("400 ms")
 })
 
-test("an equal playback pair is never a negative until the pipeline is alive and the pair was retried", () => {
+test("an equal playback pair needs live controls, a retry and an animation refusal for a negative", () => {
   // Equal playback with no retry recorded can never decide.
   expect(decideKittyAnimation(evidence({ playback: ["a", "a"] })).outcome).toBe("inconclusive")
-  // A differing client-selected pair plus a stable still plus the retry at twice the gap: negative.
-  expect(decideKittyAnimation(evidence({ playback: ["a", "a"], retry: ["a", "a"] })).outcome).toBe("unsupported")
+  // Qualified negative pixels still need the terminal's own animation refusal.
+  const equal = { playback: ["a", "a"], retry: ["a", "a"] } as const
+  expect(decideKittyAnimation(evidence(equal)).outcome).toBe("inconclusive")
+  expect(
+    decideKittyAnimation(evidence({ ...equal, refusal: "start playback: ERROR: unimplemented action" })).outcome,
+  ).toBe("unsupported")
   // The same equal playback pair that DOES advance on the retry is support, not a negative.
   expect(decideKittyAnimation(evidence({ playback: ["a", "a"], retry: ["a", "b"] })).outcome).toBe("supported")
-  // Static-image support is sufficient setup: frame selection is part of animation, not a negative control.
+  // Static setup can qualify a refusal even when frame selection is also rejected.
   const staticOnly = decideKittyAnimation(
-    evidence({ playback: ["a", "a"], retry: ["a", "a"], clientFrame: ["a", "a"] }),
+    evidence({ ...equal, clientFrame: ["a", "a"], refusal: "select frame 2: ERROR: unimplemented action" }),
   )
   expect(staticOnly.outcome).toBe("unsupported")
   expect(staticOnly.note).toContain("hand selection did not change")
@@ -271,8 +275,10 @@ test("each veto names itself instead of becoming a verdict", () => {
   )
 })
 
-test("identical pixels through both paths stay a negative, and an unmeasured path implicates nothing", () => {
-  const same = decideKittyPlaceholders(placeholders({ withImage: ["same", "same"], withoutImage: "same" }))
+test("identical pixels need a virtual-placement refusal, and an unmeasured path implicates nothing", () => {
+  const equal = { withImage: ["same", "same"], withoutImage: "same" } as const
+  expect(decideKittyPlaceholders(placeholders(equal)).outcome).toBe("inconclusive")
+  const same = decideKittyPlaceholders(placeholders({ ...equal, refusal: "ERROR: unimplemented virtual placement" }))
   expect(same.outcome).toBe("unsupported")
   expect(same.decidedBy).toContain("layout guard equal")
   // The ordinary placement never painted, so the graphics path is unmeasured.
