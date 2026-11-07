@@ -440,9 +440,9 @@ test("OSC104 retains silent-query controls and unqualified cell readings without
 })
 
 // Each entry is an authorized effect-readback regression, not the query feature itself (#32324).
-// App graphics transmit's two controlled windows are covered by the CTO87a56285 decision table below.
 test.each([
   "extensions.kitty-graphics.display",
+  "extensions.kitty-graphics.transmit",
   "extensions.osc104-reset-palette",
   "extensions.osc110-reset-fg",
   "extensions.osc111-reset-bg",
@@ -1375,70 +1375,6 @@ test("an explicit graphics refusal decides transmit and leaves display with no s
   expect(displayResult.tests?.[0]?.reason).toMatch(/^Untestable \(no setup\): .*transmit.*refused.*ENOTSUP/u)
   expect(JSON.stringify(displayResult)).not.toMatch(/no image allocation readback/iu)
 })
-
-// CTO 87a56285: App negatives need the row's own transfer AND canonical-query windows.
-// Existing allocation/refusal cases do not cover a terminal that answers only DA1 in both windows.
-test.each([
-  ["sentinel", "sentinel", true],
-  ["sentinel", "reply", false],
-  ["sentinel", "refusal", false],
-  ["sentinel", "timeout", false],
-  ["timeout", "sentinel", false],
-  ["partial", "sentinel", false],
-  ["sentinel", "partial", false],
-] as const)(
-  "App graphics transfer=%s/query=%s decides only two controlled silent windows",
-  async (transfer, query, negative) => {
-    for (const display of [false, true]) {
-      const windows: string[] = []
-      const result = await callback(`extensions.kitty-graphics.${display ? "display" : "transmit"}`).term!(
-        replayTermProbeSource(new Map(), {
-          queryWithSentinelOutcome: async (sequence, pattern) => {
-            windows.push(sequence)
-            const kind = sequence.includes("a=q") ? query : transfer
-            const raw =
-              kind === "refusal"
-                ? "\x1b_Gi=31;ENOTSUP\x1b\\"
-                : kind === "reply"
-                  ? "\x1b_Gi=31;OK\x1b\\"
-                  : kind === "timeout"
-                    ? ""
-                    : `${"\x1b[?62;22c"}${kind === "partial" ? "\x1b_Gi=31;" : ""}`
-            return {
-              match: kind === "reply" || kind === "refusal" ? pattern.exec(raw) : null,
-              reason: kind === "timeout" ? "timeout" : kind === "reply" || kind === "refusal" ? "reply" : "sentinel",
-              raw,
-              rawBase64: Buffer.from(raw).toString("base64"),
-              ...(kind === "sentinel" || kind === "partial" ? { sentinel: { atMs: 3, graceMs: 250 } } : {}),
-            }
-          },
-        }),
-      )
-      if (negative) {
-        expect(windows).toHaveLength(2)
-        expect(windows[0]).toContain("a=t")
-        expect(windows[1]).toContain("a=q")
-        if (display) {
-          expect(result.tests?.[0]).toMatchObject({ status: "untestable" })
-          expect(result.tests?.[0]?.reason).toMatch(/^Untestable \(no setup\): .*transmit/u)
-          expect(JSON.stringify(result)).not.toMatch(/does not display/u)
-        } else {
-          expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-          expect(result.assertions).toMatchObject([{ kind: "negative" }, { kind: "negative" }])
-          expect(JSON.parse(result.response!)).toMatchObject({
-            transfer: { raw: "\x1b[?62;22c" },
-            query: { raw: "\x1b[?62;22c" },
-          })
-        }
-      } else {
-        expect(result.observation?.outcome).not.toBe("unsupported")
-        expect(result.observation?.outcome).not.toBe("supported")
-        expect(result.assertions).toBeUndefined()
-        expect(result.tests?.some((row) => row.status === "untestable")).not.toBe(true)
-      }
-    }
-  },
-)
 
 test.each(["sentinel", "timeout"] as const)(
   "the library arm asks its canonical graphics question whether the silence reads as a %s",

@@ -552,10 +552,8 @@ test.each(ARM_CASES)(
         expect(live.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
       } else {
         expect(headless.notTested?.noObservable).toContain("stored the image")
-        // CTO87a56285: the App's two controlled silent windows decide its transmit negative;
-        // the Library effect criterion remains open on these identical reply windows.
-        expect(live.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-        expect(live.assertions).toMatchObject([{ kind: "negative" }, { kind: "negative" }])
+        expect(live.observation).toBeUndefined()
+        expect(live.notTested?.noObservable).toBe(headless.notTested?.noObservable)
       }
       const plain = lib(queryOnly(sourceOf(scripted(() => ""))))
       expect(plain.observation, id).toBeUndefined()

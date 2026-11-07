@@ -3391,8 +3391,6 @@ describe("Kitty protocol detection", () => {
             return `\x1b_Gi=745,I=${outcome === "wrong-id" ? "0" : number};${outcome === "rejected" ? "EINVAL:invalid image" : "OK"}\x1b\\`
           }
           if (sequence.includes("a=p,")) return "\x1b_Gi=745;OK\x1b\\"
-          // The App's undecided transfer now asks its own canonical query; a reply still leaves it open.
-          if (sequence.includes("a=q,")) return "\x1b_Gi=31;OK\x1b\\"
           throw new Error(`Unexpected graphics request ${JSON.stringify(sequence)}`)
         }
         const result = await p.term(
