@@ -778,7 +778,8 @@ the repeated full setup, made-up SGR 99 must leave the crop unchanged. SGR 0 ret
 crop is Supported; a retained subset is Unsupported on a bare terminal. A changed made-up control
 or unmatched target is PROBE INVALID. Failed qualification names its step and tries DECRQSS;
 silence retains `noIndependentReference` and never runs a reset-derived reference. The library
-arm, `sgr.reset` and SGR 22 retain their existing behavior.
+arm, `sgr.reset` and SGR 22 retain their existing behavior. A mux subset result stays PROBE TODO
+naming its outer terminal through `finalizeVisualResult`; positive captures and query fallbacks retain their results.
 Without a deciding independent capture, an omitted setup attribute retains named PROBE TODO coverage
 and both raw query phases, just as an omitted final attribute does; it is not a broken measurement.
 With an owned colour, reset-family or blink oracle, valid final SGR state replies and named
