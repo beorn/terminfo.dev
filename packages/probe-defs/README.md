@@ -33,7 +33,7 @@ feature-to-reason map only after an unresolved callback; observations, command r
 results keep precedence. Unknown versions select nothing. Ghostty's command-end and full-cycle
 no-setup reasons additionally require this run's absent session-bus address and an absent default
 socket, retained as `collector.sessionBus`; unreadable socket paths remain unresolved.
-The OSC666 declarations cover only Ghostty1.4.0, GNU Screen5.0.2 and xterm411 on Linux,
+The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 411 on Linux,
 with their exact parser citations and missing public property readback. They declare the
 unresolved observation unavailable; they supply no command report or measured negative.
 
