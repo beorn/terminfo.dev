@@ -1710,7 +1710,7 @@
     "slug": "sgr-0-reset-clears-attributes",
     "tags": ["ecma-48"],
     "body": "Tests whether SGR 0 (<code>ESC [ 0 m</code>) correctly clears all text attributes — bold, faint, italic, underline, blink, inverse, hidden, strikethrough, overline, and colors. This is the most basic reset and should leave the terminal in its default text rendering state.",
-    "probe": "Apply bold+italic+inverse via <code>\\x1b[1;3;7m</code>X then send <code>\\x1b[0m</code>Y, verify the second cell has all attributes cleared.",
+    "probe": "Apply bold+italic+inverse via <code>\\x1b[1;3;7m</code>X then send <code>\\x1b[0m</code>Y, verify the second cell has all attributes cleared. App: before any attribute is set, draw YY and save with DECSC. For each of the seven subsets of bold, italic and inverse, draw YY with the subset set, then restore with DECRC: every subset must change the crop and every restore must return it exactly. Then set all three, draw YY, send the made-up SGR 99 and draw YY: the crop must not change. Send SGR 0 and draw YY. Supported: the crop equals the original. Unsupported: the crop equals a subset's crop. A change at the made-up SGR, or a crop matching neither, is PROBE INVALID. On a multiplexer a crop equal to a subset stays PROBE TODO naming the outer terminal. If a subset or restore does not qualify, DECRQSS decides, and a silent DECRQSS keeps the row's named refusal.",
     "baseline": "core",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/"
   },
