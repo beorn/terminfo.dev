@@ -109,7 +109,9 @@ it("keeps mux reverse-video pixel negatives pending without changing query or ba
   const mux = finalizeVisualResult(negative, { kind: "mux" }, [frame])
   expect(mux).toMatchObject({ status: "probe-todo", reason: expect.stringContaining("outer") })
   expect(mux.reason).toContain("dump-commands")
-  for (const kind of ["term", "lib"] as const) expect(finalizeVisualResult(negative, { kind }, [frame])).toEqual(negative)
+  for (const kind of ["term", "lib"] as const) {
+    expect(finalizeVisualResult(negative, { kind }, [frame])).toEqual(negative)
+  }
   const positive = result("supported")
   expect(finalizeVisualResult(positive, { kind: "mux" }, [frame])).toEqual(positive)
   const query = { ...negative, screenshotRef: undefined }
