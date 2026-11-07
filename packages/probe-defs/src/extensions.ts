@@ -7112,10 +7112,6 @@ const GHOSTTY_NATIVE_D2_DECLARATIONS: Readonly<Record<string, string>> = {
     "Ghostty 1.3.1 parses OSC 113 and does nothing with it. It keeps no pointer colour.",
   "extensions.osc114-reset-pointer-bg":
     "Ghostty 1.3.1 parses OSC 114 and does nothing with it. It keeps no pointer colour.",
-  "extensions.osc117-reset-highlight-bg":
-    "Ghostty 1.3.1 parses OSC 117 and does nothing with it. It keeps no highlight colour.",
-  "extensions.osc119-reset-highlight-fg":
-    "Ghostty 1.3.1 parses OSC 119 and does nothing with it. It keeps no highlight colour.",
   "modes.decsscls": "Ghostty 1.3.1 has no handler for this sequence and no scroll-speed state.",
   "input.kitty-click-events":
     "Untestable: Ghostty 1.3.1 core stores click_events, but only Surface acts on a click, and Surface is the app.",
