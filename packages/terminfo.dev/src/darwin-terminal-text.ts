@@ -64,7 +64,11 @@ export interface TerminalCellGrid {
 }
 
 export type TerminalTextRead =
-  | { readonly status: "read"; readonly app: TerminalTextApp | "kitty"; readonly cells: TerminalCellGrid }
+  | {
+      readonly status: "read"
+      readonly app: TerminalTextApp | "kitty" | "windows-terminal"
+      readonly cells: TerminalCellGrid
+    }
   | { readonly status: "refused"; readonly reason: string }
 
 export interface OsascriptReply {

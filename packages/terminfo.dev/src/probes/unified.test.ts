@@ -3192,7 +3192,7 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
         ids: ["device.primary-da"],
         ownedTerminal: geometryOwner(measured(24, 80)),
         prepareCapture: async ({ source: probeSource }) => {
-          qualification = await collectTextQualification({ ctx: probeSource, capture })
+          qualification = await collectTextQualification({ ctx: probeSource, recipe: "macos-text-cells-v1", capture })
           preparedAt = Date.now()
         },
       })

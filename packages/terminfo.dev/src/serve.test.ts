@@ -66,7 +66,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
       const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
       return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({muxAttachment:attachment}),
         ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
-        ...(darwin?{readCells:async()=>{throw new Error("This subject-join test does not request a text frame")}}:{}),
+        ...(darwin?{textRecipe:"macos-text-cells-v1",readCells:async()=>{throw new Error("This subject-join test does not request a text frame")}}:{}),
         ...(!darwin?{clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(!hasAttachment?{muxAttachmentProof:attachment}:{})}}:{}),dispose:async()=>{}}
     }}))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
@@ -1424,6 +1424,7 @@ describe("private finite daemon startup", () => {
           ...(arm !== "terminalApp" && { hostedAppId: app }),
           ...(process.env.FIXTURE_PID === "yes" && { appPid: 5705 }),
           summary: "owned fixture",
+          ...(arm !== "windowsHosted" && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => { reads += 1; return { status: "refused", reason: "no retention directory in this run" } },
           dispose: async () => {}
         })
@@ -1612,6 +1613,7 @@ describe("private finite daemon startup", () => {
           readGeometry: async () => ({ status: "measured", rows: 24, cols: 80 }),
           hostedAppId: darwin ? "kitty" : "windows-terminal",
           summary: "owned fixture",
+          ...(darwin && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => { reads += 1;
             if (expectation === "closure") { return { status: "read", app: "kitty", cells: {
               cols: 80, rows: 24, text: Array.from({length: 24}, (_, row) => Array.from({length: 80}, (_, col) => screen.getCell(screen.getScrollback().viewportTop + row, col).char || " ").join("")), paddedRows: [], droppedLines: 0

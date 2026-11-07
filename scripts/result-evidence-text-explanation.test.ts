@@ -115,13 +115,20 @@ it("publishes short reader-safe missing-evidence reasons on probe-todo cells whi
 })
 
 describe("the site says why a text row does not count (30033 ruling f1f3c64b)", () => {
-  it("names the console host on a Windows text row, and says it is not counted", () => {
+  it("does not infer console-host origin when the Windows row recorded no host", () => {
     const text = textEvidenceExplanation({ assertionType: "buffer_state", conclusive: false, os: "windows" })
-    expect(text).toContain("console host")
+    expect(text).toContain("does not establish a terminal verdict")
+    expect(text).not.toContain("console host")
     expect(text).toContain("not counted")
-    // The site projection carries no frame trace, so the cell says where the host IS recorded
-    // rather than leaving a reader to think nothing named it (@cto, ruling f1f3c64b addition).
-    expect(text).toContain("recorded in the run artifact")
+    const textQualificationReason = "Windows Terminal UI Automation read failed before a qualified snapshot"
+    expect(
+      textEvidenceExplanation({
+        assertionType: "buffer_state",
+        conclusive: false,
+        os: "windows",
+        textQualificationReason,
+      }),
+    ).toContain(textQualificationReason)
   })
 
   // 30055 AC4: when the run records the host, the site names it — image, executable path and the

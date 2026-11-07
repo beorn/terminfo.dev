@@ -40,6 +40,7 @@ export type {
   ObservationFrame,
   TextCellsObservationFrame,
   TextQualification,
+  TextQualificationOwnership,
   TextQualificationShape,
   TextQualificationSpec,
   ProbeSubject,
@@ -237,4 +238,13 @@ export {
   collectorAttemptDigest,
 } from "./helpers.ts"
 
-export { assessTextQualification, type TextQualificationAssessment } from "./text-qualification.ts"
+export {
+  assessTextQualification,
+  admitsTextObservation,
+  textQualificationRecipeFor,
+  textQualificationRecipeMatchesSubject,
+  TEXT_QUALIFICATION_RECIPES,
+  TEXT_QUALIFICATION_OWNERSHIP_CELL,
+  type TextQualificationRecipe,
+  type TextQualificationAssessment,
+} from "./text-qualification.ts"

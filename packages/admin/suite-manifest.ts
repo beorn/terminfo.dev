@@ -35,10 +35,9 @@ function verifyValue(value: ProbeSuiteManifest, path: string, snapshot: ProbeSui
   ) {
     throw new Error(`Suite text claims mismatch: ${path}`)
   }
-  if (
-    value.textQualification?.version !== snapshot.textQualification?.version ||
-    value.textQualification?.recipe !== snapshot.textQualification?.recipe
-  ) {
+  const declared = (spec: ProbeSuiteManifest["textQualification"]): string =>
+    spec === undefined ? "" : JSON.stringify([spec.version, "recipes" in spec ? spec.recipes : spec.recipe])
+  if (declared(value.textQualification) !== declared(snapshot.textQualification)) {
     throw new Error(`Suite text qualification mismatch: ${path}`)
   }
   return value

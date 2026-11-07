@@ -332,6 +332,16 @@ describe("queryWindowsProcessExecutablePath and detectHostedWindowsAncestor", ()
       symbols: {
         GetConsoleWindow: () => 0n,
         GetConsoleScreenBufferInfo: () => 0,
+        // The ownership witness's raw write is never on the process-ancestry path: loud if reached.
+        GetConsoleMode: () => {
+          throw new Error("GetConsoleMode is not called on the process-ancestry path")
+        },
+        SetConsoleMode: () => {
+          throw new Error("SetConsoleMode is not called on the process-ancestry path")
+        },
+        WriteConsoleW: () => {
+          throw new Error("WriteConsoleW is not called on the process-ancestry path")
+        },
         // The ancestry path reads an image path, never an incarnation. Loud rather than a quiet
         // zero, so a future call here fails the test instead of reporting a creation time of zero.
         GetProcessTimes: () => {
