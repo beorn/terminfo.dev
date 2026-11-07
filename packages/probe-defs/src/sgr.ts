@@ -36,14 +36,11 @@ import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-captur
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
 /**
- * Blink is a phase in time, so one target frame decides nothing (#31812). The styled text is requested at these
- * offsets from the first sample, with no write between. Supported needs a sample to return to an earlier sample's
- * look (@cto 18528242), which takes two transitions: 2000 ms is two 500 ms on/off periods, so nine samples 250 ms
- * apart show a return whatever phase the first lands on (#32083; 750 ms held one transition at some phases).
- * They are requested offsets: a producer that settles before each acquisition lands later, so each sample also
- * records when it was invoked and the producer's own capture time.
+ * Blink is temporal: retain nine requested offsets and actual capturedAt values. The 3000 ms window
+ * covers more than twice the longest measured cycle; acquisition latency can lengthen it.
+ * Earlier-return remains the first positive route. Focus-qualified fade also decides support.
  */
-const BLINK_SAMPLE_OFFSETS_MS = [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000] as const
+const BLINK_SAMPLE_OFFSETS_MS = [0, 375, 750, 1125, 1500, 1875, 2250, 2625, 3000] as const
 
 /** Whether some styled value comes back after a different one (A,B,A in order): a settle only ever goes one way. */
 function returnsToEarlierValue(values: readonly string[]): boolean {
@@ -55,13 +52,9 @@ function returnsToEarlierValue(values: readonly string[]): boolean {
 }
 
 /**
- * sgr.blink's pixel capture: a control of the plain line on row 1 and the unstyled text on row 3, then the same
- * screen with the row-3 text styled, sampled nine times; the cursor is parked on row 2. With a measured raster
- * each frame is a region digest of the row-3 text and of the plain line, and the plain line's digest must hold
- * across all ten frames. Supported needs a styled value to come back after a different one: a one-way change
- * (A,B,B,B) is also what a first sample caught before the fixture finished painting looks like, so it stays
- * inconclusive, as do nine equal samples, because no blink period is recorded for the terminal. A plain line that
- * moves is redraw, scroll or cursor motion, never blink. Without a measured raster the ten frames go to review.
+ * Plain row 1 stays fixed beside styled row 3. A return or qualified fade proves blink.
+ * Flat pixels need same-row focus, fresh literal input, measured duration and a changed handled
+ * repaint on row 2; the subject-aware finalizer keeps mux negatives pending.
  */
 async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): Promise<ProbeCallbackResult> {
   const capture = ctx.capture
@@ -77,7 +70,37 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   ctx.write(screen(sample))
   const control = await shoot("control", "Unstyled text sample", styledCells)
   const controlPlain = geometry ? await shoot("control", "Plain line, control", plainCells) : undefined
+  type Focus = Awaited<ReturnType<NonNullable<NonNullable<TermProbeSource["input"]>["focusRoundTrip"]>>>
+  let focusBefore: Focus | undefined
+  let focusAfter: Focus | undefined
+  let focusError: string | undefined
+  let inputError: string | undefined
+  let keyAt: number | undefined
+  let keyRead: string | undefined
+  if (ctx.input?.focusRoundTrip) {
+    try {
+      focusBefore = await ctx.input.focusRoundTrip()
+    } catch (error) {
+      focusError = String(error)
+    }
+  }
+  const input = ctx.input
+  if (input && ctx.readInput) {
+    try {
+      keyRead = (
+        await ctx.readInput(/^a$/, 1000, async () => {
+          await input.injectKey("a")
+          keyAt = Date.now()
+        })
+      )?.[0]
+    } catch (error) {
+      inputError = String(error)
+    }
+  }
   ctx.write(screen(sequence + sample))
+  const paintCells = { top: 2, left: col, bottom: 2, right: col + sample.length - 1 }
+  const paintBefore =
+    geometry && focusBefore ? await shoot("control", "Third-region repaint baseline", paintCells) : undefined
   const samples: Array<{
     offsetMs: number
     invokedMs: number
@@ -99,12 +122,32 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       : undefined
     samples.push({ offsetMs, invokedMs, styled, ...(plain ? { plain } : {}) })
   }
+  if (ctx.input?.focusRoundTrip) {
+    try {
+      focusAfter = await ctx.input.focusRoundTrip()
+    } catch (error) {
+      focusError = String(error)
+    }
+  }
+  const focusQualified =
+    !!focusBefore &&
+    !!focusAfter &&
+    focusBefore.ownedWindowId.length > 0 &&
+    focusBefore.rootWindowId.length > 0 &&
+    focusBefore.ownedWindowId === focusAfter.ownedWindowId &&
+    focusBefore.rootWindowId === focusAfter.rootWindowId &&
+    [focusBefore, focusAfter].every(
+      (reading) =>
+        reading.focusedWindowIds[0] === reading.ownedWindowId &&
+        reading.focusedWindowIds[1] === reading.rootWindowId &&
+        reading.focusedWindowIds[2] === reading.ownedWindowId,
+    )
   const styledFrames = samples.map((entry) => entry.styled)
   const plainFrames = [
     ...(controlPlain ? [controlPlain] : []),
     ...samples.flatMap((entry) => (entry.plain ? [entry.plain] : [])),
   ]
-  const frames = [control, ...styledFrames, ...plainFrames]
+  const frames = [control, ...styledFrames, ...plainFrames, ...(paintBefore ? [paintBefore] : [])]
   const timing = samples.map(({ offsetMs, invokedMs, styled, plain }) => ({
     requestedOffsetMs: offsetMs,
     invokedMs,
@@ -181,6 +224,8 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     control: controlDigest,
     styled,
     plain,
+    focus: { before: focusBefore, after: focusAfter, error: focusError },
+    input: { keyRead, keyAt, error: inputError },
   })
   if (
     [controlDigest, ...styled, ...plain].some((digest) => digest === undefined) ||
@@ -211,7 +256,9 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     )
   }
   const styledDigests = styled.filter((digest): digest is string => digest !== undefined)
-  if (returnsToEarlierValue(styledDigests)) {
+  const earlierReturn = returnsToEarlierValue(styledDigests)
+  const fade = new Set(styledDigests).size >= 3 && styledDigests.at(-1) !== styledDigests.at(-2)
+  if (earlierReturn || (fade && focusQualified)) {
     return {
       pass: true,
       response: observed,
@@ -220,18 +267,27 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
         assertionType: "screenshot",
         screenshotRef: styledFrames[0]?.ref,
         frames,
-        note: "With no write between samples, the styled text's region digest changed and then came back to an earlier value, while the plain line held still in the control and every sample",
+        note: earlierReturn
+          ? "With no write between samples, the styled text's region digest changed and then came back to an earlier value, while the plain line held still in the control and every sample"
+          : "With focus read before and after, the styled region has at least three distinct values and its last two samples differ, while every plain digest holds still",
       },
       assertions: [
         {
           assertionType: "screenshot" as const,
           kind: "positive",
-          expected:
-            "Nine samples of the SGR 5 text, requested every 250 ms from +0 to +2000 ms with no write between: a styled region digest comes back after a different one, and the plain line's digest is the same in the control and every sample",
+          expected: earlierReturn
+            ? "Nine SGR 5 samples requested every 375 ms from +0 to +3000 ms with no write between: a styled digest comes back after a different one, with every plain digest identical"
+            : "With focus read before and after, at least three distinct styled values with a differing final pair and every plain digest identical",
           observed,
         },
       ],
     }
+  }
+  if (fade && !focusQualified) {
+    return inconclusive(
+      "Fade needs qualified focus read before and after sampling" + (focusError ? `: ${focusError}` : ""),
+      observed,
+    )
   }
   if (new Set(styledDigests).size > 1) {
     return inconclusive(
@@ -239,10 +295,85 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       observed,
     )
   }
-  return inconclusive(
-    "Nine equal samples of the styled text; no blink period is recorded for this terminal, so equal samples cannot show it never blinks",
-    observed,
-  )
+  const firstCapturedAt = timing[0]?.styledCapturedAt
+  const lastCapturedAt = timing.at(-1)?.styledCapturedAt
+  if (firstCapturedAt === undefined || lastCapturedAt === undefined) {
+    return inconclusive("Missing styled capture timestamp", observed)
+  }
+  const spanMs = lastCapturedAt - firstCapturedAt
+  const keyAgeMs = keyAt === undefined ? undefined : lastCapturedAt - keyAt
+  const missing = [
+    !focusQualified ? `focus read before and after sampling${focusError ? `: ${focusError}` : ""}` : undefined,
+    keyRead !== "a" || keyAt === undefined
+      ? `row-local literal a injection and readback${inputError ? `: ${inputError}` : ""}`
+      : undefined,
+    keyAgeMs === undefined || !Number.isFinite(keyAgeMs) || keyAgeMs < 0 || keyAgeMs >= 15000
+      ? `input age under 15000 ms at last styled capture (measured ${String(keyAgeMs)} ms)`
+      : undefined,
+    !Number.isFinite(spanMs) || spanMs < 3000
+      ? `actual styled capturedAt span at least 3000 ms (measured ${String(spanMs)} ms)`
+      : undefined,
+  ].find((reason) => reason !== undefined)
+  if (missing) return inconclusive(`Nine equal samples do not establish a blink period; missing ${missing}`, observed)
+  ctx.write(`\x1b[0m\x1b[2;${String(col)}H${sample}\x1b[2;1H`)
+  const paintAfter = await shoot("target", "Third-region handled repaint after blink samples", paintCells)
+  frames.push(paintAfter)
+  const paintObserved = JSON.stringify({
+    samples: JSON.parse(observed),
+    spanMs,
+    keyAgeMs,
+    repaint: { before: paintBefore, after: paintAfter },
+  })
+  const paintRefusal = cropPositionRefusal({
+    id: "sgr.blink",
+    compared: [paintBefore, paintAfter].map((frame) => ({
+      role: frame?.label ?? "missing repaint baseline",
+      rectangle: frame?.kind === "text-cells" ? undefined : frame?.regionRectangle,
+    })),
+    response: paintObserved,
+    frames,
+    screenshotRef: styledFrames[0]?.ref,
+  })
+  if (paintRefusal) return paintRefusal
+  const beforeDigest = paintBefore && frameDigests(paintBefore).cells
+  const afterDigest = frameDigests(paintAfter).cells
+  if (
+    beforeDigest === undefined ||
+    afterDigest === undefined ||
+    beforeDigest === afterDigest ||
+    paintAfter.capturedAt < lastCapturedAt
+  ) {
+    return inconclusive(
+      "Capture blind: post-sampling third-region write did not produce a qualified repaint",
+      paintObserved,
+    )
+  }
+  const note = `Nine equal styled samples across measured ${String(spanMs)} ms with focus, row-local input age ${String(keyAgeMs)} ms and a post-sampling handled repaint; no blink in this window. A period slower than 3000 ms remains outside this bound.`
+  return {
+    pass: false,
+    response: paintObserved,
+    criterionBranch: "sgr-blink-flat",
+    tests: [
+      { id: "capture", status: "supported", assertionRefs: [0] },
+      { id: "blink", status: "unsupported", reason: note, assertionRefs: [1] },
+    ],
+    observation: {
+      outcome: "unsupported",
+      assertionType: "screenshot",
+      screenshotRef: styledFrames[0]?.ref,
+      frames,
+      note,
+    },
+    assertions: [
+      {
+        assertionType: "screenshot",
+        kind: "positive",
+        expected: "Same-row focus, literal a readback, capturedAt window and changed third-region repaint",
+        observed: paintObserved,
+      },
+      { assertionType: "screenshot", kind: "negative", expected: note, observed: paintObserved },
+    ],
+  }
 }
 
 /**
@@ -1314,6 +1445,7 @@ export const sgrProbes: ProbeDefinition[] = [
 
 const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
 const muxVisualTests = new Map<string, { featureId: string | null; testId: string }>([
+  ["sgr-blink-flat", { featureId: "sgr.blink", testId: "blink" }],
   ["sgr-attribute-same-run", { featureId: null, testId: "attribute" }],
   ["cursor-shape-same-run", { featureId: "cursor.shape", testId: "review" }],
   ["reset-saved-rendition", { featureId: "reset.sgr", testId: "reset" }],
