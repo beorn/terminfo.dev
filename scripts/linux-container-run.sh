@@ -714,11 +714,11 @@ if [[ "${1:-}" == "--inside" ]]; then
     collector_command=(bash "$runner_dir/linux-container-run.sh" --mux-shell /out)
   fi
   # The declared invocation: what the descriptor table launches, exactly and uniformly.
-  printf -v target_config '%q ' "$target_binary" "${target_launch_args[@]}" \
+  printf -v target_config '%q ' nice -n 10 "$target_binary" "${target_launch_args[@]}" \
     "${target_clipboard_args[@]}" "${target_command_lead[@]}" "${collector_command[@]}"
   unset TERM_FEATURES
   export TERMINFO_TERM_FEATURES_LAUNCH="$TERMINFO_RUN_ID"
-  "$target_binary" "${target_launch_args[@]}" "${target_clipboard_args[@]}" "${target_command_lead[@]}" \
+  nice -n 10 "$target_binary" "${target_launch_args[@]}" "${target_clipboard_args[@]}" "${target_command_lead[@]}" \
     "${collector_command[@]}" >/out/daemon.log 2>&1 &
   daemon_pid=$!
   daemon_dir="$HOME/.terminfo-dev/daemons"
@@ -873,6 +873,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       > "$TERMINFO_RUNTIME_PROVENANCE.partial"
     mv "$TERMINFO_RUNTIME_PROVENANCE.partial" "$TERMINFO_RUNTIME_PROVENANCE"
   fi
+  cat "/proc/$daemon_pid/stat" > /out/target-process-stat.txt
   date -u +%FT%TZ > /out/batch-wall-start.txt
   batch_status=0
   curl --fail-with-body --silent --show-error --max-time "$PROBE_BATCH_TIMEOUT_SECONDS" --output /out/v3-capture.json \
