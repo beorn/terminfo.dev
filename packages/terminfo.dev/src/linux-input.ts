@@ -58,6 +58,10 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
       await preparePointer()
       await command("xdotool", ["click", "--window", "0", "--clearmodifiers", String(button)])
     },
+    async injectMove(x: number, y: number) {
+      await focusOwnedWindow()
+      await command("xdotool", ["mousemove", "--window", ownedWindowId, String(x), String(y)])
+    },
     async injectDrag(button: 1) {
       await preparePointer()
       await command("xdotool", ["mousedown", "--window", "0", "--clearmodifiers", String(button)])

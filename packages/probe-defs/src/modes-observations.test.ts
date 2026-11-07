@@ -57,6 +57,107 @@ test.each([null, 0] as const)("App auto-wrap uses controlled effects after DECRP
   expect(definition.termWrites).toBeUndefined()
 })
 
+// The reply-only contract misses an absent-query App that really switches Up
+// encodings. Ask 3 requires set/reset effects, a live delivery control and an
+// invalid result when no target bytes were read. Reuse the semantic mode parser.
+test.each([null, 0] as const)("App cursor keys use controlled effects after DECRPM %s", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.application-cursor")
+  if (!definition?.term) throw new Error("Missing App application-cursor callback")
+  const stored = new Map<string, StoredQuery>()
+  if (ps !== null) {
+    stored.set("\x1b[?1$p", { sequence: "\x1b[?1$p", match: null, reason: "reply", raw: `\x1b[?1;${ps}$y` })
+  }
+  for (const mutation of [undefined, "decckm-noop", "missing-up"] as const) {
+    const surface = createSemanticSurface({ mutations: mutation === "decckm-noop" ? [mutation] : [] })
+    let bytes = ""
+    const source = replayTermProbeSource(stored, {
+      write: (text) => surface.feed(text),
+      input: {
+        injectClick: async () => {
+          throw new Error("Cursor-key fixture received a click")
+        },
+        injectKey: async (key) => {
+          if (key === "a") bytes += "a"
+          else if (key === "Up") {
+            if (mutation !== "missing-up") bytes += surface.getMode("applicationCursor") === true ? "\x1bOA" : "\x1b[A"
+          } else throw new Error(`Cursor-key fixture received ${key}`)
+        },
+      },
+      readInput: async (pattern, _timeout, inject) => {
+        bytes = ""
+        await inject?.()
+        return pattern.exec(bytes)
+      },
+    })
+    const result = await definition.term(source)
+    if (mutation === "missing-up") {
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+    } else {
+      expect(result.observation?.outcome, mutation ?? "working DECCKM").toBe(mutation ? "unsupported" : "supported")
+      expect(result.assertions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ assertionType: "input_bytes", kind: mutation ? "negative" : "positive" }),
+        ]),
+      )
+    }
+    expect(surface.getMode("applicationCursor")).toBe(false)
+  }
+  const inert = await definition.term(replayTermProbeSource(stored))
+  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(definition.termNeedsDisposable).toBe(true)
+  expect(definition.termWrites).toBeUndefined()
+})
+
+// CTO's 1003 amendment requires buttonless motion only while set, no reports in
+// either reset arm, and same-run click/key controls. The reply contract misses it.
+test.each([null, 0] as const)("App all-motion mouse uses controlled effects after DECRPM %s", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.mouse-all")
+  if (!definition?.term) throw new Error("Missing App all-motion callback")
+  const stored = new Map<string, StoredQuery>()
+  if (ps !== null)
+    stored.set("\x1b[?1003$p", { sequence: "\x1b[?1003$p", match: null, reason: "reply", raw: "\x1b[?1003;0$y" })
+  for (const mutation of [undefined, "mouse-1003-noop", "reset-reports", "missing-a"] as const) {
+    const surface = createSemanticSurface({ mutations: mutation === "mouse-1003-noop" ? [mutation] : [] })
+    let bytes = ""
+    const source = replayTermProbeSource(stored, {
+      write: (text) => surface.feed(text),
+      captureGeometry: {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration",
+      },
+      input: {
+        injectKey: async (key) => {
+          if (key !== "a") throw new Error(`Motion fixture received ${key}`)
+          if (mutation !== "missing-a") bytes += "a"
+        },
+        injectClick: async () => {
+          if (surface.getMode("mouseTracking") === true) bytes += "\x1b[<0;4;2M\x1b[<0;4;2m"
+        },
+        injectMove: async () => {
+          if (surface.getMode("mouseTracking") === true || mutation === "reset-reports") bytes += "\x1b[<35;4;2M"
+        },
+      },
+      readInput: async (pattern, _timeout, inject) => {
+        bytes = ""
+        await inject?.()
+        return pattern.exec(bytes)
+      },
+    })
+    const result = await definition.term(source)
+    if (mutation === "reset-reports" || mutation === "missing-a") {
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+    } else {
+      expect(result.observation?.outcome, mutation ?? "working 1003").toBe(mutation ? "unsupported" : "supported")
+    }
+    expect(surface.getMode("mouseTracking")).toBe(false)
+    expect(surface.getMode("sgrMouse")).toBe(false)
+  }
+})
+
 // The existing mode contract exercises app replies; it misses these library
 // callbacks retaining presentation reviews even when the engine answers DECRPM.
 // S8 requires the mutable reply pair and independent mode reads; presentation stays unmeasured.

@@ -18,6 +18,8 @@ import {
   NO_SAME_PATH_CONTROL,
   probe,
   reportsDecidedOutcome,
+  replyFailure,
+  validSize,
   withUnhandledModeReport,
 } from "./helpers.ts"
 import { hasAuditedOscInterfaceAbsence, kittyKeyboardFlagProbe, unhandledOscReportResult } from "./extensions.ts"
@@ -430,6 +432,79 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
     return unsupportedInteraction("application-keypad:KP_5", expected, observed)
   } finally {
     ctx.write(DECKPNM)
+  }
+}
+
+export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const { input, readInput } = ctx
+  const injectMove = input?.injectMove
+  if (!input || !readInput || !injectMove) {
+    return replyFailure("All-motion effect needs owned buttonless movement and input readback")
+  }
+  const geometry = ctx.captureGeometry?.geometry
+  if (
+    !geometry ||
+    !validSize(geometry.cellWidth, 1) ||
+    !validSize(geometry.cellHeight, 1) ||
+    !validSize(geometry.textWidth, 3 * geometry.cellWidth) ||
+    !validSize(geometry.textHeight, geometry.cellHeight)
+  ) {
+    return replyFailure("All-motion effect needs measured window geometry with room for two different cells")
+  }
+  const y = Math.floor(geometry.textHeight / 2)
+  const points = [
+    Math.floor(geometry.textWidth / 2 - geometry.cellWidth),
+    Math.floor(geometry.textWidth / 2 + geometry.cellWidth),
+  ]
+  const untilKey = new RegExp(`^(?:${SGR_MOUSE.source})*a$`)
+  const read = async (inject: () => Promise<void>) =>
+    (
+      await readInput(untilKey, 1000, async () => {
+        await inject()
+        await input.injectKey("a")
+      })
+    )?.[0]
+  ctx.write("\x1b[?1002l\x1b[?1003l")
+  try {
+    const control = await withMouseModes(ctx, () => read(() => input.injectClick(1)))
+    if (!control || !SGR_MOUSE.test(control)) {
+      return replyFailure("All-motion click control did not read a 1000 mouse report followed by injected plain a")
+    }
+    ctx.write("\x1b[?1006h")
+    const readMotion = async (enabled: boolean) => {
+      ctx.write(`\x1b[?1003${enabled ? "h" : "l"}`)
+      return read(async () => {
+        for (const x of points) await injectMove(x, y)
+      })
+    }
+    const reset = await readMotion(false)
+    const set = await readMotion(true)
+    const resetAgain = await readMotion(false)
+    const observed = { control, points, y, reset, set, resetAgain }
+    const response = JSON.stringify(observed)
+    if (!reset || !set || !resetAgain) {
+      return {
+        ...replyFailure("All-motion effect did not read the ending plain-a delivery control in every arm"),
+        response,
+      }
+    }
+    if (SGR_MOUSE.test(reset) || SGR_MOUSE.test(resetAgain)) {
+      return {
+        ...replyFailure("All-motion reset arm emitted a mouse report, so the set/reset contrast is unqualified"),
+        response,
+      }
+    }
+    const reports = set.match(new RegExp(SGR_MOUSE.source, "g")) ?? []
+    if (reports.some((report) => !isButtonEventMotion(report))) {
+      return { ...replyFailure("Buttonless all-motion injection emitted a non-motion mouse report"), response }
+    }
+    const expected =
+      "buttonless movement reports only with 1003 set, after a measured 1000 click and with plain-a delivery in every arm"
+    return reports.length
+      ? interactionResult("all-motion-1003", expected, observed)
+      : unsupportedInteraction("all-motion-1003", expected, observed)
+  } finally {
+    ctx.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l")
   }
 }
 
