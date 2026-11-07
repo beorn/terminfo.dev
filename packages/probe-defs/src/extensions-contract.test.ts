@@ -9,7 +9,7 @@
 import { expect, test } from "vitest"
 import { join } from "node:path"
 import { extensionsProbes } from "./extensions.ts"
-import { withReplyFailureEvidence } from "./helpers.ts"
+import { NO_SAME_PATH_CONTROL, withReplyFailureEvidence } from "./helpers.ts"
 import {
   contractGaps,
   inertLibProbeSource,
@@ -733,7 +733,6 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
 const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
   Record<string, { status: "probe-todo" | "probe-invalid"; reason: string }>
 > = {
-  "extensions.osc22-pointer": { status: "probe-todo", reason: "Cursor response does not measure OSC 22 pointer shape" },
   "extensions.osc777-notify": {
     status: "probe-todo",
     reason: "Cursor response does not measure OSC 777 notification delivery",
@@ -1247,6 +1246,14 @@ test("every inconclusive extension contract row evaluates to inconclusive under 
     const rowTerm = row.id === "extensions.truecolor" ? replayTermProbeSource(new Map()) : term
     const callbackResult = probe.term ? await probe.term(rowTerm) : probe.lib?.(headless)
     expect(callbackResult, `${row.id} has the selected callback`).toBeDefined()
+    if (callbackResult?.notTested && EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS[row.id] === undefined) {
+      expect(callbackResult.assertions, row.id).toBeUndefined()
+      expect(callbackResult.notTested, `${row.id} names its missing same-path reading`).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: NO_SAME_PATH_CONTROL,
+      })
+      continue
+    }
     if (callbackResult && callbackResult.observation === undefined) {
       expect(callbackResult.observation, row.id).toBeUndefined()
       const disposition = EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS[row.id]

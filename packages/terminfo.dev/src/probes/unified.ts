@@ -12,6 +12,7 @@ import {
   recordExecutedProbe,
   finalizeSgrResult,
   withReplyFailureEvidence,
+  declaredUntestableResult,
   type ProbeResult,
   type RunDraft,
   type CaptureCells,
@@ -292,6 +293,8 @@ export async function runProbeBatch(
     /** The target this run is measuring, from the measured side (the launched app), never read out
      * of the receipt. A receipt naming another target is refused before the first write (27874). */
     subject?: { kind: "term" | "lib" | "mux"; id: string; os: string }
+    /** Exact-version App declarations selected by the collector; only unresolved callbacks use them. */
+    appDeclarations?: Readonly<Record<string, string>>
     draft?: Pick<RunDraft, "results"> & Partial<Pick<RunDraft, "subject">>
     onCheckpoint?: (batch: ProbeBatch) => void
   } = {},
@@ -751,6 +754,20 @@ export async function runProbeBatch(
           reason: query.reason,
         })),
       })
+      const declaration = options.appDeclarations?.[probe.id]
+      const onlyTodoTests = !result.tests?.some((test) => test.status !== "probe-todo")
+      const unresolved = result.notTested
+        ? result.notTested.reason === "no-semantic-observable" &&
+          result.notTested.noObservable.trim().length > 0 &&
+          onlyTodoTests
+        : Boolean(result.tests?.length) && onlyTodoTests
+      if (declaration && unresolved && !claimsMeasurement(result)) {
+        const response = result.response
+        result = {
+          ...declaredUntestableResult(declaration, { featureId: probe.id }),
+          ...(response === undefined ? {} : { response }),
+        }
+      }
       callbackTests = result.tests
       criterionBranch = result.criterionBranch
       if (result.notTested) {

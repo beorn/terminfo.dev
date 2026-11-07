@@ -44,6 +44,7 @@ import {
   type TextQualification,
 } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
+import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts"
 import { COMPLETE_DA2, COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, withTTYOperation, drainStdin, queryOutcome, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
@@ -881,6 +882,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           withTTYOperation(
             async () => {
               let geometryCorroboration: GeometryCorroboration | undefined
+              let declarationVersion: string | undefined
               let identityQuery:
                 | { sequence: string; outbound: string; reason: string; raw: string; rawBase64: string }
                 | undefined
@@ -925,7 +927,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 if (measuredTerminal.name === "screen") {
                   da2Query = await queryWithSentinelOutcome("\x1b[>c", COMPLETE_DA2, 700)
                 }
-                resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
+                declarationVersion = resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
                   "collector.xtversion": identity.raw,
                   ...(da2Query && { "collector.da2": da2Query.raw }),
                 })
@@ -935,6 +937,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
               // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
               if (preflightPixelCapture) await preflightPixelCapture()
+              const sessionBus = terminal.os === "linux" ? readSessionBus() : undefined
               const result = await runProbeBatch({
                 ids: options.ids === undefined ? undefined : selectedIds,
                 out,
@@ -951,6 +954,18 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 },
                 // The run's own target, from the launched app: the receipt is bound to this before any write.
                 subject: { kind: muxSubject?.kind ?? "term", id: measuredTerminal.name, os: terminal.os },
+                appDeclarations:
+                  declarationVersion === undefined
+                    ? {}
+                    : appSemanticDeclarations(
+                        {
+                          kind: muxSubject?.kind ?? "term",
+                          id: measuredTerminal.name,
+                          version: declarationVersion,
+                          os: terminal.os,
+                        },
+                        sessionBus,
+                      ),
                 ...(capture && { capture }),
                 ...(textCapture && { captureKind: "text-cells" as const }),
                 ...(input && { input }),
@@ -959,6 +974,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(geometryCorroboration && { geometryCorroboration }),
                 ...(prepareCapture && { prepareCapture }),
               })
+              if (sessionBus) result.rawReplies["collector.sessionBus"] = JSON.stringify(sessionBus)
               if (identityQuery) {
                 result.rawReplies["collector.xtversion"] = identityQuery.raw
                 result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)

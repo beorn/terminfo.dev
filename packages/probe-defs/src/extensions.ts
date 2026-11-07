@@ -4506,6 +4506,53 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   }
 }
 
+const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
+const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
+
+function readOsc22Shape(raw: string) {
+  return { raw, shape: OSC22_SHAPE_REPLY.exec(raw)?.[1] }
+}
+
+type Osc22Reading = ReturnType<typeof readOsc22Shape>
+type Osc22QueryEvidence = {
+  query: string
+  controlWrite: string
+  targetWrite: string
+  restoreWrite: string
+  readings: {
+    initial: Osc22Reading
+    control?: Osc22Reading
+    target?: Osc22Reading
+    restored?: Osc22Reading
+  }
+}
+
+function osc22QueryResult(controlShape: string, evidence: Osc22QueryEvidence, note?: string): ProbeCallbackResult {
+  const { readings } = evidence
+  const target = readings.target?.shape
+  const missing =
+    readings.control?.shape !== controlShape
+      ? "control shape was not reported"
+      : target === undefined
+        ? "target shape was not reported"
+        : readings.restored?.shape !== readings.initial.shape
+          ? "incoming shape was not restored and read back"
+          : undefined
+  if (missing) {
+    const result = notTestedResult(NO_SAME_PATH_CONTROL, evidence)
+    return note ? { ...result, note: `${note}; ${missing}` } : result
+  }
+  const pass = target === "pointer" ? true : target === controlShape ? false : null
+  return parserStateResult(
+    pass,
+    "OSC 22 pointer query reports pointer after a distinct same-path control and restores the incoming shape",
+    evidence,
+    note && (pass === null ? `${note}; unexpected target shape ${JSON.stringify(target)}` : note),
+    undefined,
+    "query_reply",
+  )
+}
+
 export const extensionsProbes: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   {
@@ -6329,11 +6376,8 @@ export const extensionsProbes: ProbeDefinition[] = [
         const undecided = () =>
           unhandledOscReportResult(ctx, "\x1b]22;pointer\x07", noSamePathControl("\x1b]22;pointer\x07")(ctx))
         if (ctx.backendName !== "kitty") return undecided()
-        const query = "\x1b]22;?__current__\x07"
-        const read = () => {
-          const raw = ctx.feedCapture(query)
-          return { raw, shape: /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u.exec(raw)?.[1] }
-        }
+        const query = OSC22_CURRENT_QUERY
+        const read = () => readOsc22Shape(ctx.feedCapture(query))
         const initial = read()
         if (initial.shape === undefined) return notTestedResult(NO_SAME_PATH_CONTROL, { query, initial })
         const controlShape = initial.shape === "text" ? "wait" : "text"
@@ -6359,31 +6403,51 @@ export const extensionsProbes: ProbeDefinition[] = [
           readings.restored = read()
         }
         const evidence = { query, controlWrite, targetWrite, restoreWrite, readings }
-        const target = readings.target?.shape
-        if (
-          readings.control?.shape !== controlShape ||
-          target === undefined ||
-          readings.restored?.shape !== initial.shape
-        ) {
-          return notTestedResult(NO_SAME_PATH_CONTROL, evidence)
-        }
-        return parserStateResult(
-          target === "pointer" ? true : target === controlShape ? false : null,
-          "OSC 22 pointer query reports pointer after a distinct same-path control and restores the incoming shape",
-          evidence,
-          undefined,
-          undefined,
-          "query_reply",
-        )
+        return osc22QueryResult(controlShape, evidence)
       },
       async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]22;pointer\x07")
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "OSC 22 pointer shape")
+        const query = OSC22_CURRENT_QUERY
+        const read = async () => {
+          const outcome = await ctx.queryOutcome(query, OSC22_SHAPE_REPLY)
+          return { ...readOsc22Shape(outcome.raw), reason: outcome.reason }
+        }
+        const initial = await read()
+        if (initial.shape === undefined) {
+          return {
+            ...notTestedResult(NO_SAME_PATH_CONTROL, { query, initial }),
+            note: "No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read",
+          }
+        }
+        const controlShape = initial.shape === "text" ? "wait" : "text"
+        const controlWrite = `\x1b]22;${controlShape}\x07`
+        const targetWrite = "\x1b]22;pointer\x07"
+        const restoreWrite = `\x1b]22;${initial.shape === "0" ? "" : initial.shape}\x07`
+        const readings: {
+          initial: typeof initial
+          control?: typeof initial
+          target?: typeof initial
+          restored?: typeof initial
+        } = { initial }
+        try {
+          ctx.write(controlWrite)
+          readings.control = await read()
+          if (readings.control.shape === controlShape) {
+            ctx.write(targetWrite)
+            readings.target = await read()
+          }
+        } finally {
+          ctx.write(restoreWrite)
+          readings.restored = await read()
+        }
+        return osc22QueryResult(
+          controlShape,
+          { query, controlWrite, targetWrite, restoreWrite, readings },
+          "Selected shape reported; visible pointer not read",
+        )
       },
-      null,
+      "query_reply",
     ),
+    termNeedsDisposable: true,
     libAssertionType: {
       when: (source: Pick<LibProbeSource, "getUnhandledSequences" | "getMouseShape" | "capabilities">) =>
         typeof source.getUnhandledSequences === "function" ||

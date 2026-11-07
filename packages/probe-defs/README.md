@@ -27,6 +27,13 @@ does not establish Untestable. Without explicit tests, a diagnostic or a conclus
 missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
 to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclaredUntestable` is the only form the finalizer and run reader admit. Its reason names the cause: **passed to the app**, **no way**, or **no setup** (and the more specific **no way to tell** or **app** where applicable). The operator's per-kind declarations remain, including OSC720 on libvterm and WezTerm, whose libraries keep history without their own scrolling window. Any other untestable test folds to PROBE TODO.
 
+The collector also selects the specifically reviewed OSC133/633 App/mux declarations from
+`app-semantic-state.ts`, matching kind, id, exact version and OS. The native batch uses that
+feature-to-reason map only after an unresolved callback; observations, command reports and invalid
+results keep precedence. Unknown versions select nothing. Ghostty's command-end and full-cycle
+no-setup reasons additionally require this run's absent session-bus address and an absent default
+socket, retained as `collector.sessionBus`; unreadable socket paths remain unresolved.
+
 For library results, a feature is the library's job unless the app-job table in [extensions.ts](src/extensions.ts) assigns it to the app. A real state reading or typed notification store can establish Supported. A generic handoff of an app-job command is Untestable (passed to the app), even when its payload is intact. Libvterm and vt100-rust qualify their report in this cell's run: a made-up OSC and the target are reported, while a handled title command applies without a report. Xterm.js and vterm.js generic taps require their declared engine identity; a different engine identity remains Open. Missing report controls also remain Open. Library-job negatives keep `unhandledSequenceVerdict`; these are Unsupported when the library reports the target with its same-run controls.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
 OSC 17 or 19 supplies no initial colour, the library callback checks the existing unhandled report first.
@@ -213,6 +220,16 @@ Terminal-query timeouts and apparatus errors without a native capture-command ca
   An absent hyperlink is unreported metadata; null is a reported unlinked cell.
 - `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
+
+OSC22's Library query arm and App arm share query text, reply parsing and controlled
+evaluation. The App reads the incoming selected shape before any mutation, checks
+a distinct control and `pointer`, then restores and reads the incoming shape in
+`finally`; an initial `0` uses the empty assignment to restore the default.
+Qualified replies decide selected shape, with reason text stating that the visible
+pointer was not read. A target that remains at the control is Unsupported; an
+unexpected target, missing control or failed restore stays open. No initial reply
+means no shape write and no negative, including on terminals that set OSC22 without
+offering the query. This uses existing owned-job query APIs, not a pointer-image observer.
 
 The reflow callback retains optional `getReflowState()` instance evidence as
 `response.reflowSetting`, independently of `declaredReflow`. An absent reader means
