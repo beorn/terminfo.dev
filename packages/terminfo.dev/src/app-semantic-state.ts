@@ -394,7 +394,7 @@ const declarations: readonly AppSemanticCapability[] = [
     os: "linux",
     featureId: "extensions.osc555-flash",
     reason:
-      "Untestable (no way): Ghostty 1.4.0 has no OSC 555 flash command or public flash readback. In ghostty-derived-source-tar (SHA256 5b317a83), osc.zig:613-618 and 632-635 send a third 5 to the invalid state; end() at 691-695 returns no command and logs nothing; Parser.zig:270 then dispatches no OSC. That silent parser rejection is not a command-specific refusal or flash reading.",
+      "Untestable (no way): Ghostty 1.4.0 has no OSC 555 flash command or public flash readback. In ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar (SHA256 d692bb9b), osc.zig:965-968 and 984-987 send a third 5 to unknownOrInvalid at 748-753; unknown_max_bytes defaults to 0 at 496, so it marks the sequence invalid. end() at 1092-1103 returns no command and logs nothing. That silent parser rejection is not a command-specific refusal or flash reading.",
   },
   {
     kind: "term",
@@ -403,7 +403,7 @@ const declarations: readonly AppSemanticCapability[] = [
     os: "linux",
     featureId: "extensions.osc710-font-normal",
     reason:
-      "Untestable (no way): Ghostty 1.4.0 has no OSC 710 font-selection command or public font readback. In ghostty-derived-source-tar (SHA256 5b317a83), osc.zig:637-641 rejects the digit 1 after 7; end() at 691-695 returns no command and logs nothing; Parser.zig:270 then dispatches no OSC. That silent parser rejection is not a command-specific refusal or font reading.",
+      "Untestable (no way): Ghostty 1.4.0 has no OSC 710 font-selection command or public font readback. In ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar (SHA256 d692bb9b), osc.zig:989-995 sends the digit 1 after 7 to unknownOrInvalid at 748-753; unknown_max_bytes defaults to 0 at 496, so it marks the sequence invalid. end() at 1092-1103 returns no command and logs nothing. That silent parser rejection is not a command-specific refusal or font reading.",
   },
   {
     kind: "mux",
