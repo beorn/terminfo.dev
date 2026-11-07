@@ -16,6 +16,14 @@ This describes the implemented system. Callbacks still perform live I/O and eval
 
 The six assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard; `process_environment` reads a terminal child's allowlisted export with its same-run launch, PID and TTY controls. Probe setup and feed writes retain their existing order and bytes; they are not assertion types.
 
+The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
+table beside the child-environment reader selects tmux's public diagnostic grid/formats or Kitty's
+fresh command-report bytes. Each row retains its own unknown-command and handled-command controls;
+a failed control is PROBE INVALID. Qualified state transitions can decide support. An exact-command
+refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
+appended bytes through that row's unique completion sentinel. Silence supplies no positive answer.
+App identity stays in the collector; the shared probe package grades these readings without an App switch.
+
 The five probe-result labels are Supported, Unsupported, Untestable, PROBE TODO and PROBE INVALID. Their code values are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`. Immutable stored runs retain their original `test-todo` and `test-failure` words; the run reader decodes those as `probe-todo` and `probe-invalid` without rewriting the stored bytes. A missing same-run control is a reason under PROBE TODO, not an additional status.
 
 A feature result answers one feature on one subject from its current probes. Source never decides it. Supported/Unsupported disagreement between any valid non-source probes is PROBE CONFLICT (`probe-conflict`), naming those probes, regardless of strength. Otherwise the strongest decided probe wins; Untestable alone cannot conflict with a decided answer. With no decided probe, invalid takes precedence over todo, then all-untestable. A conflict counts as open and tier 2 when there is no todo. The [feature-result calculator](../../docs/data/release-scope.ts) replaces the old report-only minimum-method findings.

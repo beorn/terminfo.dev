@@ -532,6 +532,7 @@ export async function runProbeBatch(
       utf8Decoding: readUtf8Decoding,
       captureGeometryRefusal,
     })
+    if (ownsTerminal) probeSource.readAppSemanticState = options.ownedTerminal?.readAppSemanticState
     if (ownsTerminal && (options.subject?.kind === "term" || options.subject?.kind === "mux")) {
       // 32569: a mux child reads the same marker path; the reading names the mux, since a present value there may
       // come from the outer terminal (@cto third-table ruling 2026-11-06).
