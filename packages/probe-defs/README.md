@@ -277,7 +277,8 @@ capability declaration. The setting does not decide the measured resize phases.
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support result. Callbacks retain it explicitly.
 App focus tracking uses the optional owned focus roundtrip fixture under both DECSET1004
-and DECRST1004, starting its reader before enabling and reading through a plain key in each arm.
+and DECRST1004. Separate key-terminated reads retain enable-time input and the enabled
+roundtrip; the first reader starts before enabling. The reset roundtrip has its own key-terminated read.
 The existing fixture returns its verified owned/root/owned X window IDs, retained in the assertion.
 At most one enable-time focus report is retained separately; it does not satisfy the roundtrip.
 Ordered focus-out/in only while set is Supported; no roundtrip reports in either arm is Unsupported.

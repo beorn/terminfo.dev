@@ -850,7 +850,7 @@ it("retains the focus report emitted while enabling 1004", async () => {
   })
   expect(batch.ungradedDiagnostics).toEqual({})
   const trace = JSON.parse(batch.rawReplies["modes.focus-tracking"]!) as { queries: Array<{ raw: string }> }
-  expect(trace.queries.slice(1).map((query) => query.raw)).toEqual(["\x1b[I\x1b[O\x1b[Ia", "a"])
+  expect(trace.queries.slice(1).map((query) => query.raw)).toEqual(["\x1b[Ia", "\x1b[O\x1b[Ia", "a"])
   expect(batch.results.find((row) => row.featureId === "modes.focus-tracking")?.status).toBe("supported")
   expect(JSON.parse(batch.assertions[0]!.observed)).toMatchObject({
     enableTimeReport: "\x1b[I",

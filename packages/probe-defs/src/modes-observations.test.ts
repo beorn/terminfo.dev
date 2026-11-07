@@ -23,17 +23,19 @@ import type {
 // including when the enabled arm has no reports (the reviewed Screen reading).
 test("App focus tracking grades delivered set/reset input rather than DECRPM", async () => {
   const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
-  for (const [enabled, reset, outcome] of [
-    ["\x1b[O\x1b[Ia", "a", "supported"],
-    ["\x1b[I\x1b[O\x1b[Ia", "a", "supported"],
-    ["\x1b[O\x1b[O\x1b[Ia", "a", "supported"],
-    ["a", "a", "unsupported"],
-    ["\x1b[Ia", "a", "unsupported"],
-    ["\x1b[Oa", "a", "unsupported"],
-    ["\x1b[I\x1b[I\x1b[O\x1b[Ia", "a", "invalid"],
-    ["\x1b[I\x1b[Oa", "a", "invalid"],
-    ["\x1b[O\x1b[I", "a", "invalid"],
-    ["\x1b[O\x1b[Ia", "\x1b[O\x1b[Ia", "invalid"],
+  for (const [enableTime, enabled, reset, outcome] of [
+    ["", "\x1b[O\x1b[Ia", "a", "supported"],
+    ["\x1b[I", "\x1b[O\x1b[Ia", "a", "supported"],
+    ["\x1b[O", "\x1b[O\x1b[Ia", "a", "supported"],
+    ["", "a", "a", "unsupported"],
+    ["\x1b[I", "a", "a", "unsupported"],
+    ["\x1b[O", "a", "a", "unsupported"],
+    ["", "\x1b[Oa", "a", "invalid"],
+    ["\x1b[O", "\x1b[Ia", "a", "invalid"],
+    ["\x1b[I\x1b[I", "\x1b[O\x1b[Ia", "a", "invalid"],
+    ["", "\x1b[I\x1b[Oa", "a", "invalid"],
+    ["", "\x1b[O\x1b[I", "a", "invalid"],
+    ["", "\x1b[O\x1b[Ia", "\x1b[O\x1b[Ia", "invalid"],
   ] as const) {
     let arm = 0
     let bytes = ""
@@ -50,11 +52,14 @@ test("App focus tracking grades delivered set/reset input rather than DECRPM", a
         }
       },
       injectKey: async () => {
-        if ((arm === 1 ? enabled : reset).endsWith("a")) bytes += "a"
+        if (arm === 0 || (arm === 1 ? enabled : reset).endsWith("a")) bytes += "a"
       },
     }
     const source = replayTermProbeSource(new Map(), {
       input,
+      write: (sequence) => {
+        if (sequence === "\x1b[?1004h") bytes += enableTime
+      },
       readInput: async (pattern, _timeout, inject) => {
         bytes = ""
         await inject?.()
@@ -604,6 +609,8 @@ test(
       "legacy",
       "utf8-both",
       "wrong-position",
+      "ordinary-sensitive",
+      "ordinary-zero",
       "reset-report",
       "restore-failed",
       "missing-key",
@@ -647,7 +654,14 @@ test(
             actions.push(`click:${position?.x},${position?.y}`)
             if (!modes.has(1000) && mutation !== "reset-report") return
             if (modes.has(1006)) {
-              const x = position?.x === 400 ? 32 : 101
+              const x =
+                position?.x === 400
+                  ? mutation === "ordinary-sensitive"
+                    ? 101
+                    : mutation === "ordinary-zero"
+                      ? 0
+                      : 32
+                  : 101
               pending = Buffer.from(`\x1b[<0;${mutation === "wrong-position" ? 50 : x};10M\x1b[<0;${x};10m`)
             } else {
               const utf8 = mutation === "utf8-both" || (modes.has(1005) && mutation !== "legacy")
