@@ -27,7 +27,7 @@ does not establish Untestable. Without explicit tests, a diagnostic or a conclus
 missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
 to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclaredUntestable` is the only form the finalizer and run reader admit. Its reason names the cause: **passed to the app**, **no way**, or **no setup** (and the more specific **no way to tell** or **app** where applicable). The operator's per-kind declarations remain, including OSC720 on libvterm and WezTerm, whose libraries keep history without their own scrolling window. Any other untestable test folds to PROBE TODO.
 
-The collector also selects the specifically reviewed OSC133/633 and OSC666 App/mux declarations from
+The collector also selects the specifically reviewed OSC133/633, OSC176/440/3008 and OSC666 App/mux declarations from
 `app-semantic-state.ts`, matching kind, id, exact version and OS. The native batch uses that
 feature-to-reason map only after an unresolved callback; observations, command reports and invalid
 results keep precedence. Unknown versions select nothing. Ghostty's command-end and full-cycle
@@ -36,6 +36,8 @@ socket, retained as `collector.sessionBus`; unreadable socket paths remain unres
 The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 411 on Linux,
 with their exact parser citations and missing public property readback. They declare the
 unresolved observation unavailable; they supply no command report or measured negative.
+The same exact versions additionally declare OSC176/440 observation gaps, and Screen/xterm
+declare OSC3008 gaps. Ghostty's recognized OSC3008 parser is outside this declaration group.
 
 For library results, a feature is the library's job unless the app-job table in [extensions.ts](src/extensions.ts) assigns it to the app. A real state reading or typed notification store can establish Supported. A generic handoff of an app-job command is Untestable (passed to the app), even when its payload is intact. Libvterm and vt100-rust qualify their report in this cell's run: a made-up OSC and the target are reported, while a handled title command applies without a report. Xterm.js and vterm.js generic taps require their declared engine identity; a different engine identity remains Open. Missing report controls also remain Open. Library-job negatives keep `unhandledSequenceVerdict`; these are Unsupported when the library reports the target with its same-run controls.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
