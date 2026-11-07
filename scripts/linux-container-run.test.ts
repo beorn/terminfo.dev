@@ -936,8 +936,15 @@ esac`,
     const runs = readdirSync(output)
     expect(runs).toHaveLength(1)
     const run = join(output, runs[0]!)
-    const host = JSON.parse(readFileSync(join(run, "raw/host-measured.json"), "utf8"))
-    const image = JSON.parse(readFileSync(join(run, "prep/image-inspect.json"), "utf8"))[0]
+    const host = JSON.parse(readFileSync(join(run, "raw/host-measured.json"), "utf8")) as {
+      runnerArtifact: { frozenRunnerSha256: string }
+      runtime: { imageId: string }
+    }
+    const image = (
+      JSON.parse(readFileSync(join(run, "prep/image-inspect.json"), "utf8")) as {
+        Config: { Entrypoint: string[]; Env: string[] }
+      }[]
+    )[0]!
     expect(host.runnerArtifact.frozenRunnerSha256).toBe(createHash("sha256").update(frozenBytes).digest("hex"))
     expect(host.runtime.imageId).toBe(freshId)
     expect(image.Config.Entrypoint[1]).toBe(`${freshRunner}/linux-container-run.sh`)
