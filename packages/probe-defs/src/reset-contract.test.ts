@@ -79,8 +79,13 @@ test.each([null, 0] as const)("App soft reset reads its controlled input effect 
     // Keep the producer's performed actions; this fixture must not supply missing evidence.
     if (!mutation || mutation === "decstr-noop") {
       expect(
-        parseProbeResults([recorded], "soft-reset-effect.json", new Set([feature]), { [feature]: result.response! }, assertions)[0]
-          ?.status,
+        parseProbeResults(
+          [recorded],
+          "soft-reset-effect.json",
+          new Set([feature]),
+          { [feature]: result.response! },
+          assertions,
+        )[0]?.status,
       ).toBe(recorded.status)
     }
     if (ps === 0 && !mutation) expect(result.note).toContain("Ps 0")
