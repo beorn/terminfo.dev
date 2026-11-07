@@ -1119,8 +1119,14 @@ root_lock_sha=$(sha256sum "$code_root/bun.lock" | cut -d ' ' -f 1)
   exit 2
 }
 image_tar_sha=$(sha256sum "$prep/image.tar" | cut -d ' ' -f 1)
+image_reference=$(
+  cd "$code_root"
+  TERMINFO_LINUX_RUNNER_DIR="$prep/bundle" TERMINFO_LINUX_RUNNER_SHA256="$bundle_sha" \
+    nix eval --impure --raw ".#${target_id}-visual-${preset}-image" \
+      --apply '(image: image.imageName + ":" + image.imageTag)'
+)
 docker load --input "$prep/image.tar" >"$prep/docker-load.txt"
-image_id=$(docker image inspect "terminfo-${target_id}-probe:$preset" --format '{{.Id}}')
+image_id=$(docker image inspect "$image_reference" --format '{{.Id}}')
 docker image inspect "$image_id" > "$prep/image-inspect.json"
 image_arch=$(docker image inspect "$image_id" --format '{{.Architecture}}')
 [[ "$image_arch" == amd64 ]] || { echo "Loaded image architecture is $image_arch, expected amd64" >&2; exit 2; }
