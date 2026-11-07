@@ -279,7 +279,7 @@ function pasteTerm(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
 }
 
 function pasteAndRead(
-  script: { control?: string | null; paste?: "controlled" | "bracketed" | "raw" | "silent" },
+  script: { control?: string | null; paste?: "controlled" | "bracketed" | "raw" | "silent"; incomingMode?: boolean },
   writes: string[] = [],
 ): { ctx: TermProbeSource; keys: string[]; clipboardWrites: string[] } {
   const keys: string[] = []
@@ -288,7 +288,13 @@ function pasteAndRead(
   const pending: string[] = []
   let listening = false
   const surface = createSemanticSurface({ cols: 80, rows: 24 })
+  if (script.incomingMode) surface.feed("\x1b[?2004h")
   const ctx = pasteTerm({
+    queryMode: async (modeNumber) => {
+      if (modeNumber !== 2004) throw new Error(`Unexpected paste mode ${modeNumber}`)
+      const mode = surface.getMode("bracketedPaste")
+      return mode === null ? "unknown" : mode ? "set" : "reset"
+    },
     write(text) {
       writes.push(text)
       surface.feed(text)
@@ -464,6 +470,42 @@ test("extensions.clipboard-paste aborts when the plain-a control does not reach 
   expect(writes.join("")).not.toContain("\x1b[?2004h")
   expect(writes.join("")).not.toContain("\x1b]52;")
 })
+
+test.each(["controlled", "silent"] as const)(
+  "clipboard paste restores enabled incoming mode after %s input",
+  async (paste) => {
+    const writes: string[] = []
+    const { ctx } = pasteAndRead({ paste, incomingMode: true }, writes)
+    if (paste === "silent") await expect(pasteProbe().term!(ctx)).rejects.toThrow(/paste/i)
+    else await pasteProbe().term!(ctx)
+    expect(await ctx.queryMode(2004)).toBe("set")
+    expect(writes.at(-1)).toBe("\x1b[?2004h")
+  },
+)
+
+test.each([null, "unknown"] as const)(
+  "clipboard paste leaves unreadable incoming mode %s untouched",
+  async (incomingMode) => {
+    const writes: string[] = []
+    const { ctx, keys, clipboardWrites } = pasteAndRead({ paste: "controlled" }, writes)
+    ctx.queryMode = async () => incomingMode
+    const result = await pasteProbe().term!(ctx)
+    expect(result.notTested?.noObservable).toContain("DECRPM 2004")
+    expect(writes).toEqual([])
+    expect(keys).toEqual([])
+    expect(clipboardWrites).toEqual([])
+  },
+)
+
+test.each([null, "reset"] as const)(
+  "clipboard paste rejects unverified incoming-mode restore %s",
+  async (restoredMode) => {
+    const { ctx } = pasteAndRead({ paste: "controlled", incomingMode: true })
+    let reads = 0
+    ctx.queryMode = async () => (++reads === 1 ? "set" : restoredMode)
+    await expect(pasteProbe().term!(ctx)).rejects.toThrow(/restoration verification failed/)
+  },
+)
 
 test("extensions.clipboard-paste reads the seeded CLIPBOARD rather than the distinct PRIMARY selection", async () => {
   const writes: string[] = []

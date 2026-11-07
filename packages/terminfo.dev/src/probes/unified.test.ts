@@ -2622,6 +2622,9 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     writes.push(text)
     if (text === "\x1b[?2004h") bracketedPaste = true
     if (text === "\x1b[?2004l") bracketedPaste = false
+    if (text.includes("\x1b[?2004$p")) {
+      queueMicrotask(() => process.stdin.emit("data", Buffer.from(`\x1b[?2004;${bracketedPaste ? 1 : 2}$y\x1b[?1;2c`)))
+    }
     return true
   }) as typeof process.stdout.write
   const baseline = "owned clipboard baseline"

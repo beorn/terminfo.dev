@@ -3974,6 +3974,10 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
   if (!input || !readInput) return notTestedResult("real-surface input injection (XTEST/CGEvent)", { input: false })
   if (!ctx.withClipboardFixture) return notTestedResult("owned disposable clipboard paste", { clipboard: false })
   return ctx.withClipboardFixture(async (fixture) => {
+    const incomingMode = await ctx.queryMode(2004)
+    if (incomingMode !== "set" && incomingMode !== "reset") {
+      return notTestedResult("DECRPM 2004 readback for incoming paste-mode restoration", { incomingMode })
+    }
     const control = (await readInput(/^a/, 1000, () => input.injectKey("a")))?.[0]
     if (!control) throw new Error("XTEST delivery control failed: plain a did not reach the app")
     const nonce = `terminfo-paste-${randomUUID()}`
@@ -3987,6 +3991,8 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       }
       return report
     }
+    let failed = false
+    let primary: unknown
     try {
       // The owned fixture seeds CLIPBOARD; Shift+Insert reads X11 PRIMARY instead.
       const reset = await readPaste(false)
@@ -4032,8 +4038,20 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
           },
         ],
       }
+    } catch (error) {
+      failed = true
+      primary = error
+      throw error
     } finally {
-      ctx.write("\x1b[?2004l")
+      try {
+        ctx.write(incomingMode === "set" ? "\x1b[?2004h" : "\x1b[?2004l")
+        if ((await ctx.queryMode(2004)) !== incomingMode) {
+          throw new Error("Clipboard paste incoming 2004 restoration verification failed")
+        }
+      } catch (error) {
+        if (failed) throw new AggregateError([primary, error], "Clipboard paste measurement and restoration failed")
+        throw error
+      }
     }
   })
 }
