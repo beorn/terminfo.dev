@@ -573,8 +573,8 @@ export async function readAppSemanticState(input: {
           reader: "state",
           runId: input.runId,
           unknown: unknownReading,
-          handled: { before: initial.cwd, after: handled.cwd ?? "", expected: controlPath },
-          target: { before: handled.cwd ?? "", after: target.cwd ?? "", expected: targetPath },
+          handled: { before: initial.cwd, after: handled.cwd, expected: controlPath },
+          target: { before: handled.cwd, after: target.cwd, expected: targetPath },
           detail,
         }
       } finally {
