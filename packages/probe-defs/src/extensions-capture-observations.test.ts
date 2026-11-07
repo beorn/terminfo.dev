@@ -171,14 +171,16 @@ test.each([
   ).toBe(true)
   const recorded = recordExecutedProbe({
     featureId: "extensions.iterm2-images",
-    attempt: { scope: "pty" },
-    observation: result.observation,
+    attempt: { scope: "probe", startedAt: "2026-11-07T00:00:00.000Z" },
+    observation: result.observation
+      ? { ...result.observation, featureId: "extensions.iterm2-images", rawReplyRef: "extensions.iterm2-images" }
+      : undefined,
     assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId: "extensions.iterm2-images" })),
     tests: result.tests,
     rawReplyRef: "extensions.iterm2-images",
     criterionBranch: result.criterionBranch,
   })
-  const finalized = finalizeSgrResult(recorded, subject as { kind: "term" | "mux" | "lib" }, frames)
+  const finalized = finalizeSgrResult(recorded, subject, frames)
   expect(finalized.status).toBe(expectedStatus)
   if (expectedReason) {
     expect(finalized.reason).toBe(expectedReason)
