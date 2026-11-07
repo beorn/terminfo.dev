@@ -10,7 +10,7 @@ import {
   ALL_PROBES as PROBE_DEFS,
   resolveProbeIds,
   recordExecutedProbe,
-  finalizeSgrResult,
+  finalizeVisualResult,
   withReplyFailureEvidence,
   type ProbeResult,
   type RunDraft,
@@ -292,7 +292,7 @@ export async function runProbeBatch(
     /** The target this run is measuring, from the measured side (the launched app), never read out
      * of the receipt. A receipt naming another target is refused before the first write (27874). */
     subject?: { kind: "term" | "lib" | "mux"; id: string; os: string }
-    draft?: Pick<RunDraft, "results">
+    draft?: Pick<RunDraft, "results"> & Partial<Pick<RunDraft, "subject">>
     onCheckpoint?: (batch: ProbeBatch) => void
   } = {},
 ): Promise<ProbeBatch> {
@@ -907,9 +907,9 @@ export async function runProbeBatch(
       // This owner runs app/mux callbacks. Only frames captured by this probe can witness its effect.
       batch.results[index] =
         options.subject?.kind === "term" || options.subject?.kind === "mux"
-          ? finalizeSgrResult(
+          ? finalizeVisualResult(
               recorded,
-              options.subject,
+              options.draft?.subject ?? options.subject,
               captures.map(({ frame }) => frame),
             )
           : recorded

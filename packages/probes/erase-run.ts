@@ -8,7 +8,7 @@ import {
   ALL_PROBES,
   initializeRunDraft,
   recordExecutedProbe,
-  finalizeSgrResult,
+  finalizeVisualResult,
   type CapturedRunDraft,
   type ObservationFrame,
   type ProbeResult,
@@ -248,7 +248,7 @@ export async function runEraseReplay(
         })
         const index = assertion.results.findIndex((entry) => entry.featureId === featureId)
         if (index < 0) throw new Error("Erase result missing from declared catalogue: " + featureId)
-        assertion.results[index] = retained ? finalizeSgrResult(domain, capture.subject, replayFrames) : domain
+        assertion.results[index] = retained ? finalizeVisualResult(domain, capture.subject, replayFrames) : domain
       }
       const path = join(directory, assertion.runId + ".assertion.draft.json")
       const checksPath = join(directory, assertion.runId + ".checks.json")

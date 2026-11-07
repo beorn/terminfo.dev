@@ -187,7 +187,7 @@ export function resolveProbeIds(
 }
 
 export { collectorIds } from "./helpers.ts"
-export { finalizeSgrResult } from "./sgr.ts"
+export { finalizeVisualResult } from "./sgr.ts"
 
 export {
   sgrProbes,

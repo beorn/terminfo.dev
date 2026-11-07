@@ -30,7 +30,7 @@ import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
 import { modesProbes } from "./modes.ts"
 import { resetProbes } from "./reset.ts"
-import { sgrProbes, finalizeSgrResult } from "./sgr.ts"
+import { sgrProbes, finalizeVisualResult } from "./sgr.ts"
 import { unicodeProbes } from "./unicode.ts"
 import { editingProbes } from "./editing.ts"
 import { textProbes } from "./text.ts"
@@ -67,7 +67,7 @@ it("requires app and mux visual evidence while preserving library cell and non-S
         rawReplyRef: featureId,
       }
       for (const { target, pending } of targets) {
-        const result = finalizeSgrResult(recorded, target, [])
+        const result = finalizeVisualResult(recorded, target, [])
         const conclusive = status === "supported" || status === "unsupported"
         if (featureId !== "modes.bracketed-paste" && pending && conclusive) {
           expect(result.status).toBe("probe-todo")
@@ -106,9 +106,9 @@ it("accepts only the recorded SGR screenshot in its own pixel captures without s
       screenshotRef: ref,
     }
     const target = { kind: "term", id: "render-fixture" } as const
-    expect(finalizeSgrResult(recorded, target, [frame])).toEqual(recorded)
+    expect(finalizeVisualResult(recorded, target, [frame])).toEqual(recorded)
     for (const captures of [[textFrame], [{ ...frame, ref: `sha256:${"b".repeat(64)}` }], []]) {
-      expect(finalizeSgrResult(recorded, target, captures).status).toBe(
+      expect(finalizeVisualResult(recorded, target, captures).status).toBe(
         status === "supported" || status === "unsupported" ? "probe-todo" : status,
       )
     }

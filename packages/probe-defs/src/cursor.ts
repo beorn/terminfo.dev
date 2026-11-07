@@ -554,26 +554,43 @@ export const cursorProbes: ProbeDefinition[] = [
             screenshotRef: bar.frame.ref,
           })
           if (cropRefusal) return cropRefusal
+          const status =
+            madeUp.regionDigest !== block.regionDigest
+              ? "probe-invalid"
+              : hidden.regionDigest === block.regionDigest
+                ? "probe-todo"
+                : bar.regionDigest === block.regionDigest || bar.regionDigest === underline.regionDigest
+                  ? "unsupported"
+                  : "supported"
           const note =
-            "Steady cursor controls retained for the single installed-Alacritty qualification; deciding reader pending that stop point"
+            status === "probe-invalid"
+              ? "Made-up cursor style 99 changed the steady block; the probe controls are invalid"
+              : status === "probe-todo"
+                ? "Cursor capture is blind or reads the wrong cell: hidden and steady block pixels are equal"
+                : bar.regionDigest === block.regionDigest
+                  ? "Steady bar request drew no bar: its cursor-cell pixels equal the steady block"
+                  : bar.regionDigest === underline.regionDigest
+                    ? "Steady bar request was drawn as underline"
+                    : "Observed steady bar pixels distinct from steady block and underline with passing same-run controls"
+          const conclusive = status === "supported" || status === "unsupported"
           return {
-            pass: false,
+            pass: status === "supported",
             response,
             observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
+              outcome: conclusive ? status : "inconclusive",
               assertionType: "screenshot",
               screenshotRef: bar.frame.ref,
               frames,
               note,
             },
-            criterionBranch: "visual-review",
+            criterionBranch: "cursor-shape-same-run",
             tests: [
               { id: "capture", status: "supported", assertionRefs: [0] },
               {
                 id: "review",
-                status: "probe-todo",
+                status,
                 reason: note,
+                assertionRefs: conclusive ? [1] : status === "probe-invalid" ? [0] : [],
               },
             ],
             assertions: [
@@ -583,6 +600,16 @@ export const cursorProbes: ProbeDefinition[] = [
                 expected: "Same-run steady block, bar, underline, made-up and hidden cursor-cell pixels",
                 observed: response,
               },
+              ...(conclusive
+                ? [
+                    {
+                      assertionType: "screenshot" as const,
+                      kind: status === "supported" ? ("positive" as const) : ("negative" as const),
+                      expected: "Steady bar cursor pixels differ from both steady block and steady underline",
+                      observed: response,
+                    },
+                  ]
+                : []),
             ],
           }
         } finally {
