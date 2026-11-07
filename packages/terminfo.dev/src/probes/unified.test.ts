@@ -108,11 +108,15 @@ it.each([
       probe.termWrites = "query"
       // Keep the actual callback/result producer; model only its TTY operations.
       probe.term = async (ctx) =>
-        originals[index]!.term!({
-          ...ctx,
-          write() {},
-          queryCursorPosition: async () => ({ row: 1, col: 1 }),
-        })
+        originals[index]!.term!(
+          new Proxy(ctx, {
+            get(target, key) {
+              if (key === "write") return () => {}
+              if (key === "queryCursorPosition") return async () => ({ row: 1, col: 1 })
+              return Reflect.get(target, key)
+            },
+          }),
+        )
     }
     const base = {
       observedAt: new Date().toISOString(),
@@ -132,7 +136,9 @@ it.each([
       const batch = await runProbeBatch({ ids, subject: { ...subject, os: "linux" }, appDeclarations: declarations })
       for (const id of ids) {
         const result = batch.results.find((row) => row.featureId === id)!
-        expect(result.status).toBe(absent ? "untestable" : "probe-todo")
+        expect(result.status, JSON.stringify({ result, diagnostics: batch.ungradedDiagnostics })).toBe(
+          absent ? "untestable" : "probe-todo",
+        )
         if (absent) expect(result.reason).toContain("Untestable (no setup)")
         else expect(declarations[id]).toBeUndefined()
       }
