@@ -2423,8 +2423,11 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
   writeFileSync(receiptPath, JSON.stringify(scenario.targetless ? hostedLaunchReceipt() : receipt))
   process.env.TERMINFO_DISPOSABLE_RECEIPT = receiptPath
   const writes: string[] = []
+  let bracketedPaste = false
   process.stdout.write = ((text: string) => {
     writes.push(text)
+    if (text === "\x1b[?2004h") bracketedPaste = true
+    if (text === "\x1b[?2004l") bracketedPaste = false
     return true
   }) as typeof process.stdout.write
   const baseline = "owned clipboard baseline"
@@ -2477,7 +2480,7 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     }),
   }
   const injectKey = vi.fn(async (keys: string) => {
-    const text = keys === "a" ? "a" : `\x1b[200~${clipboardText}\x1b[201~`
+    const text = keys === "a" ? "a" : bracketedPaste ? `\x1b[200~${clipboardText}\x1b[201~` : clipboardText
     process.stdin.emit("data", Buffer.from(text))
   })
   const featureId = scenario.featureId ?? "extensions.clipboard-paste"
@@ -2511,7 +2514,9 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     }
   }
   expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible ? 1 : 0)
-  expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(scenario.eligible ? ["a", "ctrl+shift+v"] : [])
+  expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(
+    scenario.eligible ? ["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"] : [],
+  )
   expect(clipboardText).toBe(baseline)
   expect(writes.join("")).not.toContain("\x1b]52;")
 })
