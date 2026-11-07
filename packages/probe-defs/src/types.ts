@@ -1010,6 +1010,8 @@ export interface InputFixture {
   }
   injectKey(keys: string): Promise<void>
   injectClick(button: 1 | 4 | 5): Promise<void>
+  /** Buttonless motion in owned-window pixels; absent adapters stay click-only. */
+  injectMove?(x: number, y: number): Promise<void>
   /** Button-event (1002) motion. Absent adapters stay click-only. */
   injectDrag?(button: 1): Promise<void>
 }
