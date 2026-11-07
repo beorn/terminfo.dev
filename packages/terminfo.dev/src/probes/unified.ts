@@ -863,7 +863,10 @@ export async function runProbeBatch(
         const rawReplyRef =
           result.observation.assertionType === "process_environment" && result.response !== undefined
             ? `${probe.id}.callbackResponse`
-            : queries.length || captureAttempted || clipboardEvents.length
+            : events.some((event) => event.kind === "write") ||
+                queries.length ||
+                captureAttempted ||
+                clipboardEvents.length
               ? probe.id
               : undefined
         const post = geometryCheck?.post
