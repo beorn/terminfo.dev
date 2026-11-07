@@ -3309,11 +3309,27 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         const imageNumber = newNumber()
         let imageId: number | null = null
         try {
-          const uploaded = allocationOutcomeResult(
-            await ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber)),
-            imageNumber,
+          const transfer = await ctx.queryWithSentinelOutcome(
+            imageTransferRequest(imageNumber),
+            allocationReply(imageNumber),
           )
+          const uploaded = allocationOutcomeResult(transfer, imageNumber)
           imageId = uploaded.imageId
+          if (uploaded.silent) {
+            // App-only: both owned windows must be controlled silence; a query reply leaves transfer open.
+            const query = await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)
+            const transferNegative = sentinelSilenceResult(transfer, "The RGB image transfer is acknowledged")
+            const queryNegative = sentinelSilenceResult(query, "The canonical RGB graphics query is acknowledged")
+            if (transferNegative?.observation && queryNegative?.observation) {
+              if (display) return kittyDisplayWithoutTransmit(null, imageNumber)
+              return {
+                pass: false,
+                observation: queryNegative.observation,
+                response: JSON.stringify({ transfer, query }),
+                assertions: [...(transferNegative.assertions ?? []), ...(queryNegative.assertions ?? [])],
+              }
+            }
+          }
           if (uploaded.refusal && display) {
             return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
           }
