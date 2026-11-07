@@ -7,7 +7,8 @@
 /* oxlint-disable typescript/no-deprecated -- Exercise the real library probe source. */
 import { expect, test } from "vitest"
 import { createGhosttyNativeBackend } from "@termless/ghostty-native"
-import { ALL_PROBES, type LibProbeSource } from "@terminfo/probe-defs"
+import { ALL_PROBES } from "@terminfo/probe-defs"
+import { libProbeSource } from "../probe-defs/src/testing/group-harness.ts"
 import { createLibProbeSource } from "./headless-batch.ts"
 import { headlessRuntimeIdentity, readAdapterSources } from "./headless-identity.ts"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
@@ -26,7 +27,7 @@ test.runIf(OWNED_LAYOUT).each(["ignores-mode", "ignores-reset"] as const)(
         identity.adapterSources = readAdapterSources("ghostty-native", backend)
         const source = createLibProbeSource(backend, undefined, identity, undefined)
         let active = false
-        const stub: LibProbeSource = {
+        const faulted = libProbeSource({
           ...source,
           feed(text) {
             if (text === "\x1b[>4;2m") active = true
@@ -40,8 +41,8 @@ test.runIf(OWNED_LAYOUT).each(["ignores-mode", "ignores-reset"] as const)(
             }
             return source.encodeKey!(event)
           },
-        }
-        const result = definition.lib!(candidate === "real" ? source : stub)
+        })
+        const result = definition.lib!(candidate === "real" ? source : faulted)
         if (candidate === "real") {
           expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
           expect(result.observation?.note).toMatch(/Ctrl\+a stays \[1\].*xterm.*level 2/)
