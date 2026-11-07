@@ -322,7 +322,19 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
 /** Both App IDs measure the same two joint fixtures, through the owned title surface. */
 async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const read = ctx.readTitle
-  if (!read) return notTestedResult("No owned title reader is installed for this run", {})
+  if (!read) {
+    const note = "No owned title reader is installed for this run"
+    return {
+      ...notTestedResult(note, {}),
+      tests: [
+        {
+          id: "criterion",
+          status: "probe-todo",
+          reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
+        },
+      ],
+    }
+  }
   const before = await read()
   const saved = before === "pushed-title" ? "other-pushed-title" : "pushed-title"
   const set = (title: string) => ctx.write(`\x1b]2;${title}\x07`)
