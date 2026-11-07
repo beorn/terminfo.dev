@@ -369,6 +369,15 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): GNU Screen 5.0.2 exposes no smooth-scrolling state or public readback for DECSCLM. Read SetMode in ansi.c:1090-1122 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): case 4 SCLM is commented out between cases 3 and 5. A static capture cannot read scroll timing, and the outer terminal cannot supply Screen's missing own mode reading.",
   },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.2",
+    os: "linux",
+    featureId: "modes.color-scheme-reporting",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.2 has no private-mode 2031 handler. Read the complete private SetMode dispatch in ansi.c:1071-1191 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): CSI ?2031h has no dispatch case, so this version exposes no color-scheme-reporting test path. A silent query is not an observed negative.",
+  },
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */
