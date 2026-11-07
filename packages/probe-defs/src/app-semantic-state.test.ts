@@ -87,6 +87,7 @@ test("missing reader stays pending and a broken owned read stays invalid", () =>
 
 test("registered OSC callbacks forward their own feature and recorded writer to the owned reader", async () => {
   for (const id of [
+    "extensions.osc7-cwd",
     "extensions.osc133-a",
     "extensions.osc133-b",
     "extensions.osc133-c",
@@ -106,12 +107,23 @@ test("registered OSC callbacks forward their own feature and recorded writer to 
     ctx.readAppSemanticState = async (featureId, write) => {
       seen.push(featureId)
       expect(write).toBe(ctx.write)
-      return report()
+      return id === "extensions.osc7-cwd" ? state() : report()
     }
     const definition = extensionsProbes.find((probe) => probe.id === id)!
-    expect(await definition.term!(ctx), id).toMatchObject({ observation: { outcome: "unsupported" } })
+    expect(await definition.term!(ctx), id).toMatchObject({
+      observation: { outcome: id === "extensions.osc7-cwd" ? "supported" : "unsupported" },
+    })
     expect(seen).toEqual([id])
   }
+})
+
+test("OSC7 preserves its existing App observation when the owned semantic reader is unavailable", async () => {
+  const previous = parserStateResult(true, "qualified existing title observation", {})
+  const source = replayTermProbeSource(new Map(), {
+    readAppSemanticState: async () => ({ status: "unavailable", reason: "another exact App" }),
+  })
+  const wrapped = withAppSemanticObservation({ id: "extensions.osc7-cwd", lib: null, term: async () => previous })
+  expect(await wrapped.term!(source)).toBe(previous)
 })
 
 test("log rows preserve decided measurements and override only unresolved or no-setup results", async () => {

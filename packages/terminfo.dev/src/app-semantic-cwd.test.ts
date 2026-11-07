@@ -2,7 +2,7 @@
  * @failure The owned tmux reader loses an empty field, changes a URI body, or
  *   returns a measurement without restoring the public pane_path value.
  * @level l2
- * @consumer readAppSemanticState's approved OSC633 CWD observation.
+ * @consumer readAppSemanticState's approved OSC633 and OSC7 CWD observations.
  * @testonly none
  */
 import { closeSync, mkdtempSync, openSync, readlinkSync, rmSync, writeFileSync } from "node:fs"
@@ -24,7 +24,12 @@ afterEach(() => {
   command.mockReset()
 })
 
-async function readCwd(initial: string, malformed?: string, escapeRestore = false) {
+async function readCwd(
+  initial: string,
+  malformed?: string,
+  escapeRestore = false,
+  osc7?: "working" | "made-up" | "control" | "target" | "unexpected" | "initial-target",
+) {
   const runId = "a".repeat(32)
   const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-"))
   const directoryFd = openSync(directory, "r")
@@ -64,7 +69,7 @@ async function readCwd(initial: string, malformed?: string, escapeRestore = fals
       vi.spyOn(Date, "now").mockImplementation(() => (time += 2000))
     }
     const reading = await readAppSemanticState({
-      featureId: "extensions.osc633-p",
+      featureId: osc7 ? "extensions.osc7-cwd" : "extensions.osc633-p",
       mux: "tmux",
       runId,
       executable: { path: "/unused", sha256: "b".repeat(64) },
@@ -72,8 +77,23 @@ async function readCwd(initial: string, malformed?: string, escapeRestore = fals
         writes.push(text)
         const position = /^\x1b\[(\d+);1H([\s\S]*)$/.exec(text)
         if (position) lines[Number(position[1]) - 1] = position[2] ?? ""
+        if (osc7 === "initial-target") {
+          const nonce = /^Q-([0-9a-f]{8})-0$/.exec(position?.[2] ?? "")?.[1]
+          if (nonce) cwd = `file://localhost/terminfo-target-${nonce}`
+        }
+        const madeUp = /\x1b\]77;([^\x07]*)\x07/.exec(text)?.[1]
+        if (osc7 === "made-up" && madeUp !== undefined) cwd = madeUp
         const path = /\x1b\]7;([^\x07]*)\x07/.exec(text)?.[1]
-        if (path !== undefined) cwd = escapeRestore ? path.replaceAll("\\", "\\\\") : path
+        if (path !== undefined) {
+          if (osc7 === "control" && path.includes("/terminfo-control-")) return
+          if (osc7 === "target" && path.includes("/terminfo-target-")) return
+          cwd =
+            osc7 === "unexpected" && path.includes("/terminfo-target-")
+              ? "file://localhost/unexpected"
+              : escapeRestore
+                ? path.replaceAll("\\", "\\\\")
+                : path
+        }
       },
     })
     return { reading, writes }
@@ -111,7 +131,60 @@ test.runIf(process.platform === "linux").each(["0\n", "0\tpath\textra\n"])(
   },
 )
 
-test.runIf(process.platform === "linux")("rejects a public CWD restoration mismatch", async () => {
-  const { reading } = await readCwd("file://localhost/escaped\\path", undefined, true)
-  expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("pane_path restoration") })
-})
+test.runIf(process.platform === "linux").each([undefined, "working"] as const)(
+  "rejects a public CWD restoration mismatch (%s)",
+  async (osc7) => {
+    const { reading } = await readCwd("file://localhost/escaped\\path", undefined, true, osc7)
+    expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("pane_path restoration") })
+  },
+)
+
+test.runIf(process.platform === "linux").each(["", "file://localhost/original%2Fkeep%20case"])(
+  "OSC7 retains raw URI controls and restores %j exactly",
+  async (initial) => {
+    const { reading, writes } = await readCwd(initial, undefined, false, "working")
+    expect(reading.status).toBe("measured")
+    if (reading.status !== "measured" || reading.reader !== "state") throw new Error("Missing OSC7 CWD reading")
+    const commands = writes.flatMap((text) => [...text.matchAll(/\x1b\](\d+);([^\x07]*)\x07/g)])
+    expect(commands.map((command) => command[1])).toEqual(["77", "7", "7", "7"])
+    const [madeUp, control, target, restored] = commands.map((command) => command[2])
+    expect(control).toMatch(/^file:\/\/localhost\/terminfo-control-[0-9a-f]{8}$/)
+    expect(target).toMatch(/^file:\/\/localhost\/terminfo-target-[0-9a-f]{8}$/)
+    expect(madeUp).toBe(target)
+    expect(target).not.toBe(control)
+    expect(target).not.toBe(initial)
+    expect(restored).toBe(initial)
+    expect(reading.unknown).toEqual({ before: initial, after: initial })
+    expect(reading.handled).toEqual({ before: initial, after: control, expected: control })
+    expect(reading.target).toEqual({ before: control, after: target, expected: target })
+  },
+)
+
+test.runIf(process.platform === "linux").each(["made-up", "control", "target", "unexpected"] as const)(
+  "OSC7 retains failed or unexpected %s evidence and restores the initial path",
+  async (mode) => {
+    const initial = "file://localhost/original"
+    const { reading, writes } = await readCwd(initial, undefined, false, mode)
+    expect(writes.at(-1)).toBe(`\x1b]7;${initial}\x07`)
+    if (mode === "target") {
+      expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("OSC7") })
+      return
+    }
+    expect(reading.status).toBe("measured")
+    if (reading.status !== "measured" || reading.reader !== "state") throw new Error("Missing OSC7 CWD evidence")
+    if (mode === "made-up") expect(reading.unknown.after).not.toBe(reading.unknown.before)
+    if (mode === "control") expect(reading.handled.after).not.toBe(reading.handled.expected)
+    if (mode === "unexpected") {
+      expect(reading.target.after).not.toBe(reading.target.expected)
+      expect(reading.target.after).not.toBe(reading.target.before)
+    }
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "OSC7 rejects a target URI already present in the initial reading",
+  async () => {
+    const { reading } = await readCwd("", undefined, false, "initial-target")
+    expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("fresh") })
+  },
+)

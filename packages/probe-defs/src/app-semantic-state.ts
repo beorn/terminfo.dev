@@ -18,6 +18,7 @@ export function withAppSemanticObservation(definition: ProbeDefinition): ProbeDe
   const term = definition.term
   const semantic =
     /^extensions\.osc(?:133|633)-[abcdep]$/.test(definition.id) ||
+    definition.id === "extensions.osc7-cwd" ||
     definition.id === "extensions.semantic-prompts" ||
     definition.id === "extensions.osc-633-vscode"
   if (!term || (!semantic && !reportFeatures.has(definition.id))) return definition
@@ -25,7 +26,11 @@ export function withAppSemanticObservation(definition: ProbeDefinition): ProbeDe
     ...definition,
     term: async (ctx) => {
       if (!ctx.readAppSemanticState) return term(ctx)
-      if (semantic) return gradeAppSemanticState(await ctx.readAppSemanticState(definition.id, ctx.write))
+      if (semantic) {
+        const reading = await ctx.readAppSemanticState(definition.id, ctx.write)
+        if (definition.id === "extensions.osc7-cwd" && reading.status === "unavailable") return term(ctx)
+        return gradeAppSemanticState(reading)
+      }
       const previous = await term(ctx)
       if (reportsDecidedOutcome(previous)) return previous
       const reading = await ctx.readAppSemanticState(definition.id, ctx.write)

@@ -52,6 +52,14 @@ const declarations: readonly AppSemanticCapability[] = [
     { kind: "mux", id: "tmux", version: "3.8", os: "linux" },
     { kind: "mux", id: "screen", version: "5.0.2", os: "linux" },
   ].flatMap((subject) => sgrProbes.map(({ id }) => ({ ...subject, featureId: id, outerCommands: true as const }))),
+  {
+    kind: "mux",
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    featureId: "extensions.osc7-cwd",
+    reader: "cwd",
+  },
   ...promptFeatures
     .filter((featureId) => featureId !== "extensions.osc633-e")
     .map((featureId) => ({
@@ -998,18 +1006,32 @@ export async function readAppSemanticState(input: {
     }
     input.write("\x1b[2J\x1b[3J\x1b[H")
     const initial = await sample(1, "")
-    const unknown = await sample(1, osc("133;Z"))
-    const unknownReading = { before: JSON.stringify(initial), after: JSON.stringify(unknown) }
     if (row.reader === "cwd") {
       if (/[\x00-\x1f\x7f]/.test(initial.cwd)) throw new Error("tmux pane_path cannot be restored")
       if (!initial.cwd) {
         detail.phases.push({ note: "tmux's pane_path cannot tell an unset path from an empty one" })
       }
       const controlPath = `file://localhost/terminfo-control-${nonce}`
-      const targetPath = `/terminfo-target-${nonce}`
+      const isOsc7 = row.featureId === "extensions.osc7-cwd"
+      const targetPath = isOsc7 ? `file://localhost/terminfo-target-${nonce}` : `/terminfo-target-${nonce}`
       try {
+        if (isOsc7 && (initial.cwd === controlPath || initial.cwd === targetPath)) {
+          throw new Error("tmux OSC7 control and target paths must be fresh")
+        }
+        const unknown = await sample(1, osc(isOsc7 ? `77;${targetPath}` : "133;Z"))
+        const unknownReading = {
+          before: isOsc7 ? initial.cwd : JSON.stringify(initial),
+          after: isOsc7 ? unknown.cwd : JSON.stringify(unknown),
+        }
         const handled = await sample(2, osc(`7;${controlPath}`))
-        const target = await sample(3, osc(`633;P;Cwd=${targetPath}`))
+        const target = await sample(3, osc(isOsc7 ? `7;${targetPath}` : `633;P;Cwd=${targetPath}`))
+        if (isOsc7 && target.cwd === handled.cwd) {
+          return {
+            status: "invalid",
+            reason: "tmux OSC7 target left pane_path unchanged after its same-command control",
+            detail,
+          }
+        }
         return {
           status: "measured",
           reader: "state",
@@ -1028,6 +1050,8 @@ export async function readAppSemanticState(input: {
         )
       }
     }
+    const unknown = await sample(1, osc("133;Z"))
+    const unknownReading = { before: JSON.stringify(initial), after: JSON.stringify(unknown) }
     if (row.reader === "cycle") {
       const beforeCycle = async (start: number) => [
         (await sample(start, "")).value,
