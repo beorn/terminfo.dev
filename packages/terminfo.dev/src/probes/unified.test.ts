@@ -719,6 +719,62 @@ function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
 
+it.each(
+  ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
+    ["controls", "query"].map((failure) => ({ id, failure })),
+  ),
+)("names Screen's missing own-title reader after $failure fails: $id", async ({ id, failure }) => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: [id],
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    ownedTerminal: {
+      ...geometryOwner(noGeometry),
+      readTitle: async () => {
+        if (failure === "query") throw new Error("screen -Q title is unavailable")
+        return "unchanged Screen title"
+      },
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === id)!
+  expect(row.status).toBe("probe-todo")
+  expect(row.reason).toMatch(/Screen.*screen -Q title/)
+  expect(batch.assertions).toEqual([])
+  const reads = (JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }).titleReads
+  if (failure === "query") expect(reads).toEqual([{ error: "screen -Q title is unavailable" }])
+  else expect(reads.length).toBeGreaterThan(1)
+})
+
+// #32573: direct callback cases cannot detect a collector that drops or exposes a foreign title reader.
+it.each([false, true])("binds the title reader and its raw readings only to the owned run: %s", async (owned) => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(owned)
+  let title = "incoming App title"
+  const readTitle = vi.fn(async () => title)
+  process.stdout.write = ((bytes: string) => {
+    const match = /^\x1b\]2;([^\x07]*)\x07$/.exec(bytes)
+    if (match) title = match[1]!
+    return true
+  }) as typeof process.stdout.write
+  const id = "extensions.osc2-title"
+  const batch = await runProbeBatch({
+    ids: [id],
+    ownedTerminal: { ...geometryOwner(noGeometry), readTitle },
+  })
+  expect(batch.results.find((row) => row.featureId === id)?.status).toBe(owned ? "supported" : "probe-todo")
+  expect(title).toBe("incoming App title")
+  const trace = JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }
+  if (owned) {
+    expect(readTitle).toHaveBeenCalledTimes(7)
+    expect(trace.titleReads).toHaveLength(7)
+    expect(trace.titleReads[0]).toEqual({ title: "incoming App title" })
+    expect(trace.titleReads.at(-1)).toEqual({ title: "incoming App title" })
+  } else {
+    expect(readTitle).not.toHaveBeenCalled()
+    expect(trace.titleReads).toBeUndefined()
+  }
+})
+
 // A DECRQSS style result is not a visual observation (#30590). The unrelated screenshot
 // assertion exercises the same-run feature binding, not just global screenshot presence.
 it.each([
@@ -2192,6 +2248,9 @@ it.each(["start", "read", "write"])(
               permissions: "fixture",
               summary: "{}",
               assertOwned,
+              readTitle: async () => {
+                throw new Error("This clipboard fixture has no title reader")
+              },
               dispose: async () => {},
               async withClipboardFixture(work, _trace, verify) {
                 try {
@@ -2298,6 +2357,9 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     permissions: "clipboard: read=ask,write=allow; OSC52=not-run",
     summary: "{}",
     assertOwned: async () => {},
+    readTitle: async () => {
+      throw new Error("This clipboard fixture has no title reader")
+    },
     dispose: async () => {},
     withClipboardFixture,
     ...(scenario.attached && {
@@ -2390,6 +2452,9 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
         permissions: "fixture",
         summary: "{}",
         assertOwned: async () => {},
+        readTitle: async () => {
+          throw new Error("This clipboard fixture has no title reader")
+        },
         dispose: async () => {},
         withClipboardFixture: createClipboardTransaction(baseline, {
           async readText(trace, kind, verify) {
@@ -2447,6 +2512,9 @@ it("records failed clipboard restoration as collector error rather than retainin
         permissions: "fixture",
         summary: "{}",
         assertOwned: async () => {},
+        readTitle: async () => {
+          throw new Error("This clipboard fixture has no title reader")
+        },
         dispose: async () => {},
         async withClipboardFixture(_work, trace) {
           trace({ kind: "clipboard-restore", at: new Date().toISOString(), sha256: "b".repeat(64), length: 8 })

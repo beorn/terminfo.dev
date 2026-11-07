@@ -881,6 +881,20 @@ new comparison or support conclusion.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
+The optional `TermProbeSource.readTitle` reads this run's owned public title surface.
+The existing Linux ownership adapter supplies the recorded App window's `xdotool getwindowname`,
+or the attached mux's own title query; mux rows never substitute the outer window.
+An empty string is an observed title; configured read errors keep their cause.
+The collector retains each raw reading, including failures. OSC 2 and App XTWINOPS 22/23
+use this same reader, qualify distinct title values and verify incoming-title restoration.
+Failed App controls are PROBE INVALID; an absent reader leaves the terminal untouched.
+Screen's unqualified `screen -Q title` or failed title controls retain a named missing-reader
+cause, without reading the outer window. OSC 0 uses title state only for its title clause;
+title success still needs independent icon evidence for the conjunction.
+The Linux Ghostty OSC 7 arm uses that same reader after empty OSC 2, reads two
+`file://localhost` paths exactly, checks an inert made-up OSC, then clears OSC 7 and
+restores the prior title. Other Apps keep their existing unbound-CWD result.
+
 The app exit/1047/insert-mode rows declare character readback and use that same region oracle.
 Exit and 1047 paint primary then alternate markers; leaving the alternate is compared with a plainly
 painted primary reference. Text reads use the existing character change criterion; pixel reads retain

@@ -58,6 +58,8 @@ export interface LinuxClipboardAdapter {
   readonly summary: string
   readonly muxAttachmentProof?: LinuxMuxAttachmentProof
   assertOwned(): Promise<void>
+  /** The same receipt owns the App window or the mux's own title, never the outer window for a mux. */
+  readTitle(): Promise<string>
   withClipboardFixture(
     work: Parameters<NonNullable<TermProbeSource["withClipboardFixture"]>>[0],
     trace: (event: ClipboardTraceEvent) => void,
@@ -674,6 +676,26 @@ export async function createLinuxClipboardAdapter(
     config: receipt.config,
     permissions: receipt.permissions,
     assertOwned,
+    async readTitle() {
+      await assertOwned()
+      const target = receipt.target
+      const title =
+        target?.kind !== "mux"
+          ? await command("xdotool", ["getwindowname", receipt.terminal.windowId], env)
+          : target.mux === "tmux"
+            ? await command(
+                target.executable.path,
+                ["-S", target.socketPath, "display-message", "-p", "-t", target.session, "#{pane_title}"],
+                env,
+              )
+            : await command(target.executable.path, ["-S", target.session, "-Q", "title"], {
+                ...env,
+                SCREENDIR: dirname(target.socketPath),
+              })
+      await assertOwned()
+      // Preserve title whitespace, stripping only the command's one output line terminator.
+      return title.replace(/\n$/u, "")
+    },
     get muxAttachmentProof() {
       return muxAttachmentProof ? globalThis.structuredClone(muxAttachmentProof) : undefined
     },

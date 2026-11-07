@@ -24,6 +24,7 @@ import {
   type HeadlessModel,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+import type { TermProbeSource } from "./types.ts"
 
 // Row 2.1: replies must follow the actual query/set/reset operations; canned replies cannot
 // prove that disabling one feature changes its result while its same-path control still works.
@@ -95,6 +96,76 @@ function semanticSurfaceSource(mutations: readonly string[] = []) {
     },
   }
 }
+
+// #32573: the App arm must use the bound title surface, not merely send OSC 2.
+// Library-only contract tests stay green while that App arm is an unmeasured stub.
+test.each([false, true])("App OSC 2 measures and restores its owned title, disabled=%s", async (disabled) => {
+  const library = semanticSurfaceSource(disabled ? ["osc2-noop"] : [])
+  const before = library.getTitle()
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const result = await definition.term!({
+    write: (text: string) => library.feed(text),
+    readTitle: async () => library.getTitle(),
+  } as unknown as TermProbeSource)
+  if (disabled) expect(result.observation?.outcome).not.toBe("supported")
+  else expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "supported" })
+  expect(library.getTitle()).toBe(before)
+})
+
+test("App OSC 2 does not call an unexpected changed title Unsupported", async () => {
+  let title = "incoming App title"
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const result = await definition.term!({
+    readTitle: async () => title,
+    write: (bytes: string) => {
+      const match = /^\x1b\]2;([^\x07]*)\x07$/.exec(bytes)
+      if (match) title = match[1]!.includes("target-") ? "unexpected changed title" : match[1]!
+    },
+  } as unknown as TermProbeSource)
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+  expect(title).toBe("incoming App title")
+})
+
+// Ghostty's public title fallback is distinct from library getCwd; this models that surface,
+// including the explicit-title override, rather than returning canned expected readings.
+test.each(["working", "no-cwd", "bad-control", "bad-negative", "bad-restore"] as const)(
+  "App OSC 7 measures the public title fallback and restores it: %s",
+  async (behavior) => {
+    let explicitTitle = "incoming App title"
+    let cwd = ""
+    const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
+    const operation = definition.term!({
+      write: (bytes: string) => {
+        const match = /^\x1b\](2|7|7654);([^\x07]*)\x07$/.exec(bytes)
+        if (!match) throw new Error(`Unexpected title fixture write ${JSON.stringify(bytes)}`)
+        if (match[1] === "2" && behavior !== "bad-control") {
+          if (!(behavior === "bad-restore" && match[2] === "incoming App title")) explicitTitle = match[2]!
+        }
+        if (match[1] === "7" && behavior !== "no-cwd") {
+          cwd = match[2] === "" ? "" : new URL(match[2]!).pathname
+        }
+        if (match[1] === "7654" && behavior === "bad-negative") cwd = "/unexpected-path"
+      },
+      readTitle: async () => explicitTitle || cwd,
+    } as unknown as TermProbeSource)
+    if (behavior === "bad-restore") await expect(operation).rejects.toThrow(/restor/i)
+    else {
+      const result = await operation
+      if (behavior === "working" || behavior === "no-cwd") {
+        expect(result.observation).toMatchObject({
+          assertionType: "buffer_state",
+          outcome: behavior === "working" ? "supported" : "unsupported",
+        })
+      } else {
+        expect(result.observation).toBeUndefined()
+        expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+      }
+      expect(explicitTitle).toBe("incoming App title")
+      expect(cwd).toBe("")
+    }
+  },
+)
 
 // #32451: Kitty's absent B needs its working A reader, while the lifecycle requires A/C/D
 // and an inert unknown letter. Generic opposite-namespace controls miss this reader shape.
