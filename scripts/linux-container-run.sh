@@ -473,6 +473,10 @@ if [[ "${1:-}" == "--inside" ]]; then
       target_launch_args=(--config NONE --class "terminfo-$target_id-container-daemon"
         -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600
         -o 'font_family=JetBrains Mono' -o font_size=16)
+      # Retain commands received by the outer Kitty in the existing daemon.log.
+      if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
+        target_launch_args+=(--dump-commands)
+      fi
       # kitty --version prints one line, "kitty 0.49.2 created by Kovid Goyal": the version is the
       # SECOND word, so the default last-word parse would read "Goyal" and refuse the run (27929 D1).
       parse_version() {
