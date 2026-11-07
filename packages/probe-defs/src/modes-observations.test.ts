@@ -10,6 +10,7 @@ import { modesProbes } from "./modes.ts"
 import { libProbeSource, replayTermProbeSource, type StoredQuery } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type {
+  CaptureCells,
   CaptureRectangle,
   CaptureRequest,
   ObservationFrame,
