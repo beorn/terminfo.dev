@@ -87,14 +87,75 @@ it.each(["coverage", "explicit todo"] as const)(
   },
 )
 
+// @failure Notification cells select no-setup without this run's missing bus, or remain TODO after observed absence.
+// Existing Ghostty cases cover prompt rows, not the fourteen notification positions.
+// @level l1
+// @consumer current-child App declarations -> runProbeBatch canonical recorder.
+it.each([
+  { kind: "term", id: "kitty", version: "0.49.2" },
+  { kind: "term", id: "ghostty", version: "1.4.0" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10" },
+  { kind: "term", id: "alacritty", version: "0.17.0" },
+  { kind: "term", id: "xterm", version: "411" },
+  { kind: "mux", id: "screen", version: "5.0.2" },
+  { kind: "mux", id: "tmux", version: "3.8" },
+] as const)("uses current-run bus absence for both $id notification cells", async (subject) => {
+  const ids = ["extensions.notifications", "extensions.osc777-notify"]
+  const probes = ids.map((id) => ALL_PROBES.find((probe) => probe.id === id)!)
+  const originals = probes.map((probe) => ({ term: probe.term, termWrites: probe.termWrites }))
+  try {
+    for (const [index, probe] of probes.entries()) {
+      probe.termWrites = "query"
+      // Keep the actual callback/result producer; model only its TTY operations.
+      probe.term = async (ctx) =>
+        originals[index]!.term!(
+          new Proxy(ctx, {
+            get(target, key) {
+              if (key === "write") return () => {}
+              if (key === "queryCursorPosition") return async () => ({ row: 1, col: 1 })
+              return Reflect.get(target, key)
+            },
+          }),
+        )
+    }
+    const base = {
+      observedAt: new Date().toISOString(),
+      address: "absent" as const,
+      socket: { path: "/fixture/bus", outcome: "absent" as const, code: "ENOENT" },
+    }
+    for (const bus of [
+      undefined,
+      { ...base, address: "present" as const },
+      { ...base, socket: { ...base.socket, outcome: "present" as const } },
+      { ...base, socket: { ...base.socket, outcome: "error" as const, code: "EACCES" } },
+      base,
+      { ...base, socket: { ...base.socket, code: "ENOTDIR" } },
+    ]) {
+      const absent = bus?.address === "absent" && bus.socket.outcome === "absent"
+      const declarations = appSemanticDeclarations({ ...subject, os: "linux" }, bus)
+      const batch = await runProbeBatch({ ids, subject: { ...subject, os: "linux" }, appDeclarations: declarations })
+      for (const id of ids) {
+        const result = batch.results.find((row) => row.featureId === id)!
+        expect(result.status, JSON.stringify({ result, diagnostics: batch.ungradedDiagnostics })).toBe(
+          absent ? "untestable" : "probe-todo",
+        )
+        if (absent) expect(result.reason).toContain("Untestable (no setup)")
+        else expect(declarations[id]).toBeUndefined()
+      }
+    }
+  } finally {
+    probes.forEach((probe, index) => Object.assign(probe, originals[index]))
+  }
+})
+
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 13, feature: "extensions.osc633-e" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 13, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 1, feature: "extensions.osc133-b" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 2, feature: "extensions.osc133-d" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 4, feature: "extensions.osc633-e" },
+  { kind: "term", id: "xterm", version: "411", count: 15, feature: "extensions.osc633-e" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 15, feature: "extensions.osc133-a" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 3, feature: "extensions.osc133-b" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 4, feature: "extensions.osc133-d" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 6, feature: "extensions.osc633-e" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
@@ -163,7 +224,7 @@ it.each(["address present", "socket present", "socket unreadable", "both absent"
       expect(JSON.stringify(record)).not.toContain("secret-address-never-retained")
       const selected = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" }, record)
       const absent = state === "both absent" || state === "not a directory"
-      expect(Object.keys(selected)).toHaveLength(absent ? 4 : 2)
+      expect(Object.keys(selected)).toHaveLength(absent ? 6 : 2)
       if (absent) expect(selected["extensions.osc133-d"]).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
       else expect(selected["extensions.osc133-d"]).toBeUndefined()
       if (state === "socket unreadable") expect(record.socket.code).toBe("EACCES")

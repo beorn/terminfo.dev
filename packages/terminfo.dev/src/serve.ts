@@ -937,8 +937,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
               // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
               if (preflightPixelCapture) await preflightPixelCapture()
-              const sessionBus =
-                measuredTerminal.name === "ghostty" && terminal.os === "linux" ? readSessionBus() : undefined
+              const sessionBus = terminal.os === "linux" ? readSessionBus() : undefined
               const result = await runProbeBatch({
                 ids: options.ids === undefined ? undefined : selectedIds,
                 out,

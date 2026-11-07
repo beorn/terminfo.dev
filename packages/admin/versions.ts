@@ -59,6 +59,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/serve.ts",
   "packages/terminfo.dev/src/detect.ts",
   "packages/terminfo.dev/src/identity-guard.ts",
+  "packages/terminfo.dev/src/app-semantic-state.ts",
   "packages/run-parser/src/index.ts",
   "packages/run-parser/src/app-launch.ts",
   "packages/run-parser/src/json.ts",
