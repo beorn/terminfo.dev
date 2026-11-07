@@ -32,6 +32,11 @@ describe("kernel32Declaration", () => {
     // PSMALL_RECT. A COORD declared as ptr would make the native call read a pointer as a number.
     expect(declaration.ReadConsoleOutputW?.args).toEqual(["u64", "ptr", "u32", "u32", "ptr"])
     expect(declaration.ReadConsoleOutputW?.returns).toBe("i32")
+    // The ownership witness's raw write: the console handle is a HANDLE; the mode is read through a
+    // pointer and set BY VALUE; the text and the written count are pointers.
+    expect(declaration.GetConsoleMode?.args).toEqual(["u64", "ptr"])
+    expect(declaration.SetConsoleMode?.args).toEqual(["u64", "u32"])
+    expect(declaration.WriteConsoleW?.args).toEqual(["u64", "ptr", "u32", "ptr", "ptr"])
     expect(declaration.CloseHandle?.args).toEqual(["u64"])
     // hTemplateFile is the seventh argument of CreateFileW and is a HANDLE too.
     expect(declaration.CreateFileW?.args).toEqual(["ptr", "u32", "u32", "ptr", "u32", "u32", "u64"])
@@ -51,6 +56,9 @@ describe("kernel32Declaration", () => {
     expect(declaration.QueryFullProcessImageNameW?.returns).toBe("i32")
     expect(declaration.GetConsoleScreenBufferInfo?.returns).toBe("i32")
     expect(declaration.CloseHandle?.returns).toBe("i32")
+    expect(declaration.GetConsoleMode?.returns).toBe("i32")
+    expect(declaration.SetConsoleMode?.returns).toBe("i32")
+    expect(declaration.WriteConsoleW?.returns).toBe("i32")
     expect(declaration.GetLastError?.returns).toBe("u32")
   })
 

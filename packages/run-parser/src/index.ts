@@ -27,6 +27,8 @@ import {
   ASSERTION_TYPES,
   type AssertionType,
   TEXT_QUALIFICATION_SHAPES,
+  admitsTextObservation,
+  textQualificationRecipeMatchesSubject,
   type NotTestedCoverage,
   type Observation,
   type ProbeAssertion,
@@ -321,7 +323,7 @@ function parseTextQualificationSpec(
   value: unknown,
   path: string,
   fields: readonly string[] = ["version", "recipe"],
-): TextQualificationSpec {
+): Pick<TextQualification, "version" | "recipe"> {
   if (!object(value)) fail(path, "invalid textQualification object")
   const unknown = Object.keys(value).find((key) => !fields.includes(key))
   if (unknown !== undefined) fail(path, `unknown textQualification field ${unknown}`)
@@ -330,6 +332,23 @@ function parseTextQualificationSpec(
   }
   if (!nonempty(value.recipe) || !value.recipe.trim()) fail(path, "invalid textQualification recipe")
   return { version: value.version, recipe: value.recipe }
+}
+
+function parseTextQualificationDeclaration(value: unknown, path: string): TextQualificationSpec {
+  if (object(value) && value.version === 2 && Object.hasOwn(value, "recipes")) {
+    const unknown = Object.keys(value).find((key) => !["version", "recipes"].includes(key))
+    if (unknown !== undefined) fail(path, `unknown textQualification field ${unknown}`)
+    if (
+      !Array.isArray(value.recipes) ||
+      value.recipes.length === 0 ||
+      !value.recipes.every((recipe) => nonempty(recipe) && recipe.trim().length > 0) ||
+      new Set(value.recipes).size !== value.recipes.length
+    ) {
+      fail(path, "invalid textQualification recipes")
+    }
+    return { version: 2, recipes: value.recipes as string[] }
+  }
+  return parseTextQualificationSpec(value, path)
 }
 
 function parseTextQualification(
@@ -358,15 +377,44 @@ function parseTextQualification(
     if (seen.has(shape)) fail(path, `duplicate textQualification shape ${shape}`)
     seen.add(shape)
     const context = `textQualification ${shape}`
-    const unknown = Object.keys(entry).find((key) => !["shape", "frames", "reason"].includes(key))
+    const unknown = Object.keys(entry).find((key) => !["shape", "frames", "reason", "ownership"].includes(key))
     if (unknown !== undefined) fail(path, `unknown ${context} field ${unknown}`)
     if (Object.hasOwn(entry, "frames") && Object.hasOwn(entry, "reason")) {
       fail(path, `${context} cannot carry both frames and reason`)
+    }
+    if (Object.hasOwn(entry, "ownership")) {
+      if (Object.hasOwn(entry, "frames") || Object.hasOwn(entry, "reason")) {
+        fail(path, `${context} cannot carry ownership with frames or reason`)
+      }
+      const ownership = entry.ownership
+      if (
+        shape !== "console-host-ownership" ||
+        !object(ownership) ||
+        Object.keys(ownership).sort().join(",") !== "cell,host,observerRow" ||
+        !object(ownership.cell) ||
+        Object.keys(ownership.cell).sort().join(",") !== "col,row" ||
+        ![ownership.cell.row, ownership.cell.col].every(
+          (edge) => typeof edge === "number" && Number.isSafeInteger(edge) && edge > 0,
+        ) ||
+        typeof ownership.host !== "string" ||
+        typeof ownership.observerRow !== "string"
+      ) {
+        fail(path, `invalid ${context} ownership`)
+      }
+      return {
+        shape,
+        ownership: {
+          cell: { row: ownership.cell.row as number, col: ownership.cell.col as number },
+          host: ownership.host,
+          observerRow: ownership.observerRow,
+        },
+      }
     }
     if (Object.hasOwn(entry, "reason")) {
       if (!nonempty(entry.reason) || !entry.reason.trim()) fail(path, `invalid ${context} reason`)
       return { shape, reason: entry.reason }
     }
+    if (shape === "console-host-ownership") fail(path, `${context} requires ownership or reason`)
     const frames = parseObservationFrames(entry.frames, path, context, [], textSnapshotRefs, undefined, "buffer_state")
     if (frames === undefined) fail(path, `${context} requires frames or reason`)
     // The existing parser enforces text kind, roles and retained-reference membership.
@@ -476,7 +524,7 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
     }
   }
   const textQualification =
-    "textQualification" in value ? parseTextQualificationSpec(value.textQualification, path) : undefined
+    "textQualification" in value ? parseTextQualificationDeclaration(value.textQualification, path) : undefined
   return {
     ...(value.schemaVersion === 4 ? { schemaVersion: 4 as const } : {}),
     probeHash,
@@ -1296,6 +1344,26 @@ export function parseRun(
     raw.screenshotRefs as string[],
     textSnapshotRefs,
   )
+  // Version-2 collectors freeze qualification tests before seal. Validate their declared observer
+  // context here, without recomputing a support result or changing historical single-recipe reads.
+  if (manifest.textQualification && "recipes" in manifest.textQualification) {
+    for (const result of results) {
+      if (
+        !["supported", "unsupported"].includes(result.status) ||
+        result.assertionType !== "buffer_state" ||
+        !result.frames?.some((frame) => frame.kind === "text-cells")
+      )
+        continue
+      if (
+        !textQualification ||
+        textQualification.version !== 2 ||
+        !manifest.textQualification.recipes.includes(textQualification.recipe) ||
+        !textQualificationRecipeMatchesSubject(textQualification.recipe, subject) ||
+        !admitsTextObservation({ subject, textClaims: manifest.textClaims }, result)
+      )
+        fail(path, `${result.featureId} text qualification does not match its declared observer context`)
+    }
+  }
   if (schemaVersion === 4) {
     validateCurrentAssertions(
       assertions as ProbeAssertion[],

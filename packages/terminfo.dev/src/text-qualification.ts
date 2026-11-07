@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import {
+  admitsTextObservation,
   assessTextQualification,
   finalizeProbeResult,
   type CapturedRunDraft,
@@ -8,30 +9,38 @@ import {
   beginCaptureLifecycle,
   endCaptureLifecycle,
   TEXT_QUALIFICATION_SPEC,
-  TEXT_QUALIFICATION_SHAPES,
+  TEXT_QUALIFICATION_RECIPES,
   textQualificationFixtures,
   type ObservationFrame,
   type TermProbeSource,
   type TextCellsObservationFrame,
   type TextQualification,
+  type TextQualificationOwnership,
+  type TextQualificationRecipe,
 } from "@terminfo/probe-defs"
 import type { TextFrameCheckpoint } from "./serve.ts"
 
 /** Measure mapping witnesses through the installed adapter before recording the execution test. */
 export async function collectTextQualification({
   ctx,
+  recipe,
   capture,
+  ownership,
   onAttempt,
 }: {
   ctx: TermProbeSource
+  recipe: TextQualificationRecipe
   capture: (checkpoint: TextFrameCheckpoint) => Promise<ObservationFrame>
+  ownership?: () => Promise<TextQualificationOwnership>
   onAttempt?: () => void
 }): Promise<TextQualification> {
   const grid = { rows: ctx.rows, cols: ctx.cols }
+  const header = { version: TEXT_QUALIFICATION_SPEC.version, recipe }
+  const required = TEXT_QUALIFICATION_RECIPES[recipe].shapes
   const unavailable = (reason: string): TextQualification => ({
-    ...TEXT_QUALIFICATION_SPEC,
+    ...header,
     grid,
-    shapes: TEXT_QUALIFICATION_SHAPES.map((shape) => ({ shape, reason })),
+    shapes: required.map((shape) => ({ shape, reason })),
   })
   const fixtures = textQualificationFixtures(grid.rows, grid.cols)
   if (typeof fixtures === "string") return unavailable(fixtures)
@@ -75,6 +84,15 @@ export async function collectTextQualification({
         shapes.push({ shape: fixture.shape, reason: cause instanceof Error ? cause.message : String(cause) })
       }
     }
+    if ((required as readonly string[]).includes("console-host-ownership")) {
+      try {
+        if (!ownership) throw new Error("This observer has no console-host ownership witness")
+        ctx.write("\x1b[2J\x1b[H")
+        shapes.push({ shape: "console-host-ownership", ownership: await ownership() })
+      } catch (cause) {
+        shapes.push({ shape: "console-host-ownership", reason: cause instanceof Error ? cause.message : String(cause) })
+      }
+    }
   } finally {
     const failures: unknown[] = []
     try {
@@ -107,7 +125,7 @@ export async function collectTextQualification({
       throw error
     }
   }
-  return { ...TEXT_QUALIFICATION_SPEC, grid, shapes }
+  return { ...header, grid, shapes }
 }
 
 /** Record the frozen text-oracle prerequisites before seal; current readers consume these facts. */
@@ -121,14 +139,10 @@ export function recordTextQualificationTests(
   const qualificationAttempt: ProbeAttempt = attempt ?? { scope: "none" }
   run.results = run.results.map((result) => {
     if (!result.frames?.some((frame) => frame.kind === "text-cells")) return result
-    const admittedContext =
-      run.subject.kind === "term" &&
-      run.subject.os?.toLowerCase() === "macos" &&
-      result.host === undefined &&
-      manifest.textClaims?.includes(result.featureId) === true
+    const admittedContext = admitsTextObservation({ subject: run.subject, textClaims: manifest.textClaims }, result)
     const status = !admittedContext || !attempt ? "probe-todo" : assessment.qualified ? "supported" : "probe-invalid"
     const reason = !admittedContext
-      ? "Text criterion requires a declared claim and terminal-owned macOS cell observer"
+      ? "Text criterion requires a declared claim and a terminal-owned cell observer (the macOS text snapshot or Windows Terminal through UI Automation)"
       : !attempt
         ? "Text qualification has not been attempted"
         : assessment.reason

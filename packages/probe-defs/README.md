@@ -950,6 +950,17 @@ The canonical draft decoder distinguishes captured runs from explicitly empty in
 It accepts the original initialized empty draft or that same draft annotated by the selection writer, without normalizing
 either stored form. Any other changed row remains invalid; historical captures are not rewritten.
 
+Text observers share the recipe/context table in [text-qualification.ts](src/text-qualification.ts).
+New suites declare version 2 and their recipe list; each run records one recipe and its witnesses.
+Version 1 qualifies only the macOS snapshot. Existing declarations remain readable and unchanged;
+unknown versions or recipes remain retained but never qualify. The Windows Terminal 1.21 recipe
+uses the existing shared cell mapping and adds a per-run ownership witness: raw host U+0001 must
+differ from the terminal observer's row. UIA reads use the measured 50 ms settle gap and four pairs,
+and refuse unmarked line rendition. Alacritty and WezTerm on Windows retain their host read.
+The execution writer freezes the qualification test before seal. The canonical parser validates
+version-2 observer context against the same table; site projection preserves recorded results.
+Source verification supplies no native main-run, collection, grading or publication authority.
+
 The five admin routes share definitions, but do not all execute or persist through the same path:
 
 - **Headless:** [admin/src/termless.ts](../admin/src/termless.ts) calls [collect-headless.ts](../probes/collect-headless.ts), which runs isolated engine workers using `headless-batch.ts` and retains private runs.

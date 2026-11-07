@@ -1,15 +1,76 @@
-import type { TextQualification, TextQualificationSpec, TextQualificationShape } from "./types.ts"
+import type { ProbeSubject, TextQualification, TextQualificationShape, TextQualificationSpec } from "./types.ts"
 
-/** This recipe describes retained mapping witnesses, never a stored pass decision. */
-export const TEXT_QUALIFICATION_SPEC = { version: 1, recipe: "macos-text-cells-v1" } as const
-
-export const TEXT_QUALIFICATION_SHAPES = [
+/** The mapping witnesses every recipe draws: paint a known grid, read it back, compare. */
+const MAPPING_SHAPES = [
   "mid-line-gap",
   "trailing-gap",
   "soft-wrap",
   "prior-scrollback",
   "empty-last-row",
 ] as const satisfies readonly TextQualificationShape[]
+
+/**
+ * Each recipe, the observer context it qualifies, and the witnesses it requires. Assessment and
+ * admission both read this one table, so a run is graded only by the recipe its own context names:
+ * a Linux run that recorded the macOS recipe is neither admitted nor qualified.
+ */
+export const TEXT_QUALIFICATION_RECIPES = {
+  "macos-text-cells-v1": { os: "macos", app: undefined, shapes: MAPPING_SHAPES },
+  // Windows Terminal through UI Automation. The console host keeps its own copy of every cell, so
+  // this recipe also proves, every run, that the observer reads the terminal's buffer (#30720).
+  "windows-terminal-text-cells-v1": {
+    os: "windows",
+    app: "windows-terminal",
+    shapes: [...MAPPING_SHAPES, "console-host-ownership"],
+  },
+} as const satisfies Record<string, { os: string; app: string | undefined; shapes: readonly TextQualificationShape[] }>
+
+export type TextQualificationRecipe = keyof typeof TEXT_QUALIFICATION_RECIPES
+
+/** This declaration describes retained witnesses, never a stored pass decision. */
+export const TEXT_QUALIFICATION_SPEC = {
+  version: 2,
+  recipes: Object.keys(TEXT_QUALIFICATION_RECIPES) as TextQualificationRecipe[],
+} as const satisfies TextQualificationSpec
+
+export const TEXT_QUALIFICATION_SHAPES = [
+  ...MAPPING_SHAPES,
+  "console-host-ownership",
+] as const satisfies readonly TextQualificationShape[]
+
+/** The cell the ownership witness writes as U+0001, on its own cleared screen. */
+export const TEXT_QUALIFICATION_OWNERSHIP_CELL = { row: 1, col: 1 } as const
+
+/** The recipe for this run's observer context; undefined where no terminal-owned text observer exists. */
+export function textQualificationRecipeMatchesSubject(
+  recipe: string,
+  subject: Pick<ProbeSubject, "kind" | "id" | "os">,
+): boolean {
+  if (subject.kind !== "term" || !Object.hasOwn(TEXT_QUALIFICATION_RECIPES, recipe)) return false
+  const context = TEXT_QUALIFICATION_RECIPES[recipe as TextQualificationRecipe]
+  return context.os === subject.os?.toLowerCase() && (context.app === undefined || context.app === subject.id)
+}
+
+export function textQualificationRecipeFor(
+  subject: Pick<ProbeSubject, "kind" | "id" | "os">,
+): TextQualificationRecipe | undefined {
+  return (Object.keys(TEXT_QUALIFICATION_RECIPES) as TextQualificationRecipe[]).find((recipe) =>
+    textQualificationRecipeMatchesSubject(recipe, subject),
+  )
+}
+
+/** A text observation is admitted when its run's context has a terminal-owned observer, the read
+ * named no console host, and the suite declared the claim. Qualification is assessed separately. */
+export function admitsTextObservation(
+  run: { subject: Pick<ProbeSubject, "kind" | "id" | "os">; textClaims?: readonly string[] },
+  observation: { featureId: string; host?: unknown },
+): boolean {
+  return (
+    textQualificationRecipeFor(run.subject) !== undefined &&
+    observation.host === undefined &&
+    run.textClaims?.includes(observation.featureId) === true
+  )
+}
 
 export interface TextQualificationFixture {
   shape: TextQualificationShape
@@ -96,7 +157,12 @@ export interface TextQualificationAssessment {
 
 /** Assess retained mapping witnesses. Execution records this check; history uses it only for historical grading. */
 export function assessTextQualification(
-  run: { runId: string; textQualification?: TextQualification; textQualificationSpec?: TextQualificationSpec },
+  run: {
+    runId: string
+    subject: Pick<ProbeSubject, "kind" | "id" | "os">
+    textQualification?: TextQualification
+    textQualificationSpec?: TextQualificationSpec
+  },
   snapshots?: ReadonlyMap<string, Uint8Array>,
 ): TextQualificationAssessment {
   const rejected = (reason: string): TextQualificationAssessment => ({
@@ -106,22 +172,36 @@ export function assessTextQualification(
   const qualification = run.textQualification
   if (!qualification) return rejected("text qualification is absent")
   const declaration = run.textQualificationSpec
+  const declared =
+    declaration === undefined ? [] : "recipes" in declaration ? declaration.recipes : [declaration.recipe]
+  const recipe = textQualificationRecipeFor(run.subject)
   if (
     !declaration ||
+    ![1, 2].includes(qualification.version) ||
+    (qualification.version === 1 && qualification.recipe !== "macos-text-cells-v1") ||
+    (qualification.version === 2 && !("recipes" in declaration)) ||
     declaration.version !== qualification.version ||
-    declaration.recipe !== qualification.recipe ||
-    qualification.version !== TEXT_QUALIFICATION_SPEC.version ||
-    qualification.recipe !== TEXT_QUALIFICATION_SPEC.recipe
+    !declared.includes(qualification.recipe) ||
+    !Object.hasOwn(TEXT_QUALIFICATION_RECIPES, qualification.recipe)
   ) {
-    return rejected("text qualification version or recipe does not match the cited suite declaration and reader")
+    return rejected(
+      `text qualification version ${qualification.version} and recipe ${qualification.recipe} does not match the cited suite declaration and reader`,
+    )
   }
+  if (qualification.recipe !== recipe) {
+    return rejected(
+      `text qualification recipe ${qualification.recipe} is not the recipe for this run's observer context (${recipe ?? "none"})`,
+    )
+  }
+  const required: readonly TextQualificationShape[] = TEXT_QUALIFICATION_RECIPES[recipe].shapes
   const { rows, cols } = qualification.grid
   const fixtures = textQualificationFixtures(rows, cols)
   if (typeof fixtures === "string") return rejected(fixtures)
-  for (const fixture of fixtures) {
+  for (const fixture of fixtures.filter(({ shape }) => required.includes(shape))) {
     const witness = qualification.shapes.find(({ shape }) => shape === fixture.shape)
     if (!witness) return rejected(`missing text qualification shape ${fixture.shape}`)
     if (witness.reason !== undefined) return rejected(`text qualification shape ${fixture.shape}: ${witness.reason}`)
+    if (witness.frames === undefined) return rejected(`text qualification shape ${fixture.shape} carries no frames`)
     if (
       witness.frames.length !== 2 ||
       witness.frames.filter((frame) => frame.role === "control").length !== 1 ||
@@ -155,5 +235,41 @@ export function assessTextQualification(
       }
     }
   }
+  if (required.includes("console-host-ownership")) {
+    const witness = qualification.shapes.find(({ shape }) => shape === "console-host-ownership")
+    if (!witness) return rejected("missing text qualification shape console-host-ownership")
+    if (witness.reason !== undefined) {
+      return rejected(`text qualification shape console-host-ownership: ${witness.reason}`)
+    }
+    const ownership = witness.ownership
+    if (ownership === undefined) return rejected("text qualification shape console-host-ownership carries no witness")
+    const { row, col } = TEXT_QUALIFICATION_OWNERSHIP_CELL
+    if (ownership.cell.row !== row || ownership.cell.col !== col) {
+      return rejected(
+        `console-host-ownership witnessed row ${ownership.cell.row}, column ${ownership.cell.col}, not the written cell`,
+      )
+    }
+    // The RAW row, before mapping: the mapping refuses U+0001 and its stand-in glyph alike.
+    if (ownership.host !== "\u0001") {
+      return rejected(
+        `console-host-ownership: the console host holds ${codePoints(ownership.host)} at the written cell, not U+0001`,
+      )
+    }
+    const observed = Array.from(ownership.observerRow)[col - 1]
+    if (observed === undefined) {
+      return rejected("console-host-ownership: the observer's row does not reach the written cell")
+    }
+    if (observed === "\u0001") {
+      return rejected(
+        "console-host-ownership: the observer read U+0001, so it reads the console host's buffer, not the terminal's",
+      )
+    }
+  }
   return { qualified: true }
 }
+
+const codePoints = (text: string): string =>
+  Array.from(
+    text,
+    (character) => `U+${(character.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`,
+  ).join(" ") || "no character"

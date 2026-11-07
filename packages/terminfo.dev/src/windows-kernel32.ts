@@ -33,6 +33,9 @@ export interface Kernel32Symbols {
   CreateFileW: Kernel32HandleSymbol
   GetConsoleScreenBufferInfo: Kernel32Symbol
   ReadConsoleOutputW: Kernel32Symbol
+  GetConsoleMode: Kernel32Symbol
+  SetConsoleMode: Kernel32Symbol
+  WriteConsoleW: Kernel32Symbol
   GetConsoleWindow: Kernel32HandleSymbol
   CreateToolhelp32Snapshot: Kernel32HandleSymbol
   Process32FirstW: Kernel32Symbol
@@ -97,6 +100,12 @@ export function kernel32Declaration(types: {
     // The two COORDs are passed BY VALUE, so they are u32 with X in the low half and Y in the high
     // half (packCoord in windows-console-cells.ts); a pointer here would read the wrong argument.
     ReadConsoleOutputW: { args: [types.u64, types.ptr, types.u32, types.u32, types.ptr], returns: types.i32 },
+    // hConsoleHandle HANDLE, lpMode LPDWORD -> BOOL; SetConsoleMode takes the mode BY VALUE.
+    GetConsoleMode: { args: [types.u64, types.ptr], returns: types.i32 },
+    SetConsoleMode: { args: [types.u64, types.u32], returns: types.i32 },
+    // hConsoleOutput HANDLE, lpBuffer, nNumberOfCharsToWrite u32, lpNumberOfCharsWritten LPDWORD,
+    // lpReserved (NULL) -> BOOL. The ownership witness's one write (#30720).
+    WriteConsoleW: { args: [types.u64, types.ptr, types.u32, types.ptr, types.ptr], returns: types.i32 },
     GetConsoleWindow: { args: [], returns: types.u64 },
     CreateToolhelp32Snapshot: { args: [types.u32, types.u32], returns: types.u64 },
     Process32FirstW: { args: [types.u64, types.ptr], returns: types.i32 },

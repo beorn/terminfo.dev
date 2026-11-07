@@ -373,15 +373,84 @@ describe("run-owned text qualification ingestion", () => {
     })
   })
 
-  it("retains a future version and recipe so the selector can name their mismatch", () => {
-    const future = { ...qualification, version: 7, recipe: "future-recipe" }
+  it.each([3, 7])("retains future version %s and recipe without qualifying it", (version) => {
+    const future = { ...qualification, version, recipe: "future-recipe" }
     expect(parse(textRun({ textQualification: future })).textQualification).toEqual(future)
     expect(
       parseSuiteManifest(
         "future-suite.json",
-        JSON.stringify({ ...manifest, textQualification: { version: 7, recipe: "future-recipe" } }),
+        JSON.stringify({ ...manifest, textQualification: { version, recipe: "future-recipe" } }),
       ).textQualification,
-    ).toEqual({ version: 7, recipe: "future-recipe" })
+    ).toEqual({ version, recipe: "future-recipe" })
+  })
+
+  it("reads a declared Windows observer and ownership witness without changing its recorded result", () => {
+    const declaration = { version: 2, recipes: ["macos-text-cells-v1", "windows-terminal-text-cells-v1"] }
+    const ownership = {
+      shape: "console-host-ownership",
+      ownership: { cell: { row: 1, col: 1 }, host: "\u0001", observerRow: "☺  " },
+    }
+    const declared = parseSuiteManifest(
+      "suite-v2.json",
+      JSON.stringify({ ...manifest, textClaims: [FEATURE], textQualification: declaration }),
+    )
+    const raw = textRun({
+      subject: { ...TARGET, id: "windows-terminal", os: "windows", version: "1.21" },
+      intendedSubject: { kind: "term", id: "windows-terminal" },
+      textQualification: {
+        ...qualification,
+        version: 2,
+        recipe: "windows-terminal-text-cells-v1",
+        shapes: [shape, ownership],
+      },
+    })
+    const loaded = parseRun("uia-v2.json", JSON.stringify(raw), [FEATURE], new Map([[SUITE, declared]]))
+    expect(loaded.results).toEqual(raw.results)
+    expect(loaded.textQualificationSpec).toEqual(declaration)
+    expect(loaded.textQualification?.shapes[1]).toEqual(ownership)
+
+    for (const subject of [
+      { ...TARGET, os: "macos" },
+      { ...TARGET, id: "kitty", os: "linux" },
+    ]) {
+      expect(() =>
+        parseRun(
+          "wrong-context.json",
+          JSON.stringify({ ...raw, subject, intendedSubject: { kind: "term", id: subject.id } }),
+          [FEATURE],
+          new Map([[SUITE, declared]]),
+        ),
+      ).toThrow(/text qualification.*observer context/u)
+    }
+    const host = { image: "OpenConsole.exe", executablePath: "C:\\OpenConsole.exe", executableSha256: digest("host") }
+    expect(() =>
+      parseRun(
+        "host-v2.json",
+        JSON.stringify({ ...raw, results: [{ ...raw.results[0], host }] }),
+        [FEATURE],
+        new Map([[SUITE, declared]]),
+      ),
+    ).toThrow(/text qualification.*observer context/u)
+    expect(() =>
+      parseRun(
+        "undeclared-v2.json",
+        JSON.stringify(raw),
+        [FEATURE],
+        new Map([[SUITE, { ...declared, textClaims: [] }]]),
+      ),
+    ).toThrow(/text qualification.*observer context/u)
+  })
+
+  it.each([
+    { cell: { row: 0, col: 1 }, host: "\u0001", observerRow: "☺" },
+    { cell: { row: 1, col: 1 }, host: 1, observerRow: "☺" },
+    { cell: { row: 1, col: 1 }, host: "\u0001", observerRow: "☺", extra: true },
+  ])("refuses malformed raw ownership facts", (ownership) => {
+    expect(() =>
+      parse(
+        textRun({ textQualification: { ...qualification, shapes: [{ shape: "console-host-ownership", ownership }] } }),
+      ),
+    ).toThrow(/textQualification console-host-ownership/u)
   })
 
   it.each([

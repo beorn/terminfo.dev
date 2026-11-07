@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest"
 import {
   initializeRunDraft,
   textQualificationFixtures,
-  TEXT_QUALIFICATION_SHAPES,
+  TEXT_QUALIFICATION_RECIPES,
   TEXT_QUALIFICATION_SPEC,
   type CapturedRunDraft,
   type ConsoleBufferOwner,
@@ -324,7 +324,8 @@ const executionRun = (overrides: { os?: string; host?: ConsoleBufferOwner; base?
     return captured.frame as TextCellsObservationFrame
   }
   run.textQualification = {
-    ...TEXT_QUALIFICATION_SPEC,
+    version: TEXT_QUALIFICATION_SPEC.version,
+    recipe: "macos-text-cells-v1",
     grid: { rows: 4, cols: 12 },
     shapes: fixtures.map((fixture) => ({
       shape: fixture.shape,
@@ -366,7 +367,7 @@ it("records text qualification attempts before seal, distinguishing absent and b
 // collector's real {shape, reason} witness form.
 it("refuses a character verdict for each missing shape witness through the execution writer", () => {
   for (const base of BASES) {
-    for (const shape of TEXT_QUALIFICATION_SHAPES) {
+    for (const shape of TEXT_QUALIFICATION_RECIPES["macos-text-cells-v1"].shapes) {
       const { run, manifest, snapshots, attempt } = executionRun({ base })
       run.textQualification = {
         ...run.textQualification!,
@@ -382,7 +383,7 @@ it("refuses a character verdict for each missing shape witness through the execu
     }
   }
   for (const base of BASES) {
-    for (const shape of TEXT_QUALIFICATION_SHAPES) {
+    for (const shape of TEXT_QUALIFICATION_RECIPES["macos-text-cells-v1"].shapes) {
       const { run, manifest, snapshots, attempt } = executionRun({ base })
       run.textQualification = {
         ...run.textQualification!,
@@ -409,9 +410,8 @@ it("refuses a character verdict for each missing shape witness through the execu
   }
 })
 
-// 30035 AC4 / T4: console-host and Windows text can never be graded as the terminal's verdict,
-// on either base.
-it("records Windows and console-host text as PROBE TODO through the execution writer", () => {
+// 30035 AC4 / T4: an unqualified Windows subject or host-bearing text cannot decide the terminal's verdict.
+it("records unqualified Windows subjects and console-host text as PROBE TODO", () => {
   for (const base of BASES) {
     const cases = [
       executionRun({ base, os: "windows" }),
@@ -440,9 +440,7 @@ it("records Windows and console-host text as PROBE TODO through the execution wr
       expect(result.status, base).toBe("probe-todo")
       expect(result.status, base).not.toBe("supported")
       expect(result.status, base).not.toBe("unsupported")
-      expect(result.reason, base).toBe(
-        "Text criterion requires a declared claim and terminal-owned macOS cell observer",
-      )
+      expect(result.reason, base).toContain("terminal-owned cell observer")
       const check = result.tests.find((entry) => entry.id === "text-qualification")
       expect(check?.status).toBe("probe-todo")
       expect(check?.attempt).toEqual({ scope: "none" })
