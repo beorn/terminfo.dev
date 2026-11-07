@@ -258,11 +258,13 @@ test.each(["libvterm", "ghostty", "ghostty-native", "wezterm", "kitty"])(
 
 // #32308 (@cto e4f1c5bd): a bound library key encoder grades input.xtest-key only after its plain-a control.
 // The review cases above pass no encoder, so they cannot catch a grade from a failed control or a dropped ctrl.
+// #32569 (@cto b9dd747c): both arms judge ctrl+e, which is neither tmux's nor Screen's prefix; ctrl+a now fails.
 test.each([
-  ["passes control and encodes ctrl+a", "a", "\x01", "supported"],
-  ["passes control but drops ctrl", "a", "a", "unsupported"],
-  ["fails the plain-a control", "", "\x01", undefined],
-] as const)("input.xtest-key library encoder %s", (_name, plain, ctrlA, outcome) => {
+  ["passes control and encodes ctrl+e", "a", "\x05", "supported"],
+  ["passes control but drops ctrl", "a", "e", "unsupported"],
+  ["passes control but encodes ctrl+a", "a", "\x01", "unsupported"],
+  ["fails the plain-a control", "", "\x05", undefined],
+] as const)("input.xtest-key library encoder %s", (_name, plain, ctrlE, outcome) => {
   // The collector admits an undeclared library assertion type, so the measured result alone cannot pin this.
   expect(probe("input.xtest-key").libAssertionType).toBe("input_bytes")
   const encoder = new TextEncoder()
@@ -272,7 +274,7 @@ test.each([
     backendName: "libvterm",
     encodeKey(event: LibKeyEvent) {
       calls.push(event)
-      return encoder.encode(event.ctrl ? ctrlA : plain)
+      return encoder.encode(event.ctrl ? ctrlE : plain)
     },
   } as unknown as LibProbeSource)
   expect(result.observation?.outcome).toBe(outcome)
@@ -281,14 +283,14 @@ test.each([
     expect(result.notTested).toBeDefined()
     return
   }
-  expect(calls).toEqual([{ key: "a" }, { key: "a", ctrl: true }])
+  expect(calls).toEqual([{ key: "a" }, { key: "e", ctrl: true }])
   expect(JSON.parse(result.response!)).toEqual({
     control: "a",
     controlBytes: [97],
-    report: ctrlA,
-    reportBytes: [...encoder.encode(ctrlA)],
+    report: ctrlE,
+    reportBytes: [...encoder.encode(ctrlE)],
   })
-  expect(result.assertions?.[0]).toMatchObject({ action: "xtest-key:ctrl+a", assertionType: "input_bytes" })
+  expect(result.assertions?.[0]).toMatchObject({ action: "xtest-key:ctrl+e", assertionType: "input_bytes" })
 })
 
 test.each(["input.xtest-key", "extensions.clipboard-paste"])(
@@ -509,29 +511,31 @@ test("input.xtest-key aborts when plain a does not reach the app, and does not i
   expect(keys).toEqual(["a"])
 })
 
-// The published delivery criterion accepts legacy Ctrl+A as well as its extended encodings.
+// The published delivery criterion accepts legacy Ctrl+E as well as its extended encodings.
 // The old positive covered only CSI u, while a negative incorrectly rejected the C0 byte.
-test.each(["\x01", "\x1b[27;5;97~", "\x1b[97;5u"])(
-  "input.xtest-key records ctrl+a report %j after plain-a control",
+// #32569 (@cto b9dd747c): the key is ctrl+e, which neither tmux nor Screen takes as its prefix.
+test.each(["\x05", "\x1b[27;5;101~", "\x1b[101;5u"])(
+  "input.xtest-key records ctrl+e report %j after plain-a control",
   async (report) => {
     const writes: string[] = []
-    const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": report } }, writes)
+    const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+e": report } }, writes)
     const result = (await probe("input.xtest-key").term!(ctx)) as ProbeCallbackResult
-    expect(keys).toEqual(["a", "ctrl+a"])
+    expect(keys).toEqual(["a", "ctrl+e"])
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
-    expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+a" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+e" })
     const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
     expect(observed).toMatchObject({ control: "a", report })
   },
 )
 
-// Existing delivery tests accepted any modified key; these reports deny the exact ctrl+a claim.
-test.each(["\x1b[27;1;97~", "\x1b[98;5u", "\x1b[27;5;98~", "\x1b[97;2u"])(
+// Existing delivery tests accepted any modified key; these reports deny the exact ctrl+e claim,
+// including the extended encodings of the former ctrl+a key.
+test.each(["\x1b[27;1;101~", "\x1b[102;5u", "\x1b[27;5;102~", "\x1b[101;2u", "\x1b[97;5u", "\x1b[27;5;97~"])(
   "input.xtest-key rejects the wrong encoding %j after a successful delivery control",
   async (report) => {
-    const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": report } })
+    const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+e": report } })
     const result = await probe("input.xtest-key").term!(ctx)
-    expect(keys).toEqual(["a", "ctrl+a"])
+    expect(keys).toEqual(["a", "ctrl+e"])
     expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
     expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
     expect(JSON.parse(result.response!)).toMatchObject({ control: "a", report })
@@ -944,14 +948,20 @@ test.each(["\x1b[<64;10;5M", "\x1b[B", "\x1bOB"])(
   },
 )
 
-test("modes.alt-scroll-1007 throws when the 1007 wheel is silent after delivery control, and still resets 1007", async () => {
+// #32569 (@cto third-table ruling 2026-11-06): a passing delivery control then a silent target is Unsupported.
+// The former case pinned a throw, which the collector graded PROBE INVALID although the control proved delivery.
+test("modes.alt-scroll-1007 reads Unsupported when the 1007 wheel is silent after delivery control, and still resets 1007", async () => {
   const writes: string[] = []
-  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"] }, writes)
-  await expect(modeProbe("modes.alt-scroll-1007").term!(ctx)).rejects.toThrow(/1007|alt-scroll|silent/i)
+  const control = "\x1b[<0;10;5M"
+  const { ctx, clicks } = inputAndRead({ clickReports: [control] }, writes)
+  const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 4])
   expect(writes.join("")).toContain("\x1b[?1007h")
   expect(writes.join("")).toContain("\x1b[?1007l")
   expect(writes.join("")).toContain("\x1b[?1049l")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "alt-scroll-1007:4" })
+  expect(JSON.parse(result.assertions?.[0]?.observed ?? "null")).toEqual({ mode: "1007", control, report: null })
 })
 
 test("input.pixel-mouse is not tested without an OS XTEST adapter", async () => {
@@ -1072,6 +1082,39 @@ test("input.pixel-mouse keeps missing cell geometry as named coverage without a 
   expect(clicks).toEqual([1])
   expect(writes).not.toContain("\x1b[?1016h")
 })
+
+// #32569 (@cto third-table ruling 2026-11-06): a terminal that refuses CSI 16 t and 14 t (Screen) is judged with the
+// run's calibrated raster geometry (#31742), the same measurement region readback uses. The missing-geometry case
+// above has no calibration, so it cannot show a calibrated cell size deciding the pixel box.
+test.each([
+  ["\x1b[<0;10;5M", "unsupported"],
+  ["\x1b[<0;120;130M", "supported"],
+] as const)(
+  "input.pixel-mouse judges %j with the calibrated raster geometry when CSI 16 t and 14 t are refused",
+  async (report, outcome) => {
+    const writes: string[] = []
+    const control = "\x1b[<0;10;5M"
+    const { ctx, clicks } = inputAndRead({ clickReports: [control, report], cellSize: null }, writes)
+    const geometry = { cellWidth: 13, cellHeight: 29, textWidth: 13 * ctx.cols, textHeight: 29 * ctx.rows }
+    ctx.captureGeometry = { geometry, source: "measured by complete raster calibration" }
+    const result = (await probe("input.pixel-mouse").term!(ctx)) as ProbeCallbackResult
+    expect(clicks).toEqual([1, 1])
+    expect(writes.join("")).toContain("\x1b[?1016h")
+    expect(result.observation).toMatchObject({ outcome, assertionType: "input_bytes" })
+    expect(result.assertions?.[0]).toMatchObject({
+      kind: outcome === "supported" ? "positive" : "negative",
+      action: "pixel-mouse:1",
+    })
+    expect(JSON.parse(result.assertions?.[0]?.observed ?? "null")).toEqual({
+      mode: "1016",
+      control,
+      report,
+      geometry,
+      geometrySource: "measured by complete raster calibration",
+      queryRefusal: expect.stringContaining("CSI 16 t"),
+    })
+  },
+)
 
 // Acceptance: an invalid delivery control cannot qualify pixel support or feature absence.
 // The existing pixel-box cases all used a valid button-1 cell control.
@@ -1308,13 +1351,19 @@ test("input.x10-mouse records unsupported interaction when mode 9 still reports 
   expect(observed).toMatchObject({ mode: "9", control: sgr, report: sgr })
 })
 
-test("input.x10-mouse throws when the mode 9 click is silent after delivery control, and still resets 9", async () => {
+// #32569 (@cto third-table ruling 2026-11-06): a passing delivery control then a silent target is Unsupported.
+// The former case pinned a throw, which the collector graded PROBE INVALID although the control proved delivery.
+test("input.x10-mouse reads Unsupported when the mode 9 click is silent after delivery control, and still resets 9", async () => {
   const writes: string[] = []
-  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"] }, writes)
-  await expect(probe("input.x10-mouse").term!(ctx)).rejects.toThrow(/9|x10-mouse|silent/i)
+  const control = "\x1b[<0;10;5M"
+  const { ctx, clicks } = inputAndRead({ clickReports: [control] }, writes)
+  const result = (await probe("input.x10-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?9h")
   expect(writes.join("")).toContain("\x1b[?9l")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "x10-mouse:1" })
+  expect(JSON.parse(result.assertions?.[0]?.observed ?? "null")).toEqual({ mode: "9", control, report: null })
 })
 
 test("input.button-event-mouse is not tested without an OS XTEST adapter", async () => {

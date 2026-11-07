@@ -1023,6 +1023,8 @@ export type TermFeaturesReading =
       launchMarker: string
       pid: number
       tty: string
+      /** The multiplexer this child runs inside (#32569): a present value may come from the outer terminal. */
+      mux?: "tmux" | "screen"
     }
   | { status: "unavailable"; reason: string }
   | { status: "invalid"; reason: string }

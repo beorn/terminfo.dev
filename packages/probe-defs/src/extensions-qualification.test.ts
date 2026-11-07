@@ -1231,6 +1231,9 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
 // reply, which omits the value (ctlseqs: "XTSMGRAPHICS ... return failure status if
 // the terminal is not configured to support the corresponding ... SIXEL feature").
 // Demanding a third parameter graded that failure as a malformed geometry.
+// 32569: status 3 is the terminal's own report on this exact query, and a report comes before no setup, so it reads
+// Unsupported with the reply retained (@cto third-table ruling 2026-11-06). Statuses 1 and 2 name an error in the
+// item or action this probe sent, so they stay PROBE INVALID.
 test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", async () => {
   const definition = callback("extensions.sixel-geometry-report")
   const headless = (raw: string) => definition.lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
@@ -1246,12 +1249,24 @@ test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", as
   const failure = "\x1b[?2;3S"
   for (const result of [headless(failure), await app(failure)]) {
     expect(result.response).toBe(failure)
+    expect(result.pass).toBe(false)
     expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      note: "Sixel geometry query reported protocol status 3 (failure; no graphics geometry is configured)",
+      outcome: "unsupported",
+      note: "Sixel geometry query reported protocol status 3 (failure): Sixel is off in this launch",
     })
-    expect(result.assertions).toBeUndefined()
+    expect(result.assertions).toEqual([
+      expect.objectContaining({ assertionType: "query_reply", kind: "negative", observed: failure }),
+    ])
+  }
+  for (const status of [1, 2]) {
+    const error = `\x1b[?2;${status}S`
+    for (const result of [headless(error), await app(error)]) {
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        note: `Sixel geometry query reported protocol status ${status}`,
+      })
+      expect(result.assertions).toBeUndefined()
+    }
   }
   const success = "\x1b[?2;0;800;528S"
   for (const result of [headless(success), await app(success)]) {

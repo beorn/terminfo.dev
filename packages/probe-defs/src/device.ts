@@ -259,6 +259,17 @@ const DECRQSS_DECSCL: DeviceReply = {
   expected: 'complete DECRQSS status 1 DECSCL conformance parameters ending "p and ST',
 }
 
+// 32569: tmux refuses SGR, DECSTBM and DECSCL and answers only SP q. Its input.c replies `1$r q%d q`, an extra ` q`
+// before the style, so take the status and the ending, not a strict digit form (@cto third-table ruling 2026-11-06).
+const DECRQSS_DECSCUSR: DeviceReply = {
+  id: "device.decrqss",
+  query: "\x1bP$q q\x1b\\",
+  valid: /\x1bP1\$r[^\x1b]* q\x1b\\/,
+  refusal: /\x1bP0\$r\x1b\\/,
+  malformed: /\x1bP[01]\$r/,
+  expected: "complete DECRQSS status 1 DECSCUSR reply ending SP q and ST",
+}
+
 function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbackResult {
   const before = ctx.getTitle()
   const saved = before === "pushed-title" ? "other-pushed-title" : "pushed-title"
@@ -313,7 +324,7 @@ function decrqssAfterRefusal(
   refused: string,
   retainedRefusals = "",
 ): ProbeCallbackResult {
-  const setting = spec === DECRQSS_DECSTBM ? "DECSTBM" : "DECSCL"
+  const setting = spec === DECRQSS_DECSTBM ? "DECSTBM" : spec === DECRQSS_DECSCL ? "DECSCL" : "DECSCUSR"
   if (second.raw.length === 0) {
     return {
       ...replyFailure(`${refused}; ${setting} unanswered; DECRQSS facility still speaks; expected ${spec.expected}`),
@@ -332,13 +343,27 @@ function decrqssAfterRefusal(
       assertions: graded.assertions,
     }
   }
-  if (refusedFrame(spec, secondFrame)) {
+  const refusal = secondFrame ? spec.refusal?.exec(secondFrame)?.[0] : undefined
+  if (secondFrame && refusal) {
     const da1At = sentinelAnswer(second.raw)?.start ?? -1
-    const late =
-      Boolean(second.sentinel) && secondFrame !== null && da1At !== -1 && second.raw.indexOf(secondFrame) > da1At
+    const afterDa1 = da1At !== -1 && second.raw.indexOf(secondFrame) > da1At
+    const late = Boolean(second.sentinel) && afterDa1
     const note = [`${refused}; ${setting} refused`, late ? REPLY_AFTER_SENTINEL_NOTE : undefined]
       .filter((part): part is string => part !== undefined)
       .join("; ")
+    // 32569: DECSCUSR is the last selector, so four refusals are the facility's own answer: Unsupported, retaining
+    // all four. F1 (27832): a frame after DA1 decides only with the measured order.
+    if (spec === DECRQSS_DECSCUSR && (late || !afterDa1)) {
+      return {
+        pass: false,
+        response: retainedRefusals + second.raw,
+        note,
+        observation: { outcome: "unsupported", assertionType: "query_reply", note },
+        assertions: [
+          { assertionType: "query_reply" as const, kind: "negative", expected: spec.expected, observed: refusal },
+        ],
+      }
+    }
     return {
       pass: false,
       response: second.raw,
@@ -373,6 +398,7 @@ function decrqssFacilityProbe(): ProbeDefinition {
   const sgrPattern = answerPattern(DECRQSS_SGR)
   const decstbmPattern = answerPattern(DECRQSS_DECSTBM)
   const decsclPattern = answerPattern(DECRQSS_DECSCL)
+  const decscusrPattern = answerPattern(DECRQSS_DECSCUSR)
   const definition = probe(
     "device.decrqss",
     (ctx) => {
@@ -389,11 +415,15 @@ function decrqssFacilityProbe(): ProbeDefinition {
       if (!refusedFrame(DECRQSS_DECSTBM, replyFrame(second))) {
         return decrqssAfterRefusal(DECRQSS_DECSTBM, second, "SGR refused")
       }
+      const third = query(DECRQSS_DECSCL.query, decsclPattern)
+      if (!refusedFrame(DECRQSS_DECSCL, replyFrame(third))) {
+        return decrqssAfterRefusal(DECRQSS_DECSCL, third, "SGR refused; DECSTBM refused", sgr.raw + second.raw)
+      }
       return decrqssAfterRefusal(
-        DECRQSS_DECSCL,
-        query(DECRQSS_DECSCL.query, decsclPattern),
-        "SGR refused; DECSTBM refused",
-        sgr.raw + second.raw,
+        DECRQSS_DECSCUSR,
+        query(DECRQSS_DECSCUSR.query, decscusrPattern),
+        "SGR refused; DECSTBM refused; DECSCL refused",
+        sgr.raw + second.raw + third.raw,
       )
     },
     async (ctx) => {
@@ -403,11 +433,15 @@ function decrqssFacilityProbe(): ProbeDefinition {
       if (!refusedFrame(DECRQSS_DECSTBM, replyFrame(second))) {
         return decrqssAfterRefusal(DECRQSS_DECSTBM, second, "SGR refused")
       }
+      const third = await ctx.queryWithSentinelOutcome(DECRQSS_DECSCL.query, decsclPattern)
+      if (!refusedFrame(DECRQSS_DECSCL, replyFrame(third))) {
+        return decrqssAfterRefusal(DECRQSS_DECSCL, third, "SGR refused; DECSTBM refused", sgr.raw + second.raw)
+      }
       return decrqssAfterRefusal(
-        DECRQSS_DECSCL,
-        await ctx.queryWithSentinelOutcome(DECRQSS_DECSCL.query, decsclPattern),
-        "SGR refused; DECSTBM refused",
-        sgr.raw + second.raw,
+        DECRQSS_DECSCUSR,
+        await ctx.queryWithSentinelOutcome(DECRQSS_DECSCUSR.query, decscusrPattern),
+        "SGR refused; DECSTBM refused; DECSCL refused",
+        sgr.raw + second.raw + third.raw,
       )
     },
     "query_reply",
@@ -504,6 +538,15 @@ export const deviceProbes: ProbeDefinition[] = [
           note: reading.reason,
           tests: [{ id: "terminal-child-environment", status: "probe-invalid", reason: reading.reason }],
         }
+      }
+      // 32569: inside a mux the value may come from the outer terminal, and presence cannot be attributed without an
+      // authenticated source, so it stays PROBE TODO naming the outer; absence with this run's marker seen is
+      // Unsupported, as on a bare App (@cto third-table ruling 2026-11-06).
+      if (reading.present && reading.mux) {
+        return notTestedResult(
+          `TERM_FEATURES present inside ${reading.mux}; it may come from the outer terminal, and presence cannot be attributed without an authenticated source`,
+          { present: true, mux: reading.mux },
+        )
       }
       const supported = reading.present
       const note = supported
