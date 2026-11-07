@@ -2038,7 +2038,7 @@ test.each(["xtermjs", "ghostty", "alacritty", "vt100-rust"])("%s keeps the other
 })
 
 /** A readable owned canvas whose selection colours change independently of its silent OSC query. */
-function highlightSelectionTerminal(setCode: number, resetCode: number, ignoresReset: boolean) {
+function highlightSelectionTerminal(setCode: number, resetCode: number, ignoresReset: boolean, ignoresSet = false) {
   let colour = "1111/2222/3333"
   let selected = false
   let witness = " "
@@ -2060,7 +2060,7 @@ function highlightSelectionTerminal(setCode: number, resetCode: number, ignoresR
       const painted = /\x1b\[1;1H([^\x1b])/.exec(bytes)
       if (painted?.[1]) witness = painted[1]
       const set = new RegExp(`\\x1b\\]${setCode};rgb:([0-9a-f/]+)\\x07`, "i").exec(bytes)
-      if (set?.[1]) colour = set[1]
+      if (set?.[1] && !ignoresSet) colour = set[1]
       if (bytes.includes(`\x1b]${resetCode}\x07`) && !ignoresReset) colour = "1111/2222/3333"
     },
     async queryWithSentinelOutcome(sequence) {
@@ -2129,3 +2129,18 @@ test.each([
     expect(fixture.selected()).toBe(false)
   },
 )
+
+// Neither a missing selection nor an unchanged colour set supplies an observable reset baseline.
+test.each([
+  ["extensions.osc117-reset-highlight-bg", 17, 117, "selection"],
+  ["extensions.osc117-reset-highlight-bg", 17, 117, "set"],
+  ["extensions.osc119-reset-highlight-fg", 19, 119, "selection"],
+  ["extensions.osc119-reset-highlight-fg", 19, 119, "set"],
+] as const)("%s (%i/%i) highlight reset pixels retain no-setup without %s", async (id, setCode, resetCode, missing) => {
+  const fixture = highlightSelectionTerminal(setCode, resetCode, false, missing === "set")
+  if (missing === "selection") fixture.ctx.input!.injectDrag = async () => {}
+  const result = await callback(id).term!(fixture.ctx)
+  expect(isDeclaredUntestable(result)).toBe(true)
+  expect(result.tests?.[0]?.reason).toContain("no setup")
+  expect(result.observation?.outcome).not.toBe("unsupported")
+})
