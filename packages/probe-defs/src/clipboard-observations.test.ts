@@ -15,6 +15,7 @@ import {
   type TermProbeSource,
 } from "./index.ts"
 import { recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 // routes-16 row 1 (32472): vt100 0.16.2 keeps no clipboard and hands the read to paste_from_clipboard,
 // so the only witness is the backend's paste selector changing on this run's read.
@@ -278,7 +279,7 @@ function pasteTerm(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
 }
 
 function pasteAndRead(
-  script: { control?: string | null; paste?: "bracketed" | "raw" | "silent" },
+  script: { control?: string | null; paste?: "controlled" | "bracketed" | "raw" | "silent" },
   writes: string[] = [],
 ): { ctx: TermProbeSource; keys: string[]; clipboardWrites: string[] } {
   const keys: string[] = []
@@ -286,9 +287,11 @@ function pasteAndRead(
   let clipboard = ""
   const pending: string[] = []
   let listening = false
+  const surface = createSemanticSurface({ cols: 80, rows: 24 })
   const ctx = pasteTerm({
     write(text) {
       writes.push(text)
+      surface.feed(text)
     },
     withClipboardFixture: async (work) =>
       work({
@@ -310,7 +313,9 @@ function pasteAndRead(
         // X11 PRIMARY and CLIPBOARD are distinct; the fixture seeds only CLIPBOARD.
         const pasted = key === "ctrl+shift+v" ? clipboard : key === "shift+Insert" ? "primary-selection-control" : null
         if (pasted !== null) {
-          if (script.paste === "bracketed") pending.push(`\x1b[200~${pasted}\x1b[201~`)
+          if (script.paste === "bracketed" || (script.paste === "controlled" && surface.getMode("bracketedPaste")))
+            pending.push(`\x1b[200~${pasted}\x1b[201~`)
+          else if (script.paste === "controlled") pending.push(pasted)
           else if (script.paste === "raw") pending.push(pasted)
         }
       },
@@ -332,6 +337,34 @@ function pasteAndRead(
   })
   return { ctx, keys, clipboardWrites }
 }
+
+// Ask 3: a mode recognition reply cannot replace the same-run paste effect.
+// Reuse the owned OS clipboard fixture; the semantic terminal parses actual 2004 writes.
+test.each([null, 0] as const)("App bracketed paste uses controlled effects after DECRPM %s", async (ps) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === "modes.bracketed-paste")
+  if (!definition?.term) throw new Error("Missing App bracketed-paste callback")
+  for (const [paste, expected] of [
+    ["controlled", "supported"],
+    ["raw", "unsupported"],
+    ["bracketed", "probe-invalid"],
+  ] as const) {
+    const { ctx } = pasteAndRead({ paste })
+    const source = {
+      ...ctx,
+      queryWithSentinel: async (_query: string, pattern: RegExp) => (ps === 0 ? pattern.exec("\x1b[?2004;0$y") : null),
+    }
+    const result = await definition.term(source)
+    const recorded = recordExecutedProbe({
+      featureId: definition.id,
+      attempt: { scope: "probe", startedAt: new Date().toISOString() },
+      tests: result.tests,
+      observation: result.observation ? { featureId: definition.id, ...result.observation } : undefined,
+      assertions: (result.assertions ?? []).map((assertion) => ({ featureId: definition.id, ...assertion })),
+    })
+    expect(recorded.status, paste).toBe(expected)
+    if (ps === 0 && expected === "supported") expect(result.note).toContain("Ps 0")
+  }
+})
 
 test("extensions.clipboard-paste keeps missing native paste encoding PROBE TODO while apps still need XTEST", async () => {
   const definition = pasteProbe()
@@ -434,7 +467,7 @@ test("extensions.clipboard-paste aborts when the plain-a control does not reach 
 
 test("extensions.clipboard-paste reads the seeded CLIPBOARD rather than the distinct PRIMARY selection", async () => {
   const writes: string[] = []
-  const { ctx, clipboardWrites } = pasteAndRead({ paste: "bracketed" }, writes)
+  const { ctx, clipboardWrites } = pasteAndRead({ paste: "controlled" }, writes)
   const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
   expect(clipboardWrites).toHaveLength(1)
   const nonce = clipboardWrites[0] ?? ""
@@ -456,7 +489,7 @@ test("extensions.clipboard-paste records unsupported interaction when paste arri
   const writes: string[] = []
   const { ctx, keys, clipboardWrites } = pasteAndRead({ paste: "raw" }, writes)
   const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
-  expect(keys).toEqual(["a", "ctrl+shift+v"])
+  expect(keys).toEqual(["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"])
   const nonce = clipboardWrites[0] ?? ""
   expect(writes.join("")).toContain("\x1b[?2004h")
   expect(writes.join("")).toContain("\x1b[?2004l")
@@ -471,7 +504,7 @@ test("extensions.clipboard-paste throws when paste is silent after delivery cont
   const { ctx, keys } = pasteAndRead({ paste: "silent" }, writes)
   await expect(pasteProbe().term!(ctx)).rejects.toThrow(/paste|silent/i)
   expect(keys).toEqual(["a", "ctrl+shift+v"])
-  expect(writes.join("")).toContain("\x1b[?2004h")
+  expect(writes.join("")).not.toContain("\x1b[?2004h")
   expect(writes.join("")).toContain("\x1b[?2004l")
   expect(writes.join("")).not.toContain("\x1b]52;")
 })
