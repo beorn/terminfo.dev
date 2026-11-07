@@ -174,6 +174,8 @@ it.each([
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc3008-context" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc555-flash" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc710-font-normal" },
+  // #32601: existing subjects cannot catch a missing Alacritty audit or identity leakage from its one-cell declaration.
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 3, feature: "extensions.osc710-font-normal" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
@@ -184,7 +186,7 @@ it.each([
       socket: { path: "/fixture/bus", outcome: "absent" as const, code: "ENOENT" },
     }
     const declarations = appSemanticDeclarations(subject, bus)
-    expect(declarations[feature]).toContain(version)
+    expect(declarations).toHaveProperty(feature, expect.stringContaining(version))
     expect(Object.keys(declarations)).toHaveLength(count)
     expect(appSemanticDeclarations({ ...subject, version: version + "-new" }, bus)).toEqual({})
     expect(appSemanticDeclarations({ ...subject, version: "" }, bus)).toEqual({})
