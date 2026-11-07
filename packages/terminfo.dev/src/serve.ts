@@ -615,6 +615,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
       installCensus?: DarwinInstallCensus,
     ) => {
+      // Preflight installs pixels later; preserve the hosted observer's retained text preparation.
+      const prepareTextCapture = prepareCapture
       const platform = process.platform === "linux" ? "Linux" : "Darwin"
       let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
       let calibrationError: Error | undefined
@@ -627,6 +629,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       // already measured: the adapter never queries the terminal itself, so the geometry it tests a
       // frame request against and the geometry the origin was calibrated on can never diverge.
       const installCapture = (reportedGeometry: PixelGeometry | undefined, queries: CaptureCalibrationQuery[]) => {
+        textCapture = false
         capture = async (checkpoint) => {
           if (calibrationError) throw calibrationError
           if (!checkpoint.cells && !checkpoint.pixelGeometry) {
@@ -647,6 +650,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           return adapter.capture(checkpoint, textOrigin)
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
+          // Text restoration remains fatal, outside the pixel calibration refusal handling.
+          await prepareTextCapture?.({ source: probeSource, featureId, recordCapture })
           try {
             textOrigin = await calibrateCaptureOrigin({
               ctx: probeSource,
@@ -749,6 +754,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       if ((textFirst && installTextCapture(terminal)) || !captureDirectory) return
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
+      if (!textFirst && kind === "darwinHosted") installTextCapture(terminal)
       const darwinCapture = await createDarwinCapture(captureDirectory, { appPid, onRetained })
       installPixelCapture(darwinCapture, darwinCapture.installCensus)
     }
