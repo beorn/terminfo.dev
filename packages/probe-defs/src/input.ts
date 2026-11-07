@@ -13,6 +13,7 @@ import {
   declaredUntestableResult,
   decrpmPs,
   decrpmReplyPattern,
+  queryDecrpm,
   notTestedResult,
   osInputReviewResult,
   NO_SAME_PATH_CONTROL,
@@ -461,6 +462,151 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
     `modes.application-keypad: KP_Add read ${read(application)} under DECKPAM and ${read(numeric)} under DECKPNM after plain a reached the app; only SS3 k then +, or + under both, decides this row`,
     observed,
   )
+}
+
+export async function focusTracking1004(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input?.focusRoundTrip || !readInput) return xtestCoverage("owned focus roundtrip")
+  const focusRoundTrip = input.focusRoundTrip.bind(input)
+  const decrpm = await queryDecrpm(ctx, 1004)
+  const readArm = async () =>
+    (
+      await readInput(/^[\s\S]*a/, 1000, async () => {
+        await focusRoundTrip()
+        await input.injectKey("a")
+      })
+    )?.[0] ?? null
+  let enabled: string | null
+  ctx.write("\x1b[?1004h")
+  try {
+    enabled = await readArm()
+  } finally {
+    ctx.write("\x1b[?1004l")
+  }
+  const reset = await readArm()
+  const observed = { decrpm, enabled, reset }
+  const expected = "CSI O then CSI I before a with 1004 set; only a with 1004 reset"
+  if (reset === "a" && enabled === "\x1b[O\x1b[Ia") {
+    return interactionResult("focus-tracking:roundtrip", expected, observed)
+  }
+  if (reset === "a" && enabled === "a") {
+    return unsupportedInteraction("focus-tracking:roundtrip", expected, observed)
+  }
+  return invalidInteraction(
+    "Focus roundtrip read a wrong focus report, no plain key, or a report with 1004 reset",
+    observed,
+  )
+}
+
+export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const input = ctx.input
+  if (!input?.resizeWindow) return xtestCoverage("owned mouse position and window resize")
+  const resizeWindow = input.resizeWindow.bind(input)
+  const decrpm = await queryDecrpm(ctx, 1005)
+  const size = async (timeout = 1000) => {
+    const reply = await ctx.query("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/, timeout)
+    const rows = Number(reply?.[1])
+    const cols = Number(reply?.[2])
+    return Number.isSafeInteger(rows) && rows > 0 && Number.isSafeInteger(cols) && cols > 0 ? { rows, cols } : null
+  }
+  const poll = async (accept: (reading: { rows: number; cols: number }) => boolean) => {
+    const deadline = Date.now() + 2000
+    let count = 0
+    let reading: Awaited<ReturnType<typeof size>> = null
+    while (Date.now() < deadline) {
+      const nextPoll = Date.now() + 100
+      reading = await size(Math.max(1, Math.min(100, deadline - Date.now())))
+      count++
+      if (reading && accept(reading)) return { reading, count, matched: true }
+      const remaining = deadline - Date.now()
+      const pause = Math.min(nextPoll - Date.now(), remaining)
+      if (pause > 0) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, pause)
+        })
+      }
+    }
+    return { reading, count, matched: false }
+  }
+  const before = await size()
+  if (!before) return invalidInteraction("UTF8 mouse needs the original CSI18t size", { decrpm, before })
+  const observed: Record<string, unknown> = { decrpm, before }
+  let original: { width: number; height: number } | undefined
+  let restored = false
+  let result: ProbeCallbackResult
+  try {
+    original = await resizeWindow(1400, 600)
+    const resized = await poll((reading) => reading.cols > 95)
+    observed.resized = resized
+    if (!resized.reading) {
+      result = invalidInteraction("UTF8 mouse resized-window CSI18t read is missing or invalid", observed)
+    } else if (!resized.matched || resized.reading.cols <= 95) {
+      const cols = resized.reading.cols
+      result = invalidInteraction(
+        `coordinates up to 95 encode identically in both modes and this window is ${cols} columns wide, so no click here can separate them`,
+        observed,
+      )
+    } else {
+      result = await withMouseModes(ctx, async () => {
+        ctx.write("\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1015l\x1b[?1016l")
+        const click = async () => {
+          // Reuse the existing reader/recorder; rawBase64 preserves legacy bytes
+          // that the text match necessarily decodes as replacement characters.
+          const pending = ctx.queryOutcome("", /^[\s\S]*a$/, 1000)
+          await input.injectClick(1, { x: 1300, y: 120 })
+          await input.injectKey("a")
+          const read = await pending
+          return { text: read.raw, bytes: Array.from(atob(read.rawBase64), (byte) => byte.charCodeAt(0)) }
+        }
+        const control = await click()
+        observed.control = control
+        const sgr = /^\x1b\[<0;(\d+);(\d+)M\x1b\[<0;\1;\2ma$/.exec(control.text)
+        const x = Number(sgr?.[1])
+        const y = Number(sgr?.[2])
+        if (!sgr || x <= 95 || x > 223 || y < 1 || y > 223) {
+          return invalidInteraction(
+            "UTF8 mouse SGR position/key control did not prove a sensitive same-position click",
+            observed,
+          )
+        }
+        ctx.write("\x1b[?1006l\x1b[?1005h")
+        const enabled = await click()
+        ctx.write("\x1b[?1005l")
+        const reset = await click()
+        ctx.write("\x1b[?1000l")
+        const trackingReset = await click()
+        Object.assign(observed, { enabled, reset, trackingReset })
+        const encoded = (utf8: boolean) => {
+          const coords = utf8 ? [...new TextEncoder().encode(String.fromCharCode(x + 32, y + 32))] : [x + 32, y + 32]
+          return [27, 91, 77, 32, ...coords, 27, 91, 77, 35, ...coords, 97]
+        }
+        const same = (actual: number[], expected: number[]) =>
+          actual.length === expected.length && actual.every((byte, i) => byte === expected[i])
+        const expected =
+          "same-position UTF8 bytes only with 1005 set, legacy bytes with it reset, and a key without tracking"
+        if (!same(trackingReset.bytes, [97]) || !same(reset.bytes, encoded(false))) {
+          return invalidInteraction("UTF8 mouse reset coordinate/key or tracking-reset control failed", observed)
+        }
+        if (same(enabled.bytes, encoded(true))) return interactionResult("utf8-mouse-1005", expected, observed)
+        if (same(enabled.bytes, encoded(false))) return unsupportedInteraction("utf8-mouse-1005", expected, observed)
+        return invalidInteraction(
+          "UTF8 mouse enabled/reset encoding pair is neither UTF8/legacy nor legacy/legacy",
+          observed,
+        )
+      })
+    }
+  } finally {
+    ctx.write("\x1b[?1000l\x1b[?1005l\x1b[?1006l")
+    if (original) {
+      await resizeWindow(original.width, original.height)
+      const restoration = await poll((reading) => reading.cols === before.cols && reading.rows === before.rows)
+      observed.restoration = restoration
+      restored = restoration.matched
+    }
+  }
+  if (!restored) return invalidInteraction("UTF8 mouse original-size restoration failed", observed)
+  return { ...result, response: JSON.stringify(observed) }
 }
 
 export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCallbackResult> {

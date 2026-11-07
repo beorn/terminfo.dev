@@ -37,7 +37,11 @@ const MODES_CONTRACT: GroupContract = [
   { id: "modes.application-cursor", expected: "decided", claim: "DECRPM 1 recognizes application cursor keys" },
   { id: "modes.auto-wrap", expected: "decided", claim: "DECRPM 7 recognizes auto-wrap" },
   { id: "modes.mouse-tracking", expected: "decided", claim: "DECRPM 1000 recognizes mouse tracking" },
-  { id: "modes.focus-tracking", expected: "decided", claim: "DECRPM 1004 recognizes focus tracking" },
+  {
+    id: "modes.focus-tracking",
+    expected: "inconclusive",
+    claim: "Focus delivery needs the owned focus roundtrip fixture absent from DECRPM replay",
+  },
   { id: "modes.reverse-video", expected: "decided", claim: "DECRPM 5 recognizes reverse video" },
   { id: "modes.synchronized-output", expected: "decided", claim: "DECRPM 2026 recognizes synchronized output" },
   {
@@ -84,7 +88,11 @@ const MODES_CONTRACT: GroupContract = [
     claim:
       "Alt-scroll 1007: wheel-4 reports CSI A after 1000+1006 click delivery control on alt-screen; remaining SGR is unsupported",
   },
-  { id: "modes.utf8-mouse-1005", expected: "decided", claim: "DECRPM 1005 recognizes UTF-8 mouse" },
+  {
+    id: "modes.utf8-mouse-1005",
+    expected: "inconclusive",
+    claim: "UTF8 mouse needs the owned sensitive-position resize fixture absent from DECRPM replay",
+  },
   { id: "modes.deccolm", expected: "decided", claim: "Cell width moves 80 -> 132 -> 80 with ?40 honoured" },
   { id: "modes.decsclm", expected: "decided", claim: "DECRPM 4 recognizes smooth-scroll mode" },
   { id: "modes.color-scheme-reporting", expected: "decided", claim: "DECRPM 2031 recognizes color-scheme reporting" },
@@ -320,6 +328,13 @@ test("each Modes row retains its measured grade or named execution disposition u
     const probe = modesProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Modes probe ${row.id}`).toBeDefined()
     if (!probe) continue
+    if (row.id === "modes.focus-tracking" || row.id === "modes.utf8-mouse-1005") {
+      const result = await probe.term?.(term)
+      expect(result?.observation).toBeUndefined()
+      expect(result?.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      expect(result?.notTested?.noObservable).toContain("owned")
+      continue
+    }
     if (row.id === "modes.alt-screen.exit") {
       const result = await probe.term?.(term)
       expect(result?.observation).toBeUndefined()

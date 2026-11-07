@@ -37,7 +37,15 @@ import {
   type StackReading,
   validSize,
 } from "./helpers.ts"
-import { applicationKeypad, altScroll1007, allMotion1003, sgrMouse1006, mouseTracking1000 } from "./input.ts"
+import {
+  applicationKeypad,
+  altScroll1007,
+  allMotion1003,
+  sgrMouse1006,
+  mouseTracking1000,
+  focusTracking1004,
+  utf8Mouse1005,
+} from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { captureRegionCallbackResult, cropPositionRefusal, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
 
@@ -1964,7 +1972,13 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 
   // Focus tracking
-  decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
+  {
+    ...decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
+    term: focusTracking1004,
+    termAssertionType: "input_bytes",
+    termWrites: undefined,
+    termNeedsDisposable: true,
+  },
 
   // Reverse video
   {
@@ -2488,7 +2502,13 @@ const modeDefinitions: ProbeDefinition[] = [
   ),
 
   // ?1005 — UTF-8 mouse encoding (legacy)
-  decrpmModeProbe("modes.utf8-mouse-1005", 1005, headlessDecrpmArm(1005, "utf8Mouse", { stateReadback: true })),
+  {
+    ...decrpmModeProbe("modes.utf8-mouse-1005", 1005, headlessDecrpmArm(1005, "utf8Mouse", { stateReadback: true })),
+    term: utf8Mouse1005,
+    termAssertionType: "input_bytes",
+    termWrites: undefined,
+    termNeedsDisposable: true,
+  },
 
   // ?3 — DECCOLM 80/132 column switch, decided by cell state, 18t only corroborating (#31381, cee6d003)
   {

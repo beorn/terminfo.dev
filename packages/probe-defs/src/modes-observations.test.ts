@@ -19,6 +19,48 @@ import type {
   LibProbeSource,
 } from "./types.ts"
 
+// A DECRPM reply does not witness focus delivery. Both set/reset arms must run,
+// including when the enabled arm has no reports (the reviewed Screen reading).
+test("App focus tracking grades delivered set/reset input rather than DECRPM", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
+  for (const [enabled, reset, outcome] of [
+    ["\x1b[O\x1b[Ia", "a", "supported"],
+    ["a", "a", "unsupported"],
+    ["\x1b[I\x1b[Oa", "a", "invalid"],
+    ["\x1b[O\x1b[I", "a", "invalid"],
+    ["\x1b[O\x1b[Ia", "\x1b[O\x1b[Ia", "invalid"],
+  ] as const) {
+    let arm = 0
+    let bytes = ""
+    const input = {
+      injectClick: async () => {
+        throw new Error("Focus fixture received a click")
+      },
+      focusRoundTrip: async () => {
+        bytes += arm++ === 0 ? enabled.replace(/a$/, "") : reset.replace(/a$/, "")
+      },
+      injectKey: async () => {
+        if ((arm === 1 ? enabled : reset).endsWith("a")) bytes += "a"
+      },
+    }
+    const source = replayTermProbeSource(new Map(), {
+      input,
+      readInput: async (pattern, _timeout, inject) => {
+        bytes = ""
+        await inject?.()
+        return pattern.exec(bytes)
+      },
+    })
+    const result = await definition.term!(source)
+    expect(arm, `${outcome}: both focus arms`).toBe(2)
+    if (outcome === "invalid") {
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+    } else {
+      expect(result.observation?.outcome).toBe(outcome)
+    }
+  }
+})
+
 // Ask 3 permits a same-run mode effect when DECRPM is silent or Ps 0. The reply
 // contract does not exercise that path. Reuse the semantic terminal so removing
 // DECAWM alone loses the positive without breaking the cursor-delivery control.
@@ -539,10 +581,92 @@ function captureSource(
   return source
 }
 
-const modes = [
-  { id: "modes.utf8-mouse-1005", number: 1005 },
-  { id: "modes.deccolm", number: 3 },
-] as const
+// Raw 0x85 must not be confused with a replacement character after UTF-8 decoding.
+// The reply-only mode suite cannot witness same-position clicks or restoration.
+test(
+  "App UTF8 mouse uses sensitive raw coordinates, reset controls and restored size",
+  { timeout: 15_000 },
+  async () => {
+    const definition = modesProbes.find((entry) => entry.id === "modes.utf8-mouse-1005")!
+    for (const mutation of [
+      "working",
+      "intermediate",
+      "legacy",
+      "utf8-both",
+      "wrong-position",
+      "reset-report",
+      "restore-failed",
+      "missing-key",
+      "unchanged",
+      "missing-size",
+    ] as const) {
+      const modes = new Set<number>()
+      let cols = 61
+      let pending = Buffer.alloc(0)
+      let finish: (() => void) | undefined
+      const source = replayTermProbeSource(new Map(), {
+        write: (bytes) => {
+          for (const match of bytes.matchAll(/\x1b\[\?(\d+)([hl])/g)) {
+            if (match[2] === "h") modes.add(Number(match[1]))
+            else modes.delete(Number(match[1]))
+          }
+        },
+        query: async (_sequence, pattern) => {
+          const measured = cols
+          if (mutation === "intermediate" && cols === 80) cols = 107
+          return mutation === "missing-size" && cols === 107 ? null : pattern.exec(`\x1b[8;24;${measured}t`)
+        },
+        queryOutcome: async (_sequence, pattern) => {
+          pending = Buffer.alloc(0)
+          await new Promise<void>((resolve) => {
+            finish = resolve
+          })
+          const raw = pending.toString()
+          return { raw, rawBase64: pending.toString("base64"), match: pattern.exec(raw), reason: "reply" }
+        },
+        input: {
+          resizeWindow: async (width: number, _height: number) => {
+            cols = mutation === "unchanged" || (width === 800 && mutation !== "restore-failed") ? 61 : 107
+            if (mutation === "intermediate" && width !== 800) cols = 80
+            return { width: 800, height: 600 }
+          },
+          injectClick: async () => {
+            if (!modes.has(1000) && mutation !== "reset-report") return
+            if (modes.has(1006)) {
+              pending = Buffer.from(`\x1b[<0;${mutation === "wrong-position" ? 50 : 101};10M\x1b[<0;101;10m`)
+            } else {
+              const utf8 = mutation === "utf8-both" || (modes.has(1005) && mutation !== "legacy")
+              const coordinate = utf8 ? [0xc2, 0x85] : [0x85]
+              pending = Buffer.from([27, 91, 77, 32, ...coordinate, 42, 27, 91, 77, 35, ...coordinate, 42])
+            }
+          },
+          injectKey: async () => {
+            if (mutation !== "missing-key") pending = Buffer.concat([pending, Buffer.from("a")])
+            finish?.()
+          },
+        },
+      })
+      const result = await definition.term!(source)
+      if (mutation === "working" || mutation === "intermediate" || mutation === "legacy") {
+        expect(result.observation?.outcome, mutation).toBe(mutation === "legacy" ? "unsupported" : "supported")
+      } else {
+        expect(result.tests, mutation).toEqual(
+          expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]),
+        )
+      }
+      expect(modes.has(1000)).toBe(false)
+      expect(modes.has(1005)).toBe(false)
+      expect(modes.has(1006)).toBe(false)
+      expect(cols, mutation).toBe(mutation === "restore-failed" ? 107 : 61)
+      if (mutation === "unchanged") {
+        expect(result.note).toContain("this window is 61 columns wide, so no click here can separate them")
+      }
+    }
+    expect(definition.termNeedsDisposable).toBe(true)
+  },
+)
+
+const modes = [{ id: "modes.deccolm", number: 3 }] as const
 
 // These four claims require settable protocol state, not the old recognition-only Ps 2.
 // Existing query-only cases never checked the snapshot, DECSET result or restoration.

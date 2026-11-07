@@ -1,6 +1,6 @@
 import type { InputFixture } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
-import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
+import { kittyAncestor, windowPixels, type LiveExecutable } from "./linux-capture.ts"
 
 export type LinuxInputAdapter = InputFixture
 
@@ -29,6 +29,27 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
   }
   const ownedWindowId: string = windowId
 
+  async function focusRoundTrip(): Promise<void> {
+    const selectedScreen = /default screen number:\s*(\d+)/.exec(display)?.[1]
+    const section = selectedScreen === undefined ? undefined : display.split(`screen #${selectedScreen}:`)[1]
+    const rootHex = section?.split(/screen #\d+:/)[0]?.match(/root window id:\s*(0x[0-9a-f]+)/i)?.[1]
+    if (!rootHex) throw new Error("Owned DISPLAY xdpyinfo lacks its selected screen root window id")
+    const rootWindowId = String(Number.parseInt(rootHex, 16))
+    const focus = async (target: string) => {
+      await command("xdotool", ["windowfocus", target])
+      const focused = (await command("xdotool", ["getwindowfocus", "-f"])).toString().trim()
+      if (focused !== target) {
+        throw new Error(`Owned focus roundtrip expected ${target}; getwindowfocus -f is ${focused}`)
+      }
+    }
+    await focus(ownedWindowId)
+    try {
+      await focus(rootWindowId)
+    } finally {
+      await focus(ownedWindowId)
+    }
+  }
+
   async function focusOwnedWindow(): Promise<void> {
     // Xvfb has no EWMH WM: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW.
     // windowfocus uses XSetInputFocus, which CURRENTWINDOW (--window 0) then follows.
@@ -43,19 +64,27 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
     }
   }
 
-  async function preparePointer(): Promise<void> {
+  async function preparePointer(position = { x: 400, y: 300 }): Promise<void> {
     await focusOwnedWindow()
-    await command("xdotool", ["mousemove", "--window", ownedWindowId, "400", "300"])
+    await command("xdotool", ["mousemove", "--window", ownedWindowId, String(position.x), String(position.y)])
   }
 
   return {
+    focusRoundTrip,
+    async resizeWindow(width: number, height: number) {
+      const original = windowPixels(
+        (await command("xdotool", ["getwindowgeometry", "--shell", ownedWindowId])).toString(),
+      )
+      await command("xdotool", ["windowsize", ownedWindowId, String(width), String(height)])
+      return original
+    },
     async injectKey(keys: string) {
       if (keys.length === 0) throw new Error("XTEST key injection requires a nonempty keysym")
       await focusOwnedWindow()
       await command("xdotool", ["key", "--window", "0", "--clearmodifiers", keys])
     },
-    async injectClick(button: 1 | 4 | 5) {
-      await preparePointer()
+    async injectClick(button: 1 | 4 | 5, position?: { x: number; y: number }) {
+      await preparePointer(position)
       await command("xdotool", ["click", "--window", "0", "--clearmodifiers", String(button)])
     },
     async injectMove(x: number, y: number) {

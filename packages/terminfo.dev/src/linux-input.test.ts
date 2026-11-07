@@ -26,6 +26,7 @@ function fixture() {
   temporary.push(directory)
   const log = join(directory, "xdotool.log")
   writeFileSync(log, "")
+  writeFileSync(`${log}.focus`, "42\n")
   executable(
     join(directory, "xdotool"),
     `printf '%s\\n' "$*" >> "$TEST_INPUT_LOG"
@@ -35,25 +36,33 @@ case "$1" in
     else printf '%s\\n' "$TEST_INPUT_VISIBLE_WINDOWS"; fi
     ;;
   getwindowpid) printf '%s\\n' "$TEST_INPUT_OWNER_PID" ;;
-  getwindowfocus) printf '%s\\n' "$TEST_INPUT_ACTIVE_WINDOW" ;;
+  getwindowfocus)
+    if [ "$TEST_INPUT_ACTIVE_WINDOW" = 42 ]; then
+      if [ "$(cat "$TEST_INPUT_LOG.focus")" = 543 ] && [ "\${TEST_INPUT_ROOT_FOCUS:-543}" != 543 ]; then
+        printf '%s\\n' "$TEST_INPUT_ROOT_FOCUS"
+      else cat "$TEST_INPUT_LOG.focus"; fi
+    else printf '%s\\n' "$TEST_INPUT_ACTIVE_WINDOW"; fi
+    ;;
   getactivewindow|windowactivate)
     printf '%s\\n' "Your windowmanager claims not to support _NET_ACTIVE_WINDOW, so the attempt to activate the window was aborted." >&2
     exit 1
     ;;
   windowfocus|mousemove)
+    if [ "$1" = windowfocus ]; then printf '%s\\n' "$2" > "$TEST_INPUT_LOG.focus"; fi
     if [ "$TEST_INPUT_FOCUS_HANG" = 1 ]; then
       for arg in "$@"; do
         if [ "$arg" = --sync ]; then sleep 30; exit 0; fi
       done
     fi
     ;;
-  key|click|mousedown|mouseup) ;;
+  getwindowgeometry) printf 'WIDTH=800\\nHEIGHT=600\\n' ;;
+  key|click|mousedown|mouseup|windowsize) ;;
   *) exit 18 ;;
 esac`,
   )
   executable(
     join(directory, "xdpyinfo"),
-    `printf 'root window id: 0x21f\\n'
+    `printf 'default screen number: 0\\nscreen #0:\\nroot window id: 0x21f\\n'
 if [ "$TEST_INPUT_XTEST" != "0" ]; then printf '    XTEST\\n'; fi`,
   )
   process.env.PATH = `${directory}:${originalPath ?? ""}`
@@ -77,6 +86,22 @@ function argvLines(log: string): string[] {
   return readFileSync(log, "utf8").trim().split("\n").filter(Boolean)
 }
 
+// The owned transport must retain the caller's sensitive pixel position and
+// return original dimensions so the probe can restore its disposable window.
+test.runIf(process.platform === "linux")(
+  "owned resize returns old pixels and click preserves the requested position",
+  async () => {
+    const { log } = fixture()
+    const input = await createLinuxInput(liveExecutable())
+    if (!input.resizeWindow) throw new Error("Missing owned resize fixture")
+    expect(await input.resizeWindow(1400, 600)).toEqual({ width: 800, height: 600 })
+    await input.injectClick(1, { x: 1300, y: 120 })
+    expect(argvLines(log)).toContain("windowsize 42 1400 600")
+    expect(argvLines(log)).toContain("mousemove --window 42 1300 120")
+    expect(argvLines(log).some((line) => line.includes("--sync"))).toBe(false)
+  },
+)
+
 afterEach(() => {
   for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true })
   if (originalPath === undefined) delete process.env.PATH
@@ -89,6 +114,7 @@ afterEach(() => {
     "TEST_INPUT_WINDOWS",
     "TEST_INPUT_VISIBLE_WINDOWS",
     "TEST_INPUT_ACTIVE_WINDOW",
+    "TEST_INPUT_ROOT_FOCUS",
     "TEST_INPUT_XTEST",
     "TEST_INPUT_FOCUS_HANG",
   ]) {
@@ -101,6 +127,27 @@ test.runIf(process.platform === "linux")("createLinuxInput refuses when xdpyinfo
   process.env.TEST_INPUT_XTEST = "0"
   await expect(createLinuxInput(liveExecutable())).rejects.toThrow(/XTEST/)
 })
+
+// Input ownership is distinct from the probe's byte grading: verify actual root
+// and owned focus IDs and restoration even if the root read is wrong.
+test.runIf(process.platform === "linux")(
+  "focus roundtrip verifies root and owned focus, restoring after a wrong read",
+  async () => {
+    const { log } = fixture()
+    const input = await createLinuxInput(liveExecutable())
+    if (!input.focusRoundTrip) throw new Error("Missing owned focus roundtrip")
+    await input.focusRoundTrip()
+    expect(argvLines(log).filter((line) => line.startsWith("windowfocus "))).toEqual([
+      "windowfocus 42",
+      "windowfocus 543",
+      "windowfocus 42",
+    ])
+    expect(argvLines(log).filter((line) => line === "getwindowfocus -f")).toHaveLength(3)
+    process.env.TEST_INPUT_ROOT_FOCUS = "99"
+    await expect(input.focusRoundTrip()).rejects.toThrow(/focus/)
+    expect(argvLines(log).at(-2)).toBe("windowfocus 42")
+  },
+)
 
 test.runIf(process.platform === "linux")(
   "injectKey refuses when getwindowfocus is not the owned window, and does not send a key",
