@@ -69,7 +69,7 @@ This page reads composed contexts with original stored sources on the required s
   </div>
 </div>
 
-<RunHistory v-if="probes.workingHistory" :history="probes.workingHistory" />
+<RunHistory v-if="probes.workingHistory" :history="probes.workingHistory" :originals="probes.workingOriginals" />
 
 ## Scope
 

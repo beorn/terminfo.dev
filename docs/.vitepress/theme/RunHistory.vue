@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import type { WorkingContext, WorkingView } from "../../data/working-runs"
+import type { ClientProbeData } from "../../data/probes.data"
 import { evidenceStatus } from "./evidence-status"
 
-const props = defineProps<{ history: WorkingView[]; featureId?: string; subjects?: Array<Pick<WorkingContext, "engine" | "kind">> }>()
-const matches = (row: WorkingContext) => !props.subjects || props.subjects.some(subject => subject.engine === row.engine && subject.kind === row.kind)
+const props = defineProps<{ history: WorkingView[]; originals?: ClientProbeData["workingOriginals"]; featureId?: string; subjects?: Array<Pick<WorkingContext, "engine" | "kind">> }>()
+const matches = (row: Pick<WorkingContext, "engine" | "kind">) => !props.subjects || props.subjects.some(subject => subject.engine === row.engine && subject.kind === row.kind)
+const originalEntries = computed(() => Object.entries(props.originals ?? {}).flatMap(([contextKey, originals]) => originals
+  .filter(original => matches({engine: original.subject.id, kind: original.subject.kind}))
+  .map(original => ({key: contextKey + "/" + original.sha256, contextKey, original})))
+  .sort((left, right) => left.original.measuredAt.localeCompare(right.original.measuredAt) || left.key.localeCompare(right.key)))
+const originalKey = ref(originalEntries.value.at(-1)?.key ?? "")
+const originalEntry = computed(() => originalEntries.value.find(entry => entry.key === originalKey.value))
+const originalCells = computed(() => Object.entries(originalEntry.value?.original.states ?? {}).filter(([id]) => !props.featureId || id === props.featureId))
 const collectionId = ref([...props.history].reverse().find(view => view.contexts.some(matches) || (view.unreadable && (!props.subjects || props.subjects.some(subject => subject.kind === "lib" ? !view.run.id.startsWith("apps/") : view.run.id.startsWith(`apps/${subject.engine}/`)))))?.run.id ?? props.history.at(-1)?.run.id ?? "")
 const selected = computed(() => props.history.find((view) => view.run.id === collectionId.value))
 const contexts = computed(() => selected.value?.contexts.filter((row) => !props.subjects || props.subjects.some(subject => subject.engine === row.engine && subject.kind === row.kind)) ?? [])
@@ -17,6 +25,26 @@ const gaps = computed(() => props.history.flatMap(view => view.unmeasured).filte
 
 <template>
 <section id="run-history" class="run-history">
+  <div v-if="originalEntries.length" id="selected-original-history">
+    <h2>Stored original measurements</h2>
+    <p>Each original keeps its recorded statuses and measurement time. Choosing one here does not change reviewed answers, scores or completion.</p>
+    <label>Original measurement
+      <select v-model="originalKey">
+        <option v-for="entry in originalEntries" :key="entry.key" :value="entry.key">{{ kindLabel(entry.original.subject.kind) }}: {{ entry.original.subject.id }} {{ entry.original.subject.version }} · {{ entry.original.subject.os ?? 'OS not recorded' }} · {{ entry.original.measuredAt }} · {{ entry.original.sha256.slice(0, 8) }}</option>
+      </select>
+    </label>
+    <template v-if="originalEntry">
+      <p>Context <code>{{ originalEntry.contextKey }}</code>; <strong>{{ kindLabel(originalEntry.original.subject.kind) }}: {{ originalEntry.original.subject.id }} {{ originalEntry.original.subject.version }}</strong>; OS {{ originalEntry.original.subject.os ?? 'not recorded' }}.</p>
+      <p>Original run <code>{{ originalEntry.original.runId }}</code>; measured {{ originalEntry.original.measuredAt }}; suite <code>{{ originalEntry.original.suiteId }}</code>; source <code>{{ originalEntry.original.sourceRevision }}</code>; capture SHA-256 <code>{{ originalEntry.original.sha256 }}</code>.</p>
+      <p>Stored Supported / graded features: {{ originalEntry.original.score.supported }} / {{ originalEntry.original.score.all }}. Environment groups are ungraded.</p>
+      <p>Comparison unavailable: the selected-original projection does not retain qualified runtime identity.</p>
+      <table v-if="originalCells.length">
+        <thead><tr><th>Probe</th><th>Stored status</th></tr></thead>
+        <tbody><tr v-for="cell in originalCells" :key="cell[0]"><td><code>{{ cell[0] }}</code></td><td>{{ evidenceStatus(cell[0], cell[1]).text }}</td></tr></tbody>
+      </table>
+      <p v-else>No probe result is recorded for this feature in this original.</p>
+    </template>
+  </div>
   <h2>Retained run history — raw, unreviewed</h2>
   <p>Each collection keeps its original probe statuses and receipts. These results do not change accepted answers, scores or completion. Missing or untrusted inputs remain visible.</p>
   <ul v-if="gaps.length">

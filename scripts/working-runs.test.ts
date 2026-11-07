@@ -32,7 +32,7 @@ import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-
 import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
-import clientProbes from "../docs/data/probes.data.ts"
+import clientProbes, { loadFullProbes } from "../docs/data/probes.data.ts"
 
 function runsDir(): string {
   return mkdtempSync(join(tmpdir(), "terminfo-working-runs-"))
@@ -348,6 +348,48 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     collection(older.parent, WRITING)
     const sameBuild = clientProbes.load()
     expect(sameBuild.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+  })
+
+  // Selected-original history is required on feature pages and for Mac contexts without raw stores.
+  // Raw collection tests cannot catch dropping these originals or leaking their full evidence payload.
+  it("keeps compact original measurements in private page data with their canonical contexts", () => {
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", undefined)
+    const publicPage = clientProbes.load()
+    expect(publicPage).not.toHaveProperty("workingOriginals")
+    const expected = loadFullProbes().selected.history
+    expect(
+      Object.values(expected)
+        .flat()
+        .some((run) => run.subject.os === "macos"),
+    ).toBe(true)
+
+    const retained = collection()
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", retained.parent)
+    const page = clientProbes.load()
+    expect(Object.keys(page.workingOriginals ?? {})).toEqual(Object.keys(expected))
+    for (const [key, originals] of Object.entries(expected)) {
+      const actual = page.workingOriginals?.[key]
+      expect(actual).toHaveLength(originals.length)
+      for (const original of originals) {
+        const record = actual?.find((run) => run.sha256 === original.sha256)
+        expect(record).toMatchObject({
+          runId: original.runId,
+          subject: original.subject,
+          measuredAt: original.measuredAt,
+          suiteId: original.suiteId,
+          sourceRevision: original.sourceRevision,
+          sha256: original.sha256,
+          counts: original.counts,
+          score: original.score,
+          states: Object.fromEntries(original.results.map((result) => [result.featureId, result.status])),
+        })
+        for (const field of ["rawReplies", "assertions", "results", "startedAt", "label", "runtimeIdentity"]) {
+          expect(record).not.toHaveProperty(field)
+        }
+      }
+    }
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", undefined)
+    expect(clientProbes.load()).toEqual(publicPage)
   })
 
   it("keeps the recorded comparison baseline separate from missing comparison evidence", () => {

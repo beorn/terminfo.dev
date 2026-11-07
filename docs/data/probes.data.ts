@@ -13,7 +13,7 @@ import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "@terminfo/catalog"
 import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
-import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
+import { publicResults, type PublicProjection, type PublicCurrentResult, type PublicVersion } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { siteWorkingHistory, type WorkingView } from "./working-runs.ts"
 import type { ProbeStatus, FeatureResultStatus } from "@terminfo/probe-defs"
@@ -173,7 +173,10 @@ function loadBackendMeta(): Record<string, BackendMeta> {
  * build time. One alias names it for both the loader and the `data` a page imports, so a field
  * `load()` drops can never stay advertised in the client-side type.
  */
-export type ClientProbeData = Omit<ProbeData, "selected"> & { workingHistory?: WorkingView[] }
+export type ClientProbeData = Omit<ProbeData, "selected"> & {
+  workingHistory?: WorkingView[]
+  workingOriginals?: Record<string, Array<Omit<PublicVersion, "results"> & { states: Record<string, ProbeStatus> }>>
+}
 
 declare const data: ClientProbeData
 export { data }
@@ -300,9 +303,20 @@ export function loadFullProbes(): ProbeData {
 export default {
   /** #30759: the full projection stays behind at build time; the client payload omits it. */
   load(): ClientProbeData {
-    const { selected: _selected, ...client } = loadFullProbes()
+    const { selected, ...client } = loadFullProbes()
     const workingHistory = siteWorkingHistory(contentDir)
-    return { ...client, ...(workingHistory && { workingHistory }) }
+    if (!workingHistory) return client
+    // Reuse the projection already built once; never reread the corpus or carry full evidence per feature.
+    const workingOriginals = Object.fromEntries(
+      Object.entries(selected.history).map(([key, originals]) => [
+        key,
+        originals.map(({ results, ...original }) => ({
+          ...original,
+          states: Object.fromEntries(results.map((result) => [result.featureId, result.status])),
+        })),
+      ]),
+    )
+    return { ...client, workingHistory, workingOriginals }
   },
 }
 
