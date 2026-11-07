@@ -775,7 +775,18 @@ setup or an inseparable reference stays inconclusive. Recipes without the member
 A qualified baseline followed by a complete but unqualified SGR setup report may use this existing
 independent capture path for the six eligible reset rows. The response retains both query phases and
 the capture response, and the note names the deciding instrument. Malformed setup, failed baseline
-and the three multi-attribute reference refusals keep their existing behavior.
+and the multi-attribute reference refusals keep their existing query fallback behavior.
+`reset.sgr` first qualifies a saved initial rendition through the existing region capture lifecycle,
+before the query route can write SGR 0. Its `savedRendition` recipe paints YY without a setter,
+saves once with DECSC, and checks all seven nonempty bold/italic/inverse subsets and their DECRC
+restores against that immutable crop. Every subset must differ; every restore must match. After
+the repeated full setup, made-up SGR 99 must leave the crop unchanged. SGR 0 returning the initial
+crop is Supported; a retained subset is Unsupported on a bare terminal. A changed made-up control
+or unmatched target is PROBE INVALID. Failed qualification names its step and tries DECRQSS;
+silence retains `noIndependentReference` and never runs a reset-derived reference. Cleanup restores
+the saved rendition, so a failed reference never sends SGR 0 before the query fallback. The library
+arm, `sgr.reset` and SGR 22 retain their existing behavior. A mux subset result stays PROBE TODO
+naming its outer terminal through `finalizeVisualResult`; positive captures and query fallbacks retain their results.
 Without a deciding independent capture, an omitted setup attribute retains named PROBE TODO coverage
 and both raw query phases, just as an omitted final attribute does; it is not a broken measurement.
 With an owned colour, reset-family or blink oracle, valid final SGR state replies and named

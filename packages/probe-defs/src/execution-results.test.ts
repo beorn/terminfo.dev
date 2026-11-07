@@ -52,6 +52,7 @@ it("demotes only the selected mux pixel test while preserving query, library and
     ["sgr.bold", "sgr-attribute-same-run", "attribute"],
     ["cursor.shape", "cursor-shape-same-run", "review"],
     ["extensions.sixel", "sixel-advertised-unchanged", "criterion"],
+    ["reset.sgr", "reset-saved-rendition", "reset"],
   ] as const) {
     for (const status of ["supported", "unsupported"] as const) {
       const recorded = finalizeProbeResult({
