@@ -6,6 +6,7 @@ import type {
   TermProbeSource,
   LibProbeSource,
   ProbeResult,
+  ProbeSubject,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import {
@@ -1276,7 +1277,7 @@ const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
 /** Require app/mux rendered evidence while preserving library cell criteria after execution. */
 export function finalizeSgrResult(
   recorded: ProbeResult,
-  target: { kind: "term" | "mux" | "lib" },
+  target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
   captures: readonly ObservationFrame[],
 ): ProbeResult {
   if (!visualSgrIds.has(recorded.featureId) || (recorded.status !== "supported" && recorded.status !== "unsupported")) {
@@ -1286,7 +1287,25 @@ export function finalizeSgrResult(
   const hasScreenshot =
     recorded.screenshotRef !== undefined &&
     captures.some((frame) => frame.kind !== "text-cells" && frame.ref === recorded.screenshotRef)
-  if (hasScreenshot) return recorded
+  if (hasScreenshot) {
+    if (
+      target.kind === "mux" &&
+      recorded.status === "unsupported" &&
+      recorded.criterionBranch === "sgr-attribute-same-run"
+    ) {
+      const reason = target.outerTerminal
+        ? `The sample drew nothing or collapsed a style through outer terminal ${target.outerTerminal}; this capture cannot separate the multiplexer from its outer terminal`
+        : "Missing outer terminal identity: this capture cannot separate the multiplexer from its outer terminal"
+      return finalizeProbeResult({
+        ...recorded,
+        reason,
+        tests: recorded.tests.map((entry) =>
+          entry.id === "attribute" ? { ...entry, status: "probe-todo", assertionRefs: [], reason } : entry,
+        ),
+      })
+    }
+    return recorded
+  }
   const reason = "visual effect not observed in this run"
   return finalizeProbeResult({
     ...recorded,

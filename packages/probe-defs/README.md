@@ -908,6 +908,19 @@ Kitty remains undeclared because its internal Screen bridge has no separate publ
 this boundary. The current synchronous library route captures no pixels.
 No new capture API or pixel predicate is supplied here. Historical run bytes and reader interpretation stay unchanged.
 
+The twelve non-blink SGR attribute App callbacks additionally use the same-run attribute kind in
+[region-readback.ts](src/region-readback.ts) when pixel capture exists, including after a valid DECRQSS
+reply. It reads the measured sample through the existing region reader and stability pair, with
+witnessed plain, target, made-up SGR99 and handled controls. A changed made-up sample is Test broken;
+an unchanged handled control leaves PROBE TODO. A target equal to plain is Unsupported; equality
+with a distinct single-underline or inverse reference names the collapsed effect as Unsupported.
+Hidden requires equality with a same-cell blank reference; another changed hidden sample is Test
+broken. Otherwise the target differs from plain while made-up does not, and reads Supported.
+The native SGR finalizer leaves these negative mux rows PROBE TODO naming the same run's outer
+terminal, since the capture cannot separate its failure from the mux; positive changes stand.
+A missing outer identity is named and stays open. Blink, resets, colours, text-cell routes and
+library callbacks retain their existing readers. Pixel presence alone still decides nothing.
+
 The headless OSC 52 read callback seeds an isolated nonce and accepts measured silence only through
 an available, collector-qualified sentinel query member. Its retained raw response and measured sentinel
 facts distinguish that negative from an unanswered capture. Malformed or unmatched replies remain
