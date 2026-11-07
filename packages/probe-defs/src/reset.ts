@@ -365,12 +365,14 @@ export const resetProbes: ProbeDefinition[] = [
               assertions: [
                 {
                   assertionType: "input_bytes",
+                  action: "reset.soft:decckm-reset-set-up",
                   kind: "positive",
                   expected: "Up+a changes from CSI A+a to SS3 A+a with DECCKM enabled",
                   observed: JSON.stringify({ control, enabled }),
                 },
                 {
                   assertionType: "input_bytes",
+                  action: "reset.soft:decstr-up",
                   kind: pass ? "positive" : "negative",
                   expected:
                     "DECSTR returns the qualified SS3 Up encoding to normal CSI Up; injected plain a still arrives",
