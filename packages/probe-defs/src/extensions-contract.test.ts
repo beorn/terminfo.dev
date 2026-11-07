@@ -1135,6 +1135,7 @@ function decidedSatisfactionSources(id: string) {
     let pendingInput: string | null = null
     return {
       term: replayTermProbeSource(new Map(), {
+        queryMode: async (modeNumber) => (modeNumber === 2004 ? (bracketed ? "set" : "reset") : null),
         write: (text) => {
           if (text === "\x1b[?2004h") bracketed = true
           else if (text === "\x1b[?2004l") bracketed = false
