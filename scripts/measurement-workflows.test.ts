@@ -11,9 +11,10 @@ import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { runInNewContext } from "node:vm"
 import { createHash } from "node:crypto"
-import { spawnSync } from "node:child_process"
+import { spawnSync, type SpawnSyncReturns } from "node:child_process"
 import { parse, stringify } from "yaml"
 import { shellQuote } from "../packages/terminfo.dev/src/daemon-client.ts"
+import { prepareCliLaunch } from "../packages/admin/src/app.ts"
 import { censusDarwinWindows } from "../packages/terminfo.dev/src/darwin-capture.ts"
 import { expect, test } from "vitest"
 
@@ -131,31 +132,43 @@ test.each([
 
 // Startup evidence must precede readiness, survive early errors and append collector stderr.
 // Existing argv/YAML tests never execute the generated shell, so they missed the empty archive.
-test.each(["waiting", "bad-receipt", "collector", "selected"] as const)(
-  "hosted command preserves startup evidence and PTY stdout through %s",
-  (scenario) => {
-    const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
-    const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
-      .run as string
-    // The runner parses the whole step before reaching any extracted caller (30392).
-    const syntax = spawnSync("/bin/bash", ["-n"], { input: collect, encoding: "utf8" })
-    expect(syntax.status, syntax.stderr).toBe(0)
-    const producer = collect.match(
-      /(?:PROBE_IDS_ARGS=""\n[\s\S]*?)?cat > "\$COMMAND_PATH" <<SCRIPT\n[\s\S]*?\nSCRIPT\n/,
-    )
-    expect(producer, "production command producer exists").not.toBeNull()
-    const directory = mkdtempSync(join(tmpdir(), "hosted-entry-"))
-    const out = join(directory, "artifacts")
-    const command = join(directory, "collect.command")
-    const collector = join(directory, scenario === "selected" ? "collector.ts" : "collector.sh")
-    mkdirSync(out)
-    try {
-      const invocation = join(out, "invocation")
-      const priority = join(out, "priority")
-      writeFileSync(
-        collector,
-        scenario === "selected"
-          ? `import { mock } from "bun:test";
+// Compose the shipping editor caller and generated command: separate mocks missed the launch/receipt
+// identity split and dotenv pollution. The PTY substitutes for GUI launch, never for the child reader.
+test.each([
+  "waiting",
+  "bad-receipt",
+  "collector",
+  "selected",
+  "editor-present",
+  "editor-absent",
+  "editor-empty",
+  "editor-missing",
+  "editor-unequal",
+  "editor-bad-receipt",
+] as const)("hosted command preserves startup evidence and PTY stdout through %s", async (scenario) => {
+  const editor = scenario.startsWith("editor-")
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
+    .run as string
+  // The runner parses the whole step before reaching any extracted caller (30392).
+  const syntax = spawnSync("/bin/bash", ["-n"], { input: collect, encoding: "utf8" })
+  expect(syntax.status, syntax.stderr).toBe(0)
+  const producer = collect.match(/(?:PROBE_IDS_ARGS=""\n[\s\S]*?)?cat > "\$COMMAND_PATH" <<SCRIPT\n[\s\S]*?\nSCRIPT\n/)
+  expect(producer, "production command producer exists").not.toBeNull()
+  const directory = mkdtempSync(join(tmpdir(), "hosted-entry-"))
+  const out = join(directory, "measurement-artifacts")
+  const command = join(directory, "collect.command")
+  const collector = join(directory, "collector.ts")
+  const launchId = "c".repeat(32)
+  const run = { id: launchId, directory, scriptPath: join(directory, `serve-${launchId}.sh`) }
+  mkdirSync(out)
+  try {
+    const invocation = join(out, "invocation")
+    const priority = join(out, "priority")
+    writeFileSync(
+      collector,
+      scenario === "selected"
+        ? `import { mock } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { getPriority } from "node:os";
 writeFileSync(${JSON.stringify(priority)}, String(getPriority()));
@@ -173,35 +186,125 @@ mock.module(${JSON.stringify(join(root, "packages/terminfo.dev/src/serve.ts"))},
 mock.module(${JSON.stringify(join(root, "packages/terminfo.dev/src/probe-output.ts"))}, () => ({ probeOutputStream: () => process.stdout }));
 await import(${JSON.stringify(join(root, "packages/terminfo.dev/src/index.tsx"))});
 `
-          : `ps -o ni= -p "$$" > ${shellQuote(priority)}\nprintf '%s\\0' "$@" "\${TERMINFO_PROBE_IDS-unset}" "$TERMINFO_CAPTURE_RUN_ID" "$TERMINFO_RUN_ID" > ${shellQuote(invocation)}\nprintf 'probe-stdout\\n'\nprintf 'collector-first\\n' >&2\nprintf 'collector-second\\n' >&2\nexit 7\n`,
+        : `import { writeFileSync } from "node:fs";
+import { getPriority } from "node:os";
+import { execFileSync } from "node:child_process";
+import { readTermFeaturesEnvironment } from ${JSON.stringify(join(root, "packages/terminfo.dev/src/terminal-child-environment.ts"))};
+writeFileSync(${JSON.stringify(priority)}, String(getPriority()));
+writeFileSync(${JSON.stringify(invocation)}, [...process.argv.slice(2), process.env.TERMINFO_PROBE_IDS ?? "unset", process.env.TERMINFO_CAPTURE_RUN_ID, process.env.TERMINFO_RUN_ID].join("\\0") + "\\0");
+${
+  editor
+    ? `const tty = execFileSync("tty", { encoding: "utf8", stdio: ["inherit", "pipe", "pipe"] }).trim();
+writeFileSync(${JSON.stringify(join(out, "child.json"))}, JSON.stringify({ reading: readTermFeaturesEnvironment(process.env, ${JSON.stringify(launchId)}, process.pid, tty), marker: process.env.TERMINFO_TERM_FEATURES_LAUNCH, control: process.env.TERMINFO_RUN_ID, capture: process.env.TERMINFO_CAPTURE_RUN_ID }));`
+    : ""
+}
+process.stdout.write("probe-stdout\\n");
+process.stderr.write("collector-first\\ncollector-second\\n");
+process.exit(7);
+`,
+    )
+    const generated = spawnSync("/bin/bash", ["-c", producer![0]], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        OUT: out,
+        COMMAND_PATH: command,
+        BUN_DIR: "/bin",
+        NODE_DIR: "/usr/bin",
+        COLLECTOR_BUN: process.execPath,
+        COLLECTOR: collector,
+        TARGET_VERSION_EXPORT: "",
+        PROBE_IDS: scenario === "selected" ? '["device.primary-da"]' : "null",
+        CAPTURE_RUN_ID: "b".repeat(32),
+      },
+    })
+    expect(generated.status, generated.stderr).toBe(0)
+    if (scenario !== "waiting") {
+      writeFileSync(join(out, "collector-ready"), "")
+      writeFileSync(
+        join(out, "host-measured.json"),
+        JSON.stringify(
+          scenario === "bad-receipt" || scenario === "editor-bad-receipt" ? {} : { runId: "a".repeat(32) },
+        ),
       )
-      const generated = spawnSync("/bin/bash", ["-c", producer![0]], {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          OUT: out,
-          COMMAND_PATH: command,
-          BUN_DIR: "/bin",
-          NODE_DIR: "/usr/bin",
-          COLLECTOR_BUN: scenario === "selected" ? process.execPath : "/bin/bash",
-          COLLECTOR: collector,
-          TARGET_VERSION_EXPORT: "",
-          PROBE_IDS: scenario === "selected" ? '["device.primary-da"]' : "null",
-          CAPTURE_RUN_ID: "b".repeat(32),
-        },
-      })
-      expect(generated.status, generated.stderr).toBe(0)
-      if (scenario !== "waiting") {
-        writeFileSync(join(out, "collector-ready"), "")
-        writeFileSync(
-          join(out, "host-measured.json"),
-          JSON.stringify(scenario === "collector" || scenario === "selected" ? { runId: "a".repeat(32) } : {}),
-        )
+    }
+    const commandEnv = { ...process.env }
+    commandEnv.HOSTED_NICE_REQUEST = join(out, "nice-request")
+    delete commandEnv.TERMINFO_PROBE_IDS
+    let result!: SpawnSyncReturns<string>
+    if (editor) {
+      const source = collect.split("<<'HOSTED_EDITOR_START'\n")[1]?.split("\nHOSTED_EDITOR_START")[0]
+      expect(source, "production editor caller exists").toBeDefined()
+      writeFileSync(join(directory, ".env"), "TERM_FEATURES=hostile-dotenv-only\n")
+      const previous = process.env.TERM_FEATURES
+      process.env.TERM_FEATURES = "hostile-parent-only"
+      try {
+        await runInNewContext(`(async () => {${source}\n})()`, {
+          process: {
+            cwd: () => root,
+            env: { APP_ID: "com.microsoft.VSCode", RUNNER_TEMP: directory, EDITOR_COMMAND_PATH: command },
+          },
+          console: { log: () => {} },
+          Bun: { sleep: async () => {} },
+          require: (id: string) => {
+            if (id === "node:fs") {
+              return {
+                existsSync: (path: string) => path === join(directory, "owner-tty.txt"),
+                readFileSync,
+                writeFileSync,
+              }
+            }
+            if (id.endsWith("/daemon-client.ts")) return { createProbeRun: () => run, shellQuote }
+            if (id.endsWith("/app.ts")) {
+              return {
+                prepareCliLaunch,
+                launchPreparedCli: (prepared: ReturnType<typeof prepareCliLaunch>) => {
+                  expect(prepared.env.TERM_FEATURES).toBeUndefined()
+                  expect(prepared.env.TERMINFO_RUN_ID).toBe(launchId)
+                  expect(prepared.env.TERMINFO_TERM_FEATURES_LAUNCH).toBe(launchId)
+                  if (scenario === "editor-missing") {
+                    delete prepared.env.TERMINFO_TERM_FEATURES_LAUNCH
+                    delete prepared.env.TERMINFO_RUN_ID
+                  }
+                  if (scenario === "editor-unequal") prepared.env.TERMINFO_TERM_FEATURES_LAUNCH = "d".repeat(32)
+                  const terminalCommand =
+                    (scenario === "editor-present"
+                      ? "export TERM_FEATURES=terminal-own-export; "
+                      : scenario === "editor-empty"
+                        ? "export TERM_FEATURES=''; "
+                        : "") +
+                    "/bin/bash -p " +
+                    shellQuote(run.scriptPath)
+                  const args =
+                    process.platform === "darwin"
+                      ? ["-q", "/dev/null", "/bin/bash", "-p", "-c", terminalCommand]
+                      : ["-q", "-e", "-c", "/bin/bash -p -c " + shellQuote(terminalCommand), "/dev/null"]
+                  result = spawnSync("/usr/bin/script", args, {
+                    cwd: directory,
+                    env: {
+                      ...prepared.env,
+                      HOSTED_NICE_REQUEST: commandEnv.HOSTED_NICE_REQUEST,
+                      TERMINFO_PROBE_IDS: undefined,
+                    },
+                    encoding: "utf8",
+                  })
+                  return { identityPath: prepared.identityPath }
+                },
+                ownedCliProcessWindow: () => ({ provider: "cli-process", ownerPid: 123, tty: "/dev/fixture" }),
+              }
+            }
+            throw Error(`Unexpected editor dependency: ${id}`)
+          },
+        })
+      } finally {
+        if (previous === undefined) delete process.env.TERM_FEATURES
+        else process.env.TERM_FEATURES = previous
       }
-      const commandEnv = { ...process.env }
-      commandEnv.HOSTED_NICE_REQUEST = join(out, "nice-request")
-      delete commandEnv.TERMINFO_PROBE_IDS
-      const result = spawnSync(
+      expect(readFileSync(join(directory, "measurement-artifacts/editor-launch.json"), "utf8")).not.toContain(
+        "hostile-parent-only",
+      )
+    } else {
+      result = spawnSync(
         "/bin/bash",
         [
           "-c",
@@ -211,50 +314,79 @@ await import(${JSON.stringify(join(root, "packages/terminfo.dev/src/index.tsx"))
         ],
         { encoding: "utf8", env: commandEnv },
       )
-      const log = readFileSync(join(out, "collector.log"), "utf8")
-      expect(log).toMatch(/phase=entry.*utc=.*pid=.*tty=/)
-      if (scenario === "waiting") {
+    }
+    const log = readFileSync(join(out, "collector.log"), "utf8")
+    expect(log).toMatch(/phase=entry.*utc=.*pid=.*tty=/)
+    if (scenario === "waiting") {
+      expect(result.status).toBe(1)
+      expect(log).toContain("early-wait-error")
+      expect(log).toContain("Receipt self-parse never succeeded")
+      expect(log).not.toContain("phase=receipt-ready")
+    } else {
+      expect(log).toContain("phase=receipt-ready")
+      if (scenario === "bad-receipt" || scenario === "editor-bad-receipt") {
         expect(result.status).toBe(1)
-        expect(log).toContain("early-wait-error")
-        expect(log).toContain("Receipt self-parse never succeeded")
-        expect(log).not.toContain("phase=receipt-ready")
+        expect(log).toContain("Receipt has no launch run ID")
+        expect(log).not.toContain("phase=collector-invoked")
       } else {
-        expect(log).toContain("phase=receipt-ready")
-        if (scenario === "bad-receipt") {
-          expect(result.status).toBe(1)
-          expect(log).toContain("Receipt has no launch run ID")
-          expect(log).not.toContain("phase=collector-invoked")
-        } else {
-          // AC2: the real CLI must pass the selection to the collector, before any probe callback.
-          if (scenario === "selected") {
-            expect(JSON.parse(readFileSync(join(out, "selection.json"), "utf8"))).toEqual({
-              ids: ["device.primary-da"],
+        // AC2: the real CLI must pass the selection to the collector, before any probe callback.
+        if (scenario === "selected") {
+          expect(JSON.parse(readFileSync(join(out, "selection.json"), "utf8"))).toEqual({
+            ids: ["device.primary-da"],
+          })
+        }
+        expect(log).toContain("phase=run-id-parsed")
+        expect(log).toContain("phase=collector-invoked")
+        expect(Number(readFileSync(priority, "utf8"))).toBeGreaterThanOrEqual(10)
+        if (!editor) {
+          expect(readFileSync(commandEnv.HOSTED_NICE_REQUEST, "utf8").split("\0").slice(0, -1)).toEqual(["-n", "10"])
+        }
+        expect(log).toContain("collector-first\ncollector-second\n")
+        expect(log).toContain("phase=collector-exited status=7")
+        expect(readFileSync(join(out, "collector-exit"), "utf8")).toBe("7\n")
+        expect(String(result!.stdout).replace(/\r\n/g, "\n")).toBe("probe-stdout\n")
+        if (editor) {
+          const child = JSON.parse(readFileSync(join(out, "child.json"), "utf8")) as {
+            reading: unknown
+            marker?: string
+            control?: string
+            capture?: string
+          }
+          expect(child.capture).toBe("b".repeat(32))
+          expect(child.marker).toBe(
+            scenario === "editor-missing" ? undefined : scenario === "editor-unequal" ? "d".repeat(32) : launchId,
+          )
+          if (scenario === "editor-missing" || scenario === "editor-unequal") {
+            expect(child.reading).toEqual({
+              status: "unavailable",
+              reason: "TERM_FEATURES child environment lacks this run's clean-launch marker and run control",
+            })
+            expect(child.control).toBe("a".repeat(32))
+          } else {
+            expect(child.reading).toMatchObject({
+              status: "measured",
+              runId: launchId,
+              launchMarker: launchId,
+              present: scenario !== "editor-absent",
+              value: scenario === "editor-present" ? "terminal-own-export" : "",
             })
           }
-          expect(log).toContain("phase=run-id-parsed")
-          expect(log).toContain("phase=collector-invoked")
-          expect(Number(readFileSync(priority, "utf8"))).toBeGreaterThanOrEqual(10)
-          expect(readFileSync(commandEnv.HOSTED_NICE_REQUEST, "utf8").split("\0").slice(0, -1)).toEqual(["-n", "10"])
-          expect(log).toContain("collector-first\ncollector-second\n")
-          expect(log).toContain("phase=collector-exited status=7")
-          expect(readFileSync(join(out, "collector-exit"), "utf8")).toBe("7\n")
-          expect(result.stdout).toBe("probe-stdout\n")
-          expect(readFileSync(join(out, "invocation"), "utf8").split("\0").slice(0, -1)).toEqual([
-            "test",
-            "--output",
-            join(out, "run.json"),
-            ...(scenario === "selected" ? ["--probe-ids", '["device.primary-da"]'] : []),
-            "unset",
-            "b".repeat(32),
-            "a".repeat(32),
-          ])
         }
+        expect(readFileSync(join(out, "invocation"), "utf8").split("\0").slice(0, -1)).toEqual([
+          "test",
+          "--output",
+          join(out, "run.json"),
+          ...(scenario === "selected" ? ["--probe-ids", '["device.primary-da"]'] : []),
+          "unset",
+          "b".repeat(32),
+          editor && scenario !== "editor-missing" && scenario !== "editor-unequal" ? launchId : "a".repeat(32),
+        ])
       }
-    } finally {
-      rmSync(directory, { recursive: true, force: true })
     }
-  },
-)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
 
 // A successful display-capture command proves no app window. Exercise the existing evidence
 // block with platform command responses, keeping real subprocess capture and artifact writes.
