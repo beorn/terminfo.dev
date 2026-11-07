@@ -4907,22 +4907,27 @@ beforeEach(() => {
     process.arch === "x64" &&
     process.env.KITTY_BINARY === undefined
   ) {
-    ownedKittyBinary ??= join(
-      execFileSync(
-        "nix",
-        [
-          "eval",
-          "--offline",
-          "--raw",
-          `${fileURLToPath(new URL("../../../../", import.meta.url))}#kitty-official.outPath`,
-        ],
-        {
-          encoding: "utf8",
-        },
-      ).trim(),
-      "bin",
-      "kitty",
-    )
+    if (ownedKittyBinary === undefined) {
+      const cache = mkdtempSync(join(tmpdir(), "terminfo-kitty-prerequisite-"))
+      try {
+        ownedKittyBinary = join(
+          execFileSync(
+            "nix",
+            [
+              "eval",
+              "--offline",
+              "--raw",
+              `${fileURLToPath(new URL("../../../../", import.meta.url))}#kitty-official.outPath`,
+            ],
+            { encoding: "utf8", env: { ...process.env, XDG_CACHE_HOME: cache } },
+          ).trim(),
+          "bin",
+          "kitty",
+        )
+      } finally {
+        rmSync(cache, { recursive: true, force: true })
+      }
+    }
     vi.stubEnv("KITTY_BINARY", ownedKittyBinary)
   }
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
