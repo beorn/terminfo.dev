@@ -306,7 +306,10 @@ test.each([
     )
     expect(parsed).toMatchObject({ status: "unsupported", assertionType: "query_reply" })
     expect(parsed?.frames).toBeUndefined()
-    expect(JSON.parse(result.response!).frames).toEqual(captures.map(({ role, ref, label }) => ({ role, ref, label })))
+    expect(JSON.parse(result.response!)).toHaveProperty(
+      "frames",
+      captures.map(({ role, ref, label }) => ({ role, ref, label })),
+    )
   } else {
     expect(result.assertions).toBeUndefined()
     if (playback === "blank") expect(result.observation?.note).toContain("playback image did not paint")
@@ -448,7 +451,10 @@ test.each(["silent", "ok", "refused", "foreign-error"] as const)(
       )
       expect(parsed).toMatchObject({ status: "unsupported", assertionType: "query_reply" })
       expect(parsed?.frames).toBeUndefined()
-      expect(JSON.parse(result.response!).frames).toEqual(captures.map(({ role, ref, label }) => ({ role, ref, label })))
+      expect(JSON.parse(result.response!)).toHaveProperty(
+        "frames",
+        captures.map(({ role, ref, label }) => ({ role, ref, label })),
+      )
     } else {
       expect(result.assertions).toBeUndefined()
       expect(result.observation?.note).toContain("observed replies")
