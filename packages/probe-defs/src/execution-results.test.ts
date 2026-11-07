@@ -904,7 +904,8 @@ it("keeps native missing-observation note overrides and prompt consumption branc
 it("preserves native callback note fallback for unmeasured widths and TERM_FEATURES", async () => {
   // These native callbacks retained no deciding cells. Their final failure reason previously
   // came from callback.note; status-only fixtures miss that producer-to-recorder loss.
-  for (const id of ["extensions.osc22-pointer", "editing.decsace"]) {
+  // OSC22 uses selected-shape replies now; extensions-osc22-app.test.ts owns its silent cases.
+  for (const id of ["editing.decsace"]) {
     const term = [...extensionsProbes, ...editingProbes].find((row) => row.id === id)?.term
     if (!term) throw new Error(`Missing native callback ${id}`)
     const missing = await term({

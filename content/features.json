@@ -2495,6 +2495,8 @@
   },
   "extensions.osc22-pointer": {
     "tier1": "excluded",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the collector reads the selected shape from OSC 22 replies; the visible pointer is outside its evidence, so a full-probe badge would claim more than it measures",
     "name": "Pointer shape (OSC 22)",
     "slug": "osc-22-pointer-shape",
     "url": "https://sw.kovidgoyal.net/kitty/pointer-shapes/",
