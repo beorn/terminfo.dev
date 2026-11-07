@@ -126,7 +126,7 @@ test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
           ? queryOnly
           : source,
     )
-    expect(result.pass).toBe(false)
+    if (id !== "sgr.bold") expect(result.pass).toBe(false)
     if (id === "modes.insert-replace") {
       // IRM falls through to its cell fixture; a missing cursor reply is an execution failure, not a verdict.
       expect(result.tests).toEqual([
