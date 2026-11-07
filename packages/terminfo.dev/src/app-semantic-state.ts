@@ -2,7 +2,7 @@ import { statSync } from "node:fs"
 import { join } from "node:path"
 import type { ProbeSubject } from "@terminfo/probe-defs"
 
-// CTO 2026-11-06 OSC133/633 ruling: declarations match the exact App/mux version.
+// Reviewed declarations match the exact App/mux version.
 // This is also the collector-side home for the owned semantic reader's App selection.
 const promptFeatures = [
   "extensions.osc133-a",
@@ -94,6 +94,33 @@ const declarations = [
     reason:
       "Untestable (no setup): Ghostty 1.4.0 exposes the end mark, but the exit number reaches a desktop notification. Read tag v1.4.0 src/terminal/Terminal.zig:2266-2271 and src/apprt/gtk/class/surface.zig:1204-1218. A mark alone cannot observe D or the complete A/C/D cycle.",
   })),
+  {
+    kind: "term",
+    id: "ghostty",
+    version: "1.4.0",
+    os: "linux",
+    featureId: "extensions.osc666-termprop",
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 has no OSC 666 terminal-property handler or public property readback. Read tag v1.4.0 src/terminal/osc.zig:978-982,752,1103; src/terminal/stream.zig:579 and src/termio/Termio.zig:346-349 keep unknown OSC capture disabled, so the command is discarded without a target-state reading.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.2",
+    os: "linux",
+    featureId: "extensions.osc666-termprop",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.2 drops OSC 666 without storing, reporting or forwarding a terminal property. Read ansi.c:1267-1289 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e); the OSC allowlist and non-title exit expose no property reading.",
+  },
+  {
+    kind: "term",
+    id: "xterm",
+    version: "411",
+    os: "linux",
+    featureId: "extensions.osc666-termprop",
+    reason:
+      "Untestable (no way): xterm 411 has no OSC 666 terminal-property handler or public property readback. Read misc.c:3480-3502,4353-4355 in xterm-411.tgz (SHA256 969be283); the unknown-OSC arm only traces an unnamed rejection and stores no property.",
+  },
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */
