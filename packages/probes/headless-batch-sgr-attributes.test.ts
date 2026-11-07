@@ -9,6 +9,8 @@
  */
 import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
+import { readCallLog, withCallLog } from "viprobe"
+import retainedAlacritty from "./fixtures/alacritty-overline-retained.json"
 import { sgrProbes, finalizeVisualResult } from "../probe-defs/src/sgr.ts"
 import { recordExecutedProbe } from "../probe-defs/src/helpers.ts"
 import type { CaptureRequest, ObservationFrame, TermProbeSource } from "../probe-defs/src/types.ts"
@@ -184,4 +186,59 @@ test("paint witnesses bind fresh captures and replay the same invocation", async
   expect(new Set(after.map((entry) => entry.nonce)).size).toBe(1)
   expect(before[0]?.nonce).not.toBe(after[0]?.nonce)
   expect(markers(replay.writes)).toEqual(before)
+})
+
+// AC: a real native negative must survive callback replay with its same-run controls.
+// Synthetic paint cases above cannot catch a mismatch in retained native decision inputs.
+test("Alacritty overline stays Unsupported with real same-run native controls", async () => {
+  expect(retainedAlacritty).toMatchObject({
+    runId: "77346bfd698185a03cb03cc42d5e29e1",
+    suiteId: "ed79b2449dac",
+    sourceRevision: "a2e601619ebccb367ea5aa5772e5a2aff936b201",
+    identity: "unverified",
+    source: { kind: "live" },
+    subject: { kind: "term", id: "alacritty", version: "0.17.0", os: "linux" },
+    featureId: "sgr.overline",
+  })
+  const frames: ObservationFrame[] = []
+  const log = readCallLog(JSON.parse(retainedAlacritty.callLog), {
+    onOperation(operation) {
+      if (operation.path === "context.capture" && "value" in operation.outcome) {
+        frames.push(operation.outcome.value as ObservationFrame)
+      }
+    },
+  })
+  const probe = sgrProbes.find(({ id }) => id === retainedAlacritty.featureId)
+  if (!probe?.term) throw new Error("Missing retained Alacritty overline callback")
+  const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
+  expect(replay.context.kind).toBe("live")
+  const callback = await probe.term(replay.context)
+  replay.finish()
+  const featureId = probe.id
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: "2026-11-07T10:27:39Z" },
+    observation: callback.observation && { featureId, ...callback.observation },
+    coverage: callback.notTested && { featureId, rawReplyRef: featureId, ...callback.notTested },
+    assertions: (callback.assertions ?? []).map((entry) => ({ featureId, ...entry })),
+    tests: callback.tests,
+    rawReplyRef: featureId,
+    criterionBranch: callback.criterionBranch,
+  })
+  const sample = (name: string) => {
+    const frame = frames.find(({ label }) => label === `sgr.overline: ${name}`)
+    if (!frame?.regionDigest) throw new Error(`Missing retained ${name} sample`)
+    expect(frame.kind).toBe("pixels")
+    expect(frame.regionRectangle).toEqual({ x: 20, y: 36, width: 310, height: 18 })
+    return frame.regionDigest
+  }
+  expect(sample("target")).toBe(sample("plain"))
+  expect(sample("made-up")).toBe(sample("plain"))
+  expect(sample("handled")).not.toBe(sample("plain"))
+  expect(sample("inverse")).not.toBe(sample("plain"))
+  expect(finalizeVisualResult(recorded, { kind: "term" }, frames)).toMatchObject({
+    featureId,
+    status: "unsupported",
+    reason: "sgr.overline: drew nothing for this SGR",
+  })
 })

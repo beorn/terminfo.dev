@@ -71,6 +71,8 @@ it.each(["tmux", "screen", "darwin-screen"])(
     }}))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
       assert.equal(options.subject.kind,preflightOnly?"term":"mux");assert.equal(options.subject.id,preflightOnly?"kitty":mux)
+      // Native SGR attribution needs these facts during callbacks, before the final run subject exists.
+      if(!preflightOnly){assert.equal(options.subject.version,version);assert.equal(options.subject.outerTerminal,"kitty")}
       if(!darwin)assert.equal(options.ownedTerminal.clipboard.assertOwned,verify)
       else assert.equal(options.ownedTerminal.clipboard,undefined)
       inBatch=true
