@@ -282,7 +282,7 @@ test("placeholders decide from pixels, with the quiet transmit and an ordinary p
   const reference = captures.filter((capture) => capture.label.includes("SGR"))
   expect(reference).toMatchObject([{ role: "control", cells: true }])
   expect(writes.slice(0, reference[0]!.writesBefore).join("")).toContain("\x1b[48;2;255;0;0m")
-  expect(JSON.parse(result.response!).digests.reference).toBe("with-image")
+  expect(JSON.parse(result.response!)).toMatchObject({ digests: { reference: "with-image" } })
 })
 
 // AC6: prerequisite silence is a declared absence only when BOTH owned query windows qualify.
@@ -320,8 +320,9 @@ test.each([
       featureId,
       attempt: { scope: "probe", startedAt: new Date(0).toISOString() },
       ...result,
-      coverage: result.notTested,
-      assertions: result.assertions ?? [],
+      observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
+      coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
+      assertions: (result.assertions ?? []).map((assertion) => ({ ...assertion, featureId, rawReplyRef: featureId })),
     })
     expect(recorded.status).toBe(status)
     expect(captures).toHaveLength(0)
@@ -333,9 +334,10 @@ test.each([
       query: { raw: outcomes[1]!.raw, reason: outcomes[1]!.reason },
     })
     if (status === "untestable") {
-      const retained = JSON.parse(result.response!)
-      expect(retained.transfer.sentinel).toEqual({ atMs: 10, graceMs: 250 })
-      expect(retained.query.sentinel).toEqual({ atMs: 10, graceMs: 250 })
+      expect(JSON.parse(result.response!)).toMatchObject({
+        transfer: { sentinel: { atMs: 10, graceMs: 250 } },
+        query: { sentinel: { atMs: 10, graceMs: 250 } },
+      })
     }
   }
 })
@@ -370,14 +372,14 @@ test("text painted by an ordinary placement fails image qualification and record
   const recorded = recordExecutedProbe({
     featureId,
     attempt: { scope: "probe", startedAt: new Date(0).toISOString() },
-    observation: result.observation,
+    observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
     tests: result.tests,
     assertions: [],
   })
   expect(recorded.status).toBe("probe-invalid")
   expect(result.assertions).toBeUndefined()
   expect(result.observation?.note).toContain("reference")
-  expect(JSON.parse(result.response!).placementAck).toContain("ENOENT:No such image")
+  expect(JSON.parse(result.response!)).toMatchObject({ placementAck: expect.stringContaining("ENOENT:No such image") })
 })
 
 test("a pixel arm with no cell adapter decides from pixels and records the absent adapter", async () => {
