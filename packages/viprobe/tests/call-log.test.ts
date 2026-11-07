@@ -7,6 +7,46 @@
 import { expect, test } from "vitest"
 import { createCallLog, IncompleteReplay, readCallLog, withCallLog } from "../src/index.ts"
 
+// Source queries return the inner TTY recorder's matched array directly. Single-recorder
+// fixtures miss a foreign array proxy retained after both recording lifetimes finish.
+test("nested recorder match arrays serialize and replay after both sessions finish", async () => {
+  const raw = "\x1bP1$r0;5m\x1b\\"
+  const match = Object.assign([raw, "0;5"], { index: 0, input: raw, groups: undefined })
+  const ttyLog = createCallLog()
+  const tty = withCallLog(
+    {
+      async matchResponse() {
+        return { response: { match } }
+      },
+    },
+    { mode: "record", log: ttyLog },
+  )
+  const source = {
+    async query() {
+      return (await tty.context.matchResponse()).response.match
+    },
+  }
+  const log = createCallLog()
+  const capture = withCallLog(source, { mode: "record", log })
+  const inspect = async (context: typeof source) => {
+    const result = await context.query()
+    expect(result[0]).toBe(raw)
+    expect(result[1]).toBe("0;5")
+    expect(result.index).toBe(0)
+    expect(result.input).toBe(raw)
+    expect(Object.hasOwn(result, "groups")).toBe(true)
+    expect(result.groups).toBeUndefined()
+  }
+  await inspect(capture.context)
+  tty.finish()
+  capture.finish()
+  const bytes = JSON.stringify(log)
+  const replay = withCallLog<typeof source>(null, { mode: "replay", log: readCallLog(JSON.parse(bytes)) })
+  await inspect(replay.context)
+  replay.finish()
+  expect(JSON.stringify(readCallLog(JSON.parse(bytes)))).toBe(bytes)
+})
+
 // readResponse hands start/cancel functions through its registration callback.
 // Object-only callback fixtures cannot prove that invoking these effects is recorded and replayed.
 test("deferred callback functions remain ordered operations after persistence", async () => {
