@@ -432,7 +432,8 @@ it("retains erased DECAWM evidence before wrap emits fixture bytes", async () =>
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
-// Mode2031's missing protocol facility is TODO; reset's initial read still must succeed.
+// Mode2031's missing protocol facility is TODO. Soft reset can use input effects,
+// but this context supplies no actuator; preserve the real reply failure only for null.
 it.each([
   ["modes.color-scheme-reporting", 2031, null],
   ["reset.soft", 1, null],
@@ -473,9 +474,10 @@ it.each([
   if (id === "modes.color-scheme-reporting") {
     expect(stored.reason).toBe("no DECRPM reply")
   } else if (ps === 0) {
-    expect(stored.reason).toBe("Cannot restore prior application-cursor mode without its readback")
+    expect(stored.reason).toBe("Soft-reset effect needs owned key injection and input readback")
+    expect(callback.note).toContain("DECRPM mode 1 returned Ps 0")
   } else {
-    expect(stored.reason).toContain("no usable DECRPM reply; the public projection returned null and retained no bytes")
+    expect(stored.reason).toContain("Soft-reset effect needs owned key injection and input readback")
     expect(stored.reason).toContain(
       `sent ${JSON.stringify(sequence)}; received ${JSON.stringify(received)}; timeout 37 ms`,
     )
