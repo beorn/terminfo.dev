@@ -21,6 +21,24 @@ const promptFeatures = [
 ] as const
 
 const declarations = [
+  // CTO third-table Ask4: these fourteen App positions need this run's bus absence.
+  ...[
+    { kind: "term", id: "kitty", version: "0.49.2" },
+    { kind: "term", id: "ghostty", version: "1.4.0" },
+    { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10" },
+    { kind: "term", id: "alacritty", version: "0.17.0" },
+    { kind: "term", id: "xterm", version: "411" },
+    { kind: "mux", id: "screen", version: "5.0.2" },
+    { kind: "mux", id: "tmux", version: "3.8" },
+  ].flatMap((subject) =>
+    ["extensions.notifications", "extensions.osc777-notify"].map((featureId) => ({
+      ...subject,
+      os: "linux",
+      featureId,
+      requiresMissingSessionBus: true,
+      reason: `Untestable (no setup): ${subject.id} ${subject.version} desktop notification delivery requires a session bus.`,
+    })),
+  ),
   ...promptFeatures.map((featureId) => ({
     kind: "term",
     id: "xterm",
