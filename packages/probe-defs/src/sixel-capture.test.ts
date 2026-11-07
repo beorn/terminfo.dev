@@ -10,7 +10,7 @@
 import { expect, test } from "vitest"
 import { SIXEL_CURSOR_ROW, SIXEL_REGION, sixelPayload, sixelReadback, sixelTileSize } from "./sixel-capture.ts"
 import { extensionsProbes } from "./extensions.ts"
-import type { TermProbeSource } from "./types.ts"
+import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 const GEOMETRY = { cellWidth: 8, cellHeight: 17, textWidth: 8 * 80, textHeight: 17 * 24 }
 
@@ -44,10 +44,11 @@ test("the expected frame is an independent SGR route to the same pixels, not the
   expect(spec.expected).not.toContain("\x1bP")
   expect(spec.expected).toContain("\x1b[48;2;255;0;0m")
   expect(spec.edit).toContain("\x1bP0;1;0q")
-  // The run's table decides: nothing here declines the row by name, and there is no ignored frame
-  // pretending to be a second discriminator.
+  // The ignored frame must preserve the target's exact body, dropping only DCS framing.
   expect(spec.noIndependentReference).toBeUndefined()
-  expect(spec).not.toHaveProperty("ignored")
+  expect(spec.ignored).toContain(sixelPayload(sixelTileSize(GEOMETRY)).slice(2, -2))
+  expect(spec.ignored).not.toContain("\x1bP")
+  expect(spec.ignored).not.toContain("\x1b\\")
 })
 
 test("only the block's interior cell is compared, with the sentinel and cursor outside the tile", () => {
@@ -129,6 +130,83 @@ function calibratedPixelArm(geometry = GEOMETRY, captureKind: "pixels" | "text-c
   } as unknown as TermProbeSource
   return { context, writes }
 }
+
+/** Screen's retained failure: truecolor paints nothing, indexed red works, DCS prints its body. */
+function printedSixelArm(
+  options: { truecolor?: boolean; indexed?: boolean; target?: "printed" | "third"; movedCrop?: boolean } = {},
+) {
+  const { context, writes } = calibratedPixelArm()
+  let plane = "blank"
+  let glyph = ""
+  let reads = 0
+  context.write = (bytes) => {
+    writes.push(bytes)
+    if (bytes.includes("\x1b[2J")) plane = "blank"
+    if (bytes.includes("\x1bP0;1;0q")) plane = options.target ?? "printed"
+    else if (bytes.includes('0;1;0q"1;1;24;54')) plane = "printed"
+    if (bytes.includes("\x1b[48;2;255;0;0m") && options.truecolor) plane = "red"
+    if (bytes.includes("\x1b[48;5;196m") && options.indexed !== false) plane = "red"
+    if (/^\x1b\[1;1H.$/.test(bytes)) glyph = bytes.slice(-1)
+  }
+  context.capture = async ({ role, label, cells }) => {
+    const frame: ObservationFrame = {
+      role,
+      label,
+      capturedAt: ++reads,
+      ref: `sha256:frame${reads}`,
+      regionDigest: cells?.top === 1 && cells.left === 1 ? `witness:${glyph}` : `plane:${plane}`,
+      pixelsDigest: `window:${plane}:${glyph}`,
+      ...(options.movedCrop
+        ? { regionRectangle: { x: label === "extensions.sixel: expected frame" ? 1 : 0, y: 0, width: 8, height: 17 } }
+        : {}),
+    }
+    return frame
+  }
+  return { context, writes }
+}
+
+// The whole callback, not the generic oracle, owns the sixel bytes and retry boundary.
+test.each([
+  { name: "printed body with indexed fallback", options: {}, outcome: "unsupported", indexed: true },
+  { name: "printed body with working truecolor", options: { truecolor: true }, outcome: "unsupported", indexed: false },
+  {
+    name: "nonmatching target after fallback",
+    options: { target: "third" as const },
+    outcome: "inconclusive",
+    indexed: true,
+  },
+  {
+    name: "nonmatching target with valid truecolor",
+    options: { truecolor: true, target: "third" as const },
+    outcome: "inconclusive",
+    indexed: false,
+  },
+  { name: "collapsed indexed reference", options: { indexed: false }, outcome: "inconclusive", indexed: true },
+  {
+    name: "invalid crop with equal control digests",
+    options: { movedCrop: true },
+    outcome: "inconclusive",
+    indexed: false,
+  },
+])("sixel controls: $name", async ({ options, outcome, indexed }) => {
+  const { context, writes } = printedSixelArm(options)
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
+  if (!definition?.term) throw new Error("missing sixel callback")
+  const result = await definition.term(context)
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(writes.some((bytes) => bytes.includes("\x1b[48;5;196m"))).toBe(indexed)
+  if (outcome === "unsupported") {
+    expect(result.observation?.note).toBe(
+      "the post-sequence frame equals the sixel's own bytes written as plain text, so this terminal drew no image and passed none on",
+    )
+  } else if ("target" in options && options.target === "third") {
+    expect(result.observation?.note).toContain("third distinct frame")
+  } else if ("movedCrop" in options && options.movedCrop) {
+    expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+  } else {
+    expect(result.observation?.note).toContain("seed frame and the expected frame read the same cells")
+  }
+})
 
 test("the row sizes its tile from THIS run's reported geometry, not from a fixed value", async () => {
   // 3 cells of 8x17 is 24px wide and 51px tall, which rounds up to 54 — the payload names both.
