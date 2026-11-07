@@ -39,6 +39,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/linux-clipboard.ts",
   "packages/terminfo.dev/src/owned-terminal.ts",
   "packages/terminfo.dev/src/terminal-child-environment.ts",
+  "packages/terminfo.dev/src/app-semantic-state.ts",
   "packages/terminfo.dev/src/owned-process.ts",
   "packages/terminfo.dev/src/windows-console-ffi.ts",
   "packages/terminfo.dev/src/windows-console-cells.ts",

@@ -1105,7 +1105,6 @@ test.each(appResetProbes)(
 )
 
 const appOnlyEffects = [
-  "extensions.osc22-pointer",
   "extensions.osc777-notify",
   "extensions.osc666-termprop",
   "extensions.osc3008-context",
