@@ -5,7 +5,7 @@
  * @testonly none
  */
 /* oxlint-disable typescript/no-deprecated -- Exercise the collector's real TerminalBackend execution path. */
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { createGhosttyNativeBackend } from "@termless/ghostty-native"
 import { ALL_PROBES, declaredUntestableResult, isDeclaredUntestable } from "@terminfo/probe-defs"
 import { collectBatch } from "./headless-batch.ts"
@@ -35,12 +35,28 @@ test.runIf(OWNED_LAYOUT).each(["real", "disagree", "other-cause"] as const)(
         },
       }
     })
-    const batch = await collectBatch(async () => createGhosttyNativeBackend(), "ghostty-native", definitions)
-    const repeatPasses = JSON.parse(batch.rawReplies["collector.repeatPasses"]!)
+    const write = process.stderr.write.bind(process.stderr)
+    const progress = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      if (
+        typeof chunk === "string" &&
+        /^headless ghostty-native probe extensions\.osc(?:117-reset-highlight-bg|119-reset-highlight-fg)\n$/.test(chunk)
+      )
+        return true
+      return write(chunk)
+    })
+    const batch = await collectBatch(async () => createGhosttyNativeBackend(), "ghostty-native", definitions).finally(
+      () => progress.mockRestore(),
+    )
+    const repeatPasses = JSON.parse(batch.rawReplies["collector.repeatPasses"]!) as {
+      second: Record<string, string>
+    }
     for (const id of ids) {
-      const repeated = JSON.parse(batch.rawReplies[`collector.repeats.${id}`]!)
-      const second = repeated.secondResults[0]
-      const third = repeated.thirdResults[0]
+      const repeated = JSON.parse(batch.rawReplies[`collector.repeats.${id}`]!) as {
+        secondResults: typeof batch.results
+        thirdResults: typeof batch.results
+      }
+      const second = repeated.secondResults[0]!
+      const third = repeated.thirdResults[0]!
       expect([second.status, third.status]).toEqual(["untestable", "untestable"])
       const row = batch.results.find((result) => result.featureId === id)!
       if (mode === "real") {
