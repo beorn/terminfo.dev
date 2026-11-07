@@ -42,7 +42,7 @@ import {
 // Retained Kitty geometry: two cells at 13x29 pixels, exceeding one protocol payload chunk.
 const frame = { width: 26, height: 58, rgb: [255, 0, 0] as const }
 
-test("every animation frame carries an explicit gap and the loop count is explicit", () => {
+test("every animation frame carries its size, and frame gaps and loop count are explicit", () => {
   const root = kittyFrameTransfer(7, frame, { root: true })
   const later = kittyFrameTransfer(7, frame)
   expect(root).toContain("a=t,")
@@ -54,7 +54,7 @@ test("every animation frame carries an explicit gap and the loop count is explic
   expect(kittyRootGap(7)).toContain("a=a,i=7,r=1")
   expect(kittyRootGap(7)).toContain(`z=${String(KITTY_GAP_MS)}`)
   expect(later).toContain(`,z=${String(KITTY_GAP_MS)}`)
-  expect(later).not.toContain(",s=26")
+  expect(later.split(";")[0]).toContain(",s=26,v=58")
   const start = kittyStartPlayback(7)
   expect(start).toContain("s=3")
   expect(start).toContain(`v=${String(KITTY_LOOP_FOREVER)}`)
