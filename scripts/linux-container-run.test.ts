@@ -35,33 +35,37 @@ import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.d
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
 
+function launchArgs(app: string): string[] {
+  const source = readFileSync(launcher, "utf8")
+  const marker = `\n    ${app})`
+  const start = source.indexOf(marker)
+  const end = source.indexOf("\n      ;;", start)
+  if (start < 0 || end < 0) throw new Error(`${app} launch descriptor is missing`)
+  const body = source.slice(start + marker.length, end)
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      [
+        "set -euo pipefail",
+        `target_id=${app}`,
+        "target_version=1.4.0",
+        body,
+        'printf "%s\\0" "${target_launch_args[@]}"',
+      ].join("\n"),
+    ],
+    { encoding: "utf8", env: { ...process.env, HOME: dir } },
+  )
+  expect(result.status, result.stderr).toBe(0)
+  return result.stdout.split("\0").filter(Boolean)
+}
+
 // @failure Ghostty's forced --title silently disables OSC 2 and its OSC 7 public-title fallback.
 // Execute the production descriptor's argument construction; no terminal or container starts here.
 it.each(["ghostty", "wezterm"])(
   "records %s's production launch settings without suppressing application titles",
   (app) => {
-    const source = readFileSync(launcher, "utf8")
-    const marker = `\n    ${app})`
-    const start = source.indexOf(marker)
-    const end = source.indexOf("\n      ;;", start)
-    if (start < 0 || end < 0) throw new Error(`${app} launch descriptor is missing`)
-    const body = source.slice(start + marker.length, end)
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        [
-          "set -euo pipefail",
-          `target_id=${app}`,
-          "target_version=1.4.0",
-          body,
-          'printf "%s\\0" "${target_launch_args[@]}"',
-        ].join("\n"),
-      ],
-      { encoding: "utf8", env: { ...process.env, HOME: dir } },
-    )
-    expect(result.status, result.stderr).toBe(0)
-    const args = result.stdout.split("\0").filter(Boolean)
+    const args = launchArgs(app)
     expect(args.length).toBeGreaterThan(0)
     expect(args.some((arg) => arg === "--title" || arg.startsWith("--title="))).toBe(false)
     if (app === "wezterm") expect(args.slice(-2)).toEqual(["--config", "log_unknown_escape_sequences=true"])
@@ -137,7 +141,7 @@ type FontControlReceipt = {
 }
 const fontGlyphIds = (raw: string) => (JSON.parse(raw) as { g: number }[]).map((glyph) => glyph.g)
 
-function fontControl(scenario: "capable" | "positions-only" | "missing" | "failed") {
+function fontControl(scenario: "capable" | "positions-only" | "missing" | "failed", app = "kitty") {
   const root = join(dir, scenario),
     bin = join(root, "bin"),
     output = join(root, "out")
@@ -192,7 +196,13 @@ if [[ "$*" == *liga=1,calt=1* ]]; then
 else printf '[{"g":17,"cl":0,"ax":10,"dx":0}]\n'; fi`,
     )
   }
-  const args = ["--config", "NONE", "--override", "font_family=JetBrains Mono"]
+  const args = app === "alacritty" ? launchArgs(app) : ["--config", "NONE", "--override", "font_family=JetBrains Mono"]
+  const source = readFileSync(launcher, "utf8")
+  const call = source.indexOf(") prepare_font_control /out ")
+  const start = source.lastIndexOf('  case "$target_id" in', call)
+  const end = source.indexOf("\n  esac", call)
+  if (call < 0 || start < 0 || end < 0) throw new Error("Production font selection is missing")
+  const selection = source.slice(start, end + "\n  esac".length).replaceAll("/out", '"$output"')
   const result = spawnSync(
     "/usr/bin/bash",
     [
@@ -202,7 +212,9 @@ source "$1"
 shift
 output=$1
 shift
-prepare_font_control "$output" "JetBrains Mono" "$@"
+target_id=${app}
+target_launch_args=("$@")
+${app === "alacritty" ? selection : 'prepare_font_control "$output" "JetBrains Mono" "$@"'}
 printf '%s' "$FONTCONFIG_FILE" > "$output/exported-fontconfig.txt"
 `,
       "_",
@@ -227,48 +239,56 @@ printf '%s' "$FONTCONFIG_FILE" > "$output/exported-fontconfig.txt"
   return { result, output, font, styledFonts, args, log }
 }
 
-it("font control retains capable glyph IDs, exact font hash and the actual private launch pin", () => {
-  const fixture = fontControl("capable")
-  expect(fixture.result.status, fixture.result.stderr).toBe(0)
-  const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
-  expect(receipt.status).toBe("source-capable")
-  expect(receipt.proofState).toBe("source-capable")
-  expect(receipt.requestedFamily).toBe("JetBrains Mono")
-  expect(receipt.face).toBe(realpathSync(fixture.font))
-  expect(receipt.source).toMatchObject({
-    path: realpathSync(fixture.font),
-    sha256: createHash("sha256").update(readFileSync(fixture.font)).digest("hex"),
-  })
-  expect(receipt.sample).toBe("!= -> => <= ==")
-  expect(receipt.launch.args).toEqual(fixture.args)
-  expect(realpathSync(receipt.launch.path)).toBe(realpathSync(fixture.font))
-  expect(readFileSync(join(fixture.output, "exported-fontconfig.txt"), "utf8")).toBe(receipt.launch.fontconfig)
-  const xml = readFileSync(receipt.launch.fontconfig, "utf8")
-  expect(receipt.launch.fontconfigBytes).toBe(xml)
-  expect(xml).not.toContain("<include")
-  const fontDirs = [...xml.matchAll(/<dir(?:\s[^>]*)?>([^<]+)<\/dir>/g)].map((match) => match[1]!)
-  expect(fontDirs).toHaveLength(1)
-  // Native #31742: a Regular-only directory made bold/italic controls paint as plain.
-  // Preserve the calibrated Regular face while exposing its same-family style companions.
-  const pinnedFaces = readdirSync(fontDirs[0]!).map((name) => realpathSync(join(fontDirs[0]!, name)))
-  expect(new Set(pinnedFaces)).toEqual(
-    new Set([fixture.font, ...fixture.styledFonts].map((path) => realpathSync(path))),
-  )
-  expect(receipt.harfbuzz.version).toContain("fixture-version")
-  expect(fontGlyphIds(receipt.harfbuzz.on)).toEqual([501])
-  expect(fontGlyphIds(receipt.harfbuzz.off)).toEqual([17])
-  const calls = readFileSync(fixture.log, "utf8")
-  for (const argument of [
-    fixture.font,
-    "--output-format=json",
-    "--no-glyph-names",
-    "--features=liga=1,calt=1",
-    "--features=liga=0,calt=0",
-    receipt.sample,
-  ]) {
-    expect(calls).toContain(argument)
-  }
-})
+it.each(["kitty", "alacritty"])(
+  "%s font control retains capable glyph IDs, exact font hash and the actual private launch pin",
+  (app) => {
+    const fixture = fontControl("capable", app)
+    expect(fixture.result.status, fixture.result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
+    expect(receipt.status).toBe("source-capable")
+    expect(receipt.proofState).toBe("source-capable")
+    expect(receipt.requestedFamily).toBe("JetBrains Mono")
+    expect(receipt.face).toBe(realpathSync(fixture.font))
+    expect(receipt.source).toMatchObject({
+      path: realpathSync(fixture.font),
+      sha256: createHash("sha256").update(readFileSync(fixture.font)).digest("hex"),
+    })
+    expect(receipt.sample).toBe("!= -> => <= ==")
+    expect(receipt.launch.args).toEqual(fixture.args)
+    if (app === "alacritty") {
+      const option = fixture.args.indexOf("--option")
+      expect(option).toBeGreaterThanOrEqual(0)
+      expect(Bun.TOML.parse(fixture.args[option + 1]!)).toEqual({ font: { normal: { family: "JetBrains Mono" } } })
+    }
+    expect(realpathSync(receipt.launch.path)).toBe(realpathSync(fixture.font))
+    expect(readFileSync(join(fixture.output, "exported-fontconfig.txt"), "utf8")).toBe(receipt.launch.fontconfig)
+    const xml = readFileSync(receipt.launch.fontconfig, "utf8")
+    expect(receipt.launch.fontconfigBytes).toBe(xml)
+    expect(xml).not.toContain("<include")
+    const fontDirs = [...xml.matchAll(/<dir(?:\s[^>]*)?>([^<]+)<\/dir>/g)].map((match) => match[1]!)
+    expect(fontDirs).toHaveLength(1)
+    // Native #31742: a Regular-only directory made bold/italic controls paint as plain.
+    // Preserve the calibrated Regular face while exposing its same-family style companions.
+    const pinnedFaces = readdirSync(fontDirs[0]!).map((name) => realpathSync(join(fontDirs[0]!, name)))
+    expect(new Set(pinnedFaces)).toEqual(
+      new Set([fixture.font, ...fixture.styledFonts].map((path) => realpathSync(path))),
+    )
+    expect(receipt.harfbuzz.version).toContain("fixture-version")
+    expect(fontGlyphIds(receipt.harfbuzz.on)).toEqual([501])
+    expect(fontGlyphIds(receipt.harfbuzz.off)).toEqual([17])
+    const calls = readFileSync(fixture.log, "utf8")
+    for (const argument of [
+      fixture.font,
+      "--output-format=json",
+      "--no-glyph-names",
+      "--features=liga=1,calt=1",
+      "--features=liga=0,calt=0",
+      receipt.sample,
+    ]) {
+      expect(calls).toContain(argument)
+    }
+  },
+)
 
 it("font control keeps different positions with unchanged glyph IDs PROBE TODO", () => {
   const fixture = fontControl("positions-only")

@@ -542,6 +542,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       target_xtversion_mode=record
       ;;
     alacritty)
+      target_launch_args=(--option 'font.normal.family="JetBrains Mono"')
       target_command_lead=(-e)
       # Measured 2026-10-07: alacritty resolves the run user from USER/HOME/SHELL before its passwd
       # fallback, and refuses with `pw not found` only when that lookup fails. No passwd entry for
@@ -639,7 +640,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   # report stays in /out/executable-version.txt and in the app's own daemon log.
   executable_version=$(head -n 1 /out/executable-version.txt)
   case "$target_id" in
-    kitty|ghostty) prepare_font_control /out 'JetBrains Mono' "${target_launch_args[@]}" ;;
+    kitty|ghostty|alacritty) prepare_font_control /out 'JetBrains Mono' "${target_launch_args[@]}" ;;
     *) fc-match -f '%{family} | %{file}\n' 'DejaVu Sans Mono' > /out/font.txt ;;
   esac
 
