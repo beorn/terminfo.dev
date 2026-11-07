@@ -1504,7 +1504,9 @@ describe("private finite daemon startup", () => {
       assert.equal(calibrations, route === "pixels" ? 1 : 0)
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
       assert.equal(run.results.filter(observation => observation.frames?.some(frame => frame.kind === "text-cells")).length, 0)
-      if (route === "text-cells") {
+      // Hosted pixel runs must retain the same qualification refusals without replacing pixels.
+      if (route === "text-cells" || route === "pixels") {
+        assert.ok(run.textQualification, "hosted pixel capture skipped text qualification")
         assert.equal(run.textQualification.shapes.length, 5)
         assert.ok(run.textQualification.shapes.every(shape => typeof shape.reason === "string" && !shape.frames))
       } else assert.equal(run.textQualification, undefined)
@@ -1539,15 +1541,24 @@ describe("private finite daemon startup", () => {
     }
   })
 
-  it.each(["capture", "pending-write", "write-error", "refusal", "timeout", "non-windows", "final-custody", "closure"])(
-    "a hosted text capture with a retention directory takes the %s branch without Linux provenance",
-    (expectation) => {
-      home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-capture-"))
-      const result = spawnSync(
-        process.execPath,
-        [
-          "-e",
-          `
+  it.each([
+    "capture",
+    "pending-write",
+    "write-error",
+    "refusal",
+    "timeout",
+    "non-windows",
+    "final-custody",
+    "closure",
+    "closure-iterm2",
+    "closure-terminal-app",
+  ])("a hosted text capture with a retention directory takes the %s branch without Linux provenance", (expectation) => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-capture-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
       import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -1555,14 +1566,16 @@ describe("private finite daemon startup", () => {
       import { basename, join } from "node:path"
       import { Writable } from "node:stream"
       const expectation = process.env.FIXTURE_EXPECT
+      const closure = expectation.startsWith("closure")
+      const pixelApp = closure && expectation !== "closure" ? expectation.slice("closure-".length) : undefined
       // Existing xterm adapter supplies the substituted native screen; collection/retention stay real.
-      const screen = expectation === "closure" ? (await import("@termless/xtermjs")).createXtermBackend() : undefined
+      const screen = closure ? (await import("@termless/xtermjs")).createXtermBackend() : undefined
       screen?.init({ rows: 24, cols: 80 })
       const hosted = expectation !== "refusal"
       let reads = 0
       let queryWrites = 0
       const writes = []
-      const darwin = ["pending-write", "write-error", "non-windows", "final-custody", "closure"].includes(expectation)
+      const darwin = closure || ["pending-write", "write-error", "non-windows", "final-custody"].includes(expectation)
       let text = "stale"
       let finishWrite
       const out = new Writable({
@@ -1599,23 +1612,36 @@ describe("private finite daemon startup", () => {
       let captureKind = "absent"
       let captured = false
       let retainedFrame
+      let calibrations = 0
+      if (pixelApp) {
+        mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+          createDarwinCapture: async () => ({ captureRaw: async () => { throw new Error("pixel fixture must calibrate first") } })
+        }))
+        mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+          calibrateCaptureOrigin: async () => {
+            calibrations++
+            throw Object.assign(new Error("Pixel calibration fixture refusal"), { name: "CaptureCalibrationRefused" })
+          }
+        }))
+      }
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
-        detectTerminal: () => ({ name: darwin ? "kitty" : "windows-terminal", version: "", os: darwin ? "macos" : "windows", osVersion: "fixture" })
+        detectTerminal: () => ({ name: pixelApp ?? (darwin ? "kitty" : "windows-terminal"), version: "", os: darwin ? "macos" : "windows", osVersion: "fixture" })
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
         createOwnedTerminal: async () => ({
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
           readGeometry: async () => ({ status: "measured", rows: 24, cols: 80 }),
-          hostedAppId: darwin ? "kitty" : "windows-terminal",
+          hostedAppId: pixelApp ?? (darwin ? "kitty" : "windows-terminal"),
+          ...(pixelApp && { appPid: 5705 }),
           summary: "owned fixture",
           ...(darwin && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => { reads += 1;
-            if (expectation === "closure") { return { status: "read", app: "kitty", cells: {
+            if (closure) { return { status: "read", app: pixelApp ?? "kitty", cells: {
               cols: 80, rows: 24, text: Array.from({length: 24}, (_, row) => Array.from({length: 80}, (_, col) => screen.getCell(screen.getScrollback().viewportTop + row, col).char || " ").join("")), paddedRows: [], droppedLines: 0
             } } }
             return ({
@@ -1629,20 +1655,22 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
         withRawMode: async callback => callback(), drainStdin: async () => {},
-        queryMode: expectation === "closure" ? async () => "set" : tty.queryMode,
-        queryCursorPosition: expectation === "closure" ? async () => [1, 1] : tty.queryCursorPosition,
+        queryMode: closure ? async () => "set" : tty.queryMode,
+        queryCursorPosition: closure ? async () => [1, 1] : tty.queryCursorPosition,
         queryWithSentinelOutcome: async (sequence, pattern) => {
-          const raw = sequence === "\\x1b[18t" ? "\\x1b[8;24;80t" : "\\x1bP>|kitty(0.49.2)\\x1b\\\\"
+          const raw = sequence === "\\x1b[18t" ? "\\x1b[8;24;80t"
+            : pixelApp === "iterm2" ? "\\x1bP>|iTerm2 3.6.11\\x1b\\\\"
+            : pixelApp === "terminal-app" ? "\\x1b[?1;2c" : "\\x1bP>|kitty(0.49.2)\\x1b\\\\"
           return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: pattern.test(raw) ? "reply" : "sentinel" }
         }
       }))
       mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
         runProbeBatch: async options => {
-          if (expectation === "timeout" || expectation === "closure") {
-            return actualBatch(options)
-          }
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
+          if (expectation === "timeout" || closure) {
+            return actualBatch(options)
+          }
           if (options.capture) {
             if (expectation === "pending-write" || expectation === "write-error") {
               // Real Writable queues the adapter's completion behind this unfinished chunk.
@@ -1689,7 +1717,29 @@ describe("private finite daemon startup", () => {
           /Controlled Linux collection requires runtime provenance/u,
         )
       } else {
-        const run = await collectProbeRun({ ids: [expectation === "timeout" ? "erase.character" : expectation === "closure" ? "erase.character" : "device.xtversion"], out })
+        const run = await collectProbeRun({ ids: [expectation === "timeout" || closure ? "erase.character" : "device.xtversion"], out })
+        if (pixelApp) {
+          assert.equal(captureKind, "absent", "qualification replaced the primary pixel adapter")
+          assert.equal(calibrations, 1, "text qualification skipped pixel calibration")
+          assert.equal(JSON.parse(run.rawReplies["collector.captureCalibration"]).outcome, "refused")
+          const { TEXT_QUALIFICATION_RECIPES, TEXT_QUALIFICATION_SPEC, assessTextQualification } = await import("@terminfo/probe-defs")
+          assert.ok(run.textQualification, "hosted pixel run omitted retained text qualification")
+          assert.deepEqual(run.textQualification.shapes.map(shape => shape.shape), TEXT_QUALIFICATION_RECIPES["macos-text-cells-v1"].shapes)
+          const snapshots = new Map()
+          for (const shape of run.textQualification.shapes) {
+            assert.equal(shape.frames?.length, 2, JSON.stringify(shape))
+            for (const frame of shape.frames) {
+              assert.equal(frame.kind, "text-cells")
+              assert.ok(run.textSnapshotRefs.includes(frame.ref), "qualification text frame omitted from run custody")
+              const bytes = readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, frame.ref.slice(7) + ".txt"))
+              assert.equal("sha256:" + createHash("sha256").update(bytes).digest("hex"), frame.ref)
+              snapshots.set(frame.ref, bytes)
+            }
+          }
+          const assessment = assessTextQualification({ ...run, textQualificationSpec: TEXT_QUALIFICATION_SPEC }, snapshots)
+          assert.equal(assessment.qualified, true, assessment.reason)
+          process.exit(0)
+        }
         if (expectation === "closure") {
           // Existing retention tests omit nested bindings; this production bundle supplies their positive control.
           const { readProbeCapture } = await import("./packages/probes/erase-capture.ts")
@@ -1782,29 +1832,28 @@ describe("private finite daemon startup", () => {
         }
       }
       `,
-        ],
-        {
-          cwd: packageRoot,
-          env: {
-            ...process.env,
-            HOME: home,
-            FIXTURE_EXPECT: expectation,
-            TERMINFO_CAPTURE_DIRECTORY: join(
-              home,
-              ["final-custody", "closure"].includes(expectation) ? "launch/artifacts" : "capture",
-            ),
-            TERMINFO_DISPOSABLE_RECEIPT: expectation !== "refusal" ? "hardware-receipt-fixture" : "",
-            TERMINFO_RUNTIME_PROVENANCE: "",
-            TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
-          },
-          encoding: "utf8",
-          timeout: 10_000,
+      ],
+      {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          HOME: home,
+          FIXTURE_EXPECT: expectation,
+          TERMINFO_CAPTURE_DIRECTORY: join(
+            home,
+            expectation === "final-custody" || expectation.startsWith("closure") ? "launch/artifacts" : "capture",
+          ),
+          TERMINFO_DISPOSABLE_RECEIPT: expectation !== "refusal" ? "hardware-receipt-fixture" : "",
+          TERMINFO_RUNTIME_PROVENANCE: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
         },
-      )
-      expect(result.status, result.stderr).toBe(0)
-      expect(result.stderr).toBe("")
-    },
-  )
+        encoding: "utf8",
+        timeout: 10_000,
+      },
+    )
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toBe("")
+  })
 
   // Extend the existing hosted consumer journey: its Windows-only case never exercised
   // Darwin identity agreement or the absent receipt ID that previously skipped comparison.
