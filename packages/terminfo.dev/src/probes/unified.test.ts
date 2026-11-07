@@ -227,7 +227,7 @@ it.each(["address present", "socket present", "socket unreadable", "both absent"
       expect(JSON.stringify(record)).not.toContain("secret-address-never-retained")
       const selected = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" }, record)
       const absent = state === "both absent" || state === "not a directory"
-      expect(Object.keys(selected)).toHaveLength(absent ? 6 : 2)
+      expect(Object.keys(selected)).toHaveLength(absent ? 7 : 3)
       if (absent) expect(selected["extensions.osc133-d"]).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
       else expect(selected["extensions.osc133-d"]).toBeUndefined()
       if (state === "socket unreadable") expect(record.socket.code).toBe("EACCES")
