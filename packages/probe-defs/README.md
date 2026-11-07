@@ -41,6 +41,8 @@ For the approved reset/colour-stack no-setup route, a silent setup query with it
 control and no target report returns the existing declared Untestable result with the no-setup cause.
 A missing control or ambiguous target report stays Open; verified seeded-colour effects keep their
 existing result. This route adds no post-collection classification or dependency on another cell.
+The same decision helper serves the App OSC 113/114/117/119 reset fallbacks, with an App-specific
+cause. Other App reset families keep their existing routes; real colour readback still decides.
 App palette-stack captures also declare Untestable (no setup) when all three fixtures paint equal
 expected and ignored-reference cells behind changed paint witnesses: OSC 4 supplies no palette change
 to push or pop. A missing paint witness stays Open; differing references retain the normal stack

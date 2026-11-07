@@ -669,25 +669,28 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
 const HIGHLIGHT_TEST_COLOURS = ["3030/6060/9090", "9090/3030/6060", "6060/9090/3030"] as const
 
 function noColorSetupResult(
-  ctx: LibProbeSource,
+  ctx: LibProbeSource | TermProbeSource,
   sequence: string,
   setCode: number,
   query: TerminalQueryOutcome | undefined,
   result: ProbeCallbackResult,
 ): ProbeCallbackResult {
+  const library = "feed" in ctx ? ctx : undefined
   const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
   const reported =
-    code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code) ? unhandledOscReportResult(ctx, sequence, result) : result
+    library && code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code)
+      ? unhandledOscReportResult(library, sequence, result)
+      : result
   if (reportsDecidedOutcome(reported) || !query || !sentinelSilenceResult(query, `OSC ${setCode} colour setup`)) {
     return reported
   }
   // A duplicate or otherwise unqualified report is still a report, not absent setup.
-  if (ctx.getUnhandledSequences) {
-    ctx.feed(sequence)
-    if (ctx.getUnhandledSequences().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
+  if (library?.getUnhandledSequences) {
+    library.feed(sequence)
+    if (library.getUnhandledSequences().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
   }
   return declaredUntestableResult(
-    `Untestable (no setup): OSC ${setCode} colour setup does not work on this library, so this command has nothing to act on.`,
+    `Untestable (no setup): OSC ${setCode} colour setup does not work on this ${library ? "library" : "app"}, so this command has nothing to act on.`,
     { query, body: reported.response },
   )
 }
@@ -730,7 +733,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     const initial = initialRead.colour
     if (!initial) {
       if (initialRead.reply.reason === "sentinel") {
-        return {
+        return noColorSetupResult(ctx, `\x1b]${resetCode}\x07`, setCode, initialRead.reply, {
           pass: false,
           response: JSON.stringify({ query: querySeq, initialSentinel: initialRead.reply }),
           tests: [
@@ -740,7 +743,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
               reason: `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`,
             },
           ],
-        }
+        })
       }
       return inconclusive(
         `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
@@ -1354,18 +1357,21 @@ async function colorResetAppProbe(
     const outcome = await ctx.queryWithSentinelOutcome(query, reply)
     return { outcome, rgb: outcome.match?.[1] ?? null }
   }
+  const reset = `\x1b]${spec.resetCode}${spec.index === undefined ? "" : `;${spec.index}`}\x07`
   const before = await read()
   if (!before.rgb) {
     if (before.outcome.reason === "sentinel") {
-      return notTestedResult(
+      const result = notTestedResult(
         `Open: the colour query (OSC ${spec.setCode}) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen`,
         { query, initialReadback: before.outcome },
       )
+      return spec.setCode === 13 || spec.setCode === 14
+        ? noColorSetupResult(ctx, reset, spec.setCode, before.outcome, result)
+        : result
     }
     return oscReplyResult(before.outcome.raw, null, `Complete OSC ${spec.setCode} color reply`, before.outcome.sentinel)
   }
   const requested = probeForeground(before.rgb)
-  const reset = `\x1b]${spec.resetCode}${spec.index === undefined ? "" : `;${spec.index}`}\x07`
   ctx.write(`\x1b]${spec.setCode};${indexPart}${requested}\x07`)
   const changed = await read()
   ctx.write(reset)

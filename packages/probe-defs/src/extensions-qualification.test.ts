@@ -1056,7 +1056,7 @@ test.each(appResetProbes)(
     expect(definition.termNeedsDisposable, id).toBe(true)
     const indexPart = index === undefined ? "" : `${index};`
     const rgb = (hex: string) => `\x1b]${setCode};${indexPart}rgb:${hex}\x07`
-    const run = async (replies: string[]) => {
+    const run = async (replies: string[], qualified = true) => {
       const writes: string[] = []
       const queue = [...replies]
       const exchange = async (_sequence: string, pattern: RegExp) => {
@@ -1066,6 +1066,7 @@ test.each(appResetProbes)(
           reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
           raw,
           rawBase64: Buffer.from(raw).toString("base64"),
+          ...(qualified && { sentinel: { atMs: 9, graceMs: 250 } }),
         }
       }
       const result = await definition.term!({
@@ -1101,6 +1102,19 @@ test.each(appResetProbes)(
     expect(noReply.result.notTested?.reason, id).toBe("no-semantic-observable")
     expect(noReply.result.notTested?.noObservable, id).toContain("reset itself stays unseen")
     expect(noReply.result.assertions, id).toBeUndefined()
+    // #31743: the retained Cursor run3345649c answered DA1, not OSC13/14.
+    // Missing colour setup differs from a missing control; the other reset families keep their route.
+    const controlledSilence = await run(["\x1b[?1;2c"])
+    const pointer = setCode === 13 || setCode === 14
+    expect(isDeclaredUntestable(controlledSilence.result), id).toBe(pointer)
+    if (pointer) {
+      expect(controlledSilence.result.tests).toMatchObject([
+        { id: "declared-untestable", status: "untestable", reason: expect.stringContaining("no setup") },
+      ])
+      expect(controlledSilence.result.tests?.[0]?.reason).toContain("this app")
+    }
+    expect(isDeclaredUntestable((await run(["malformed\x1b[?1;2c"])).result), id).toBe(false)
+    expect(isDeclaredUntestable((await run(["\x1b[?1;2c"], false)).result), id).toBe(false)
   },
 )
 
@@ -1570,18 +1584,20 @@ test.each([
             rawBase64: btoa(raw),
             match: pattern.exec(raw),
             reason: raw === "\x1b[?1;2c" ? "sentinel" : "timeout",
+            ...(raw === "\x1b[?1;2c" && { sentinel: { atMs: 7, graceMs: 250 } }),
           }
         },
       })
       expect(result.observation).toBeUndefined()
-      expect(result.note).toBeUndefined()
-      // A completed DA1 control with no initial colour is missing observation,
+      // A completed DA1 control with no initial colour establishes missing setup,
       // while timeout or malformed data still cannot establish a working apparatus.
       const missingBaseline = stage === 0 && raw === "\x1b[?1;2c"
-      expect(result.tests?.[0]?.status).toBe(missingBaseline ? "probe-todo" : "probe-invalid")
+      if (!missingBaseline) expect(result.note).toBeUndefined()
+      expect(result.tests?.[0]?.status).toBe(missingBaseline ? "untestable" : "probe-invalid")
+      expect(isDeclaredUntestable(result)).toBe(missingBaseline)
       expect(result.tests?.[0]?.reason).toContain(
         missingBaseline
-          ? `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`
+          ? `Untestable (no setup): OSC ${setCode} colour setup does not work on this app, so this command has nothing to act on.`
           : ["initial highlight colour is unknown", "known colour was not read back", "did not answer after"][stage]!,
       )
       if (raw === "") expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
