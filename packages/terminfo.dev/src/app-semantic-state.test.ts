@@ -93,6 +93,22 @@ test.each([
     undefined,
   ],
   ["dropped", nativeMuxCommands.replace("select_graphic_rendition 4:3\n", ""), false, undefined],
+  // RGB/indexed colour payloads cannot impersonate the target attribute.
+  // Existing standalone attribute reports never exercise grouped SGR parameters.
+  [
+    "RGB payload is not bold",
+    nativeMuxCommands.replace("select_graphic_rendition 4:3\n", "select_graphic_rendition 38;2;1;0;0\n"),
+    undefined,
+    /Extended-colour outer SGR/,
+    "sgr.bold",
+  ],
+  [
+    "indexed colour payload is not overline",
+    nativeMuxCommands.replace("select_graphic_rendition 4:3\n", "select_graphic_rendition 38;5;53\n"),
+    undefined,
+    /Extended-colour outer SGR/,
+    "sgr.overline",
+  ],
   [
     "unreadable",
     nativeMuxCommands.replace("select_graphic_rendition 4:3\n", "select_graphic_rendition unreadable\n"),
@@ -103,7 +119,7 @@ test.each([
   ["unfinished", nativeMuxCommands.slice(0, nativeMuxCommands.lastIndexOf("draw 3\n")), undefined, /completion/],
 ] as const)(
   "mux command read: %s",
-  async (_name, commands, forwarded, refusal) => {
+  async (_name, commands, forwarded, refusal, featureId = "sgr.underline.curly") => {
     const directory = mkdtempSync(join(tmpdir(), "terminfo-mux-sgr-"))
     const capture = join(directory, "artifacts")
     const path = join(directory, "daemon.log")
@@ -118,14 +134,15 @@ test.each([
       vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
       vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
       const reader = beginMuxSgrCommandRead({
-        featureId: "sgr.underline.curly",
+        featureId,
         subject: { kind: "mux", id: "tmux", version: "3.8", os: "linux", outerTerminal: "kitty" },
         proof: { platform: "linux", mux: "tmux", launchRunId: runId, collector: { pid: process.pid, startTicks: "1" } },
       })
       expect(reader.status).toBe("ready")
       if (reader.status !== "ready") throw new Error(reader.reason)
       appendFileSync(path, commands)
-      const result = await reader.read(nativeMuxTrace)
+      const target = featureId === "sgr.bold" ? "1" : featureId === "sgr.overline" ? "53" : "4:3"
+      const result = await reader.read(nativeMuxTrace.replaceAll("[4:3m", `[${target}m`))
       if (refusal) {
         expect(result.status).toBe("unavailable")
         if (result.status === "unavailable") expect(result.reason).toMatch(refusal)

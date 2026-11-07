@@ -386,6 +386,8 @@ function muxSgrCommandPhases(text: string, nonce: string) {
       const parameters = /^select_graphic_rendition ([0-9;:]+)$/.exec(line)?.[1]
       if (!parameters || !/^(?:\d+(?::\d+)*)(?:;\d+(?::\d+)*)*$/.test(parameters)) {
         error = `Unrecognized outer SGR command report: ${line}`
+      } else if (parameters.split(";").some((value) => [38, 48, 58].includes(Number(value.split(":")[0])))) {
+        error = `Extended-colour outer SGR command report cannot identify attribute forwarding: ${line}`
       } else {
         commands[phase].push(
           ...parameters.split(";").map((value) => (value === "21" ? "4:2" : value === "4:1" ? "4" : value)),
