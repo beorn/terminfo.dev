@@ -369,6 +369,24 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): GNU Screen 5.0.2 exposes no smooth-scrolling state or public readback for DECSCLM. Read SetMode in ansi.c:1090-1122 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): case 4 SCLM is commented out between cases 3 and 5. A static capture cannot read scroll timing, and the outer terminal cannot supply Screen's missing own mode reading.",
   },
+  {
+    kind: "term",
+    id: "ghostty",
+    version: "1.4.0",
+    os: "linux",
+    featureId: "extensions.osc555-flash",
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 has no OSC 555 flash command or public flash readback. In ghostty-derived-source-tar (SHA256 5b317a83), osc.zig:613-618 and 632-635 send a third 5 to the invalid state; end() at 691-695 returns no command and logs nothing; Parser.zig:270 then dispatches no OSC. That silent parser rejection is not a command-specific refusal or flash reading.",
+  },
+  {
+    kind: "term",
+    id: "ghostty",
+    version: "1.4.0",
+    os: "linux",
+    featureId: "extensions.osc710-font-normal",
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 has no OSC 710 font-selection command or public font readback. In ghostty-derived-source-tar (SHA256 5b317a83), osc.zig:637-641 rejects the digit 1 after 7; end() at 691-695 returns no command and logs nothing; Parser.zig:270 then dispatches no OSC. That silent parser rejection is not a command-specific refusal or font reading.",
+  },
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */
