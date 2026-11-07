@@ -2137,9 +2137,14 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
   verifiedBatchFixture()
   const writes: string[] = []
   const order: string[] = []
+  const baseline = "owned OSC52 baseline"
+  let clipboardText = baseline
   process.stdout.write = ((text: string) => {
     writes.push(text)
-    if (text.startsWith("\x1b]52;c;")) order.push("osc52")
+    if (text.startsWith("\x1b]52;c;")) {
+      order.push("osc52")
+      clipboardText = atob(/\x1b\]52;c;([^\x07]+)\x07/.exec(text)?.[1] ?? "")
+    }
     if (text === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[1;1R"))
     return true
   }) as typeof process.stdout.write
@@ -2158,21 +2163,28 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
         summary: "{}",
         assertOwned: async () => {},
         dispose: async () => {},
-        async withClipboardFixture(work, trace) {
-          const at = new Date().toISOString()
-          const result = await work({
-            readText: async () => {
-              const frame = writes.findLast((text) => text.startsWith("\x1b]52;c;"))
-              const nonce = frame ? atob(/\x1b\]52;c;([^\x07]+)\x07/.exec(frame)?.[1] ?? "") : ""
-              trace({ kind: "clipboard-read", at, sha256: "a".repeat(64), length: nonce.length })
-              return nonce
-            },
-            writeText: async () => {},
-          })
-          trace({ kind: "clipboard-restore", at, sha256: "b".repeat(64), length: 8 })
-          trace({ kind: "clipboard-verify", at, sha256: "b".repeat(64), length: 8 })
-          return result
-        },
+        withClipboardFixture: createClipboardTransaction(baseline, {
+          async readText(trace, kind, verify) {
+            await verify()
+            trace({
+              kind,
+              at: new Date().toISOString(),
+              sha256: createHash("sha256").update(clipboardText).digest("hex"),
+              length: clipboardText.length,
+            })
+            return clipboardText
+          },
+          async writeText(text, trace, kind, verify) {
+            await verify()
+            clipboardText = text
+            trace({
+              kind,
+              at: new Date().toISOString(),
+              sha256: createHash("sha256").update(text).digest("hex"),
+              length: text.length,
+            })
+          },
+        }),
       },
     },
   })
@@ -2186,9 +2198,12 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
   }
   expect(trace.clipboard.map((event) => event.kind)).toEqual([
     "clipboard-read",
+    "clipboard-read",
     "clipboard-restore",
     "clipboard-verify",
   ])
+  expect(clipboardText).toBe(baseline)
+  expect(trace.clipboard.every((event) => !Number.isNaN(Date.parse(event.at)))).toBe(true)
 })
 
 it("records failed clipboard restoration as collector error rather than retaining callback success", async () => {
