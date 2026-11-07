@@ -3042,12 +3042,11 @@ function kittyGraphicsRefusalCode(raw: string): string | null {
 }
 
 /**
- * Display cannot be observed when transmit was refused in the same run: the library answered the
- * canonical query with an error, so there is no image for the display cell to place.
+ * Display has no setup when this row's transmit is refused explicitly or by both controlled App windows.
  */
-function kittyDisplayWithoutTransmit(code: string, imageNumber: number): ProbeCallbackResult {
+function kittyDisplayWithoutTransmit(code: string | null, imageNumber: number): ProbeCallbackResult {
   return declaredUntestableResult(
-    `Untestable (no setup): Kitty graphics transmit is refused by this library (${code}), so the display cell has no image to place`,
+    `Untestable (no setup): Kitty graphics transmit ${code ? `is refused by this library (${code})` : "has no reply to either a=t or a=q after their DA1 controls"}, so the display cell has no image to place`,
     { imageNumber, refusal: code },
   )
 }
@@ -3236,11 +3235,27 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         const imageNumber = newNumber()
         let imageId: number | null = null
         try {
-          const uploaded = allocationOutcomeResult(
-            await ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber)),
-            imageNumber,
+          const transfer = await ctx.queryWithSentinelOutcome(
+            imageTransferRequest(imageNumber),
+            allocationReply(imageNumber),
           )
+          const uploaded = allocationOutcomeResult(transfer, imageNumber)
           imageId = uploaded.imageId
+          if (uploaded.silent) {
+            // App-only: both owned windows must be controlled silence; a query reply leaves transfer open.
+            const query = await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)
+            const transferNegative = sentinelSilenceResult(transfer, "The RGB image transfer is acknowledged")
+            const queryNegative = sentinelSilenceResult(query, "The canonical RGB graphics query is acknowledged")
+            if (transferNegative?.observation && queryNegative?.observation) {
+              if (display) return kittyDisplayWithoutTransmit(null, imageNumber)
+              return {
+                pass: false,
+                observation: queryNegative.observation,
+                response: JSON.stringify({ transfer, query }),
+                assertions: [...(transferNegative.assertions ?? []), ...(queryNegative.assertions ?? [])],
+              }
+            }
+          }
           if (uploaded.refusal && display) {
             return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
           }
