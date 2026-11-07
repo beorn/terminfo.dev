@@ -35,6 +35,7 @@ import {
   stackStateResult,
   decideStackOperation,
   type StackReading,
+  validSize,
 } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
@@ -1657,6 +1658,80 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   }
 }
 
+async function autoWrapApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const decrpm = await queryDecrpm(ctx, 7)
+  if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 7)
+  const { cols, rows } = ctx
+  if (!validSize(cols, 2) || !validSize(rows, 2)) {
+    return replyFailure(`Auto-wrap effect needs a measured grid of at least 2x2, got ${rows}x${cols}`)
+  }
+  try {
+    ctx.write("\x1b[?7l\x1b[2J\x1b[H")
+    const home = await ctx.queryCursorPosition()
+    ctx.write("W".repeat(cols - 1))
+    const control = await ctx.queryCursorPosition()
+    if (home?.row !== 1 || home.col !== 1 || control?.row !== 1 || control.col !== cols) {
+      return {
+        ...replyFailure(
+          "Auto-wrap cursor control did not measure home and ordinary text advancing to the right margin",
+        ),
+        response: JSON.stringify({ decrpm, cols, home, control }),
+      }
+    }
+    const readEffect = async (enabled: boolean) => {
+      ctx.write(`\x1b[?7${enabled ? "h" : "l"}\x1b[2J\x1b[H${"W".repeat(cols)}X`)
+      return ctx.queryCursorPosition()
+    }
+    const reset = await readEffect(false)
+    const set = await readEffect(true)
+    const resetAgain = await readEffect(false)
+    const observed = { decrpm, cols, home, control, reset, set, resetAgain }
+    const response = JSON.stringify(observed)
+    if (
+      [reset, set, resetAgain].some(
+        (position) =>
+          !position || !((position.row === 1 && position.col === cols) || (position.row === 2 && position.col === 2)),
+      )
+    ) {
+      return {
+        ...replyFailure("Auto-wrap effect cursor readings did not resolve to the qualified wrap/no-wrap positions"),
+        response,
+      }
+    }
+    const pass =
+      reset?.row === 1 &&
+      reset.col === cols &&
+      set?.row === 2 &&
+      set.col === 2 &&
+      resetAgain?.row === 1 &&
+      resetAgain.col === cols
+    const note = `${decrpm === 0 ? "DECRPM mode 7 returned Ps 0" : "No usable DECRPM reply for mode 7"}; same-run set/reset cursor effects ${pass ? "establish auto-wrap" : "do not show controlled auto-wrap"}`
+    return {
+      pass,
+      response,
+      note,
+      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply", note },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: "positive",
+          expected: `ordinary text advances from home to column ${cols} in the same run`,
+          observed: JSON.stringify({ home, control }),
+        },
+        {
+          assertionType: "query_reply",
+          kind: pass ? "positive" : "negative",
+          expected: "the overflow character wraps only with DECAWM set and stops wrapping after reset",
+          observed: JSON.stringify({ reset, set, resetAgain }),
+        },
+      ],
+    }
+  } finally {
+    // This mutating arm owns a disposable fixture: leave its canonical wrap-on setup.
+    ctx.write("\x1b[?7h")
+  }
+}
+
 const modeDefinitions: ProbeDefinition[] = [
   // Alt screen enter — measured roundtrip (narrow CTO-approved 1049 slice)
   decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) =>
@@ -1741,36 +1816,44 @@ const modeDefinitions: ProbeDefinition[] = [
   decrpmModeProbe("modes.application-cursor", 1, headlessDecrpmArm(1, "applicationCursor", { stateReadback: true })),
 
   // Auto wrap
-  decrpmModeProbe("modes.auto-wrap", 7, (ctx) => {
-    const expected = "DECAWM wraps Y after a full measured row of X"
-    const rows = ctx.getScrollback().screenLines
-    if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
-      return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Measured grid needs two rows")
-    }
-    const originallyEnabled = ctx.getMode("autoWrap")
-    try {
-      ctx.feed("\x1b[?7h")
-      const enabled = ctx.getMode("autoWrap")
-      // #30574: unreported mode metadata is null; measured cells can still decide.
-      if (enabled === false) {
-        return parserStateResult(null, expected, { originallyEnabled, enabled }, "Auto-wrap setup was not measured")
-      }
-      ctx.feed("X".repeat(ctx.cols) + "Y")
-      const last = ctx.getCell(0, ctx.cols - 1)
-      const next = ctx.getCell(1, 0)
-      return parserStateResult(last.char === "X" && next.char === "Y", expected, {
-        rows,
-        cols: ctx.cols,
-        originallyEnabled,
-        enabled,
-        last,
-        next,
-      })
-    } finally {
-      // Unknown mode metadata cannot determine the state to restore.
-      if (originallyEnabled !== null) ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
-    }
-  }),
+  {
+    ...probe(
+      "modes.auto-wrap",
+      (ctx) => {
+        const expected = "DECAWM wraps Y after a full measured row of X"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
+          return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Measured grid needs two rows")
+        }
+        const originallyEnabled = ctx.getMode("autoWrap")
+        try {
+          ctx.feed("\x1b[?7h")
+          const enabled = ctx.getMode("autoWrap")
+          // #30574: unreported mode metadata is null; measured cells can still decide.
+          if (enabled === false) {
+            return parserStateResult(null, expected, { originallyEnabled, enabled }, "Auto-wrap setup was not measured")
+          }
+          ctx.feed("X".repeat(ctx.cols) + "Y")
+          const last = ctx.getCell(0, ctx.cols - 1)
+          const next = ctx.getCell(1, 0)
+          return parserStateResult(last.char === "X" && next.char === "Y", expected, {
+            rows,
+            cols: ctx.cols,
+            originallyEnabled,
+            enabled,
+            last,
+            next,
+          })
+        } finally {
+          // Unknown mode metadata cannot determine the state to restore.
+          if (originallyEnabled !== null) ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
+        }
+      },
+      autoWrapApp,
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+  },
 
   // Mouse tracking
   decrpmModeProbe("modes.mouse-tracking", 1000, headlessDecrpmArm(1000, "mouseTracking", { stateReadback: true })),

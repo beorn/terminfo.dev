@@ -991,8 +991,8 @@ test("libvterm input.xtest-key is graded through its native key encoder", async 
   expect(JSON.parse(batch.rawReplies["input.xtest-key"]!)).toEqual({
     control: "a",
     controlBytes: [97],
-    report: "\x01",
-    reportBytes: [1],
+    report: "\x05",
+    reportBytes: [5],
   })
 })
 

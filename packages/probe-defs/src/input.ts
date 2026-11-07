@@ -73,7 +73,10 @@ export const inputProbes: ProbeDefinition[] = inputDefinitions.map(withUnhandled
 const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_RESET = "\x1b[?1000l\x1b[?1006l"
 const PLAIN_A = /^a/
-const MODIFIED_KEY = /\x01|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
+// input.xtest-key injects ctrl+e, which is neither tmux's nor Screen's prefix (#32569, @cto b9dd747c): ctrl+a is
+// Screen's command key, so Screen consumed it. The modifyOtherKeys controls below still read ctrl+a.
+const MODIFIED_KEY = /\x05|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
+const CTRL_E_ENCODING = /^(?:\x05|\x1b\[(?:27;5;101~|101;5u))$/
 const CTRL_A_ENCODING = /^(?:\x01|\x1b\[(?:27;5;97~|97;5u))$/
 const SGR_MOUSE = /\x1b\[<\d+;\d+;\d+[Mm]/
 const MODIFY_OTHER_KEYS_2 = "\x1b[>4;2m"
@@ -448,14 +451,15 @@ export async function altScroll1007(ctx: TermProbeSource): Promise<ProbeCallback
   ctx.write(ALT_SCREEN_SET + ALT_SCROLL_SET)
   try {
     const report = (await readInput(ALT_SCROLL_OR_SGR, 1000, () => input.injectClick(4)))?.[0]
-    if (!report) {
-      throw new Error("XTEST 1007 alt-scroll wheel did not reach the app after a successful 1000+1006 delivery control")
-    }
+    const anyForm =
+      "OS XTEST wheel-4 report under 1007 as CSI A or SS3 A after 1000+1006 delivery control on alt-screen"
+    // #32569 (@cto third-table ruling 2026-11-06): the delivery control passed, so a silent wheel is Unsupported.
+    if (!report) return unsupportedInteraction("alt-scroll-1007:4", anyForm, { mode: "1007", control, report: null })
     const observed = { mode: "1007", control, report }
     const cursorUpForm = report === "\x1b[A" ? "CSI A" : report === "\x1bOA" ? "SS3 A" : undefined
     const expected = cursorUpForm
       ? `OS XTEST wheel-4 report under 1007 as ${cursorUpForm} after 1000+1006 delivery control on alt-screen`
-      : "OS XTEST wheel-4 report under 1007 as CSI A or SS3 A after 1000+1006 delivery control on alt-screen"
+      : anyForm
     if (cursorUpForm) {
       return {
         ...interactionResult("alt-scroll-1007:4", expected, observed),
@@ -482,20 +486,20 @@ async function xtestKey(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     PLAIN_A,
     "XTEST delivery control failed: plain a did not reach the app",
   )
-  const report = (await readInput(MODIFIED_KEY, 1000, () => input.injectKey("ctrl+a")))?.[0]
+  const report = (await readInput(MODIFIED_KEY, 1000, () => input.injectKey("ctrl+e")))?.[0]
   if (!report) {
     throw new Error("XTEST modified key did not reach the app after a successful delivery control")
   }
   const observed = { control, report }
-  const expected = "OS XTEST ctrl+a report after plain-a delivery control"
-  return CTRL_A_ENCODING.test(report)
-    ? interactionResult("xtest-key:ctrl+a", expected, observed)
-    : unsupportedInteraction("xtest-key:ctrl+a", expected, observed)
+  const expected = "OS XTEST ctrl+e report after plain-a delivery control"
+  return CTRL_E_ENCODING.test(report)
+    ? interactionResult("xtest-key:ctrl+e", expected, observed)
+    : unsupportedInteraction("xtest-key:ctrl+e", expected, observed)
 }
 
 /**
  * Library arm of input.xtest-key (#32308, @cto e4f1c5bd): the library's own key-event encoder, bound only under
- * "key-encoding", must encode plain a as "a" before its ctrl+a bytes are judged by the terminal arm's criterion.
+ * "key-encoding", must encode plain a as "a" before its ctrl+e bytes are judged by the terminal arm's criterion.
  */
 function xtestKeyLib(encodeKey: NonNullable<LibProbeSource["encodeKey"]>): ProbeCallbackResult {
   const decoder = new TextDecoder()
@@ -507,13 +511,13 @@ function xtestKeyLib(encodeKey: NonNullable<LibProbeSource["encodeKey"]>): Probe
       controlBytes: [...controlBytes],
     })
   }
-  const reportBytes = encodeKey({ key: "a", ctrl: true })
+  const reportBytes = encodeKey({ key: "e", ctrl: true })
   const report = decoder.decode(reportBytes)
   const observed = { control, controlBytes: [...controlBytes], report, reportBytes: [...reportBytes] }
-  const expected = "library key-event encoder ctrl+a report after plain-a control"
-  return CTRL_A_ENCODING.test(report)
-    ? interactionResult("xtest-key:ctrl+a", expected, observed)
-    : unsupportedInteraction("xtest-key:ctrl+a", expected, observed)
+  const expected = "library key-event encoder ctrl+e report after plain-a control"
+  return CTRL_E_ENCODING.test(report)
+    ? interactionResult("xtest-key:ctrl+e", expected, observed)
+    : unsupportedInteraction("xtest-key:ctrl+e", expected, observed)
 }
 
 async function withMouseModes<T>(ctx: TermProbeSource, work: () => Promise<T>): Promise<T> {
@@ -608,11 +612,10 @@ async function x10Mouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     ctx.write(X10_MOUSE_SET)
     try {
       const report = (await readInput(X10_OR_SGR_MOUSE, 1000, () => input.injectClick(1)))?.[0]
-      if (!report) {
-        throw new Error("XTEST 9 x10-mouse click did not reach the app after a successful 1000+1006 delivery control")
-      }
-      const observed = { mode: "9", control, report }
       const expected = "OS XTEST click report under 9 as CSI M plus three bytes after 1000+1006 delivery control"
+      // #32569 (@cto third-table ruling 2026-11-06): the delivery control passed, so a silent click is Unsupported.
+      if (!report) return unsupportedInteraction("x10-mouse:1", expected, { mode: "9", control, report: null })
+      const observed = { mode: "9", control, report }
       if (isX10Mouse(report)) {
         return interactionResult("x10-mouse:1", expected, observed)
       }
@@ -680,7 +683,11 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     ) {
       return notTestedResult("pixel-mouse delivery control is not a button-1 event in a valid screen cell", { control })
     }
-    const measured = await queryPixelGeometry(ctx)
+    const queried = await queryPixelGeometry(ctx)
+    // #32569 (@cto third-table ruling 2026-11-06): a terminal that refuses CSI 16 t and 14 t (Screen) is judged with
+    // this run's calibrated raster geometry (#31742), the measurement region readback uses; the refusal is retained.
+    const calibrated = "missing" in queried ? ctx.captureGeometry : undefined
+    const measured = calibrated ?? queried
     if ("missing" in measured) {
       return notTestedResult(`no cell geometry: ${measured.missing}`, { control, geometry: measured })
     }
@@ -692,7 +699,14 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
           "XTEST 1016 pixel-mouse click did not reach the app after a successful 1000+1006 delivery control",
         )
       }
-      const observed = { mode: "1016", control, report, geometry: measured.geometry, geometrySource: measured.source }
+      const observed = {
+        mode: "1016",
+        control,
+        report,
+        geometry: measured.geometry,
+        geometrySource: measured.source,
+        ...(calibrated && "missing" in queried && { queryRefusal: queried.missing }),
+      }
       if (sgrMouseButton(report) !== 0) {
         return notTestedResult("pixel-mouse target is not a button-1 event", observed)
       }

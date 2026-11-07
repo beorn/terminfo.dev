@@ -164,6 +164,8 @@ it.each([
   ["term", "device.decrqss", "DECSTBM"],
   ["lib", "device.decrqss", "DECSCL"],
   ["term", "device.decrqss", "DECSCL"],
+  ["lib", "device.decrqss", "DECSCUSR"],
+  ["term", "device.decrqss", "DECSCUSR"],
   ["lib", "editing.decrqcra"],
   ["term", "editing.decrqcra"],
   ["lib", "extensions.osc52-clipboard"],
@@ -202,7 +204,9 @@ it.each([
     const received =
       rawOverride ??
       (id === "device.decrqss" &&
-      (sequence === "\x1bP$qm\x1b\\" || (refused === "DECSCL" && sequence === "\x1bP$qr\x1b\\"))
+      (sequence === "\x1bP$qm\x1b\\" ||
+        ((refused === "DECSCL" || refused === "DECSCUSR") && sequence === "\x1bP$qr\x1b\\") ||
+        (refused === "DECSCUSR" && sequence === '\x1bP$q"p\x1b\\'))
         ? "\x1bP0$r\x1b\\"
         : "")
     captures.push({ sequence, received })
@@ -900,7 +904,8 @@ it("keeps native missing-observation note overrides and prompt consumption branc
 it("preserves native callback note fallback for unmeasured widths and TERM_FEATURES", async () => {
   // These native callbacks retained no deciding cells. Their final failure reason previously
   // came from callback.note; status-only fixtures miss that producer-to-recorder loss.
-  for (const id of ["extensions.osc22-pointer", "editing.decsace"]) {
+  // OSC22 uses selected-shape replies now; extensions-osc22-app.test.ts owns its silent cases.
+  for (const id of ["editing.decsace"]) {
     const term = [...extensionsProbes, ...editingProbes].find((row) => row.id === id)?.term
     if (!term) throw new Error(`Missing native callback ${id}`)
     const missing = await term({

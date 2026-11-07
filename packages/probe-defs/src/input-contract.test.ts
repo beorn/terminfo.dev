@@ -77,7 +77,7 @@ const INPUT_CONTRACT: GroupContract = [
   {
     id: "input.xtest-key",
     expected: "decided",
-    claim: "xtest-key: OS XTEST ctrl+a report after plain-a delivery control",
+    claim: "xtest-key: OS XTEST ctrl+e report after plain-a delivery control",
   },
   {
     id: "input.xtest-click",
@@ -165,7 +165,7 @@ function inputSatisfactionSources(id: string): { readonly headless?: LibProbeSou
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async (pattern) => {
           if (pattern.test("a")) return ["a"]
-          if (pattern.test("\x1b[97;5u")) return ["\x1b[97;5u"]
+          if (pattern.test("\x1b[101;5u")) return ["\x1b[101;5u"]
           return null
         },
       }),
