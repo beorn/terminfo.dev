@@ -1027,10 +1027,34 @@ export type TermFeaturesReading =
   | { status: "unavailable"; reason: string }
   | { status: "invalid"; reason: string }
 
+/** Same-row observations from the owned App reader; no App identity enters probe definitions. */
+export type AppSemanticReading =
+  | {
+      status: "measured"
+      reader: "state"
+      runId: string
+      unknown: { before: string; after: string }
+      handled: { before: string; after: string; expected: string }
+      target: { before: string; after: string; expected: string }
+      detail: object
+    }
+  | {
+      status: "measured"
+      reader: "report"
+      runId: string
+      unknown: { code: string; reports: string[] }
+      handled: { applied: boolean; reports: string[] }
+      target: { code: string; reports: string[] }
+      detail: object
+    }
+  | { status: "unavailable" | "invalid"; reason: string; detail?: object }
+
 export interface TermProbeSource {
   readonly kind: ProbeSourceKind
   /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */
   readTermFeatures?: () => Promise<TermFeaturesReading>
+  /** Writes use the callback's recorder; reads bind to this run's verified App or mux. */
+  readAppSemanticState?: (featureId: string, write: (text: string) => void) => Promise<AppSemanticReading>
   /** Complete same-run raster geometry, installed only after witnessed paint and restore. */
   captureGeometry?: {
     geometry: CapturePixelGeometry

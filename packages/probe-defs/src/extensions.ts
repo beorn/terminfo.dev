@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { gradeAppSemanticState } from "./app-semantic-state.ts"
 import type {
   ProbeDefinition,
   ProbeCallbackResult,
@@ -4506,7 +4507,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   }
 }
 
-export const extensionsProbes: ProbeDefinition[] = [
+const extensionDefinitions: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   {
     ...probe(
@@ -5765,13 +5766,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           selector: 633,
           markType: "prompt",
         }),
-      async (ctx) => {
-        if (process.env.TERMINFO_CAPTURE_DIRECTORY === "/out/artifacts" && process.env.TERMINFO_RUN_ID) {
-          const { qualifyAppSemanticRead } = await import("./testing/osc-app-qualification.ts")
-          return qualifyAppSemanticRead(ctx)
-        }
-        return promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration")
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
     ),
     libAssertionType: "buffer_state",
   },
@@ -6711,6 +6706,19 @@ export const extensionsProbes: ProbeDefinition[] = [
     libAssertionType: "query_reply",
   },
 ]
+
+export const extensionsProbes: ProbeDefinition[] = extensionDefinitions.map((definition) => {
+  const term = definition.term
+  const semantic = /^extensions\.osc(?:133|633)-[abcdep]$/.test(definition.id) ||
+    definition.id === "extensions.semantic-prompts" || definition.id === "extensions.osc-633-vscode"
+  if (!term || !semantic) return definition
+  return {
+    ...definition,
+    term: async (ctx) => ctx.readAppSemanticState
+      ? gradeAppSemanticState(await ctx.readAppSemanticState(definition.id, ctx.write))
+      : term(ctx),
+  }
+})
 
 // Operator D2 / CTO Nov 5 11:16: these exact feeds and normalized codes were
 // measured on the audited real addon. Delivery effects and OSC52 read are not negatives.
