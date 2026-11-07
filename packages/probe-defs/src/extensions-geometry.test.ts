@@ -84,3 +84,32 @@ test.each(fixtures)("$id declines invalid or undersized geometry before bytes or
     expect(result.observation, id).toMatchObject({ outcome, assertionType })
   }
 })
+
+// 32604: these App capture fallbacks now read geometry through the guarded collector source.
+test.each([
+  "extensions.osc104-reset-palette",
+  "extensions.osc110-reset-fg",
+  "extensions.osc112-reset-cursor",
+  "extensions.osc30001-color-stack-push",
+  "extensions.osc30101-color-stack-pop",
+  "extensions.osc9-progress",
+  "extensions.osc555-flash",
+])("%s declares geometry and cannot grade an undersized capture", async (id) => {
+  const definition = extensionsProbes.find((entry) => entry.id === id)!
+  const events: string[] = []
+  const context = app(0, 0, events, [])
+  context.capture = async () => {
+    throw new Error("Undersized fixture must not capture")
+  }
+  context.queryWithSentinelOutcome = async () => ({
+    match: null,
+    reason: "sentinel",
+    raw: "\x1b[?1;2c",
+    rawBase64: "G1s/MTsyYw==",
+    sentinel: { atMs: 1, graceMs: 1 },
+  })
+  const result = await definition.term!(context)
+  expect(events).toEqual([])
+  expect(result.tests?.some((entry) => entry.status === "untestable")).not.toBe(true)
+  expect(definition.termNeedsGeometry).toBe(true)
+})

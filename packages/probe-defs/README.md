@@ -63,7 +63,17 @@ control and no target report returns the existing declared Untestable result wit
 A missing control or ambiguous target report stays Open; verified seeded-colour effects keep their
 existing result. This route adds no post-collection classification or dependency on another cell.
 The same decision helper serves the App OSC 113/114/117/119 reset fallbacks, with an App-specific
-cause. Other App reset families keep their existing routes; real colour readback still decides.
+cause. After a sentinel-qualified silent initial query, App OSC 104/110 and the foreground colour
+stack can instead qualify unchanged colour setup through the existing pixel-region oracle, with a
+made-up OSC control and a distinct independent SGR reference. OSC 112 uses a visible steady cursor,
+CPR, shown/hidden/restored pixels and the made-up control. Only unchanged setup declares Untestable
+(no setup); a changed setter does not itself establish a positive reset or stack result. App OSC 9;4
+uses stable whole-window clear/set-50/clear captures, plain paint/restore and a made-up subcommand;
+qualified no-change declares Untestable (no setup). OSC 555 uses the same whole-window controls and
+nine finite samples; missed flash declares Untestable (no way to tell), never Unsupported. Missing
+or broken controls keep these rows open. Real colour replies and qualified exact-command reports
+retain precedence. For the original ten tmux/Screen positions, finalization names both the actual mux
+and its outer terminal as possible stopping points; it adds no attribution or native-run authority.
 App palette-stack captures also declare Untestable (no setup) when all three fixtures paint equal
 expected and ignored-reference cells behind changed paint witnesses: OSC 4 supplies no palette change
 to push or pop. A missing paint witness stays Open; differing references retain the normal stack

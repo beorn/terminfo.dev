@@ -820,7 +820,10 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
     status: "probe-todo",
     reason: "Cursor response does not measure OSC 176 Wayland app-id",
   },
-  "extensions.osc555-flash": { status: "probe-todo", reason: "Cursor response does not measure OSC 555 screen flash" },
+  "extensions.osc555-flash": {
+    status: "probe-todo",
+    reason: "extensions.osc555-flash: no owned whole-window pixel capture for this effect",
+  },
   "extensions.osc440-audio": {
     status: "probe-todo",
     reason: "Cursor response does not measure OSC 440 audio playback",
@@ -914,7 +917,7 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
   "extensions.notifications": { status: "probe-todo", reason: "No desktop notification delivery readback for OSC 9" },
   "extensions.osc9-progress": {
     status: "probe-todo",
-    reason: "OSC 9;4 progress display was not attempted; this probe has no effect readback or prior-state restoration",
+    reason: "extensions.osc9-progress: no owned whole-window pixel capture for this effect",
   },
   "extensions.osc1-icon": { status: "probe-todo", reason: "No icon-name readback for OSC 1" },
   "extensions.osc117-reset-highlight-bg": {
@@ -1319,7 +1322,9 @@ test("every inconclusive extension contract row evaluates to inconclusive under 
     const probe = extensionsProbes.find((p) => p.id === row.id)
     expect(probe, `missing probe for ${row.id}`).toBeDefined()
     if (!probe) continue
-    const rowTerm = row.id === "extensions.truecolor" ? replayTermProbeSource(new Map()) : term
+    const rowTerm = ["extensions.truecolor", "extensions.osc9-progress", "extensions.osc555-flash"].includes(row.id)
+      ? replayTermProbeSource(new Map())
+      : term
     const callbackResult = probe.term ? await probe.term(rowTerm) : probe.lib?.(headless)
     expect(callbackResult, `${row.id} has the selected callback`).toBeDefined()
     if (callbackResult?.notTested && EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS[row.id] === undefined) {
