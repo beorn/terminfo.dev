@@ -16,7 +16,7 @@ import type { CaptureRequest, ObservationFrame, TermProbeSource } from "../probe
 const sample = "AaBb 0123456789 - terminal text"
 const geometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
-type Fault = "none" | "unknown" | "blind" | "ignored" | "single" | "inverse" | "hidden" | "unstable"
+type Fault = "none" | "unknown+blind" | "blind+ignored" | "ignored" | "single" | "inverse" | "hidden" | "unstable"
 
 /** A tiny paint adapter, not a grader: independently supplied style failures change pixels.
  * The real callbacks own writes, geometry, control ordering, witnesses and result recording. */
@@ -29,6 +29,7 @@ async function measure(id: string, fault: Fault = "none", reply = true) {
   let painted = "blank"
   let sentinel = " "
   let count = 0
+  const faults = fault.split("+")
   const target = {
     "sgr.bold": "1",
     "sgr.inverse": "7",
@@ -39,14 +40,14 @@ async function measure(id: string, fault: Fault = "none", reply = true) {
   }[id]
   if (!target) throw new Error(`Undeclared fixture style ${id}`)
   const paint = (style: string) => {
-    if (style === "99") return fault === "unknown" ? "unknown ink" : "plain"
+    if (style === "99") return faults.includes("unknown") ? "unknown ink" : "plain"
     if (style === target) {
-      if (fault === "ignored") return "plain"
+      if (faults.includes("ignored")) return "plain"
       if (fault === "single") return "style:4"
       if (fault === "inverse") return "style:7"
       if (fault === "hidden") return "wrong hidden ink"
     }
-    if (fault === "blind" && style === (id === "sgr.inverse" ? "4" : "7")) return "plain"
+    if (faults.includes("blind") && style === (id === "sgr.inverse" ? "4" : "7")) return "plain"
     return style === "0" ? "plain" : style === "8" ? "blank" : `style:${style}`
   }
   const ctx = {
@@ -114,13 +115,14 @@ async function measure(id: string, fault: Fault = "none", reply = true) {
 // AC: ordered rules; existing presence-only tests cannot distinguish these pixel outcomes.
 test.each([
   ["sgr.bold", "none", "supported", "target differs from plain"],
-  ["sgr.bold", "unknown", "probe-invalid", "made-up"],
-  ["sgr.bold", "blind", "probe-todo", "handled"],
+  ["sgr.bold", "unknown+blind", "probe-invalid", "made-up"],
+  ["sgr.bold", "blind+ignored", "probe-todo", "handled"],
   ["sgr.overline", "ignored", "unsupported", "drew nothing"],
   ["sgr.underline.curly", "single", "unsupported", "drawn as single underline"],
   ["sgr.bold", "inverse", "unsupported", "drawn as inverse"],
   ["sgr.hidden", "none", "supported", "blank"],
   ["sgr.hidden", "hidden", "probe-invalid", "hidden"],
+  ["sgr.hidden", "inverse", "unsupported", "drawn as inverse"],
   ["sgr.inverse", "none", "supported", "target differs from plain"],
   ["sgr.underline.single", "none", "supported", "target differs from plain"],
   ["sgr.bold", "unstable", "probe-todo", "stable"],
