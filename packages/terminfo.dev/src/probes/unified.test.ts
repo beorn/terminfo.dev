@@ -107,11 +107,12 @@ it.each([
     for (const [index, probe] of probes.entries()) {
       probe.termWrites = "query"
       // Keep the actual callback/result producer; model only its TTY operations.
-      probe.term = async () =>
+      probe.term = async (ctx) =>
         originals[index]!.term!({
+          ...ctx,
           write() {},
           queryCursorPosition: async () => ({ row: 1, col: 1 }),
-        } as TermProbeSource)
+        })
     }
     const base = {
       observedAt: new Date().toISOString(),
