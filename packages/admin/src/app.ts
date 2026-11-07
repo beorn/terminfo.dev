@@ -35,7 +35,6 @@ import { parseLstart } from "../../terminfo.dev/src/disposable-receipt.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
 import { serveCommand } from "./serve-command.ts"
-import { termFeaturesBootstrap, retainTermFeaturesLaunch } from "../../terminfo.dev/src/terminal-child-environment.ts"
 import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
@@ -408,7 +407,6 @@ export interface PreparedCliLaunch {
   identityPath: string
   executablePath: string
   marker: ProcessMarker
-  termFeaturesRecordPath?: string
 }
 
 /** Prepare the existing CLI recipe without writing the caller's command or starting a daemon. */
@@ -429,7 +427,12 @@ export function prepareCliLaunch(appId: string, run: Run): PreparedCliLaunch {
     value: recipe.markerValue(run),
   })
   recipe.prepare?.(run, marker.value)
-  const env: NodeJS.ProcessEnv = { ...process.env, ...recipe.env, TERMINFO_RUN_ID: run.id }
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...recipe.env,
+    TERMINFO_RUN_ID: run.id,
+    TERMINFO_TERM_FEATURES_LAUNCH: run.id,
+  }
   // Only an export added by this freshly launched terminal may answer the child probe.
   delete env.TERM_FEATURES
   return {
@@ -440,7 +443,6 @@ export function prepareCliLaunch(appId: string, run: Run): PreparedCliLaunch {
     identityPath: join(run.directory, "owner-tty.txt"),
     executablePath: recipe.executablePath,
     marker,
-    termFeaturesRecordPath: join(run.directory, "term-features-child.bin"),
   }
 }
 
@@ -493,9 +495,6 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
     throwWithCleanupErrors(primary)
   }
   child.unref()
-  if (prepared.termFeaturesRecordPath !== undefined) {
-    retainTermFeaturesLaunch(prepared.termFeaturesRecordPath, prepared.env, child.pid)
-  }
   if (stdoutFd !== undefined) closeParentFd(stdoutFd)
   if (stderrFd !== undefined) closeParentFd(stderrFd)
   return {
@@ -526,10 +525,7 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
       : app.cliLaunch
         ? `printf '%s\\n' "$(tty)" > ${shellQuote(identityPath)}\n`
         : `printf '%s\\n' "\${KITTY_WINDOW_ID:-}" "\${KITTY_PID:-}" "$(tty)" "\${TERM:-}" > ${shellQuote(identityPath)}\n`
-  const childRecord = app.cliLaunch ? join(run.directory, "term-features-child.bin") : undefined
-  const childPrefix = childRecord === undefined ? "" : termFeaturesBootstrap(childRecord)
-  const recordEnvironment = childRecord === undefined ? "" : `TERMINFO_TERM_FEATURES_RECORD=${shellQuote(childRecord)} `
-  writeFileSync(run.scriptPath, `#!/bin/bash -p\n${childPrefix}${identityWrite}${recordEnvironment}${serveCmd}\n`, {
+  writeFileSync(run.scriptPath, `#!/bin/bash -p\n${identityWrite}${serveCmd}\n`, {
     flag: "wx",
     mode: 0o700,
   })

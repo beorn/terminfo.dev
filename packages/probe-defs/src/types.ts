@@ -1002,7 +1002,15 @@ export interface InputFixture {
 }
 
 export type TermFeaturesReading =
-  | { status: "measured"; present: boolean; value: string; runId: string; pid: number; tty: string }
+  | {
+      status: "measured"
+      present: boolean
+      value: string
+      runId: string
+      launchMarker: string
+      pid: number
+      tty: string
+    }
   | { status: "unavailable"; reason: string }
   | { status: "invalid"; reason: string }
 

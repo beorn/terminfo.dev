@@ -25,6 +25,6 @@ export function serveCommand(run: Run, captureDirectory?: string): string {
     `TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH}`,
     `TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION}`,
     ...(captureDirectory === undefined ? [] : [`TERMINFO_CAPTURE_DIRECTORY=${shellQuote(captureDirectory)}`]),
-    `exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`,
+    `exec ${shellQuote(BUN)} --no-env-file ${shellQuote(CLI_ENTRY)} probe server --start`,
   ].join(" ")
 }

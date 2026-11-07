@@ -10,7 +10,7 @@ import type {
   ProbeSubject,
   TermProbeSource,
 } from "@terminfo/probe-defs"
-import { readTermFeaturesRecord } from "./terminal-child-environment.ts"
+import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
 import {
@@ -1216,7 +1216,6 @@ export async function createOwnedTerminal(options: {
     })
     const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
     const appPid = hostedAncestor?.pid ?? processOwnerPid
-    const termFeaturesRecordPath = process.env.TERMINFO_TERM_FEATURES_RECORD
     const owner: OwnedTerminal = {
       geometryAtGrant,
       geometrySource: source,
@@ -1225,24 +1224,19 @@ export async function createOwnedTerminal(options: {
       ...(hostedAppId && { hostedAppId }),
       ...(clipboard && { clipboard }),
       ...(muxAttachmentProof && { muxAttachmentProof }),
-      ...(processOwner &&
-        !darwinAttachment &&
-        binding.platform === "darwin" &&
-        termFeaturesRecordPath && {
+      ...(!muxAttachmentProof &&
+        (binding.platform === "linux" || binding.platform === "darwin") && {
           async readTermFeatures() {
             if (!verifiedTerminalOwners.has(owner)) {
               return { status: "unavailable" as const, reason: "TERM_FEATURES child read has no live owned capture" }
             }
             // Reuses this owner's device check; geometry need not be measurable to bind the TTY.
             await owner.readGeometry()
-            const assertion = parseProcessOwnerAssertion(processOwner)
-            return readTermFeaturesRecord({
-              recordPath: termFeaturesRecordPath,
-              runId: expectedLaunchRunId,
-              workerPid: process.pid,
-              ownerPid: assertion.ownerPid,
-              tty: assertion.tty,
-            })
+            const tty =
+              binding.platform === "linux"
+                ? `tty_nr=${binding.controllingTtyNr};fd=${binding.selectedFd};rdev=${binding.outputRdev}`
+                : binding.controllingTty
+            return readTermFeaturesEnvironment(process.env, expectedLaunchRunId, process.pid, tty)
           },
         }),
       async readGeometry() {

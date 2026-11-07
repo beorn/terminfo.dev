@@ -707,7 +707,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
   export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
   export TERMINFO_CLIPBOARD_FIXTURE_RECEIPT=/out/clipboard-fixture.json
-  collector_command=(bun "$TERMINFO_RUNNER" test --serve)
+  collector_command=(bun --no-env-file "$TERMINFO_RUNNER" test --serve)
   if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
     [[ "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
     case "$TERMINFO_MUX_KIND" in tmux|screen) ;; *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;; esac
@@ -716,6 +716,8 @@ if [[ "${1:-}" == "--inside" ]]; then
   # The declared invocation: what the descriptor table launches, exactly and uniformly.
   printf -v target_config '%q ' "$target_binary" "${target_launch_args[@]}" \
     "${target_clipboard_args[@]}" "${target_command_lead[@]}" "${collector_command[@]}"
+  unset TERM_FEATURES
+  export TERMINFO_TERM_FEATURES_LAUNCH="$TERMINFO_RUN_ID"
   "$target_binary" "${target_launch_args[@]}" "${target_clipboard_args[@]}" "${target_command_lead[@]}" \
     "${collector_command[@]}" >/out/daemon.log 2>&1 &
   daemon_pid=$!
