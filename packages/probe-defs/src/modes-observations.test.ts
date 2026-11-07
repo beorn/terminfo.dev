@@ -896,6 +896,119 @@ test.each([
   expect(definition.termNeedsDisposable).toBe(true)
 })
 
+// Ask 3: size replies or an owned width frame decide silent/Ps0 DECCOLM.
+// The protocol matrix never exercised either effect or its controls.
+test.each([null, 0] as const)("App DECCOLM reads controlled size replies after DECRPM %s", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
+  if (!definition?.term) throw new Error("Missing App DECCOLM callback")
+  for (const mutation of [undefined, "ignored", "reset-noop", "missing-size"] as const) {
+    const { context, state } = cellWidthContext({
+      width: 80,
+      answers18t: true,
+      ignoresMode: mutation === "ignored",
+      ignoresReset: mutation === "reset-noop",
+    })
+    let reads = 0
+    const result = await definition.term(
+      replayTermProbeSource(new Map(), {
+        cols: 80,
+        rows: 24,
+        write: (bytes) => context.feed(bytes),
+        queryCursorPosition: async () => {
+          throw new Error("A cursor reply is not a width reader")
+        },
+        queryWithSentinel: async (query, pattern) => {
+          if (query === "\x1b[?3$p") return ps === null ? null : pattern.exec("\x1b[?3;0$y")
+          expect(query).toBe("\x1b[18t")
+          if (mutation === "missing-size" && ++reads === 2) return null
+          return pattern.exec(context.feedCapture(query))
+        },
+      }),
+    )
+    if (mutation === "reset-noop" || mutation === "missing-size") {
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+    } else {
+      expect(result.observation?.outcome, mutation ?? "working width change").toBe(
+        mutation ? "unsupported" : "supported",
+      )
+      if (ps === 0) expect(result.note).toContain("Ps 0")
+      expect(state.width).toBe(80)
+    }
+  }
+  expect(definition.termNeedsDisposable).toBe(true)
+  expect(definition.termWrites).toBeUndefined()
+})
+
+test.each([null, 0] as const)("App DECCOLM reads controlled width frames after DECRPM %s", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
+  if (!definition?.term) throw new Error("Missing App DECCOLM callback")
+  const stored = new Map<string, StoredQuery>()
+  if (ps === 0) stored.set("\x1b[?3$p", { sequence: "\x1b[?3$p", match: null, reason: "reply", raw: "\x1b[?3;0$y" })
+  for (const mutation of [undefined, "deccolm-noop", "wrap-noop"] as const) {
+    const surface = createSemanticSurface({ cols: 80, rows: 5, mutations: mutation ? [mutation] : [] })
+    let sequence = 0
+    const source = replayTermProbeSource(stored, {
+      cols: 80,
+      rows: 5,
+      write: (bytes) => surface.feed(bytes),
+      captureKind: "pixels",
+      captureGeometry: {
+        geometry: { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 100 },
+        source: "measured by complete raster calibration",
+      },
+      queryCursorPosition: async () => {
+        const p = surface.getCursor()
+        return { row: p.y + 1, col: p.x + 1 }
+      },
+      capture: async (request) => {
+        if (!request.cells || !request.pixelGeometry) throw new Error("Width frame needs its measured crop")
+        const text = (rectangle: CaptureCells) =>
+          Array.from({ length: rectangle.bottom - rectangle.top + 1 }, (_, row) =>
+            Array.from(
+              { length: rectangle.right - rectangle.left + 1 },
+              (_, col) => surface.getCell(rectangle.top - 1 + row, rectangle.left - 1 + col).char,
+            ).join(""),
+          ).join("\n")
+        return {
+          kind: "pixels",
+          role: request.role,
+          label: request.label,
+          capturedAt: ++sequence,
+          ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
+          regionDigest: text(request.cells),
+          pixelsDigest: text({ top: 1, left: 1, bottom: 5, right: 80 }),
+          regionRectangle: {
+            x: (request.cells.left - 1) * 10,
+            y: (request.cells.top - 1) * 20,
+            width: (request.cells.right - request.cells.left + 1) * 10,
+            height: (request.cells.bottom - request.cells.top + 1) * 20,
+          },
+        }
+      },
+    })
+    const result = await definition.term(source)
+    const recorded = recordExecutedProbe({
+      featureId: definition.id,
+      attempt: { scope: "probe", startedAt: new Date().toISOString() },
+      tests: result.tests,
+      observation: result.observation ? { featureId: definition.id, ...result.observation } : undefined,
+      assertions: (result.assertions ?? []).map((a) => ({ featureId: definition.id, ...a })),
+    })
+    if (mutation === "wrap-noop") expect(["probe-invalid", "probe-todo"]).toContain(recorded.status)
+    else
+      expect(
+        recorded.status,
+        JSON.stringify({ mutation, reason: recorded.reason, tests: result.tests, notTested: result.notTested }),
+      ).toBe(mutation ? "unsupported" : "supported")
+    if (ps === 0 && !mutation) expect(result.note).toContain("Ps 0")
+  }
+  const missing = await definition.term(replayTermProbeSource(stored))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(definition.termNeedsGeometry).toBe(true)
+})
+
 function headlessDeccolm(): (ctx: LibProbeSource) => ProbeCallbackResult {
   const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
   if (!definition?.lib) throw new Error("Missing headless DECCOLM callback")

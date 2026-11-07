@@ -1801,6 +1801,98 @@ export async function controlledWrapEffect(ctx: TermProbeSource, decrpm: 0 | nul
   }
 }
 
+// The existing DECCOLM size-reply pattern is shared by its Lib and App readers.
+const deccolmSizeReply = /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/
+
+async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const decrpm = await queryDecrpm(ctx, 3)
+  if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 3)
+  const prefix = decrpm === 0 ? "DECRPM mode 3 returned Ps 0" : "No usable DECRPM reply for mode 3"
+  const size = async () => {
+    const reply = await ctx.queryWithSentinel("\x1b[18t", deccolmSizeReply)
+    const rows = Number(reply?.[1]),
+      cols = Number(reply?.[2])
+    return Number.isSafeInteger(rows) && rows > 0 && Number.isSafeInteger(cols) && cols > 0 ? { rows, cols } : null
+  }
+  const initial = await size()
+  if (initial) {
+    try {
+      ctx.write("\x1b[?40h\x1b[?3l")
+      const reset = await size()
+      ctx.write("\x1b[?3h")
+      const set = await size()
+      ctx.write("\x1b[?3l")
+      const resetAgain = await size()
+      const response = JSON.stringify({ decrpm, initial, reset, set, resetAgain })
+      if (
+        !reset ||
+        !set ||
+        !resetAgain ||
+        [reset, set, resetAgain].some((reading) => reading.rows !== initial.rows) ||
+        reset.cols !== resetAgain.cols
+      ) {
+        return {
+          ...replyFailure("DECCOLM size controls did not establish valid stable reset/set/reset readings"),
+          response,
+        }
+      }
+      const pass = reset.cols === 80 && set.cols === 132 && resetAgain.cols === 80
+      const unchanged = reset.cols === initial.cols && set.cols === reset.cols && resetAgain.cols === reset.cols
+      if (!pass && !unchanged) {
+        return {
+          ...replyFailure("DECCOLM size readings did not resolve to 80/132/80 or a qualified unchanged width"),
+          response,
+        }
+      }
+      const note = `${prefix}; controlled CSI 18 t width reports ${pass ? "establish 80/132 switching" : "show no column-mode effect"}`
+      return {
+        pass,
+        response,
+        note,
+        observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply", note },
+        assertions: [
+          {
+            assertionType: "query_reply",
+            kind: pass ? "positive" : "negative",
+            expected: "CSI 18 t reports 80 columns after reset, 132 after set, then 80 after reset again",
+            observed: response,
+          },
+        ],
+      }
+    } finally {
+      // The existing disposable fixture owns a canonical 80-column, gate-open setup.
+      ctx.write("\x1b[?40h\x1b[?3l")
+    }
+  }
+  if (!ctx.capture && !ctx.cells)
+    return replyFailure(`${prefix}; DECCOLM effect needs a size reply or owned width frame`)
+  const refusal = captureRefusal(ctx, 4, 54, "DECCOLM")
+  if (refusal) return refusal
+  const setup = "\x1b[?40h\x1b[?3l\x1b[?7h\x1b[2J\x1b[H"
+  const line = "X".repeat(132) + "A"
+  const result = await captureRegionCallbackResult(ctx, "modes.deccolm", {
+    region: { top: 2, left: 1, bottom: 2, right: 54 },
+    sentinel: { row: 3, col: 1 },
+    cursorRow: 4,
+    minRows: 4,
+    minCols: 54,
+    seed: setup + line,
+    edit: "\x1b[?3h\x1b[2J\x1b[H" + line,
+    expected: setup + "\x1b[2;1HA",
+    ignored: setup + line,
+    setupReference: setup + "\x1b[2;1H" + "X".repeat(52) + "A",
+    discriminator: { signal: "column-width-text-placement", expected: "change" },
+    cleanup: "\x1b[?40h\x1b[?3l\x1b[?7h",
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  })
+  if (!result) throw new Error("DECCOLM owned width frame disappeared")
+  const detail = result.note ?? result.observation?.note
+  const note = `${prefix}; CSI 18 t gave no usable size; controlled width frame${detail ? `; ${detail}` : ""}`
+  result.note = note
+  if (result.observation) result.observation.note = note
+  return result
+}
+
 const reverseVideoProtocol = decrpmModeProbe(
   "modes.reverse-video",
   5,
@@ -2593,7 +2685,8 @@ const modeDefinitions: ProbeDefinition[] = [
   // ?3 — DECCOLM 80/132 column switch, decided by cell state, 18t only corroborating (#31381, cee6d003)
   {
     id: "modes.deccolm",
-    termWrites: "query",
+    termNeedsDisposable: true,
+    termNeedsGeometry: true,
     termAssertionType: "query_reply",
     libAssertionType: "buffer_state",
     lib: (ctx) => {
@@ -2605,11 +2698,10 @@ const modeDefinitions: ProbeDefinition[] = [
           { cols: ctx.cols },
         )
       }
-      const geometryReply = /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/
       const replyNotes: string[] = []
       const reply18t = (phase: string) => {
         const raw = ctx.feedCapture("\x1b[18t")
-        const match = geometryReply.exec(raw)
+        const match = deccolmSizeReply.exec(raw)
         if (raw && !match) replyNotes.push(`Malformed 18t reply (${phase}): ${JSON.stringify(raw)}`)
         return match ? Number(match[2]) : null
       }
@@ -2665,9 +2757,7 @@ const modeDefinitions: ProbeDefinition[] = [
         ctx.feed(restore + "\x1b[?40h")
       }
     },
-    async term(ctx) {
-      return decrpmResult(await queryDecrpm(ctx, 3), 3)
-    },
+    term: deccolmApp,
   },
 
   // ?4 — DECSCLM needs presentation timing, not mode recognition or final parser state.
