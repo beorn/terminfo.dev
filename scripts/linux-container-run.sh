@@ -517,8 +517,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     ghostty)
       # A forced --title ignores application title sequences, including OSC 7's title fallback.
       # The existing PID/window ownership receipt identifies the window without overriding its title.
-      target_launch_args=(--font-family='JetBrains Mono' --font-size=16 --window-decoration=none
-        --title="terminfo-$target_id-container-daemon")
+      target_launch_args=(--font-family='JetBrains Mono' --font-size=16 --window-decoration=none)
       target_command_lead=(-e)
       # Measured 2026-10-07 in ghostty-visual-default-image: XTVERSION "ghostty 1.3.1", DA1 "?62;...".
       target_xtversion_mode=require
