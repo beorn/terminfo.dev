@@ -220,11 +220,77 @@ async function primaryRestoreCapture(
       const reason = `After a ?${mode} round trip the primary marker was not restored`
       failedRestoration.reason = reason
       if (result.observation) result.observation.note = reason
-    } else if (!gradesEntry) {
+    } else if (!gradesEntry && mode === 1049) {
       result.tests.push(remainingFacets)
     }
   }
-  return result
+  if (mode === 1049 || result.observation?.outcome !== "supported") return result
+
+  // Qualify the independent ?47 access before using it to attribute ?1047's clearing.
+  // The target only re-enters: painting the expected marker happens after that read.
+  const legacyEnter = "\x1b[?47h"
+  const legacyLeave = "\x1b[?47l"
+  const blankAlternate = `${legacyEnter}\x1b[0m\x1b[2J\x1b[H`
+  const paintedAlternate = `${blankAlternate}${alternate}`
+  const retention = await captureRegionCallbackResult(ctx, `${id} retention`, {
+    region: { top: 1, left: 1, bottom: 1, right: Math.max(primary.length, alternate.length) },
+    sentinel: { row: 2, col: 1 },
+    cursorRow: 3,
+    minRows: 3,
+    minCols: 8,
+    seed: `${legacyLeave}\x1b[0m\x1b[2J\x1b[H${primary}${paintedAlternate}${legacyLeave}`,
+    edit: legacyEnter,
+    expected: paintedAlternate,
+    ignored: blankAlternate,
+    cleanup: legacyLeave,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  })
+  if (!retention) throw new Error(`${id}: owned alternate retention capture disappeared`)
+  const parts = [result, retention]
+  if (mode === 1047 && retention.observation?.outcome === "unsupported") {
+    return declaredUntestableResult(
+      "Untestable (no setup): this run does not retain alternate content through DECSET47, so its cleared reading cannot establish whether DECRST1047 cleared the buffer.",
+      { primary: result.response, retention: retention.response, frames: parts.flatMap((part) => part.observation?.frames ?? []) },
+    )
+  }
+  if (mode === 1047 && retention.observation?.outcome === "supported") {
+    const cleared = await captureRegionCallbackResult(ctx, `${id} clear-on-exit`, {
+      region: { top: 1, left: 1, bottom: 1, right: Math.max(primary.length, alternate.length) },
+      sentinel: { row: 2, col: 1 },
+      cursorRow: 3,
+      minRows: 3,
+      minCols: 8,
+      seed: `${baseline}${alternateFrame}`,
+      edit: `${leave}${legacyEnter}`,
+      expected: blankAlternate,
+      ignored: paintedAlternate,
+      cleanup: legacyLeave,
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    })
+    if (!cleared) throw new Error(`${id}: owned alternate clearing capture disappeared`)
+    parts.push(cleared)
+  }
+  const signals = ["alternate-retained-on-reentry", "alternate-cleared-on-exit"]
+  let assertionOffset = 0
+  const tests = parts.flatMap((part, index) => {
+    const outcome = part.observation?.outcome
+    const own = part.tests ?? [{
+      id: signals[index - 1]!,
+      status: outcome === "supported" || outcome === "unsupported" ? outcome : "probe-todo" as const,
+      ...(outcome === "supported" || outcome === "unsupported" ? { assertionRefs: [0] } : { reason: part.observation?.note ?? "Alternate-buffer witness did not qualify" }),
+    }]
+    const adjusted = own.map((test) => ({ ...test, ...(test.assertionRefs && { assertionRefs: test.assertionRefs.map((ref) => ref + assertionOffset) }) }))
+    assertionOffset += part.assertions?.length ?? 0
+    return adjusted
+  })
+  const last = parts.at(-1)!
+  return {
+    ...last,
+    tests,
+    assertions: parts.flatMap((part) => part.assertions ?? []),
+    response: JSON.stringify(parts.map((part) => ({ response: part.response, tests: part.tests }))),
+    ...(last.observation && { observation: { ...last.observation, frames: parts.flatMap((part) => part.observation?.frames ?? []) } }),
+  }
 }
 
 /**
