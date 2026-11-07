@@ -35,8 +35,9 @@ import {
   stackStateResult,
   decideStackOperation,
   type StackReading,
+  validSize,
 } from "./helpers.ts"
-import { applicationKeypad, altScroll1007 } from "./input.ts"
+import { applicationKeypad, altScroll1007, allMotion1003, sgrMouse1006, mouseTracking1000 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { captureRegionCallbackResult, cropPositionRefusal, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
 
@@ -169,7 +170,8 @@ async function primaryRestoreCapture(
   const failedRestoration = result.tests?.find(
     (test) => test.id === "primary-marker-restored" && test.status === "unsupported",
   )
-  if (mode === 1049 && result.observation && failedRestoration) {
+  const gradesEntry = id === "modes.alt-screen.enter"
+  if (mode === 1049 && !gradesEntry && result.observation && failedRestoration) {
     // Distinct painted markers do not independently establish entry into another buffer.
     // Without that prerequisite the failed roundtrip cannot be attributed to exit.
     return {
@@ -210,7 +212,7 @@ async function primaryRestoreCapture(
       const reason = `After a ?${mode} round trip the primary marker was not restored`
       failedRestoration.reason = reason
       if (result.observation) result.observation.note = reason
-    } else {
+    } else if (!gradesEntry) {
       result.tests.push(remainingFacets)
     }
   }
@@ -1657,16 +1659,169 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   }
 }
 
+async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const decrpm = await queryDecrpm(ctx, 1)
+  if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1)
+  const { input, readInput } = ctx
+  if (!input || !readInput) {
+    return replyFailure("Application cursor effect needs owned key injection and input readback")
+  }
+  try {
+    ctx.write("\x1b[?1l")
+    const control = (await readInput(/^a$/, 1000, () => input.injectKey("a")))?.[0]
+    if (control !== "a") return replyFailure("Application cursor delivery control did not read the injected plain a")
+    const readUp = async (enabled: boolean) => {
+      ctx.write(`\x1b[?1${enabled ? "h" : "l"}`)
+      return (
+        await readInput(/^(?:\x1b(?:\[|O)A)?a$/, 1000, async () => {
+          await input.injectKey("Up")
+          await input.injectKey("a")
+        })
+      )?.[0]
+    }
+    const reset = await readUp(false)
+    const set = await readUp(true)
+    const resetAgain = await readUp(false)
+    const response = JSON.stringify({ decrpm, control, reset, set, resetAgain })
+    if ([reset, set, resetAgain].some((report) => report !== "\x1b[Aa" && report !== "\x1bOAa")) {
+      return {
+        ...replyFailure(
+          "Application cursor effect did not read an Up encoding followed by the plain-a delivery control in every arm",
+        ),
+        response,
+      }
+    }
+    const pass = reset === "\x1b[Aa" && set === "\x1bOAa" && resetAgain === "\x1b[Aa"
+    const note = `${decrpm === 0 ? "DECRPM mode 1 returned Ps 0" : "No usable DECRPM reply for mode 1"}; same-run set/reset input ${pass ? "establishes application cursor keys" : "does not show controlled application cursor keys"}`
+    return {
+      pass,
+      response,
+      note,
+      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "input_bytes", note },
+      assertions: [
+        {
+          assertionType: "input_bytes",
+          kind: "positive",
+          expected: "injected plain a returns in the same run",
+          observed: control,
+        },
+        {
+          assertionType: "input_bytes",
+          kind: pass ? "positive" : "negative",
+          expected:
+            "Up is CSI A with DECCKM reset, SS3 A with it set, then CSI A after reset; every read ends with injected plain a",
+          observed: response,
+        },
+      ],
+    }
+  } finally {
+    // A disposable fixture owns the canonical normal-cursor-key setup.
+    ctx.write("\x1b[?1l")
+  }
+}
+
+async function autoWrapApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const decrpm = await queryDecrpm(ctx, 7)
+  if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 7)
+  const { cols, rows } = ctx
+  if (!validSize(cols, 2) || !validSize(rows, 2)) {
+    return replyFailure(`Auto-wrap effect needs a measured grid of at least 2x2, got ${rows}x${cols}`)
+  }
+  try {
+    ctx.write("\x1b[?7l\x1b[2J\x1b[H")
+    const home = await ctx.queryCursorPosition()
+    ctx.write("W".repeat(cols - 1))
+    const control = await ctx.queryCursorPosition()
+    if (home?.row !== 1 || home.col !== 1 || control?.row !== 1 || control.col !== cols) {
+      return {
+        ...replyFailure(
+          "Auto-wrap cursor control did not measure home and ordinary text advancing to the right margin",
+        ),
+        response: JSON.stringify({ decrpm, cols, home, control }),
+      }
+    }
+    const readEffect = async (enabled: boolean) => {
+      ctx.write(`\x1b[?7${enabled ? "h" : "l"}\x1b[2J\x1b[H${"W".repeat(cols)}X`)
+      return ctx.queryCursorPosition()
+    }
+    const reset = await readEffect(false)
+    const set = await readEffect(true)
+    const resetAgain = await readEffect(false)
+    const observed = { decrpm, cols, home, control, reset, set, resetAgain }
+    const response = JSON.stringify(observed)
+    if (
+      [reset, set, resetAgain].some(
+        (position) =>
+          !position || !((position.row === 1 && position.col === cols) || (position.row === 2 && position.col === 2)),
+      )
+    ) {
+      return {
+        ...replyFailure("Auto-wrap effect cursor readings did not resolve to the qualified wrap/no-wrap positions"),
+        response,
+      }
+    }
+    const pass =
+      reset?.row === 1 &&
+      reset.col === cols &&
+      set?.row === 2 &&
+      set.col === 2 &&
+      resetAgain?.row === 1 &&
+      resetAgain.col === cols
+    const note = `${decrpm === 0 ? "DECRPM mode 7 returned Ps 0" : "No usable DECRPM reply for mode 7"}; same-run set/reset cursor effects ${pass ? "establish auto-wrap" : "do not show controlled auto-wrap"}`
+    return {
+      pass,
+      response,
+      note,
+      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply", note },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: "positive",
+          expected: `ordinary text advances from home to column ${cols} in the same run`,
+          observed: JSON.stringify({ home, control }),
+        },
+        {
+          assertionType: "query_reply",
+          kind: pass ? "positive" : "negative",
+          expected: "the overflow character wraps only with DECAWM set and stops wrapping after reset",
+          observed: JSON.stringify({ reset, set, resetAgain }),
+        },
+      ],
+    }
+  } finally {
+    // This mutating arm owns a disposable fixture: leave its canonical wrap-on setup.
+    ctx.write("\x1b[?7h")
+  }
+}
+
 const modeDefinitions: ProbeDefinition[] = [
   // Alt screen enter — measured roundtrip (narrow CTO-approved 1049 slice)
-  decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) =>
-    altScreenRoundtrip(
-      ctx,
-      ALT_SCREEN_1049,
-      "enter",
-      "CSI ? 1049 h switches to a cleared alternate buffer (full seeded roundtrip)",
+  {
+    ...decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) =>
+      altScreenRoundtrip(
+        ctx,
+        ALT_SCREEN_1049,
+        "enter",
+        "CSI ? 1049 h switches to a cleared alternate buffer (full seeded roundtrip)",
+      ),
     ),
-  ),
+    term: async (ctx) => {
+      const decrpm = await queryDecrpm(ctx, 1049)
+      if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1049)
+      if (!ctx.capture && !ctx.cells) return replyFailure("Alternate-screen effect needs owned marker readback")
+      const refusal = captureRefusal(ctx, 3, 8, "Alt-screen entry")
+      if (refusal) return refusal
+      const result = await primaryRestoreCapture(ctx, "modes.alt-screen.enter", 1049, "PRIMARY", "ALTONLY")
+      const detail = result.note ?? result.observation?.note
+      const note = `${decrpm === 0 ? "DECRPM mode 1049 returned Ps 0" : "No usable DECRPM reply for mode 1049"}; controlled alternate-buffer marker read${detail ? `; ${detail}` : ""}`
+      result.note = note
+      if (result.observation) result.observation.note = note
+      return result
+    },
+    termWrites: undefined,
+    termNeedsDisposable: true,
+    termNeedsGeometry: true,
+  },
 
   // Alt screen exit
   {
@@ -1738,42 +1893,75 @@ const modeDefinitions: ProbeDefinition[] = [
   decrpmModeProbe("modes.bracketed-paste", 2004, headlessDecrpmArm(2004, "bracketedPaste", { stateReadback: true })),
 
   // Application cursor keys
-  decrpmModeProbe("modes.application-cursor", 1, headlessDecrpmArm(1, "applicationCursor", { stateReadback: true })),
+  {
+    ...probe(
+      "modes.application-cursor",
+      headlessDecrpmArm(1, "applicationCursor", { stateReadback: true }),
+      applicationCursorApp,
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+  },
 
   // Auto wrap
-  decrpmModeProbe("modes.auto-wrap", 7, (ctx) => {
-    const expected = "DECAWM wraps Y after a full measured row of X"
-    const rows = ctx.getScrollback().screenLines
-    if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
-      return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Measured grid needs two rows")
-    }
-    const originallyEnabled = ctx.getMode("autoWrap")
-    try {
-      ctx.feed("\x1b[?7h")
-      const enabled = ctx.getMode("autoWrap")
-      // #30574: unreported mode metadata is null; measured cells can still decide.
-      if (enabled === false) {
-        return parserStateResult(null, expected, { originallyEnabled, enabled }, "Auto-wrap setup was not measured")
-      }
-      ctx.feed("X".repeat(ctx.cols) + "Y")
-      const last = ctx.getCell(0, ctx.cols - 1)
-      const next = ctx.getCell(1, 0)
-      return parserStateResult(last.char === "X" && next.char === "Y", expected, {
-        rows,
-        cols: ctx.cols,
-        originallyEnabled,
-        enabled,
-        last,
-        next,
-      })
-    } finally {
-      // Unknown mode metadata cannot determine the state to restore.
-      if (originallyEnabled !== null) ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
-    }
-  }),
+  {
+    ...probe(
+      "modes.auto-wrap",
+      (ctx) => {
+        const expected = "DECAWM wraps Y after a full measured row of X"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
+          return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Measured grid needs two rows")
+        }
+        const originallyEnabled = ctx.getMode("autoWrap")
+        try {
+          ctx.feed("\x1b[?7h")
+          const enabled = ctx.getMode("autoWrap")
+          // #30574: unreported mode metadata is null; measured cells can still decide.
+          if (enabled === false) {
+            return parserStateResult(null, expected, { originallyEnabled, enabled }, "Auto-wrap setup was not measured")
+          }
+          ctx.feed("X".repeat(ctx.cols) + "Y")
+          const last = ctx.getCell(0, ctx.cols - 1)
+          const next = ctx.getCell(1, 0)
+          return parserStateResult(last.char === "X" && next.char === "Y", expected, {
+            rows,
+            cols: ctx.cols,
+            originallyEnabled,
+            enabled,
+            last,
+            next,
+          })
+        } finally {
+          // Unknown mode metadata cannot determine the state to restore.
+          if (originallyEnabled !== null) ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
+        }
+      },
+      autoWrapApp,
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+    termNeedsGeometry: true,
+  },
 
   // Mouse tracking
-  decrpmModeProbe("modes.mouse-tracking", 1000, headlessDecrpmArm(1000, "mouseTracking", { stateReadback: true })),
+  {
+    ...probe(
+      "modes.mouse-tracking",
+      headlessDecrpmArm(1000, "mouseTracking", { stateReadback: true }),
+      async (ctx) => {
+        const decrpm = await queryDecrpm(ctx, 1000)
+        if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1000)
+        const result = await mouseTracking1000(ctx)
+        const note = `${decrpm === 0 ? "DECRPM mode 1000 returned Ps 0" : "No usable DECRPM reply for mode 1000"}; controlled click-tracking read`
+        result.note = note
+        if (result.observation) result.observation.note = note
+        return result
+      },
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+  },
 
   // Focus tracking
   decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
@@ -1956,12 +2144,44 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 
   // SGR mouse encoding
-  decrpmModeProbe("modes.mouse-sgr", 1006, headlessDecrpmArm(1006, "sgrMouse", { stateReadback: true })),
+  {
+    ...probe(
+      "modes.mouse-sgr",
+      headlessDecrpmArm(1006, "sgrMouse", { stateReadback: true }),
+      async (ctx) => {
+        const decrpm = await queryDecrpm(ctx, 1006)
+        if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1006)
+        const result = await sgrMouse1006(ctx)
+        const note = `${decrpm === 0 ? "DECRPM mode 1006 returned Ps 0" : "No usable DECRPM reply for mode 1006"}; controlled mouse-encoding read`
+        result.note = note
+        if (result.observation) result.observation.note = note
+        return result
+      },
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+  },
 
   // All-motion mouse tracking
-  decrpmModeProbe("modes.mouse-all", 1003, headlessDecrpmArm(1003, "mouseTracking", { stateReadback: true })),
+  {
+    ...probe(
+      "modes.mouse-all",
+      headlessDecrpmArm(1003, "mouseTracking", { stateReadback: true }),
+      async (ctx) => {
+        const decrpm = await queryDecrpm(ctx, 1003)
+        if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1003)
+        const result = await allMotion1003(ctx)
+        const note = `${decrpm === 0 ? "DECRPM mode 1003 returned Ps 0" : "No usable DECRPM reply for mode 1003"}; controlled buttonless-movement read`
+        result.note = note
+        if (result.observation) result.observation.note = note
+        return result
+      },
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+  },
 
-  // Application keypad: DECKPAM then KP_5 encoding (SS3 u vs 5)
+  // Application keypad: DECKPAM then KP_Add encoding (SS3 k vs +)
   probe(
     "modes.application-keypad",
     (ctx) => {

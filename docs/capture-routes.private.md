@@ -92,6 +92,14 @@ an observation that distinguishes the control from the requested effect, and ver
 restoration. Preserve title-stack, child-window, mux-format and outer-window distinctions.
 An application's cached title getter alone is not an independent OS-window oracle.
 
+The Linux owned adapter now exposes one optional public-title read through the existing
+window receipt or mux attachment proof. The collector installs it only for the verified
+run/output owner and retains raw reads and read errors. Direct Apps use `xdotool
+getwindowname`; tmux reads its recorded session's pane title; Screen's own query needs
+passing controls and never falls back to the outer window. The OSC 7 title-fallback
+route is installed only for Linux Ghostty. Its launcher permits application titles;
+that launch change requires its separately authorized before/after measurement.
+
 The existing title callback and application source facts do not establish that this complete
 native control/read/restore path has been implemented or measured. A real criterion or API
 change uses the repository's existing review process; this guide introduces no new gate.

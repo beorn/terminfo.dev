@@ -39,25 +39,53 @@ import {
   type KittyPlaceholderEvidence,
 } from "./kitty-capture.ts"
 
-const frame = { width: 20, height: 40, rgb: [255, 0, 0] as const }
+// Retained Kitty geometry: two cells at 13x29 pixels, exceeding one protocol payload chunk.
+const frame = { width: 26, height: 58, rgb: [255, 0, 0] as const }
 
 test("every animation frame carries an explicit gap and the loop count is explicit", () => {
   const root = kittyFrameTransfer(7, frame, { root: true })
   const later = kittyFrameTransfer(7, frame)
+  expect(root).toContain("a=t,")
+  expect(later).toContain("a=f,")
   // The root is sized and carries NO gap: the protocol gives it none at transfer time, so its gap
   // comes from the control code, which is the one place a default could otherwise take over.
-  expect(root).toContain(",s=20,v=40")
+  expect(root).toContain(",s=26,v=58")
   expect(root).not.toContain(",z=")
   expect(kittyRootGap(7)).toContain("a=a,i=7,r=1")
   expect(kittyRootGap(7)).toContain(`z=${String(KITTY_GAP_MS)}`)
   expect(later).toContain(`,z=${String(KITTY_GAP_MS)}`)
-  expect(later).not.toContain(",s=20")
+  expect(later).not.toContain(",s=26")
   const start = kittyStartPlayback(7)
   expect(start).toContain("s=3")
   expect(start).toContain(`v=${String(KITTY_LOOP_FOREVER)}`)
   // v=0 is ignored by the protocol and a default gap is what a negative must never inherit.
   expect(start).not.toContain("v=0")
   expect(later).not.toContain("z=0")
+})
+
+test("image, animation and virtual-placement payloads obey the same bounded transfer contract", () => {
+  for (const [wire, continuationKeys] of [
+    [kittyFrameTransfer(7, frame, { root: true }), ["m", "q"]],
+    [kittyFrameTransfer(7, frame), ["a", "m", "q"]],
+    [kittyVirtualPlacement(7, frame), ["m", "q"]],
+  ] as const) {
+    const chunks = [...wire.matchAll(/\x1b_G([^;]+);([A-Za-z0-9+/=]*)\x1b\\/gu)]
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.map((chunk) => chunk[0]).join("")).toBe(wire)
+    for (const [index, chunk] of chunks.entries()) {
+      const control = Object.fromEntries(chunk[1]!.split(",").map((part) => part.split("=")))
+      expect(chunk[2]!.length).toBeLessThanOrEqual(4096)
+      expect(chunk[2]!.length % 4).toBe(0)
+      expect(control.m).toBe(index === chunks.length - 1 ? "0" : "1")
+      expect(control.q).toBe("2")
+      if (index > 0) {
+        expect(Object.keys(control).sort()).toEqual(continuationKeys)
+        if (control.a !== undefined) expect(control.a).toBe("f")
+      }
+    }
+    const pixels = Buffer.from(chunks.map((chunk) => chunk[2]).join(""), "base64")
+    expect(pixels).toEqual(Buffer.alloc(26 * 58 * 3).fill(Buffer.from([255, 0, 0])))
+  }
 })
 
 test("frame selection is a control command, never the playback start", () => {
@@ -139,7 +167,9 @@ function evidence(overrides: Partial<KittyAnimationEvidence> = {}): KittyAnimati
     playback: ["a", "b"],
     retry: null,
     clientFrame: ["c", "d"],
-    still: ["e", "e"],
+    still: ["a", "a"],
+    blank: "blank",
+    reference: "a",
     cursorOnly: ["f", "f"],
     redraw: ["g", "h"],
     playbackElapsedMs: 400,
@@ -160,6 +190,17 @@ test("an equal playback pair is never a negative until the pipeline is alive and
   expect(decideKittyAnimation(evidence({ playback: ["a", "a"], retry: ["a", "a"] })).outcome).toBe("unsupported")
   // The same equal playback pair that DOES advance on the retry is support, not a negative.
   expect(decideKittyAnimation(evidence({ playback: ["a", "a"], retry: ["a", "b"] })).outcome).toBe("supported")
+  // Static-image support is sufficient setup: frame selection is part of animation, not a negative control.
+  const staticOnly = decideKittyAnimation(
+    evidence({ playback: ["a", "a"], retry: ["a", "a"], clientFrame: ["a", "a"] }),
+  )
+  expect(staticOnly.outcome).toBe("unsupported")
+  expect(staticOnly.note).toContain("hand selection did not change")
+  // Failed a=f setup cannot masquerade as a terminal that simply ignores animation.
+  expect(decideKittyAnimation(evidence({ playback: ["blank", "blank"], retry: ["blank", "blank"] })).outcome).toBe(
+    "inconclusive",
+  )
+  expect(decideKittyAnimation(evidence({ playback: ["a", "a"], retry: ["a", undefined] })).outcome).toBe("inconclusive")
 })
 
 test("each failed control names itself instead of becoming a negative", () => {
@@ -168,6 +209,8 @@ test("each failed control names itself instead of becoming a negative", () => {
   expect(decideKittyAnimation(evidence({ cursorOnly: ["f", "z"] })).decidedBy).toBe("the cursor-only control")
   expect(decideKittyAnimation(evidence({ redraw: ["g", "g"] })).decidedBy).toBe("the redraw control")
   expect(decideKittyAnimation(evidence({ playback: [undefined, "b"] })).decidedBy).toBe("a missing region digest")
+  expect(decideKittyAnimation(evidence({ reference: "blank" })).decidedBy).toBe("the still control")
+  expect(decideKittyAnimation(evidence({ reference: "other" })).decidedBy).toBe("the still control")
   for (const overrides of [
     { clientFrame: ["c", "c"] as const },
     { still: ["e", "z"] as const },
@@ -185,6 +228,7 @@ function placeholders(overrides: Partial<KittyPlaceholderEvidence> = {}): KittyP
     guard: ["guard", "guard"],
     blank: "blank",
     ordinary: "image",
+    reference: "image",
     cellReadback: null,
     ...overrides,
   }
@@ -211,7 +255,7 @@ test("each veto names itself instead of becoming a verdict", () => {
   expect(moved.decidedBy).toBe("the layout guard control")
   expect(moved.note).toContain("layout changed between states")
   // Something painted that is not the image: rendered, but not the ordinary placement.
-  const notOrdinary = decideKittyPlaceholders(placeholders({ ordinary: "other-pixels" }))
+  const notOrdinary = decideKittyPlaceholders(placeholders({ ordinary: "other-pixels", reference: "other-pixels" }))
   expect(notOrdinary.outcome).toBe("inconclusive")
   expect(notOrdinary.decidedBy).toBe("the same-image control")
   expect(notOrdinary.note).toContain("not pixel-identical to ordinary placement")
@@ -229,4 +273,16 @@ test("identical pixels through both paths stay a negative, and an unmeasured pat
   expect(same.decidedBy).toContain("layout guard equal")
   // The ordinary placement never painted, so the graphics path is unmeasured.
   expect(decideKittyPlaceholders(placeholders({ blank: "blank", ordinary: "blank" })).outcome).toBe("inconclusive")
+  // Screen painted base64 text in its ordinary-control crop. A changed crop is not an image witness.
+  for (const control of [
+    { reference: "image", ordinary: "base64-text" },
+    { reference: "blank", ordinary: "base64-text" },
+  ]) {
+    const unqualified = decideKittyPlaceholders(
+      placeholders({ withImage: ["same", "same"], withoutImage: "same", ...control }),
+    )
+    expect(unqualified.outcome).toBe("inconclusive")
+    expect(unqualified.decidedBy).toBe("the ordinary-placement control")
+    expect(unqualified.note).toContain("reference")
+  }
 })

@@ -129,6 +129,17 @@ export function kittyPixelPayload(width: number, height: number, rgb: readonly [
   return bytes.toString("base64")
 }
 
+/** Direct payload chunks share only m/q after the first header; frame chunks also retain a=f. */
+function kittyPayloadTransfer(action: "t" | "T" | "f", control: string, payload: string): string {
+  const chunks: string[] = []
+  for (let offset = 0; offset < payload.length; offset += 4096) {
+    const header = offset === 0 ? `a=${action},${control}` : action === "f" ? "a=f,q=2" : "q=2"
+    const more = offset + 4096 < payload.length ? 1 : 0
+    chunks.push(`\x1b_G${header},m=${more};${payload.slice(offset, offset + 4096)}\x1b\\`)
+  }
+  return chunks.join("")
+}
+
 /** The pixel size of the block from THIS run's report: whole pixels per cell, or a thrown refusal. */
 export function kittyBlockPixels(geometry: { readonly cellWidth: number; readonly cellHeight: number }): {
   width: number
@@ -159,7 +170,11 @@ export function kittyFrameTransfer(
 ): string {
   const size = options.root ? `,s=${frame.width},v=${frame.height}` : ""
   const gap = options.root ? "" : `,z=${String(options.gapMs ?? KITTY_GAP_MS)}`
-  return `\x1b_Ga=f,i=${imageId},f=24${size}${gap},q=2;${kittyPixelPayload(frame.width, frame.height, frame.rgb)}\x1b\\`
+  return kittyPayloadTransfer(
+    options.root ? "t" : "f",
+    `i=${imageId},f=24${size}${gap},q=2`,
+    kittyPixelPayload(frame.width, frame.height, frame.rgb),
+  )
 }
 
 /**
@@ -222,7 +237,11 @@ export function kittyVirtualPlacement(
   imageId: number,
   frame: { readonly width: number; readonly height: number; readonly rgb: readonly [number, number, number] },
 ): string {
-  return `\x1b_Ga=T,U=1,i=${imageId},f=24,s=${frame.width},v=${frame.height},c=${KITTY_BLOCK_COLS},r=${KITTY_BLOCK_ROWS},q=2;${kittyPixelPayload(frame.width, frame.height, frame.rgb)}\x1b\\`
+  return kittyPayloadTransfer(
+    "T",
+    `U=1,i=${imageId},f=24,s=${frame.width},v=${frame.height},c=${KITTY_BLOCK_COLS},r=${KITTY_BLOCK_ROWS},q=2`,
+    kittyPixelPayload(frame.width, frame.height, frame.rgb),
+  )
 }
 
 /**
@@ -265,10 +284,12 @@ export interface KittyAnimationEvidence {
   readonly playback: KittyDigestPair
   /** Arm 1's retry at twice the gap, only taken when the first pair was equal. */
   readonly retry: KittyDigestPair | null
-  /** Arm 2, client-driven frame selection: must differ, proving the image pipeline paints. */
+  /** Client-driven frame selection: must differ for a positive animation result. */
   readonly clientFrame: KittyDigestPair
-  /** Arm 3, one-frame image over the same intervals: must be equal. */
+  /** One-frame image over the same intervals: must be equal and match the independent reference. */
   readonly still: KittyDigestPair
+  readonly blank: string | undefined
+  readonly reference: string | undefined
   /** Arm 4, cursor-only control inside the compared rectangle: must be equal. */
   readonly cursorOnly: KittyDigestPair
   /** Arm 5, whole-window capture across one ordinary glyph outside the rectangle: must differ. */
@@ -299,8 +320,10 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCap
       ["playback", evidence.playback],
       ["client-frame", evidence.clientFrame],
       ["still", evidence.still],
+      ["static-reference", [evidence.blank, evidence.reference]],
       ["cursor-only", evidence.cursorOnly],
       ["redraw", evidence.redraw],
+      ...(evidence.retry === null ? [] : ([["retry", evidence.retry]] as const)),
     ] as const
   ).find(([, pair]) => pair[0] === undefined || pair[1] === undefined)
   if (missing) {
@@ -310,17 +333,14 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCap
       decidedBy: "a missing region digest",
     }
   }
-  if (evidence.clientFrame[0] === evidence.clientFrame[1]) {
+  if (
+    evidence.still[0] !== evidence.still[1] ||
+    evidence.still[0] !== evidence.reference ||
+    evidence.reference === evidence.blank
+  ) {
     return {
       outcome: "inconclusive",
-      note: `Kitty animation: selecting frame 2 by hand left the rectangle unchanged (${pairNames(evidence.clientFrame)}), so the image pipeline is unproven and an equal playback pair proves nothing`,
-      decidedBy: "the client-driven update control",
-    }
-  }
-  if (evidence.still[0] !== evidence.still[1]) {
-    return {
-      outcome: "inconclusive",
-      note: `Kitty animation: a one-frame image did not hold still across the same intervals (${pairNames(evidence.still)}), so a moving playback pair cannot be told apart from capture noise`,
+      note: `Kitty animation: the one-frame image must hold still and match an independent SGR reference distinct from blank (still ${pairNames(evidence.still)}, reference ${evidence.reference}, blank ${evidence.blank}); the static image control failed`,
       decidedBy: "the still control",
     }
   }
@@ -338,7 +358,16 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCap
       decidedBy: "the redraw control",
     }
   }
-  if (evidence.playback[0] !== evidence.playback[1]) {
+  const playbackChanged = evidence.playback[0] !== evidence.playback[1]
+  const retryChanged = evidence.retry !== null && evidence.retry[0] !== evidence.retry[1]
+  if ((playbackChanged || retryChanged) && evidence.clientFrame[0] === evidence.clientFrame[1]) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty animation: playback changed but selecting frame 2 by hand left the rectangle unchanged (${pairNames(evidence.clientFrame)}); the readings disagree`,
+      decidedBy: "the client-driven update control",
+    }
+  }
+  if (playbackChanged) {
     return {
       outcome: "supported",
       note: `Kitty animation: terminal-driven playback changed the rectangle between two captures with no write between them (${pairNames(evidence.playback)}), ${String(evidence.playbackElapsedMs)} ms after the first capture, while frame selection, a one-frame image, the cursor and a redraw behaved as controls require`,
@@ -352,17 +381,24 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCap
       decidedBy: "a missing retry",
     }
   }
-  if (evidence.retry[0] !== evidence.retry[1]) {
+  if (retryChanged) {
     return {
       outcome: "supported",
       note: `Kitty animation: terminal-driven playback advanced on the retry at twice the gap (${pairNames(evidence.retry)}), so the first pair was timing, not absence`,
       decidedBy: "two target frames of one run on the retried interval",
     }
   }
+  if (evidence.playback[0] !== evidence.still[0]) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty animation: the playback image did not paint the verified one-frame image (playback ${evidence.playback[0]}, still ${evidence.still[0]}), so failed image setup cannot establish an animation negative`,
+      decidedBy: "the playback image setup",
+    }
+  }
   return {
     outcome: "unsupported",
-    note: `Kitty animation: two captures at twice the gap were equal (${pairNames(evidence.retry)}) while frame selection still changed the rectangle, so the image paints and the terminal did not advance it on its own timer`,
-    decidedBy: "the retried playback pair, with the update control alive",
+    note: `Kitty animation: the playback image matches the verified one-frame image and two captures at twice the gap were equal (${pairNames(evidence.retry)}); hand selection ${evidence.clientFrame[0] === evidence.clientFrame[1] ? "did not change" : "changed"} the rectangle, so the terminal did not advance the image on its own timer`,
+    decidedBy: "the retried playback pair, with static image setup qualified",
   }
 }
 
@@ -382,6 +418,8 @@ export interface KittyPlaceholderEvidence {
   readonly blank: string | undefined
   /** The ordinary `a=p` placement of the same pixels in the same rectangle. */
   readonly ordinary: string | undefined
+  /** Independent SGR background painting of the same opaque pixels in the same rectangle. */
+  readonly reference: string | undefined
   /**
    * Cell readbacks of the placeholder rectangle in both states, when this run exposes a cells adapter.
    * A VETO only: unequal readbacks compared two different screens and are inconclusive before the
@@ -421,10 +459,10 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
       decidedBy: "a missing region digest",
     }
   }
-  if (evidence.blank === undefined || evidence.ordinary === undefined) {
+  if (evidence.blank === undefined || evidence.ordinary === undefined || evidence.reference === undefined) {
     return {
       outcome: "inconclusive",
-      note: "Kitty unicode placeholders: this arm supplied no cell-aligned region, so nothing could be compared (ordinary-placement control)",
+      note: "Kitty unicode placeholders: this arm supplied no cell-aligned region, so nothing could be compared (ordinary-placement/reference control)",
       decidedBy: "a missing region digest",
     }
   }
@@ -451,10 +489,10 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
       decidedBy: "the delayed with-image re-capture",
     }
   }
-  if (evidence.blank === evidence.ordinary) {
+  if (evidence.reference === evidence.blank || evidence.ordinary !== evidence.reference) {
     return {
       outcome: "inconclusive",
-      note: "Kitty unicode placeholders: the ordinary placement did not paint the rectangle it was given, so the graphics path is unmeasured and the feature is not implicated",
+      note: `Kitty unicode placeholders: the ordinary placement failed its independent SGR reference control (ordinary ${evidence.ordinary}, reference ${evidence.reference}, blank ${evidence.blank}); the reference must differ from blank and the ordinary placement must match it exactly, so no feature verdict follows`,
       decidedBy: "the ordinary-placement control",
     }
   }

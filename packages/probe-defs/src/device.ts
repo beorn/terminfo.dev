@@ -1,4 +1,10 @@
-import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
+import type {
+  LibProbeSource,
+  TermProbeSource,
+  ProbeDefinition,
+  ProbeCallbackResult,
+  TerminalQueryOutcome,
+} from "./types.ts"
 import { hasAuditedOscInterfaceAbsence } from "./extensions.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
@@ -259,6 +265,17 @@ const DECRQSS_DECSCL: DeviceReply = {
   expected: 'complete DECRQSS status 1 DECSCL conformance parameters ending "p and ST',
 }
 
+// 32569: tmux refuses SGR, DECSTBM and DECSCL and answers only SP q. Its input.c replies `1$r q%d q`, an extra ` q`
+// before the style, so take the status and the ending, not a strict digit form (@cto third-table ruling 2026-11-06).
+const DECRQSS_DECSCUSR: DeviceReply = {
+  id: "device.decrqss",
+  query: "\x1bP$q q\x1b\\",
+  valid: /\x1bP1\$r[^\x1b]* q\x1b\\/,
+  refusal: /\x1bP0\$r\x1b\\/,
+  malformed: /\x1bP[01]\$r/,
+  expected: "complete DECRQSS status 1 DECSCUSR reply ending SP q and ST",
+}
+
 function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbackResult {
   const before = ctx.getTitle()
   const saved = before === "pushed-title" ? "other-pushed-title" : "pushed-title"
@@ -302,6 +319,70 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
   }
 }
 
+/** Both App IDs measure the same two joint fixtures, through the owned title surface. */
+async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const read = ctx.readTitle
+  if (!read) {
+    const note = "No owned title reader is installed for this run"
+    return {
+      ...notTestedResult(note, {}),
+      tests: [
+        {
+          id: "criterion",
+          status: "probe-todo",
+          reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
+        },
+      ],
+    }
+  }
+  const before = await read()
+  const saved = before === "pushed-title" ? "other-pushed-title" : "pushed-title"
+  const set = (title: string) => ctx.write(`\x1b]2;${title}\x07`)
+  let pushed = false
+  const state: Record<string, unknown> = { before }
+  let result: ProbeCallbackResult
+  try {
+    const fixture = async (originalTitle: string, changedTitle: string) => {
+      set(saved)
+      set(originalTitle)
+      const original = await read()
+      pushed = true
+      ctx.write("\x1b[22;0t")
+      set(changedTitle)
+      const changed = await read()
+      ctx.write("\x1b[23;0t")
+      pushed = false
+      return { original, changed, restored: await read() }
+    }
+    const popFixture = await fixture(saved, "new-title")
+    state.popFixture = popFixture
+    const pushFixture = await fixture("new-title", "next-title")
+    state.pushFixture = pushFixture
+    const controlled =
+      popFixture.original === saved &&
+      popFixture.changed === "new-title" &&
+      pushFixture.original === "new-title" &&
+      pushFixture.changed === "next-title"
+    result = controlled
+      ? stackStateResult(
+          { pass: popFixture.restored === saved && pushFixture.restored === "new-title" },
+          "XTWINOPS 22/23 restores both controlled pushed titles",
+          state,
+        )
+      : { ...replyFailure("Owned title reader failed the OSC 2 controls"), response: JSON.stringify(state) }
+    if (!controlled) result.criterionBranch = "app-title-control"
+  } finally {
+    try {
+      if (pushed) ctx.write("\x1b[23;0t")
+    } finally {
+      set(before)
+      state.restored = await read()
+      if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+    }
+  }
+  return { ...result, response: JSON.stringify(state) }
+}
+
 function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
   return Boolean(matchedFrame && spec.refusal?.exec(matchedFrame)?.[0])
 }
@@ -313,7 +394,7 @@ function decrqssAfterRefusal(
   refused: string,
   retainedRefusals = "",
 ): ProbeCallbackResult {
-  const setting = spec === DECRQSS_DECSTBM ? "DECSTBM" : "DECSCL"
+  const setting = spec === DECRQSS_DECSTBM ? "DECSTBM" : spec === DECRQSS_DECSCL ? "DECSCL" : "DECSCUSR"
   if (second.raw.length === 0) {
     return {
       ...replyFailure(`${refused}; ${setting} unanswered; DECRQSS facility still speaks; expected ${spec.expected}`),
@@ -332,13 +413,27 @@ function decrqssAfterRefusal(
       assertions: graded.assertions,
     }
   }
-  if (refusedFrame(spec, secondFrame)) {
+  const refusal = secondFrame ? spec.refusal?.exec(secondFrame)?.[0] : undefined
+  if (secondFrame && refusal) {
     const da1At = sentinelAnswer(second.raw)?.start ?? -1
-    const late =
-      Boolean(second.sentinel) && secondFrame !== null && da1At !== -1 && second.raw.indexOf(secondFrame) > da1At
+    const afterDa1 = da1At !== -1 && second.raw.indexOf(secondFrame) > da1At
+    const late = Boolean(second.sentinel) && afterDa1
     const note = [`${refused}; ${setting} refused`, late ? REPLY_AFTER_SENTINEL_NOTE : undefined]
       .filter((part): part is string => part !== undefined)
       .join("; ")
+    // 32569: DECSCUSR is the last selector, so four refusals are the facility's own answer: Unsupported, retaining
+    // all four. F1 (27832): a frame after DA1 decides only with the measured order.
+    if (spec === DECRQSS_DECSCUSR && (late || !afterDa1)) {
+      return {
+        pass: false,
+        response: retainedRefusals + second.raw,
+        note,
+        observation: { outcome: "unsupported", assertionType: "query_reply", note },
+        assertions: [
+          { assertionType: "query_reply" as const, kind: "negative", expected: spec.expected, observed: refusal },
+        ],
+      }
+    }
     return {
       pass: false,
       response: second.raw,
@@ -373,6 +468,7 @@ function decrqssFacilityProbe(): ProbeDefinition {
   const sgrPattern = answerPattern(DECRQSS_SGR)
   const decstbmPattern = answerPattern(DECRQSS_DECSTBM)
   const decsclPattern = answerPattern(DECRQSS_DECSCL)
+  const decscusrPattern = answerPattern(DECRQSS_DECSCUSR)
   const definition = probe(
     "device.decrqss",
     (ctx) => {
@@ -389,11 +485,15 @@ function decrqssFacilityProbe(): ProbeDefinition {
       if (!refusedFrame(DECRQSS_DECSTBM, replyFrame(second))) {
         return decrqssAfterRefusal(DECRQSS_DECSTBM, second, "SGR refused")
       }
+      const third = query(DECRQSS_DECSCL.query, decsclPattern)
+      if (!refusedFrame(DECRQSS_DECSCL, replyFrame(third))) {
+        return decrqssAfterRefusal(DECRQSS_DECSCL, third, "SGR refused; DECSTBM refused", sgr.raw + second.raw)
+      }
       return decrqssAfterRefusal(
-        DECRQSS_DECSCL,
-        query(DECRQSS_DECSCL.query, decsclPattern),
-        "SGR refused; DECSTBM refused",
-        sgr.raw + second.raw,
+        DECRQSS_DECSCUSR,
+        query(DECRQSS_DECSCUSR.query, decscusrPattern),
+        "SGR refused; DECSTBM refused; DECSCL refused",
+        sgr.raw + second.raw + third.raw,
       )
     },
     async (ctx) => {
@@ -403,11 +503,15 @@ function decrqssFacilityProbe(): ProbeDefinition {
       if (!refusedFrame(DECRQSS_DECSTBM, replyFrame(second))) {
         return decrqssAfterRefusal(DECRQSS_DECSTBM, second, "SGR refused")
       }
+      const third = await ctx.queryWithSentinelOutcome(DECRQSS_DECSCL.query, decsclPattern)
+      if (!refusedFrame(DECRQSS_DECSCL, replyFrame(third))) {
+        return decrqssAfterRefusal(DECRQSS_DECSCL, third, "SGR refused; DECSTBM refused", sgr.raw + second.raw)
+      }
       return decrqssAfterRefusal(
-        DECRQSS_DECSCL,
-        await ctx.queryWithSentinelOutcome(DECRQSS_DECSCL.query, decsclPattern),
-        "SGR refused; DECSTBM refused",
-        sgr.raw + second.raw,
+        DECRQSS_DECSCUSR,
+        await ctx.queryWithSentinelOutcome(DECRQSS_DECSCUSR.query, decscusrPattern),
+        "SGR refused; DECSTBM refused; DECSCL refused",
+        sgr.raw + second.raw + third.raw,
       )
     },
     "query_reply",
@@ -504,6 +608,15 @@ export const deviceProbes: ProbeDefinition[] = [
           note: reading.reason,
           tests: [{ id: "terminal-child-environment", status: "probe-invalid", reason: reading.reason }],
         }
+      }
+      // 32569: inside a mux the value may come from the outer terminal, and presence cannot be attributed without an
+      // authenticated source, so it stays PROBE TODO naming the outer; absence with this run's marker seen is
+      // Unsupported, as on a bare App (@cto third-table ruling 2026-11-06).
+      if (reading.present && reading.mux) {
+        return notTestedResult(
+          `TERM_FEATURES present inside ${reading.mux}; it may come from the outer terminal, and presence cannot be attributed without an authenticated source`,
+          { present: true, mux: reading.mux },
+        )
       }
       const supported = reading.present
       const note = supported
@@ -720,30 +833,8 @@ export const deviceProbes: ProbeDefinition[] = [
     ...probe(
       "device.xtwinops-22",
       (ctx) => titleStackHeadless(ctx, "XTWINOPS 22/23 restores the pushed title after a controlled title change"),
-      async (ctx) => {
-        ctx.write("\x1b]2;pushed-title\x07")
-        ctx.write("\x1b[22;0t") // push
-        try {
-          ctx.write("\x1b]2;new-title\x07") // overwrite
-          const pos = await ctx.queryCursorPosition()
-          const note = pos
-            ? "Cursor answered after title push; title stack was not measured"
-            : "No DSR response after title push"
-          return {
-            pass: false,
-            note,
-            tests: [
-              {
-                id: "criterion",
-                status: "probe-todo",
-                reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
-              },
-            ],
-          }
-        } finally {
-          ctx.write("\x1b[23;0t")
-        }
-      },
+      titleStackApp,
+      "buffer_state",
     ),
     libAssertionType: "buffer_state",
   },
@@ -753,25 +844,8 @@ export const deviceProbes: ProbeDefinition[] = [
     ...probe(
       "device.xtwinops-23",
       (ctx) => titleStackHeadless(ctx, "XTWINOPS 22/23 restores the pushed title after a controlled title change"),
-      async (ctx) => {
-        ctx.write("\x1b[22;0t") // push first so we have something to pop
-        ctx.write("\x1b[23;0t")
-        const pos = await ctx.queryCursorPosition()
-        const note = pos
-          ? "Cursor answered after title pop; restored title was not measured"
-          : "No DSR response after title pop"
-        return {
-          pass: false,
-          note,
-          tests: [
-            {
-              id: "criterion",
-              status: "probe-todo",
-              reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
-            },
-          ],
-        }
-      },
+      titleStackApp,
+      "buffer_state",
     ),
     libAssertionType: "buffer_state",
   },

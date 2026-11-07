@@ -19,6 +19,7 @@ export type {
   ModeState,
   TermProbeSource,
   TermFeaturesReading,
+  AppSemanticReading,
   RenderedWidthResult,
   TerminalQueryOutcome,
   ClipboardFixture,

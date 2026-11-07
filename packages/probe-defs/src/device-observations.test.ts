@@ -61,38 +61,32 @@ function callback(id: string) {
  * @consumer Application device observations sharing one owned terminal.
  * @testonly none
  */
-test.each([false, true])("title push restores its checkpoint when CPR rejects=%s", async (rejectQuery) => {
+test("an absent App title reader leaves the terminal untouched", async () => {
   const writes: string[] = []
   const context = {
     write: (bytes: string) => writes.push(bytes),
-    queryCursorPosition: async () => {
-      if (rejectQuery) throw new Error("injected title CPR failure")
-      return { row: 1, col: 1 }
-    },
   } as unknown as TermProbeSource
 
-  const result = callback("device.xtwinops-22").terminal(context)
-  if (rejectQuery) {
-    await expect(result).rejects.toThrow("injected title CPR failure")
-  } else {
-    const callbackResult = await result
+  for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+    const callbackResult = await callback(id).terminal(context)
     expect(callbackResult.observation).toBeUndefined()
-    expect(callbackResult.tests).toMatchObject([
-      expect.objectContaining({ status: "probe-todo", reason: expect.any(String) }),
-    ])
+    expect(callbackResult.notTested).toMatchObject({ reason: "no-semantic-observable" })
   }
-  expect(writes.filter((bytes) => bytes === "\x1b[22;0t")).toHaveLength(1)
-  expect(writes.filter((bytes) => bytes === "\x1b[23;0t")).toHaveLength(1)
-  expect(writes.at(-1)).toBe("\x1b[23;0t")
+  expect(writes).toEqual([])
 })
 
 const DECRQSS_SGR_QUERY = "\x1bP$qm\x1b\\"
 const DECRQSS_DECSTBM_QUERY = "\x1bP$qr\x1b\\"
 const DECRQSS_DECSCL_QUERY = '\x1bP$q"p\x1b\\'
+const DECRQSS_DECSCUSR_QUERY = "\x1bP$q q\x1b\\"
 const DECRQSS_SGR_VALID = "\x1bP1$r0m\x1b\\"
 const DECRQSS_REFUSAL = "\x1bP0$r\x1b\\"
 const DECRQSS_DECSTBM_VALID = "\x1bP1$r1;24r\x1b\\"
 const DECRQSS_DECSCL_VALID = '\x1bP1$r62;1"p\x1b\\'
+// 32569: tmux's input.c answers `1$r q%d q`, an extra ` q` before the style; xterm answers `1$r%d q`.
+const DECRQSS_DECSCUSR_TMUX = "\x1bP1$r q2 q\x1b\\"
+const DECRQSS_DECSCUSR_XTERM = "\x1bP1$r2 q\x1b\\"
+const DECRQSS_FOUR_REFUSALS = "SGR refused; DECSTBM refused; DECSCL refused; DECSCUSR refused"
 const DA1 = "\x1b[?62;52;c"
 
 test.each([
@@ -108,13 +102,27 @@ test.each([
     outcome: "supported",
     observed: DECRQSS_DECSCL_VALID,
   },
-  { replies: [DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_REFUSAL], outcome: "inconclusive" },
+  {
+    replies: [DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_DECSCUSR_TMUX],
+    outcome: "supported",
+    observed: DECRQSS_DECSCUSR_TMUX,
+  },
+  {
+    replies: [DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_DECSCUSR_XTERM],
+    outcome: "supported",
+    observed: DECRQSS_DECSCUSR_XTERM,
+  },
+  {
+    replies: [DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_REFUSAL],
+    outcome: "unsupported",
+    negative: DECRQSS_REFUSAL,
+  },
   { replies: [DECRQSS_REFUSAL, "\x1bP1$r"], outcome: "inconclusive" },
   { replies: [DECRQSS_REFUSAL, ""], outcome: "probe-invalid" },
 ])(
   "plain library DECRQSS samples only after complete selector refusal: $replies",
-  ({ replies, outcome, observed, response }) => {
-    const selectors = [DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY, DECRQSS_DECSCL_QUERY]
+  ({ replies, outcome, observed, response, negative }) => {
+    const selectors = [DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY, DECRQSS_DECSCL_QUERY, DECRQSS_DECSCUSR_QUERY]
     const queries: string[] = []
     const result = callback("device.decrqss").headless({
       feedCapture: (sequence: string) => {
@@ -135,6 +143,10 @@ test.each([
     if (observed !== undefined) {
       expect(result.assertions).toMatchObject([{ kind: "positive", observed }])
       expect(result.response).toBe(response ?? replies.join(""))
+    } else if (negative !== undefined) {
+      expect(result.assertions).toMatchObject([{ kind: "negative", observed: negative }])
+      expect(result.response).toBe(replies.join(""))
+      expect(result.observation?.note).toBe(DECRQSS_FOUR_REFUSALS)
     } else {
       expect(result.assertions).toBeUndefined()
       expect(result.observation?.note).toContain("SGR refused")
@@ -373,13 +385,12 @@ describe("device query observations", () => {
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: "\x1b[?1;2c" }])
   })
 
-  test("complete single-setting refusals are inconclusive; malfunction is still a DSR report", async () => {
+  test("four DECRQSS refusals are Unsupported; other single-setting refusals are inconclusive; malfunction is still a DSR report", async () => {
     const sgrRefusal = "\x1bP0$r\x1b\\"
     expect(callback("device.decrqss").headless(headless(sgrRefusal)).observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
+      outcome: "unsupported",
       assertionType: "query_reply",
-      note: "SGR refused; DECSTBM refused; DECSCL refused",
+      note: DECRQSS_FOUR_REFUSALS,
     })
     for (const [id, frame] of [
       ["device.xtgettcap", "\x1bP0+r\x1b\\"],
@@ -419,7 +430,6 @@ describe("device query observations", () => {
   test.each(
     [
       { name: "valid DECSCL", raw: DECRQSS_DECSCL_VALID, reason: "reply" as const, supported: true },
-      { name: "DECSCL refusal", raw: DECRQSS_REFUSAL, reason: "reply" as const, supported: false },
       { name: "DECSCL silence", raw: DA1, reason: "sentinel" as const, supported: false },
     ].flatMap((third) => (["headless", "terminal"] as const).map((route) => ({ ...third, route }))),
   )("$route: SGR and DECSTBM refusals then $name retains facility evidence", async (third) => {
@@ -450,6 +460,65 @@ describe("device query observations", () => {
       expect(result.assertions).toBeUndefined()
     }
     expect(script.queries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY, DECRQSS_DECSCL_QUERY])
+  })
+
+  // 32569: tmux refuses SGR, DECSTBM and DECSCL and answers SP q (input.c), so a fourth selector decides it. Four
+  // refusals are Unsupported, retaining all four (@cto third-table ruling 2026-11-06). F1 (27832): a refusal after
+  // DA1 decides only with the measured order.
+  const measured = { atMs: 9, graceMs: 250 }
+  test.each(
+    [
+      { name: "tmux DECSCUSR", raw: DECRQSS_DECSCUSR_TMUX, reason: "reply" as const, outcome: "supported" },
+      { name: "xterm DECSCUSR", raw: DECRQSS_DECSCUSR_XTERM, reason: "reply" as const, outcome: "supported" },
+      { name: "DECSCUSR refusal", raw: DECRQSS_REFUSAL, reason: "reply" as const, outcome: "unsupported" },
+      {
+        name: "DECSCUSR refusal after DA1, measured",
+        raw: DA1 + DECRQSS_REFUSAL,
+        reason: "reply" as const,
+        sentinel: measured,
+        outcome: "unsupported",
+        note: `${DECRQSS_FOUR_REFUSALS}; reply after sentinel`,
+      },
+      {
+        name: "DECSCUSR refusal after DA1, unmeasured",
+        raw: DA1 + DECRQSS_REFUSAL,
+        reason: "reply" as const,
+        outcome: "inconclusive",
+      },
+      { name: "DECSCUSR silence", raw: DA1, reason: "sentinel" as const, sentinel: measured, outcome: "inconclusive" },
+    ].flatMap((fourth) => (["headless", "terminal"] as const).map((route) => ({ ...fourth, route }))),
+  )("$route: SGR, DECSTBM and DECSCL refusals then $name", async (fourth) => {
+    const script = terminalScript({
+      [DECRQSS_SGR_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
+      [DECRQSS_DECSTBM_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
+      [DECRQSS_DECSCL_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
+      [DECRQSS_DECSCUSR_QUERY]: {
+        raw: fourth.raw,
+        reason: fourth.reason,
+        ...(fourth.sentinel && { sentinel: fourth.sentinel }),
+      },
+    })
+    const probe = callback("device.decrqss")
+    const result = fourth.route === "headless" ? probe.headless(script.lib) : await probe.terminal(script.ctx)
+    expect(script.queries).toEqual([
+      DECRQSS_SGR_QUERY,
+      DECRQSS_DECSTBM_QUERY,
+      DECRQSS_DECSCL_QUERY,
+      DECRQSS_DECSCUSR_QUERY,
+    ])
+    expect(result.observation).toMatchObject({ outcome: fourth.outcome, assertionType: "query_reply" })
+    expect(result.observation?.note).toMatch(/^SGR refused; DECSTBM refused; DECSCL refused/)
+    if (fourth.outcome === "inconclusive") {
+      expect(result.assertions).toBeUndefined()
+      return
+    }
+    expect(result.response).toBe(DECRQSS_REFUSAL.repeat(3) + fourth.raw)
+    if (fourth.outcome === "supported") {
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: fourth.raw }])
+    } else {
+      expect(result.observation?.note).toBe(fourth.note ?? DECRQSS_FOUR_REFUSALS)
+      expect(result.assertions).toMatchObject([{ kind: "negative", observed: DECRQSS_REFUSAL }])
+    }
   })
 
   test("SGR status-0 then DECSTBM unanswered (DA1 only) stays inconclusive, not F1 negative", async () => {
@@ -581,6 +650,37 @@ describe("device query observations", () => {
       else process.env.TERM_FEATURES = prior
     }
   })
+
+  // 32569: inside a mux, absence with this run's marker seen is Unsupported as on a bare App; presence may come from
+  // the outer terminal, so it stays PROBE TODO naming the outer and retains no value (@cto ruling 2026-11-06).
+  test.each([{ present: false }, { present: true }])(
+    "inside screen, TERM_FEATURES present=$present",
+    async ({ present }) => {
+      const definition = deviceProbes.find((item) => item.id === "device.term-features")
+      if (!definition?.term) throw new Error("missing TERM_FEATURES callback")
+      const reading = {
+        status: "measured" as const,
+        present,
+        value: present ? "outer-terminal-value" : "",
+        runId: "e".repeat(32),
+        launchMarker: "e".repeat(32),
+        pid: 42,
+        tty: "tty_nr=34816;fd=1;rdev=34816",
+        mux: "screen" as const,
+      }
+      const result = await definition.term({ readTermFeatures: async () => reading } as unknown as TermProbeSource)
+      if (present) {
+        expect(result.observation).toBeUndefined()
+        expect(result.notTested?.noObservable).toBe(
+          "TERM_FEATURES present inside screen; it may come from the outer terminal, and presence cannot be attributed without an authenticated source",
+        )
+        expect(JSON.stringify(result)).not.toContain("outer-terminal-value")
+      } else {
+        expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "process_environment" })
+        expect(result.assertions).toMatchObject([{ kind: "negative", observed: "absent" }])
+      }
+    },
+  )
 })
 
 /**
@@ -727,6 +827,34 @@ describe("window-operation qualification", () => {
   }
 
   test.each(["working", "stale", "none", "unobservable"] as const)(
+    "App title stack reads its owned state and restores it: %s",
+    async (behavior) => {
+      // #32573: the library fixture models title/stack state; the App callback must actually read it.
+      // Existing library-only cases cannot catch an App arm that merely receives a cursor reply.
+      for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+        const fixture = titleContext(behavior)
+        const source = {
+          write: fixture.ctx.feed,
+          readTitle: async () => fixture.ctx.getTitle(),
+          queryCursorPosition: async () => ({ row: 1, col: 1 }),
+        } as unknown as TermProbeSource
+        const result = await callback(id).terminal(source)
+        if (behavior === "unobservable") {
+          expect(result.observation).toBeUndefined()
+          expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+        } else {
+          expect(result.observation).toMatchObject({
+            assertionType: "buffer_state",
+            outcome: behavior === "working" ? "supported" : "unsupported",
+          })
+          expect(fixture.title()).toBe("incoming-title")
+        }
+        expect(fixture.depth()).toBe(0)
+      }
+    },
+  )
+
+  test.each(["working", "stale", "none", "unobservable"] as const)(
     "title stack measures the controlled joint round trip and cleans up: %s",
     (behavior) => {
       for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
@@ -770,6 +898,23 @@ describe("window-operation qualification", () => {
         return read()
       }
       expect(() => callback(id).headless(fixture.ctx)).toThrow(failure)
+      expect(fixture.title()).toBe("incoming-title")
+      expect(fixture.depth()).toBe(0)
+    }
+  })
+
+  test("App title-stack fixtures restore their title and checkpoint after a read error", async () => {
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+      const fixture = titleContext("working")
+      let reads = 0
+      const source = {
+        write: fixture.ctx.feed,
+        readTitle: async () => {
+          if (++reads === 3) throw new Error("injected App title read error")
+          return fixture.ctx.getTitle()
+        },
+      } as unknown as TermProbeSource
+      await expect(callback(id).terminal(source)).rejects.toThrow("injected App title read error")
       expect(fixture.title()).toBe("incoming-title")
       expect(fixture.depth()).toBe(0)
     }

@@ -18,6 +18,8 @@ import {
   NO_SAME_PATH_CONTROL,
   probe,
   reportsDecidedOutcome,
+  replyFailure,
+  validSize,
   withUnhandledModeReport,
 } from "./helpers.ts"
 import { hasAuditedOscInterfaceAbsence, kittyKeyboardFlagProbe, unhandledOscReportResult } from "./extensions.ts"
@@ -73,7 +75,10 @@ export const inputProbes: ProbeDefinition[] = inputDefinitions.map(withUnhandled
 const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_RESET = "\x1b[?1000l\x1b[?1006l"
 const PLAIN_A = /^a/
-const MODIFIED_KEY = /\x01|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
+// input.xtest-key injects ctrl+e, which is neither tmux's nor Screen's prefix (#32569, @cto b9dd747c): ctrl+a is
+// Screen's command key, so Screen consumed it. The modifyOtherKeys controls below still read ctrl+a.
+const MODIFIED_KEY = /\x05|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
+const CTRL_E_ENCODING = /^(?:\x05|\x1b\[(?:27;5;101~|101;5u))$/
 const CTRL_A_ENCODING = /^(?:\x01|\x1b\[(?:27;5;97~|97;5u))$/
 const SGR_MOUSE = /\x1b\[<\d+;\d+;\d+[Mm]/
 const MODIFY_OTHER_KEYS_2 = "\x1b[>4;2m"
@@ -85,9 +90,11 @@ const MODIFY_OTHER_KEYS_2_ENCODING = /^\x1b\[(?:27;5;105~|105;5u)$/
 const MODIFY_OTHER_KEYS_3_ENCODING = /^\x1b\[(?:27;1;105~|105;1u)$/
 const DECKPAM = "\x1b="
 const DECKPNM = "\x1b>"
-// SS3 may be mixed with other replies; only a standalone 5 establishes numeric-keypad fallback.
-const APPLICATION_KEYPAD_REPORT = /\x1bOu|^5$/
-const APPLICATION_KEYPAD_ENCODING = /^\x1bOu$/
+// KP_Add has no NumLock level (#32582): SS3 k under DECKPAM, + under DECKPNM. SS3 may be mixed with other replies;
+// only a standalone + is the numeric keypad's answer.
+const KEYPAD_ADD_REPORT = /\x1bOk|^\+$/
+const KEYPAD_ADD_APPLICATION = "\x1bOk"
+const KEYPAD_ADD_NUMERIC = "+"
 const PIXEL_MOUSE_SET = "\x1b[?1016h"
 const PIXEL_MOUSE_RESET = "\x1b[?1016l"
 const URXVT_MOUSE_SET = "\x1b[?1015h"
@@ -108,6 +115,10 @@ const ALT_SCROLL_OR_SGR = /\x1b(?:\[(?:<\d+;\d+;\d+[Mm]|[AB])|O[AB])/
 const KITTY_CLICK_START = "\x1b]133;A;click_events=1\x07"
 const KITTY_CLICK_END = "\x1b]133;B\x07"
 const SGR_MOUSE_PRESS = /\x1b\[<\d+;\d+;\d+M/
+// A drag opens with its press under 1000 as under 1002, so button-event tracking reads past it (#32582): a motion report
+// (SGR Pb with bit 32 set, every such Pb in 0-255) or a release (final m), whichever comes first.
+const SGR_MOTION_OR_RELEASE =
+  /\x1b\[<(?:(?:3[2-9]|[45]\d|6[0-3]|9[6-9]|1[01]\d|12[0-7]|1[6-8]\d|19[01]|22[4-9]|2[34]\d|25[0-5]);\d+;\d+M|\d+;\d+;\d+m)/
 const SGR_MOUSE_RELEASE = /\x1b\[<\d+;\d+;\d+m/
 
 function xtestCoverage(kind?: string): ProbeCallbackResult {
@@ -349,6 +360,16 @@ function unsupportedInteraction(
   }
 }
 
+/** A report the row's criterion names as no reading: PROBE INVALID by name, with the observed bytes kept (#32582). */
+function invalidInteraction(reason: string, observed: Record<string, unknown>): ProbeCallbackResult {
+  return {
+    pass: false,
+    note: reason,
+    response: JSON.stringify(observed),
+    tests: [{ id: "criterion", status: "probe-invalid", reason }],
+  }
+}
+
 async function withModifyOtherKeys<T>(ctx: TermProbeSource, enable: string, work: () => Promise<T>): Promise<T> {
   ctx.write(enable)
   try {
@@ -416,20 +437,199 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
     PLAIN_A,
     "XTEST delivery control failed: plain a did not reach the app",
   )
+  // #32582 (@cto d590724a): KP_Add, once under DECKPAM and once under DECKPNM. KP_5 was the NumLock level of its key,
+  // which xterm reads in numeric mode under DECKPAM too, so its "5" decided nothing.
+  const keypadAdd = async () => (await readInput(KEYPAD_ADD_REPORT, 1000, () => input.injectKey("KP_Add")))?.[0] ?? null
   ctx.write(DECKPAM)
+  let application: string | null
   try {
-    const report = (await readInput(APPLICATION_KEYPAD_REPORT, 1000, () => input.injectKey("KP_5")))?.[0]
-    if (!report) {
-      throw new Error("XTEST application keypad KP_5 did not reach the app after a successful delivery control")
-    }
-    const observed = { mode: "application-keypad", control, report }
-    const expected = "OS XTEST KP_5 report as SS3 u under DECKPAM after plain-a delivery control"
-    if (APPLICATION_KEYPAD_ENCODING.test(report)) {
-      return interactionResult("application-keypad:KP_5", expected, observed)
-    }
-    return unsupportedInteraction("application-keypad:KP_5", expected, observed)
+    application = await keypadAdd()
   } finally {
     ctx.write(DECKPNM)
+  }
+  const numeric = await keypadAdd()
+  const observed = { mode: "application-keypad", control, application, numeric }
+  const expected = "OS XTEST KP_Add report as SS3 k under DECKPAM, then + under DECKPNM, after plain-a delivery control"
+  if (numeric === KEYPAD_ADD_NUMERIC && application === KEYPAD_ADD_APPLICATION) {
+    return interactionResult("application-keypad:KP_Add", expected, observed)
+  }
+  if (numeric === KEYPAD_ADD_NUMERIC && application === KEYPAD_ADD_NUMERIC) {
+    return unsupportedInteraction("application-keypad:KP_Add", expected, observed)
+  }
+  const read = (report: string | null) => (report === null ? "no report" : JSON.stringify(report))
+  return invalidInteraction(
+    `modes.application-keypad: KP_Add read ${read(application)} under DECKPAM and ${read(numeric)} under DECKPNM after plain a reached the app; only SS3 k then +, or + under both, decides this row`,
+    observed,
+  )
+}
+
+export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const { input, readInput } = ctx
+  if (!input || !readInput) return replyFailure("Mouse tracking effect needs owned click injection and input readback")
+  const untilKey = new RegExp(`^(?:${X10_OR_SGR_MOUSE.source})*a$`)
+  const readClick = async () =>
+    (
+      await readInput(untilKey, 1000, async () => {
+        await input.injectClick(1)
+        await input.injectKey("a")
+      })
+    )?.[0]
+  const hasClick = (bytes: string | undefined) =>
+    (bytes?.match(new RegExp(X10_OR_SGR_MOUSE.source, "g")) ?? []).some((report) =>
+      isX10Mouse(report) ? report.charCodeAt(3) === 32 : sgrMouseButton(report) === 0 && report.endsWith("M"),
+    )
+  return withMouseModes(ctx, async () => {
+    ctx.write("\x1b[?1002l\x1b[?1003l\x1b[?1000l")
+    const reset = await readClick()
+    ctx.write("\x1b[?1000h")
+    const set = await readClick()
+    ctx.write("\x1b[?1000l")
+    const resetAgain = await readClick()
+    const observed: Record<string, unknown> = { reset, set, resetAgain }
+    if (!reset || !set || !resetAgain) {
+      return {
+        ...replyFailure("Mouse tracking effect needs plain-a delivery in every arm"),
+        response: JSON.stringify(observed),
+      }
+    }
+    if (X10_OR_SGR_MOUSE.test(reset) || X10_OR_SGR_MOUSE.test(resetAgain)) {
+      return {
+        ...replyFailure("Mouse tracking reset arm emitted a report, so the set/reset contrast is unqualified"),
+        response: JSON.stringify(observed),
+      }
+    }
+    const expected =
+      "left-click reports only with 1000 set, plain a in every arm, and independent click delivery for a negative"
+    if (hasClick(set)) return interactionResult("mouse-tracking-1000", expected, observed)
+    // An absent target report is negative only when another tracking mode
+    // demonstrates the same owned click path in this callback.
+    ctx.write("\x1b[?1003h")
+    let control: string | undefined
+    try {
+      control = await readClick()
+    } finally {
+      ctx.write("\x1b[?1003l")
+    }
+    observed.control = control
+    if (!hasClick(control)) {
+      return {
+        ...replyFailure("Mouse tracking negative lacks an independent 1003 left-click delivery control"),
+        response: JSON.stringify(observed),
+      }
+    }
+    return unsupportedInteraction("mouse-tracking-1000", expected, observed)
+  })
+}
+
+export async function sgrMouse1006(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const { input, readInput } = ctx
+  if (!input || !readInput) return replyFailure("SGR mouse effect needs owned click injection and input readback")
+  const untilKey = new RegExp(`^(?:${X10_OR_SGR_MOUSE.source})*a$`)
+  return withMouseModes(ctx, async () => {
+    ctx.write("\x1b[?1002l\x1b[?1003l")
+    const readClick = async (enabled: boolean) => {
+      ctx.write(`\x1b[?1006${enabled ? "h" : "l"}`)
+      return (
+        await readInput(untilKey, 1000, async () => {
+          await input.injectClick(1)
+          await input.injectKey("a")
+        })
+      )?.[0]
+    }
+    const reset = await readClick(false)
+    const set = await readClick(true)
+    const resetAgain = await readClick(false)
+    const observed = { reset, set, resetAgain }
+    const response = JSON.stringify(observed)
+    const [offReports, onReports, restoredReports] = [reset, set, resetAgain].map((bytes) =>
+      bytes?.match(new RegExp(X10_OR_SGR_MOUSE.source, "g")),
+    )
+    if (!offReports?.length || !onReports?.length || !restoredReports?.length) {
+      return { ...replyFailure("SGR mouse effect needs click reports followed by plain a in every arm"), response }
+    }
+    if (!offReports.every(isX10Mouse) || !restoredReports.every(isX10Mouse)) {
+      return {
+        ...replyFailure("SGR mouse reset arms did not restore X10 encoding, so the contrast is unqualified"),
+        response,
+      }
+    }
+    const expected = "X10 click reports with 1006 reset, SGR with it set, then X10 again; plain a in every arm"
+    return onReports.every((report) => SGR_MOUSE.test(report))
+      ? interactionResult("sgr-mouse-1006", expected, observed)
+      : unsupportedInteraction("sgr-mouse-1006", expected, observed)
+  })
+}
+
+export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const { input, readInput } = ctx
+  const injectMove = input?.injectMove
+  if (!input || !readInput || !injectMove) {
+    return replyFailure("All-motion effect needs owned buttonless movement and input readback")
+  }
+  const geometry = ctx.captureGeometry?.geometry
+  if (
+    !geometry ||
+    !validSize(geometry.cellWidth, 1) ||
+    !validSize(geometry.cellHeight, 1) ||
+    !validSize(geometry.textWidth, 3 * geometry.cellWidth) ||
+    !validSize(geometry.textHeight, geometry.cellHeight)
+  ) {
+    return replyFailure("All-motion effect needs measured window geometry with room for two different cells")
+  }
+  const y = Math.floor(geometry.textHeight / 2)
+  const points = [
+    Math.floor(geometry.textWidth / 2 - geometry.cellWidth),
+    Math.floor(geometry.textWidth / 2 + geometry.cellWidth),
+  ]
+  const untilKey = new RegExp(`^(?:${SGR_MOUSE.source})*a$`)
+  const read = async (inject: () => Promise<void>) =>
+    (
+      await readInput(untilKey, 1000, async () => {
+        await inject()
+        await input.injectKey("a")
+      })
+    )?.[0]
+  ctx.write("\x1b[?1002l\x1b[?1003l")
+  try {
+    const control = await withMouseModes(ctx, () => read(() => input.injectClick(1)))
+    if (!control || !SGR_MOUSE.test(control)) {
+      return replyFailure("All-motion click control did not read a 1000 mouse report followed by injected plain a")
+    }
+    ctx.write("\x1b[?1006h")
+    const readMotion = async (enabled: boolean) => {
+      ctx.write(`\x1b[?1003${enabled ? "h" : "l"}`)
+      return read(async () => {
+        for (const x of points) await injectMove(x, y)
+      })
+    }
+    const reset = await readMotion(false)
+    const set = await readMotion(true)
+    const resetAgain = await readMotion(false)
+    const observed = { control, points, y, reset, set, resetAgain }
+    const response = JSON.stringify(observed)
+    if (!reset || !set || !resetAgain) {
+      return {
+        ...replyFailure("All-motion effect did not read the ending plain-a delivery control in every arm"),
+        response,
+      }
+    }
+    if (SGR_MOUSE.test(reset) || SGR_MOUSE.test(resetAgain)) {
+      return {
+        ...replyFailure("All-motion reset arm emitted a mouse report, so the set/reset contrast is unqualified"),
+        response,
+      }
+    }
+    const reports = set.match(new RegExp(SGR_MOUSE.source, "g")) ?? []
+    if (reports.some((report) => !isButtonEventMotion(report))) {
+      return { ...replyFailure("Buttonless all-motion injection emitted a non-motion mouse report"), response }
+    }
+    const expected =
+      "buttonless movement reports only with 1003 set, after a measured 1000 click and with plain-a delivery in every arm"
+    return reports.length
+      ? interactionResult("all-motion-1003", expected, observed)
+      : unsupportedInteraction("all-motion-1003", expected, observed)
+  } finally {
+    ctx.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l")
   }
 }
 
@@ -448,14 +648,15 @@ export async function altScroll1007(ctx: TermProbeSource): Promise<ProbeCallback
   ctx.write(ALT_SCREEN_SET + ALT_SCROLL_SET)
   try {
     const report = (await readInput(ALT_SCROLL_OR_SGR, 1000, () => input.injectClick(4)))?.[0]
-    if (!report) {
-      throw new Error("XTEST 1007 alt-scroll wheel did not reach the app after a successful 1000+1006 delivery control")
-    }
+    const anyForm =
+      "OS XTEST wheel-4 report under 1007 as CSI A or SS3 A after 1000+1006 delivery control on alt-screen"
+    // #32569 (@cto third-table ruling 2026-11-06): the delivery control passed, so a silent wheel is Unsupported.
+    if (!report) return unsupportedInteraction("alt-scroll-1007:4", anyForm, { mode: "1007", control, report: null })
     const observed = { mode: "1007", control, report }
     const cursorUpForm = report === "\x1b[A" ? "CSI A" : report === "\x1bOA" ? "SS3 A" : undefined
     const expected = cursorUpForm
       ? `OS XTEST wheel-4 report under 1007 as ${cursorUpForm} after 1000+1006 delivery control on alt-screen`
-      : "OS XTEST wheel-4 report under 1007 as CSI A or SS3 A after 1000+1006 delivery control on alt-screen"
+      : anyForm
     if (cursorUpForm) {
       return {
         ...interactionResult("alt-scroll-1007:4", expected, observed),
@@ -482,20 +683,20 @@ async function xtestKey(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     PLAIN_A,
     "XTEST delivery control failed: plain a did not reach the app",
   )
-  const report = (await readInput(MODIFIED_KEY, 1000, () => input.injectKey("ctrl+a")))?.[0]
+  const report = (await readInput(MODIFIED_KEY, 1000, () => input.injectKey("ctrl+e")))?.[0]
   if (!report) {
     throw new Error("XTEST modified key did not reach the app after a successful delivery control")
   }
   const observed = { control, report }
-  const expected = "OS XTEST ctrl+a report after plain-a delivery control"
-  return CTRL_A_ENCODING.test(report)
-    ? interactionResult("xtest-key:ctrl+a", expected, observed)
-    : unsupportedInteraction("xtest-key:ctrl+a", expected, observed)
+  const expected = "OS XTEST ctrl+e report after plain-a delivery control"
+  return CTRL_E_ENCODING.test(report)
+    ? interactionResult("xtest-key:ctrl+e", expected, observed)
+    : unsupportedInteraction("xtest-key:ctrl+e", expected, observed)
 }
 
 /**
  * Library arm of input.xtest-key (#32308, @cto e4f1c5bd): the library's own key-event encoder, bound only under
- * "key-encoding", must encode plain a as "a" before its ctrl+a bytes are judged by the terminal arm's criterion.
+ * "key-encoding", must encode plain a as "a" before its ctrl+e bytes are judged by the terminal arm's criterion.
  */
 function xtestKeyLib(encodeKey: NonNullable<LibProbeSource["encodeKey"]>): ProbeCallbackResult {
   const decoder = new TextDecoder()
@@ -507,13 +708,13 @@ function xtestKeyLib(encodeKey: NonNullable<LibProbeSource["encodeKey"]>): Probe
       controlBytes: [...controlBytes],
     })
   }
-  const reportBytes = encodeKey({ key: "a", ctrl: true })
+  const reportBytes = encodeKey({ key: "e", ctrl: true })
   const report = decoder.decode(reportBytes)
   const observed = { control, controlBytes: [...controlBytes], report, reportBytes: [...reportBytes] }
-  const expected = "library key-event encoder ctrl+a report after plain-a control"
-  return CTRL_A_ENCODING.test(report)
-    ? interactionResult("xtest-key:ctrl+a", expected, observed)
-    : unsupportedInteraction("xtest-key:ctrl+a", expected, observed)
+  const expected = "library key-event encoder ctrl+e report after plain-a control"
+  return CTRL_E_ENCODING.test(report)
+    ? interactionResult("xtest-key:ctrl+e", expected, observed)
+    : unsupportedInteraction("xtest-key:ctrl+e", expected, observed)
 }
 
 async function withMouseModes<T>(ctx: TermProbeSource, work: () => Promise<T>): Promise<T> {
@@ -598,29 +799,33 @@ async function x10Mouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage()
-  return withMouseModes(ctx, async () => {
-    const control = await deliveryControl(
+  // #32582 (@cto d590724a): the control leaves 1000 and 1006 before mode 9 is set; with 1006 still on, a terminal
+  // honouring 9 answers in SGR form.
+  const control = await withMouseModes(ctx, () =>
+    deliveryControl(
       () => input.injectClick(1),
       readInput,
       SGR_MOUSE,
       "XTEST delivery control failed: click under 1000+1006 did not reach the app",
-    )
-    ctx.write(X10_MOUSE_SET)
-    try {
-      const report = (await readInput(X10_OR_SGR_MOUSE, 1000, () => input.injectClick(1)))?.[0]
-      if (!report) {
-        throw new Error("XTEST 9 x10-mouse click did not reach the app after a successful 1000+1006 delivery control")
-      }
-      const observed = { mode: "9", control, report }
-      const expected = "OS XTEST click report under 9 as CSI M plus three bytes after 1000+1006 delivery control"
-      if (isX10Mouse(report)) {
-        return interactionResult("x10-mouse:1", expected, observed)
-      }
-      return unsupportedInteraction("x10-mouse:1", expected, observed)
-    } finally {
-      ctx.write(X10_MOUSE_RESET)
+    ),
+  )
+  ctx.write(X10_MOUSE_SET)
+  try {
+    const report = (await readInput(X10_OR_SGR_MOUSE, 1000, () => input.injectClick(1)))?.[0]
+    const expected = "OS XTEST click report under 9 alone as CSI M plus three bytes after 1000+1006 delivery control"
+    // #32569 (@cto third-table ruling 2026-11-06): the delivery control passed, so a silent click is Unsupported.
+    if (!report) return unsupportedInteraction("x10-mouse:1", expected, { mode: "9", control, report: null })
+    const observed = { mode: "9", control, report }
+    if (isX10Mouse(report)) {
+      return interactionResult("x10-mouse:1", expected, observed)
     }
-  })
+    return invalidInteraction(
+      "input.x10-mouse: the click under mode 9 got an SGR report with 1000 and 1006 reset, which is neither the X10 report nor its absence",
+      observed,
+    )
+  } finally {
+    ctx.write(X10_MOUSE_RESET)
+  }
 }
 
 async function buttonEventMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
@@ -638,15 +843,16 @@ async function buttonEventMouse(ctx: TermProbeSource): Promise<ProbeCallbackResu
     )
     ctx.write(BUTTON_EVENT_MOUSE_SET)
     try {
-      const report = (await readInput(SGR_MOUSE, 1000, () => injectDrag(1)))?.[0]
+      const report = (await readInput(SGR_MOTION_OR_RELEASE, 1000, () => injectDrag(1)))?.[0]
       if (!report) {
         throw new Error(
-          "XTEST 1002 button-event-mouse drag did not reach the app after a successful 1000+1006 delivery control",
+          "XTEST 1002 button-event-mouse drag produced no SGR motion or release report after a successful 1000+1006 delivery control",
         )
       }
       const observed = { mode: "1002", control, report }
-      const expected = "OS XTEST drag report under 1002 as SGR motion (Pb+32) after 1000+1006 delivery control"
-      if (isButtonEventMotion(report)) {
+      const expected =
+        "OS XTEST drag report under 1002 as SGR motion (Pb+32) before the release after 1000+1006 delivery control"
+      if (report.endsWith("M") && isButtonEventMotion(report)) {
         return interactionResult("button-event-mouse:1", expected, observed)
       }
       return unsupportedInteraction("button-event-mouse:1", expected, observed)
@@ -680,7 +886,11 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     ) {
       return notTestedResult("pixel-mouse delivery control is not a button-1 event in a valid screen cell", { control })
     }
-    const measured = await queryPixelGeometry(ctx)
+    const queried = await queryPixelGeometry(ctx)
+    // #32569 (@cto third-table ruling 2026-11-06): a terminal that refuses CSI 16 t and 14 t (Screen) is judged with
+    // this run's calibrated raster geometry (#31742), the measurement region readback uses; the refusal is retained.
+    const calibrated = "missing" in queried ? ctx.captureGeometry : undefined
+    const measured = calibrated ?? queried
     if ("missing" in measured) {
       return notTestedResult(`no cell geometry: ${measured.missing}`, { control, geometry: measured })
     }
@@ -692,7 +902,14 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
           "XTEST 1016 pixel-mouse click did not reach the app after a successful 1000+1006 delivery control",
         )
       }
-      const observed = { mode: "1016", control, report, geometry: measured.geometry, geometrySource: measured.source }
+      const observed = {
+        mode: "1016",
+        control,
+        report,
+        geometry: measured.geometry,
+        geometrySource: measured.source,
+        ...(calibrated && "missing" in queried && { queryRefusal: queried.missing }),
+      }
       if (sgrMouseButton(report) !== 0) {
         return notTestedResult("pixel-mouse target is not a button-1 event", observed)
       }

@@ -44,6 +44,7 @@ import {
   type TextQualification,
 } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
+import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts"
 import { COMPLETE_DA2, COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, withTTYOperation, drainStdin, queryOutcome, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
@@ -614,6 +615,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
       installCensus?: DarwinInstallCensus,
     ) => {
+      // Preflight installs pixels later; preserve the hosted observer's retained text preparation.
+      const prepareTextCapture = prepareCapture
       const platform = process.platform === "linux" ? "Linux" : "Darwin"
       let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
       let calibrationError: Error | undefined
@@ -626,6 +629,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       // already measured: the adapter never queries the terminal itself, so the geometry it tests a
       // frame request against and the geometry the origin was calibrated on can never diverge.
       const installCapture = (reportedGeometry: PixelGeometry | undefined, queries: CaptureCalibrationQuery[]) => {
+        textCapture = false
         capture = async (checkpoint) => {
           if (calibrationError) throw calibrationError
           if (!checkpoint.cells && !checkpoint.pixelGeometry) {
@@ -646,6 +650,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           return adapter.capture(checkpoint, textOrigin)
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
+          // Text restoration remains fatal, outside the pixel calibration refusal handling.
+          await prepareTextCapture?.({ source: probeSource, featureId, recordCapture })
           try {
             textOrigin = await calibrateCaptureOrigin({
               ctx: probeSource,
@@ -748,6 +754,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       if ((textFirst && installTextCapture(terminal)) || !captureDirectory) return
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
+      if (!textFirst && kind === "darwinHosted") installTextCapture(terminal)
       const darwinCapture = await createDarwinCapture(captureDirectory, { appPid, onRetained })
       installPixelCapture(darwinCapture, darwinCapture.installCensus)
     }
@@ -881,6 +888,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           withTTYOperation(
             async () => {
               let geometryCorroboration: GeometryCorroboration | undefined
+              let declarationVersion: string | undefined
               let identityQuery:
                 | { sequence: string; outbound: string; reason: string; raw: string; rawBase64: string }
                 | undefined
@@ -925,7 +933,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 if (measuredTerminal.name === "screen") {
                   da2Query = await queryWithSentinelOutcome("\x1b[>c", COMPLETE_DA2, 700)
                 }
-                resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
+                declarationVersion = resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
                   "collector.xtversion": identity.raw,
                   ...(da2Query && { "collector.da2": da2Query.raw }),
                 })
@@ -935,6 +943,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
               // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
               if (preflightPixelCapture) await preflightPixelCapture()
+              const sessionBus = terminal.os === "linux" ? readSessionBus() : undefined
               const result = await runProbeBatch({
                 ids: options.ids === undefined ? undefined : selectedIds,
                 out,
@@ -951,6 +960,18 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 },
                 // The run's own target, from the launched app: the receipt is bound to this before any write.
                 subject: { kind: muxSubject?.kind ?? "term", id: measuredTerminal.name, os: terminal.os },
+                appDeclarations:
+                  declarationVersion === undefined
+                    ? {}
+                    : appSemanticDeclarations(
+                        {
+                          kind: muxSubject?.kind ?? "term",
+                          id: measuredTerminal.name,
+                          version: declarationVersion,
+                          os: terminal.os,
+                        },
+                        sessionBus,
+                      ),
                 ...(capture && { capture }),
                 ...(textCapture && { captureKind: "text-cells" as const }),
                 ...(input && { input }),
@@ -959,6 +980,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(geometryCorroboration && { geometryCorroboration }),
                 ...(prepareCapture && { prepareCapture }),
               })
+              if (sessionBus) result.rawReplies["collector.sessionBus"] = JSON.stringify(sessionBus)
               if (identityQuery) {
                 result.rawReplies["collector.xtversion"] = identityQuery.raw
                 result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)

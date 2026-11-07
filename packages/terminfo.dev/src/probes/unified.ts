@@ -12,6 +12,7 @@ import {
   recordExecutedProbe,
   finalizeVisualResult,
   withReplyFailureEvidence,
+  declaredUntestableResult,
   type ProbeResult,
   type RunDraft,
   type CaptureCells,
@@ -292,6 +293,8 @@ export async function runProbeBatch(
     /** The target this run is measuring, from the measured side (the launched app), never read out
      * of the receipt. A receipt naming another target is refused before the first write (27874). */
     subject?: { kind: "term" | "lib" | "mux"; id: string; os: string }
+    /** Exact-version App declarations selected by the collector; only unresolved callbacks use them. */
+    appDeclarations?: Readonly<Record<string, string>>
     draft?: Pick<RunDraft, "results"> & Partial<Pick<RunDraft, "subject">>
     onCheckpoint?: (batch: ProbeBatch) => void
   } = {},
@@ -450,6 +453,7 @@ export async function runProbeBatch(
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []
     const clipboardEvents: ClipboardTraceEvent[] = []
+    const titleReads: Array<{ title: string } | { error: string }> = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
@@ -528,8 +532,36 @@ export async function runProbeBatch(
       utf8Decoding: readUtf8Decoding,
       captureGeometryRefusal,
     })
-    if (ownsTerminal && options.subject?.kind === "term" && !options.ownedTerminal?.muxAttachmentProof) {
-      probeSource.readTermFeatures = options.ownedTerminal?.readTermFeatures
+    if (ownsTerminal) probeSource.readAppSemanticState = options.ownedTerminal?.readAppSemanticState
+    if (ownsTerminal && (options.subject?.kind === "term" || options.subject?.kind === "mux")) {
+      // 32569: a mux child reads the same marker path; the reading names the mux, since a present value there may
+      // come from the outer terminal (@cto third-table ruling 2026-11-06).
+      const read = options.ownedTerminal?.readTermFeatures
+      const mux = options.ownedTerminal?.muxAttachmentProof?.mux
+      probeSource.readTermFeatures =
+        read && mux
+          ? async () => {
+              const reading = await read()
+              return reading.status === "measured" ? { ...reading, mux } : reading
+            }
+          : read
+    }
+    const readTitle = ownsTerminal ? options.ownedTerminal?.readTitle : undefined
+    if (
+      readTitle &&
+      (probe.id !== "extensions.osc7-cwd" ||
+        (options.subject?.kind === "term" && options.subject.id === "ghostty" && options.subject.os === "linux"))
+    ) {
+      probeSource.readTitle = async () => {
+        try {
+          const title = await withTTYOperation(readTitle, out, verify)
+          titleReads.push({ title })
+          return title
+        } catch (error) {
+          titleReads.push({ error: error instanceof Error ? error.message : String(error) })
+          throw error
+        }
+      }
     }
     if (captureGeometry) probeSource.captureGeometry = captureGeometry
     if (
@@ -717,7 +749,7 @@ export async function runProbeBatch(
       // legacy transport events, while this artifact can replay the callback itself.
       const sourceLog = probe.id.startsWith("sgr.") ? createCallLog() : undefined
       const sourceSession = sourceLog ? withCallLog(probeSource, { mode: "record", log: sourceLog }) : undefined
-      let result
+      let result: ProbeCallbackResult
       try {
         result = await withTTYOperation(
           () =>
@@ -736,6 +768,24 @@ export async function runProbeBatch(
           out,
           verify,
         )
+      } catch (error) {
+        // An unavailable Screen query before the first write is an absent apparatus, not a target negative.
+        // A later read or restoration failure remains invalid and retains the ordinary error path.
+        if (
+          options.subject?.kind === "mux" &&
+          options.subject.id === "screen" &&
+          titleReads.length === 1 &&
+          titleReads.some((reading) => "error" in reading) &&
+          !events.some((event) => event.kind === "write")
+        ) {
+          result = {
+            pass: false,
+            notTested: {
+              reason: "no-semantic-observable",
+              noObservable: `Screen: screen -Q title is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          }
+        } else throw error
       } finally {
         sourceSession?.finish()
         if (sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(sourceLog)
@@ -751,6 +801,38 @@ export async function runProbeBatch(
           reason: query.reason,
         })),
       })
+      // Screen's query is a candidate reader, not an already qualified title surface (@cto32573).
+      // Preserve its failed controls as a named reader gap; never substitute the outer window.
+      if (
+        options.subject?.kind === "mux" &&
+        options.subject.id === "screen" &&
+        result.criterionBranch === "app-title-control"
+      ) {
+        const response = result.response
+        result = {
+          pass: false,
+          notTested: {
+            reason: "no-semantic-observable",
+            noObservable:
+              "Screen: screen -Q title did not read the owned title controls; no qualified own-title reader is available",
+          },
+          ...(response === undefined ? {} : { response }),
+        }
+      }
+      const declaration = options.appDeclarations?.[probe.id]
+      const onlyTodoTests = !result.tests?.some((test) => test.status !== "probe-todo")
+      const unresolved = result.notTested
+        ? result.notTested.reason === "no-semantic-observable" &&
+          result.notTested.noObservable.trim().length > 0 &&
+          onlyTodoTests
+        : Boolean(result.tests?.length) && onlyTodoTests
+      if (declaration && unresolved && !claimsMeasurement(result)) {
+        const response = result.response
+        result = {
+          ...declaredUntestableResult(declaration, { featureId: probe.id }),
+          ...(response === undefined ? {} : { response }),
+        }
+      }
       callbackTests = result.tests
       criterionBranch = result.criterionBranch
       if (result.notTested) {
@@ -781,7 +863,10 @@ export async function runProbeBatch(
         const rawReplyRef =
           result.observation.assertionType === "process_environment" && result.response !== undefined
             ? `${probe.id}.callbackResponse`
-            : queries.length || captureAttempted || clipboardEvents.length
+            : events.some((event) => event.kind === "write") ||
+                queries.length ||
+                captureAttempted ||
+                clipboardEvents.length
               ? probe.id
               : undefined
         const post = geometryCheck?.post
@@ -881,6 +966,7 @@ export async function runProbeBatch(
         queries,
         events,
         ...(clipboardEvents.length ? { clipboard: clipboardEvents } : {}),
+        ...(titleReads.length ? { titleReads } : {}),
         ...(captureAttempted ? { captures } : {}),
       })
       if (probe.id === "device.primary-da" || probe.id === "device.secondary-da" || probe.id === "device.xtversion") {

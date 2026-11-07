@@ -55,7 +55,8 @@ const MODES_CONTRACT: GroupContract = [
   {
     id: "modes.application-keypad",
     expected: "decided",
-    claim: "Application keypad: ESC = then KP_5 reports SS3 u after plain-a delivery control; bare 5 is unsupported",
+    claim:
+      "Application keypad: KP_Add reports SS3 k after ESC = and + after ESC >, after plain-a delivery control; + under both is unsupported",
   },
   {
     id: "modes.left-right-margin",
@@ -205,12 +206,15 @@ function modeQuerySource(ps: 0 | 1 | 2 | 3 | 4 | null) {
 
 function modesTermSource(id: string) {
   if (id === "modes.application-keypad") {
+    // KP_Add answers SS3 k under DECKPAM, then + under DECKPNM (#32582); each run reads it twice, and the replay runs twice.
+    let keypadReads = 0
     return replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async (pattern: RegExp) => {
         if (pattern.test("a")) return ["a"]
-        if (pattern.test("\x1bOu")) return ["\x1bOu"]
-        return null
+        keypadReads += 1
+        const report = keypadReads % 2 === 1 ? "\x1bOk" : "+"
+        return pattern.test(report) ? [report] : null
       },
     })
   }
@@ -400,7 +404,7 @@ test("each Modes row retains its measured grade or named execution disposition u
   }
 }, 20_000)
 
-test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
+test("a decided Modes row is unsatisfied when DECRPM is silent and its effect control is absent", async () => {
   const row = MODES_CONTRACT.find((entry) => entry.id === "modes.auto-wrap")
   const probe = modesProbes.find((entry) => entry.id === "modes.auto-wrap")
   expect(row, "the Modes contract names modes.auto-wrap").toBeDefined()
@@ -415,7 +419,7 @@ test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
   expect(result?.tests).toMatchObject([
     expect.objectContaining({
       status: "probe-invalid",
-      reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
+      reason: "Auto-wrap cursor control did not measure home and ordinary text advancing to the right margin",
     }),
   ])
 })

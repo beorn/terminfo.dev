@@ -440,9 +440,9 @@ test("OSC104 retains silent-query controls and unqualified cell readings without
 })
 
 // Each entry is an authorized effect-readback regression, not the query feature itself (#32324).
+// App graphics transmit's two controlled windows are covered by the CTO87a56285 decision table below.
 test.each([
   "extensions.kitty-graphics.display",
-  "extensions.kitty-graphics.transmit",
   "extensions.osc104-reset-palette",
   "extensions.osc110-reset-fg",
   "extensions.osc111-reset-bg",
@@ -1056,7 +1056,7 @@ test.each(appResetProbes)(
     expect(definition.termNeedsDisposable, id).toBe(true)
     const indexPart = index === undefined ? "" : `${index};`
     const rgb = (hex: string) => `\x1b]${setCode};${indexPart}rgb:${hex}\x07`
-    const run = async (replies: string[]) => {
+    const run = async (replies: string[], qualified = true) => {
       const writes: string[] = []
       const queue = [...replies]
       const exchange = async (_sequence: string, pattern: RegExp) => {
@@ -1066,6 +1066,7 @@ test.each(appResetProbes)(
           reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
           raw,
           rawBase64: Buffer.from(raw).toString("base64"),
+          ...(qualified && { sentinel: { atMs: 9, graceMs: 250 } }),
         }
       }
       const result = await definition.term!({
@@ -1101,11 +1102,23 @@ test.each(appResetProbes)(
     expect(noReply.result.notTested?.reason, id).toBe("no-semantic-observable")
     expect(noReply.result.notTested?.noObservable, id).toContain("reset itself stays unseen")
     expect(noReply.result.assertions, id).toBeUndefined()
+    // #31743: the retained Cursor run3345649c answered DA1, not OSC13/14.
+    // Missing colour setup differs from a missing control; the other reset families keep their route.
+    const controlledSilence = await run(["\x1b[?1;2c"])
+    const pointer = setCode === 13 || setCode === 14
+    expect(isDeclaredUntestable(controlledSilence.result), id).toBe(pointer)
+    if (pointer) {
+      expect(controlledSilence.result.tests).toMatchObject([
+        { id: "declared-untestable", status: "untestable", reason: expect.stringContaining("no setup") },
+      ])
+      expect(controlledSilence.result.tests?.[0]?.reason).toContain("this app")
+    }
+    expect(isDeclaredUntestable((await run(["malformed\x1b[?1;2c"])).result), id).toBe(false)
+    expect(isDeclaredUntestable((await run(["\x1b[?1;2c"], false)).result), id).toBe(false)
   },
 )
 
 const appOnlyEffects = [
-  "extensions.osc22-pointer",
   "extensions.osc777-notify",
   "extensions.osc666-termprop",
   "extensions.osc3008-context",
@@ -1232,6 +1245,9 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
 // reply, which omits the value (ctlseqs: "XTSMGRAPHICS ... return failure status if
 // the terminal is not configured to support the corresponding ... SIXEL feature").
 // Demanding a third parameter graded that failure as a malformed geometry.
+// 32569: status 3 is the terminal's own report on this exact query, and a report comes before no setup, so it reads
+// Unsupported with the reply retained (@cto third-table ruling 2026-11-06). Statuses 1 and 2 name an error in the
+// item or action this probe sent, so they stay PROBE INVALID.
 test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", async () => {
   const definition = callback("extensions.sixel-geometry-report")
   const headless = (raw: string) => definition.lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
@@ -1247,12 +1263,24 @@ test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", as
   const failure = "\x1b[?2;3S"
   for (const result of [headless(failure), await app(failure)]) {
     expect(result.response).toBe(failure)
+    expect(result.pass).toBe(false)
     expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      note: "Sixel geometry query reported protocol status 3 (failure; no graphics geometry is configured)",
+      outcome: "unsupported",
+      note: "Sixel geometry query reported protocol status 3 (failure): Sixel is off in this launch",
     })
-    expect(result.assertions).toBeUndefined()
+    expect(result.assertions).toEqual([
+      expect.objectContaining({ assertionType: "query_reply", kind: "negative", observed: failure }),
+    ])
+  }
+  for (const status of [1, 2]) {
+    const error = `\x1b[?2;${status}S`
+    for (const result of [headless(error), await app(error)]) {
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        note: `Sixel geometry query reported protocol status ${status}`,
+      })
+      expect(result.assertions).toBeUndefined()
+    }
   }
   const success = "\x1b[?2;0;800;528S"
   for (const result of [headless(success), await app(success)]) {
@@ -1375,6 +1403,70 @@ test("an explicit graphics refusal decides transmit and leaves display with no s
   expect(displayResult.tests?.[0]?.reason).toMatch(/^Untestable \(no setup\): .*transmit.*refused.*ENOTSUP/u)
   expect(JSON.stringify(displayResult)).not.toMatch(/no image allocation readback/iu)
 })
+
+// CTO 87a56285: App negatives need the row's own transfer AND canonical-query windows.
+// Existing allocation/refusal cases do not cover a terminal that answers only DA1 in both windows.
+test.each([
+  ["sentinel", "sentinel", true],
+  ["sentinel", "reply", false],
+  ["sentinel", "refusal", false],
+  ["sentinel", "timeout", false],
+  ["timeout", "sentinel", false],
+  ["partial", "sentinel", false],
+  ["sentinel", "partial", false],
+] as const)(
+  "App graphics transfer=%s/query=%s decides only two controlled silent windows",
+  async (transfer, query, negative) => {
+    for (const display of [false, true]) {
+      const windows: string[] = []
+      const result = await callback(`extensions.kitty-graphics.${display ? "display" : "transmit"}`).term!(
+        replayTermProbeSource(new Map(), {
+          queryWithSentinelOutcome: async (sequence, pattern) => {
+            windows.push(sequence)
+            const kind = sequence.includes("a=q") ? query : transfer
+            const raw =
+              kind === "refusal"
+                ? "\x1b_Gi=31;ENOTSUP\x1b\\"
+                : kind === "reply"
+                  ? "\x1b_Gi=31;OK\x1b\\"
+                  : kind === "timeout"
+                    ? ""
+                    : `${"\x1b[?62;22c"}${kind === "partial" ? "\x1b_Gi=31;" : ""}`
+            return {
+              match: kind === "reply" || kind === "refusal" ? pattern.exec(raw) : null,
+              reason: kind === "timeout" ? "timeout" : kind === "reply" || kind === "refusal" ? "reply" : "sentinel",
+              raw,
+              rawBase64: Buffer.from(raw).toString("base64"),
+              ...(kind === "sentinel" || kind === "partial" ? { sentinel: { atMs: 3, graceMs: 250 } } : {}),
+            }
+          },
+        }),
+      )
+      if (negative) {
+        expect(windows).toHaveLength(2)
+        expect(windows[0]).toContain("a=t")
+        expect(windows[1]).toContain("a=q")
+        if (display) {
+          expect(result.tests?.[0]).toMatchObject({ status: "untestable" })
+          expect(result.tests?.[0]?.reason).toMatch(/^Untestable \(no setup\): .*transmit/u)
+          expect(JSON.stringify(result)).not.toMatch(/does not display/u)
+        } else {
+          expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+          expect(result.assertions).toMatchObject([{ kind: "negative" }, { kind: "negative" }])
+          expect(JSON.parse(result.response!)).toMatchObject({
+            transfer: { raw: "\x1b[?62;22c" },
+            query: { raw: "\x1b[?62;22c" },
+          })
+        }
+      } else {
+        expect(result.observation?.outcome).not.toBe("unsupported")
+        expect(result.observation?.outcome).not.toBe("supported")
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests?.some((row) => row.status === "untestable")).not.toBe(true)
+      }
+    }
+  },
+)
 
 test.each(["sentinel", "timeout"] as const)(
   "the library arm asks its canonical graphics question whether the silence reads as a %s",
@@ -1571,18 +1663,20 @@ test.each([
             rawBase64: btoa(raw),
             match: pattern.exec(raw),
             reason: raw === "\x1b[?1;2c" ? "sentinel" : "timeout",
+            ...(raw === "\x1b[?1;2c" && { sentinel: { atMs: 7, graceMs: 250 } }),
           }
         },
       })
       expect(result.observation).toBeUndefined()
-      expect(result.note).toBeUndefined()
-      // A completed DA1 control with no initial colour is missing observation,
+      // A completed DA1 control with no initial colour establishes missing setup,
       // while timeout or malformed data still cannot establish a working apparatus.
       const missingBaseline = stage === 0 && raw === "\x1b[?1;2c"
-      expect(result.tests?.[0]?.status).toBe(missingBaseline ? "probe-todo" : "probe-invalid")
+      if (!missingBaseline) expect(result.note).toBeUndefined()
+      expect(result.tests?.[0]?.status).toBe(missingBaseline ? "untestable" : "probe-invalid")
+      expect(isDeclaredUntestable(result)).toBe(missingBaseline)
       expect(result.tests?.[0]?.reason).toContain(
         missingBaseline
-          ? `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`
+          ? `Untestable (no setup): OSC ${setCode} colour setup does not work on this app, so this command has nothing to act on.`
           : ["initial highlight colour is unknown", "known colour was not read back", "did not answer after"][stage]!,
       )
       if (raw === "") expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])

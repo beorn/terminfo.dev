@@ -1010,6 +1010,8 @@ export interface InputFixture {
   }
   injectKey(keys: string): Promise<void>
   injectClick(button: 1 | 4 | 5): Promise<void>
+  /** Buttonless motion in owned-window pixels; absent adapters stay click-only. */
+  injectMove?(x: number, y: number): Promise<void>
   /** Button-event (1002) motion. Absent adapters stay click-only. */
   injectDrag?(button: 1): Promise<void>
 }
@@ -1023,14 +1025,42 @@ export type TermFeaturesReading =
       launchMarker: string
       pid: number
       tty: string
+      /** The multiplexer this child runs inside (#32569): a present value may come from the outer terminal. */
+      mux?: "tmux" | "screen"
     }
   | { status: "unavailable"; reason: string }
   | { status: "invalid"; reason: string }
 
+/** Same-row observations from the owned App reader; no App identity enters probe definitions. */
+export type AppSemanticReading =
+  | {
+      status: "measured"
+      reader: "state"
+      runId: string
+      unknown: { before: string; after: string }
+      handled: { before: string; after: string; expected: string }
+      target: { before: string; after: string; expected: string }
+      detail: object
+    }
+  | {
+      status: "measured"
+      reader: "report"
+      runId: string
+      unknown: { code: string; reports: string[] }
+      handled: { applied: boolean; reports: string[] }
+      target: { code: string; reports: string[] }
+      detail: object
+    }
+  | { status: "unavailable" | "invalid"; reason: string; detail?: object }
+
 export interface TermProbeSource {
   readonly kind: ProbeSourceKind
+  /** This run's owned public title surface; empty is a title, and a failed read throws its cause. */
+  readTitle?: () => Promise<string>
   /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */
   readTermFeatures?: () => Promise<TermFeaturesReading>
+  /** Writes use the callback's recorder; reads bind to this run's verified App or mux. */
+  readAppSemanticState?: (featureId: string, write: (text: string) => void) => Promise<AppSemanticReading>
   /** Complete same-run raster geometry, installed only after witnessed paint and restore. */
   captureGeometry?: {
     geometry: CapturePixelGeometry

@@ -301,14 +301,16 @@ jobs:
             sleep 1
           done
           printf 'phase=receipt-ready\n' >&2
-          # The owned Darwin terminal arms read TERMINFO_RUN_ID and refuse an empty launch id
-          # (owned-terminal.ts). The id only exists once the launched step emitted the receipt, so it is
-          # read here, after the readiness wait and before the collector (27917: hosted runs never set it).
-          TERMINFO_RUN_ID="\$(jq -er .runId "$OUT/host-measured.json")" || {
+          # Parse receipt custody even when the editor already supplied a clean launch identity.
+          # The receipt identifies this hosted job; the matching inherited pair identifies its child.
+          hosted_run_id="\$(jq -er .runId "$OUT/host-measured.json")" || {
             echo "Receipt has no launch run ID; collection refused" >&2
             printf '1\n' > "$OUT/collector-exit"
             exit 1
           }
+          if [ -z "\${TERMINFO_TERM_FEATURES_LAUNCH:-}" ] || [ "\$TERMINFO_TERM_FEATURES_LAUNCH" != "\${TERMINFO_RUN_ID:-}" ]; then
+            TERMINFO_RUN_ID="\$hosted_run_id"
+          fi
           export TERMINFO_RUN_ID
           printf 'phase=run-id-parsed\n' >&2
           # stdout MUST stay on this terminal: the collector writes every probe query to
@@ -316,7 +318,7 @@ jobs:
           # one PTY. Redirecting stdout to the log made that binding impossible and failed every
           # hosted macOS job at collect (27917; cause b7580050 / 28533). Only stderr is logged.
           printf 'phase=collector-invoked\n' >&2
-          nice -n 10 "$COLLECTOR_BUN" "$COLLECTOR" test --output "$OUT/run.json"$PROBE_IDS_ARGS 2>> "$OUT/collector.log"
+          nice -n 10 "$COLLECTOR_BUN" --no-env-file "$COLLECTOR" test --output "$OUT/run.json"$PROBE_IDS_ARGS 2>> "$OUT/collector.log"
           status=\$?
           printf 'phase=collector-exited status=%s\n' "\$status" >&2
           printf '%s\n' "\$status" > "$OUT/collector-exit"

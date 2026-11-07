@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto"
+import { frameDigests } from "./types.ts"
+import { withAppSemanticObservation } from "./app-semantic-state.ts"
 import type {
   ProbeDefinition,
   ProbeCallbackResult,
@@ -322,6 +324,39 @@ function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentine
   }
 }
 
+/** Current library DECRQM siblings in device.ts/modes.ts; one silent mode is insufficient. */
+const OSC5522_DECRPM_SIBLINGS = [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031] as const
+
+/**
+ * What a measured-silent OSC 5522 detector means, from its DECRPM siblings, on both arms (#32569). When every sibling
+ * is silent too, a library leaves recognition untested (PROBE TODO), and a terminal has no report to read, so it is
+ * Untestable through the one declared route, its reason built from this run's silent control query (#32582, @cto
+ * fd9e55b1). An answering sibling keeps the detector's own reading. Every reading retains the detector and sibling
+ * replies.
+ */
+function osc5522AfterSiblings(
+  replier: "library" | "terminal",
+  reply: TerminalQueryOutcome,
+  controls: { mode: number; raw: string }[],
+  allSilent: boolean,
+): ProbeCallbackResult {
+  const evidence = { detection: reply.raw, decrpmSiblings: controls }
+  const response = JSON.stringify(evidence)
+  if (allSilent && replier === "terminal") {
+    const modes = controls.map(({ mode }) => mode).join(", ")
+    return declaredUntestableResult(
+      `Untestable (no way to tell): no mode query in this run got a DECRPM reply. CSI ? 5522 $ p and its control query CSI ? Pm $ p for modes ${modes} all went unanswered, so this terminal has no report to read.`,
+      evidence,
+    )
+  }
+  if (allSilent) {
+    const reason =
+      "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing."
+    return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
+  }
+  return { ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined), response }
+}
+
 /**
  * Bind a complete reply from this query; a prefix or unrelated output is not a result. When the
  * collector measured a DA1 sentinel before the reply, the ordering rides along as a note.
@@ -435,13 +470,17 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
 /** XTSMGRAPHICS item 2, read: the current Sixel geometry in pixels. */
 const SIXEL_GEOMETRY_QUERY = "\x1b[?2;1;0S"
 const SIXEL_GEOMETRY_REPLY = /\x1b\[\?2;[0-9;]*S/
+const SIXEL_GEOMETRY_EXPECTED = "XTSMGRAPHICS item 2 read returns status 0 and two positive pixel dimensions"
 
 /** Live's reading of one Sixel geometry outcome, shared by both arms (#30554). */
 function sixelGeometryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
   return sixelGeometryResult(reply.raw, replyFrame(reply), reply.sentinel)
 }
 
-/** A read of current Sixel geometry; protocol failure and silence never establish a negative. */
+/**
+ * A read of current Sixel geometry. Status 3 (failure) is the terminal's own report on this query and reads
+ * Unsupported (#32569); other protocol statuses and silence never establish a negative.
+ */
 function sixelGeometryResult(
   raw: string,
   frame: string | null,
@@ -478,12 +517,29 @@ function sixelGeometryResult(
     }
   }
   const status = Number(reply[1])
+  if (status === 3) {
+    // 32569: a report comes before no setup, so the failure answer to this exact query is the measured negative
+    // (@cto third-table ruling 2026-11-06). Statuses 1 and 2 name an error in the item or action sent.
+    const note = "Sixel geometry query reported protocol status 3 (failure): Sixel is off in this launch"
+    return {
+      pass: false,
+      response: raw,
+      note,
+      observation: { outcome: "unsupported", assertionType: "query_reply", note },
+      assertions: [
+        {
+          assertionType: "query_reply" as const,
+          kind: "negative",
+          expected: SIXEL_GEOMETRY_EXPECTED,
+          observed: reply[0],
+        },
+      ],
+    }
+  }
   if (status !== 0) {
-    const validFailure = status === 1 || status === 2 || status === 3
+    const validFailure = status === 1 || status === 2
     const note = validFailure
-      ? status === 3
-        ? "Sixel geometry query reported protocol status 3 (failure; no graphics geometry is configured)"
-        : `Sixel geometry query reported protocol status ${status}`
+      ? `Sixel geometry query reported protocol status ${status}`
       : `Unknown Sixel geometry protocol status ${reply[1]}`
     return {
       pass: false,
@@ -533,7 +589,7 @@ function sixelGeometryResult(
       {
         assertionType: "query_reply" as const,
         kind: "positive",
-        expected: "XTSMGRAPHICS item 2 read returns status 0 and two positive pixel dimensions",
+        expected: SIXEL_GEOMETRY_EXPECTED,
         observed: reply[0],
       },
     ],
@@ -669,25 +725,28 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
 const HIGHLIGHT_TEST_COLOURS = ["3030/6060/9090", "9090/3030/6060", "6060/9090/3030"] as const
 
 function noColorSetupResult(
-  ctx: LibProbeSource,
+  ctx: LibProbeSource | TermProbeSource,
   sequence: string,
   setCode: number,
   query: TerminalQueryOutcome | undefined,
   result: ProbeCallbackResult,
 ): ProbeCallbackResult {
+  const library = "feed" in ctx ? ctx : undefined
   const code = /^\x1b\](\d+)/.exec(sequence)?.[1]
   const reported =
-    code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code) ? unhandledOscReportResult(ctx, sequence, result) : result
+    library && code && UNHANDLED_REPORT_COLOUR_RESETS.includes(code)
+      ? unhandledOscReportResult(library, sequence, result)
+      : result
   if (reportsDecidedOutcome(reported) || !query || !sentinelSilenceResult(query, `OSC ${setCode} colour setup`)) {
     return reported
   }
   // A duplicate or otherwise unqualified report is still a report, not absent setup.
-  if (ctx.getUnhandledSequences) {
-    ctx.feed(sequence)
-    if (ctx.getUnhandledSequences().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
+  if (library?.getUnhandledSequences) {
+    library.feed(sequence)
+    if (library.getUnhandledSequences().some((entry) => entry.kind === "osc" && entry.code === code)) return reported
   }
   return declaredUntestableResult(
-    `Untestable (no setup): OSC ${setCode} colour setup does not work on this library, so this command has nothing to act on.`,
+    `Untestable (no setup): OSC ${setCode} colour setup does not work on this ${library ? "library" : "app"}, so this command has nothing to act on.`,
     { query, body: reported.response },
   )
 }
@@ -730,7 +789,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     const initial = initialRead.colour
     if (!initial) {
       if (initialRead.reply.reason === "sentinel") {
-        return {
+        return noColorSetupResult(ctx, `\x1b]${resetCode}\x07`, setCode, initialRead.reply, {
           pass: false,
           response: JSON.stringify({ query: querySeq, initialSentinel: initialRead.reply }),
           tests: [
@@ -740,7 +799,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
               reason: `Open: the highlight-colour query (OSC ${setCode}) got no reply, though the control did. A silent highlight query says nothing about whether the reset works.`,
             },
           ],
-        }
+        })
       }
       return inconclusive(
         `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
@@ -1354,18 +1413,21 @@ async function colorResetAppProbe(
     const outcome = await ctx.queryWithSentinelOutcome(query, reply)
     return { outcome, rgb: outcome.match?.[1] ?? null }
   }
+  const reset = `\x1b]${spec.resetCode}${spec.index === undefined ? "" : `;${spec.index}`}\x07`
   const before = await read()
   if (!before.rgb) {
     if (before.outcome.reason === "sentinel") {
-      return notTestedResult(
+      const result = notTestedResult(
         `Open: the colour query (OSC ${spec.setCode}) got no answer, though the reply control came back. The query is silent and the reset itself stays unseen`,
         { query, initialReadback: before.outcome },
       )
+      return spec.setCode === 13 || spec.setCode === 14
+        ? noColorSetupResult(ctx, reset, spec.setCode, before.outcome, result)
+        : result
     }
     return oscReplyResult(before.outcome.raw, null, `Complete OSC ${spec.setCode} color reply`, before.outcome.sentinel)
   }
   const requested = probeForeground(before.rgb)
-  const reset = `\x1b]${spec.resetCode}${spec.index === undefined ? "" : `;${spec.index}`}\x07`
   ctx.write(`\x1b]${spec.setCode};${indexPart}${requested}\x07`)
   const changed = await read()
   ctx.write(reset)
@@ -3042,14 +3104,43 @@ function kittyGraphicsRefusalCode(raw: string): string | null {
 }
 
 /**
- * Display cannot be observed when transmit was refused in the same run: the library answered the
- * canonical query with an error, so there is no image for the display cell to place.
+ * Display has no setup when this row's transmit is refused explicitly or by both controlled App windows.
  */
-function kittyDisplayWithoutTransmit(code: string, imageNumber: number): ProbeCallbackResult {
+function kittyDisplayWithoutTransmit(code: string | null, imageNumber: number): ProbeCallbackResult {
   return declaredUntestableResult(
-    `Untestable (no setup): Kitty graphics transmit is refused by this library (${code}), so the display cell has no image to place`,
+    `Untestable (no setup): Kitty graphics transmit ${code ? `is refused by this library (${code})` : "has no reply to either a=t or a=q after their DA1 controls"}, so the display cell has no image to place`,
     { imageNumber, refusal: code },
   )
+}
+
+/** Same-run image prerequisite for the two pixel rows; successful allocation is released immediately. */
+async function kittyPixelPrerequisite(ctx: TermProbeSource): Promise<ProbeCallbackResult | null> {
+  const imageNumber = kittyImageNumber()
+  const transfer = await ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber))
+  const uploaded = allocationOutcomeResult(transfer, imageNumber)
+  if (uploaded.silent) {
+    const query = await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)
+    const transferNegative = sentinelSilenceResult(transfer, "The RGB image transfer is acknowledged")
+    const queryNegative = sentinelSilenceResult(query, "The canonical RGB graphics query is acknowledged")
+    const result =
+      transferNegative?.observation && queryNegative?.observation
+        ? kittyDisplayWithoutTransmit(null, imageNumber)
+        : uploaded.result
+    return { ...result, response: JSON.stringify({ imageNumber, transfer, query }) }
+  }
+  if (!uploaded.imageId) return uploaded.result
+  ctx.write(kittyDeleteImage(uploaded.imageId))
+  return null
+}
+
+/** Both pixel rows qualify opaque red against the same independently painted cell rectangle. */
+function kittyPaintReference(ctx: TermProbeSource): void {
+  ctx.write(KITTY_CLEAR)
+  ctx.write(`\x1b[48;2;${KITTY_FRAME_RED.join(";")}m`)
+  for (let row = KITTY_REGION.top; row <= KITTY_REGION.bottom; row++) {
+    ctx.write(`\x1b[${row};${KITTY_REGION.left}H${" ".repeat(KITTY_REGION.right - KITTY_REGION.left + 1)}`)
+  }
+  ctx.write(`\x1b[0m${kittyPark()}`)
 }
 
 /**
@@ -3236,11 +3327,27 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         const imageNumber = newNumber()
         let imageId: number | null = null
         try {
-          const uploaded = allocationOutcomeResult(
-            await ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber)),
-            imageNumber,
+          const transfer = await ctx.queryWithSentinelOutcome(
+            imageTransferRequest(imageNumber),
+            allocationReply(imageNumber),
           )
+          const uploaded = allocationOutcomeResult(transfer, imageNumber)
           imageId = uploaded.imageId
+          if (uploaded.silent) {
+            // App-only: both owned windows must be controlled silence; a query reply leaves transfer open.
+            const query = await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)
+            const transferNegative = sentinelSilenceResult(transfer, "The RGB image transfer is acknowledged")
+            const queryNegative = sentinelSilenceResult(query, "The canonical RGB graphics query is acknowledged")
+            if (transferNegative?.observation && queryNegative?.observation) {
+              if (display) return kittyDisplayWithoutTransmit(null, imageNumber)
+              return {
+                pass: false,
+                observation: queryNegative.observation,
+                response: JSON.stringify({ transfer, query }),
+                assertions: [...(transferNegative.assertions ?? []), ...(queryNegative.assertions ?? [])],
+              }
+            }
+          }
           if (uploaded.refusal && display) {
             return kittyDisplayWithoutTransmit(uploaded.refusal, imageNumber)
           }
@@ -3932,7 +4039,10 @@ function osc0IconTitleResult(
   iconLabel: string | null,
   windowTitle: string | null,
   raw: { icon: string; title: string },
-  reasons: Record<"icon" | "title", TerminalQueryOutcome["reason"] | "feedCapture boundary">,
+  reasons: Record<
+    "icon" | "title",
+    TerminalQueryOutcome["reason"] | "feedCapture boundary" | "owned public title read"
+  >,
 ): ProbeCallbackResult {
   const response = JSON.stringify({ ...raw, iconLabel, windowTitle })
   if (iconLabel === null || windowTitle === null) {
@@ -4506,7 +4616,54 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   }
 }
 
-export const extensionsProbes: ProbeDefinition[] = [
+const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
+const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
+
+function readOsc22Shape(raw: string) {
+  return { raw, shape: OSC22_SHAPE_REPLY.exec(raw)?.[1] }
+}
+
+type Osc22Reading = ReturnType<typeof readOsc22Shape>
+type Osc22QueryEvidence = {
+  query: string
+  controlWrite: string
+  targetWrite: string
+  restoreWrite: string
+  readings: {
+    initial: Osc22Reading
+    control?: Osc22Reading
+    target?: Osc22Reading
+    restored?: Osc22Reading
+  }
+}
+
+function osc22QueryResult(controlShape: string, evidence: Osc22QueryEvidence, note?: string): ProbeCallbackResult {
+  const { readings } = evidence
+  const target = readings.target?.shape
+  const missing =
+    readings.control?.shape !== controlShape
+      ? "control shape was not reported"
+      : target === undefined
+        ? "target shape was not reported"
+        : readings.restored?.shape !== readings.initial.shape
+          ? "incoming shape was not restored and read back"
+          : undefined
+  if (missing) {
+    const result = notTestedResult(NO_SAME_PATH_CONTROL, evidence)
+    return note ? { ...result, note: `${note}; ${missing}` } : result
+  }
+  const pass = target === "pointer" ? true : target === controlShape ? false : null
+  return parserStateResult(
+    pass,
+    "OSC 22 pointer query reports pointer after a distinct same-path control and restores the incoming shape",
+    evidence,
+    note && (pass === null ? `${note}; unexpected target shape ${JSON.stringify(target)}` : note),
+    undefined,
+    "query_reply",
+  )
+}
+
+const extensionDefinitions: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   {
     ...probe(
@@ -4684,6 +4841,8 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       async (ctx) => {
         const id = "extensions.kitty-graphics.animation"
+        const prerequisite = await kittyPixelPrerequisite(ctx)
+        if (prerequisite) return prerequisite
         const capture = ctx.capture
         if (!capture) {
           // No pixel adapter: an instrument limit, named before a byte, never a support conclusion.
@@ -4726,52 +4885,9 @@ export const extensionsProbes: ProbeDefinition[] = [
         try {
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
-          const playbackId = kittyImageNumber()
-          ids.push(playbackId)
-          ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
-          ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
-          // The root frame carries no gap at transfer time; its gap is set by the control code.
-          ctx.write(kittyRootGap(playbackId))
-          ctx.write(kittyBlockOrigin())
-          const placement = await ctx.queryWithSentinelOutcome(
-            kittyPlace(playbackId),
-            kittyReplyFrame({ i: String(playbackId) }),
-          )
-          ctx.write(kittyPark())
-          ctx.write(kittyStartPlayback(playbackId))
-          const playbackFirst = await shoot(
-            "target",
-            `Terminal-driven playback, first frame of a ${String(KITTY_GAP_MS)} ms gap, loop v=${String(KITTY_LOOP_FOREVER)}`,
-          )
-          // The interval is measured from this capture's completion, and the elapsed value travels in
-          // the response, so a reader never has to infer the wait from the gap it asked for.
-          const intervalStart = Date.now()
-          await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
-          const playbackSecond = await shoot(
-            "target",
-            "Terminal-driven playback, second frame after 1.5x the gap with no write between the pair",
-          )
-          const playbackElapsedMs = Date.now() - intervalStart
-          let retry: KittyDigestPair | null = null
-          if (playbackFirst.regionDigest === playbackSecond.regionDigest) {
-            await kittyWait(KITTY_GAP_MS * KITTY_RETRY_FACTOR)
-            const retried = await shoot(
-              "target",
-              "Terminal-driven playback retried at twice the gap, no write since the equal pair",
-            )
-            retry = [playbackSecond.regionDigest, retried.regionDigest]
-          }
-          // Arm 2 — the update control. Selecting a frame by hand must change the rectangle; an equal
-          // pair here means the image pipeline is unproven and no negative may be taken from arm 1.
-          ctx.write(kittyStopPlayback(playbackId))
-          ctx.write(kittySelectFrame(playbackId, 1))
-          const clientFirst = await shoot("control", "Client-driven frame selection, frame 1 of a stopped animation")
-          ctx.write(kittySelectFrame(playbackId, 2))
-          const clientSecond = await shoot(
-            "control",
-            "Client-driven frame selection, frame 2 of the same stopped animation",
-          )
-          ctx.write(kittyDeleteImage(playbackId))
+          const blank = await shoot("control", "Blank rectangle before the static image control")
+          kittyPaintReference(ctx)
+          const reference = await shoot("control", "Independent SGR opaque-red reference in the same rectangle")
           // Arm 3 — a one-frame image over the same intervals must hold still.
           const stillId = kittyImageNumber()
           ids.push(stillId)
@@ -4800,11 +4916,66 @@ export const extensionsProbes: ProbeDefinition[] = [
             "control",
             "Redraw control, whole window after one ordinary glyph outside the rectangle",
           )
+          ctx.write(kittyDeleteImage(stillId))
+          ctx.write(KITTY_CLEAR)
+          ctx.write(kittyPark())
+          const playbackId = kittyImageNumber()
+          ids.push(playbackId)
+          const replies: Array<{ label: string; readback: TerminalQueryOutcome }> = []
+          const command = async (label: string, bytes: string) => {
+            const readback = await ctx.queryWithSentinelOutcome(bytes, kittyReplyFrame({ i: String(playbackId) }))
+            replies.push({ label, readback })
+          }
+          await command("base image", kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+          await command("second frame", kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
+          // The root frame carries no gap at transfer time; its gap is set by the control code.
+          await command("root frame gap", kittyRootGap(playbackId))
+          ctx.write(kittyBlockOrigin())
+          const placement = await ctx.queryWithSentinelOutcome(
+            kittyPlace(playbackId),
+            kittyReplyFrame({ i: String(playbackId) }),
+          )
+          ctx.write(kittyPark())
+          await command("start playback", kittyStartPlayback(playbackId))
+          const playbackFirst = await shoot(
+            "target",
+            `Terminal-driven playback, first frame of a ${String(KITTY_GAP_MS)} ms gap, loop v=${String(KITTY_LOOP_FOREVER)}`,
+          )
+          // The interval is measured from this capture's completion, and the elapsed value travels in
+          // the response, so a reader never has to infer the wait from the gap it asked for.
+          const intervalStart = Date.now()
+          await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
+          const playbackSecond = await shoot(
+            "target",
+            "Terminal-driven playback, second frame after 1.5x the gap with no write between the pair",
+          )
+          const playbackElapsedMs = Date.now() - intervalStart
+          let retry: KittyDigestPair | null = null
+          if (playbackFirst.regionDigest === playbackSecond.regionDigest) {
+            await kittyWait(KITTY_GAP_MS * KITTY_RETRY_FACTOR)
+            const retried = await shoot(
+              "target",
+              "Terminal-driven playback retried at twice the gap, no write since the equal pair",
+            )
+            retry = [playbackSecond.regionDigest, retried.regionDigest]
+          }
+          // Hand selection qualifies a moving playback result; static-only negatives do not require it.
+          await command("stop playback", kittyStopPlayback(playbackId))
+          await command("select frame 1", kittySelectFrame(playbackId, 1))
+          const clientFirst = await shoot("control", "Client-driven frame selection, frame 1 of a stopped animation")
+          await command("select frame 2", kittySelectFrame(playbackId, 2))
+          const clientSecond = await shoot(
+            "control",
+            "Client-driven frame selection, frame 2 of the same stopped animation",
+          )
+          ctx.write(kittyDeleteImage(playbackId))
           const captureDecision = decideKittyAnimation({
             playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
             retry,
             clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
             still: [stillFirst.regionDigest, stillSecond.regionDigest],
+            blank: blank.regionDigest,
+            reference: reference.regionDigest,
             cursorOnly: [cursorFirst.regionDigest, cursorSecond.regionDigest],
             redraw: [redrawFirst.pixelsDigest, redrawSecond.pixelsDigest],
             playbackElapsedMs,
@@ -4817,6 +4988,15 @@ export const extensionsProbes: ProbeDefinition[] = [
             playbackElapsedMs,
             playback: captureDecision.outcome,
             placementAck: placement.raw,
+            replies,
+            digests: {
+              blank: blank.regionDigest,
+              reference: reference.regionDigest,
+              still: [stillFirst.regionDigest, stillSecond.regionDigest],
+              playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
+              retry,
+              clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
+            },
             frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
           })
           return {
@@ -4844,7 +5024,7 @@ export const extensionsProbes: ProbeDefinition[] = [
                       assertionType: "screenshot" as const,
                       kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                       expected:
-                        "Two target frames of one run, no write between them, differ on the animation rectangle while frame selection differs, a one-frame image holds still, the cursor-only capture is equal and a redraw changes the screen outside the rectangle",
+                        "The static image matches the independent nonblank reference and holds still; the cursor-only pair is equal and redraw differs. Moving playback requires differing hand-selected frames. A negative requires an equal retry and initial playback matching the static image",
                       observed,
                       note: `decided by ${captureDecision.decidedBy}`,
                     },
@@ -4873,6 +5053,8 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       async (ctx) => {
         const id = "extensions.kitty-graphics.unicode-placeholders"
+        const prerequisite = await kittyPixelPrerequisite(ctx)
+        if (prerequisite) return prerequisite
         const capture = ctx.capture
         if (!capture) {
           const note =
@@ -4967,8 +5149,8 @@ export const extensionsProbes: ProbeDefinition[] = [
             KITTY_GUARD_REGION,
           )
           const cellsWithoutImage = await readCells("Placeholder rectangle cells with the image deleted")
-          // The live control: the same pixels painted by an ordinary placement in the same rectangle,
-          // measured against a captured blank rather than assumed from an acknowledgement.
+          // Qualify the ordinary placement against independently painted pixels. A changed rectangle
+          // alone can be leaked protocol text, as in the retained Screen control.
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
           const ordinaryId = kittyPlaceholderNumber()
@@ -4976,15 +5158,22 @@ export const extensionsProbes: ProbeDefinition[] = [
           const blank = await shoot("control", "Blank rectangle captured before the ordinary placement")
           ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
           ctx.write(kittyBlockOrigin())
-          await ctx.queryWithSentinelOutcome(kittyPlace(ordinaryId), kittyReplyFrame({ i: String(ordinaryId) }))
+          const placement = await ctx.queryWithSentinelOutcome(
+            kittyPlace(ordinaryId),
+            kittyReplyFrame({ i: String(ordinaryId) }),
+          )
           ctx.write(kittyPark())
           const ordinary = await shoot("control", "Ordinary a=p placement of the same pixels in the same rectangle")
+          ctx.write(kittyDeleteImage(ordinaryId))
+          kittyPaintReference(ctx)
+          const reference = await shoot("control", "Independent SGR opaque-red reference in the same rectangle")
           const captureDecision = decideKittyPlaceholders({
             withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
             withoutImage: withoutImage.regionDigest,
             guard: [guardWithImage.regionDigest, guardWithoutImage.regionDigest],
             blank: blank.regionDigest,
             ordinary: ordinary.regionDigest,
+            reference: reference.regionDigest,
             cellReadback:
               cellsWithImage === undefined || cellsWithoutImage === undefined
                 ? null
@@ -4996,12 +5185,14 @@ export const extensionsProbes: ProbeDefinition[] = [
             guardRegion: KITTY_GUARD_REGION,
             placeholderId,
             ordinaryId,
+            placementAck: placement.raw,
             guard: { withImage: guardWithImage.regionDigest, withoutImage: guardWithoutImage.regionDigest },
             digests: {
               withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
               withoutImage: withoutImage.regionDigest,
               blank: blank.regionDigest,
               ordinary: ordinary.regionDigest,
+              reference: reference.regionDigest,
             },
             cellReadback:
               cellsWithImage === undefined ? "unavailable: this pixel arm exposes no cell adapter" : "compared",
@@ -5032,7 +5223,7 @@ export const extensionsProbes: ProbeDefinition[] = [
                       assertionType: "screenshot" as const,
                       kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                       expected:
-                        "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move while the ordinary placement painted against the captured blank",
+                        "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move; the ordinary placement matches an independent SGR-painted reference that differs from blank",
                       observed,
                       note: `decided by ${captureDecision.decidedBy}`,
                     },
@@ -5138,13 +5329,49 @@ export const extensionsProbes: ProbeDefinition[] = [
         const read = collectorRegionRead(ctx)
         if (!read) throw new Error("extensions.sixel: a pixel arm reached the region oracle without an owned capture")
         try {
-          const decided = await captureRegionReadbackDecision(
+          let decided = await captureRegionReadbackDecision(
             ctx,
             "extensions.sixel",
             { ...sixelReadback(geometry), pixelGeometry: geometry, geometrySource: reported.source },
             read,
           )
-          if (decided) return decided
+          const digest = (plane: string) => {
+            const frame = decided?.observation?.frames?.find((frame) => frame.label === `extensions.sixel: ${plane}`)
+            return frame === undefined ? undefined : frameDigests(frame).cells
+          }
+          const seed = digest("pre-edit seed")
+          // Retry only this run's witnessed collapsed truecolor reference, never a third frame or failed capture.
+          if (
+            decided?.observation?.outcome === "inconclusive" &&
+            !decided.tests?.some((test) => test.status === "probe-invalid") &&
+            seed &&
+            seed === digest("expected frame")
+          ) {
+            decided = await captureRegionReadbackDecision(
+              ctx,
+              "extensions.sixel",
+              {
+                ...sixelReadback(geometry, "\x1b[48;5;196m"),
+                pixelGeometry: geometry,
+                geometrySource: reported.source,
+              },
+              read,
+            )
+          }
+          if (decided) {
+            const after = digest("post-sequence target")
+            if (
+              decided.observation?.outcome === "unsupported" &&
+              after !== undefined &&
+              after === digest("ignored-attribute frame")
+            ) {
+              const note =
+                "the post-sequence frame equals the sixel's own bytes written as plain text, so this terminal drew no image and passed none on"
+              decided.note = note
+              decided.observation.note = note
+            }
+            return decided
+          }
           const note =
             "extensions.sixel: the region oracle answered nothing for this arm, so the rendering was not compared"
           return {
@@ -5369,7 +5596,56 @@ export const extensionsProbes: ProbeDefinition[] = [
           if (beforeIcon !== undefined) ctx.feed(`\x1b]1;${beforeIcon}\x07`)
         }
       },
-      () => Promise.resolve(unmeasuredStateEffect("OSC 2 window title")),
+      async (ctx) => {
+        const read = ctx.readTitle
+        if (!read) return unmeasuredStateEffect("OSC 2 window title")
+        const before = await read()
+        const values = [
+          "terminfo-title-control-A",
+          "terminfo-title-control-B",
+          "terminfo-title-target-A",
+          "terminfo-title-target-B",
+        ]
+        const readings: string[] = []
+        const state = { before, values, readings, negative: "", restored: "" }
+        let result: ProbeCallbackResult
+        try {
+          for (const value of values) {
+            ctx.write(`\x1b]2;${value}\x07`)
+            readings.push(await read())
+          }
+          ctx.write("\x1b]7654;terminfo-title-negative\x07")
+          state.negative = await read()
+          const controls = readings[0] === values[0] && readings[1] === values[1]
+          const unexpected = readings
+            .slice(2)
+            .some((value, index) => value !== values[index + 2] && value !== readings[index + 1])
+          result =
+            controls && state.negative === readings[3] && !unexpected
+              ? parserStateResult(
+                  readings[2] === values[2] && readings[3] === values[3],
+                  "OSC 2 sets both exact requested titles after two title controls; a made-up OSC is inert",
+                  state,
+                )
+              : {
+                  pass: false,
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "probe-invalid",
+                      reason: "Owned title positive or negative control failed",
+                    },
+                  ],
+                }
+          if (!controls) result.criterionBranch = "app-title-control"
+        } finally {
+          ctx.write(`\x1b]2;${before}\x07`)
+          state.restored = await read()
+          if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+        }
+        return { ...result, response: JSON.stringify(state) }
+      },
+      "buffer_state",
     ),
     libAssertionType: "buffer_state",
   },
@@ -5519,6 +5795,50 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        if (ctx.readTitle) {
+          const read = ctx.readTitle
+          const before = await read()
+          const controls = ["terminfo-osc0-control-A", "terminfo-osc0-control-B"]
+          const readings: string[] = []
+          const state = { before, controls, readings, title: "", icon: "", restored: "" }
+          let result: ProbeCallbackResult
+          try {
+            for (const control of controls) {
+              ctx.write(`\x1b]2;${control}\x07`)
+              readings.push(await read())
+            }
+            if (readings[0] !== controls[0] || readings[1] !== controls[1]) {
+              result = replyFailure("Owned title reader failed the OSC 0 title-clause controls")
+            } else {
+              ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
+              state.title = await read()
+              if (state.title === controls[1]) {
+                result = parserStateResult(false, "OSC 0 sets both icon and window title", state)
+              } else if (state.title !== OSC0_PAYLOAD) {
+                result = replyFailure("OSC 0 changed the public title to an unexpected value")
+              } else {
+                const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
+                state.icon = icon.raw
+                result = osc0IconTitleResult(
+                  icon.match?.[1] ?? null,
+                  state.title,
+                  { icon: icon.raw, title: state.title },
+                  { icon: icon.reason, title: "owned public title read" },
+                )
+                if (result.assertions) {
+                  result.assertions = result.assertions.map((assertion, index) =>
+                    index === 1 ? { ...assertion, assertionType: "buffer_state" as const } : assertion,
+                  )
+                }
+              }
+            }
+          } finally {
+            ctx.write(`\x1b]2;${before}\x07`)
+            state.restored = await read()
+            if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+          }
+          return { ...result, response: JSON.stringify(state) }
+        }
         ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
         const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
         const title = await ctx.queryWithSentinelOutcome(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
@@ -5632,14 +5952,60 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
         return result
       },
-      () => {
+      async (ctx) => {
+        const read = ctx.readTitle
+        if (read) {
+          const before = await read()
+          const controls = ["terminfo-cwd-title-control-A", "terminfo-cwd-title-control-B"]
+          const paths = ["/terminfo-cwd-A", "/terminfo-cwd-B"]
+          const controlReadings: string[] = []
+          const readings: string[] = []
+          const state = { before, controls, controlReadings, paths, readings, empty: "", negative: "", restored: "" }
+          let result: ProbeCallbackResult
+          try {
+            for (const control of controls) {
+              ctx.write(`\x1b]2;${control}\x07`)
+              controlReadings.push(await read())
+            }
+            if (controlReadings[0] !== controls[0] || controlReadings[1] !== controls[1]) {
+              result = replyFailure("OSC 7 public title reader failed its handled OSC 2 controls")
+            } else {
+              ctx.write("\x1b]2;\x07")
+              state.empty = await read()
+              for (const path of paths) {
+                ctx.write(`\x1b]7;file://localhost${path}\x07`)
+                readings.push(await read())
+              }
+              ctx.write("\x1b]7654;file://localhost/terminfo-cwd-negative\x07")
+              state.negative = await read()
+              const unexpected = readings.some(
+                (value, index) => value !== paths[index] && value !== (index === 0 ? state.empty : readings[index - 1]),
+              )
+              result =
+                state.negative !== readings[1] || unexpected
+                  ? replyFailure("Made-up OSC changed the OSC 7 public title surface")
+                  : parserStateResult(
+                      readings[0] === paths[0] && readings[1] === paths[1],
+                      "OSC 7 localhost targets appear as their exact raw paths on the qualified public title surface",
+                      state,
+                    )
+            }
+          } finally {
+            ctx.write("\x1b]7;\x07")
+            ctx.write(`\x1b]2;${before}\x07`)
+            state.restored = await read()
+            if (state.restored !== before) throw new Error(`OSC 7 title restoration mismatch: ${JSON.stringify(state)}`)
+          }
+          return { ...result, response: JSON.stringify(state) }
+        }
         const note = "No working-directory metadata readback for OSC 7"
-        return Promise.resolve<ProbeCallbackResult>({
+        return {
           pass: false,
           note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
-        })
+          tests: [{ id: "criterion", status: "probe-todo" as const, reason: note }],
+        }
       },
+      "buffer_state",
     ),
     libAssertionType: "buffer_state",
   },
@@ -5915,28 +6281,95 @@ export const extensionsProbes: ProbeDefinition[] = [
         })
       },
       async (ctx) => {
-        if (ctx.capture) {
-          const refusal = sgrCaptureTooSmall(ctx, "extensions.iterm2-images")
-          if (refusal) return refusal
-          try {
-            return await sgrCaptureFrames(
-              ctx,
-              "\x1b[0m\x1b[2J\x1b[H",
-              "\x1b[0m\x1b[2J\x1b[3;3H\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07\x1b[1;1H",
-              "extensions.iterm2-images",
-              { startRow: 3, startCol: 3, image: "8x8 solid red PNG" },
-              "A red inline image appears only if the OSC 1337 payload was decoded; compare against the blank control",
-            )
-          } finally {
-            // SGR 0 alone does not remove a drawn inline image; clear the owned disposable surface.
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+        if (!ctx.capture || ctx.captureKind === "text-cells") {
+          const note =
+            "iTerm2 inline images paint pixels outside the cell grid; this arm has no pixel capture, so the missing adapter is pixel capture and the rendering is not observable here"
+          return {
+            pass: false,
+            note,
+            tests: [{ id: "criterion", status: "probe-todo", reason: note }],
           }
         }
-        const note = "No pixel readback for iTerm2 inline image rendering"
-        return {
-          pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+        const refusal = sgrCaptureTooSmall(ctx, "extensions.iterm2-images")
+        if (refusal) return refusal
+        const reported = await captureRegionGeometry(ctx, "extensions.iterm2-images", {
+          region: { ...SIXEL_REGION },
+          ...SIXEL_BOUNDS,
+        })
+        if ("pass" in reported) return reported
+        const geometry = reported.geometry
+        if (!geometry) {
+          const note =
+            "extensions.iterm2-images: this pixel arm reported no cell-to-pixel geometry, so the interior cell cannot be mapped"
+          return {
+            pass: false,
+            note,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note,
+            },
+          }
+        }
+        const read = collectorRegionRead(ctx)
+        if (!read) {
+          throw new Error("extensions.iterm2-images: a pixel arm reached the region oracle without an owned capture")
+        }
+        try {
+          const base = sixelReadback(geometry)
+          const body = `1337;File=inline=1;width=3;height=3;preserveAspectRatio=0:${ITERM2_RED_PNG}`
+          const park = `\x1b[${base.cursorRow};1H`
+          const decided = await captureRegionReadbackDecision(
+            ctx,
+            "extensions.iterm2-images",
+            {
+              ...base,
+              edit: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H\x1b]${body}\x07${park}`,
+              ignored: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H${body}${park}`,
+              pixelGeometry: geometry,
+              geometrySource: reported.source,
+            },
+            read,
+          )
+          if (decided) {
+            const digest = (plane: string) => {
+              const frame = decided.observation?.frames?.find(
+                (entry) => entry.label === `extensions.iterm2-images: ${plane}`,
+              )
+              return frame === undefined ? undefined : frameDigests(frame).cells
+            }
+            const after = digest("post-sequence target")
+            if (decided.observation?.outcome === "unsupported" && after !== undefined) {
+              if (after === digest("ignored-attribute frame")) {
+                const note =
+                  "the post-sequence frame equals the OSC 1337 body written as plain text, so this terminal drew no image and passed none on"
+                decided.note = note
+                decided.observation.note = note
+              } else if (after === digest("pre-edit seed")) {
+                const note = "the cell did not change"
+                decided.note = note
+                decided.observation.note = note
+                decided.criterionBranch = "iterm2-images-no-change"
+              }
+            }
+            return decided
+          }
+          const note =
+            "extensions.iterm2-images: the region oracle answered nothing for this arm, so the rendering was not compared"
+          return {
+            pass: false,
+            note,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note,
+            },
+          }
+        } finally {
+          // SGR 0 alone does not remove a drawn inline image; clear the owned disposable surface.
+          ctx.write("\x1b[0m\x1b[2J\x1b[H")
         }
       },
     ),
@@ -6140,12 +6573,10 @@ export const extensionsProbes: ProbeDefinition[] = [
           const pattern = decrpmReplyPattern(5522)
           if (ctx.queryWithSentinelOutcome) {
             const reply = ctx.queryWithSentinelOutcome("\x1b[?5522$p", pattern)
-            let response = reply.raw
             if (sentinelSilenceResult(reply, "OSC5522 detection reply") !== null) {
-              // Current library DECRQM siblings in device.ts/modes.ts; one silent mode is insufficient.
               const controls = []
               let allSilent = true
-              for (const mode of [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031]) {
+              for (const mode of OSC5522_DECRPM_SIBLINGS) {
                 const control = ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
                 controls.push({ mode, raw: control.raw })
                 if (sentinelSilenceResult(control, "DECRPM prerequisite reply") === null) {
@@ -6153,21 +6584,11 @@ export const extensionsProbes: ProbeDefinition[] = [
                   break
                 }
               }
-              response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
-              if (allSilent) {
-                const reason =
-                  "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing."
-                return {
-                  pass: false,
-                  response,
-                  note: reason,
-                  tests: [{ id: "criterion", status: "probe-todo", reason }],
-                }
-              }
+              return osc5522AfterSiblings("library", reply, controls, allSilent)
             }
             return {
               ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined),
-              response,
+              response: reply.raw,
             }
           }
           const raw = ctx.feedCapture("\x1b[?5522$p")
@@ -6175,6 +6596,20 @@ export const extensionsProbes: ProbeDefinition[] = [
         },
         async (ctx) => {
           const reply = await ctx.queryWithSentinelOutcome("\x1b[?5522$p", decrpmReplyPattern(5522))
+          // #32569 (@cto third-table ruling 2026-11-06): the same silent-sibling control as the library arm.
+          if (sentinelSilenceResult(reply, "OSC5522 detection reply") !== null) {
+            const controls = []
+            let allSilent = true
+            for (const mode of OSC5522_DECRPM_SIBLINGS) {
+              const control = await ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
+              controls.push({ mode, raw: control.raw })
+              if (sentinelSilenceResult(control, "DECRPM prerequisite reply") === null) {
+                allSilent = false
+                break
+              }
+            }
+            return osc5522AfterSiblings("terminal", reply, controls, allSilent)
+          }
           return osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined)
         },
         "query_reply",
@@ -6329,11 +6764,8 @@ export const extensionsProbes: ProbeDefinition[] = [
         const undecided = () =>
           unhandledOscReportResult(ctx, "\x1b]22;pointer\x07", noSamePathControl("\x1b]22;pointer\x07")(ctx))
         if (ctx.backendName !== "kitty") return undecided()
-        const query = "\x1b]22;?__current__\x07"
-        const read = () => {
-          const raw = ctx.feedCapture(query)
-          return { raw, shape: /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u.exec(raw)?.[1] }
-        }
+        const query = OSC22_CURRENT_QUERY
+        const read = () => readOsc22Shape(ctx.feedCapture(query))
         const initial = read()
         if (initial.shape === undefined) return notTestedResult(NO_SAME_PATH_CONTROL, { query, initial })
         const controlShape = initial.shape === "text" ? "wait" : "text"
@@ -6359,31 +6791,51 @@ export const extensionsProbes: ProbeDefinition[] = [
           readings.restored = read()
         }
         const evidence = { query, controlWrite, targetWrite, restoreWrite, readings }
-        const target = readings.target?.shape
-        if (
-          readings.control?.shape !== controlShape ||
-          target === undefined ||
-          readings.restored?.shape !== initial.shape
-        ) {
-          return notTestedResult(NO_SAME_PATH_CONTROL, evidence)
-        }
-        return parserStateResult(
-          target === "pointer" ? true : target === controlShape ? false : null,
-          "OSC 22 pointer query reports pointer after a distinct same-path control and restores the incoming shape",
-          evidence,
-          undefined,
-          undefined,
-          "query_reply",
-        )
+        return osc22QueryResult(controlShape, evidence)
       },
       async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]22;pointer\x07")
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "OSC 22 pointer shape")
+        const query = OSC22_CURRENT_QUERY
+        const read = async () => {
+          const outcome = await ctx.queryOutcome(query, OSC22_SHAPE_REPLY)
+          return { ...readOsc22Shape(outcome.raw), reason: outcome.reason }
+        }
+        const initial = await read()
+        if (initial.shape === undefined) {
+          return {
+            ...notTestedResult(NO_SAME_PATH_CONTROL, { query, initial }),
+            note: "No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read",
+          }
+        }
+        const controlShape = initial.shape === "text" ? "wait" : "text"
+        const controlWrite = `\x1b]22;${controlShape}\x07`
+        const targetWrite = "\x1b]22;pointer\x07"
+        const restoreWrite = `\x1b]22;${initial.shape === "0" ? "" : initial.shape}\x07`
+        const readings: {
+          initial: typeof initial
+          control?: typeof initial
+          target?: typeof initial
+          restored?: typeof initial
+        } = { initial }
+        try {
+          ctx.write(controlWrite)
+          readings.control = await read()
+          if (readings.control.shape === controlShape) {
+            ctx.write(targetWrite)
+            readings.target = await read()
+          }
+        } finally {
+          ctx.write(restoreWrite)
+          readings.restored = await read()
+        }
+        return osc22QueryResult(
+          controlShape,
+          { query, controlWrite, targetWrite, restoreWrite, readings },
+          "Selected shape reported; visible pointer not read",
+        )
       },
-      null,
+      "query_reply",
     ),
+    termNeedsDisposable: true,
     libAssertionType: {
       when: (source: Pick<LibProbeSource, "getUnhandledSequences" | "getMouseShape" | "capabilities">) =>
         typeof source.getUnhandledSequences === "function" ||
@@ -6705,6 +7157,8 @@ export const extensionsProbes: ProbeDefinition[] = [
     libAssertionType: "query_reply",
   },
 ]
+
+export const extensionsProbes: ProbeDefinition[] = extensionDefinitions.map(withAppSemanticObservation)
 
 // Operator D2 / CTO Nov 5 11:16: these exact feeds and normalized codes were
 // measured on the audited real addon. Delivery effects and OSC52 read are not negatives.

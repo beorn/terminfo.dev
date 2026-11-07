@@ -28,11 +28,41 @@ import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { initializeRunDraft } from "@terminfo/probe-defs"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { OWNED_LAYOUT } from "../packages/probes/fixtures/owned-layout.fixture.ts"
 import type { LinuxMuxAttachmentProof, CapturedRunDraft } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
+
+// @failure Ghostty's forced --title silently disables OSC 2 and its OSC 7 public-title fallback.
+// Execute the production descriptor's argument construction; no terminal or container starts here.
+it("leaves Ghostty's application title sequences enabled in the production launch arguments", () => {
+  const source = readFileSync(launcher, "utf8")
+  const marker = "\n    ghostty)"
+  const start = source.indexOf(marker)
+  const end = source.indexOf("\n      ;;", start)
+  if (start < 0 || end < 0) throw new Error("Ghostty launch descriptor is missing")
+  const body = source.slice(start + marker.length, end)
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      [
+        "set -euo pipefail",
+        "target_id=ghostty",
+        "target_version=1.4.0",
+        body,
+        'printf "%s\\0" "${target_launch_args[@]}"',
+      ].join("\n"),
+    ],
+    { encoding: "utf8" },
+  )
+  expect(result.status, result.stderr).toBe(0)
+  const args = result.stdout.split("\0").filter(Boolean)
+  expect(args.length).toBeGreaterThan(0)
+  expect(args.some((arg) => arg === "--title" || arg.startsWith("--title="))).toBe(false)
+})
 
 function compose(
   containerRunId = "a".repeat(32),
@@ -763,6 +793,194 @@ ${command[0]}`,
 })
 
 describe("explicit Linux image selection", () => {
+  // Different frozen bytes must never share a target/preset image reference.
+  // Existing receipt tests do not evaluate either real image producer.
+  it.runIf(OWNED_LAYOUT).each(["alacritty-visual-default-image", "kitty-visual-current-image"])(
+    "%s gives different frozen bundles different image tags",
+    (attribute) => {
+      const codeRoot = fileURLToPath(new URL("../../../", import.meta.url))
+      const nixEnv = { ...process.env, XDG_CACHE_HOME: join(dir, "nix-cache") }
+      const tags = ["first", "second"].map((bytes) => {
+        const bundle = join(dir, bytes)
+        mkdirSync(bundle)
+        writeFileSync(join(bundle, "index.js"), `console.log(${JSON.stringify(bytes)})\n`)
+        const hash = spawnSync("nix", ["hash", "path", "--type", "sha256", "--sri", bundle], {
+          encoding: "utf8",
+          env: nixEnv,
+        })
+        expect(hash.status, hash.stderr).toBe(0)
+        const evaluated = spawnSync(
+          "nix",
+          ["eval", "--impure", "--raw", `.#packages.x86_64-linux.${attribute}.imageTag`],
+          {
+            cwd: codeRoot,
+            encoding: "utf8",
+            env: {
+              ...nixEnv,
+              TERMINFO_LINUX_RUNNER_DIR: bundle,
+              TERMINFO_LINUX_RUNNER_SHA256: hash.stdout.trim(),
+            },
+            timeout: 60_000,
+          },
+        )
+        expect(evaluated.status, evaluated.stderr).toBe(0)
+        expect(evaluated.stdout.trim()).not.toBe("")
+        return evaluated.stdout.trim()
+      })
+      expect(tags[0]).not.toBe(tags[1])
+    },
+    130_000,
+  )
+
+  // A stale preset alias can remain resolvable after load. Only the producer's
+  // reference may choose the immutable ID used by the host receipt and create.
+  it("selects the frozen producer image when the old preset alias also resolves", () => {
+    const root = join(dir, "code")
+    const scripts = join(root, "vendor/terminfo.dev/scripts")
+    const dist = join(root, "vendor/terminfo.dev/packages/terminfo.dev/dist")
+    const cliBin = join(root, "vendor/terminfo.dev/packages/terminfo.dev/bin")
+    const bins = join(dir, "bin")
+    const output = join(dir, "runs")
+    const calls = join(dir, "calls.log")
+    for (const path of [scripts, dist, cliBin, bins]) mkdirSync(path, { recursive: true })
+    writeFileSync(join(root, "flake.nix"), "{}")
+    writeFileSync(join(root, "bun.lock"), "{}")
+    writeFileSync(
+      join(root, "flake.lock"),
+      JSON.stringify({ nodes: { nixpkgs: { locked: { rev: "fixture-nixpkgs" } } } }),
+    )
+    const fixtureLauncher = join(scripts, "linux-container-run.sh")
+    copyFileSync(launcher, fixtureLauncher)
+    const frozenBytes = "console.log('fresh frozen collector fixture')\n"
+    const revision = "b".repeat(40)
+    writeFileSync(join(dist, "terminfo.bundle.mjs"), frozenBytes)
+    writeFileSync(
+      join(dist, "terminfo.bundle.receipt.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        probeHash: "a".repeat(12),
+        collectorRevision: revision,
+        bundleSha256: createHash("sha256").update(frozenBytes).digest("hex"),
+      }),
+    )
+    writeFileSync(join(cliBin, "terminfo.mjs"), `console.log("terminfo fixture (${"a".repeat(12)})")\n`)
+    const freshId = `sha256:${"f".repeat(64)}`
+    const oldId = `sha256:${"0".repeat(64)}`
+    const freshReference = "terminfo-kitty-probe:fixture-frozen-content"
+    const freshRunner = "/nix/store/fixture-fresh-terminfo-linux-runner"
+    for (const [name, imageId, runner] of [
+      ["fresh", freshId, freshRunner],
+      ["old", oldId, "/nix/store/fixture-old-terminfo-linux-runner"],
+    ]) {
+      writeFileSync(
+        join(dir, `${name}.json`),
+        JSON.stringify([
+          {
+            Id: imageId,
+            Architecture: "amd64",
+            Config: {
+              Entrypoint: ["/nix/store/fixture-bash/bin/bash", `${runner}/linux-container-run.sh`, "--inside"],
+              Labels: {
+                "org.hallohuman.terminfo.kitty.preset": "current",
+                "org.hallohuman.terminfo.kitty.version": "fixture-1",
+                "org.hallohuman.terminfo.kitty.source-url": "https://example.invalid/kitty.txz",
+                "org.hallohuman.terminfo.kitty.source-sri": "sha256-fixture",
+              },
+              Env: [
+                "TERMINFO_KITTY_PRESET=current",
+                "KITTY_EXPECTED_VERSION=fixture-1",
+                "KITTY_SOURCE_URL=https://example.invalid/kitty.txz",
+                "KITTY_SOURCE_SRI=sha256-fixture",
+                "KITTY_BINARY=/fixture/kitty",
+                "KITTY_SOURCE_ARCHIVE=/kitty-source/fixture.txz",
+                `TERMINFO_RUNNER=${runner}/index.js`,
+              ],
+            },
+          },
+        ]),
+      )
+    }
+    const doubles: Record<string, string> = {
+      "@in": `if [[ "$2 $3" == "bun build" ]]; then
+  while [[ "$1" != --outdir ]]; do shift; done
+  cp "$FIXTURE_ROOT/vendor/terminfo.dev/packages/terminfo.dev/dist/terminfo.bundle.mjs" "$2/terminfo.bundle.js"
+fi`,
+      git: `case "$*" in *rev-parse*) echo '${revision}';; *status*) ;; *) exit 81;; esac`,
+      nix: `case "$1" in
+  hash) echo sha256-fixture-bundle;;
+  eval)
+    [[ "$TERMINFO_LINUX_RUNNER_DIR" == "$(cat "$FIXTURE_HOME/build-runner-dir")" &&
+       "$TERMINFO_LINUX_RUNNER_SHA256" == "$(cat "$FIXTURE_HOME/build-runner-hash")" &&
+       "$TERMINFO_LINUX_RUNNER_SHA256" == sha256-fixture-bundle &&
+       "$4" == "$(cat "$FIXTURE_HOME/build-attribute")" &&
+       "$4" == '.#kitty-visual-current-image' ]]
+    cmp "$TERMINFO_LINUX_RUNNER_DIR/index.js" "$FIXTURE_ROOT/vendor/terminfo.dev/packages/terminfo.dev/dist/terminfo.bundle.mjs"
+    echo '${freshReference}';;
+  build)
+    printf '%s' "$TERMINFO_LINUX_RUNNER_DIR" > "$FIXTURE_HOME/build-runner-dir"
+    printf '%s' "$TERMINFO_LINUX_RUNNER_SHA256" > "$FIXTURE_HOME/build-runner-hash"
+    printf '%s' "$3" > "$FIXTURE_HOME/build-attribute"
+    while [[ "$1" != --out-link ]]; do shift; done
+    echo fixture-image-archive > "$2";;
+  *) exit 82;;
+esac`,
+      docker: `case "$1 $2" in
+  "load --input") echo 'Loaded image: ${freshReference}';;
+  "image inspect")
+    case "$3" in
+      '${freshReference}'|'${freshId}') record="$FIXTURE_HOME/fresh.json";;
+      'terminfo-kitty-probe:current'|'${oldId}') record="$FIXTURE_HOME/old.json";;
+      *) exit 83;;
+    esac
+    case "\${5:-}" in '{{.Id}}') jq -r '.[0].Id' "$record";; '{{.Architecture}}') jq -r '.[0].Architecture' "$record";; *) cat "$record";; esac;;
+  create*) echo 'fixture docker-create sentinel' >&2; exit 73;;
+  *) exit 84;;
+esac`,
+    }
+    for (const [name, body] of Object.entries(doubles)) {
+      const path = join(bins, name)
+      writeFileSync(
+        path,
+        `#!/usr/bin/env bash\nset -eu\nprintf '%s %s\\n' "$(basename "$0")" "$*" >> "$CALL_LOG"\n${body}\n`,
+      )
+      chmodSync(path, 0o755)
+    }
+    const result = spawnSync(
+      "bash",
+      [fixtureLauncher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", output],
+      {
+        encoding: "utf8",
+        timeout: 15_000,
+        env: {
+          ...process.env,
+          PATH: `${bins}:${process.env.PATH ?? ""}`,
+          CALL_LOG: calls,
+          FIXTURE_ROOT: root,
+          FIXTURE_HOME: dir,
+        },
+      },
+    )
+    expect(result.status, result.stderr).toBe(73)
+    expect(result.stderr).toContain("fixture docker-create sentinel")
+    const runs = readdirSync(output)
+    expect(runs).toHaveLength(1)
+    const run = join(output, runs[0]!)
+    const host = JSON.parse(readFileSync(join(run, "raw/host-measured.json"), "utf8")) as {
+      runnerArtifact: { frozenRunnerSha256: string }
+      runtime: { imageId: string }
+    }
+    const image = (
+      JSON.parse(readFileSync(join(run, "prep/image-inspect.json"), "utf8")) as {
+        Config: { Entrypoint: string[]; Env: string[] }
+      }[]
+    )[0]!
+    expect(host.runnerArtifact.frozenRunnerSha256).toBe(createHash("sha256").update(frozenBytes).digest("hex"))
+    expect(host.runtime.imageId).toBe(freshId)
+    expect(image.Config.Entrypoint[1]).toBe(`${freshRunner}/linux-container-run.sh`)
+    expect(image.Config.Env).toContain(`TERMINFO_RUNNER=${freshRunner}/index.js`)
+    expect(readFileSync(calls, "utf8")).toContain(`TERMINFO_IMAGE_ID=${freshId}`)
+  })
+
   it.each([
     ["bogus", "default", "default", "Unknown target"],
     ["kitty", "unknown", "default", "Kitty takes --preset baseline|current"],

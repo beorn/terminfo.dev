@@ -1273,25 +1273,26 @@ export const sgrProbes: ProbeDefinition[] = [
 ]
 
 const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
-const muxVisualTests = new Map([
-  ["sgr-attribute-same-run", "attribute"],
-  ["cursor-shape-same-run", "review"],
+const muxVisualTests = new Map<string, { featureId: string | null; testId: string }>([
+  ["sgr-attribute-same-run", { featureId: null, testId: "attribute" }],
+  ["cursor-shape-same-run", { featureId: "cursor.shape", testId: "review" }],
+  ["iterm2-images-no-change", { featureId: "extensions.iterm2-images", testId: "criterion" }],
 ])
 
 function finalizeMuxVisualNegative(
   recorded: ProbeResult,
   target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
 ): ProbeResult {
-  const testId = recorded.criterionBranch === undefined ? undefined : muxVisualTests.get(recorded.criterionBranch)
-  if (target.kind !== "mux" || recorded.status !== "unsupported" || testId === undefined) return recorded
+  const selected = recorded.criterionBranch === undefined ? undefined : muxVisualTests.get(recorded.criterionBranch)
+  if (target.kind !== "mux" || recorded.status !== "unsupported" || selected === undefined) return recorded
   const reason = target.outerTerminal
     ? `${recorded.reason ? `${recorded.reason}; ` : ""}this capture through outer terminal ${target.outerTerminal} cannot separate the multiplexer from its outer terminal`
-    : "Missing outer terminal identity: this capture cannot separate the multiplexer from its outer terminal"
+    : `Missing outer terminal identity: this capture cannot separate the multiplexer from its outer terminal${recorded.reason ? `; ${recorded.reason}` : ""}`
   return finalizeProbeResult({
     ...recorded,
     reason,
     tests: recorded.tests.map((entry) =>
-      entry.id === testId ? { ...entry, status: "probe-todo", assertionRefs: [], reason } : entry,
+      entry.id === selected.testId ? { ...entry, status: "probe-todo", assertionRefs: [], reason } : entry,
     ),
   })
 }
@@ -1302,12 +1303,10 @@ export function finalizeVisualResult(
   target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
   captures: readonly ObservationFrame[],
 ): ProbeResult {
-  const cursorPixels =
-    recorded.featureId === "cursor.shape" &&
-    recorded.criterionBranch === "cursor-shape-same-run" &&
-    recorded.assertionType === "screenshot"
+  const selected = recorded.criterionBranch === undefined ? undefined : muxVisualTests.get(recorded.criterionBranch)
+  const pixelBranch = selected?.featureId === recorded.featureId && recorded.assertionType === "screenshot"
   if (
-    (!visualSgrIds.has(recorded.featureId) && !cursorPixels) ||
+    (!visualSgrIds.has(recorded.featureId) && !pixelBranch) ||
     (recorded.status !== "supported" && recorded.status !== "unsupported")
   ) {
     return recorded

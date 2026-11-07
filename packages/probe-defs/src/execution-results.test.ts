@@ -46,6 +46,53 @@ import type {
 } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
 
+it("demotes only the selected mux pixel test while preserving query, library and own-frame boundaries", () => {
+  const frame: ObservationFrame = { role: "target", ref: "own-pixels.png", capturedAt: 1, label: "Own pixels" }
+  for (const [featureId, criterionBranch, testId] of [
+    ["sgr.bold", "sgr-attribute-same-run", "attribute"],
+    ["cursor.shape", "cursor-shape-same-run", "review"],
+  ] as const) {
+    for (const status of ["supported", "unsupported"] as const) {
+      const recorded = finalizeProbeResult({
+        featureId,
+        criterionBranch,
+        assertionType: "screenshot",
+        attempt,
+        reason: "Row-specific deciding observation",
+        screenshotRef: frame.ref,
+        tests: [
+          { id: "capture", status: "supported", attempt, assertionRefs: [0] },
+          { id: testId, status, attempt, assertionRefs: [1] },
+        ],
+      })
+      expect(finalizeVisualResult(recorded, { kind: "term" }, [frame])).toEqual(recorded)
+      expect(finalizeVisualResult(recorded, { kind: "lib" }, [])).toEqual(recorded)
+      for (const captures of [[], [{ ...frame, ref: "foreign-pixels.png" }]]) {
+        expect(finalizeVisualResult(recorded, { kind: "mux" }, captures).status).toBe("probe-todo")
+      }
+      for (const outerTerminal of ["Kitty", null]) {
+        const target = { kind: "mux" as const, outerTerminal }
+        const result = finalizeVisualResult(recorded, target, [frame])
+        if (status === "supported") expect(result).toEqual(recorded)
+        else {
+          expect(result.status).toBe("probe-todo")
+          expect(result.reason).toContain(outerTerminal ?? "Missing outer terminal identity")
+          expect(result.reason).toContain(recorded.reason)
+          expect(result.tests[0]).toEqual(recorded.tests[0])
+          expect(result.tests[1]).toMatchObject({ id: testId, status: "probe-todo", assertionRefs: [] })
+          expect(result.screenshotRef).toBe(frame.ref)
+        }
+      }
+      if (featureId === "cursor.shape") {
+        const query = { ...recorded, assertionType: "query_reply" as const, criterionBranch: undefined }
+        expect(finalizeVisualResult(query, { kind: "mux" }, [])).toEqual(query)
+        const anotherFeature = { ...recorded, featureId: "modes.bracketed-paste" }
+        expect(finalizeVisualResult(anotherFeature, { kind: "mux" }, [])).toEqual(anotherFeature)
+      }
+    }
+  }
+})
+
 // One shared owner covers the whole registry and status fold. Native tests retain only the
 // distinct capture-transport binding; headless tests retain manifest-to-checkpoint delivery.
 it("requires app and mux visual evidence while preserving library cell and non-SGR results", () => {
@@ -164,6 +211,8 @@ it.each([
   ["term", "device.decrqss", "DECSTBM"],
   ["lib", "device.decrqss", "DECSCL"],
   ["term", "device.decrqss", "DECSCL"],
+  ["lib", "device.decrqss", "DECSCUSR"],
+  ["term", "device.decrqss", "DECSCUSR"],
   ["lib", "editing.decrqcra"],
   ["term", "editing.decrqcra"],
   ["lib", "extensions.osc52-clipboard"],
@@ -202,7 +251,9 @@ it.each([
     const received =
       rawOverride ??
       (id === "device.decrqss" &&
-      (sequence === "\x1bP$qm\x1b\\" || (refused === "DECSCL" && sequence === "\x1bP$qr\x1b\\"))
+      (sequence === "\x1bP$qm\x1b\\" ||
+        ((refused === "DECSCL" || refused === "DECSCUSR") && sequence === "\x1bP$qr\x1b\\") ||
+        (refused === "DECSCUSR" && sequence === '\x1bP$q"p\x1b\\'))
         ? "\x1bP0$r\x1b\\"
         : "")
     captures.push({ sequence, received })
@@ -900,7 +951,8 @@ it("keeps native missing-observation note overrides and prompt consumption branc
 it("preserves native callback note fallback for unmeasured widths and TERM_FEATURES", async () => {
   // These native callbacks retained no deciding cells. Their final failure reason previously
   // came from callback.note; status-only fixtures miss that producer-to-recorder loss.
-  for (const id of ["extensions.osc22-pointer", "editing.decsace"]) {
+  // OSC22 uses selected-shape replies now; extensions-osc22-app.test.ts owns its silent cases.
+  for (const id of ["editing.decsace"]) {
     const term = [...extensionsProbes, ...editingProbes].find((row) => row.id === id)?.term
     if (!term) throw new Error(`Missing native callback ${id}`)
     const missing = await term({

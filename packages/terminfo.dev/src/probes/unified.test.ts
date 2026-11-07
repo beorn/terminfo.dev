@@ -7,6 +7,8 @@
  */
 import { createHash, randomUUID } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import * as nodeFs from "node:fs"
+import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
@@ -18,8 +20,9 @@ import {
   type ObservationFrame,
   type TextQualification,
   type TermProbeSource,
+  type AppSemanticReading,
 } from "@terminfo/probe-defs"
-import { replyFailure } from "../../../probe-defs/src/helpers.ts"
+import { replyFailure, notTestedResult } from "../../../probe-defs/src/helpers.ts"
 import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
@@ -43,7 +46,237 @@ vi.mock("../tty.ts", async (importOriginal) => {
   return { ...actual, measureUtf8Decoding: vi.fn(actual.measureUtf8Decoding) }
 })
 
+// The prerequisite read needs deterministic permission errors; all other filesystem calls stay real.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>()
+  return { ...actual, statSync: vi.fn(actual.statSync) }
+})
+
 const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
+
+// @failure An approved exact-version declaration is dropped by either unresolved callback path.
+// Existing native recording cases have no declaration map; both paths are used by prompt callbacks.
+// @level l1
+// @consumer runProbeBatch -> recordExecutedProbe -> canonical result reader.
+it.each(["coverage", "explicit todo"] as const)(
+  "records an approved App declaration after unresolved %s",
+  async (path) => {
+    const id = "extensions.osc133-a"
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    const original = { term: definition.term, termWrites: definition.termWrites }
+    const reason = "Untestable (no way): this exact App version has no prompt-state reader."
+    try {
+      // The in-memory callback performs no terminal operation; retain the real batch/recorder.
+      definition.termWrites = "query"
+      definition.term = async () =>
+        path === "coverage"
+          ? notTestedResult("No prompt-state reading", { source: "fixture" })
+          : { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "No prompt-state reading" }] }
+      const options = { ids: [id], appDeclarations: { [id]: reason } }
+      const batch = await runProbeBatch(options)
+      expect(batch.results.find((result) => result.featureId === id)).toMatchObject({
+        status: "untestable",
+        reason,
+        tests: [{ id: "declared-untestable", status: "untestable", reason }],
+      })
+      expect(batch.assertions).toEqual([])
+      expect(batch.ungradedDiagnostics).toEqual({})
+    } finally {
+      definition.term = original.term
+      definition.termWrites = original.termWrites
+    }
+  },
+)
+
+// @failure Notification cells select no-setup without this run's missing bus, or remain TODO after observed absence.
+// Existing Ghostty cases cover prompt rows, not the fourteen notification positions.
+// @level l1
+// @consumer current-child App declarations -> runProbeBatch canonical recorder.
+it.each([
+  { kind: "term", id: "kitty", version: "0.49.2" },
+  { kind: "term", id: "ghostty", version: "1.4.0" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10" },
+  { kind: "term", id: "alacritty", version: "0.17.0" },
+  { kind: "term", id: "xterm", version: "411" },
+  { kind: "mux", id: "screen", version: "5.0.2" },
+  { kind: "mux", id: "tmux", version: "3.8" },
+] as const)("uses current-run bus absence for both $id notification cells", async (subject) => {
+  const ids = ["extensions.notifications", "extensions.osc777-notify"]
+  const probes = ids.map((id) => ALL_PROBES.find((probe) => probe.id === id)!)
+  const originals = probes.map((probe) => ({ term: probe.term, termWrites: probe.termWrites }))
+  try {
+    for (const [index, probe] of probes.entries()) {
+      probe.termWrites = "query"
+      // Keep the actual callback/result producer; model only its TTY operations.
+      probe.term = async (ctx) =>
+        originals[index]!.term!(
+          new Proxy(ctx, {
+            get(target, key) {
+              if (key === "write") return () => {}
+              if (key === "queryCursorPosition") return async () => ({ row: 1, col: 1 })
+              return Reflect.get(target, key)
+            },
+          }),
+        )
+    }
+    const base = {
+      observedAt: new Date().toISOString(),
+      address: "absent" as const,
+      socket: { path: "/fixture/bus", outcome: "absent" as const, code: "ENOENT" },
+    }
+    for (const bus of [
+      undefined,
+      { ...base, address: "present" as const },
+      { ...base, socket: { ...base.socket, outcome: "present" as const } },
+      { ...base, socket: { ...base.socket, outcome: "error" as const, code: "EACCES" } },
+      base,
+      { ...base, socket: { ...base.socket, code: "ENOTDIR" } },
+    ]) {
+      const absent = bus?.address === "absent" && bus.socket.outcome === "absent"
+      const declarations = appSemanticDeclarations({ ...subject, os: "linux" }, bus)
+      const batch = await runProbeBatch({ ids, subject: { ...subject, os: "linux" }, appDeclarations: declarations })
+      for (const id of ids) {
+        const result = batch.results.find((row) => row.featureId === id)!
+        expect(result.status, JSON.stringify({ result, diagnostics: batch.ungradedDiagnostics })).toBe(
+          absent ? "untestable" : "probe-todo",
+        )
+        if (absent) expect(result.reason).toContain("Untestable (no setup)")
+        else expect(declarations[id]).toBeUndefined()
+      }
+    }
+  } finally {
+    probes.forEach((probe, index) => Object.assign(probe, originals[index]))
+  }
+})
+
+// Exact-version routing is not covered by the generic map-consumption cases above.
+// @failure New versions inherit an audit, or an audited subject loses its declaration.
+it.each([
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc633-e" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc133-a" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc133-b" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 4, feature: "extensions.osc133-d" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc633-e" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc666-termprop" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc176-app-id" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc3008-context" },
+] as const)(
+  "routes only the audited $id version through the canonical recorder",
+  async ({ kind, id, version, count, feature }) => {
+    const subject = { kind, id, version, os: "linux" }
+    const bus = {
+      observedAt: new Date().toISOString(),
+      address: "absent" as const,
+      socket: { path: "/fixture/bus", outcome: "absent" as const, code: "ENOENT" },
+    }
+    const declarations = appSemanticDeclarations(subject, bus)
+    expect(Object.keys(declarations)).toHaveLength(count)
+    expect(declarations[feature]).toContain(version)
+    expect(appSemanticDeclarations({ ...subject, version: version + "-new" }, bus)).toEqual({})
+    expect(appSemanticDeclarations({ ...subject, version: "" }, bus)).toEqual({})
+    expect(appSemanticDeclarations({ ...subject, version: "unknown" }, bus)).toEqual({})
+    expect(appSemanticDeclarations({ ...subject, os: "darwin" }, bus)).toEqual({})
+    expect(appSemanticDeclarations({ ...subject, kind: "lib" }, bus)).toEqual({})
+    const probe = ALL_PROBES.find((entry) => entry.id === feature)!
+    const original = { term: probe.term, termWrites: probe.termWrites }
+    try {
+      probe.termWrites = "query"
+      probe.term = async () => notTestedResult("No prompt reading", {})
+      const batch = await runProbeBatch({ ids: [feature], appDeclarations: declarations })
+      expect(batch.results.find((row) => row.featureId === feature)).toMatchObject({
+        status: "untestable",
+        reason: declarations[feature],
+      })
+      const newer = await runProbeBatch({
+        ids: [feature],
+        appDeclarations: appSemanticDeclarations({ ...subject, version: version + "-new" }, bus),
+      })
+      expect(newer.results.find((row) => row.featureId === feature)?.status).toBe("probe-todo")
+    } finally {
+      Object.assign(probe, original)
+    }
+  },
+)
+
+// @failure An unreadable socket or a present address is mistaken for a missing current-run bus.
+it.each(["address present", "socket present", "socket unreadable", "both absent", "not a directory"] as const)(
+  "selects Ghostty no-setup only from current-run absence: %s",
+  (state) => {
+    const stat = vi.mocked(nodeFs.statSync)
+    const originalStat = stat.getMockImplementation()!
+    stat.mockImplementation(() => {
+      if (state === "socket present" || state === "address present") return {} as ReturnType<typeof nodeFs.statSync>
+      throw Object.assign(new Error("Fixture stat outcome"), {
+        code: state === "socket unreadable" ? "EACCES" : state === "not a directory" ? "ENOTDIR" : "ENOENT",
+      })
+    })
+    try {
+      const record = readSessionBus({
+        XDG_RUNTIME_DIR: "/fixture/runtime",
+        ...(state === "address present" ? { DBUS_SESSION_BUS_ADDRESS: "secret-address-never-retained" } : {}),
+      })
+      expect(stat).toHaveBeenCalledWith("/fixture/runtime/bus")
+      expect(record.socket).toMatchObject({
+        path: "/fixture/runtime/bus",
+        outcome:
+          state === "socket unreadable"
+            ? "error"
+            : state === "both absent" || state === "not a directory"
+              ? "absent"
+              : "present",
+      })
+      expect(JSON.stringify(record)).not.toContain("secret-address-never-retained")
+      const selected = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" }, record)
+      const absent = state === "both absent" || state === "not a directory"
+      expect(Object.keys(selected)).toHaveLength(absent ? 9 : 5)
+      if (absent) expect(selected["extensions.osc133-d"]).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
+      else expect(selected["extensions.osc133-d"]).toBeUndefined()
+      if (state === "socket unreadable") expect(record.socket.code).toBe("EACCES")
+      stat.mockClear()
+      readSessionBus({})
+      expect(stat).toHaveBeenCalledWith(`/run/user/${process.getuid!()}/bus`)
+    } finally {
+      stat.mockImplementation(originalStat)
+      stat.mockClear()
+    }
+  },
+)
+
+// @failure A declaration overwrites a decided observation or hides invalid callback evidence.
+it.each(["supported", "unsupported", "probe-invalid"] as const)(
+  "preserves %s ahead of an App declaration",
+  async (status) => {
+    const id = "extensions.osc133-a",
+      probe = ALL_PROBES.find((entry) => entry.id === id)!
+    const original = { term: probe.term, termWrites: probe.termWrites }
+    try {
+      probe.termWrites = "query"
+      probe.term = async () =>
+        status === "probe-invalid"
+          ? { pass: false, tests: [{ id: "criterion", status, reason: "Broken fixture read" }] }
+          : {
+              pass: status === "supported",
+              observation: { outcome: status, assertionType: "query_reply", note: "Own-command fixture reply" },
+            }
+      const batch = await runProbeBatch({
+        ids: [id],
+        appDeclarations: { [id]: "Untestable (no way): must not replace evidence" },
+      })
+      expect(batch.results.find((row) => row.featureId === id)?.status).toBe(status)
+    } finally {
+      Object.assign(probe, original)
+    }
+  },
+)
 
 // Real query recording supplies nondefault timeout and bytes; the fixture supplies only callback intent.
 it.each([false, true])("attaches completed TTY evidence only to marked failure rows (marked: %s)", async (marked) => {
@@ -170,6 +403,84 @@ function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>, ownManifest = m
   )
   return draft
 }
+
+// @failure Write-only owned App state produces a real assertion with no rawReplyRef and the daemon reader rejects the run.
+// Grader unit cases and query-backed native cases never cross this write-only recorder/parser boundary.
+// @level l1
+// @consumer Registered App semantic callback -> native recorder -> strict daemon capture reader.
+it.each([
+  { id: "extensions.osc133-a", positive: true, report: false },
+  { id: "extensions.osc-633-vscode", positive: false, report: false },
+  { id: "extensions.osc633-a", positive: false, report: true },
+])("binds write-only App state assertions through the strict reader: $id", async ({ id, positive, report }) => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const cycle = id === "extensions.osc-633-vscode"
+  const empty = cycle ? JSON.stringify(["NONE", "NONE", "NONE"]) : "NONE"
+  const handled = cycle
+    ? JSON.stringify(["START_PROMPT@0", "START_OUTPUT@0", "END_OUTPUT@0:0;status=0"])
+    : "START_OUTPUT@0"
+  const expected = cycle
+    ? JSON.stringify(["START_PROMPT@0", "START_OUTPUT@0", "END_OUTPUT@0:17;status=17"])
+    : "START_PROMPT@0"
+  const reading: AppSemanticReading = report
+    ? {
+        status: "measured",
+        reader: "report",
+        runId: "a".repeat(32),
+        unknown: { code: "7654", reports: ["7654"] },
+        handled: { applied: true, reports: [] },
+        target: { code: "633", reports: ["633"] },
+        detail: {},
+      }
+    : {
+        status: "measured",
+        reader: "state",
+        runId: "a".repeat(32),
+        unknown: { before: "NONE", after: "NONE" },
+        handled: { before: empty, after: handled, expected: handled },
+        target: { before: empty, after: positive ? expected : empty, expected },
+        detail: {},
+      }
+  const read = vi.fn(async (featureId: string, write: (text: string) => void) => {
+    expect(featureId).toBe(id)
+    if (report) {
+      write("\x1b]7654;fixture\x07")
+      write("\x1b]2;fixture\x07")
+      write("\x1b]633;A\x07")
+    } else {
+      write("\x1b]133;Z\x07")
+      write(cycle ? "\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;0\x07" : "\x1b]133;C\x07")
+      write(cycle ? "\x1b]633;A\x07\x1b]633;C\x07\x1b]633;D;17\x07" : "\x1b]133;A\x07")
+    }
+    return reading
+  })
+  const batch = await runProbeBatch({
+    ids: [id],
+    ownedTerminal: { ...geometryOwner(noGeometry), readAppSemanticState: read },
+  })
+  expect(read).toHaveBeenCalledOnce()
+  expect(writes).toHaveLength(3)
+  const raw = batch.rawReplies[id]
+  if (raw === undefined) throw new Error(`Missing recorded trace for ${id}`)
+  expect(JSON.parse(raw)).toHaveProperty("queries", [])
+  const expectedStatus = positive ? "supported" : "unsupported"
+  expect(batch.results.find((row) => row.featureId === id)?.status).toBe(expectedStatus)
+  const decoded = decodeCollectorDraft(
+    "owned-app-state.json",
+    JSON.stringify(asRun(batch)),
+    manifest,
+    sourceRevision,
+  ).run
+  expect(decoded.results.find((row) => row.featureId === id)?.status).toBe(expectedStatus)
+  expect(decoded.assertions).toContainEqual(
+    expect.objectContaining({ featureId: id, kind: positive ? "positive" : "negative", rawReplyRef: id }),
+  )
+})
 
 // Callback-returned responses survive current transport without becoming measured evidence.
 it.each([
@@ -495,6 +806,62 @@ afterEach(() => {
 function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
+
+it.each(
+  ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
+    ["controls", "query"].map((failure) => ({ id, failure })),
+  ),
+)("names Screen's missing own-title reader after $failure fails: $id", async ({ id, failure }) => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: [id],
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    ownedTerminal: {
+      ...geometryOwner(noGeometry),
+      readTitle: async () => {
+        if (failure === "query") throw new Error("screen -Q title is unavailable")
+        return "unchanged Screen title"
+      },
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === id)!
+  expect(row.status).toBe("probe-todo")
+  expect(row.reason).toMatch(/Screen.*screen -Q title/)
+  expect(batch.assertions).toEqual([])
+  const reads = (JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }).titleReads
+  if (failure === "query") expect(reads).toEqual([{ error: "screen -Q title is unavailable" }])
+  else expect(reads.length).toBeGreaterThan(1)
+})
+
+// #32573: direct callback cases cannot detect a collector that drops or exposes a foreign title reader.
+it.each([false, true])("binds the title reader and its raw readings only to the owned run: %s", async (owned) => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(owned)
+  let title = "incoming App title"
+  const readTitle = vi.fn(async () => title)
+  process.stdout.write = ((bytes: string) => {
+    const match = /^\x1b\]2;([^\x07]*)\x07$/.exec(bytes)
+    if (match) title = match[1]!
+    return true
+  }) as typeof process.stdout.write
+  const id = "extensions.osc2-title"
+  const batch = await runProbeBatch({
+    ids: [id],
+    ownedTerminal: { ...geometryOwner(noGeometry), readTitle },
+  })
+  expect(batch.results.find((row) => row.featureId === id)?.status).toBe(owned ? "supported" : "probe-todo")
+  expect(title).toBe("incoming App title")
+  const trace = JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }
+  if (owned) {
+    expect(readTitle).toHaveBeenCalledTimes(7)
+    expect(trace.titleReads).toHaveLength(7)
+    expect(trace.titleReads[0]).toEqual({ title: "incoming App title" })
+    expect(trace.titleReads.at(-1)).toEqual({ title: "incoming App title" })
+  } else {
+    expect(readTitle).not.toHaveBeenCalled()
+    expect(trace.titleReads).toBeUndefined()
+  }
+})
 
 // A DECRQSS style result is not a visual observation (#30590). The unrelated screenshot
 // assertion exercises the same-run feature binding, not just global screenshot presence.
@@ -1362,55 +1729,65 @@ it("reports undeclared geometry reads as collector errors without invented evide
 
 // Plain-number callback fixtures bypass the collector's guarded rows/cols getters. These native
 // failures must consume measured geometry, while removing their declaration must still refuse it.
-it.each(["extensions.kitty-graphics.animation", "extensions.kitty-graphics.unicode-placeholders", "input.pixel-mouse"])(
-  "delivers owned geometry to %s and preserves its declaration guard",
-  async (id) => {
-    verifiedBatchFixture()
-    const definition = ALL_PROBES.find((item) => item.id === id)!
-    const original = definition.termNeedsGeometry
-    process.stdout.write = (() => true) as typeof process.stdout.write
-    const collect = () =>
-      runProbeBatch({
-        ids: [id],
-        ownedTerminal: geometryOwner(measured(1, 1)),
-        capture: async () => {
-          throw new Error("Undersized geometry must decline before capture")
+it.each([
+  ["extensions.kitty-graphics.animation", "probe-todo"],
+  ["extensions.kitty-graphics.unicode-placeholders", "probe-todo"],
+  ["input.pixel-mouse", "probe-todo"],
+  ["modes.auto-wrap", "probe-invalid"],
+] as const)("delivers owned geometry to %s and preserves its declaration guard", async (id, undersizedStatus) => {
+  verifiedBatchFixture()
+  if (id === "modes.auto-wrap") {
+    vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
+  }
+  const definition = ALL_PROBES.find((item) => item.id === id)!
+  const original = definition.termNeedsGeometry
+  process.stdout.write = ((sequence: string) => {
+    // Qualify image allocation so the Kitty rows reach the geometry contract under test.
+    const imageNumber = /\x1b_Ga=t,[^;]*I=(\d+);/.exec(sequence)?.[1]
+    if (imageNumber) process.stdin.emit("data", Buffer.from(`\x1b_Gi=41,I=${imageNumber};OK\x1b\\`))
+    return true
+  }) as typeof process.stdout.write
+  const collect = () =>
+    runProbeBatch({
+      ids: [id],
+      ownedTerminal: geometryOwner(measured(1, 1)),
+      capture: async () => {
+        throw new Error("Undersized geometry must decline before capture")
+      },
+      input: {
+        injectKey: async () => {},
+        injectClick: async () => {
+          // A genuine delivery-control report outside the measured 1x1 cell reaches the size read.
+          process.stdin.emit("data", Buffer.from("\x1b[<0;2;2M"))
         },
-        input: {
-          injectKey: async () => {},
-          injectClick: async () => {
-            // A genuine delivery-control report outside the measured 1x1 cell reaches the size read.
-            process.stdin.emit("data", Buffer.from("\x1b[<0;2;2M"))
-          },
+      },
+    })
+  try {
+    const batch = await collect()
+    expect(batch.ungradedDiagnostics[id], id).toBeUndefined()
+    expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
+      checks: [
+        {
+          featureId: id,
+          pre: { status: "measured", rows: 1, cols: 1 },
+          post: { status: "measured", rows: 1, cols: 1 },
         },
-      })
-    try {
-      const batch = await collect()
-      expect(batch.ungradedDiagnostics[id], id).toBeUndefined()
-      expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
-        checks: [
-          {
-            featureId: id,
-            pre: { status: "measured", rows: 1, cols: 1 },
-            post: { status: "measured", rows: 1, cols: 1 },
-          },
-        ],
-      })
-      expect(batch.observations, id).toEqual([])
-      expect(batch.results.find((result) => result.featureId === id)?.status, id).toBe("probe-todo")
-      definition.termNeedsGeometry = undefined
-      const undeclared = await collect()
-      expect(undeclared.ungradedDiagnostics[id], id).toMatchObject({
-        kind: "collector-error",
-        name: "UndeclaredTerminalGeometry",
-        message: expect.stringContaining(id),
-      })
-      expect(undeclared.observations, id).toEqual([])
-    } finally {
-      definition.termNeedsGeometry = original
-    }
-  },
-)
+      ],
+    })
+    expect(batch.observations, id).toEqual([])
+    expect(batch.results.find((result) => result.featureId === id)?.status, id).toBe(undersizedStatus)
+    definition.termNeedsGeometry = undefined
+    const undeclared = await collect()
+    expect(undeclared.ungradedDiagnostics[id], id).toMatchObject({
+      kind: "collector-error",
+      name: "UndeclaredTerminalGeometry",
+      message: expect.stringContaining(id),
+    })
+    expect(undeclared.observations, id).toEqual([])
+  } finally {
+    definition.termNeedsGeometry = original
+  }
+})
 
 it.each([
   "modes.left-right-margin",
@@ -1963,6 +2340,9 @@ it.each(["start", "read", "write"])(
               permissions: "fixture",
               summary: "{}",
               assertOwned,
+              readTitle: async () => {
+                throw new Error("This clipboard fixture has no title reader")
+              },
               dispose: async () => {},
               async withClipboardFixture(work, _trace, verify) {
                 try {
@@ -2069,6 +2449,9 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     permissions: "clipboard: read=ask,write=allow; OSC52=not-run",
     summary: "{}",
     assertOwned: async () => {},
+    readTitle: async () => {
+      throw new Error("This clipboard fixture has no title reader")
+    },
     dispose: async () => {},
     withClipboardFixture,
     ...(scenario.attached && {
@@ -2161,6 +2544,9 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
         permissions: "fixture",
         summary: "{}",
         assertOwned: async () => {},
+        readTitle: async () => {
+          throw new Error("This clipboard fixture has no title reader")
+        },
         dispose: async () => {},
         withClipboardFixture: createClipboardTransaction(baseline, {
           async readText(trace, kind, verify) {
@@ -2218,6 +2604,9 @@ it("records failed clipboard restoration as collector error rather than retainin
         permissions: "fixture",
         summary: "{}",
         assertOwned: async () => {},
+        readTitle: async () => {
+          throw new Error("This clipboard fixture has no title reader")
+        },
         dispose: async () => {},
         async withClipboardFixture(_work, trace) {
           trace({ kind: "clipboard-restore", at: new Date().toISOString(), sha256: "b".repeat(64), length: 8 })

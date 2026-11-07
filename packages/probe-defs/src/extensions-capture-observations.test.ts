@@ -6,6 +6,8 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
+import { recordExecutedProbe } from "./helpers.ts"
+import { finalizeVisualResult } from "./sgr.ts"
 import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 function captureApp(rows: number, cols: number) {
@@ -50,51 +52,162 @@ function find(id: string) {
 
 // extensions.truecolor is NOT here: its claim is cell storage, decided by the DECRQSS SGR oracle
 // (extensions-qualification covers it), and a pixel comparison was never able to decide it.
-// extensions.sixel is NOT here: it decides through the region oracle against an independent
-// SGR-background reference (sixel-capture.test.ts), so it no longer records unasserted frames.
-const capturedIds = ["extensions.iterm2-images"] as const
+// extensions.sixel and extensions.iterm2-images are NOT unasserted visual-review captures:
+// both decide through the region oracle against an independent SGR-background reference and
+// plain-text OSC/DCS body negative control.
+const ITERM2_GEOMETRY = { cellWidth: 8, cellHeight: 17, textWidth: 8 * 80, textHeight: 17 * 24 }
 
-test.each(capturedIds)("%s binds control+target pixels while visual review remains pending", async (id) => {
-  const { context, writes, frames } = captureApp(24, 80)
-  const result = await find(id).term!(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "screenshot",
-  })
-  expect(result.pass).toBe(false)
-  expect(result.criterionBranch).toBe("visual-review")
-  expect(result.tests).toEqual([
-    { id: "capture", status: "supported", assertionRefs: [0] },
-    { id: "review", status: "probe-todo", reason: expect.any(String) },
-  ])
-  expect(result.assertions).toEqual([
-    {
-      assertionType: "screenshot",
-      kind: "positive",
-      expected: expect.any(String),
-      observed: JSON.stringify({ control: frames[0], target: frames[1] }),
+function calibratedIterm2Arm(
+  options: {
+    target?: "red" | "blank" | "printed" | "third"
+    truecolor?: boolean
+    captureKind?: "pixels" | "text-cells"
+  } = {},
+) {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  let plane = "blank"
+  let glyph = ""
+  let reads = 0
+  const context = {
+    kind: "live" as const,
+    rows: 24,
+    cols: 80,
+    captureKind: options.captureKind ?? ("pixels" as const),
+    captureGeometry: { geometry: ITERM2_GEOMETRY, source: "measured by complete raster calibration" as const },
+    write: (bytes: string) => {
+      writes.push(bytes)
+      if (bytes.includes("\x1b[2J")) plane = "blank"
+      if (bytes.includes("\x1b]1337;File=inline=1")) plane = options.target ?? "red"
+      else if (bytes.includes("1337;File=inline=1")) plane = "printed"
+      if (bytes.includes("\x1b[48;2;255;0;0m") && options.truecolor !== false) plane = "red"
+      if (/^\x1b\[1;1H.$/.test(bytes)) glyph = bytes.slice(-1)
     },
-  ])
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
-  expect(result.observation?.frames).toHaveLength(2)
-  expect(writes.length).toBeGreaterThan(0)
+    capture: async ({
+      role,
+      label,
+      cells,
+    }: {
+      role: "control" | "target"
+      label: string
+      cells?: { top: number; left: number }
+    }) => {
+      const frame: ObservationFrame = {
+        kind: "pixels",
+        role,
+        label,
+        capturedAt: ++reads,
+        ref: `sha256:frame${reads}`,
+        regionDigest: cells?.top === 1 && cells.left === 1 ? `witness:${glyph}` : `plane:${plane}`,
+        pixelsDigest: `window:${plane}:${glyph}`,
+      }
+      frames.push(frame)
+      return frame
+    },
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async (sequence: string) => {
+      writes.push(sequence)
+      return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+    },
+    queryCursorPosition: async () => null,
+    queryMode: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+  } as unknown as TermProbeSource
+  return { context, writes, frames }
+}
+
+test.each([
+  {
+    name: "painted inline image matches SGR reference -> Supported",
+    options: { target: "red" as const },
+    subject: { kind: "term" as const },
+    expectedStatus: "supported",
+  },
+  {
+    name: "bare terminal no-change -> Unsupported",
+    options: { target: "blank" as const },
+    subject: { kind: "term" as const },
+    expectedStatus: "unsupported",
+  },
+  {
+    name: "multiplexer no-change -> PROBE TODO naming outer terminal",
+    options: { target: "blank" as const },
+    subject: { kind: "mux" as const, outerTerminal: "kitty" },
+    expectedStatus: "probe-todo",
+    expectedReason:
+      "the cell did not change; this capture through outer terminal kitty cannot separate the multiplexer from its outer terminal",
+  },
+  {
+    name: "printed OSC body as plain text -> Unsupported even on multiplexer",
+    options: { target: "printed" as const },
+    subject: { kind: "mux" as const, outerTerminal: "kitty" },
+    expectedStatus: "unsupported",
+  },
+  {
+    name: "third distinct frame -> PROBE INVALID",
+    options: { target: "third" as const },
+    subject: { kind: "term" as const },
+    expectedStatus: "probe-invalid",
+  },
+  {
+    name: "seed equals expected (collapsed reference control) -> PROBE INVALID",
+    options: { target: "red" as const, truecolor: false },
+    subject: { kind: "term" as const },
+    expectedStatus: "probe-invalid",
+  },
+])("extensions.iterm2-images controls: $name", async ({ options, subject, expectedStatus, expectedReason }) => {
+  const { context, writes, frames } = calibratedIterm2Arm(options)
+  const result = await find("extensions.iterm2-images").term!(context)
+  expect(
+    writes.some((write) => write.includes("\x1b]1337;File=inline=1;width=3;height=3;preserveAspectRatio=0:")),
+  ).toBe(true)
+  expect(writes.some((write) => write.includes("\x1b[48;2;255;0;0m"))).toBe(true)
+  expect(
+    writes.some(
+      (write) =>
+        !write.includes("\x1b]1337") && write.includes("1337;File=inline=1;width=3;height=3;preserveAspectRatio=0:"),
+    ),
+  ).toBe(true)
+  const recorded = recordExecutedProbe({
+    featureId: "extensions.iterm2-images",
+    attempt: { scope: "probe", startedAt: "2026-11-07T00:00:00.000Z" },
+    observation: result.observation
+      ? { ...result.observation, featureId: "extensions.iterm2-images", rawReplyRef: "extensions.iterm2-images" }
+      : undefined,
+    assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId: "extensions.iterm2-images" })),
+    tests: result.tests,
+    rawReplyRef: "extensions.iterm2-images",
+    criterionBranch: result.criterionBranch,
+  })
+  const finalized = finalizeVisualResult(recorded, subject, frames)
+  expect(finalized.status).toBe(expectedStatus)
+  if (expectedReason) {
+    expect(finalized.reason).toBe(expectedReason)
+  }
 })
 
-test.each(capturedIds)("%s refuses an undersized capture terminal before any bytes", async (id) => {
+test("extensions.iterm2-images refuses an undersized or text-cells capture terminal before any bytes", async () => {
   const { context, writes, frames } = captureApp(2, 8)
-  const result = await find(id).term!(context)
+  const result = await find("extensions.iterm2-images").term!(context)
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-todo", reason: expect.any(String) })])
   expect(result.assertions).toBeUndefined()
   expect(frames).toEqual([])
   expect(writes).toEqual([])
+
+  const textCells = calibratedIterm2Arm({ captureKind: "text-cells" })
+  const textResult = await find("extensions.iterm2-images").term!(textCells.context)
+  expect(textResult.observation).toBeUndefined()
+  expect(textResult.tests).toMatchObject([
+    expect.objectContaining({ status: "probe-todo", reason: expect.any(String) }),
+  ])
+  expect(textCells.writes).toEqual([])
 })
 
-test("each image target writes its own payload rather than a generic consumption check", async () => {
+test("each image target refuses missing pixel geometry before painting any payload", async () => {
   const sixel = captureApp(24, 80)
-  // With no measured pixel report the sixel row refuses by name before painting: a tile that
-  // cannot be sized from the run is not a measurement, and a guessed size would be.
   const refused = await find("extensions.sixel").term!(sixel.context)
   expect(refused.observation).toBeUndefined()
   expect(refused.tests).toMatchObject([
@@ -102,10 +215,12 @@ test("each image target writes its own payload rather than a generic consumption
   ])
   expect(sixel.writes.some((write) => write.includes("\x1bP0;1;0q"))).toBe(false)
   const iterm = captureApp(24, 80)
-  await find("extensions.iterm2-images").term!(iterm.context)
-  expect(iterm.writes.some((write) => write.includes("\x1b]1337;File=inline=1"))).toBe(true)
-  // Parking must be inside the target write: the helper captures immediately after it.
-  expect(iterm.writes.find((write) => write.includes("\x1b]1337;File=inline=1"))).toMatch(/\x07\x1b\[1;1H$/)
+  const itermRefused = await find("extensions.iterm2-images").term!(iterm.context)
+  expect(itermRefused.observation).toBeUndefined()
+  expect(itermRefused.tests).toMatchObject([
+    expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) }),
+  ])
+  expect(iterm.writes.some((write) => write.includes("\x1b]1337;File=inline=1"))).toBe(false)
   // Truecolor asks the terminal for its own SGR state instead of painting two RGB runs.
   const truecolor = captureApp(24, 80)
   await find("extensions.truecolor").term!(truecolor.context)
