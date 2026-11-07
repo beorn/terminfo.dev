@@ -30,7 +30,7 @@ import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
 import { modesProbes } from "./modes.ts"
 import { resetProbes } from "./reset.ts"
-import { sgrProbes, finalizeSgrResult } from "./sgr.ts"
+import { sgrProbes, finalizeVisualResult } from "./sgr.ts"
 import { unicodeProbes } from "./unicode.ts"
 import { editingProbes } from "./editing.ts"
 import { textProbes } from "./text.ts"
@@ -45,6 +45,53 @@ import type {
   TermProbeSource,
 } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
+
+it("demotes only the selected mux pixel test while preserving query, library and own-frame boundaries", () => {
+  const frame: ObservationFrame = { role: "target", ref: "own-pixels.png", capturedAt: 1, label: "Own pixels" }
+  for (const [featureId, criterionBranch, testId] of [
+    ["sgr.bold", "sgr-attribute-same-run", "attribute"],
+    ["cursor.shape", "cursor-shape-same-run", "review"],
+  ] as const) {
+    for (const status of ["supported", "unsupported"] as const) {
+      const recorded = finalizeProbeResult({
+        featureId,
+        criterionBranch,
+        assertionType: "screenshot",
+        attempt,
+        reason: "Row-specific deciding observation",
+        screenshotRef: frame.ref,
+        tests: [
+          { id: "capture", status: "supported", attempt, assertionRefs: [0] },
+          { id: testId, status, attempt, assertionRefs: [1] },
+        ],
+      })
+      expect(finalizeVisualResult(recorded, { kind: "term" }, [frame])).toEqual(recorded)
+      expect(finalizeVisualResult(recorded, { kind: "lib" }, [])).toEqual(recorded)
+      for (const captures of [[], [{ ...frame, ref: "foreign-pixels.png" }]]) {
+        expect(finalizeVisualResult(recorded, { kind: "mux" }, captures).status).toBe("probe-todo")
+      }
+      for (const outerTerminal of ["Kitty", null]) {
+        const target = { kind: "mux" as const, outerTerminal }
+        const result = finalizeVisualResult(recorded, target, [frame])
+        if (status === "supported") expect(result).toEqual(recorded)
+        else {
+          expect(result.status).toBe("probe-todo")
+          expect(result.reason).toContain(outerTerminal ?? "Missing outer terminal identity")
+          expect(result.reason).toContain(recorded.reason)
+          expect(result.tests[0]).toEqual(recorded.tests[0])
+          expect(result.tests[1]).toMatchObject({ id: testId, status: "probe-todo", assertionRefs: [] })
+          expect(result.screenshotRef).toBe(frame.ref)
+        }
+      }
+      if (featureId === "cursor.shape") {
+        const query = { ...recorded, assertionType: "query_reply" as const, criterionBranch: undefined }
+        expect(finalizeVisualResult(query, { kind: "mux" }, [])).toEqual(query)
+        const anotherFeature = { ...recorded, featureId: "modes.bracketed-paste" }
+        expect(finalizeVisualResult(anotherFeature, { kind: "mux" }, [])).toEqual(anotherFeature)
+      }
+    }
+  }
+})
 
 // One shared owner covers the whole registry and status fold. Native tests retain only the
 // distinct capture-transport binding; headless tests retain manifest-to-checkpoint delivery.
@@ -67,7 +114,7 @@ it("requires app and mux visual evidence while preserving library cell and non-S
         rawReplyRef: featureId,
       }
       for (const { target, pending } of targets) {
-        const result = finalizeSgrResult(recorded, target, [])
+        const result = finalizeVisualResult(recorded, target, [])
         const conclusive = status === "supported" || status === "unsupported"
         if (featureId !== "modes.bracketed-paste" && pending && conclusive) {
           expect(result.status).toBe("probe-todo")
@@ -106,9 +153,9 @@ it("accepts only the recorded SGR screenshot in its own pixel captures without s
       screenshotRef: ref,
     }
     const target = { kind: "term", id: "render-fixture" } as const
-    expect(finalizeSgrResult(recorded, target, [frame])).toEqual(recorded)
+    expect(finalizeVisualResult(recorded, target, [frame])).toEqual(recorded)
     for (const captures of [[textFrame], [{ ...frame, ref: `sha256:${"b".repeat(64)}` }], []]) {
-      expect(finalizeSgrResult(recorded, target, captures).status).toBe(
+      expect(finalizeVisualResult(recorded, target, captures).status).toBe(
         status === "supported" || status === "unsupported" ? "probe-todo" : status,
       )
     }

@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
 import { recordExecutedProbe } from "./helpers.ts"
-import { finalizeSgrResult } from "./sgr.ts"
+import { finalizeVisualResult } from "./sgr.ts"
 import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 function captureApp(rows: number, cols: number) {
@@ -136,7 +136,8 @@ test.each([
     options: { target: "blank" as const },
     subject: { kind: "mux" as const, outerTerminal: "kitty" },
     expectedStatus: "probe-todo",
-    expectedReason: "An unchanged cell through outer terminal kitty cannot show which one stopped the image",
+    expectedReason:
+      "extensions.iterm2-images: the captured region did not change and did not match the expected frame; expected matches reference frame, got unchanged from seed; this capture through outer terminal kitty cannot separate the multiplexer from its outer terminal",
   },
   {
     name: "printed OSC body as plain text -> Unsupported even on multiplexer",
@@ -180,7 +181,7 @@ test.each([
     rawReplyRef: "extensions.iterm2-images",
     criterionBranch: result.criterionBranch,
   })
-  const finalized = finalizeSgrResult(recorded, subject, frames)
+  const finalized = finalizeVisualResult(recorded, subject, frames)
   expect(finalized.status).toBe(expectedStatus)
   if (expectedReason) {
     expect(finalized.reason).toBe(expectedReason)

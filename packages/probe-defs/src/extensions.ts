@@ -6348,6 +6348,9 @@ const extensionDefinitions: ProbeDefinition[] = [
                 decided.observation.note = note
               } else if (after === digest("pre-edit seed")) {
                 decided.criterionBranch = "iterm2-images-no-change"
+                if (decided.note && !decided.observation.note) {
+                  decided.observation.note = decided.note
+                }
               }
             }
             return decided

@@ -45,7 +45,10 @@ The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 411
 with their exact parser citations and missing public property readback. They declare the
 unresolved observation unavailable; they supply no command report or measured negative.
 The same exact versions additionally declare OSC176/440 observation gaps, and Screen/xterm
-declare OSC3008 gaps. Ghostty's recognized OSC3008 parser is outside this declaration group.
+declare OSC3008 gaps. Kitty 0.49.2 on Linux additionally declares OSC3008's context gap:
+its recognized command reaches an empty callback, with no stored context or public readback.
+Generic OSC consumption tracing supplies no deciding observation. Ghostty's recognized OSC3008
+parser and named optional debug diagnostic remain outside this declaration group.
 
 For library results, a feature is the library's job unless the app-job table in [extensions.ts](src/extensions.ts) assigns it to the app. A real state reading or typed notification store can establish Supported. A generic handoff of an app-job command is Untestable (passed to the app), even when its payload is intact. Libvterm and vt100-rust qualify their report in this cell's run: a made-up OSC and the target are reported, while a handled title command applies without a report. Xterm.js and vterm.js generic taps require their declared engine identity; a different engine identity remains Open. Missing report controls also remain Open. Library-job negatives keep `unhandledSequenceVerdict`; these are Unsupported when the library reports the target with its same-run controls.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
@@ -953,11 +956,17 @@ That order matters: a failed test wins over a pending one. Timeout or lack of an
 
 For new app and mux results, every member of the existing `sgrProbes`
 registry (including colors and resets) requires a screenshot for that feature in the same run. The shared
-`finalizeSgrResult` applies this requirement in the native batch writer before checkpointing.
+`finalizeVisualResult` applies this requirement in the native batch writer before checkpointing.
 Only the result's own screenshot reference matched to a non-text-cells frame in that probe's captures counts;
 a batch-wide reference or an assertion labelled screenshot does not. A missing frame retains a pending `visual` test with
 reason `visual effect not observed in this run` when a Supported or Unsupported result lacks that evidence.
 Existing pending and failure results retain their causes; a screenshot never establishes support by presence alone.
+Selected same-run pixel branches share one mux-negative rewrite at this finalise site. The small
+branch table names the decisive test and, for non-SGR rows, its feature; query-only cursor results
+remain outside it. The rewrite preserves positive capture tests and screenshot evidence, keeps
+the concrete observation reason with its row, and adds the outer-terminal ambiguity or missing
+identity reason. Mux positives, libraries and unselected branches retain their original results.
+The collector supplies the existing full draft subject when available, not new callback metadata.
 Library SGR results retain their existing cell-state criterion results, including through headless checkpointing
 and library replay. They describe the effect on observed cells; they do not establish a rendered pixel effect.
 Ghostty web 0.4.0's canvas draws double, curly, dotted and dashed underline styles as a single line.

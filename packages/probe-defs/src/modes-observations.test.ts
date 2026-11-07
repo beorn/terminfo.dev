@@ -159,6 +159,136 @@ test.each([null, 0] as const)("App all-motion mouse uses controlled effects afte
   }
 })
 
+// The query-only path cannot observe 1000 clicks when DECRPM is silent. An
+// ignored 1000 switch is negative only with an independent same-path click;
+// removing both mouse modes, the injected click or the plain key is invalid.
+test.each([null, 0] as const)("App mouse tracking uses controlled effects after DECRPM %s", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.mouse-tracking")
+  if (!definition?.term) throw new Error("Missing App mouse tracking callback")
+  const stored = new Map<string, StoredQuery>()
+  if (ps !== null) {
+    stored.set("\x1b[?1000$p", { sequence: "\x1b[?1000$p", match: null, reason: "reply", raw: "\x1b[?1000;0$y" })
+  }
+  for (const mutation of [
+    undefined,
+    "mouse-1006-noop",
+    "mouse-1000-noop",
+    "legacy-control",
+    "no-mouse-control",
+    "missing-click",
+    "missing-a",
+    "reset-reports",
+  ] as const) {
+    const surface = createSemanticSurface({
+      mutations:
+        mutation === "mouse-1000-noop"
+          ? [mutation]
+          : mutation === "mouse-1006-noop"
+            ? [mutation]
+            : mutation === "legacy-control"
+              ? ["mouse-1000-noop", "mouse-1006-noop"]
+              : mutation === "no-mouse-control"
+                ? ["mouse-1000-noop", "mouse-1003-noop"]
+                : [],
+    })
+    let bytes = ""
+    const source = replayTermProbeSource(stored, {
+      write: (text) => surface.feed(text),
+      input: {
+        injectKey: async (key) => {
+          if (key !== "a") throw new Error(`Mouse tracking fixture received ${key}`)
+          if (mutation !== "missing-a") bytes += "a"
+        },
+        injectClick: async () => {
+          if (
+            mutation !== "missing-click" &&
+            (surface.getMode("mouseTracking") === true || mutation === "reset-reports")
+          ) {
+            bytes += surface.getMode("sgrMouse") === true ? "\x1b[<0;4;2M\x1b[<0;4;2m" : '\x1b[M $"\x1b[M#$"'
+          }
+        },
+      },
+      readInput: async (pattern, _timeout, inject) => {
+        bytes = ""
+        await inject?.()
+        return pattern.exec(bytes)
+      },
+    })
+    const result = await definition.term(source)
+    if (
+      mutation === undefined ||
+      mutation === "mouse-1006-noop" ||
+      mutation === "mouse-1000-noop" ||
+      mutation === "legacy-control"
+    ) {
+      const disabled = mutation === "mouse-1000-noop" || mutation === "legacy-control"
+      expect(result.observation?.outcome, mutation ?? "working 1000").toBe(disabled ? "unsupported" : "supported")
+      expect(result.assertions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ assertionType: "input_bytes", kind: disabled ? "negative" : "positive" }),
+        ]),
+      )
+    } else {
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+    }
+    expect(surface.getMode("mouseTracking")).toBe(false)
+    expect(surface.getMode("sgrMouse")).toBe(false)
+  }
+})
+
+// Ask 3 needs actual click encodings when DECRPM cannot decide. The reply-only
+// tests miss an ignored 1006 switch with otherwise working click/key delivery.
+test.each([null, 0] as const)("App SGR mouse uses controlled effects after DECRPM %s", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.mouse-sgr")
+  if (!definition?.term) throw new Error("Missing App SGR mouse callback")
+  const stored = new Map<string, StoredQuery>()
+  if (ps !== null) {
+    stored.set("\x1b[?1006$p", { sequence: "\x1b[?1006$p", match: null, reason: "reply", raw: "\x1b[?1006;0$y" })
+  }
+  for (const mutation of [undefined, "mouse-1006-noop", "missing-click", "missing-a", "reset-sgr"] as const) {
+    const surface = createSemanticSurface({ mutations: mutation === "mouse-1006-noop" ? [mutation] : [] })
+    let bytes = ""
+    const source = replayTermProbeSource(stored, {
+      write: (text) => surface.feed(text),
+      input: {
+        injectKey: async (key) => {
+          if (key !== "a") throw new Error(`SGR mouse fixture received ${key}`)
+          if (mutation !== "missing-a") bytes += "a"
+        },
+        injectClick: async () => {
+          if (mutation === "missing-click" || surface.getMode("mouseTracking") !== true) return
+          bytes +=
+            surface.getMode("sgrMouse") === true || mutation === "reset-sgr"
+              ? "\x1b[<0;4;2M\x1b[<0;4;2m"
+              : '\x1b[M $"\x1b[M#$"'
+        },
+      },
+      readInput: async (pattern, _timeout, inject) => {
+        bytes = ""
+        await inject?.()
+        return pattern.exec(bytes)
+      },
+    })
+    const result = await definition.term(source)
+    if (mutation === "missing-click" || mutation === "missing-a" || mutation === "reset-sgr") {
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+    } else {
+      expect(result.observation?.outcome, mutation ?? "working 1006").toBe(mutation ? "unsupported" : "supported")
+      expect(result.assertions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ assertionType: "input_bytes", kind: mutation ? "negative" : "positive" }),
+        ]),
+      )
+    }
+    expect(surface.getMode("mouseTracking")).toBe(false)
+    expect(surface.getMode("sgrMouse")).toBe(false)
+  }
+})
+
 // The existing mode contract exercises app replies; it misses these library
 // callbacks retaining presentation reviews even when the engine answers DECRPM.
 // S8 requires the mutable reply pair and independent mode reads; presentation stays unmeasured.

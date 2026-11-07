@@ -33,7 +33,7 @@ test("Screen never borrows the outer Kitty reader and mismatched attachments are
 
 test("reader capability rows do not become declarations or lend their identity to another version", () => {
   const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
-  expect(Object.keys(appSemanticDeclarations(kitty))).toEqual(["extensions.osc133-b"])
+  expect(Object.keys(appSemanticDeclarations(kitty))).toEqual(["extensions.osc133-b", "extensions.osc3008-context"])
   expect(appSemanticDeclarations({ ...kitty, version: "unreviewed" })).toEqual({})
   expect(appSemanticDeclarations({ kind: "mux", id: "tmux", version: "3.8", os: "linux" })).toEqual({})
 })

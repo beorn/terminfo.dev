@@ -20,6 +20,7 @@ import {
   type ObservationFrame,
   type TextQualification,
   type TermProbeSource,
+  type AppSemanticReading,
 } from "@terminfo/probe-defs"
 import { replyFailure, notTestedResult } from "../../../probe-defs/src/helpers.ts"
 import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
@@ -153,7 +154,8 @@ it.each([
 it.each([
   { kind: "term", id: "xterm", version: "411", count: 19, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 19, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 3, feature: "extensions.osc133-b" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc133-b" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc3008-context" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 4, feature: "extensions.osc133-d" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc666-termprop" },
@@ -401,6 +403,84 @@ function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>, ownManifest = m
   )
   return draft
 }
+
+// @failure Write-only owned App state produces a real assertion with no rawReplyRef and the daemon reader rejects the run.
+// Grader unit cases and query-backed native cases never cross this write-only recorder/parser boundary.
+// @level l1
+// @consumer Registered App semantic callback -> native recorder -> strict daemon capture reader.
+it.each([
+  { id: "extensions.osc133-a", positive: true, report: false },
+  { id: "extensions.osc-633-vscode", positive: false, report: false },
+  { id: "extensions.osc633-a", positive: false, report: true },
+])("binds write-only App state assertions through the strict reader: $id", async ({ id, positive, report }) => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const cycle = id === "extensions.osc-633-vscode"
+  const empty = cycle ? JSON.stringify(["NONE", "NONE", "NONE"]) : "NONE"
+  const handled = cycle
+    ? JSON.stringify(["START_PROMPT@0", "START_OUTPUT@0", "END_OUTPUT@0:0;status=0"])
+    : "START_OUTPUT@0"
+  const expected = cycle
+    ? JSON.stringify(["START_PROMPT@0", "START_OUTPUT@0", "END_OUTPUT@0:17;status=17"])
+    : "START_PROMPT@0"
+  const reading: AppSemanticReading = report
+    ? {
+        status: "measured",
+        reader: "report",
+        runId: "a".repeat(32),
+        unknown: { code: "7654", reports: ["7654"] },
+        handled: { applied: true, reports: [] },
+        target: { code: "633", reports: ["633"] },
+        detail: {},
+      }
+    : {
+        status: "measured",
+        reader: "state",
+        runId: "a".repeat(32),
+        unknown: { before: "NONE", after: "NONE" },
+        handled: { before: empty, after: handled, expected: handled },
+        target: { before: empty, after: positive ? expected : empty, expected },
+        detail: {},
+      }
+  const read = vi.fn(async (featureId: string, write: (text: string) => void) => {
+    expect(featureId).toBe(id)
+    if (report) {
+      write("\x1b]7654;fixture\x07")
+      write("\x1b]2;fixture\x07")
+      write("\x1b]633;A\x07")
+    } else {
+      write("\x1b]133;Z\x07")
+      write(cycle ? "\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;0\x07" : "\x1b]133;C\x07")
+      write(cycle ? "\x1b]633;A\x07\x1b]633;C\x07\x1b]633;D;17\x07" : "\x1b]133;A\x07")
+    }
+    return reading
+  })
+  const batch = await runProbeBatch({
+    ids: [id],
+    ownedTerminal: { ...geometryOwner(noGeometry), readAppSemanticState: read },
+  })
+  expect(read).toHaveBeenCalledOnce()
+  expect(writes).toHaveLength(3)
+  const raw = batch.rawReplies[id]
+  if (raw === undefined) throw new Error(`Missing recorded trace for ${id}`)
+  expect(JSON.parse(raw)).toHaveProperty("queries", [])
+  const expectedStatus = positive ? "supported" : "unsupported"
+  expect(batch.results.find((row) => row.featureId === id)?.status).toBe(expectedStatus)
+  const decoded = decodeCollectorDraft(
+    "owned-app-state.json",
+    JSON.stringify(asRun(batch)),
+    manifest,
+    sourceRevision,
+  ).run
+  expect(decoded.results.find((row) => row.featureId === id)?.status).toBe(expectedStatus)
+  expect(decoded.assertions).toContainEqual(
+    expect.objectContaining({ featureId: id, kind: positive ? "positive" : "negative", rawReplyRef: id }),
+  )
+})
 
 // Callback-returned responses survive current transport without becoming measured evidence.
 it.each([
