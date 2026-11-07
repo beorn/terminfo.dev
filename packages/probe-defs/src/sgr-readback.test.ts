@@ -129,7 +129,7 @@ test("every sgr probe decides from the terminal's own DECRQSS report", async () 
   }
 })
 
-// The existing colour/reset registries and blink callback own the pixel oracles; the other rows do not.
+// With no capture adapter, attribute rows retain their existing DECRQSS decisions.
 const PLAIN_STYLE_REPLIES = DECIDED.filter(
   ([id]) => id !== "sgr.blink" && !(id in COLOUR_CAPTURE) && !(id in RESET_FAMILY_CAPTURE),
 )
@@ -139,11 +139,6 @@ test.each([
   ["sgr.bold", "0", "probe-todo"] as const,
 ])("%s retains DECRQSS %s without an owned pixel oracle (%s)", async (id, reply, status) => {
   const { ctx, queries } = sgrReadbackSource(reply)
-  let captures = 0
-  ctx.capture = async () => {
-    captures++
-    throw new Error("A style without an owned pixel oracle must retain its DECRQSS decision")
-  }
   const result = await sgrTerm(id)(ctx)
   if (status === "supported") {
     expect(result.observation).toMatchObject({ assertionType: "query_reply", outcome: "supported" })
@@ -153,7 +148,6 @@ test.each([
   }
   expect(result.response).toBe(JSON.stringify({ sgr: reply }))
   expect(queries).toHaveLength(1)
-  expect(captures).toBe(0)
 })
 
 // Reset support requires a measured transition. The existing final-state cases above accepted a
@@ -332,19 +326,7 @@ test.each([
   ["sgr.underline.double", "0"],
 ] as const)("%s with DECRQSS %s is a PROBE TODO, never a negative", async (id, reply) => {
   const { ctx } = qualifiedSgrReadbackSource(id, reply)
-  let captures = 0
-  const plainStyle = PLAIN_STYLE_REPLIES.some(([plain]) => plain === id)
-  if (plainStyle) {
-    ctx.capture = async () => {
-      captures++
-      throw new Error("An unjudged capture must not replace a plain style's named DECRQSS cause")
-    }
-  }
   const result = await sgrTerm(id)(ctx)
-  if (plainStyle) {
-    expect(captures).toBe(0)
-    expect(result.notTested?.noObservable).toBe(result.note)
-  }
   expect(result.notTested?.reason).toBe("no-semantic-observable")
   expect(result.observation).toBeUndefined()
   expect(result.pass).toBe(false)

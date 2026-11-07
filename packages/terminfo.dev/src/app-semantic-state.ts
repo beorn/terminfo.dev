@@ -2,7 +2,13 @@ import { statSync, readFileSync, readlinkSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import type { AppSemanticReading, ProbeSubject } from "@terminfo/probe-defs"
+import { readCallLog } from "viprobe"
+import {
+  sgrProbes,
+  type AppSemanticReading,
+  type LinuxMuxAttachmentProof,
+  type ProbeSubject,
+} from "@terminfo/probe-defs"
 import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 
 // Reviewed declarations match the exact App/mux version.
@@ -31,6 +37,7 @@ type AppSemanticCapability = {
   featureId: string
   reason?: string
   requiresMissingSessionBus?: true
+  outerCommands?: true
   reader?: "grid" | "cycle" | "cwd" | "report"
   command?: { code: string; body: string }
   reportControls?: {
@@ -41,6 +48,10 @@ type AppSemanticCapability = {
 }
 
 const declarations: readonly AppSemanticCapability[] = [
+  ...[
+    { kind: "mux", id: "tmux", version: "3.8", os: "linux" },
+    { kind: "mux", id: "screen", version: "5.0.2", os: "linux" },
+  ].flatMap((subject) => sgrProbes.map(({ id }) => ({ ...subject, featureId: id, outerCommands: true as const }))),
   ...promptFeatures
     .filter((featureId) => featureId !== "extensions.osc633-e")
     .map((featureId) => ({
@@ -345,6 +356,242 @@ export function appSemanticDeclarations(
   )
 }
 
+/** One file-custody owner for App reports and the outer command stream. */
+export function openAppCommandLog(capture: string) {
+  const log = join(dirname(capture), "daemon.log")
+  const identity = statSync(log)
+  const mark = () => {
+    const now = statSync(log)
+    if (now.dev !== identity.dev || now.ino !== identity.ino) throw new Error("Owned App log rotated")
+    return now.size
+  }
+  return {
+    mark,
+    async read(offset: number, artifact: string, complete: (text: string) => number | undefined) {
+      const deadline = Date.now() + 5000
+      let text = ""
+      const retain = (end: number, completed: boolean) => {
+        const bytes = Buffer.from(text.slice(0, end))
+        const path = join(capture, artifact)
+        writeFileSync(path, bytes)
+        return { complete: completed, offset, endOffset: offset + bytes.length, path, text: bytes.toString("utf8") }
+      }
+      do {
+        const now = statSync(log)
+        if (now.dev !== identity.dev || now.ino !== identity.ino || now.size < offset) {
+          throw new Error("Owned App log changed identity or truncated")
+        }
+        text = readFileSync(log).subarray(offset).toString("utf8")
+        const end = complete(text)
+        if (end !== undefined) return retain(end, true)
+        await Bun.sleep(25)
+      } while (Date.now() < deadline)
+      return retain(text.length, false)
+    },
+  }
+}
+
+// These are command reports, not a second terminal emulator. Only the qualified
+// four invocation-bound paint-witness roundtrips bound this callback's command phases.
+function muxSgrCommandPhases(text: string, nonce: string) {
+  const commands: [string[], string[], string[], string[]] = [[], [], [], []]
+  let phase: 0 | 1 | 2 | 3 = 0
+  let witnesses = 0
+  let cleared = false
+  let start: number | undefined
+  let row: number | undefined
+  let column: number | undefined
+  let error: string | undefined
+  for (const match of text.matchAll(/([^\n]*)\n/g)) {
+    const line = match[0].slice(0, -1)
+    const position = /^screen_cursor_position (\d+) (\d+)$/.exec(line)
+    if (position) {
+      row = Number(position[1])
+      column = Number(position[2])
+    } else if (line.startsWith("screen_cursor_")) {
+      row = undefined
+      column = undefined
+    } else if (line === "screen_backspace") {
+      column = column !== undefined && column > 1 ? column - 1 : undefined
+    } else if (line === "screen_carriage_return") {
+      column = 1
+    } else if (line === "screen_linefeed") {
+      row = row === undefined ? undefined : row + 1
+    } else if (start !== undefined && line.startsWith("select_graphic_rendition")) {
+      const parameters = /^select_graphic_rendition ([0-9;:]+)$/.exec(line)?.[1]
+      if (!parameters || !/^(?:\d+(?::\d+)*)(?:;\d+(?::\d+)*)*$/.test(parameters)) {
+        error = `Unrecognized outer SGR command report: ${line}`
+      } else if (parameters.split(";").some((value) => [38, 48, 58].includes(Number(value.split(":")[0])))) {
+        error = `Extended-colour outer SGR command report cannot identify attribute forwarding: ${line}`
+      } else {
+        commands[phase].push(
+          ...parameters.split(";").map((value) => (value === "21" ? "4:2" : value === "4:1" ? "4" : value)),
+        )
+      }
+    } else if (line.startsWith("draw ")) {
+      const value = line.slice(5)
+      if (row === 1 && column === 1) {
+        const full = /^([0-3])-([a-f0-9]{24})$/.exec(value)
+        if (start === undefined && full?.[1] === "0" && full[2] === nonce) start = match.index
+        if (start !== undefined) {
+          if (value === " " && witnesses === 1) cleared = true
+          const matches = full?.[1] === String(phase) && full[2] === nonce
+          if (matches && witnesses === 0) {
+            witnesses = 1
+          } else if (witnesses === 1 && cleared && (matches || value === String(phase))) {
+            witnesses = 0
+            cleared = false
+            if (phase === 3) return { commands, error, start, end: match.index + match[0].length }
+            phase = phase === 0 ? 1 : phase === 1 ? 2 : 3
+          } else if (full && !matches) {
+            error = `Outer SGR command read encountered a different invocation or phase witness: ${value}`
+          }
+        }
+      }
+      column = column === undefined ? undefined : column + Array.from(value).length
+    }
+  }
+  return { commands, error, start, end: undefined }
+}
+
+/** Collector-local read: ownership comes from the existing live terminal owner. */
+export function beginMuxSgrCommandRead(input: {
+  featureId: string
+  subject: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "id" | "version" | "os" | "outerTerminal">>
+  proof?: Pick<LinuxMuxAttachmentProof, "platform" | "mux" | "launchRunId" | "collector">
+}) {
+  try {
+    const { subject, proof } = input
+    const env = process.env
+    if (
+      subject.kind !== "mux" ||
+      !declarations.some(
+        (entry) =>
+          entry.outerCommands &&
+          entry.featureId === input.featureId &&
+          entry.kind === subject.kind &&
+          entry.id === subject.id &&
+          entry.version === subject.version &&
+          entry.os === subject.os,
+      )
+    ) {
+      throw new Error(`No qualified outer command reader for ${subject.id} ${subject.version} ${input.featureId}`)
+    }
+    if (
+      subject.outerTerminal !== "kitty" ||
+      env.TERMINFO_TARGET_ID !== "kitty" ||
+      env.TERMINFO_TARGET_VERSION !== "0.49.2"
+    ) {
+      throw new Error("Outer command read requires this run's qualified Kitty 0.49.2")
+    }
+    if (
+      !proof ||
+      proof.platform !== "linux" ||
+      proof.mux !== subject.id ||
+      proof.mux !== env.TERMINFO_MUX_KIND ||
+      proof.launchRunId !== env.TERMINFO_RUN_ID ||
+      proof.collector.pid !== process.pid
+    ) {
+      throw new Error("Outer command read has no matching owned mux launch")
+    }
+    const capture = env.TERMINFO_CAPTURE_DIRECTORY
+    if (!capture || !isAbsolute(capture)) throw new Error("Outer command read has no owned artifact directory")
+    const log = openAppCommandLog(capture)
+    const offset = log.mark()
+    return {
+      status: "ready" as const,
+      async read(callLog: string | undefined) {
+        const detail: {
+          offset: number
+          endOffset?: number
+          phaseStartOffset?: number
+          nonce?: string
+          path?: string
+          appended?: string
+          commands?: string[][]
+        } = { offset }
+        try {
+          if (callLog === undefined) throw new Error(`Missing same-run callback trace: ${input.featureId}.callLog`)
+          const writes: string[] = []
+          readCallLog(JSON.parse(callLog), {
+            onOperation(operation) {
+              if (operation.path !== "context.write") return
+              const text = operation.args[0]
+              if (typeof text !== "string") throw new Error("Outer SGR trace contains a non-text context.write")
+              writes.push(text)
+            },
+          })
+          const paint = /^\x1b\[0m\x1b\[2J\x1b\[3;3H((?:\x1b\[[0-9;:]*m)*)([^\x1b]*)\x1b\[0m\x1b\[2;1H\x1b\[1;1H $/
+          const phases = writes
+            .flatMap((value) => {
+              const match = paint.exec(value)
+              return match ? [{ sequence: match[1], sample: match[2] }] : []
+            })
+            .slice(0, 4)
+          const target = /^\x1b\[([0-9:]+)m$/.exec(phases[1]?.sequence ?? "")?.[1]
+          const handled = /^\x1b\[([47])m$/.exec(phases[3]?.sequence ?? "")?.[1]
+          if (
+            phases.length !== 4 ||
+            phases[0]?.sequence !== "" ||
+            phases[2]?.sequence !== "\x1b[99m" ||
+            !target ||
+            !handled ||
+            phases.some((phase) => phase.sample !== phases[0]?.sample)
+          ) {
+            throw new Error("Outer SGR command read cannot join the four controlled paint phases")
+          }
+          const witnesses = writes
+            .flatMap((value) => {
+              const match = /^\x1b\[1;1H([0-3])-([a-f0-9]{24})$/.exec(value)
+              return match ? [{ phase: match[1], nonce: match[2] }] : []
+            })
+            .slice(0, 8)
+          const nonce = witnesses[0]?.nonce
+          if (
+            !nonce ||
+            witnesses.length !== 8 ||
+            witnesses.some((entry, index) => entry.nonce !== nonce || entry.phase !== String(Math.floor(index / 2)))
+          ) {
+            throw new Error("Outer SGR command read has no unique same-run phase witnesses")
+          }
+          detail.nonce = nonce
+          const reading = await log.read(
+            offset,
+            `mux-sgr-${input.featureId}-${randomUUID()}.log`,
+            (text) => muxSgrCommandPhases(text, nonce).end,
+          )
+          detail.path = reading.path
+          detail.endOffset = reading.endOffset
+          detail.appended = reading.text
+          const parsed = muxSgrCommandPhases(reading.text, nonce)
+          if (parsed.start !== undefined) {
+            detail.phaseStartOffset = offset + Buffer.byteLength(reading.text.slice(0, parsed.start))
+          }
+          detail.commands = parsed.commands
+          if (parsed.error) throw new Error(parsed.error)
+          if (!reading.complete) throw new Error("Outer SGR command read did not observe phase completion")
+          if (!parsed.commands[3].includes(handled)) throw new Error("Outer SGR handled control was not forwarded")
+          const normalizedTarget = target === "21" ? "4:2" : target === "4:1" ? "4" : target
+          return {
+            status: "measured" as const,
+            target: normalizedTarget,
+            targetSent: parsed.commands[1].includes(normalizedTarget),
+            detail,
+          }
+        } catch (error) {
+          return {
+            status: "unavailable" as const,
+            reason: error instanceof Error ? error.message : String(error),
+            detail,
+          }
+        }
+      },
+    }
+  } catch (error) {
+    return { status: "unavailable" as const, reason: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 /** Owned Linux App/mux read, using only the public actions qualified by #32566. */
 export async function readAppSemanticState(input: {
   featureId: string
@@ -483,39 +730,31 @@ export async function readAppSemanticState(input: {
         original = title()
         if (/[\x00-\x1f\x7f]/.test(original)) throw new Error("App semantic reader cannot restore Kitty title")
       }
-      const log = join(dirname(capture), "daemon.log")
-      const identity = statSync(log)
+      const log = openAppCommandLog(capture)
       let phase = 0
       const readPhase = async (name: string, feed: string) => {
-        const before = statSync(log)
-        if (before.dev !== identity.dev || before.ino !== identity.ino) throw new Error("Owned App log rotated")
-        const offset = before.size
+        const offset = log.mark()
         const sentinel = controls?.sentinel.body ?? `7655;${nonce}-${phase++}`
-        const completion = `${controls?.sentinel.line ?? `Unknown OSC escape code: ${sentinel}`}\n`
-        const read = () => {
-          const now = statSync(log)
-          if (now.dev !== identity.dev || now.ino !== identity.ino || now.size < offset) {
-            throw new Error("Owned App log changed identity or truncated")
-          }
-          return readFileSync(log).subarray(offset).toString("utf8")
-        }
         input.write(feed + osc(sentinel))
-        const appended = await until(read, (value) => value.includes(completion), `${name} OSC ${sentinel}`)
-        const end = appended.indexOf(completion) + completion.length
-        const bytes = Buffer.from(appended.slice(0, end))
-        const path = join(capture, `app-semantic-${nonce}-${name}.log`)
-        writeFileSync(path, bytes)
+        const completion = `${controls?.sentinel.line ?? `Unknown OSC escape code: ${sentinel}`}\n`
+        const reading = await log.read(offset, `app-semantic-${nonce}-${name}.log`, (text) => {
+          const end = text.indexOf(completion)
+          return end < 0 ? undefined : end + completion.length
+        })
+        if (!reading.complete) {
+          detail.phases.push({ name, incomplete: reading.text, path: reading.path, offset })
+          throw new Error(`App semantic reader did not observe ${name} OSC ${sentinel} completion`)
+        }
         detail.phases.push({
           name,
           offset,
-          endOffset: offset + bytes.length,
+          endOffset: reading.endOffset,
           feed,
           sentinel,
-          path,
-          appended: bytes.toString("utf8"),
+          path: reading.path,
+          appended: reading.text,
         })
-        return bytes
-          .toString("utf8")
+        return reading.text
           .split("\n")
           .filter((value) =>
             controls

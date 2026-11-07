@@ -959,7 +959,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                   checkpoint()
                 },
                 // The run's own target, from the launched app: the receipt is bound to this before any write.
-                subject: { kind: muxSubject?.kind ?? "term", id: measuredTerminal.name, os: terminal.os },
+                subject: {
+                  ...muxSubject,
+                  kind: muxSubject?.kind ?? "term",
+                  id: measuredTerminal.name,
+                  os: terminal.os,
+                },
                 appDeclarations:
                   declarationVersion === undefined
                     ? {}
