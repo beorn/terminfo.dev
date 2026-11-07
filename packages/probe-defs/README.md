@@ -173,8 +173,10 @@ palette push/pop effects or graphics capabilities.
 The Kitty library OSC 22 pointer criterion uses its existing `?__current__` reply:
 read the incoming shape, qualify a distinct shape control, set `pointer`, read it
 back, and restore the incoming shape. Missing replies or an unqualified control
-retain PROBE TODO. Other libraries retain their existing path; the app criterion
-still requires pointer appearance outside the cell grid.
+retain PROBE TODO. The App arm uses this selected-shape criterion on a disposable
+target. An initial silent query causes no shape writes. Results report the
+selected shape; the visible pointer is not read. Other libraries retain their
+existing path.
 
 xterm.js 6.0.0's existing engine-and-lock-qualified `osc-tap` route declares OSC22
 Untestable (no way to tell): there is no OSC22 handler, and the parser tap observes
