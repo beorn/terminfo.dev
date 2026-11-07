@@ -1308,13 +1308,14 @@ export function finalizeVisualResult(
   // CTO Ask2b: owning callbacks qualify no-change; this finalizer only adds actual subject identity.
   const mux = "id" in target && typeof target.id === "string" ? target.id : undefined
   const noChangeIds = ["extensions.osc112-reset-cursor", "extensions.osc9-progress", "extensions.osc555-flash"]
-  if (mux === "screen")
+  if (mux === "screen") {
     noChangeIds.push(
       "extensions.osc104-reset-palette",
       "extensions.osc110-reset-fg",
       "extensions.osc30001-color-stack-push",
       "extensions.osc30101-color-stack-pop",
     )
+  }
   if (
     target.kind === "mux" &&
     (mux === "screen" || mux === "tmux") &&

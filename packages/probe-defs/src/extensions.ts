@@ -1478,8 +1478,9 @@ async function cursorColorSetupAppCapture(
   try {
     ctx.write("\x1b[0m\x1b[2J\x1b[2;1HL  R\x1b[2;3H\x1b[2 q\x1b[?25h")
     const cursor = await ctx.queryCursorPosition()
-    if (cursor?.row !== 2 || cursor.col !== 3)
+    if (cursor?.row !== 2 || cursor.col !== 3) {
       return notTestedResult("Cursor-colour fixture CPR did not locate row 2 column 3", { cursor })
+    }
     const capture = (label: string, role: "control" | "target" = "control") =>
       read({ role, label: `${id}: ${label}`, region, pixelGeometry: measured.geometry })
     const pair = await captureStabilityPair(
@@ -1508,8 +1509,9 @@ async function cursorColorSetupAppCapture(
       screenshotRef: target.frame.ref,
     })
     if (cropped) return cropped
-    if (frames.some((frame) => !frame.regionRectangle))
+    if (frames.some((frame) => !frame.regionRectangle)) {
       return notTestedResult("Cursor-colour capture lacks registered crop rectangles", state)
+    }
     const before = pair.second.regionDigest
     if (hidden.regionDigest === before || restored.regionDigest !== before || unknown.regionDigest !== before) {
       return notTestedResult(
@@ -1546,8 +1548,9 @@ async function wholeWindowOscAppCapture(
   const shoot = async (label: string, role: "control" | "target" = "control") => {
     const frame = await capture({ role, label: `${id}: ${label}` })
     const digest = frameDigests(frame).whole
-    if (frame.kind === "text-cells" || !digest)
+    if (frame.kind === "text-cells" || !digest) {
       throw new Error(`${id}: whole-window pixel capture returned no pixel digest`)
+    }
     frames.push(frame)
     return { frame, pixelsDigest: digest, regionDigest: digest }
   }
