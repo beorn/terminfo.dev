@@ -676,11 +676,20 @@ test.each([
       const ps = replies.shift()
       return ps == null ? null : pattern.exec(`\x1b[?${mode};${ps}$y`)
     }
+    const missingReverseReader = id === "modes.reverse-video" && (snapshot === null || snapshot === 0)
+    // This protocol-only context has no effect pixels; the state-derived App
+    // regression above owns the newly authorized null/Ps0 capture path.
+    if (missingReverseReader) context.capture = undefined
     const result = await definition.term!(context)
     expect(events).toEqual(
       snapshot === 2 ? [`\x1b[?${mode}$p`, `\x1b[?${mode}h`, `\x1b[?${mode}$p`, `\x1b[?${mode}l`] : [`\x1b[?${mode}$p`],
     )
-    if (mode === 2026 && snapshot === 2 && enabled === 2) {
+    if (missingReverseReader) {
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toEqual([
+        expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("owned pixel readback") }),
+      ])
+    } else if (mode === 2026 && snapshot === 2 && enabled === 2) {
       // The retained Alacritty after-set Ps 2 reply took 140 ms; it cannot witness the enabled update.
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
