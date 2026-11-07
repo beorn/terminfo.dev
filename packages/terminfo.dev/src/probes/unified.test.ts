@@ -152,10 +152,10 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc7-cwd" },
+  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "modes.decsclm" },
-  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc633-e" },
+  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc133-b" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc3008-context" },
@@ -163,15 +163,17 @@ it.each([
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 9, feature: "extensions.osc440-audio" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc176-app-id" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc440-audio" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 21, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "xterm", version: "411", count: 20, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc555-flash" },
+  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc710-font-normal" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
@@ -190,11 +192,17 @@ it.each([
     expect(appSemanticDeclarations({ ...subject, os: "darwin" }, bus)).toEqual({})
     expect(appSemanticDeclarations({ ...subject, kind: "lib" }, bus)).toEqual({})
     const probe = ALL_PROBES.find((entry) => entry.id === feature)!
-    const original = { term: probe.term, termWrites: probe.termWrites, termNeedsDisposable: probe.termNeedsDisposable }
+    const original = {
+      term: probe.term,
+      termWrites: probe.termWrites,
+      termNeedsDisposable: probe.termNeedsDisposable,
+      termNeedsGeometry: probe.termNeedsGeometry,
+    }
     try {
       probe.termWrites = "query"
       // This recorder-only fixture replaces the mutating callback with a no-I/O coverage result.
       probe.termNeedsDisposable = undefined
+      probe.termNeedsGeometry = undefined
       probe.term = async () => notTestedResult("No prompt reading", {})
       const batch = await runProbeBatch({ ids: [feature], appDeclarations: declarations })
       expect(batch.results.find((row) => row.featureId === feature)).toMatchObject({

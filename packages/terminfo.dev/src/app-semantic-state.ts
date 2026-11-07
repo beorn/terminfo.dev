@@ -334,6 +334,24 @@ const declarations: readonly AppSemanticCapability[] = [
       "Untestable (no way): xterm 411 has no OSC 7 working-directory state or public readback. Read the complete do_osc dispatch in misc.c:3988-4360 and numeric OSC aliases at 3480-3502 in xterm-411.tgz (SHA256 969be283); OSC 7 reaches the unnamed default trace at 4353-4358. That generic trace is not a command-specific rejection or directory reading.",
   },
   {
+    kind: "term",
+    id: "xterm",
+    version: "411",
+    os: "linux",
+    featureId: "extensions.osc555-flash",
+    reason:
+      "Untestable (no way): xterm 411 has no OSC 555 flash handler or public flash readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1018-1034 in xterm-411.tgz (SHA256 969be283); OSC 555 reaches the unnamed default trace at 4353-4355. That generic trace is not a command-specific rejection or flash reading.",
+  },
+  {
+    kind: "term",
+    id: "xterm",
+    version: "411",
+    os: "linux",
+    featureId: "extensions.osc710-font-normal",
+    reason:
+      "Untestable (no way): xterm 411 has no OSC 710 font-selection handler or public font readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1018-1034 in xterm-411.tgz (SHA256 969be283); OSC 710 reaches the unnamed default trace at 4353-4355. That generic trace is not a command-specific rejection or font reading.",
+  },
+  {
     kind: "mux",
     id: "screen",
     version: "5.0.2",
