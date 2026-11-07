@@ -684,6 +684,44 @@ test("direct text and Unicode size readers declare geometry, including tab final
   for (const probe of unicodeProbes) expect(probe.termNeedsGeometry, probe.id).toBe(true)
 })
 
+// Ask 3 admits absent/Ps0 mode replies only with same-run set/reset effects.
+// Existing wrap tests cover answering DECRPM, not this physical-effect path.
+test.each([null, "unknown"] as const)("text.wrap measures controlled effects after DECRPM %s", async (mode) => {
+  for (const mutation of [undefined, "decawm-noop", "wrap-noop"] as const) {
+    const surface = createSemanticSurface({ cols: 8, rows: 4, mutations: mutation ? [mutation] : [] })
+    let queries = 0
+    const writes: string[] = []
+    const result = await byId("text.wrap").term(
+      app({
+        cols: 8,
+        rows: 4,
+        queryMode: async () => {
+          queries++
+          return mode
+        },
+        queryWithSentinel: async () => {
+          throw new Error("wrap effect must not issue a second DECRPM")
+        },
+        write: (bytes) => {
+          writes.push(bytes)
+          surface.feed(bytes)
+        },
+        queryCursorPosition: async () => {
+          const cursor = surface.getCursor()
+          return { row: cursor.y + 1, col: cursor.x + 1 }
+        },
+      }),
+    )
+    expect(result.observation?.outcome, mutation ?? "working wrap").toBe(mutation ? "unsupported" : "supported")
+    expect(queries).toBe(1)
+    expect(writes.at(-1)).toBe("\x1b[?7h")
+    if (mode === "unknown") expect(result.note).toContain("Ps 0")
+  }
+  const missing = await byId("text.wrap").term(app({ queryMode: async () => mode }))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(textProbes.find((entry) => entry.id === "text.wrap")?.termNeedsDisposable).toBe(true)
+})
+
 test("text.wrap qualifies DECAWM then writes control then target before grading", async () => {
   const writes: string[] = []
   const supported = await byId("text.wrap").term(
@@ -771,11 +809,7 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
     },
   ])
 
-  for (const [mode, reason] of [
-    ["reset", "insufficient-evidence"],
-    ["unknown", "insufficient-evidence"],
-    [null, "no usable DECRPM reply; the public projection returned null and retained no bytes"],
-  ] as const) {
+  for (const [mode, reason] of [["reset", "insufficient-evidence"]] as const) {
     const writes: string[] = []
     const result = await byId("text.wrap").term(
       app({
@@ -787,22 +821,11 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
         },
       }),
     )
-    if (mode === null) {
-      expect(result.observation).toBeUndefined()
-      expect(result.tests).toEqual([
-        {
-          id: "criterion",
-          status: "probe-invalid",
-          reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
-        },
-      ])
-    } else {
-      expect(result.observation, String(mode)).toMatchObject({
-        outcome: "inconclusive",
-        reason,
-        assertionType: "query_reply",
-      })
-    }
+    expect(result.observation, String(mode)).toMatchObject({
+      outcome: "inconclusive",
+      reason,
+      assertionType: "query_reply",
+    })
     expect(writes, String(mode)).toEqual([])
   }
 })

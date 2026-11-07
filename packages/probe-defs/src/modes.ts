@@ -1701,12 +1701,6 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
       assertions: [
         {
           assertionType: "input_bytes",
-          kind: "positive",
-          expected: "injected plain a returns in the same run",
-          observed: control,
-        },
-        {
-          assertionType: "input_bytes",
           kind: pass ? "positive" : "negative",
           expected:
             "Up is CSI A with DECCKM reset, SS3 A with it set, then CSI A after reset; every read ends with injected plain a",
@@ -1723,6 +1717,11 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
 async function autoWrapApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const decrpm = await queryDecrpm(ctx, 7)
   if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 7)
+  return controlledWrapEffect(ctx, decrpm)
+}
+
+// Package-internal reuse by text.wrap; deliberately absent from the public barrel.
+export async function controlledWrapEffect(ctx: TermProbeSource, decrpm: 0 | null): Promise<ProbeCallbackResult> {
   const { cols, rows } = ctx
   if (!validSize(cols, 2) || !validSize(rows, 2)) {
     return replyFailure(`Auto-wrap effect needs a measured grid of at least 2x2, got ${rows}x${cols}`)

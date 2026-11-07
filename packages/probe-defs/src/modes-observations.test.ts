@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
+import { parseRun } from "@terminfo/run-parser"
 import { isDeclaredUntestable, NO_SAME_PATH_CONTROL, recordExecutedProbe } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import { libProbeSource, replayTermProbeSource, type StoredQuery } from "./testing/group-harness.ts"
@@ -17,6 +18,7 @@ import type {
   ProbeCallbackResult,
   TermProbeSource,
   LibProbeSource,
+  ProbeSuiteManifest,
 } from "./types.ts"
 
 // Constructed pixel-equivalence planes are derived from the semantic parser's
@@ -246,6 +248,63 @@ test.each([null, 0] as const)("App cursor keys use controlled effects after DECR
           expect.objectContaining({ assertionType: "input_bytes", kind: mutation ? "negative" : "positive" }),
         ]),
       )
+      // The native collector seals these assertions, then run-parser reads every
+      // input_bytes snapshot. Callback-only checks missed a bare "a" assertion.
+      const feature = definition.id
+      const suite = "452ac343b55d"
+      const assertions = (result.assertions ?? []).map((entry) => ({
+        ...entry,
+        featureId: feature,
+        rawReplyRef: feature,
+        action: "injectKey(a), then injectKey(Up) and injectKey(a) in each reset/set/reset arm",
+      }))
+      const recorded = recordExecutedProbe({
+        featureId: feature,
+        attempt: { scope: "probe", startedAt: "2026-11-07T10:51:00.000Z" },
+        rawReplyRef: feature,
+        observation: { ...result.observation!, featureId: feature, rawReplyRef: feature },
+        assertions,
+        tests: result.tests,
+      })
+      const manifest: ProbeSuiteManifest = {
+        schemaVersion: 4,
+        probeHash: suite,
+        adapterVersion: "3.3.1",
+        generatedAt: "2026-11-07T10:50:00.000Z",
+        catalogIds: [feature],
+        probes: { term: [feature], lib: [], mux: [] },
+      }
+      const run = {
+        schemaVersion: 4,
+        source: { kind: "live" },
+        runId: `cursor-effect-${String(ps)}-${mutation ?? "working"}`,
+        suiteId: suite,
+        probeHash: suite,
+        sourceRevision: "4".repeat(40),
+        intendedSubject: { kind: "term", id: "kitty" },
+        subject: {
+          kind: "term",
+          id: "kitty",
+          version: "0.49.2",
+          os: "linux",
+          osVersion: null,
+          outerTerminal: null,
+          mux: null,
+          config: null,
+          permissions: null,
+        },
+        identity: "unverified",
+        measuredAt: "2026-11-07T10:51:00.000Z",
+        origin: { kind: "collector" },
+        sealedAt: "2026-11-07T10:52:00.000Z",
+        rawReplies: { [feature]: result.response },
+        assertions,
+        screenshotRefs: [],
+        results: [recorded],
+      }
+      expect(() =>
+        parseRun("cursor-effect.json", JSON.stringify(run), [feature], new Map([[suite, manifest]])),
+      ).not.toThrow()
     }
     expect(surface.getMode("applicationCursor")).toBe(false)
   }
