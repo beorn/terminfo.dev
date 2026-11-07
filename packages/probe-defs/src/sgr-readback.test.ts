@@ -374,6 +374,10 @@ test.each([
     captures++
     throw new Error("An observed invalid prerequisite must not enter capture fallback")
   }
+  // The new saved-rendition row may legitimately capture before any SGR query. This case owns
+  // malformed query prerequisites without an independent pixel reference; its capture route is
+  // exercised separately by the stateful saved-reference tests.
+  if (id === "sgr.reset") delete ctx.capture
   const result = await sgrTerm(id)(ctx)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
   expect(result.assertions ?? []).toHaveLength(0)
