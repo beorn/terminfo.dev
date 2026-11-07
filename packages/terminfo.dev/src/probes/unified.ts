@@ -531,6 +531,7 @@ export async function runProbeBatch(
       utf8Decoding: readUtf8Decoding,
       captureGeometryRefusal,
     })
+    if (ownsTerminal) probeSource.readAppSemanticState = options.ownedTerminal?.readAppSemanticState
     if (ownsTerminal && options.subject?.kind === "term" && !options.ownedTerminal?.muxAttachmentProof) {
       probeSource.readTermFeatures = options.ownedTerminal?.readTermFeatures
     }

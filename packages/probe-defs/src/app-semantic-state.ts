@@ -1,5 +1,41 @@
-import type { AppSemanticReading, ProbeCallbackResult } from "./types.ts"
-import { parserStateResult } from "./helpers.ts"
+import type { AppSemanticReading, ProbeCallbackResult, ProbeDefinition } from "./types.ts"
+import { parserStateResult, reportsDecidedOutcome } from "./helpers.ts"
+
+const reportFeatures = new Set([
+  "extensions.osc176-app-id",
+  "extensions.osc440-audio",
+  "extensions.osc666-termprop",
+  "extensions.osc555-flash",
+  "extensions.osc113-reset-pointer-fg",
+  "extensions.osc114-reset-pointer-bg",
+])
+
+/** App-only alternative. Existing effects win; a qualified report beats a no-setup fallback. */
+export function withAppSemanticObservation(definition: ProbeDefinition): ProbeDefinition {
+  const term = definition.term
+  const semantic =
+    /^extensions\.osc(?:133|633)-[abcdep]$/.test(definition.id) ||
+    definition.id === "extensions.semantic-prompts" ||
+    definition.id === "extensions.osc-633-vscode"
+  if (!term || (!semantic && !reportFeatures.has(definition.id))) return definition
+  return {
+    ...definition,
+    term: async (ctx) => {
+      if (!ctx.readAppSemanticState) return term(ctx)
+      if (semantic) return gradeAppSemanticState(await ctx.readAppSemanticState(definition.id, ctx.write))
+      const previous = await term(ctx)
+      if (reportsDecidedOutcome(previous)) return previous
+      const reading = await ctx.readAppSemanticState(definition.id, ctx.write)
+      if (reading.status === "unavailable") return previous
+      const result = gradeAppSemanticState(reading)
+      return result.observation?.outcome === "unsupported" ||
+        reading.status === "invalid" ||
+        result.tests?.some((test) => test.status === "probe-invalid")
+        ? result
+        : previous
+    },
+  }
+}
 
 /** One grader for the owned reader. An App's identity selects its reader outside this package. */
 export function gradeAppSemanticState(reading: AppSemanticReading): ProbeCallbackResult {

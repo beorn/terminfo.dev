@@ -6,8 +6,9 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { gradeAppSemanticState } from "./app-semantic-state.ts"
+import { gradeAppSemanticState, withAppSemanticObservation } from "./app-semantic-state.ts"
 import type { AppSemanticReading } from "./types.ts"
+import { declaredUntestableResult, parserStateResult } from "./helpers.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { replayTermProbeSource } from "./testing/group-harness.ts"
 
@@ -110,5 +111,32 @@ test("registered OSC callbacks forward their own feature and recorded writer to 
     const definition = extensionsProbes.find((probe) => probe.id === id)!
     expect(await definition.term!(ctx), id).toMatchObject({ observation: { outcome: "unsupported" } })
     expect(seen).toEqual([id])
+  }
+})
+
+test("the six added log rows preserve decided measurements and override only unresolved or no-setup results", async () => {
+  for (const id of [
+    "extensions.osc176-app-id",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc555-flash",
+    "extensions.osc113-reset-pointer-fg",
+    "extensions.osc114-reset-pointer-bg",
+  ]) {
+    const source = replayTermProbeSource(new Map(), { readAppSemanticState: async () => report() })
+    for (const previous of [
+      parserStateResult(true, "observed effect", {}),
+      parserStateResult(false, "observed negative", {}),
+    ]) {
+      const wrapped = withAppSemanticObservation({ id, lib: null, term: async () => previous })
+      expect(await wrapped.term!(source)).toBe(previous)
+    }
+    const noSetup = declaredUntestableResult("Untestable (no setup): initial colour query is silent", {})
+    const wrapped = withAppSemanticObservation({ id, lib: null, term: async () => noSetup })
+    expect(await wrapped.term!(source)).toMatchObject({ observation: { outcome: "unsupported" } })
+    source.readAppSemanticState = async () => ({ status: "unavailable", reason: "unreviewed version" })
+    expect(await wrapped.term!(source)).toBe(noSetup)
+    source.readAppSemanticState = async () => ({ status: "invalid", reason: "handled command wrote a refusal" })
+    expect(await wrapped.term!(source)).toMatchObject({ tests: [{ status: "probe-invalid" }] })
   }
 })

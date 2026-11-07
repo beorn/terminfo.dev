@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { gradeAppSemanticState } from "./app-semantic-state.ts"
+import { withAppSemanticObservation } from "./app-semantic-state.ts"
 import type {
   ProbeDefinition,
   ProbeCallbackResult,
@@ -6707,21 +6707,7 @@ const extensionDefinitions: ProbeDefinition[] = [
   },
 ]
 
-export const extensionsProbes: ProbeDefinition[] = extensionDefinitions.map((definition) => {
-  const term = definition.term
-  const semantic =
-    /^extensions\.osc(?:133|633)-[abcdep]$/.test(definition.id) ||
-    definition.id === "extensions.semantic-prompts" ||
-    definition.id === "extensions.osc-633-vscode"
-  if (!term || !semantic) return definition
-  return {
-    ...definition,
-    term: async (ctx) =>
-      ctx.readAppSemanticState
-        ? gradeAppSemanticState(await ctx.readAppSemanticState(definition.id, ctx.write))
-        : term(ctx),
-  }
-})
+export const extensionsProbes: ProbeDefinition[] = extensionDefinitions.map(withAppSemanticObservation)
 
 // Operator D2 / CTO Nov 5 11:16: these exact feeds and normalized codes were
 // measured on the audited real addon. Delivery effects and OSC52 read are not negatives.
