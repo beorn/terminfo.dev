@@ -400,7 +400,7 @@ test("each Modes row retains its measured grade or named execution disposition u
   }
 }, 20_000)
 
-test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
+test("a decided Modes row is unsatisfied when DECRPM is silent and its effect control is absent", async () => {
   const row = MODES_CONTRACT.find((entry) => entry.id === "modes.auto-wrap")
   const probe = modesProbes.find((entry) => entry.id === "modes.auto-wrap")
   expect(row, "the Modes contract names modes.auto-wrap").toBeDefined()
@@ -415,7 +415,7 @@ test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
   expect(result?.tests).toMatchObject([
     expect.objectContaining({
       status: "probe-invalid",
-      reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
+      reason: "Auto-wrap cursor control did not measure home and ordinary text advancing to the right margin",
     }),
   ])
 })
