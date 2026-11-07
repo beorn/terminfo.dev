@@ -2875,7 +2875,7 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
     return true
   }) as typeof process.stdout.write
   const capture = vi.fn(async () => {
-    throw new Error("A deciding DECRQSS reply must not invoke pixel capture")
+    throw new Error("Missing pixel geometry must not invoke capture")
   })
   const batch = await runProbeBatch({
     ids: ["sgr.reset"],
@@ -2954,6 +2954,8 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
       })
       // An unavailable pixel mapping records the failure, without a deciding observation type.
       expect(replayed?.assertionType).toBeUndefined()
+      expect(replayed?.rawReplyRef).toBeUndefined()
+      expect(replayed?.tests.map(({ rawReplyRef }) => rawReplyRef)).toEqual([undefined])
       const assertionPath = record.files.find((file) => file.endsWith(assertion.runId + ".assertion.draft.json"))
       if (!assertionPath) throw new Error("Missing persisted assertion")
       const executingManifest = derivedSuiteManifest()
@@ -3109,7 +3111,7 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
     expect(boundRecord.files).toContain(join(directory, blobRef))
     expect(
       boundRecord.assertions.map(({ results }) => results.find(({ featureId }) => featureId === "sgr.reset")?.status),
-    ).toEqual(["probe-todo", "probe-todo"])
+    ).toEqual(["probe-invalid", "probe-invalid"])
     expect(nativeIdentity).not.toHaveBeenCalled()
     expect(writes).toHaveLength(beforeReplay)
     expect(capture).not.toHaveBeenCalled()
@@ -3286,12 +3288,16 @@ it("retains same-callback control and target frames without declaring visual sup
   expect(structuredClone(replayed)).toEqual(replayed)
   const live = batch.results.find(({ featureId }) => featureId === "sgr.blink")!
   for (const assertion of replayed.assertions) {
-    expect(assertion.results.find(({ featureId }) => featureId === live.featureId)).toMatchObject({
+    const result = assertion.results.find(({ featureId }) => featureId === live.featureId)
+    expect(result).toMatchObject({
       status: live.status,
       reason: live.reason,
       assertionType: live.assertionType,
       frames: live.frames,
+      rawReplyRef: live.featureId,
     })
+    expect(result?.tests).toContainEqual(expect.objectContaining({ rawReplyRef: live.featureId }))
+    expect(typeof assertion.rawReplies[live.featureId]).toBe("string")
   }
   expect(writes).toHaveLength(beforeOffline)
 }, 30_000)
