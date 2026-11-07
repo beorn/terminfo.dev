@@ -203,10 +203,12 @@ test.each(
       )
     }
     if (variant === "missing-digest") rmSync(join(root, "owner-executable.sha256"))
-    if (variant === "wrong-digest")
+    if (variant === "wrong-digest") {
       writeFileSync(join(root, "owner-executable.sha256"), `${"c".repeat(64)}  ${executable}\n`)
-    if (variant === "missing-flag")
+    }
+    if (variant === "missing-flag") {
       writeFileSync(join(root, "target-config.txt"), "nice -n 10 /owned/wezterm start -- collector\n")
+    }
     let tick = 0
     if (variant === "missing-sentinel" || variant === "restore-failure") {
       vi.spyOn(Date, "now").mockImplementation(() => (tick += 6000))
@@ -252,8 +254,9 @@ test.each(
       ) {
         expect(result).toMatchObject({ status: "invalid" })
         if (variant !== "restore-failure") expect(title).toBe("original title")
-        if (variant === "missing-digest" || variant === "wrong-digest" || variant === "missing-flag")
+        if (variant === "missing-digest" || variant === "wrong-digest" || variant === "missing-flag") {
           expect(writes).toEqual([])
+        }
         return
       }
       expect(result).toMatchObject({
