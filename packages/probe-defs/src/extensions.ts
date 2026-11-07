@@ -3085,14 +3085,43 @@ function kittyGraphicsRefusalCode(raw: string): string | null {
 }
 
 /**
- * Display cannot be observed when transmit was refused in the same run: the library answered the
- * canonical query with an error, so there is no image for the display cell to place.
+ * Display has no setup when this row's transmit is refused explicitly or by both controlled App windows.
  */
-function kittyDisplayWithoutTransmit(code: string, imageNumber: number): ProbeCallbackResult {
+function kittyDisplayWithoutTransmit(code: string | null, imageNumber: number): ProbeCallbackResult {
   return declaredUntestableResult(
-    `Untestable (no setup): Kitty graphics transmit is refused by this library (${code}), so the display cell has no image to place`,
+    `Untestable (no setup): Kitty graphics transmit ${code ? `is refused by this library (${code})` : "has no reply to either a=t or a=q after their DA1 controls"}, so the display cell has no image to place`,
     { imageNumber, refusal: code },
   )
+}
+
+/** Same-run image prerequisite for the two pixel rows; successful allocation is released immediately. */
+async function kittyPixelPrerequisite(ctx: TermProbeSource): Promise<ProbeCallbackResult | null> {
+  const imageNumber = kittyImageNumber()
+  const transfer = await ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber))
+  const uploaded = allocationOutcomeResult(transfer, imageNumber)
+  if (uploaded.silent) {
+    const query = await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)
+    const transferNegative = sentinelSilenceResult(transfer, "The RGB image transfer is acknowledged")
+    const queryNegative = sentinelSilenceResult(query, "The canonical RGB graphics query is acknowledged")
+    const result =
+      transferNegative?.observation && queryNegative?.observation
+        ? kittyDisplayWithoutTransmit(null, imageNumber)
+        : uploaded.result
+    return { ...result, response: JSON.stringify({ imageNumber, transfer, query }) }
+  }
+  if (!uploaded.imageId) return uploaded.result
+  ctx.write(kittyDeleteImage(uploaded.imageId))
+  return null
+}
+
+/** Both pixel rows qualify opaque red against the same independently painted cell rectangle. */
+function kittyPaintReference(ctx: TermProbeSource): void {
+  ctx.write(KITTY_CLEAR)
+  ctx.write(`\x1b[48;2;${KITTY_FRAME_RED.join(";")}m`)
+  for (let row = KITTY_REGION.top; row <= KITTY_REGION.bottom; row++) {
+    ctx.write(`\x1b[${row};${KITTY_REGION.left}H${" ".repeat(KITTY_REGION.right - KITTY_REGION.left + 1)}`)
+  }
+  ctx.write(`\x1b[0m${kittyPark()}`)
 }
 
 /**
@@ -4774,6 +4803,8 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       async (ctx) => {
         const id = "extensions.kitty-graphics.animation"
+        const prerequisite = await kittyPixelPrerequisite(ctx)
+        if (prerequisite) return prerequisite
         const capture = ctx.capture
         if (!capture) {
           // No pixel adapter: an instrument limit, named before a byte, never a support conclusion.
@@ -4816,52 +4847,9 @@ export const extensionsProbes: ProbeDefinition[] = [
         try {
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
-          const playbackId = kittyImageNumber()
-          ids.push(playbackId)
-          ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
-          ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
-          // The root frame carries no gap at transfer time; its gap is set by the control code.
-          ctx.write(kittyRootGap(playbackId))
-          ctx.write(kittyBlockOrigin())
-          const placement = await ctx.queryWithSentinelOutcome(
-            kittyPlace(playbackId),
-            kittyReplyFrame({ i: String(playbackId) }),
-          )
-          ctx.write(kittyPark())
-          ctx.write(kittyStartPlayback(playbackId))
-          const playbackFirst = await shoot(
-            "target",
-            `Terminal-driven playback, first frame of a ${String(KITTY_GAP_MS)} ms gap, loop v=${String(KITTY_LOOP_FOREVER)}`,
-          )
-          // The interval is measured from this capture's completion, and the elapsed value travels in
-          // the response, so a reader never has to infer the wait from the gap it asked for.
-          const intervalStart = Date.now()
-          await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
-          const playbackSecond = await shoot(
-            "target",
-            "Terminal-driven playback, second frame after 1.5x the gap with no write between the pair",
-          )
-          const playbackElapsedMs = Date.now() - intervalStart
-          let retry: KittyDigestPair | null = null
-          if (playbackFirst.regionDigest === playbackSecond.regionDigest) {
-            await kittyWait(KITTY_GAP_MS * KITTY_RETRY_FACTOR)
-            const retried = await shoot(
-              "target",
-              "Terminal-driven playback retried at twice the gap, no write since the equal pair",
-            )
-            retry = [playbackSecond.regionDigest, retried.regionDigest]
-          }
-          // Arm 2 — the update control. Selecting a frame by hand must change the rectangle; an equal
-          // pair here means the image pipeline is unproven and no negative may be taken from arm 1.
-          ctx.write(kittyStopPlayback(playbackId))
-          ctx.write(kittySelectFrame(playbackId, 1))
-          const clientFirst = await shoot("control", "Client-driven frame selection, frame 1 of a stopped animation")
-          ctx.write(kittySelectFrame(playbackId, 2))
-          const clientSecond = await shoot(
-            "control",
-            "Client-driven frame selection, frame 2 of the same stopped animation",
-          )
-          ctx.write(kittyDeleteImage(playbackId))
+          const blank = await shoot("control", "Blank rectangle before the static image control")
+          kittyPaintReference(ctx)
+          const reference = await shoot("control", "Independent SGR opaque-red reference in the same rectangle")
           // Arm 3 — a one-frame image over the same intervals must hold still.
           const stillId = kittyImageNumber()
           ids.push(stillId)
@@ -4890,11 +4878,66 @@ export const extensionsProbes: ProbeDefinition[] = [
             "control",
             "Redraw control, whole window after one ordinary glyph outside the rectangle",
           )
+          ctx.write(kittyDeleteImage(stillId))
+          ctx.write(KITTY_CLEAR)
+          ctx.write(kittyPark())
+          const playbackId = kittyImageNumber()
+          ids.push(playbackId)
+          const replies: Array<{ label: string; readback: TerminalQueryOutcome }> = []
+          const command = async (label: string, bytes: string) => {
+            const readback = await ctx.queryWithSentinelOutcome(bytes, kittyReplyFrame({ i: String(playbackId) }))
+            replies.push({ label, readback })
+          }
+          await command("base image", kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+          await command("second frame", kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
+          // The root frame carries no gap at transfer time; its gap is set by the control code.
+          await command("root frame gap", kittyRootGap(playbackId))
+          ctx.write(kittyBlockOrigin())
+          const placement = await ctx.queryWithSentinelOutcome(
+            kittyPlace(playbackId),
+            kittyReplyFrame({ i: String(playbackId) }),
+          )
+          ctx.write(kittyPark())
+          await command("start playback", kittyStartPlayback(playbackId))
+          const playbackFirst = await shoot(
+            "target",
+            `Terminal-driven playback, first frame of a ${String(KITTY_GAP_MS)} ms gap, loop v=${String(KITTY_LOOP_FOREVER)}`,
+          )
+          // The interval is measured from this capture's completion, and the elapsed value travels in
+          // the response, so a reader never has to infer the wait from the gap it asked for.
+          const intervalStart = Date.now()
+          await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
+          const playbackSecond = await shoot(
+            "target",
+            "Terminal-driven playback, second frame after 1.5x the gap with no write between the pair",
+          )
+          const playbackElapsedMs = Date.now() - intervalStart
+          let retry: KittyDigestPair | null = null
+          if (playbackFirst.regionDigest === playbackSecond.regionDigest) {
+            await kittyWait(KITTY_GAP_MS * KITTY_RETRY_FACTOR)
+            const retried = await shoot(
+              "target",
+              "Terminal-driven playback retried at twice the gap, no write since the equal pair",
+            )
+            retry = [playbackSecond.regionDigest, retried.regionDigest]
+          }
+          // Hand selection qualifies a moving playback result; static-only negatives do not require it.
+          await command("stop playback", kittyStopPlayback(playbackId))
+          await command("select frame 1", kittySelectFrame(playbackId, 1))
+          const clientFirst = await shoot("control", "Client-driven frame selection, frame 1 of a stopped animation")
+          await command("select frame 2", kittySelectFrame(playbackId, 2))
+          const clientSecond = await shoot(
+            "control",
+            "Client-driven frame selection, frame 2 of the same stopped animation",
+          )
+          ctx.write(kittyDeleteImage(playbackId))
           const captureDecision = decideKittyAnimation({
             playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
             retry,
             clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
             still: [stillFirst.regionDigest, stillSecond.regionDigest],
+            blank: blank.regionDigest,
+            reference: reference.regionDigest,
             cursorOnly: [cursorFirst.regionDigest, cursorSecond.regionDigest],
             redraw: [redrawFirst.pixelsDigest, redrawSecond.pixelsDigest],
             playbackElapsedMs,
@@ -4907,6 +4950,15 @@ export const extensionsProbes: ProbeDefinition[] = [
             playbackElapsedMs,
             playback: captureDecision.outcome,
             placementAck: placement.raw,
+            replies,
+            digests: {
+              blank: blank.regionDigest,
+              reference: reference.regionDigest,
+              still: [stillFirst.regionDigest, stillSecond.regionDigest],
+              playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
+              retry,
+              clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
+            },
             frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
           })
           return {
@@ -4934,7 +4986,7 @@ export const extensionsProbes: ProbeDefinition[] = [
                       assertionType: "screenshot" as const,
                       kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                       expected:
-                        "Two target frames of one run, no write between them, differ on the animation rectangle while frame selection differs, a one-frame image holds still, the cursor-only capture is equal and a redraw changes the screen outside the rectangle",
+                        "The static image matches the independent nonblank reference and holds still; the cursor-only pair is equal and redraw differs. Moving playback requires differing hand-selected frames. A negative requires an equal retry and initial playback matching the static image",
                       observed,
                       note: `decided by ${captureDecision.decidedBy}`,
                     },
@@ -4963,6 +5015,8 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       async (ctx) => {
         const id = "extensions.kitty-graphics.unicode-placeholders"
+        const prerequisite = await kittyPixelPrerequisite(ctx)
+        if (prerequisite) return prerequisite
         const capture = ctx.capture
         if (!capture) {
           const note =
@@ -5057,8 +5111,8 @@ export const extensionsProbes: ProbeDefinition[] = [
             KITTY_GUARD_REGION,
           )
           const cellsWithoutImage = await readCells("Placeholder rectangle cells with the image deleted")
-          // The live control: the same pixels painted by an ordinary placement in the same rectangle,
-          // measured against a captured blank rather than assumed from an acknowledgement.
+          // Qualify the ordinary placement against independently painted pixels. A changed rectangle
+          // alone can be leaked protocol text, as in the retained Screen control.
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
           const ordinaryId = kittyPlaceholderNumber()
@@ -5066,15 +5120,22 @@ export const extensionsProbes: ProbeDefinition[] = [
           const blank = await shoot("control", "Blank rectangle captured before the ordinary placement")
           ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
           ctx.write(kittyBlockOrigin())
-          await ctx.queryWithSentinelOutcome(kittyPlace(ordinaryId), kittyReplyFrame({ i: String(ordinaryId) }))
+          const placement = await ctx.queryWithSentinelOutcome(
+            kittyPlace(ordinaryId),
+            kittyReplyFrame({ i: String(ordinaryId) }),
+          )
           ctx.write(kittyPark())
           const ordinary = await shoot("control", "Ordinary a=p placement of the same pixels in the same rectangle")
+          ctx.write(kittyDeleteImage(ordinaryId))
+          kittyPaintReference(ctx)
+          const reference = await shoot("control", "Independent SGR opaque-red reference in the same rectangle")
           const captureDecision = decideKittyPlaceholders({
             withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
             withoutImage: withoutImage.regionDigest,
             guard: [guardWithImage.regionDigest, guardWithoutImage.regionDigest],
             blank: blank.regionDigest,
             ordinary: ordinary.regionDigest,
+            reference: reference.regionDigest,
             cellReadback:
               cellsWithImage === undefined || cellsWithoutImage === undefined
                 ? null
@@ -5086,12 +5147,14 @@ export const extensionsProbes: ProbeDefinition[] = [
             guardRegion: KITTY_GUARD_REGION,
             placeholderId,
             ordinaryId,
+            placementAck: placement.raw,
             guard: { withImage: guardWithImage.regionDigest, withoutImage: guardWithoutImage.regionDigest },
             digests: {
               withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
               withoutImage: withoutImage.regionDigest,
               blank: blank.regionDigest,
               ordinary: ordinary.regionDigest,
+              reference: reference.regionDigest,
             },
             cellReadback:
               cellsWithImage === undefined ? "unavailable: this pixel arm exposes no cell adapter" : "compared",
@@ -5122,7 +5185,7 @@ export const extensionsProbes: ProbeDefinition[] = [
                       assertionType: "screenshot" as const,
                       kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                       expected:
-                        "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move while the ordinary placement painted against the captured blank",
+                        "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move; the ordinary placement matches an independent SGR-painted reference that differs from blank",
                       observed,
                       note: `decided by ${captureDecision.decidedBy}`,
                     },

@@ -70,6 +70,19 @@ as Supported through buffer state; it does not claim rendered pixels. Missing
 or inconsistent controls remain PROBE TODO. Existing placement acknowledgements
 retain their query-reply criterion.
 
+App Kitty placeholder captures qualify their ordinary image placement against an independently
+SGR-painted opaque reference in the same crop. The reference must differ from blank and the
+ordinary placement must match it exactly; leaked protocol text is not an image control.
+Failed qualification remains PROBE INVALID. Before capture, this row qualifies its own image
+transmit and canonical graphics-query windows: only silence after both DA1 controls declares
+Untestable (no setup), retaining both replies. A query reply with a silent transmit stays open.
+The library placeholder arm remains Untestable (no rendered placeholder images).
+The animation arm shares those prerequisite and SGR-reference paths. Its one-frame image must
+match that reference and remain stable. A moving playback pair needs a differing hand-selected
+pair for Supported. An equal delayed retry reads Unsupported only when the initial playback
+image matches the qualified one-frame image; hand selection need not work for that negative.
+Missing or failed controls remain undecided; graphics replies are retained as detail.
+
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
 SGR attribute negatives require a rendered target and a same-run bold cell control. Underline style negatives require both exact `single` readback and a non-single style other than the target reading back as itself: curly for the double target, double for the other targets. Missing nullable attributes and on/off readers normalized to `single` stay open. Bright/indexed colour negatives require an ordinary-red control on the same colour reader and targets unchanged from the neutral baseline; different nondefault colours remain inconclusive. Existing positive effects witness their own reader. When an attribute field is unreported, a DECRQSS alternative qualifies only after this probe reads a status-1 SGR `m` bold control; a facility or DECSTBM reply does not qualify it. The exact issued input strings and control/target evidence are retained together. These library controls do not change app-arm criteria.

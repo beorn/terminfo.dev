@@ -1591,7 +1591,12 @@ it.each(["extensions.kitty-graphics.animation", "extensions.kitty-graphics.unico
     verifiedBatchFixture()
     const definition = ALL_PROBES.find((item) => item.id === id)!
     const original = definition.termNeedsGeometry
-    process.stdout.write = (() => true) as typeof process.stdout.write
+    process.stdout.write = ((sequence: string) => {
+      // Qualify image allocation so the Kitty rows reach the geometry contract under test.
+      const imageNumber = /\x1b_Ga=t,[^;]*I=(\d+);/.exec(sequence)?.[1]
+      if (imageNumber) process.stdin.emit("data", Buffer.from(`\x1b_Gi=41,I=${imageNumber};OK\x1b\\`))
+      return true
+    }) as typeof process.stdout.write
     const collect = () =>
       runProbeBatch({
         ids: [id],
