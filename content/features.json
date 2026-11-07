@@ -908,7 +908,7 @@
     "tags": ["dec-private-modes", "xterm-extensions"],
     "group": "alt-screen",
     "body": "DECSET 1049 switches to the alternate screen buffer and saves the cursor position. The sequence is <code>ESC [ ? 1049 h</code>. The alternate screen is a separate buffer used by full-screen TUI applications (vim, less, htop, tmux) so they can render without disturbing the user's scrollback history.\n\nWhen the application exits and sends DECRST 1049, the terminal restores the original buffer contents and cursor position — the user's previous shell output reappears as if the TUI never ran. This is why closing vim brings back the terminal content that was there before.\n\nMode 1049 combines three operations: save cursor (DECSC), switch to alt screen (?47), and clear the alt screen. Universally supported in modern terminals.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and this probe asks exactly <code>CSI ? mode $p</code>: tmux's private-mode query switch answers only 12, 2004, 1004, 1006 and 2031 (input.c:1608-1641), and mutation handlers elsewhere add no query reply. Tmux has no exact local query answer for 1049, and the probe's recognition callback is not the library 1049 roundtrip: the answering rationale is unsupported for this row.",
-    "probe": "App probe: query DECRPM for private mode 1049 with <code>CSI ? 1049 $ p</code>. Expected: DECRPM mode 1049 can be set.",
+    "probe": "App probe: query DECRPM for private mode 1049 with <code>CSI ? 1049 $ p</code>. Expected: DECRPM mode 1049 can be set. App arm: where DECRPM gives no reply or Ps 0, a controlled effect read in the same run decides: the effect appears with the mode set and not with it reset. A missing reply alone decides nothing and stays PROBE INVALID when no effect read is made.",
     "baseline": "core",
     "sequence": "ESC [ ? 1049 h"
   },
@@ -1470,7 +1470,7 @@
     "tags": ["osc"],
     "baseline": "rich",
     "body": "<p><strong>iTerm2 inline images</strong> use the proprietary <strong>OSC 1337</strong> protocol to display images directly in terminal output. The image data is base64-encoded and transmitted inline with the escape sequence. iTerm2 supports PNG, JPEG, GIF, and other formats.</p>\n<p>This protocol predates the Kitty graphics protocol and is simpler but less capable — it lacks features like image placement, animation control, and chunked transfer. Several other terminals (WezTerm, mintty) have adopted the iTerm2 protocol alongside or instead of Kitty graphics. The protocol is documented in iTerm2's documentation but has no formal specification.</p>",
-    "probe": "PROBE TODO: no image-decoding or rendering observation is collected. A capability declaration or cursor reply does not verify inline images.",
+    "probe": "App: write a solid-red inline PNG sized to three cells square at row 3 column 3, park the cursor outside it, and read the interior cell against a blank seed, an SGR red block of the same size and the same OSC body written as plain text. Supported: the cell matches the SGR reference. Unsupported: the cell is unchanged, or it equals the plain-text body. On a multiplexer an unchanged cell stays PROBE TODO naming the outer terminal. A third frame or a failed control is PROBE INVALID. A capability declaration or cursor reply does not verify inline images. Libraries: Untestable (no library renders inline image pixels).",
     "url": "https://iterm2.com/documentation-images.html"
   },
   "extensions.truecolor": {

@@ -841,6 +841,11 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
     reason:
       "extensions.sixel: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
   },
+  "extensions.iterm2-images": {
+    status: "probe-invalid",
+    reason:
+      "extensions.iterm2-images: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
+  },
   "extensions.osc8": {
     status: "probe-todo",
     reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
@@ -1336,7 +1341,7 @@ test("every inconclusive extension contract row evaluates to inconclusive under 
     expect(EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS[row.id], `${row.id} keeps its measured observation`).toBeUndefined()
     expect(callbackResult?.observation, `${row.id} outcome must be inconclusive`).toMatchObject({
       outcome: "inconclusive",
-      assertionType: row.id === "extensions.iterm2-images" ? "screenshot" : "query_reply",
+      assertionType: "query_reply",
     })
   }
 })
