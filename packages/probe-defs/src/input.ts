@@ -463,6 +463,45 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
   )
 }
 
+export async function sgrMouse1006(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const { input, readInput } = ctx
+  if (!input || !readInput) return replyFailure("SGR mouse effect needs owned click injection and input readback")
+  const untilKey = new RegExp(`^(?:${X10_OR_SGR_MOUSE.source})*a$`)
+  return withMouseModes(ctx, async () => {
+    ctx.write("\x1b[?1002l\x1b[?1003l")
+    const readClick = async (enabled: boolean) => {
+      ctx.write(`\x1b[?1006${enabled ? "h" : "l"}`)
+      return (
+        await readInput(untilKey, 1000, async () => {
+          await input.injectClick(1)
+          await input.injectKey("a")
+        })
+      )?.[0]
+    }
+    const reset = await readClick(false)
+    const set = await readClick(true)
+    const resetAgain = await readClick(false)
+    const observed = { reset, set, resetAgain }
+    const response = JSON.stringify(observed)
+    const [offReports, onReports, restoredReports] = [reset, set, resetAgain].map((bytes) =>
+      bytes?.match(new RegExp(X10_OR_SGR_MOUSE.source, "g")),
+    )
+    if (!offReports?.length || !onReports?.length || !restoredReports?.length) {
+      return { ...replyFailure("SGR mouse effect needs click reports followed by plain a in every arm"), response }
+    }
+    if (!offReports.every(isX10Mouse) || !restoredReports.every(isX10Mouse)) {
+      return {
+        ...replyFailure("SGR mouse reset arms did not restore X10 encoding, so the contrast is unqualified"),
+        response,
+      }
+    }
+    const expected = "X10 click reports with 1006 reset, SGR with it set, then X10 again; plain a in every arm"
+    return onReports.every((report) => SGR_MOUSE.test(report))
+      ? interactionResult("sgr-mouse-1006", expected, observed)
+      : unsupportedInteraction("sgr-mouse-1006", expected, observed)
+  })
+}
+
 export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const { input, readInput } = ctx
   const injectMove = input?.injectMove

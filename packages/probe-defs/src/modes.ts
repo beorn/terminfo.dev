@@ -37,7 +37,7 @@ import {
   type StackReading,
   validSize,
 } from "./helpers.ts"
-import { applicationKeypad, altScroll1007, allMotion1003 } from "./input.ts"
+import { applicationKeypad, altScroll1007, allMotion1003, sgrMouse1006 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { captureRegionCallbackResult, cropPositionRefusal, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
 
@@ -2109,7 +2109,23 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 
   // SGR mouse encoding
-  decrpmModeProbe("modes.mouse-sgr", 1006, headlessDecrpmArm(1006, "sgrMouse", { stateReadback: true })),
+  {
+    ...probe(
+      "modes.mouse-sgr",
+      headlessDecrpmArm(1006, "sgrMouse", { stateReadback: true }),
+      async (ctx) => {
+        const decrpm = await queryDecrpm(ctx, 1006)
+        if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1006)
+        const result = await sgrMouse1006(ctx)
+        const note = `${decrpm === 0 ? "DECRPM mode 1006 returned Ps 0" : "No usable DECRPM reply for mode 1006"}; controlled mouse-encoding read`
+        result.note = note
+        if (result.observation) result.observation.note = note
+        return result
+      },
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+  },
 
   // All-motion mouse tracking
   {
