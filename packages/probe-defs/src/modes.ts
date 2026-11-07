@@ -37,7 +37,7 @@ import {
   type StackReading,
   validSize,
 } from "./helpers.ts"
-import { applicationKeypad, altScroll1007, allMotion1003, sgrMouse1006 } from "./input.ts"
+import { applicationKeypad, altScroll1007, allMotion1003, sgrMouse1006, mouseTracking1000 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { captureRegionCallbackResult, cropPositionRefusal, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
 
@@ -1926,7 +1926,23 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 
   // Mouse tracking
-  decrpmModeProbe("modes.mouse-tracking", 1000, headlessDecrpmArm(1000, "mouseTracking", { stateReadback: true })),
+  {
+    ...probe(
+      "modes.mouse-tracking",
+      headlessDecrpmArm(1000, "mouseTracking", { stateReadback: true }),
+      async (ctx) => {
+        const decrpm = await queryDecrpm(ctx, 1000)
+        if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1000)
+        const result = await mouseTracking1000(ctx)
+        const note = `${decrpm === 0 ? "DECRPM mode 1000 returned Ps 0" : "No usable DECRPM reply for mode 1000"}; controlled click-tracking read`
+        result.note = note
+        if (result.observation) result.observation.note = note
+        return result
+      },
+      "query_reply",
+    ),
+    termNeedsDisposable: true,
+  },
 
   // Focus tracking
   decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
