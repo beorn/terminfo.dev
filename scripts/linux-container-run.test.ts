@@ -35,6 +35,35 @@ import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.d
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
 
+// @failure Ghostty's forced --title silently disables OSC 2 and its OSC 7 public-title fallback.
+// Execute the production descriptor's argument construction; no terminal or container starts here.
+it("leaves Ghostty's application title sequences enabled in the production launch arguments", () => {
+  const source = readFileSync(launcher, "utf8")
+  const marker = "\n    ghostty)"
+  const start = source.indexOf(marker)
+  const end = source.indexOf("\n      ;;", start)
+  if (start < 0 || end < 0) throw new Error("Ghostty launch descriptor is missing")
+  const body = source.slice(start + marker.length, end)
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      [
+        "set -euo pipefail",
+        "target_id=ghostty",
+        "target_version=1.4.0",
+        body,
+        'printf "%s\\0" "${target_launch_args[@]}"',
+      ].join("\n"),
+    ],
+    { encoding: "utf8" },
+  )
+  expect(result.status, result.stderr).toBe(0)
+  const args = result.stdout.split("\0").filter(Boolean)
+  expect(args.length).toBeGreaterThan(0)
+  expect(args.some((arg) => arg === "--title" || arg.startsWith("--title="))).toBe(false)
+})
+
 function compose(
   containerRunId = "a".repeat(32),
   writeContainer = true,

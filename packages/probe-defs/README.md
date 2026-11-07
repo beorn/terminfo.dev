@@ -16,6 +16,14 @@ This describes the implemented system. Callbacks still perform live I/O and eval
 
 The six assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard; `process_environment` reads a terminal child's allowlisted export with its same-run launch, PID and TTY controls. Probe setup and feed writes retain their existing order and bytes; they are not assertion types.
 
+The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
+table beside the child-environment reader selects tmux's public diagnostic grid/formats or Kitty's
+fresh command-report bytes. Each row retains its own unknown-command and handled-command controls;
+a failed control is PROBE INVALID. Qualified state transitions can decide support. An exact-command
+refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
+appended bytes through that row's unique completion sentinel. Silence supplies no positive answer.
+App identity stays in the collector; the shared probe package grades these readings without an App switch.
+
 The five probe-result labels are Supported, Unsupported, Untestable, PROBE TODO and PROBE INVALID. Their code values are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`. Immutable stored runs retain their original `test-todo` and `test-failure` words; the run reader decodes those as `probe-todo` and `probe-invalid` without rewriting the stored bytes. A missing same-run control is a reason under PROBE TODO, not an additional status.
 
 A feature result answers one feature on one subject from its current probes. Source never decides it. Supported/Unsupported disagreement between any valid non-source probes is PROBE CONFLICT (`probe-conflict`), naming those probes, regardless of strength. Otherwise the strongest decided probe wins; Untestable alone cannot conflict with a decided answer. With no decided probe, invalid takes precedence over todo, then all-untestable. A conflict counts as open and tier 2 when there is no todo. The [feature-result calculator](../../docs/data/release-scope.ts) replaces the old report-only minimum-method findings.
@@ -27,7 +35,7 @@ does not establish Untestable. Without explicit tests, a diagnostic or a conclus
 missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
 to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclaredUntestable` is the only form the finalizer and run reader admit. Its reason names the cause: **passed to the app**, **no way**, or **no setup** (and the more specific **no way to tell** or **app** where applicable). The operator's per-kind declarations remain, including OSC720 on libvterm and WezTerm, whose libraries keep history without their own scrolling window. Any other untestable test folds to PROBE TODO.
 
-The collector also selects the specifically reviewed OSC133/633 and OSC666 App/mux declarations from
+The collector also selects the specifically reviewed OSC133/633, OSC176/440/3008 and OSC666 App/mux declarations from
 `app-semantic-state.ts`, matching kind, id, exact version and OS. The native batch uses that
 feature-to-reason map only after an unresolved callback; observations, command reports and invalid
 results keep precedence. Unknown versions select nothing. Ghostty's command-end and full-cycle
@@ -36,6 +44,8 @@ socket, retained as `collector.sessionBus`; unreadable socket paths remain unres
 The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 411 on Linux,
 with their exact parser citations and missing public property readback. They declare the
 unresolved observation unavailable; they supply no command report or measured negative.
+The same exact versions additionally declare OSC176/440 observation gaps, and Screen/xterm
+declare OSC3008 gaps. Ghostty's recognized OSC3008 parser is outside this declaration group.
 
 For library results, a feature is the library's job unless the app-job table in [extensions.ts](src/extensions.ts) assigns it to the app. A real state reading or typed notification store can establish Supported. A generic handoff of an app-job command is Untestable (passed to the app), even when its payload is intact. Libvterm and vt100-rust qualify their report in this cell's run: a made-up OSC and the target are reported, while a handled title command applies without a report. Xterm.js and vterm.js generic taps require their declared engine identity; a different engine identity remains Open. Missing report controls also remain Open. Library-job negatives keep `unhandledSequenceVerdict`; these are Unsupported when the library reports the target with its same-run controls.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
@@ -69,6 +79,19 @@ then the allocated image attached to that cell. This decides a silent placement
 as Supported through buffer state; it does not claim rendered pixels. Missing
 or inconsistent controls remain PROBE TODO. Existing placement acknowledgements
 retain their query-reply criterion.
+
+App Kitty placeholder captures qualify their ordinary image placement against an independently
+SGR-painted opaque reference in the same crop. The reference must differ from blank and the
+ordinary placement must match it exactly; leaked protocol text is not an image control.
+Failed qualification remains PROBE INVALID. Before capture, this row qualifies its own image
+transmit and canonical graphics-query windows: only silence after both DA1 controls declares
+Untestable (no setup), retaining both replies. A query reply with a silent transmit stays open.
+The library placeholder arm remains Untestable (no rendered placeholder images).
+The animation arm shares those prerequisite and SGR-reference paths. Its one-frame image must
+match that reference and remain stable. A moving playback pair needs a differing hand-selected
+pair for Supported. An equal delayed retry reads Unsupported only when the initial playback
+image matches the qualified one-frame image; hand selection need not work for that negative.
+Missing or failed controls remain undecided; graphics replies are retained as detail.
 
 Every former source-review or source-negative site now returns PROBE TODO with a named cause: the no-control reason where no control ran, otherwise the missing prerequisite or observable it names. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as PROBE TODO with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
@@ -867,6 +890,20 @@ cursor-shape cell and blink-phase sampling belongs to #31812. Historical frames 
 new comparison or support conclusion.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
+
+The optional `TermProbeSource.readTitle` reads this run's owned public title surface.
+The existing Linux ownership adapter supplies the recorded App window's `xdotool getwindowname`,
+or the attached mux's own title query; mux rows never substitute the outer window.
+An empty string is an observed title; configured read errors keep their cause.
+The collector retains each raw reading, including failures. OSC 2 and App XTWINOPS 22/23
+use this same reader, qualify distinct title values and verify incoming-title restoration.
+Failed App controls are PROBE INVALID; an absent reader leaves the terminal untouched.
+Screen's unqualified `screen -Q title` or failed title controls retain a named missing-reader
+cause, without reading the outer window. OSC 0 uses title state only for its title clause;
+title success still needs independent icon evidence for the conjunction.
+The Linux Ghostty OSC 7 arm uses that same reader after empty OSC 2, reads two
+`file://localhost` paths exactly, checks an inert made-up OSC, then clears OSC 7 and
+restores the prior title. Other Apps keep their existing unbound-CWD result.
 
 The app exit/1047/insert-mode rows declare character readback and use that same region oracle.
 Exit and 1047 paint primary then alternate markers; leaving the alternate is compared with a plainly

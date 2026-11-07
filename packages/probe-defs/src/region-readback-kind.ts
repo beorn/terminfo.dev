@@ -166,6 +166,13 @@ export interface RegionReadbackRow extends Pick<ProbeDefinition, "textClaim"> {
    */
   requiresUtf8?: true
   /**
+   * erase.screen.above alone (#32581, @cto 52b0229c and a290eaa2): the capture oracle also reads the
+   * region's first `rowsAbove` rows, above the cursor, and the rows at and below it as two groups,
+   * and grades a third frame Unsupported, with `unsupportedNote`, only by the rule on
+   * RegionReadback.cursorRowGroups. The lib arm reads cells and never consults it.
+   */
+  cursorRowGroups?: { rowsAbove: number; unsupportedNote: string }
+  /**
    * An explicit minimum terminal geometry. Absent, it DERIVES from the row (max(cursor row, sentinel
    * row) rows; max(region right, sentinel column) columns plus the family's two-column margin). An
    * explicit value below that need can only make an arm run on a grid smaller than it addresses, so it
@@ -572,6 +579,26 @@ function assertRegionReadbackShape(row: RegionReadbackRow): RegionReadbackGeomet
   }
 }
 
+/** The row's two capture row groups in screen cells; a split that leaves either group empty refuses at load. */
+function cursorRowGroups(
+  id: string,
+  { rowsAbove, unsupportedNote }: NonNullable<RegionReadbackRow["cursorRowGroups"]>,
+  geometry: RegionReadbackGeometry,
+): NonNullable<RegionReadback["cursorRowGroups"]> {
+  const split = geometry.top + rowsAbove
+  if (!Number.isSafeInteger(rowsAbove) || rowsAbove < 1 || split > geometry.bottom) {
+    throw new Error(
+      `${id}: cursorRowGroups.rowsAbove ${rowsAbove} must leave rows above and at-or-below the cursor in rows ${geometry.top}-${geometry.bottom}`,
+    )
+  }
+  const columns = { left: geometry.left, right: geometry.right }
+  return {
+    above: { top: geometry.top, bottom: split - 1, ...columns },
+    atOrBelow: { top: split, bottom: geometry.bottom, ...columns },
+    unsupportedNote,
+  }
+}
+
 /** The capture-region spec the row implies, so the two arms grade one fixture. */
 function regionReadbackSpec(
   row: RegionReadbackRow,
@@ -590,6 +617,9 @@ function regionReadbackSpec(
       : { ignored: prelude + paintFrame(row.ignored, geometry, row.paint) + geometry.park }),
     ...(row.cleanup === undefined ? {} : { cleanup: row.cleanup }),
     ...(row.requiresUtf8 === true ? { requiresUtf8: true as const } : {}),
+    ...(row.cursorRowGroups === undefined
+      ? {}
+      : { cursorRowGroups: cursorRowGroups(row.id, row.cursorRowGroups, geometry) }),
     timeoutMs: TIMEOUT_MS,
     pollMs: POLL_MS,
     minRows: row.minRows ?? geometry.minRows,
