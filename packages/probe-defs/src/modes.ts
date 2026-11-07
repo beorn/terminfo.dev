@@ -1804,7 +1804,9 @@ async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   const reading: { firstReply?: string[] | null } = {}
   // Keep the existing Ps2 set/query/restore path exactly; observe its initial
   // reply through the existing query primitive instead of issuing a second query.
-  const protocol = await reverseVideoProtocol.term!({
+  const protocolArm = reverseVideoProtocol.term
+  if (!protocolArm) throw new Error("Reverse-video protocol definition has no App arm")
+  const protocol = await protocolArm({
     ...ctx,
     queryWithSentinel: async (sequence, pattern, timeout) => {
       const reply = await ctx.queryWithSentinel(sequence, pattern, timeout)
