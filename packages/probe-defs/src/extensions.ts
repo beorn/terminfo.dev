@@ -435,13 +435,17 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
 /** XTSMGRAPHICS item 2, read: the current Sixel geometry in pixels. */
 const SIXEL_GEOMETRY_QUERY = "\x1b[?2;1;0S"
 const SIXEL_GEOMETRY_REPLY = /\x1b\[\?2;[0-9;]*S/
+const SIXEL_GEOMETRY_EXPECTED = "XTSMGRAPHICS item 2 read returns status 0 and two positive pixel dimensions"
 
 /** Live's reading of one Sixel geometry outcome, shared by both arms (#30554). */
 function sixelGeometryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
   return sixelGeometryResult(reply.raw, replyFrame(reply), reply.sentinel)
 }
 
-/** A read of current Sixel geometry; protocol failure and silence never establish a negative. */
+/**
+ * A read of current Sixel geometry. Status 3 (failure) is the terminal's own report on this query and reads
+ * Unsupported (#32569); other protocol statuses and silence never establish a negative.
+ */
 function sixelGeometryResult(
   raw: string,
   frame: string | null,
@@ -478,12 +482,29 @@ function sixelGeometryResult(
     }
   }
   const status = Number(reply[1])
+  if (status === 3) {
+    // 32569: a report comes before no setup, so the failure answer to this exact query is the measured negative
+    // (@cto third-table ruling 2026-11-06). Statuses 1 and 2 name an error in the item or action sent.
+    const note = "Sixel geometry query reported protocol status 3 (failure): Sixel is off in this launch"
+    return {
+      pass: false,
+      response: raw,
+      note,
+      observation: { outcome: "unsupported", assertionType: "query_reply", note },
+      assertions: [
+        {
+          assertionType: "query_reply" as const,
+          kind: "negative",
+          expected: SIXEL_GEOMETRY_EXPECTED,
+          observed: reply[0],
+        },
+      ],
+    }
+  }
   if (status !== 0) {
-    const validFailure = status === 1 || status === 2 || status === 3
+    const validFailure = status === 1 || status === 2
     const note = validFailure
-      ? status === 3
-        ? "Sixel geometry query reported protocol status 3 (failure; no graphics geometry is configured)"
-        : `Sixel geometry query reported protocol status ${status}`
+      ? `Sixel geometry query reported protocol status ${status}`
       : `Unknown Sixel geometry protocol status ${reply[1]}`
     return {
       pass: false,
@@ -533,7 +554,7 @@ function sixelGeometryResult(
       {
         assertionType: "query_reply" as const,
         kind: "positive",
-        expected: "XTSMGRAPHICS item 2 read returns status 0 and two positive pixel dimensions",
+        expected: SIXEL_GEOMETRY_EXPECTED,
         observed: reply[0],
       },
     ],

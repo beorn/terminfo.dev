@@ -164,6 +164,8 @@ it.each([
   ["term", "device.decrqss", "DECSTBM"],
   ["lib", "device.decrqss", "DECSCL"],
   ["term", "device.decrqss", "DECSCL"],
+  ["lib", "device.decrqss", "DECSCUSR"],
+  ["term", "device.decrqss", "DECSCUSR"],
   ["lib", "editing.decrqcra"],
   ["term", "editing.decrqcra"],
   ["lib", "extensions.osc52-clipboard"],
@@ -202,7 +204,9 @@ it.each([
     const received =
       rawOverride ??
       (id === "device.decrqss" &&
-      (sequence === "\x1bP$qm\x1b\\" || (refused === "DECSCL" && sequence === "\x1bP$qr\x1b\\"))
+      (sequence === "\x1bP$qm\x1b\\" ||
+        ((refused === "DECSCL" || refused === "DECSCUSR") && sequence === "\x1bP$qr\x1b\\") ||
+        (refused === "DECSCUSR" && sequence === '\x1bP$q"p\x1b\\'))
         ? "\x1bP0$r\x1b\\"
         : "")
     captures.push({ sequence, received })
