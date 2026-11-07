@@ -137,7 +137,7 @@ test.each([
     subject: { kind: "mux" as const, outerTerminal: "kitty" },
     expectedStatus: "probe-todo",
     expectedReason:
-      "the post-sequence frame equals the pre-edit seed, so the inline image left the region unchanged; this capture through outer terminal kitty cannot separate the multiplexer from its outer terminal",
+      "the cell did not change; this capture through outer terminal kitty cannot separate the multiplexer from its outer terminal",
   },
   {
     name: "printed OSC body as plain text -> Unsupported even on multiplexer",

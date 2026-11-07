@@ -6347,8 +6347,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                 decided.note = note
                 decided.observation.note = note
               } else if (after === digest("pre-edit seed")) {
-                const note =
-                  "the post-sequence frame equals the pre-edit seed, so the inline image left the region unchanged"
+                const note = "the cell did not change"
                 decided.note = note
                 decided.observation.note = note
                 decided.criterionBranch = "iterm2-images-no-change"
