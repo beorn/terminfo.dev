@@ -18,6 +18,48 @@ import type {
   LibProbeSource,
 } from "./types.ts"
 
+// A DECRPM reply does not witness focus delivery. Both set/reset arms must run,
+// including when the enabled arm has no reports (the reviewed Screen reading).
+test("App focus tracking grades delivered set/reset input rather than DECRPM", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
+  for (const [enabled, reset, outcome] of [
+    ["\x1b[O\x1b[Ia", "a", "supported"],
+    ["a", "a", "unsupported"],
+    ["\x1b[I\x1b[Oa", "a", "invalid"],
+    ["\x1b[O\x1b[I", "a", "invalid"],
+    ["\x1b[O\x1b[Ia", "\x1b[O\x1b[Ia", "invalid"],
+  ] as const) {
+    let arm = 0
+    let bytes = ""
+    const input = {
+      injectClick: async () => {
+        throw new Error("Focus fixture received a click")
+      },
+      focusRoundTrip: async () => {
+        bytes += arm++ === 0 ? enabled.replace(/a$/, "") : reset.replace(/a$/, "")
+      },
+      injectKey: async () => {
+        if ((arm === 1 ? enabled : reset).endsWith("a")) bytes += "a"
+      },
+    }
+    const source = replayTermProbeSource(new Map(), {
+      input,
+      readInput: async (pattern, _timeout, inject) => {
+        bytes = ""
+        await inject?.()
+        return pattern.exec(bytes)
+      },
+    })
+    const result = await definition.term!(source)
+    expect(arm, `${outcome}: both focus arms`).toBe(2)
+    if (outcome === "invalid") {
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+    } else {
+      expect(result.observation?.outcome).toBe(outcome)
+    }
+  }
+})
+
 // Ask 3 permits a same-run mode effect when DECRPM is silent or Ps 0. The reply
 // contract does not exercise that path. Reuse the semantic terminal so removing
 // DECAWM alone loses the positive without breaking the cursor-delivery control.

@@ -1009,6 +1009,8 @@ export interface InputFixture {
     applicationHash: string
   }
   injectKey(keys: string): Promise<void>
+  /** Move focus to the display root and back, verifying both owned X focus reads. */
+  focusRoundTrip?(): Promise<void>
   injectClick(button: 1 | 4 | 5): Promise<void>
   /** Buttonless motion in owned-window pixels; absent adapters stay click-only. */
   injectMove?(x: number, y: number): Promise<void>

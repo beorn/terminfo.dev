@@ -37,7 +37,14 @@ import {
   type StackReading,
   validSize,
 } from "./helpers.ts"
-import { applicationKeypad, altScroll1007, allMotion1003, sgrMouse1006, mouseTracking1000 } from "./input.ts"
+import {
+  applicationKeypad,
+  altScroll1007,
+  allMotion1003,
+  sgrMouse1006,
+  mouseTracking1000,
+  focusTracking1004,
+} from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { captureRegionCallbackResult, cropPositionRefusal, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
 
@@ -1945,7 +1952,13 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 
   // Focus tracking
-  decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
+  {
+    ...decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
+    term: focusTracking1004,
+    termAssertionType: "input_bytes",
+    termWrites: undefined,
+    termNeedsDisposable: true,
+  },
 
   // Reverse video
   {

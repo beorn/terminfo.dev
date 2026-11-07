@@ -271,6 +271,11 @@ capability declaration. The setting does not decide the measured resize phases.
 
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support result. Callbacks retain it explicitly.
+App focus tracking uses the optional owned focus roundtrip fixture under both DECSET1004
+and DECRST1004, reading through a plain key in each arm. Ordered focus-out/in only
+while set is Supported; key-only reads in both arms are Unsupported. A wrong read,
+missing key or focus report while reset is PROBE INVALID. DECRPM is retained as detail;
+the library callback is unchanged.
 Library `cell.hidden: null` means conceal is not reported; missing cell observables retain their named PROBE TODO cause without deciding terminal support.
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO

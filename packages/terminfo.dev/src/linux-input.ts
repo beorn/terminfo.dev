@@ -29,6 +29,27 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
   }
   const ownedWindowId: string = windowId
 
+  async function focusRoundTrip(): Promise<void> {
+    const selectedScreen = /default screen number:\s*(\d+)/.exec(display)?.[1]
+    const section = selectedScreen === undefined ? undefined : display.split(`screen #${selectedScreen}:`)[1]
+    const rootHex = section?.split(/screen #\d+:/)[0]?.match(/root window id:\s*(0x[0-9a-f]+)/i)?.[1]
+    if (!rootHex) throw new Error("Owned DISPLAY xdpyinfo lacks its selected screen root window id")
+    const rootWindowId = String(Number.parseInt(rootHex, 16))
+    const focus = async (target: string) => {
+      await command("xdotool", ["windowfocus", target])
+      const focused = (await command("xdotool", ["getwindowfocus", "-f"])).toString().trim()
+      if (focused !== target) {
+        throw new Error(`Owned focus roundtrip expected ${target}; getwindowfocus -f is ${focused}`)
+      }
+    }
+    await focus(ownedWindowId)
+    try {
+      await focus(rootWindowId)
+    } finally {
+      await focus(ownedWindowId)
+    }
+  }
+
   async function focusOwnedWindow(): Promise<void> {
     // Xvfb has no EWMH WM: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW.
     // windowfocus uses XSetInputFocus, which CURRENTWINDOW (--window 0) then follows.
@@ -49,6 +70,7 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
   }
 
   return {
+    focusRoundTrip,
     async injectKey(keys: string) {
       if (keys.length === 0) throw new Error("XTEST key injection requires a nonempty keysym")
       await focusOwnedWindow()

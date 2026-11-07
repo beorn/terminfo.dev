@@ -13,6 +13,7 @@ import {
   declaredUntestableResult,
   decrpmPs,
   decrpmReplyPattern,
+  queryDecrpm,
   notTestedResult,
   osInputReviewResult,
   NO_SAME_PATH_CONTROL,
@@ -459,6 +460,41 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
   const read = (report: string | null) => (report === null ? "no report" : JSON.stringify(report))
   return invalidInteraction(
     `modes.application-keypad: KP_Add read ${read(application)} under DECKPAM and ${read(numeric)} under DECKPNM after plain a reached the app; only SS3 k then +, or + under both, decides this row`,
+    observed,
+  )
+}
+
+export async function focusTracking1004(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input?.focusRoundTrip || !readInput) return xtestCoverage("owned focus roundtrip")
+  const focusRoundTrip = input.focusRoundTrip.bind(input)
+  const decrpm = await queryDecrpm(ctx, 1004)
+  const readArm = async () =>
+    (
+      await readInput(/^[\s\S]*a/, 1000, async () => {
+        await focusRoundTrip()
+        await input.injectKey("a")
+      })
+    )?.[0] ?? null
+  let enabled: string | null
+  ctx.write("\x1b[?1004h")
+  try {
+    enabled = await readArm()
+  } finally {
+    ctx.write("\x1b[?1004l")
+  }
+  const reset = await readArm()
+  const observed = { decrpm, enabled, reset }
+  const expected = "CSI O then CSI I before a with 1004 set; only a with 1004 reset"
+  if (reset === "a" && enabled === "\x1b[O\x1b[Ia") {
+    return interactionResult("focus-tracking:roundtrip", expected, observed)
+  }
+  if (reset === "a" && enabled === "a") {
+    return unsupportedInteraction("focus-tracking:roundtrip", expected, observed)
+  }
+  return invalidInteraction(
+    "Focus roundtrip read a wrong focus report, no plain key, or a report with 1004 reset",
     observed,
   )
 }

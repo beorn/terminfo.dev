@@ -979,7 +979,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-FocusIn_FocusOut",
     "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "DECSET 1004 enables focus in/out event reporting. The sequence is <code>ESC [ ? 1004 h</code>. When the terminal window gains focus, it sends <code>ESC [ I</code>; when it loses focus, it sends <code>ESC [ O</code>. Applications use this to pause animations, dim the UI, or refresh data when the user returns to the window.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and this probe asks exactly <code>CSI ? mode $p</code>: tmux's private-mode query switch answers only 12, 2004, 1004, 1006 and 2031 (input.c:1608-1641), and mutation handlers elsewhere add no query reply. The local query handler returns 1 or 2 from <code>MODE_FOCUSON</code>: ownership is supported, not focus-event delivery.",
-    "probe": "App probe: query DECRPM for private mode 1004 with <code>CSI ? 1004 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is PROBE INVALID. This does not measure focus event bytes.",
+    "probe": "App: with 1004 set, move focus to the root window and back to the owned window, then read input up to a plain key; repeat with 1004 reset. CSI O then CSI I before the key with the mode set, and neither with it reset, is Supported. The key with no focus report is Unsupported. A wrong focus read, no key, or a focus report with the mode reset is PROBE INVALID. The DECRPM reply is kept as detail and decides nothing.",
     "baseline": "modern",
     "sequence": "ESC [ ? 1004 h"
   },
