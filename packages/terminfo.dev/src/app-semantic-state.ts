@@ -122,6 +122,27 @@ const declarations: readonly AppSemanticCapability[] = [
       targetLine: `resetting dynamic color ${colour} not implemented`,
     },
   })),
+  // WezTerm e2a98e1b8af1 term/src/terminalstate/performer.rs:776-785:
+  // Unspecified OSC parameters are space-joined in this warning when logging is on.
+  ...(
+    [
+      ["extensions.osc555-flash", "555", "555"],
+      ["extensions.osc710-font-normal", "710", "710;fixed"],
+    ] as const
+  ).map(([featureId, code, body]) => ({
+    kind: "term",
+    id: "wezterm",
+    version: "0-unstable-2026-10-10",
+    os: "linux",
+    featureId,
+    reader: "report" as const,
+    command: { code, body },
+    reportControls: {
+      sentinel: { code: "7655", body: "7655;{nonce}", line: "Unhandled OSC  7655 {nonce}" },
+      handled: { code: "2", body: "2;Q-{nonce}", line: "Unhandled OSC  2 Q-{nonce}" },
+      targetLine: `Unhandled OSC  ${body.replaceAll(";", " ")}`,
+    },
+  })),
   // CTO third-table Ask4: preserve the separately delivered fourteen bus-dependent rows.
   ...[
     { kind: "term", id: "kitty", version: "0.49.2" },
@@ -640,7 +661,7 @@ export async function readAppSemanticState(input: {
       throw new Error("App semantic reader mux identity differs from its owned attachment")
     }
     const appId = env.TERMINFO_TARGET_ID
-    if (input.mux === "screen" || (!input.mux && appId !== "kitty" && appId !== "ghostty")) {
+    if (input.mux === "screen" || (!input.mux && appId !== "kitty" && appId !== "ghostty" && appId !== "wezterm")) {
       return { status: "unavailable", reason: "No semantic reader for this App", detail }
     }
     const capture = env.TERMINFO_CAPTURE_DIRECTORY
@@ -670,6 +691,7 @@ export async function readAppSemanticState(input: {
     const mux = input.mux === "tmux"
     let pane: string | undefined
     let tmux: ((...args: string[]) => string) | undefined
+    let appPid: number | undefined
     let subject: { kind: string; id: string; version: string; os: string }
     if (mux) {
       const socket = readFileSync(join(dirname(capture), "mux-socket.txt"), "utf8").trim()
@@ -708,15 +730,22 @@ export async function readAppSemanticState(input: {
       detail.identity = { identity, runId: input.runId }
       subject = { kind: "mux", id: "tmux", version, os: "linux" }
     } else {
-      if (appId !== "kitty" && appId !== "ghostty") {
+      if (appId !== "kitty" && appId !== "ghostty" && appId !== "wezterm") {
         return { status: "unavailable", reason: "No semantic reader for this App", detail }
       }
       const pid = kittyAncestor(input.executable)
+      appPid = pid
       if (appId === "kitty" && String(pid) !== env.KITTY_PID) {
         throw new Error("App semantic reader Kitty PID differs from its owned ancestor")
       }
       const versionText = run([input.executable.path, "--version"])
-      const version = (appId === "kitty" ? /^kitty (\S+) created by /m : /^Ghostty (\S+)/m).exec(versionText)?.[1]
+      const version = (
+        appId === "kitty"
+          ? /^kitty (\S+) created by /m
+          : appId === "wezterm"
+            ? /^wezterm(?:-gui)? (\S+)/m
+            : /^Ghostty (\S+)/m
+      ).exec(versionText)?.[1]
       if (!version || version !== env.TERMINFO_TARGET_VERSION) {
         throw new Error(`App semantic reader ${appId} version differs from its launch`)
       }
@@ -743,27 +772,40 @@ export async function readAppSemanticState(input: {
     const letter = input.featureId.slice(-1).toUpperCase()
     if (row.reader === "report") {
       const controls = row.reportControls
+      const nonceControl = controls?.sentinel.body.includes("{nonce}") === true
+      if (nonceControl) {
+        const before = readFileSync(join(dirname(capture), "owner-executable.sha256"), "utf8")
+        const expected = `${input.executable.sha256}  ${input.executable.path}\n`
+        if (before !== expected) throw new Error("App report owner differs from its prelaunch executable digest")
+        const config = readFileSync(join(dirname(capture), "target-config.txt"), "utf8")
+        if (!config.includes("--config log_unknown_escape_sequences=true ")) {
+          throw new Error("App report has no recorded unknown-escape logging launch argument")
+        }
+      }
       let title: (() => string) | undefined
       let original: string | undefined
-      if (!controls) {
-        const windows = run(["xdotool", "search", "--onlyvisible", "--pid", String(env.KITTY_PID)])
+      if (!controls || nonceControl) {
+        const windows = run(["xdotool", "search", "--onlyvisible", "--pid", String(appPid)])
           .trim()
           .split(/\s+/)
         const window = windows[0]
         if (windows.length !== 1 || !window || !/^\d+$/.test(window)) {
-          throw new Error("App semantic reader has no unique owned Kitty window")
+          throw new Error(`App semantic reader has no unique owned ${subject.id} window`)
         }
         title = () => run(["xdotool", "getwindowname", window]).trimEnd()
         original = title()
-        if (/[\x00-\x1f\x7f]/.test(original)) throw new Error("App semantic reader cannot restore Kitty title")
+        if (/[\x00-\x1f\x7f]/.test(original)) throw new Error("App semantic reader cannot restore owned title")
       }
       const log = openAppCommandLog(capture)
       let phase = 0
       const readPhase = async (name: string, feed: string) => {
         const offset = log.mark()
-        const sentinel = controls?.sentinel.body ?? `7655;${nonce}-${phase++}`
+        const marker = `${nonce}-${phase++}`
+        const sentinel = controls?.sentinel.body.replaceAll("{nonce}", marker) ?? `7655;${marker}`
         input.write(feed + osc(sentinel))
-        const completion = `${controls?.sentinel.line ?? `Unknown OSC escape code: ${sentinel}`}\n`
+        const completionLine =
+          controls?.sentinel.line.replaceAll("{nonce}", marker) ?? `Unknown OSC escape code: ${sentinel}`
+        const completion = `${completionLine}\n`
         const reading = await log.read(offset, `app-semantic-${nonce}-${name}.log`, (text) => {
           const end = text.indexOf(completion)
           return end < 0 ? undefined : end + completion.length
@@ -784,11 +826,21 @@ export async function readAppSemanticState(input: {
         return reading.text
           .split("\n")
           .filter((value) =>
-            controls
-              ? value.includes("resetting dynamic color ") && !value.endsWith(controls.sentinel.line)
-              : value.includes("[PARSE ERROR]") && !value.endsWith(`Unknown OSC escape code: ${sentinel}`),
+            nonceControl
+              ? value.includes(" > Unhandled OSC  ") && !value.endsWith(completionLine)
+              : controls
+                ? value.includes("resetting dynamic color ") && !value.endsWith(controls.sentinel.line)
+                : value.includes("[PARSE ERROR]") && !value.endsWith(`Unknown OSC escape code: ${sentinel}`),
           )
           .map((value) => {
+            if (nonceControl) {
+              const report = / > (Unhandled OSC  (\d+)(?: .*)?)$/.exec(value)
+              const code = report?.[2]
+              if (code === controls?.handled.code) throw new Error(`App handled OSC ${code} reported a refusal`)
+              if (code && report?.[1] === controls?.targetLine && code === row.command?.code) return code
+              if (report?.[1] === `Unhandled OSC  7654 ${nonce}`) return "7654"
+              throw new Error(`Unrecognized App command-report format: ${value}`)
+            }
             if (controls && value.endsWith(controls.handled.line)) {
               throw new Error(`App handled OSC ${controls.handled.code} reported a refusal`)
             }
@@ -802,8 +854,11 @@ export async function readAppSemanticState(input: {
           })
       }
       try {
-        const unknown = controls ? [] : await readPhase("unknown", osc(`7654;${nonce}`))
-        const handled = await readPhase("handled", osc(controls?.handled.body ?? `2;Q-${nonce}`))
+        const unknown = controls && !nonceControl ? [] : await readPhase("unknown", osc(`7654;${nonce}`))
+        const handled = await readPhase(
+          "handled",
+          osc(controls?.handled.body.replaceAll("{nonce}", nonce) ?? `2;Q-${nonce}`),
+        )
         if (controls && handled.length) throw new Error(`App handled OSC ${controls.handled.code} reported a refusal`)
         if (title) await until(title, (value) => value === `Q-${nonce}`, "handled title")
         const body = row.command
@@ -818,13 +873,19 @@ export async function readAppSemanticState(input: {
           status: "measured",
           reader: "report",
           runId: input.runId,
-          unknown: { code: controls?.sentinel.code ?? "7654", reports: controls ? [controls.sentinel.code] : unknown },
+          unknown: {
+            code: controls && !nonceControl ? controls.sentinel.code : "7654",
+            reports: controls && !nonceControl ? [controls.sentinel.code] : unknown,
+          },
           handled: { applied: true, reports: handled },
           target: { code: row.command?.code ?? "633", reports: target },
           detail,
         }
       } finally {
         if (original !== undefined) input.write(osc(`2;${original}`))
+        if (nonceControl && title && original !== undefined) {
+          await until(title, (value) => value === original, "restored title")
+        }
       }
     }
     if (!tmux || !pane) throw new Error("App state reader has no bound tmux command")

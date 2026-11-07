@@ -11,6 +11,8 @@ import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSyn
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import nativeScreen from "./fixtures/screen-sgr-backspace.json"
+import { extensionsProbes } from "@terminfo/probe-defs"
+import { replayTermProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
 import {
   appSemanticDeclarations,
   beginMuxSgrCommandRead,
@@ -146,51 +148,165 @@ test.each([
   },
 )
 
-test("Kitty keeps unknown-command controls, unique logged sentinels and title restoration", async () => {
-  const root = mkdtempSync(join(tmpdir(), "app-semantic-kitty-"))
-  const capture = join(root, "capture")
-  mkdirSync(capture)
-  const log = join(root, "daemon.log")
-  writeFileSync(log, "")
+// The real WezTerm warnings qualify only these two cells; Kitty's log grammar
+// cannot catch a lost WezTerm route, wrong 710 payload or borrowed old warning.
+test.each(
+  (
+    [
+      ["kitty", "0.49.2", "extensions.osc176-app-id", "176", "176;terminfo-test"],
+      ["wezterm", "0-unstable-2026-10-10", "extensions.osc555-flash", "555", "555"],
+      ["wezterm", "0-unstable-2026-10-10", "extensions.osc710-font-normal", "710", "710;fixed"],
+    ] as const
+  ).flatMap(([app, version, featureId, code, targetBody]) =>
+    (app === "wezterm"
+      ? ([
+          "exact",
+          "silent-target",
+          "silent-unknown",
+          "handled-refusal",
+          "wrong-payload",
+          "missing-sentinel",
+          "missing-digest",
+          "wrong-digest",
+          "missing-flag",
+          "restore-failure",
+        ] as const)
+      : (["exact"] as const)
+    ).map((variant) => ({ app, version, featureId, code, targetBody, variant })),
+  ),
+)(
+  "$app $featureId $variant keeps fresh log controls and restores its title",
+  async ({ app, version, featureId, code, targetBody, variant }) => {
+    const root = mkdtempSync(join(tmpdir(), "app-semantic-kitty-"))
+    const capture = join(root, "capture")
+    mkdirSync(capture)
+    const log = join(root, "daemon.log")
+    writeFileSync(log, "")
+    vi.stubEnv("TERMINFO_RUN_ID", "a".repeat(32))
+    vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+    vi.stubEnv("TERMINFO_TARGET_ID", app)
+    vi.stubEnv("TERMINFO_TARGET_VERSION", version)
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("KITTY_PID", "123")
+    const executable = app === "kitty" ? "/owned/kitty" : "/owned/wezterm-gui"
+    const line = (body: string) =>
+      app === "kitty"
+        ? `[PARSE ERROR] Unknown OSC escape code: ${body}\n`
+        : `14:01:40.193  WARN   wezterm_term::terminalstate::performer > Unhandled OSC  ${body.replaceAll(";", " ")}\n`
+    // Only the newly appended target window counts, never this older matching warning.
+    writeFileSync(log, line(targetBody))
+    if (app === "wezterm") {
+      writeFileSync(join(root, "owner-executable.sha256"), `${"b".repeat(64)}  ${executable}\n`)
+      writeFileSync(
+        join(root, "target-config.txt"),
+        "nice -n 10 /owned/wezterm --config log_unknown_escape_sequences=true start -- collector\n",
+      )
+    }
+    if (variant === "missing-digest") rmSync(join(root, "owner-executable.sha256"))
+    if (variant === "wrong-digest") {
+      writeFileSync(join(root, "owner-executable.sha256"), `${"c".repeat(64)}  ${executable}\n`)
+    }
+    if (variant === "missing-flag") {
+      writeFileSync(join(root, "target-config.txt"), "nice -n 10 /owned/wezterm start -- collector\n")
+    }
+    let tick = 0
+    if (variant === "missing-sentinel" || variant === "restore-failure") {
+      vi.spyOn(Date, "now").mockImplementation(() => (tick += 6000))
+    }
+    let title = "original title"
+    vi.mocked(execFileSync).mockImplementation((file, args) => {
+      if (file === executable) return app === "kitty" ? "kitty 0.49.2 created by Kovid Goyal\n" : `wezterm ${version}\n`
+      return Array.isArray(args) && args[0] === "search" ? "123\n" : title
+    })
+    const writes: string[] = []
+    try {
+      const result = await readAppSemanticState({
+        featureId,
+        runId: "a".repeat(32),
+        executable: { path: executable, sha256: "b".repeat(64) },
+        write: (bytes) => {
+          writes.push(bytes)
+          for (const match of bytes.matchAll(/\x1b\]([^\x07]*)\x07/g)) {
+            const body = match[1]!
+            if (body.startsWith("2;")) {
+              if (variant !== "restore-failure" || body !== "2;original title") title = body.slice(2)
+              if (variant === "handled-refusal") appendFileSync(log, line(body))
+            } else if (
+              !(variant === "silent-target" && body === targetBody) &&
+              !(variant === "silent-unknown" && body.startsWith("7654;")) &&
+              !(variant === "missing-sentinel" && body.startsWith("7655;"))
+            ) {
+              appendFileSync(log, line(variant === "wrong-payload" && body === targetBody ? `${code};wrong` : body))
+            }
+          }
+        },
+      })
+      if (
+        [
+          "handled-refusal",
+          "wrong-payload",
+          "missing-sentinel",
+          "missing-digest",
+          "wrong-digest",
+          "missing-flag",
+          "restore-failure",
+        ].includes(variant)
+      ) {
+        expect(result).toMatchObject({ status: "invalid" })
+        if (variant !== "restore-failure") expect(title).toBe("original title")
+        if (variant === "missing-digest" || variant === "wrong-digest" || variant === "missing-flag") {
+          expect(writes).toEqual([])
+        }
+        return
+      }
+      expect(result).toMatchObject({
+        status: "measured",
+        reader: "report",
+        unknown: { code: "7654", reports: variant === "silent-unknown" ? [] : ["7654"] },
+        handled: { applied: true, reports: [] },
+        target: { code, reports: variant === "silent-target" ? [] : [code] },
+      })
+      const sentinels = writes.flatMap((bytes) => [...bytes.matchAll(/7655;([^\x07]+)/g)].map((match) => match[1]))
+      expect(new Set(sentinels).size).toBe(3)
+      expect(writes.join("")).toContain(`\x1b]${targetBody}\x07`)
+      expect(title).toBe("original title")
+    } finally {
+      rmSync(root, { recursive: true })
+    }
+  },
+)
+
+// CTO046c89ce: registering the 710 wrapper must not lend WezTerm's reader to other Apps.
+test.each([
+  ["kitty", "0.49.2", "kitty 0.49.2 created by Kovid Goyal\n"],
+  ["ghostty", "1.4.0", "Ghostty 1.4.0\n"],
+  ["alacritty", "0.17.0", "alacritty 0.17.0\n"],
+  ["xterm", "411", "XTerm(411)\n"],
+  ["wezterm", "unreviewed", "wezterm unreviewed\n"],
+] as const)("%s %s keeps its previous OSC710 result", async (app, version, versionText) => {
   vi.stubEnv("TERMINFO_RUN_ID", "a".repeat(32))
   vi.stubEnv("TERMINFO_MUX_KIND", undefined)
-  vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
-  vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
-  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+  vi.stubEnv("TERMINFO_TARGET_ID", app)
+  vi.stubEnv("TERMINFO_TARGET_VERSION", version)
+  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", "/owned/artifacts")
   vi.stubEnv("KITTY_PID", "123")
-  let title = "original title"
-  vi.mocked(execFileSync).mockImplementation((file, args) => {
-    if (file === "/owned/kitty") return "kitty 0.49.2 created by Kovid Goyal\n"
-    return Array.isArray(args) && args[0] === "search" ? "123\n" : title
-  })
-  const writes: string[] = []
-  try {
-    const result = await readAppSemanticState({
-      featureId: "extensions.osc176-app-id",
+  vi.mocked(execFileSync).mockReturnValue(versionText)
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc710-font-normal")!
+  const source = replayTermProbeSource(new Map())
+  const previous = await definition.term!(source)
+  let status: string | undefined
+  source.readAppSemanticState = async (featureId, write) => {
+    const reading = await readAppSemanticState({
+      featureId,
+      write,
       runId: "a".repeat(32),
-      executable: { path: "/owned/kitty", sha256: "b".repeat(64) },
-      write: (bytes) => {
-        writes.push(bytes)
-        for (const match of bytes.matchAll(/\x1b\]([^\x07]*)\x07/g)) {
-          const body = match[1]!
-          if (body.startsWith("2;")) title = body.slice(2)
-          else appendFileSync(log, `[PARSE ERROR] Unknown OSC escape code: ${body}\n`)
-        }
-      },
+      executable: { path: `/owned/${app}`, sha256: "b".repeat(64) },
     })
-    expect(result).toMatchObject({
-      status: "measured",
-      reader: "report",
-      unknown: { code: "7654", reports: ["7654"] },
-      handled: { applied: true, reports: [] },
-      target: { code: "176", reports: ["176"] },
-    })
-    const sentinels = writes.flatMap((bytes) => [...bytes.matchAll(/7655;([^\x07]+)/g)].map((match) => match[1]))
-    expect(new Set(sentinels).size).toBe(3)
-    expect(title).toBe("original title")
-  } finally {
-    rmSync(root, { recursive: true })
+    status = reading.status
+    return reading
   }
+  expect(await definition.term!(source)).toEqual(previous)
+  expect(status).toBe("unavailable")
 })
 
 // The existing OSC reader and mux command reader must cite only their own completed phase.

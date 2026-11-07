@@ -37,32 +37,36 @@ let dir: string
 
 // @failure Ghostty's forced --title silently disables OSC 2 and its OSC 7 public-title fallback.
 // Execute the production descriptor's argument construction; no terminal or container starts here.
-it("leaves Ghostty's application title sequences enabled in the production launch arguments", () => {
-  const source = readFileSync(launcher, "utf8")
-  const marker = "\n    ghostty)"
-  const start = source.indexOf(marker)
-  const end = source.indexOf("\n      ;;", start)
-  if (start < 0 || end < 0) throw new Error("Ghostty launch descriptor is missing")
-  const body = source.slice(start + marker.length, end)
-  const result = spawnSync(
-    "bash",
-    [
-      "-c",
+it.each(["ghostty", "wezterm"])(
+  "records %s's production launch settings without suppressing application titles",
+  (app) => {
+    const source = readFileSync(launcher, "utf8")
+    const marker = `\n    ${app})`
+    const start = source.indexOf(marker)
+    const end = source.indexOf("\n      ;;", start)
+    if (start < 0 || end < 0) throw new Error(`${app} launch descriptor is missing`)
+    const body = source.slice(start + marker.length, end)
+    const result = spawnSync(
+      "bash",
       [
-        "set -euo pipefail",
-        "target_id=ghostty",
-        "target_version=1.4.0",
-        body,
-        'printf "%s\\0" "${target_launch_args[@]}"',
-      ].join("\n"),
-    ],
-    { encoding: "utf8" },
-  )
-  expect(result.status, result.stderr).toBe(0)
-  const args = result.stdout.split("\0").filter(Boolean)
-  expect(args.length).toBeGreaterThan(0)
-  expect(args.some((arg) => arg === "--title" || arg.startsWith("--title="))).toBe(false)
-})
+        "-c",
+        [
+          "set -euo pipefail",
+          `target_id=${app}`,
+          "target_version=1.4.0",
+          body,
+          'printf "%s\\0" "${target_launch_args[@]}"',
+        ].join("\n"),
+      ],
+      { encoding: "utf8", env: { ...process.env, HOME: dir } },
+    )
+    expect(result.status, result.stderr).toBe(0)
+    const args = result.stdout.split("\0").filter(Boolean)
+    expect(args.length).toBeGreaterThan(0)
+    expect(args.some((arg) => arg === "--title" || arg.startsWith("--title="))).toBe(false)
+    if (app === "wezterm") expect(args.slice(-2)).toEqual(["--config", "log_unknown_escape_sequences=true"])
+  },
+)
 
 function compose(
   containerRunId = "a".repeat(32),
