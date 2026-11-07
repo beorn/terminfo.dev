@@ -36,7 +36,7 @@ import {
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
 import { validateObservation, parseRun } from "@terminfo/run-parser"
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -4896,10 +4896,39 @@ test("real vterm records an interior-region SU probe result without moving the r
   })
 })
 
+let ownedKittyBinary: string | undefined
+
 beforeEach(() => {
+  // The owned runner supplies its declared Kitty prerequisite; identity validation still belongs to the collector.
+  // Cache the offline flake lookup, then restore the environment after each test like the other native fixtures.
+  if (
+    OWNED_LAYOUT &&
+    process.platform === "linux" &&
+    process.arch === "x64" &&
+    process.env.KITTY_BINARY === undefined
+  ) {
+    ownedKittyBinary ??= join(
+      execFileSync(
+        "nix",
+        [
+          "eval",
+          "--offline",
+          "--raw",
+          `${fileURLToPath(new URL("../../../../", import.meta.url))}#kitty-official.outPath`,
+        ],
+        {
+          encoding: "utf8",
+        },
+      ).trim(),
+      "bin",
+      "kitty",
+    )
+    vi.stubEnv("KITTY_BINARY", ownedKittyBinary)
+  }
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
 })
 afterEach(() => {
+  vi.unstubAllEnvs()
   vi.restoreAllMocks()
 })
 
