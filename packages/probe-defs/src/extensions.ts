@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { withAppSemanticObservation } from "./app-semantic-state.ts"
 import type {
   ProbeDefinition,
   ProbeCallbackResult,
@@ -4629,7 +4630,7 @@ function osc22QueryResult(controlShape: string, evidence: Osc22QueryEvidence, no
   )
 }
 
-export const extensionsProbes: ProbeDefinition[] = [
+const extensionDefinitions: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   {
     ...probe(
@@ -7084,6 +7085,8 @@ export const extensionsProbes: ProbeDefinition[] = [
     libAssertionType: "query_reply",
   },
 ]
+
+export const extensionsProbes: ProbeDefinition[] = extensionDefinitions.map(withAppSemanticObservation)
 
 // Operator D2 / CTO Nov 5 11:16: these exact feeds and normalized codes were
 // measured on the audited real addon. Delivery effects and OSC52 read are not negatives.
