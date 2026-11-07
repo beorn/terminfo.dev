@@ -141,7 +141,7 @@ function prepareEditorFixture(run: Run, markerValue: string, prefix: "cursor" | 
   const terminal = {
     name: `terminfo-${run.id}`,
     shellPath: "/bin/bash",
-    shellArgs: [run.scriptPath],
+    shellArgs: ["-p", run.scriptPath],
     cwd: run.directory,
   }
   const terminalJson = JSON.stringify(terminal)
@@ -238,6 +238,7 @@ const APPS: AppDef[] = [
         "--always-new-process",
         "--",
         "/bin/bash",
+        "-p",
         script,
       ],
     },
@@ -426,10 +427,18 @@ export function prepareCliLaunch(appId: string, run: Run): PreparedCliLaunch {
     value: recipe.markerValue(run),
   })
   recipe.prepare?.(run, marker.value)
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...recipe.env,
+    TERMINFO_RUN_ID: run.id,
+    TERMINFO_TERM_FEATURES_LAUNCH: run.id,
+  }
+  // Only an export added by this freshly launched terminal may answer the child probe.
+  delete env.TERM_FEATURES
   return {
     spawnPath: recipe.spawnPath,
     args: recipe.args(run.scriptPath, marker.value),
-    env: { ...process.env, ...recipe.env },
+    env,
     recipeEnvKeys: Object.keys(recipe.env ?? {}),
     identityPath: join(run.directory, "owner-tty.txt"),
     executablePath: recipe.executablePath,
@@ -516,7 +525,10 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
       : app.cliLaunch
         ? `printf '%s\\n' "$(tty)" > ${shellQuote(identityPath)}\n`
         : `printf '%s\\n' "\${KITTY_WINDOW_ID:-}" "\${KITTY_PID:-}" "$(tty)" "\${TERM:-}" > ${shellQuote(identityPath)}\n`
-  writeFileSync(run.scriptPath, `#!/bin/bash\n${identityWrite}${serveCmd}\n`, { flag: "wx", mode: 0o700 })
+  writeFileSync(run.scriptPath, `#!/bin/bash -p\n${identityWrite}${serveCmd}\n`, {
+    flag: "wx",
+    mode: 0o700,
+  })
 
   if (app.cliLaunch) {
     // A CLI-launched GUI app owns its window, not the CLI shim: the shim may exit after handing the

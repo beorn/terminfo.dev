@@ -21,7 +21,7 @@ test("the serve command carries run and suite identity, and a capture directory 
   // Exact text, with the collector path taken from this module rather than the process cwd (@cto 72e4b60b).
   const plain = serveCommand(run)
   expect(plain).toBe(
-    `TERMINFO_RUN_ID=run-1 TERMINFO_PROBE_HASH=suite TERMINFO_SOURCE_REVISION=source exec '${process.execPath}' ` +
+    `TERMINFO_RUN_ID=run-1 TERMINFO_PROBE_HASH=suite TERMINFO_SOURCE_REVISION=source exec '${process.execPath}' --no-env-file ` +
       `'${import.meta.dirname}/index.ts' probe server --start`,
   )
   expect(plain).not.toContain("TERMINFO_CAPTURE_DIRECTORY")

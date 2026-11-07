@@ -229,7 +229,14 @@ export const OBSERVATION_REASONS = [
 export type ObservationReason = (typeof OBSERVATION_REASONS)[number]
 
 /** Class of the retained deciding observation, independent of assertion polarity and capture payload kind. */
-export const ASSERTION_TYPES = ["query_reply", "buffer_state", "screenshot", "input_bytes", "clipboard"] as const
+export const ASSERTION_TYPES = [
+  "query_reply",
+  "buffer_state",
+  "screenshot",
+  "input_bytes",
+  "clipboard",
+  "process_environment",
+] as const
 export type AssertionType = (typeof ASSERTION_TYPES)[number]
 /** Source identity is retained by schema 4 without changing historical run formats. */
 export type ProbeSourceKind = RunDraft["source"]["kind"]
@@ -994,8 +1001,23 @@ export interface InputFixture {
   injectDrag?(button: 1): Promise<void>
 }
 
+export type TermFeaturesReading =
+  | {
+      status: "measured"
+      present: boolean
+      value: string
+      runId: string
+      launchMarker: string
+      pid: number
+      tty: string
+    }
+  | { status: "unavailable"; reason: string }
+  | { status: "invalid"; reason: string }
+
 export interface TermProbeSource {
   readonly kind: ProbeSourceKind
+  /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */
+  readTermFeatures?: () => Promise<TermFeaturesReading>
   /** Complete same-run raster geometry, installed only after witnessed paint and restore. */
   captureGeometry?: {
     geometry: CapturePixelGeometry

@@ -18,6 +18,7 @@ export type {
   LibProbeSource,
   ModeState,
   TermProbeSource,
+  TermFeaturesReading,
   RenderedWidthResult,
   TerminalQueryOutcome,
   ClipboardFixture,

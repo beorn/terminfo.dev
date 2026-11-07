@@ -14,7 +14,7 @@ This describes the implemented system. Callbacks still perform live I/O and eval
 - **Assertion**: one expected-versus-observed comparison. `ProbeAssertion` carries positive/negative polarity independently of its `assertionType`.
 - **Probe result**: one probe on one subject, with its status, tests, assertions and retained evidence. Stored `ProbeResult` and callback `ProbeCallbackResult` are separate shapes.
 
-The five assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard. Probe setup and feed writes retain their existing order and bytes; they are not a sixth assertion type.
+The six assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard; `process_environment` reads a terminal child's allowlisted export with its same-run launch, PID and TTY controls. Probe setup and feed writes retain their existing order and bytes; they are not assertion types.
 
 The five probe-result labels are Supported, Unsupported, Untestable, PROBE TODO and PROBE INVALID. Their code values are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`. Immutable stored runs retain their original `test-todo` and `test-failure` words; the run reader decodes those as `probe-todo` and `probe-invalid` without rewriting the stored bytes. A missing same-run control is a reason under PROBE TODO, not an additional status.
 
@@ -320,8 +320,8 @@ reset negative. Compound attribute resets with unshown setup attributes are PROB
 does not decide the whole claim.
 
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
-no I/O and records PROBE TODO: a library context spawns no application child to receive the environment export.
-It creates no observation or assertion. The application arm remains PROBE TODO until terminal-owned child readback exists.
+no I/O and declares Untestable: a library context spawns no application child to receive the environment export.
+It creates no observation or assertion. The existing App CLI and Linux launchers remove the parent's TERM_FEATURES and set a run-scoped clean-launch marker. The collector is the terminal's child; the same PID starts with automatic dotenv loading disabled. One reader observes only TERM_FEATURES presence/value, the marker and run control, PID and the verified TTY binding. Matching marker and run control on an owned Linux or Darwin binding permit Supported for an exported value or Unsupported for absence. Missing controls and unqualified GUI or reused routes remain named PROBE TODO; non-printable or oversized values are PROBE INVALID. The retained callback response is the observation's raw evidence. No separate bootstrap record, NUL parser or launch-JSON producer exists. Mac hosted/GUI qualification still requires its own granted run; process-fixture success does not establish a real-terminal result. Library rows remain unchanged, and the reader is absent on mux and Windows bindings.
 
 Raw replies and observed payloads do not embed
 runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
@@ -642,7 +642,7 @@ This does not change earlier captures or xterm's rendering pin.
 
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
 
-The five `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes` and `clipboard`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action.
+The six `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes`, `clipboard` and `process_environment`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action. Process environment is an App end-to-end method and remains unmapped for Library subjects.
 
 The XTEST key criterion requires the ctrl+a modified-key encoding after its plain-a delivery
 control; a bare control byte or another modified key does not meet it. Pixel mouse reporting
