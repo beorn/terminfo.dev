@@ -1286,7 +1286,7 @@ function finalizeMuxVisualNegative(
   if (target.kind !== "mux" || recorded.status !== "unsupported" || selected === undefined) return recorded
   const reason = target.outerTerminal
     ? `${recorded.reason ? `${recorded.reason}; ` : ""}this capture through outer terminal ${target.outerTerminal} cannot separate the multiplexer from its outer terminal`
-    : "Missing outer terminal identity: this capture cannot separate the multiplexer from its outer terminal"
+    : `Missing outer terminal identity: this capture cannot separate the multiplexer from its outer terminal${recorded.reason ? `; ${recorded.reason}` : ""}`
   return finalizeProbeResult({
     ...recorded,
     reason,

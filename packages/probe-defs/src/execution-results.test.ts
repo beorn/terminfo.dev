@@ -77,7 +77,7 @@ it("demotes only the selected mux pixel test while preserving query, library and
         else {
           expect(result.status).toBe("probe-todo")
           expect(result.reason).toContain(outerTerminal ?? "Missing outer terminal identity")
-          if (outerTerminal) expect(result.reason).toContain(recorded.reason)
+          expect(result.reason).toContain(recorded.reason)
           expect(result.tests[0]).toEqual(recorded.tests[0])
           expect(result.tests[1]).toMatchObject({ id: testId, status: "probe-todo", assertionRefs: [] })
           expect(result.screenshotRef).toBe(frame.ref)
