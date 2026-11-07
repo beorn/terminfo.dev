@@ -6,6 +6,7 @@ import type {
   TermProbeSource,
   LibProbeSource,
   ProbeResult,
+  ProbeSubject,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import {
@@ -1272,21 +1273,48 @@ export const sgrProbes: ProbeDefinition[] = [
 ]
 
 const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
+const muxVisualTests = new Map<string, { featureId: string | null; testId: string }>([
+  ["sgr-attribute-same-run", { featureId: null, testId: "attribute" }],
+  ["cursor-shape-same-run", { featureId: "cursor.shape", testId: "review" }],
+])
+
+function finalizeMuxVisualNegative(
+  recorded: ProbeResult,
+  target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
+): ProbeResult {
+  const selected = recorded.criterionBranch === undefined ? undefined : muxVisualTests.get(recorded.criterionBranch)
+  if (target.kind !== "mux" || recorded.status !== "unsupported" || selected === undefined) return recorded
+  const reason = target.outerTerminal
+    ? `${recorded.reason ? `${recorded.reason}; ` : ""}this capture through outer terminal ${target.outerTerminal} cannot separate the multiplexer from its outer terminal`
+    : `Missing outer terminal identity: this capture cannot separate the multiplexer from its outer terminal${recorded.reason ? `; ${recorded.reason}` : ""}`
+  return finalizeProbeResult({
+    ...recorded,
+    reason,
+    tests: recorded.tests.map((entry) =>
+      entry.id === selected.testId ? { ...entry, status: "probe-todo", assertionRefs: [], reason } : entry,
+    ),
+  })
+}
 
 /** Require app/mux rendered evidence while preserving library cell criteria after execution. */
-export function finalizeSgrResult(
+export function finalizeVisualResult(
   recorded: ProbeResult,
-  target: { kind: "term" | "mux" | "lib" },
+  target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
   captures: readonly ObservationFrame[],
 ): ProbeResult {
-  if (!visualSgrIds.has(recorded.featureId) || (recorded.status !== "supported" && recorded.status !== "unsupported")) {
+  const selected = recorded.criterionBranch === undefined ? undefined : muxVisualTests.get(recorded.criterionBranch)
+  const pixelBranch = selected?.featureId === recorded.featureId && recorded.assertionType === "screenshot"
+  if (
+    (!visualSgrIds.has(recorded.featureId) && !pixelBranch) ||
+    (recorded.status !== "supported" && recorded.status !== "unsupported")
+  ) {
     return recorded
   }
   if (target.kind === "lib") return recorded
   const hasScreenshot =
     recorded.screenshotRef !== undefined &&
     captures.some((frame) => frame.kind !== "text-cells" && frame.ref === recorded.screenshotRef)
-  if (hasScreenshot) return recorded
+  if (hasScreenshot) return finalizeMuxVisualNegative(recorded, target)
   const reason = "visual effect not observed in this run"
   return finalizeProbeResult({
     ...recorded,

@@ -956,11 +956,17 @@ That order matters: a failed test wins over a pending one. Timeout or lack of an
 
 For new app and mux results, every member of the existing `sgrProbes`
 registry (including colors and resets) requires a screenshot for that feature in the same run. The shared
-`finalizeSgrResult` applies this requirement in the native batch writer before checkpointing.
+`finalizeVisualResult` applies this requirement in the native batch writer before checkpointing.
 Only the result's own screenshot reference matched to a non-text-cells frame in that probe's captures counts;
 a batch-wide reference or an assertion labelled screenshot does not. A missing frame retains a pending `visual` test with
 reason `visual effect not observed in this run` when a Supported or Unsupported result lacks that evidence.
 Existing pending and failure results retain their causes; a screenshot never establishes support by presence alone.
+Selected same-run pixel branches share one mux-negative rewrite at this finalise site. The small
+branch table names the decisive test and, for non-SGR rows, its feature; query-only cursor results
+remain outside it. The rewrite preserves positive capture tests and screenshot evidence, keeps
+the concrete observation reason with its row, and adds the outer-terminal ambiguity or missing
+identity reason. Mux positives, libraries and unselected branches retain their original results.
+The collector supplies the existing full draft subject when available, not new callback metadata.
 Library SGR results retain their existing cell-state criterion results, including through headless checkpointing
 and library replay. They describe the effect on observed cells; they do not establish a rendered pixel effect.
 Ghostty web 0.4.0's canvas draws double, curly, dotted and dashed underline styles as a single line.
