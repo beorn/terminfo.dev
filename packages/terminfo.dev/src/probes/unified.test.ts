@@ -334,7 +334,7 @@ function legacyReplies(replies: Record<string, string>): Record<string, string> 
 }
 // A callback that never returns must still have an actual attempt in the retained checkpoint.
 it("checkpoints the native attempt before invoking its callback", async () => {
-  const probe = ALL_PROBES.find((entry) => entry.id === "modes.bracketed-paste")!
+  const probe = ALL_PROBES.find((entry) => entry.id === "device.decrpm")!
   const original = probe.term
   let active: unknown
   let seen: unknown
@@ -490,7 +490,7 @@ it.each([
 ])(
   "retains the $label explicit callback response and refuses an untyped legacy-shaped result",
   async ({ response }) => {
-    const id = "modes.bracketed-paste"
+    const id = "device.decrpm"
     const definition = ALL_PROBES.find((probe) => probe.id === id)!
     expect(definition.termWrites).toBe("query")
     expect(definition.termNeedsGeometry).toBeUndefined()
@@ -593,7 +593,7 @@ it.each([
 ])(
   "retains the ProbeCallbackResult note for the $label case and refuses an untyped legacy-shaped result",
   async ({ resultNote, observationNote }) => {
-    const id = "modes.bracketed-paste"
+    const id = "device.decrpm"
     const definition = ALL_PROBES.find((probe) => probe.id === id)!
     expect(definition.termWrites).toBe("query")
     expect(definition.termNeedsGeometry).toBeUndefined()
@@ -716,17 +716,17 @@ it("allows query-only DECRPM and refuses callbacks requiring disposable ownershi
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
     writes.push(text)
-    if (text === "\x1b[?2004$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?2004;2$y"))
+    if (text === "\x1b[?7$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?7;2$y"))
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
-    ids: ["modes.bracketed-paste", "modes.color-scheme-reporting", "cursor.move.absolute", "device.xtwinops-20"],
+    ids: ["device.decrpm", "modes.color-scheme-reporting", "cursor.move.absolute", "device.xtwinops-20"],
   })
-  expect(writes).toEqual(["\x1b[?2004$p\x1b[c"])
-  const retained = batch.rawReplies["modes.bracketed-paste.callLog"]
+  expect(writes).toEqual(["\x1b[?7$p\x1b[c"])
+  const retained = batch.rawReplies["device.decrpm.callLog"]
   expect(retained).toBeDefined()
   expect(JSON.stringify(readCallLog(JSON.parse(retained!)))).toBe(retained)
-  expect(batch.observations.find((item) => item.featureId === "modes.bracketed-paste")).toMatchObject({
+  expect(batch.observations.find((item) => item.featureId === "device.decrpm")).toMatchObject({
     outcome: "supported",
     assertionType: "query_reply",
   })
@@ -1461,22 +1461,22 @@ it("keeps query-only and nongeometry callbacks runnable when owned size is unava
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
     writes.push(text)
-    if (text === "\x1b[?2004$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?2004;2$y"))
+    if (text === "\x1b[?7$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?7;2$y"))
     if (text === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[1;2R"))
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
-    ids: ["modes.bracketed-paste", "reset.decaln"],
+    ids: ["device.decrpm", "reset.decaln"],
     ownedTerminal: geometryOwner(noGeometry),
   })
-  expect(batch.observations.find((item) => item.featureId === "modes.bracketed-paste")).toMatchObject({
+  expect(batch.observations.find((item) => item.featureId === "device.decrpm")).toMatchObject({
     outcome: "supported",
     assertionType: "query_reply",
   })
   expect(batch.results.find((item) => item.featureId === "reset.decaln")).toMatchObject({ status: "probe-todo" })
   expect(batch.ungradedDiagnostics["reset.decaln"]).toBeUndefined()
   expect(writes).not.toContain("\x1b#8")
-  expect(writes).toContain("\x1b[?2004$p\x1b[c")
+  expect(writes).toContain("\x1b[?7$p\x1b[c")
 })
 
 // The width-helper trace must describe the actual output and retain every CPR reply, rather than an invented fixture.
@@ -2422,8 +2422,11 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
   writeFileSync(receiptPath, JSON.stringify(scenario.targetless ? hostedLaunchReceipt() : receipt))
   process.env.TERMINFO_DISPOSABLE_RECEIPT = receiptPath
   const writes: string[] = []
+  let bracketedPaste = false
   process.stdout.write = ((text: string) => {
     writes.push(text)
+    if (text === "\x1b[?2004h") bracketedPaste = true
+    if (text === "\x1b[?2004l") bracketedPaste = false
     return true
   }) as typeof process.stdout.write
   const baseline = "owned clipboard baseline"
@@ -2476,7 +2479,7 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     }),
   }
   const injectKey = vi.fn(async (keys: string) => {
-    const text = keys === "a" ? "a" : `\x1b[200~${clipboardText}\x1b[201~`
+    const text = keys === "a" ? "a" : bracketedPaste ? `\x1b[200~${clipboardText}\x1b[201~` : clipboardText
     process.stdin.emit("data", Buffer.from(text))
   })
   const featureId = scenario.featureId ?? "extensions.clipboard-paste"
@@ -2510,7 +2513,9 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     }
   }
   expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible ? 1 : 0)
-  expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(scenario.eligible ? ["a", "ctrl+shift+v"] : [])
+  expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(
+    scenario.eligible ? ["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"] : [],
+  )
   expect(clipboardText).toBe(baseline)
   expect(writes.join("")).not.toContain("\x1b]52;")
 })
@@ -3326,9 +3331,9 @@ it.each(["CaptureRestoreFailed", "QueryTimeout", "QueryIOError", "CapturePermiss
   "a calibration %s aborts the batch before any callback",
   async (name) => {
     verifiedBatchFixture()
-    const id = "modes.bracketed-paste"
+    const id = "device.decrpm"
     const definition = ALL_PROBES.find((probe) => probe.id === id)
-    if (!definition) throw new Error("Missing existing bracketed-paste probe")
+    if (!definition) throw new Error("Missing existing DECRPM facility probe")
     const original = definition.term
     let callbacks = 0
     definition.term = async () => {
@@ -3363,7 +3368,7 @@ it("capture preparation refuses unavailable counts instead of using output defau
   let painted = false
   await expect(
     runProbeBatch({
-      ids: ["modes.bracketed-paste"],
+      ids: ["device.decrpm"],
       ownedTerminal: geometryOwner(noGeometry),
       prepareCapture: async () => {
         painted = true
@@ -3379,7 +3384,7 @@ it("capture preparation refuses a changed owned grid before a query callback can
   let painted = false
   await expect(
     runProbeBatch({
-      ids: ["modes.bracketed-paste"],
+      ids: ["device.decrpm"],
       ownedTerminal: geometryOwner(measured(24, 80), async () => measured(30, 120)),
       prepareCapture: async () => {
         painted = true
@@ -3395,7 +3400,7 @@ it("a retained terminal grid reply supplies preparation counts when declared siz
   let seen: number[] | undefined
   const raw = "\x1b[8;30;120t"
   await runProbeBatch({
-    ids: ["modes.bracketed-paste"],
+    ids: ["device.decrpm"],
     ownedTerminal: geometryOwner(noGeometry),
     geometryCorroboration: {
       status: "uncorroborated",
@@ -3424,7 +3429,7 @@ it.each(["conflict", "malformed", "live mismatch"] as const)(
     let painted = false
     const raw = "\x1b[8;30;120t"
     const batch = await runProbeBatch({
-      ids: ["modes.bracketed-paste"],
+      ids: ["device.decrpm"],
       ownedTerminal: geometryOwner(measured(24, 80)),
       geometryCorroboration: {
         status: fault === "live mismatch" ? "agree" : fault,
@@ -3456,7 +3461,7 @@ it("an 18t timeout aborts capture preparation instead of recording a terminal re
   let painted = false
   await expect(
     runProbeBatch({
-      ids: ["modes.bracketed-paste"],
+      ids: ["device.decrpm"],
       ownedTerminal: geometryOwner(measured(24, 80)),
       geometryCorroboration: {
         status: "silent",
@@ -3624,7 +3629,7 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
 // callback attempt. Existing observation/coverage assertions cannot prove frozen-catalog TODOs.
 it("records actual native callback failure and leaves an unscheduled frozen capability TODO", async () => {
   const { initializeRunDraft } = await import("@terminfo/probe-defs")
-  const id = "modes.bracketed-paste"
+  const id = "device.decrpm"
   const definition = ALL_PROBES.find((probe) => probe.id === id)!
   const original = definition.term
   const draft = initializeRunDraft({
@@ -3658,7 +3663,7 @@ it("records actual native callback failure and leaves an unscheduled frozen capa
 it("forwards explicit callback tests through the actual native batch attempt without inferring review from frames", async () => {
   const { sgrCaptureFrames } = await import("../../../probe-defs/src/helpers.ts")
   const { cropPositionRefusal } = await import("../../../probe-defs/src/region-readback.ts")
-  const id = "modes.bracketed-paste"
+  const id = "device.decrpm"
   const definition = ALL_PROBES.find((probe) => probe.id === id)!
   const original = definition.term
   const frames = [

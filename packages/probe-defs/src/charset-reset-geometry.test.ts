@@ -51,8 +51,8 @@ function app(
     },
     queryOutcome: async () => unexpected("queryOutcome"),
     queryWithSentinelOutcome: async () => {
-      // "silent" models a terminal that never answers DECRQSS: reset.sgr then leaves the fixture
-      // untouched and keeps its capture path, which is what this file's pixel tests assert.
+      // "silent" models a terminal that never answers DECRQSS. Each case chooses
+      // its capture kind and checks the writes allowed on that path.
       if (decrqss === "silent") return { match: null, reason: "timeout", raw: "", rawBase64: "" }
       return unexpected("queryWithSentinelOutcome")
     },
@@ -267,11 +267,14 @@ function decaln() {
   return definition
 }
 
-test("reset.sgr capture declines by name after a silent DECRQSS instead of grading pixels", async () => {
+test("reset.sgr query fallback declines silent DECRQSS without grading a capture", async () => {
   const definition = resetProbes.find((probe) => probe.id === "reset.sgr")
   if (!definition?.term) throw new Error("missing app reset.sgr callback")
   const events: string[] = []
   const context = app(3, 34, events, [{ row: 1, col: 2 }], "silent")
+  // Text captures use the query fallback; pixel saved-reference qualification
+  // has its own fixtures and must not consume this case's silent query first.
+  context.captureKind = "text-cells"
   const capture = vi.fn(async ({ role, label }: { role: ObservationFrame["role"]; label: string }) => ({
     role,
     label,
@@ -280,10 +283,8 @@ test("reset.sgr capture declines by name after a silent DECRQSS instead of gradi
   }))
   context.capture = capture
   const result = await definition.term(context)
-  // A row whose reset clears two or more attributes has no reference
-  // independent of a full reset, so the region oracle declines it before any pixel read. The shared
-  // DECRQSS readback ran first and this fixture answered nothing, so the trace is NOT empty and the
-  // A missing DECRQSS reply is an execution failure with no fabricated observation.
+  // The DECRQSS prelude ran, but its missing reply supplies no observation or
+  // permission to grade the capture fallback.
   expect(capture).not.toHaveBeenCalled()
   expect(events).toContain("\x1b[0m")
   expect(events.some((event) => event.includes("\x1b[1;3;7mX"))).toBe(false)
