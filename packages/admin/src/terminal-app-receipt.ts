@@ -17,6 +17,12 @@ export interface TerminalAppCapture {
   trace: Record<string, string | number>
 }
 
+/** A cold Terminal.app start plus the window census, not a warm-app query. */
+export const TERMINAL_LAUNCH_TIMEOUT_MS = 90_000
+
+/** The Automation (TCC) denial and the unanswered launch look the same from here: no reply at all. */
+const AUTOMATION_OR_UNANSWERED = /ETIMEDOUT|timed out|not authori[sz]ed|not permitted|errAEEventNotPermitted|-1743/iu
+
 /** AppleScript takes a before-ID census and returns its new window ID plus the exact tab TTY. */
 export function launchTerminalWindow(scriptPath: string): TerminalAppWindow {
   const script = `tell application "Terminal"
@@ -39,7 +45,18 @@ export function launchTerminalWindow(scriptPath: string): TerminalAppWindow {
   end repeat
   return inventory
 end tell`
-  const output = run("osascript", ["-e", script]).stdout.trimEnd()
+  let answered: string
+  try {
+    answered = run("osascript", ["-e", script], { timeoutMs: TERMINAL_LAUNCH_TIMEOUT_MS }).stdout
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    // Naming the permission is the difference between "a human grants this" and "a script broke".
+    if (!AUTOMATION_OR_UNANSWERED.test(detail)) throw error
+    throw new Error(
+      `Automation (TCC) denied control of Terminal, or the launch did not answer within ${TERMINAL_LAUNCH_TIMEOUT_MS}ms; grant Automation for osascript and rerun: ${detail}`,
+    )
+  }
+  const output = answered.trimEnd()
   const lines = output.split(/\r?\n/)
   if (lines.length < 3) {
     throw new Error(`Terminal launch returned no new-window/TTY inventory: ${JSON.stringify(output)}`)

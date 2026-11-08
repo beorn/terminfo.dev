@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest"
 import { spawnSync } from "node:child_process"
 import { readFileSync, realpathSync } from "node:fs"
 import { createHash } from "node:crypto"
-import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
+import { TERMINAL_LAUNCH_TIMEOUT_MS, captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { closeOwnedTerminalWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }))
@@ -110,6 +110,38 @@ describe("owned Terminal.app receipt", () => {
       vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout, stderr: "" } as ReturnType<typeof spawnSync>)
       expect(() => launchTerminalWindow("/private/run/serve.sh")).toThrow(/TTY/)
     }
+  })
+
+  // 30729: hosted run 42479488706 launched Terminal through Apple events and got no reply at all,
+  // because the runner had no Automation grant. The shared 15s budget is sized for a warm app, and an
+  // unanswered consent prompt must be named as the permission it needs, never as a script failure.
+  test("launch gives the cold app its own budget and names an unanswered launch as the Automation grant", () => {
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 0,
+      stdout: "12\n/dev/ttys003\n14|1|/dev/ttys003\n",
+      stderr: "",
+    } as ReturnType<typeof spawnSync>)
+    launchTerminalWindow("/private/run/serve.sh")
+    const [launchCall] = vi.mocked(spawnSync).mock.calls
+    expect(launchCall?.[2]).toMatchObject({ timeout: TERMINAL_LAUNCH_TIMEOUT_MS })
+    expect(TERMINAL_LAUNCH_TIMEOUT_MS).toBeGreaterThan(15_000)
+
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: new Error("spawnSync osascript ETIMEDOUT"),
+    } as unknown as ReturnType<typeof spawnSync>)
+    expect(() => launchTerminalWindow("/private/run/serve.sh")).toThrow(/Automation \(TCC\) denied control of Terminal/)
+
+    // A real script failure keeps its own words: blaming TCC for it would send a human to the wrong fix.
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 1,
+      stdout: "",
+      stderr: "execution error: Terminal got an error: unexpected EOF (-2741)",
+    } as ReturnType<typeof spawnSync>)
+    expect(() => launchTerminalWindow("/private/run/serve.sh")).toThrow(/unexpected EOF/)
+    expect(() => launchTerminalWindow("/private/run/serve.sh")).not.toThrow(/Automation/)
   })
 
   test("cleanup addresses only the launched window and its unchanged sole tab", () => {

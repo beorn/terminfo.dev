@@ -209,7 +209,12 @@ end tell`,
     if ((await tty(session)) !== options.tty) throw new Error("API session changed its TTY during the physical read")
     const grid = await rpc("get_property_request", { session_id: session, name: "grid_size" }, "get_property_response")
     if (typeof grid.json_value !== "string") throw new Error("API grid property is not JSON")
-    checkGrid(JSON.parse(grid.json_value))
+    // The `grid_size` property is zero-based inclusive: iTermAPIHelper.m getGridSize answers
+    // session.screen.width - 1 and session.screen.height - 1 (v3.6.11), one less than the
+    // list_sessions value checked above. Restore those extents here and keep the check exact, so a
+    // session that really changed geometry still refuses.
+    const property = object(JSON.parse(grid.json_value), "session grid property")
+    checkGrid({ width: Number(property.width) + 1, height: Number(property.height) + 1 })
     // The official decoder supplies proto2 defaults and repeated arrays from the pinned schema.
     const contents = array(buffer.contents, "get_buffer_response.contents") as ITermLineContents[]
     const cells = mapITermBufferToCells(contents, options.cols, options.rows)

@@ -78,7 +78,10 @@ test.each([
 
 // This exercises the Unix WebSocket client against a local protocol fixture, never an iTerm process.
 // The independent server reads the official schema and inspects the actual request fields.
-test.each(["match", "missing", "changed"] as const)("physical read requires an exact stable TTY: %s", async (mode) => {
+const modes = ["match", "missing", "changed", "grid", "wide"] as const
+test.each(modes)("physical read requires an exact stable TTY: %s", async (mode) => {
+  const cols = mode === "wide" ? 80 : 4
+  const rows = mode === "wide" ? 25 : 2
   fixture.home = mkdtempSync("/var/tmp/i-")
   directories.push(fixture.home)
   const socket = join(fixture.home, "Library/Application Support/iTerm2/private/socket")
@@ -124,10 +127,12 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
                     {
                       root: {
                         links: [
-                          { session: { unique_identifier: "other", grid_size: { width: 4, height: 2 } } },
+                          { session: { unique_identifier: "other", grid_size: { width: cols, height: rows } } },
                           {
                             node: {
-                              links: [{ session: { unique_identifier: "owned", grid_size: { width: 4, height: 2 } } }],
+                              links: [
+                                { session: { unique_identifier: "owned", grid_size: { width: cols, height: rows } } },
+                              ],
                             },
                           },
                         ],
@@ -148,22 +153,28 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
           reply = { variable_response: { status: 0, values: [JSON.stringify(tty)] } }
         } else if (request.get_property_request) {
           expect(request.get_property_request).toEqual({ session_id: "owned", name: "grid_size" })
-          reply = { get_property_response: { status: 0, json_value: JSON.stringify({ width: 4, height: 2 }) } }
+          // iTermAPIHelper.m getGridSize answers screen.width - 1 and screen.height - 1 (zero-based
+          // inclusive), so this property is one extents smaller than list_sessions — 80x25 reports
+          // 79x24. The `grid` row answers a size that is genuinely different and must still refuse.
+          const property = mode === "grid" ? { width: cols, height: rows - 1 } : { width: cols - 1, height: rows - 1 }
+          reply = { get_property_response: { status: 0, json_value: JSON.stringify(property) } }
         } else {
           expect(request.get_buffer_request).toEqual({
             session: "owned",
             include_styles: true,
             line_range: { screen_contents_only: true },
           })
-          reply = {
-            get_buffer_response: {
-              status: 0,
-              contents: [
-                { text: "abcd", code_points_per_cell: [{ repeats: 4 }], continuation: 2, style: [{ repeats: 4 }] },
-                { text: "ef", code_points_per_cell: [{ repeats: 2 }], continuation: 1, style: [{ repeats: 4 }] },
-              ],
-            },
-          }
+          const fixed = [
+            { text: "abcd", code_points_per_cell: [{ repeats: 4 }], continuation: 2, style: [{ repeats: 4 }] },
+            { text: "ef", code_points_per_cell: [{ repeats: 2 }], continuation: 1, style: [{ repeats: 4 }] },
+          ]
+          const full = Array.from({ length: rows }, (_, index) => ({
+            text: "x".repeat(cols),
+            code_points_per_cell: [{ repeats: cols }],
+            continuation: index === rows - 1 ? 1 : 2,
+            style: [{ repeats: cols }],
+          }))
+          reply = { get_buffer_response: { status: 0, contents: mode === "wide" ? full : fixed } }
         }
         ws.send(serverType.encode(serverType.fromObject({ id: request.id, ...reply })).finish())
       },
@@ -177,8 +188,8 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
   try {
     const result = await readITermCells({
       tty: "/dev/ttys004",
-      cols: 4,
-      rows: 2,
+      cols,
+      rows,
       onReply: (bytes) => retained.push(bytes),
     })
     expect(sends, JSON.stringify(result)).toHaveBeenCalled()
@@ -189,21 +200,24 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
       "api.iterm2.com",
       "terminfo.dev 1",
     ])
-    if (mode === "match") {
+    if (mode === "match" || mode === "wide") {
       expect(result).toEqual({
         status: "read",
         app: "iterm2",
         cells: {
-          cols: 4,
-          rows: 2,
-          text: ["abcd", "ef  "],
-          paddedRows: [2],
+          cols,
+          rows,
+          text: mode === "wide" ? Array.from({ length: rows }, () => "x".repeat(cols)) : ["abcd", "ef  "],
+          paddedRows: mode === "wide" ? [] : [2],
           droppedLines: 0,
         },
       })
       expect(retained.length).toBeGreaterThan(0)
     } else {
-      expect(result).toMatchObject({ status: "refused", reason: expect.stringMatching(/TTY/u) })
+      expect(result).toMatchObject({
+        status: "refused",
+        reason: expect.stringMatching(mode === "grid" ? /grid/u : /TTY/u),
+      })
       if (mode === "missing") expect(requests.some((request) => request.get_buffer_request)).toBe(false)
     }
   } finally {
