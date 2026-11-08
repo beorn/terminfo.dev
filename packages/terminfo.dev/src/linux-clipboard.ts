@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
-import { basename, dirname, sep } from "node:path"
+import { basename, dirname, join, sep } from "node:path"
 import type {
   ClipboardFixture,
   LinuxMuxAttachmentProof,
@@ -10,6 +10,7 @@ import type {
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
+import { readScreenScrollback } from "./linux-screen-text.ts"
 
 type MuxReceiptTarget = Pick<
   LinuxMuxAttachmentProof,
@@ -672,6 +673,9 @@ export async function createLinuxClipboardAdapter(
     throw new Error("Initial owned clipboard readback differs from generated baseline")
   }
   const withClipboardFixture = createClipboardTransaction(baseline, { readText, writeText })
+  const screenTarget = receipt.target?.kind === "mux" && receipt.target.mux === "screen" ? receipt.target : undefined
+  const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY!
+  let screenRead = 0
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
     config: receipt.config,
@@ -697,6 +701,20 @@ export async function createLinuxClipboardAdapter(
       // Preserve title whitespace, stripping only the command's one output line terminator.
       return title.replace(/\n$/u, "")
     },
+    ...(screenTarget && {
+      async getScrollback() {
+        await assertOwned()
+        const read = readScreenScrollback({
+          executable: screenTarget.executable.path,
+          session: screenTarget.session,
+          socketDirectory: dirname(screenTarget.socketPath),
+          hardcopyPath: join(captureDirectory, `${screenTarget.session}-history-${++screenRead}.txt`),
+        })
+        await assertOwned()
+        if (read.status === "refused") throw new Error(read.reason)
+        return { totalLines: read.totalLines }
+      },
+    }),
     ...(receipt.target?.kind === "mux" &&
       receipt.target.mux === "tmux" && {
         async getScrollback() {

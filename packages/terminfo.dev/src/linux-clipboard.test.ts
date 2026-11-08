@@ -31,6 +31,8 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { mock } from "bun:test"
 const root = fs.mkdtempSync(join(os.tmpdir(), "terminfo-mux-owner-"))
+fs.mkdirSync(join(root, "artifacts"))
+const hardcopies = []
 const hash = x => createHash("sha256").update(x).digest("hex")
 const launch = "a".repeat(32), capture = "b".repeat(32)
 const baseline = "terminfo-owned-clipboard-" + launch
@@ -96,6 +98,20 @@ mock.module("node:fs", () => ({...fs,
   },
 }))
 mock.module("node:child_process", () => ({...cp,
+  spawnSync(file,args,options) {
+    assert.equal(file,exe("screen"))
+    assert.deepEqual(args.slice(0,5),["-S",muxTarget.session,"-X","hardcopy","-h"])
+    assert.equal(options.env.SCREENDIR,root)
+    const path=args[5]
+    assert.equal(path.slice(0,path.lastIndexOf("/")),join(root,"artifacts"))
+    assert(path.includes(muxTarget.session))
+    assert(!hardcopies.includes(path),"each Screen read needs its own retained hardcopy")
+    hardcopies.push(path)
+    if(variant==="screen-refused")return {status:2,stdout:Buffer.alloc(0),stderr:Buffer.from("screen fixture refusal")}
+    real.writeFileSync(path,"row\n".repeat(variant==="screen-more"?45:44))
+    if(variant==="screen-owner-lost")variant="detached"
+    return {status:0,stdout:Buffer.alloc(0),stderr:Buffer.alloc(0)}
+  },
   spawn(){spawns++;throw new Error("unowned clipboard writer spawned")},
   execFile(file,args,options,callback) {
     if (file === "xdotool") callback(null,"76\n")
@@ -172,7 +188,22 @@ try {
       variant="scrollback-failed"
       await assert.rejects(()=>adapter.getScrollback(),/tmux history command failed/)
       variant="valid"
-    } else assert.equal(adapter.getScrollback,undefined)
+    } else {
+      assert.equal(typeof adapter.getScrollback,"function","owned Screen history reader must be reachable")
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:44})
+      variant="screen-more"
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:45})
+      for(const path of hardcopies)assert(real.existsSync(path),"hardcopy evidence must remain retained")
+      variant="screen-refused"
+      await assert.rejects(()=>adapter.getScrollback(),{message:'screen hardcopy exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})
+      variant="detached"
+      const before=hardcopies.length
+      await assert.rejects(()=>adapter.getScrollback(),/attached|display/i)
+      assert.equal(hardcopies.length,before,"ownership refusal must precede the Screen command")
+      variant="screen-owner-lost"
+      await assert.rejects(()=>adapter.getScrollback(),/attached|display/i)
+      variant="valid"
+    }
     // The batch's verifier must own every existing transaction check, not only its outer boundary.
     for (const [site, failAt] of [["start",1],["read",2],["write",3]]) {
       let tests=0, callbacks=0
