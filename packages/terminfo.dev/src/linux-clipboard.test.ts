@@ -100,6 +100,12 @@ mock.module("node:child_process", () => ({...cp,
   execFile(file,args,options,callback) {
     if (file === "xdotool") callback(null,"76\n")
     else if (file === exe("tmux")) {
+      if(args.includes("display-message")) {
+        assert.deepEqual(args,["-S",socket,"display-message","-p","-t",muxTarget.session,"#{history_size} #{pane_height} #{scroll_position} #{pane_in_mode}"])
+        if(variant==="scrollback-failed")callback(new Error("tmux history command failed"),"")
+        else callback(null,variant==="scrollback-malformed"?"not counts\n":variant==="scrollback-bottom"?"20 24  0\n":variant==="scrollback-empty-mode"?"20 24  1\n":"20 24 3 1\n")
+        return {}
+      }
       const server = args.at(-1).includes("#{pid}") ? (variant === "foreign-server" ? "149" : "145") + "\t" : ""
       if (variant === "detached") callback(null,"")
       else callback(null, server + (variant === "client-changed" ? "150" : "148") + "\t/dev/pts/0\tterminfo-" + launch + "\t" + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n" + (variant === "second-client" ? server+"150\t/dev/pts/2\tterminfo-"+launch+"\t"+socket+"\n" : ""))
@@ -155,6 +161,18 @@ try {
     assert.equal(adapter.muxAttachmentProof.collector.ttyRdev,34817)
     assert.equal(adapter.muxAttachmentProof.attachedClient.ttyRdev,34816)
     assert.equal(adapter.muxAttachmentProof.receiptSha256,hash(real.readFileSync(receiptPath)))
+    if (kind === "tmux") {
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:17})
+      variant="scrollback-bottom"
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:20})
+      variant="scrollback-empty-mode"
+      await assert.rejects(()=>adapter.getScrollback(),/copy mode reports no scroll position/)
+      variant="scrollback-malformed"
+      await assert.rejects(()=>adapter.getScrollback(),/scrollback.*malformed/i)
+      variant="scrollback-failed"
+      await assert.rejects(()=>adapter.getScrollback(),/tmux history command failed/)
+      variant="valid"
+    } else assert.equal(adapter.getScrollback,undefined)
     // The batch's verifier must own every existing transaction check, not only its outer boundary.
     for (const [site, failAt] of [["start",1],["read",2],["write",3]]) {
       let tests=0, callbacks=0

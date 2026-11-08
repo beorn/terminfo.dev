@@ -241,6 +241,7 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
 }
 
 export interface OwnedTerminal {
+  readonly getScrollback?: TermProbeSource["getScrollback"]
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
   readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
@@ -1295,6 +1296,12 @@ export async function createOwnedTerminal(options: {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
           return readTitle()
+        },
+      }),
+      ...(clipboard?.getScrollback && {
+        async getScrollback() {
+          if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned history read has no live bound capture")
+          return clipboard!.getScrollback!()
         },
       }),
       ...(muxAttachmentProof && { muxAttachmentProof }),

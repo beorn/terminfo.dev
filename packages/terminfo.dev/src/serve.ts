@@ -45,7 +45,12 @@ import {
 } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
 import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts"
-import { COMPLETE_DA2, COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
+import {
+  COMPLETE_DA2,
+  COMPLETE_XTVERSION,
+  resolveMeasuredAppVersion,
+  verifyTerminalIdentity,
+} from "./identity-guard.ts"
 import { withRawMode, withTTYOperation, drainStdin, queryOutcome, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
@@ -1067,12 +1072,28 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
       if (clipboard.profile !== "default") subject.permissions = clipboard.permissions
     }
+    // Only an owned history source admits this new identity path; other collection routes retain theirs.
+    const historyIdentity = ownedTerminal?.getScrollback
+      ? verifyTerminalIdentity(subject.id, batch.rawReplies)
+      : undefined
+    const historyExecutable = ownedTerminal?.muxAttachmentProof?.executable ?? provenance?.executable
+    const hasHistoryExecutable = Boolean(
+      historyExecutable?.path && /^[a-f0-9]{64}$/u.test(historyExecutable.sha256) && historyExecutable.version,
+    )
+    const historyIdentityVerified = Boolean(historyIdentity?.ok && hasHistoryExecutable)
+    if (historyIdentity) {
+      batch.rawReplies["collector.identityCheck"] = JSON.stringify({
+        ...historyIdentity,
+        ...(historyExecutable && { executable: historyExecutable }),
+        ...(!hasHistoryExecutable && { reason: "owned scrollback binary path, sha256 and version unavailable" }),
+      })
+    }
     const captured: CapturedRunDraft = {
       ...draft,
       subject,
       ...(provenance && { provenance }),
       ...(outerApp && { outerApp }),
-      identity: "unverified",
+      identity: historyIdentityVerified ? "verified" : "unverified",
       measuredAt: new Date().toISOString(),
       origin: { kind: "collector", ...(batch.appLaunch && { appLaunch: batch.appLaunch }) },
       rawReplies: { ...draft.rawReplies, ...batch.rawReplies },

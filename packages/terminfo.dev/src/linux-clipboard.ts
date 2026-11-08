@@ -52,6 +52,7 @@ export interface ClipboardTraceEvent {
 }
 
 export interface LinuxClipboardAdapter {
+  readonly getScrollback?: TermProbeSource["getScrollback"]
   readonly profile: ClipboardReceipt["profile"]
   readonly config: string
   readonly permissions: string
@@ -696,6 +697,42 @@ export async function createLinuxClipboardAdapter(
       // Preserve title whitespace, stripping only the command's one output line terminator.
       return title.replace(/\n$/u, "")
     },
+    ...(receipt.target?.kind === "mux" &&
+      receipt.target.mux === "tmux" && {
+        async getScrollback() {
+          await assertOwned()
+          const target = receipt.target
+          if (target?.kind !== "mux" || target.mux !== "tmux") throw new Error("Owned tmux history target lost")
+          const raw = await command(
+            target.executable.path,
+            [
+              "-S",
+              target.socketPath,
+              "display-message",
+              "-p",
+              "-t",
+              target.session,
+              "#{history_size} #{pane_height} #{scroll_position} #{pane_in_mode}",
+            ],
+            env,
+          )
+          await assertOwned()
+          const fields = /^(\d+) (\d+) (\d*) ([01])\n?$/u.exec(raw)
+          if (!fields) throw new Error(`Owned tmux scrollback reading malformed: ${JSON.stringify(raw)}`)
+          const history = Number(fields[1]),
+            rows = Number(fields[2])
+          if (fields[4] === "1" && fields[3] === "") throw new Error("Owned tmux copy mode reports no scroll position")
+          const fromBottom = fields[4] === "0" ? 0 : Number(fields[3])
+          if (
+            ![history, rows, fromBottom, history + rows].every(Number.isSafeInteger) ||
+            rows < 1 ||
+            fromBottom > history
+          ) {
+            throw new Error(`Owned tmux scrollback counts invalid: ${JSON.stringify(raw)}`)
+          }
+          return { totalLines: history + rows, screenLines: rows, viewportOffset: history - fromBottom }
+        },
+      }),
     get muxAttachmentProof() {
       return muxAttachmentProof ? globalThis.structuredClone(muxAttachmentProof) : undefined
     },
