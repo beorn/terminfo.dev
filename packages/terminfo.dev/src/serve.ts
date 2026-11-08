@@ -1072,7 +1072,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
       if (clipboard.profile !== "default") subject.permissions = clipboard.permissions
     }
-    // Only an owned history source admits this new identity path; other collection routes retain theirs.
+    // Retain owned binary proof for placement; collector drafts never claim verified identity.
     const historyIdentity = ownedTerminal?.getScrollback
       ? verifyTerminalIdentity(subject.id, batch.rawReplies)
       : undefined
@@ -1080,9 +1080,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     const hasHistoryExecutable = Boolean(
       historyExecutable?.path && /^[a-f0-9]{64}$/u.test(historyExecutable.sha256) && historyExecutable.version,
     )
-    const historyIdentityVerified = Boolean(historyIdentity?.ok && hasHistoryExecutable)
     if (historyIdentity) {
-      batch.rawReplies["collector.identityCheck"] = JSON.stringify({
+      batch.rawReplies["collector.historyIdentityCheck"] = JSON.stringify({
         ...historyIdentity,
         ...(historyExecutable && { executable: historyExecutable }),
         ...(!hasHistoryExecutable && { reason: "owned scrollback binary path, sha256 and version unavailable" }),
@@ -1093,7 +1092,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       subject,
       ...(provenance && { provenance }),
       ...(outerApp && { outerApp }),
-      identity: historyIdentityVerified ? "verified" : "unverified",
+      identity: "unverified",
       measuredAt: new Date().toISOString(),
       origin: { kind: "collector", ...(batch.appLaunch && { appLaunch: batch.appLaunch }) },
       rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
