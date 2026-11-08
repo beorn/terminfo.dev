@@ -624,6 +624,69 @@ test("hosted Terminal launch owns its window and closes only it before upload", 
   expect(steps.indexOf(close!)).toBeLessThan(steps.indexOf(upload!))
 })
 
+// 30729 P0: the terminal-app arm read process.env.COMMAND_PATH from a shell variable that was never
+// exported, so `bun --eval` started with undefined and AppleScript ran `do script undefined`. An
+// eval'd body is a child process: it sees the step env, GitHub's own variables, and only what the
+// shell exported or passed inline on the command line. Anything else is invisible to it.
+test("every process.env read inside a bun --eval arm reaches that child process", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  type Step = { name?: string; env?: Record<string, string>; run?: string }
+  const jobSteps = workflow.jobs["measure-macos"].steps as Step[]
+  const jobEnv = Object.keys((workflow.jobs["measure-macos"] as { env?: Record<string, string> }).env ?? {})
+  // GitHub sets these for every step without this workflow declaring them.
+  const runnerProvided = [
+    "RUNNER_TEMP",
+    "GITHUB_WORKSPACE",
+    "GITHUB_OUTPUT",
+    "GITHUB_ENV",
+    "GITHUB_STEP_SUMMARY",
+    "GITHUB_PATH",
+    "GITHUB_SHA",
+    "GITHUB_REF",
+    "GITHUB_RUN_ID",
+    "GITHUB_REPOSITORY",
+    "HOME",
+    "PATH",
+  ]
+  const arms: string[] = []
+  const unreachable: string[] = []
+  for (const step of jobSteps) {
+    if (typeof step.run !== "string") continue
+    const provided = new Set([...jobEnv, ...runnerProvided, ...Object.keys(step.env ?? {})])
+    for (const exported of step.run.matchAll(/^\s*export\s+([A-Z_][A-Z0-9_]*)=/gmu)) provided.add(exported[1]!)
+    const lines = step.run.split("\n")
+    for (let index = 0; index < lines.length; index += 1) {
+      const call = lines[index]!.indexOf("bun --eval")
+      if (call < 0) continue
+      const armLine = index + 1
+      // `COMMAND_PATH="$COMMAND_PATH" bun --eval` is the inline pass the sibling arms use.
+      const passedInline = new Set(
+        [...lines[index]!.slice(0, call).matchAll(/([A-Z_][A-Z0-9_]*)=/gu)].map((match) => match[1]!),
+      )
+      const marker = /<<'([A-Z_][A-Z0-9_]*)'/.exec(lines[index]!)?.[1]
+      const body: string[] = []
+      for (index += 1; index < lines.length; index += 1) {
+        if (lines[index]!.trim() === (marker ?? "'")) break
+        body.push(lines[index]!)
+      }
+      const reads = new Set(
+        [...body.join("\n").matchAll(/process\.env\.([A-Za-z_][A-Za-z0-9_]*)/gu)].map((match) => match[1]!),
+      )
+      // Extraction rot fails here rather than passing an arm whose body was never found.
+      expect(reads.size, `${step.name}: bun --eval arm at line ${armLine} reads no process.env`).toBeGreaterThan(0)
+      arms.push(step.name ?? "")
+      for (const name of reads) {
+        if (provided.has(name) || passedInline.has(name)) continue
+        unreachable.push(
+          `${step.name ?? "(unnamed step)"} line ${armLine} reads process.env.${name}, and the shell neither exports it nor passes it to bun --eval`,
+        )
+      }
+    }
+  }
+  expect(arms.length, "the workflow still runs JS arms through bun --eval").toBeGreaterThan(0)
+  expect(unreachable).toEqual([])
+})
+
 // The actual shared DMG caller must verify Warp before mount/copy, without changing Alacritty's operation.
 test("shared hosted DMG caller rejects altered pinned bytes before install and preserves Alacritty arguments", async () => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
