@@ -117,7 +117,7 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
   const retained: Uint8Array[] = []
   const packageUrl = import.meta.resolve("ws/package.json")
   const metadata = JSON.parse(readFileSync(new URL(packageUrl), "utf8")) as { exports: { ".": { import: string } } }
-  const actual = await import(new URL(metadata.exports["."].import, packageUrl).href) as typeof import("ws")
+  const actual = (await import(new URL(metadata.exports["."].import, packageUrl).href)) as typeof import("ws")
   const sends = vi.spyOn(actual.default.prototype, "send")
   try {
     const result = await readITermCells({
