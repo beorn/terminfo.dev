@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto"
 import { mkdirSync, readFileSync, realpathSync } from "node:fs"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { join } from "node:path"
 import type { ProbeCapture } from "./probes/unified.ts"
 
 export interface LiveExecutable {
@@ -167,14 +169,25 @@ export async function createLinuxCapture(
     ).toString()
     if (before !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
     const pointerImage = featureId === "extensions.osc22-pointer"
-    const original = pointerImage
-      ? await command(
+    let original: Buffer
+    if (pointerImage) {
+      // scrot's "-" output reopens /dev/stdout, which cannot reopen the spawn pipe.
+      const temporary = await mkdtemp(join(directory, ".osc22-"))
+      try {
+        const output = join(temporary, "pointer.png")
+        await command(
           "scrot",
-          ["--pointer", "--window", windowId, "--silent", "--format", "png", "--file", "-"],
+          ["--pointer", "--window", windowId, "--silent", "--format", "png", "--file", output],
           undefined,
           deadline,
         )
-      : await command("xwd", ["-id", windowId, "-nobdrs", "-silent"], undefined, deadline)
+        original = await readFile(output)
+      } finally {
+        await rm(temporary, { recursive: true, force: true })
+      }
+    } else {
+      original = await command("xwd", ["-id", windowId, "-nobdrs", "-silent"], undefined, deadline)
+    }
     const capturedAt = Date.now()
     const png = await command(
       "magick",
