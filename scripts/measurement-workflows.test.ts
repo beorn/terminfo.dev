@@ -616,6 +616,9 @@ test("hosted Terminal launch owns its window and closes only it before upload", 
   expect(close?.if).toContain("matrix.id == 'terminal-app'")
   expect(close?.run).toContain("closeOwnedTerminalWindow")
   expect(close?.run).toContain("terminal-window-disposal.json")
+  // A launch that ran and recorded nothing must fail loudly, never read as "no launch happened".
+  expect(close?.run).toContain("launcher.log")
+  expect(close?.run).toContain("recorded no owned window")
   const upload = steps.find((step) => step.uses === "actions/upload-artifact@v4")
   expect(upload).toBeDefined()
   expect(steps.indexOf(close!)).toBeLessThan(steps.indexOf(upload!))
