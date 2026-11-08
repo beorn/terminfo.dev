@@ -593,7 +593,9 @@ export async function runProbeBatch(
         ...(input.wheelPlacement && { wheelPlacement: input.wheelPlacement }),
         injectKey: (keys) => withTTYOperation(() => input.injectKey(keys), out, verify),
         injectClick: (button, position) => withTTYOperation(() => input.injectClick(button, position), out, verify),
-        ...(injectMove && { injectMove: (x: number, y: number) => withTTYOperation(() => injectMove(x, y), out, verify) }),
+        ...(injectMove && {
+          injectMove: (x: number, y: number) => withTTYOperation(() => injectMove(x, y), out, verify),
+        }),
         ...(injectDrag && { injectDrag: (button: 1) => withTTYOperation(() => injectDrag(button), out, verify) }),
         ...(focusRoundTrip && { focusRoundTrip: () => withTTYOperation(focusRoundTrip, out, verify) }),
         ...(resizeWindow && {
