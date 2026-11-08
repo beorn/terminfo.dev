@@ -13,7 +13,12 @@ vi.mock("node:child_process", () => ({ spawnSync: run }))
 vi.mock("node:fs", () => ({ readFileSync: readFile }))
 import { readScreenScrollback } from "./linux-screen-text.ts"
 
-const options = { executable: "screen", session: "31744.pts-0.host", hardcopyPath: "/run/owned/hardcopy.txt" }
+const options = {
+  executable: "screen",
+  session: "31744.pts-0.host",
+  socketDirectory: "/run/owned/screen",
+  hardcopyPath: "/run/owned/hardcopy.txt",
+}
 beforeEach(() => {
   run.mockReset()
   readFile.mockReset()
@@ -29,7 +34,10 @@ test("reads the owned session hardcopy and counts every retained line", () => {
   expect(run).toHaveBeenCalledWith(
     options.executable,
     ["-S", options.session, "-X", "hardcopy", "-h", options.hardcopyPath],
-    expect.objectContaining({ stdio: ["pipe", "pipe", "pipe"] }),
+    expect.objectContaining({
+      stdio: ["pipe", "pipe", "pipe"],
+      env: expect.objectContaining({ SCREENDIR: options.socketDirectory }),
+    }),
   )
   expect(readFile).toHaveBeenCalledWith(options.hardcopyPath, "utf8")
 })
@@ -43,6 +51,34 @@ test("an unterminated last line is still a retained line", () => {
 test("no explicit session never reaches an ambient one", () => {
   expect(readScreenScrollback({ ...options, session: undefined })).toMatchObject({ status: "refused" })
   expect(readScreenScrollback({ ...options, session: "  " })).toMatchObject({ status: "refused" })
+  expect(run).not.toHaveBeenCalled()
+  expect(readFile).not.toHaveBeenCalled()
+})
+
+test("the owned socket directory is the one the child is told to read", () => {
+  exit(0)
+  readFile.mockReturnValue("one\n")
+  expect(readScreenScrollback({ ...options, socketDirectory: "/run/owned/other" })).toMatchObject({
+    status: "read",
+    totalLines: 1,
+  })
+  expect(run.mock.calls[0]?.[2]?.env?.SCREENDIR).toBe("/run/owned/other")
+})
+
+test("a socket directory holding no session refuses with its reason, never zero lines", () => {
+  exit(1, "", "No screen session found.")
+  const result = readScreenScrollback({ ...options, socketDirectory: "/run/owned/empty" })
+  expect(result.status).toBe("refused")
+  if (result.status !== "refused") throw new Error("Expected a refusal")
+  expect(result.reason).toContain("No screen session found.")
+  expect(result.reason).toContain("/run/owned/empty")
+  expect(readFile).not.toHaveBeenCalled()
+})
+
+test("a blank or relative socket directory is refused before any spawn", () => {
+  for (const socketDirectory of ["", "   ", "run/owned/screen"]) {
+    expect(readScreenScrollback({ ...options, socketDirectory })).toMatchObject({ status: "refused" })
+  }
   expect(run).not.toHaveBeenCalled()
   expect(readFile).not.toHaveBeenCalled()
 })

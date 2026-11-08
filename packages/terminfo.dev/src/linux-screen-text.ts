@@ -1,11 +1,14 @@
 /** The owned Linux screen CLI's retained scrollback, read through its own `hardcopy -h`. */
 import { spawnSync } from "node:child_process"
 import { readFileSync } from "node:fs"
+import { isAbsolute } from "node:path"
 
 interface ScreenScrollbackOptions {
   readonly executable: string
   /** The explicit owned session; absent, blank or padded never falls back to an ambient one. */
   readonly session: string | undefined
+  /** This run's own screen socket directory; the ambient SCREENDIR is never used. */
+  readonly socketDirectory: string
   /** Where this run's own hardcopy writes; never a shared or ambient file. */
   readonly hardcopyPath: string
 }
@@ -24,15 +27,23 @@ export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenSc
   if (session === "" || /\s/u.test(session)) {
     return { status: "refused", reason: "screen reader has no explicit owned session name" }
   }
+  const socketDirectory = options.socketDirectory?.trim() ?? ""
+  if (socketDirectory === "" || !isAbsolute(socketDirectory)) {
+    return {
+      status: "refused",
+      reason: `screen reader needs an absolute owned socket directory, got ${JSON.stringify(options.socketDirectory)}`,
+    }
+  }
   const result = spawnSync(options.executable, ["-S", session, "-X", "hardcopy", "-h", options.hardcopyPath], {
     stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, SCREENDIR: socketDirectory },
   })
   const stdout = result.stdout?.toString() ?? ""
   const stderr = result.stderr?.toString() ?? ""
   if (result.status !== 0) {
     return {
       status: "refused",
-      reason: `screen hardcopy exited ${String(result.status)}: stderr=${JSON.stringify(stderr)} stdout=${JSON.stringify(stdout)}`,
+      reason: `screen hardcopy exited ${String(result.status)} at SCREENDIR=${JSON.stringify(socketDirectory)}: stderr=${JSON.stringify(stderr)} stdout=${JSON.stringify(stdout)}`,
     }
   }
   let text: string
