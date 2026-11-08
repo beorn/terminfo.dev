@@ -39,7 +39,7 @@
   },
   "dependencies": {
     "@silvery/ansi": "0.29.0",
-    "@silvery/commander": "0.29.0",
+    "@silvery/commander": "0.29.1",
     "@termless/core": "0.11.0",
     "commander": "15.1.0",
     "loggily": "0.13.0",
