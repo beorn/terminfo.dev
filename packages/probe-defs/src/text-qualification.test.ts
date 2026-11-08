@@ -115,12 +115,21 @@ describe("text qualification recipes", () => {
   })
 
   it("names one recipe per observer context and none elsewhere", () => {
-    expect(textQualificationRecipeFor(macos)).toBe("macos-text-cells-v1")
+    expect(textQualificationRecipeFor(macos)).toBe("iterm2-api-text-cells-v1")
     expect(textQualificationRecipeFor(subject("macOS", "terminal-app"))).toBe("macos-text-cells-v1")
     expect(textQualificationRecipeFor(windowsTerminal)).toBe("windows-terminal-text-cells-v1")
     expect(textQualificationRecipeFor(subject("windows", "alacritty"))).toBeUndefined()
     expect(textQualificationRecipeFor(subject("linux", "kitty"))).toBeUndefined()
     expect(textQualificationRecipeFor(subject("macos", "tmux", "mux"))).toBeUndefined()
+  })
+
+  it("qualifies the iTerm API recipe only on iTerm while retaining declared older macOS recipes", () => {
+    const current = run(macos, "iterm2-api-text-cells-v1")
+    expect(assessTextQualification(current.run, current.snapshots)).toEqual({ qualified: true })
+    const old = run(macos, "macos-text-cells-v1")
+    expect(assessTextQualification(old.run, old.snapshots)).toEqual({ qualified: true })
+    const wrong = run(subject("macos", "terminal-app"), "iterm2-api-text-cells-v1")
+    expect(assessTextQualification(wrong.run, wrong.snapshots).qualified).toBe(false)
   })
 
   it("admits only a declared, host-free text read in a recipe's context", () => {
