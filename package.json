@@ -38,12 +38,12 @@
     "fix": "oxfmt --write ."
   },
   "dependencies": {
-    "@silvery/ansi": "0.26.0",
-    "@silvery/commander": "0.26.0",
-    "@termless/core": "0.10.2",
+    "@silvery/ansi": "0.29.0",
+    "@silvery/commander": "0.29.1",
+    "@termless/core": "0.11.0",
     "commander": "15.1.0",
     "loggily": "0.13.0",
-    "silvery": "0.26.0"
+    "silvery": "0.29.0"
   },
   "devDependencies": {
     "@terminfo/admin": "workspace:*",
@@ -51,7 +51,7 @@
     "@terminfo/probe-defs": "workspace:*",
     "@terminfo/probes": "workspace:*",
     "@terminfo/run-parser": "workspace:*",
-    "@termless/xtermjs": "0.10.2",
+    "@termless/xtermjs": "0.11.0",
     "@vue/server-renderer": "3.5.45",
     "oxfmt": "0.76.0",
     "terminfo.dev": "workspace:*",
