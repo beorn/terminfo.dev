@@ -126,6 +126,46 @@ test("OSC7 preserves its existing App observation when the owned semantic reader
   expect(await wrapped.term!(source)).toBe(previous)
 })
 
+// Library icon getters never exercise the native callback binding. A native pair
+// must decide these effects even when both label-report queries are silent.
+test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
+  "%s uses independent native icon/title state and preserves its unavailable fallback",
+  async (id) => {
+    const pair = (title: string, icon: string) => JSON.stringify([title, icon])
+    const before = pair("title-control", "icon-control")
+    const expected = pair(id.includes("osc0") ? "target" : "title-control", "target")
+    const reading: AppSemanticReading = {
+      status: "measured",
+      reader: "state",
+      runId: "a".repeat(32),
+      unknown: { before, after: before },
+      handled: { before: pair("original", "original"), after: before, expected: before },
+      target: { before, after: expected, expected },
+      detail: { title: "independent owned title", icon: "owned native icon property" },
+    }
+    const source = replayTermProbeSource(new Map())
+    const seen: string[] = []
+    source.readAppSemanticState = async (featureId, write) => {
+      seen.push(featureId)
+      expect(write).toBe(source.write)
+      return reading
+    }
+    const definition = extensionsProbes.find((probe) => probe.id === id)!
+    expect(await definition.term!(source)).toMatchObject({ observation: { outcome: "supported" } })
+    expect(seen).toEqual([id])
+    for (const after of [before, pair("wrong-title", "target"), pair("target", "wrong-icon")]) {
+      source.readAppSemanticState = async () => ({ ...reading, target: { before, after, expected } })
+      expect((await definition.term!(source)).observation?.outcome).not.toBe("supported")
+    }
+    const previous = parserStateResult(true, "existing qualified native observation", {})
+    source.readAppSemanticState = async () => ({ status: "unavailable", reason: "no owned icon property" })
+    const wrapped = withAppSemanticObservation({ id, lib: null, term: async () => previous })
+    expect(await wrapped.term!(source)).toBe(previous)
+    source.readAppSemanticState = async () => ({ status: "invalid", reason: "owner revoked" })
+    expect(await wrapped.term!(source)).toMatchObject({ tests: [{ status: "probe-invalid" }] })
+  },
+)
+
 test("log rows preserve decided measurements and override only unresolved or no-setup results", async () => {
   for (const id of [
     "extensions.osc176-app-id",
