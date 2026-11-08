@@ -778,7 +778,13 @@ jobs:
           const { closeOwnedTerminalWindow } = require(process.cwd() + "/packages/terminfo.dev/src/terminal-app-window.ts");
           const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
           const record = join(out, "terminal-launch.json");
-          if (!existsSync(record)) { console.log("No Terminal launch was created; nothing owned to close"); }
+          if (!existsSync(record)) {
+            // The arm below truncates this log the moment it runs, so its presence is proof an attempt
+            // happened. A failed attempt is never reported as "no launch": that would name an absent
+            // window while a window may exist and no record can close it.
+            if (existsSync(join(out, "launcher.log"))) throw new Error("Terminal launch ran but recorded no owned window; read " + join(out, "launcher.log"));
+            console.log("terminal-app run did not reach the launch arm; nothing owned to close");
+          }
           else {
             const { appId, terminalWindow } = JSON.parse(readFileSync(record, "utf8"));
             // Recheck the exact window id and tab TTY, then close only that window.
