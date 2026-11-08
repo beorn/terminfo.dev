@@ -53,6 +53,9 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/darwin-capture.ts",
   "packages/terminfo.dev/src/darwin-kernel-exec.ts",
   "packages/terminfo.dev/src/darwin-terminal-text.ts",
+  "packages/terminfo.dev/src/iterm2-protocol.ts",
+  "packages/terminfo.dev/src/iterm2-api.proto",
+  "bun.lock",
   "packages/terminfo.dev/src/capture-calibration.ts",
   "packages/terminfo.dev/src/text-qualification.ts",
   "packages/terminfo.dev/src/linux-input.ts",
@@ -195,6 +198,7 @@ function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
   return [
     ...snapshot.sourcePaths,
     "packages/terminfo.dev/src",
+    "packages/terminfo.dev/package.json",
     "packages/terminfo.dev/bin/terminfo.mjs",
     "packages/admin/versions.ts",
     "packages/admin/app-harness.ts",

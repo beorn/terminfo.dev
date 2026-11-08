@@ -1376,7 +1376,8 @@ export async function createOwnedTerminal(options: {
       }),
       ...(darwinTextApp !== undefined &&
         darwinTextTty !== undefined && {
-          textRecipe: "macos-text-cells-v1" as const,
+          textRecipe:
+            darwinTextApp === "iterm2" ? ("iterm2-api-text-cells-v1" as const) : ("macos-text-cells-v1" as const),
           async readCells(checkpoint?: Parameters<NonNullable<OwnedTerminal["readCells"]>>[0]) {
             if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
             const geometry = await owner.readGeometry()
@@ -1455,7 +1456,21 @@ export async function createOwnedTerminal(options: {
                 rows: geometry.rows,
                 ...(checkpoint && {
                   onReply: (bytes: Uint8Array) => {
-                    retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
+                    const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
+                    retain(
+                      checkpoint.directory,
+                      Buffer.from(
+                        JSON.stringify({
+                          captureRunId,
+                          checkpoint: checkpoint.label,
+                          tty: darwinTextTty,
+                          grid: { rows: geometry.rows, cols: geometry.cols },
+                          reply,
+                        }),
+                      ),
+                      "json",
+                      checkpoint.onRetained,
+                    )
                   },
                 }),
               })

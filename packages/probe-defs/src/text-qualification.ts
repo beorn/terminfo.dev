@@ -15,6 +15,7 @@ const MAPPING_SHAPES = [
  * a Linux run that recorded the macOS recipe is neither admitted nor qualified.
  */
 export const TEXT_QUALIFICATION_RECIPES = {
+  "iterm2-api-text-cells-v1": { os: "macos", app: "iterm2", shapes: MAPPING_SHAPES },
   "macos-text-cells-v1": { os: "macos", app: undefined, shapes: MAPPING_SHAPES },
   // Windows Terminal through UI Automation. The console host keeps its own copy of every cell, so
   // this recipe also proves, every run, that the observer reads the terminal's buffer (#30720).
@@ -174,7 +175,11 @@ export function assessTextQualification(
   const declaration = run.textQualificationSpec
   const declared =
     declaration === undefined ? [] : "recipes" in declaration ? declaration.recipes : [declaration.recipe]
-  const recipe = textQualificationRecipeFor(run.subject)
+  // Assess the observer that the retained declaration names, rather than replacing it with
+  // today's preferred observer. Adding an app-specific recipe must not reinterpret older runs.
+  const recipe = textQualificationRecipeMatchesSubject(qualification.recipe, run.subject)
+    ? (qualification.recipe as TextQualificationRecipe)
+    : textQualificationRecipeFor(run.subject)
   if (
     !declaration ||
     ![1, 2].includes(qualification.version) ||

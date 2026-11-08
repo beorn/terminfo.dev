@@ -4,8 +4,11 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { connect } from "node:net"
 import protobuf from "protobufjs"
-import WebSocket from "ws"
+import type WebSocketType from "ws"
 import { mapITermBufferToCells, type ITermLineContents, type TerminalTextRead } from "./darwin-terminal-text.ts"
+
+/** The existing CLI builder embeds the exact vendored bytes; source execution reads that file. */
+declare const __TERMINFO_ITERM_PROTO__: string | undefined
 
 const object = (value: unknown, label: string): Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${label} is not an object`)
@@ -24,7 +27,7 @@ export async function readITermCells(options: {
   /** Original server frames, before decoding; never authentication headers or cookie output. */
   onReply?: (bytes: Uint8Array) => void
 }): Promise<TerminalTextRead> {
-  let socket: WebSocket | undefined
+  let socket: WebSocketType | undefined
   const deadline = Date.now() + 5000
   const remaining = () => {
     const time = deadline - Date.now()
@@ -32,9 +35,22 @@ export async function readITermCells(options: {
     return time
   }
   try {
+    // Bun aliases bare `ws` imports to its builtin. Resolve the installed package's exported
+    // ESM entry instead, so the declared/locked ws artifact is the client we actually execute.
+    const packageUrl = import.meta.resolve("ws/package.json")
+    const packageJson = JSON.parse(readFileSync(new URL(packageUrl), "utf8")) as {
+      exports: { ".": { import: string } }
+    }
+    const { default: WebSocket } = (await import(new URL(packageJson.exports["."].import, packageUrl).href)) as {
+      default: typeof WebSocketType
+    }
     // Lazy load: another terminal arm does not depend on iTerm's protocol resource being present.
-    // The build retains these exact official bytes beside the bundle; parser failure has no fallback.
-    const root = protobuf.parse(readFileSync(new URL("./iterm2-api.proto", import.meta.url), "utf8"), {
+    // The build retains these exact official bytes inside the bundle; parser failure has no fallback.
+    const proto =
+      typeof __TERMINFO_ITERM_PROTO__ === "undefined"
+        ? readFileSync(new URL("./iterm2-api.proto", import.meta.url), "utf8")
+        : __TERMINFO_ITERM_PROTO__
+    const root = protobuf.parse(proto, {
       keepCase: true,
     }).root
     const client = root.lookupType("iterm2.ClientOriginatedMessage")

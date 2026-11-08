@@ -7,6 +7,7 @@
  * @source-grep mkdtemp roots hold createComposedFixture's clone; workflow build steps write the compared dist/terminfo.bundle.mjs there.
  */
 import { execFileSync, spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   appendFileSync,
   copyFileSync,
@@ -194,10 +195,36 @@ it("stays green on a composed tree and records the live suite identity that the 
       probeHash: string
       collectorRevision: string
       bundleSha256: string
+      clientClosure: {
+        protoSha256: string
+        codec: { name: string; version: string; integrity: string }
+        websocket: { name: string; version: string; integrity: string }
+      }
       manifestSha256?: unknown
       suiteState?: unknown
     }
-    expect(Object.keys(receipt).sort()).toEqual(["bundleSha256", "collectorRevision", "probeHash", "schemaVersion"])
+    expect(Object.keys(receipt).sort()).toEqual([
+      "bundleSha256",
+      "clientClosure",
+      "collectorRevision",
+      "probeHash",
+      "schemaVersion",
+    ])
+    expect(receipt.clientClosure.protoSha256).toBe(
+      createHash("sha256")
+        .update(readFileSync(join(fixture, "packages/terminfo.dev/src/iterm2-api.proto")))
+        .digest("hex"),
+    )
+    expect(receipt.clientClosure.codec).toMatchObject({
+      name: "protobufjs",
+      version: "8.8.1",
+      integrity: expect.stringMatching(/^sha512-/u),
+    })
+    expect(receipt.clientClosure.websocket).toMatchObject({
+      name: "ws",
+      version: "8.22.0",
+      integrity: expect.stringMatching(/^sha512-/u),
+    })
     expect(receipt.schemaVersion).toBe(1)
     expect(receipt.probeHash).toMatch(/^[0-9a-f]{12}$/)
     expect(receipt.collectorRevision).toBe(headRevision)

@@ -71,6 +71,43 @@ test("spent iTerm consent action is absent from the workflow", () => {
   expect(workflow).not.toContain("iterm_consent_check")
 })
 
+test.each(["1", "0"])("iTerm API preference readback %s controls launch after the existing checks", (readback) => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect").run
+  const script = collect.match(/<<'ITERM_STARTUP'\n([\s\S]*?)\n\s*ITERM_STARTUP/u)?.[1]
+  if (!script) throw new Error("Existing iTerm startup block is absent")
+  const calls: { file: string; args: string[] }[] = []
+  const execute = () =>
+    runInNewContext(script, {
+      Buffer,
+      process: { argv: ["node", "-", "/Applications/iTerm.app", "--command=fixture"], stdout: { write() {} } },
+      require: () => ({
+        spawnSync: (file: string, args: string[]) => {
+          calls.push({ file, args })
+          const stdout = file.endsWith("PlistBuddy")
+            ? args.includes("Print :CFBundleIdentifier")
+              ? "com.googlecode.iterm2"
+              : "3.6.11"
+            : file.endsWith("defaults") && args[0] === "read"
+              ? readback
+              : ""
+          return { status: file.endsWith("pgrep") ? 1 : 0, stdout, stderr: "", signal: null }
+        },
+      }),
+    })
+  if (readback === "1") execute()
+  else expect(execute).toThrow(/API server/u)
+  const api = calls.filter(({ args }) => args.includes("EnableAPIServer"))
+  expect(api.map(({ args }) => args)).toEqual([
+    ["write", "com.googlecode.iterm2", "EnableAPIServer", "-bool", "true"],
+    ["read", "com.googlecode.iterm2", "EnableAPIServer"],
+  ])
+  const first = api[0]
+  if (!first) throw new Error("API preference write absent")
+  expect(calls.findIndex(({ file }) => file.endsWith("pgrep"))).toBeLessThan(calls.indexOf(first))
+  expect(calls.some(({ file }) => file.endsWith("/open"))).toBe(readback === "1")
+})
+
 // The actual shell must launch and record one array. Parser fixtures cannot catch a
 // workflow that records a parallel recipe or never writes the uploaded handoff.
 test.each([

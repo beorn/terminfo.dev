@@ -115,6 +115,10 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
     },
   })
   const retained: Uint8Array[] = []
+  const packageUrl = import.meta.resolve("ws/package.json")
+  const metadata = JSON.parse(readFileSync(new URL(packageUrl), "utf8")) as { exports: { ".": { import: string } } }
+  const actual = await import(new URL(metadata.exports["."].import, packageUrl).href) as typeof import("ws")
+  const sends = vi.spyOn(actual.default.prototype, "send")
   try {
     const result = await readITermCells({
       tty: "/dev/ttys004",
@@ -122,6 +126,7 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
       rows: 2,
       onReply: (bytes) => retained.push(bytes),
     })
+    expect(sends).toHaveBeenCalled()
     expect(headers, JSON.stringify(result)).toEqual(["test-cookie", "test-key", "true", "api.iterm2.com"])
     if (mode === "match") {
       expect(result).toEqual({
@@ -141,6 +146,7 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
       if (mode === "missing") expect(requests.some((request) => request.get_buffer_request)).toBe(false)
     }
   } finally {
+    sends.mockRestore()
     server.stop(true)
   }
 })
