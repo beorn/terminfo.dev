@@ -1167,7 +1167,13 @@ Version 1 qualifies only the macOS snapshot. Existing declarations remain readab
 unknown versions or recipes remain retained but never qualify. The Windows Terminal 1.21 recipe
 uses the existing shared cell mapping and adds a per-run ownership witness: raw host U+0001 must
 differ from the terminal observer's row. UIA reads use the measured 50 ms settle gap and four pairs,
-and refuse unmarked line rendition. Alacritty and WezTerm on Windows retain their host read.
+and refuse unmarked line rendition. Windows WezTerm's app-specific candidate uses its sibling
+`wezterm.exe cli --no-auto-start get-text`, with the socket and explicit pane read from the verified
+collector child's environment after its live owner/geometry check. Piped stdio and a hidden window
+keep that CLI off the measured console. It uses the same five shapes, host-ownership witness and
+mode/blank-grid restoration; failures remain named unavailable with exit/stderr/bytes retained.
+Plain text carries no attributes: DECCARA, DECRARA and EL-with-attributes stay held. No native
+qualification follows from source tests. Alacritty retains its unqualified console-host read.
 The execution writer freezes the qualification test before seal. The canonical parser validates
 version-2 observer context against the same table; site projection preserves recorded results.
 Source verification supplies no native main-run, collection, grading or publication authority.

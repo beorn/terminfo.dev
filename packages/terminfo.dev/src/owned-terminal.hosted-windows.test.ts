@@ -7,7 +7,7 @@
  * @testonly none
  */
 import { spawnSync } from "node:child_process"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
@@ -154,6 +154,44 @@ const alacrittyTable: readonly TableRow[] = [
   { pid: 9644, ppid: 6348, comm: "bash.exe" },
   { pid: 6348, ppid: 5672, comm: "Runner.Worker.exe" },
 ]
+
+// The approved Windows WezTerm route must opt into qualification rather than passing its
+// console-host buffer off as terminal text. Existing Alacritty coverage cannot catch that selection.
+test("hosted WezTerm selects its own text recipe while preserving the measured host binding", () => {
+  const receiptPath = writeHostedReceipt("D:\\a\\_temp\\wezterm\\wezterm-gui.exe")
+  const receipt = JSON.parse(readFileSync(receiptPath, "utf8"))
+  receipt.appLaunch.productVersion = "20240203-110809-5046fc22"
+  receipt.appLaunch.sourceArtifact = {
+    kind: "portable-zip",
+    path: "D:\\a\\_temp\\measurement-artifacts\\WezTerm-windows-20240203-110809-5046fc22.zip",
+    sha256: digest("wezterm archive"),
+  }
+  delete receipt.appLaunch.mesaRenderer
+  writeFileSync(receiptPath, JSON.stringify(receipt))
+  const table = alacrittyTable.map((row) => ({
+    ...row,
+    comm: row.comm === "alacritty.exe" ? "wezterm-gui.exe" : row.comm === "conhost.exe" ? "OpenConsole.exe" : row.comm,
+  }))
+  const result = spawnHostedOwner(
+    receiptPath,
+    table,
+    `
+      assert.equal(owner.hostedAppId, "wezterm")
+      assert.equal(owner.textRecipe, "wezterm-windows-text-cells-v1")
+      // These are the verified child's environment, changed AFTER constructing the owner. An
+      // eager read of the launch parent's values would not retain this explicit current binding.
+      process.env.WEZTERM_PANE = "42"
+      process.env.WEZTERM_UNIX_SOCKET = "owned-child-socket"
+      const read = await owner.readCells()
+      assert.equal(read.status, "refused") // The Windows sibling CLI is absent in this Linux fixture.
+      assert.match(read.reason, /"pane":"42"/)
+      assert.match(read.reason, /"socket":"owned-child-socket"/)
+      await owner.dispose()
+      await assert.rejects(() => owner.readCells(), /no live bound capture/)
+    `,
+  )
+  expect(result.status, result.stderr).toBe(0)
+})
 
 /** Runs createOwnedTerminal in a child that reads `table` as the Windows process table, then `assertions`. */
 function spawnHostedOwner(receiptPath: string, table: readonly TableRow[], assertions = "") {

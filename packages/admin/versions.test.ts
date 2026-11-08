@@ -232,7 +232,12 @@ test("text claims derive only from explicitly eligible app definitions and survi
       textClaims: expected,
       textQualification: {
         version: 2,
-        recipes: ["iterm2-api-text-cells-v1", "macos-text-cells-v1", "windows-terminal-text-cells-v1"],
+        recipes: [
+          "iterm2-api-text-cells-v1",
+          "macos-text-cells-v1",
+          "windows-terminal-text-cells-v1",
+          "wezterm-windows-text-cells-v1",
+        ],
       },
     })
     const { textClaims: _claims, textQualification: _spec, ...old } = snapshot

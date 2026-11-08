@@ -47,6 +47,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/windows-kernel32.ts",
   "packages/terminfo.dev/src/windows-process-ancestry.ts",
   "packages/terminfo.dev/src/windows-terminal-text.ts",
+  "packages/terminfo.dev/src/windows-wezterm-text.ts",
   "packages/terminfo.dev/src/disposable-receipt.ts",
   "packages/terminfo.dev/src/linux-capture.ts",
   "packages/terminfo.dev/src/capture-core.ts",

@@ -24,6 +24,11 @@ export const TEXT_QUALIFICATION_RECIPES = {
     app: "windows-terminal",
     shapes: [...MAPPING_SHAPES, "console-host-ownership"],
   },
+  "wezterm-windows-text-cells-v1": {
+    os: "windows",
+    app: "wezterm",
+    shapes: [...MAPPING_SHAPES, "console-host-ownership"],
+  },
 } as const satisfies Record<string, { os: string; app: string | undefined; shapes: readonly TextQualificationShape[] }>
 
 export type TextQualificationRecipe = keyof typeof TEXT_QUALIFICATION_RECIPES
