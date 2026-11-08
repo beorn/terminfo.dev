@@ -1213,15 +1213,34 @@ export async function createOwnedTerminal(options: {
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
     const readTitle = clipboard?.readTitle.bind(clipboard)
-    // A mux's own reader wins; the outer Kitty's buffer is never that mux's history.
-    const kittyClipboard = !muxAttachmentProof && process.env.TERMINFO_TARGET_ID === "kitty" ? clipboard : undefined
+    // A mux's own reader wins; foreign terminal variables never select an App reader.
+    const ownedAppId = process.env.TERMINFO_TARGET_ID
+    const appClipboard =
+      !muxAttachmentProof && (ownedAppId === "kitty" || ownedAppId === "wezterm") ? clipboard : undefined
     const kittySocket = process.env.KITTY_LISTEN_ON
     const kittyWindow = process.env.KITTY_WINDOW_ID
     const readScrollback =
       clipboard?.getScrollback?.bind(clipboard) ??
-      (linux && kittyClipboard
+      (linux && appClipboard
         ? async () => {
-            await kittyClipboard.assertOwned()
+            await appClipboard.assertOwned()
+            if (ownedAppId === "wezterm") {
+              const geometry = await readBoundGeometry(binding, windowsKernel)
+              if (geometry.status !== "measured") {
+                throw new Error(`Owned WezTerm history needs a measured grid: ${geometry.diagnostic}`)
+              }
+              const read = readWindowsWezTermRows({
+                executable: join(dirname(linux.executable.path), "wezterm"),
+                pane: process.env.WEZTERM_PANE,
+                socket: process.env.WEZTERM_UNIX_SOCKET,
+                cols: geometry.cols,
+                rows: geometry.rows,
+                startLine: -2147483648,
+              })
+              await appClipboard.assertOwned()
+              if (read.status === "refused") throw new Error(read.reason)
+              return { totalLines: read.rows.length, screenLines: geometry.rows }
+            }
             if (kittySocket === undefined || kittyWindow === undefined) {
               throw new Error("Owned Kitty history requires KITTY_LISTEN_ON and KITTY_WINDOW_ID from its child")
             }
@@ -1230,7 +1249,7 @@ export async function createOwnedTerminal(options: {
               socket: kittySocket,
               window: kittyWindow,
             })
-            await kittyClipboard.assertOwned()
+            await appClipboard.assertOwned()
             if (read.status === "refused") throw new Error(read.reason)
             return { totalLines: read.totalLines, screenLines: read.screenLines }
           }

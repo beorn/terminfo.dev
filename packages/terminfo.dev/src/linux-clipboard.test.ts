@@ -384,6 +384,7 @@ import { mock } from "bun:test"
 const mode = process.env.TERMINFO_OWNED_TTY_CHILD
 // The existing PTY owner fixture exercises the collector callback, unlike the direct CLI-reader tests.
 let kittyRefused = false, kittyReads = 0
+let weztermRefused = false, weztermReads = 0
 const spawnSyncBeforeMock = realChildProcess.spawnSync
 const foreignFd = Number(process.env.TERMINFO_FOREIGN_TTY_FD)
 const root = process.env.TERMINFO_TEST_SOURCE_ROOT
@@ -439,6 +440,14 @@ try {
   }))
   mock.module("node:child_process", () => ({ ...realChildProcess,
     spawnSync(file, args, options) {
+      if (file === join(dir, "wezterm")) {
+        weztermReads++
+        assert.deepEqual(args, ["cli", "--no-auto-start", "get-text", "--pane-id", "17", "--start-line", "-2147483648", "--end-line", "23"])
+        assert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
+        assert.equal(options.env.WEZTERM_PANE, "17")
+        if (weztermRefused) return { status: 2, stdout: Buffer.from("partial"), stderr: Buffer.from("owned WezTerm fixture refusal") }
+        return { status: 0, stdout: Buffer.from("old\n\n" + "row\n".repeat(24) + "\n"), stderr: Buffer.alloc(0) }
+      }
       if (file !== join(dir, "kitten")) return spawnSyncBeforeMock(file, args, options)
       kittyReads++
       assert.equal(args[2], process.env.KITTY_LISTEN_ON)
@@ -515,6 +524,35 @@ try {
     await otherApp.dispose()
     process.env.TERMINFO_TARGET_ID = "kitty"
     assert.equal(kittyReads, readsBefore, "a mux or other App must never query the outer Kitty")
+    // Reader-only tests miss registration: this real owner fixture must reach the WezTerm callback
+    // despite foreign KITTY_* variables and preserve physical blank history rows without an offset.
+    process.env.TERMINFO_TARGET_ID = "wezterm"
+    process.env.WEZTERM_UNIX_SOCKET = join(dir, "wezterm.sock")
+    process.env.WEZTERM_PANE = "17"
+    const weztermOwner = await factory(process.stdout, "1".repeat(32))
+    assert.equal(typeof weztermOwner.getScrollback, "function", "owned Linux WezTerm history callback is missing")
+    assert.deepEqual(await weztermOwner.getScrollback(), { totalLines: 27, screenLines: 24 })
+    assert.equal(kittyReads, readsBefore, "owned WezTerm must not query foreign Kitty")
+    weztermRefused = true
+    await assert.rejects(weztermOwner.getScrollback(), error =>
+      /WezTerm owned get-text unavailable/.test(error.message) &&
+      error.message.includes(Buffer.from("partial").toString("base64")) &&
+      error.message.includes(Buffer.from("owned WezTerm fixture refusal").toString("base64")))
+    weztermRefused = false
+    const weztermAssert = weztermOwner.clipboard.assertOwned
+    for (const boundary of [1, 2]) {
+      let checks = 0
+      const before = weztermReads
+      weztermOwner.clipboard.assertOwned = async () => {
+        if (++checks === boundary) throw lostOwner
+        await weztermAssert()
+      }
+      await assert.rejects(weztermOwner.getScrollback(), error => error === lostOwner)
+      assert.equal(weztermReads - before, boundary === 1 ? 0 : 1)
+    }
+    weztermOwner.clipboard.assertOwned = weztermAssert
+    await weztermOwner.dispose()
+    process.env.TERMINFO_TARGET_ID = "kitty"
     assert.deepEqual([adapter.geometryAtGrant.status, adapter.geometryAtGrant.rows, adapter.geometryAtGrant.cols],
       ["measured", 24, 61])
     assert.deepEqual(JSON.parse(adapter.summary).geometryAtGrant, adapter.geometryAtGrant)
