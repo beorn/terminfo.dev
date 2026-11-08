@@ -1541,9 +1541,7 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
   const input = ctx.input
   const move = input?.injectMove?.bind(input)
   const readInput = ctx.readInput
-  const coordinates = geometry
-    ? { x: Math.floor(geometry.textWidth / 2), y: Math.floor(geometry.textHeight / 2) }
-    : undefined
+  let coordinates: { x: number; y: number } | undefined
   const controls: {
     mouseModes: Array<{ mode: number; reading: string | null }>
     visibility?: string | null
@@ -1571,7 +1569,8 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
   if (visibleCursor !== "set" && visibleCursor !== "reset") {
     return pending(`${id}: incoming text-cursor visibility cannot be restored`)
   }
-  const { x, y } = coordinates!
+  coordinates = { x: Math.floor(geometry.textWidth / 2), y: Math.floor(geometry.textHeight / 2) }
+  const { x, y } = coordinates
   // An actual motion event is needed even when the pointer is already at the requested position.
   const position = async () => {
     await move(x + 1, y)
@@ -1608,13 +1607,15 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
       await position()
       const shown = await shoot("motion restores pointer")
       if (hidden.pixelsDigest === baseline) return pending(`${id}: keypress did not qualify pointer sensitivity`)
-      if (shown.pixelsDigest !== baseline)
+      if (shown.pixelsDigest !== baseline) {
         return pending(`${id}: motion did not restore the initial pointer image`, true)
+      }
       pointerWritten = true
       ctx.write("\x1b]22;terminfo-unknown-shape\x07")
       const unknown = await shoot("made-up name at baseline")
-      if (unknown.pixelsDigest !== baseline)
+      if (unknown.pixelsDigest !== baseline) {
         return pending(`${id}: made-up pointer name changed the baseline image`, true)
+      }
       ctx.write("\x1b]22;crosshair\x07")
       const target = await captureStabilityPair(
         id,
@@ -1669,8 +1670,8 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
     }
   }
   // Include restoration frames in both the graded observation and its retained assertion payload.
-  if (result!.assertions) result!.assertions[0]!.observed = JSON.stringify(state())
-  return result!
+  for (const assertion of result.assertions ?? []) assertion.observed = JSON.stringify(state())
+  return result
 }
 
 /** Original whole-window recipes: qualify capture sensitivity before progress/flash no-change. */

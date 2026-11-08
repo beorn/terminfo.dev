@@ -929,7 +929,7 @@ it("forwards owned buttonless motion with its fixture binding", async () => {
     definition.term = async (ctx) => {
       if (!ctx.input?.injectMove) throw new Error("Missing owned motion fixture")
       await ctx.input.injectMove(32, 48)
-      return notTestedResult("Motion forwarding exercised")
+      return notTestedResult("Motion forwarding exercised", {})
     }
     await runProbeBatch({
       ids: [definition.id],
@@ -2356,7 +2356,7 @@ it.each([
       delete definition.termNeedsDisposable
       definition.term = async (ctx) => {
         seen.push(typeof ctx.capture === "function")
-        return notTestedResult("Capture routing exercised without terminal operations")
+        return notTestedResult("Capture routing exercised without terminal operations", {})
       }
     }
     await runProbeBatch({
