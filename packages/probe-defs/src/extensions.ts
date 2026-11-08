@@ -41,7 +41,6 @@ import {
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
   sentinelSilenceResult,
-  sgrCaptureFrames,
   sgrCaptureTooSmall,
   unmeasuredCellResult,
   stackStateResult,
@@ -54,6 +53,7 @@ import {
 import { measureAlternateReflow } from "./modes.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import {
+  awaitPaintWitness,
   beginCaptureLifecycle,
   captureRegionGeometry,
   captureRegionCallbackResult,
@@ -282,7 +282,6 @@ const ITERM2_RED_PNG =
  * Font-ligature sample: ONE line so the pair fits the minimum admitted capture geometry, and the
  * control keeps each operator pair apart so no shaping rule can join it.
  */
-const FONT_LIGATURE_CONTROL = "! = - > = > < = = ="
 const FONT_LIGATURE_TARGET = "!= -> => <= =="
 
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
@@ -5144,11 +5143,8 @@ const extensionDefinitions: ProbeDefinition[] = [
     libAssertionType: "buffer_state",
   },
 
-  // Font ligatures — a renderer glyph-shaping decision with no protocol query. The app callback
-  // captures a spaced-operator control and a contiguous-operator target from the same font and
-  // geometry; a ligature paints as one shaped glyph in the target run. The frames are retained,
-  // but no same-run check compares them, so no automatic pass or fail is claimed. The headless
-  // parser shapes no glyphs.
+  // Font ligatures compare contiguous operators with two isolated same-cell controls.
+  // A changed-character control qualifies sensitivity; headless parsers shape no glyphs.
   {
     ...probe(
       "extensions.font-ligatures",
@@ -5160,25 +5156,183 @@ const extensionDefinitions: ProbeDefinition[] = [
         })
       },
       async (ctx) => {
-        if (!ctx.capture) {
-          return notTestedResult("Font ligatures need rendered pixels; this context exposes no capture callback", {
-            ligatureSample: FONT_LIGATURE_TARGET,
-          })
-        }
-        const refusal = sgrCaptureTooSmall(ctx, "extensions.font-ligatures")
-        if (refusal) return refusal
-        try {
-          return await sgrCaptureFrames(
-            ctx,
-            "\x1b[0m\x1b[2J\x1b[3;3H" + FONT_LIGATURE_CONTROL,
-            "\x1b[0m\x1b[2J\x1b[3;3H" + FONT_LIGATURE_TARGET,
-            "extensions.font-ligatures",
-            { control: FONT_LIGATURE_CONTROL, target: FONT_LIGATURE_TARGET, startRow: 3, startCol: 3 },
-            "Spaced operators (control) and contiguous operators (target) in the same font and geometry; a ligature paints as one shaped glyph in the target. Record the active font before grading",
+        const id = "extensions.font-ligatures"
+        if (!ctx.capture || ctx.captureKind === "text-cells") {
+          return notTestedResult(
+            "Font ligatures need rendered pixels; this context exposes no pixel capture callback",
+            {
+              ligatureSample: FONT_LIGATURE_TARGET,
+            },
           )
+        }
+        const refusal = sgrCaptureTooSmall(ctx, id)
+        if (refusal) return refusal
+        const region = { top: 3, left: 3, bottom: 3, right: 16 }
+        const reported = await captureRegionGeometry(ctx, id, {
+          region,
+          sentinel: { row: 1, col: 1 },
+          cursorRow: 2,
+          minRows: 3,
+          minCols: 16,
+        })
+        if ("pass" in reported) return reported
+        const pixelGeometry = reported.geometry
+        if (!pixelGeometry) return notTestedResult("Font ligatures need measured pixel geometry")
+        // Glyph shaping is never a text-cell comparison, even if a collector offers both arms.
+        const read = collectorRegionRead({ ...ctx, cells: undefined })
+        if (!read) return notTestedResult("Font ligatures need an owned pixel reader")
+        const columns = [3, 4, 6, 7, 9, 10, 12, 13, 15, 16]
+        const phases = [
+          { name: "first", text: "!  -  =  <  = ", columns: [3, 6, 9, 12, 15] },
+          { name: "second", text: " =  >  >  =  =", columns: [4, 7, 10, 13, 16] },
+          { name: "positive", text: "-  -  =  <  = ", columns: [3] },
+          { name: "target", text: FONT_LIGATURE_TARGET, columns },
+        ]
+        const frames: ObservationFrame[] = []
+        const samples: Array<{ phase: string; column: number; digest: string; frame: ObservationFrame }> = []
+        const finish = (outcome: "supported" | "unsupported" | "inconclusive", note: string): ProbeCallbackResult => {
+          const decided = outcome !== "inconclusive"
+          const response = JSON.stringify({ pixelGeometry, geometrySource: reported.source, samples })
+          return {
+            pass: outcome === "supported",
+            note,
+            response,
+            criterionBranch: "font-ligatures-same-cell",
+            tests: [
+              {
+                id: "ligatures",
+                status: decided ? outcome : "probe-todo",
+                ...(decided ? { assertionRefs: [0] } : { reason: note }),
+              },
+            ],
+            observation: {
+              outcome,
+              assertionType: "screenshot",
+              ...(decided ? {} : { reason: "insufficient-evidence" as const }),
+              frames,
+              screenshotRef: samples.find((sample) => sample.phase === "target")?.frame.ref,
+              note,
+            },
+            ...(decided
+              ? {
+                  assertions: [
+                    {
+                      assertionType: "screenshot" as const,
+                      kind: outcome === "supported" ? ("positive" as const) : ("negative" as const),
+                      expected:
+                        "Same-cell isolated characters match all ten target cells unless the renderer shapes an operator pair; a changed character must change the compared pixels",
+                      observed: response,
+                    },
+                  ],
+                }
+              : {}),
+          }
+        }
+        try {
+          beginCaptureLifecycle(ctx)
+          for (const phase of phases) {
+            const label = id + ": " + phase.name
+            const witnessColumn = phase.name === "second" ? 4 : 3
+            const witnessCell = { top: 3, left: witnessColumn, bottom: 3, right: witnessColumn }
+            ctx.write("\x1b[0m\x1b[2J\x1b[2;1H")
+            const baseline = await read({
+              role: "control",
+              label: label + " cleared",
+              region: witnessCell,
+              pixelGeometry,
+            })
+            frames.push(baseline.frame)
+            const paint = "\x1b[3;3H" + phase.text + "\x1b[2;1H"
+            ctx.write(paint)
+            const options = {
+              read,
+              id,
+              label,
+              witnessCell,
+              pixelGeometry,
+              geometrySource: reported.source,
+              baseline,
+              timeoutMs: 5000,
+              pollMs: 250,
+              requireSameCrop: true,
+            }
+            const painted = await awaitPaintWitness(options)
+            if (!("witness" in painted)) {
+              return finish("inconclusive", painted.observation?.note ?? label + ": no paint witness")
+            }
+            frames.push(painted.witness.frame)
+            // Reuse the shared space/glyph roundtrip: clearing alone must not impersonate the paint.
+            ctx.write("\x1b[3;" + witnessColumn + "H \x1b[2;1H")
+            const cleared = await awaitPaintWitness({ ...options, expectedDigest: baseline.regionDigest })
+            if (!("witness" in cleared)) {
+              return finish("inconclusive", cleared.observation?.note ?? label + ": no clear witness")
+            }
+            frames.push(cleared.witness.frame)
+            ctx.write(paint)
+            const returned = await awaitPaintWitness({ ...options, expectedDigest: painted.witness.regionDigest })
+            if (!("witness" in returned)) {
+              return finish("inconclusive", returned.observation?.note ?? label + ": no paint return")
+            }
+            frames.push(returned.witness.frame)
+            const stable = async () => {
+              const value = await read({ role: "control", label: label + " stability", region, pixelGeometry })
+              frames.push(value.frame)
+              return value
+            }
+            const pair = await captureStabilityPair(id, "screenshot", stable, stable)
+            if (pair.refusal) {
+              return finish("inconclusive", pair.refusal.observation?.note ?? label + ": unstable pixels")
+            }
+            for (const column of phase.columns) {
+              const captured = await read({
+                role: phase.name === "target" ? "target" : "control",
+                label: label + " cell " + column,
+                region: { top: 3, left: column, bottom: 3, right: column },
+                pixelGeometry,
+              })
+              frames.push(captured.frame)
+              if (captured.frame.kind === "text-cells" || !captured.frame.regionRectangle) {
+                return finish("inconclusive", label + ": missing registered pixel crop")
+              }
+              samples.push({ phase: phase.name, column, digest: captured.regionDigest, frame: captured.frame })
+            }
+          }
+          const first = samples.filter((sample) => sample.phase === "first")
+          const second = samples.filter((sample) => sample.phase === "second")
+          const positive = samples.filter((sample) => sample.phase === "positive")
+          const target = samples.filter((sample) => sample.phase === "target")
+          let positiveChanged = false
+          let changed = 0
+          for (const sample of [...target, ...positive]) {
+            const control = [...first, ...second].find((entry) => entry.column === sample.column)
+            if (!control) {
+              return finish("inconclusive", "Missing isolated same-cell control for column " + sample.column)
+            }
+            const moved = cropPositionRefusal({
+              id,
+              compared: [
+                { role: "isolated character", rectangle: control.frame.regionRectangle },
+                { role: sample.phase, rectangle: sample.frame.regionRectangle },
+              ],
+              response: JSON.stringify({ samples }),
+              frames,
+              screenshotRef: sample.frame.ref,
+            })
+            if (moved) return moved
+            if (sample.phase === "positive") positiveChanged = sample.digest !== control.digest
+            else if (sample.digest !== control.digest) changed++
+          }
+          if (!positiveChanged) {
+            return finish("inconclusive", "Changed-character positive control did not change the same-cell pixels")
+          }
+          return changed
+            ? finish("supported", "Contiguous operators changed " + changed + " of ten same-cell character digests")
+            : finish(
+                "unsupported",
+                "All ten same-cell character digests matched isolated controls; changed-character control changed",
+              )
         } finally {
-          // Disposable owned run: clear the surface so no sample text is left behind.
-          ctx.write("\x1b[0m\x1b[2J\x1b[H")
+          endCaptureLifecycle(ctx)
         }
       },
       "screenshot",

@@ -8,6 +8,7 @@ import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import { finalizeVisualResult } from "./sgr.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 function captureApp(rows: number, cols: number) {
@@ -266,40 +267,93 @@ test("each image target refuses missing pixel geometry before painting any paylo
   expect(truecolor.writes.some((write) => write.includes("\x1bP$qm"))).toBe(true)
 })
 
-test("extensions.font-ligatures captures a spaced control and a contiguous operator sample", async () => {
-  const { context, writes, frames } = captureApp(24, 80)
+// CTO47c0b849: prior visual-review tests never compared same-cell pixels or qualified a negative.
+function ligatureApp(options: { pair?: number; blind?: boolean; text?: boolean; moved?: boolean } = {}) {
+  const app = captureApp(3, 80)
+  const surface = createSemanticSurface({ rows: 3, cols: 80 })
+  app.context.captureGeometry = {
+    geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 48 },
+    source: "measured by complete raster calibration",
+  }
+  app.context.captureKind = options.text ? "text-cells" : "pixels"
+  app.context.write = (bytes) => {
+    app.writes.push(bytes)
+    surface.feed(bytes)
+  }
+  app.context.capture = async ({ role, label, cells }) => {
+    const index = app.frames.length + 1
+    const chars: string[] = []
+    if (cells) {
+      for (let row = cells.top; row <= cells.bottom; row++) {
+        for (let col = cells.left; col <= cells.right; col++) {
+          let glyph = surface.getCell(row - 1, col - 1).char
+          const first = options.pair
+          if (row === 3 && first !== undefined && (col === first || col === first + 1)) {
+            const pair = surface.getCell(2, first - 1).char + surface.getCell(2, first).char
+            if (["!=", "->", "=>", "<=", "=="].includes(pair)) glyph += ":shaped"
+          }
+          chars.push(row === 3 && options.blind && glyph === "-" ? "!" : glyph)
+        }
+      }
+    }
+    const frame: ObservationFrame = {
+      kind: options.text ? "text-cells" : "pixels",
+      role,
+      label,
+      capturedAt: index,
+      ref: "ligature-" + index,
+      regionDigest: cells ? chars.join("|") : undefined,
+      pixelsDigest: "whole-window-motion-" + index,
+      ...(cells && {
+        regionRectangle: {
+          x: (cells.left - 1) * 8 + (options.moved && role === "target" ? 8 : 0),
+          y: (cells.top - 1) * 16,
+          width: (cells.right - cells.left + 1) * 8,
+          height: (cells.bottom - cells.top + 1) * 16,
+        },
+      }),
+    }
+    app.frames.push(frame)
+    return frame
+  }
+  return app
+}
+
+test.each([
+  ["no shaped pair, moving whole frame", {}, "unsupported"],
+  ["only first pair shapes", { pair: 3 }, "supported"],
+  ["only last pair shapes", { pair: 15 }, "supported"],
+  ["blind positive control", { blind: true }, "inconclusive"],
+  ["text cells cannot show shaping", { text: true }, "inconclusive"],
+  ["target crop moved", { moved: true }, "inconclusive"],
+] as const)("extensions.font-ligatures: %s", async (_name, options, outcome) => {
+  const { context, frames, writes } = ligatureApp(options)
   const result = await find("extensions.font-ligatures").term!(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "screenshot",
-  })
-  expect(result.pass).toBe(false)
-  expect(result.criterionBranch).toBe("visual-review")
-  expect(result.tests).toEqual([
-    { id: "capture", status: "supported", assertionRefs: [0] },
-    { id: "review", status: "probe-todo", reason: expect.any(String) },
-  ])
-  expect(result.assertions).toEqual([
-    {
-      assertionType: "screenshot",
-      kind: "positive",
-      expected: expect.any(String),
-      observed: JSON.stringify({ control: frames[0], target: frames[1] }),
-    },
-  ])
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
-  expect(result.observation?.frames).toHaveLength(2)
-  expect(writes.some((write) => write.includes("! = - > = > < = = ="))).toBe(true)
-  expect(writes.some((write) => write.includes("!= -> => <= =="))).toBe(true)
+  expect(result.observation?.outcome ?? "inconclusive").toBe(outcome)
+  expect(result.pass).toBe(outcome === "supported")
+  if (outcome !== "inconclusive") {
+    expect(result.assertions).toHaveLength(1)
+    const target = frames.filter((frame) => frame.role === "target")
+    expect(target).toHaveLength(10)
+    expect(target.map((frame) => frame.regionRectangle?.x)).toEqual([16, 24, 40, 48, 64, 72, 88, 96, 112, 120])
+    expect(target.every((frame) => frame.regionRectangle?.width === 8 && frame.regionRectangle.height === 16)).toBe(
+      true,
+    )
+    expect(writes.some((write) => write.includes("! = - > = > < = = ="))).toBe(false)
+  }
+  if (!("text" in options)) {
+    expect(writes.at(-1)).toContain("\x1b[2J")
+    expect(writes.some((write) => write.includes("\x1b[?25h"))).toBe(true)
+  }
 })
 
-test("extensions.font-ligatures fits the minimum admitted three-row capture geometry", async () => {
-  const { context, writes, frames } = captureApp(3, 80)
-  const result = await find("extensions.font-ligatures").term!(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
-  expect(writes.some((write) => write.includes("!= -> => <= =="))).toBe(true)
+test("extensions.font-ligatures leaves missing pixel geometry unresolved", async () => {
+  const app = ligatureApp()
+  app.context.captureGeometry = undefined
+  const result = await find("extensions.font-ligatures").term!(app.context)
+  expect(result.pass).toBe(false)
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(app.frames).toEqual([])
 })
 
 test("extensions.font-ligatures names a missing capture instead of claiming a measurement", async () => {
