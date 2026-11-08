@@ -94,6 +94,33 @@ test("a hardcopy that was never written is a refusal naming the path, not zero l
   expect(result.reason).toContain(options.hardcopyPath)
 })
 
+test("an empty hardcopy is refused rather than measured as zero lines", () => {
+  exit(0)
+  readFile.mockReturnValue("")
+  const result = readScreenScrollback(options)
+  expect(result.status).toBe("refused")
+  if (result.status !== "refused") throw new Error("Expected a refusal")
+  expect(result.reason).toContain("empty")
+  expect(result.reason).toContain(options.hardcopyPath)
+})
+
+test("a timed-out hardcopy is killed within the reader bound and no partial file is read", () => {
+  run.mockReturnValue({
+    status: null,
+    signal: "SIGKILL",
+    error: Object.assign(new Error("spawnSync timed out"), { code: "ETIMEDOUT" }),
+    stdout: Buffer.from(""),
+    stderr: Buffer.from(""),
+  })
+  expect(readScreenScrollback(options).status).toBe("refused")
+  const spawnOptions = run.mock.calls[0]?.[2]
+  expect({ timeout: spawnOptions?.timeout, killSignal: spawnOptions?.killSignal }).toEqual({
+    timeout: 3000,
+    killSignal: "SIGKILL",
+  })
+  expect(readFile).not.toHaveBeenCalled()
+})
+
 test("a failed hardcopy retains its exit and stderr", () => {
   exit(11, "", "no screen session")
   const result = readScreenScrollback(options)
