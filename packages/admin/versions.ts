@@ -37,6 +37,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/probes/unified.ts",
   "packages/terminfo.dev/src/tty.ts",
   "packages/terminfo.dev/src/linux-clipboard.ts",
+  "packages/terminfo.dev/src/linux-screen-text.ts",
   "packages/terminfo.dev/src/owned-terminal.ts",
   "packages/terminfo.dev/src/terminal-child-environment.ts",
   "packages/terminfo.dev/src/app-semantic-state.ts",
