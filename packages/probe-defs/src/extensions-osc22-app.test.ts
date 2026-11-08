@@ -136,3 +136,96 @@ test("an unexpected selected shape is inconclusive rather than a target negative
   expect(result.note).toContain("unexpected target shape")
   expect(input.selected()).toBe("0")
 })
+
+// @failure Pointer images are graded without a baseline before OSC22, independent hide/show,
+// an inert made-up name, or exact restoration. Logical-query fixtures cannot observe these effects.
+// @level l1
+// @consumer Generic OSC22 App image callback -> existing owned capture/input fixtures.
+function pointerImages(fault = "none") {
+  const { source } = terminal("0", "initial-silent")
+  let shape = fault === "nondefault" ? "override" : "baseline"
+  let hidden = false
+  const events: string[] = []
+  const modes = new Map([9, 25, 1000, 1001, 1002, 1003].map((mode) => [mode, mode === 25]))
+  source.captureKind = "pixels"
+  source.captureGeometry = {
+    source: "measured by complete raster calibration",
+    geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+  }
+  source.queryMode = async (mode) => (modes.get(mode) ? "set" : "reset")
+  source.write = (text) => {
+    events.push(text)
+    const mode = /^\x1b\[\?(\d+)([hl])$/.exec(text)
+    if (mode) modes.set(Number(mode[1]), mode[2] === "h")
+    if (text === "\x1b]22;crosshair\x07" && fault !== "target-disabled") shape = "crosshair"
+    if (text === "\x1b]22;xterm\x07" && fault !== "restore-disabled") shape = "baseline"
+    if (text === "\x1b]22;terminfo-unknown-shape\x07" && fault === "unknown-changes") shape = "unexpected"
+  }
+  source.input = {
+    injectClick: async () => {
+      throw new Error("No click belongs to the pointer-image recipe")
+    },
+    injectKey: async (key) => {
+      expect(key).toBe("a")
+      events.push("key:a")
+      hidden = fault !== "control-disabled"
+    },
+    injectMove: async (x, y) => {
+      events.push(`move:${x},${y}`)
+      if (fault !== "motion-disabled") hidden = false
+    },
+  }
+  source.readInput = async (_pattern, _timeout, inject) => {
+    await inject?.()
+    return ["a"]
+  }
+  source.capture = async ({ role, label }) => {
+    const pixels = hidden ? "hidden" : shape
+    events.push(`image:${pixels}`)
+    const ref = `sha256:${Buffer.from(pixels).toString("hex").padEnd(64, "0")}`
+    return { kind: "pixels", role, label, capturedAt: events.length, ref, sourceRef: ref, pixelsDigest: ref }
+  }
+  return { source, events, modes }
+}
+
+test.each([
+  { fault: "none", outcome: "supported" },
+  { fault: "target-disabled", outcome: "unsupported" },
+])("OSC22 images decide $outcome only after independent controls", async ({ fault, outcome }) => {
+  const input = pointerImages(fault)
+  const result = await definition().term!(input.source)
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(result.observation?.assertionType).toBe("screenshot")
+  expect(result.observation?.frames?.some((frame) => frame.role === "target")).toBe(true)
+  expect(input.events.indexOf("image:baseline")).toBeLessThan(
+    input.events.findIndex((event) => event.startsWith("\x1b]22;")),
+  )
+  expect(input.events).toContain("image:hidden")
+  expect(input.events).toContain("\x1b]22;terminfo-unknown-shape\x07")
+  expect(input.events).not.toContain("\x1b]22;?__current__\x07")
+  expect(input.events.filter((event) => event.startsWith("image:")).at(-1)).toBe("image:baseline")
+  expect(input.modes.get(25)).toBe(true)
+  for (const mode of [9, 1000, 1001, 1002, 1003]) expect(input.modes.get(mode)).toBe(false)
+})
+
+test.each(["unknown-changes", "restore-disabled", "nondefault"])(
+  "OSC22 image contradiction %s is invalid and never a grade",
+  async (fault) => {
+    const input = pointerImages(fault)
+    const result = await definition().term!(input.source)
+    expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+    expect(result.observation?.outcome).not.toBe("supported")
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(input.modes.get(25)).toBe(true)
+  },
+)
+
+test.each(["control-disabled", "motion-disabled"])("OSC22 image control %s cannot decide a grade", async (fault) => {
+  const input = pointerImages(fault)
+  const result = await definition().term!(input.source)
+  expect(input.events).toContain("key:a")
+  expect(result.observation?.outcome).not.toBe("supported")
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(input.events).not.toContain("\x1b]22;crosshair\x07")
+  expect(input.modes.get(25)).toBe(true)
+})

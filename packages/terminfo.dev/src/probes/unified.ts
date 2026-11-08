@@ -610,7 +610,16 @@ export async function runProbeBatch(
     // its own named no-capture branch — an error row where a named refusal belongs is exactly what
     // the no-capture branches exist to avoid.
     const textCells = options.captureKind === "text-cells"
-    const captureEligible = captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
+    const imageSubject = options.draft?.subject
+    const pointerImageEligible =
+      probe.id !== "extensions.osc22-pointer" ||
+      (ownsTerminal &&
+        imageSubject?.kind === "term" &&
+        imageSubject.os === "linux" &&
+        ((imageSubject.id === "xterm" && imageSubject.version === "411") ||
+          (imageSubject.id === "wezterm" && imageSubject.version === "0-unstable-2026-10-10")))
+    const captureEligible =
+      pointerImageEligible && captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
     if (capture && captureEligible) {
       if (textCells) {
         probeSource.captureKind = "text-cells"
