@@ -381,7 +381,13 @@ process.exit(7);
         expect(log).toContain("collector-first\ncollector-second\n")
         expect(log).toContain("phase=collector-exited status=7")
         expect(readFileSync(join(out, "collector-exit"), "utf8")).toBe("7\n")
-        expect(String(result!.stdout).replace(/\r\n/g, "\n")).toBe("probe-stdout\n")
+        // Route B titles the tab through the same terminal channel before the collector speaks: the
+        // probe output must still be the whole of what follows, byte for byte.
+        expect(String(result!.stdout).replace(/\r\n/g, "\n")).toMatch(
+          // The title is written only where there is a terminal to carry it; the probe output is the
+          // whole of what follows either way.
+          /^(?:\u001b\]0;[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\u0007)?probe-stdout\n$/u,
+        )
         if (editor) {
           const child = JSON.parse(readFileSync(join(out, "child.json"), "utf8")) as {
             reading: unknown
@@ -595,8 +601,9 @@ test.each([
   },
 )
 
-// 30729: Terminal must be launched and closed through the owned-window helpers, not `open -a`, and the
-// close has to survive collection failure so a hosted job never leaves a Terminal window behind.
+// 30729: @cto 29c34b02 chose the LaunchServices route after run 42479488706 died on an Automation
+// consent dialog no job can answer. The launch is `open -a` with an identity the command records for
+// itself, and the close must survive collection failure so no run leaves a Terminal window behind.
 test("hosted Terminal launch owns its window and closes only it before upload", () => {
   const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
   const steps = workflow.jobs["measure-macos"].steps as Array<{
@@ -607,18 +614,34 @@ test("hosted Terminal launch owns its window and closes only it before upload", 
   }>
   const collect = steps.find((step) => step.name === "Launch, emit the receipt, and collect as the last mutating step")
   expect(collect, "the existing launch step owns the terminal arm").toBeDefined()
-  expect(collect?.run).toContain("launchTerminalWindow")
+  // LaunchServices, and nothing that sends Terminal an Apple event.
+  expect(collect?.run).toContain('open -a "$APP_BUNDLE" "$COMMAND_PATH"')
+  expect(collect?.run).not.toContain("launchTerminalWindow")
+  expect(collect?.run).not.toContain('tell application "Terminal"')
+  // Whether Terminal was already running is recorded before the launch, not inferred during cleanup.
+  expect(collect?.run).toContain("terminal-preexisting")
+  // The command records the identity the harness accepts: nonce, TTY and both pids, with the nonce
+  // also set as the tab title so the window is findable without asking the app to describe itself.
+  expect(collect?.run).toContain("uuidgen")
   expect(collect?.run).toContain("terminal-launch.json")
-  expect(collect?.run).not.toContain('open -a "$APP_BUNDLE"')
+  expect(collect?.run).toContain("\\033]0;%s\\007")
+  expect(collect?.run).toContain("shellPid")
+  expect(collect?.run).toContain("terminalPid")
+  // `tty` answers "not a tty" on stdout when no tab attached. That names no device, so it must not
+  // become a recorded TTY — it once became a file on disk instead of the tab title.
+  expect(collect?.run).toContain('/dev/*) ;; *) tty_name=""')
   const close = steps.find((step) => step.name === "Close the owned Terminal window before upload")
   expect(close, "terminal-app has a sibling owned close").toBeDefined()
   expect(close?.if).toContain("always()")
   expect(close?.if).toContain("matrix.id == 'terminal-app'")
-  expect(close?.run).toContain("closeOwnedTerminalWindow")
+  // A recorded identity, a window-server census, and a record that refuses to pass as conclusive.
+  expect(close?.run).toContain("inconclusive")
+  expect(close?.run).toContain("!/^\\/dev\\//.test(identity.tty)")
+  expect(close?.run).toContain("CGWindowListCopyWindowInfo")
   expect(close?.run).toContain("terminal-window-disposal.json")
-  // A launch that ran and recorded nothing must fail loudly, never read as "no launch happened".
-  expect(close?.run).toContain("launcher.log")
-  expect(close?.run).toContain("recorded no owned window")
+  expect(close?.run).toContain("remaining !== 0")
+  expect(close?.run).not.toContain("closeOwnedTerminalWindow")
+  expect(close?.run).not.toContain('tell application "Terminal"')
   const upload = steps.find((step) => step.uses === "actions/upload-artifact@v4")
   expect(upload).toBeDefined()
   expect(steps.indexOf(close!)).toBeLessThan(steps.indexOf(upload!))
