@@ -1251,8 +1251,8 @@ test("macOS workflow's two-window diagnostic grep matches the census refusal the
 // as well as the grant step; omitting Terminal used to pass. No other test runs the grant step: this
 // executes it with the macOS commands as fixtures, proving it grants the bundle's own identifier in
 // both TCC databases before launch and fails the job when a grant does not read back.
-// 30729: Terminal is also driven by Apple events, and hosted run 42479488706 died as a bare
-// `spawnSync osascript ETIMEDOUT` because no Automation grant existed; the same step seeds it.
+// 30729: Terminal is launched through LaunchServices on @cto 29c34b02's route B, so this step must
+// grant Screen Recording only. A job also writing Apple-event rows was tried and is refused here.
 test.each(["granted", "unreadable"] as const)(
   "Screen Recording grant step for self-responsible apps: %s",
   (scenario) => {
@@ -1292,7 +1292,6 @@ test.each(["granted", "unreadable"] as const)(
             HOME: directory,
             RUNNER_TEMP: directory,
             APP_BUNDLE: "/Applications/Term.app",
-            APP_ID: "terminal-app",
           },
         },
       )
@@ -1305,17 +1304,9 @@ test.each(["granted", "unreadable"] as const)(
       )
       if (scenario === "granted") {
         expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE`)
-        // Terminal's Apple events grant, seeded and read back in both databases, never assumed.
-        expect(calls).toContain(
-          `INSERT OR REPLACE INTO access VALUES('kTCCServiceAppleEvents','com.apple.osascript',0,2,4,1,NULL,NULL,0,'com.apple.Terminal',NULL,0,`,
-        )
-        expect(calls).toContain(
-          "SELECT auth_value FROM access WHERE service='kTCCServiceAppleEvents' AND client='com.apple.osascript' AND indirect_object_identifier='com.apple.Terminal'",
-        )
-        // Written into both databases, and one read-back confirmation per database.
-        expect(calls).toContain(`sudo sqlite3 ${system} INSERT OR REPLACE INTO access VALUES('kTCCServiceAppleEvents'`)
-        expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE INTO access VALUES('kTCCServiceAppleEvents'`)
-        expect(run.stdout.match(/Automation granted to osascript for Terminal in/gu) ?? []).toHaveLength(2)
+        // Route B writes no Apple-event row: a job that seeds one is buying a consent dialog it
+        // cannot answer, which is exactly how run 42479488706 died.
+        expect(calls).not.toContain("kTCCServiceAppleEvents")
         expect(calls).toContain("defaults write")
         expect(calls).toContain("/Applications/Term.app/Contents/MacOS/Term -date")
       } else {

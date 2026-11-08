@@ -219,7 +219,6 @@ jobs:
         if: matrix.id == 'terminal-app' || matrix.id == 'iterm2' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode'
         env:
           APP_BUNDLE: ${{ matrix.bundle }}
-          APP_ID: ${{ matrix.id }}
         run: |
           set -euo pipefail
           plist="$APP_BUNDLE/Contents/Info.plist"
@@ -240,24 +239,10 @@ jobs:
           }
           grant sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db"
           grant sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db"
-          # Terminal is driven through Apple events: `do script`, window ids and the tab TTY are all
-          # AppleScript. Without an Automation grant the first osascript waits on a consent prompt
-          # nobody answers, which reads exactly like a hang — hosted run 42479488706 died there as
-          # `spawnSync osascript ETIMEDOUT` after 15s. Seed the AppleEvents row for osascript against
-          # Terminal and read it back like the Screen Recording row, so a failed grant fails the job
-          # here rather than surfacing later as an unexplained launch timeout.
-          if [ "$APP_ID" = terminal-app ]; then
-            events="'kTCCServiceAppleEvents','com.apple.osascript',0,2,4,1,NULL,NULL,0,'com.apple.Terminal',NULL,0,$now,NULL,NULL,'UNUSED',$now"
-            grant_events() {
-              local db="${*: -1}"
-              "$@" "INSERT OR REPLACE INTO access VALUES($events);"
-              granted="$("$@" "SELECT auth_value FROM access WHERE service='kTCCServiceAppleEvents' AND client='com.apple.osascript' AND indirect_object_identifier='com.apple.Terminal';")"
-              test "$granted" = 2 || { echo "Automation grant for Terminal did not read back from $db (got '$granted')" >&2; exit 1; }
-              printf 'Automation granted to osascript for Terminal in %s\n' "$db"
-            }
-            grant_events sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db"
-            grant_events sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db"
-          fi
+          # Terminal is NOT granted Automation here, on purpose. @cto 29c34b02 selected the
+          # LaunchServices route: the job launches its own per-run .command with `open -a` and records
+          # the identity it needs, so no job writes Apple-event permissions and none are assumed. The
+          # Screen Recording row above is unchanged and unrelated.
           approvals="$HOME/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist"
           mkdir -p "$(dirname "$approvals")"
           defaults write "$approvals" "$executable" -date "3024-01-01 00:00:00 +0000"
