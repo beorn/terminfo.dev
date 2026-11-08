@@ -382,6 +382,9 @@ import { pathToFileURL } from "node:url"
 import { mock } from "bun:test"
 
 const mode = process.env.TERMINFO_OWNED_TTY_CHILD
+// The existing PTY owner fixture exercises the collector callback, unlike the direct CLI-reader tests.
+let kittyRefused = false, kittyReads = 0
+const spawnSyncBeforeMock = realChildProcess.spawnSync
 const foreignFd = Number(process.env.TERMINFO_FOREIGN_TTY_FD)
 const root = process.env.TERMINFO_TEST_SOURCE_ROOT
 assert(root && isatty(0) && isatty(1) && isatty(foreignFd))
@@ -411,6 +414,11 @@ try {
   process.env.TERMINFO_CAPTURE_DIRECTORY = join(dir, "artifacts")
   process.env.DISPLAY = ":22"
   process.env.TERMINFO_CLIPBOARD_PROFILE = "default"
+  process.env.TERMINFO_TARGET_ID = "kitty"
+  process.env.KITTY_LISTEN_ON = "unix:" + join(dir, "kitty.sock")
+  process.env.KITTY_WINDOW_ID = "42"
+  process.env.WEZTERM_UNIX_SOCKET = "/foreign/wezterm.sock"
+  process.env.WEZTERM_PANE = "999"
   const actualReadFileSync = realFs.readFileSync
   const actualRealpathSync = realFs.realpathSync
   mock.module("node:os", () => ({ ...realOs, homedir: () => dir }))
@@ -430,12 +438,33 @@ try {
     },
   }))
   mock.module("node:child_process", () => ({ ...realChildProcess,
+    spawnSync(file, args, options) {
+      if (file !== join(dir, "kitten")) return spawnSyncBeforeMock(file, args, options)
+      kittyReads++
+      assert.equal(args[2], process.env.KITTY_LISTEN_ON)
+      assert.equal(args.at(-1), "id:42")
+      if (kittyRefused) return { status: 2, stdout: Buffer.alloc(0), stderr: Buffer.from("owned Kitty fixture refusal") }
+      const count = args[args.indexOf("--extent") + 1] === "all" ? 44 : 24
+      return { status: 0, stdout: Buffer.from("row\r\n".repeat(count)), stderr: Buffer.alloc(0) }
+    },
     execFile(_file, args, _options, callback) {
       callback(null, args[0] === "getwindowpid" ? String(process.pid) : baseline)
       return {}
     },
   }))
   const base = pathToFileURL(root + "/").href
+  // The real mux attachment is tested above; this adapter boundary checks owner dispatch, not mux qualification.
+  const clipboardModule = await import(base + "linux-clipboard.ts")
+  const createClipboardAdapter = clipboardModule.createLinuxClipboardAdapter
+  let forwardMuxHistory = false
+  mock.module(base + "linux-clipboard.ts", () => ({ ...clipboardModule,
+    async createLinuxClipboardAdapter(...args) {
+      const adapter = await createClipboardAdapter(...args)
+      if (!forwardMuxHistory) return adapter
+      return { ...adapter, muxAttachmentProof: { mux: "tmux" },
+        getScrollback: async () => ({ totalLines: 55, screenLines: 24, viewportOffset: 17 }) }
+    },
+  }))
   const verifier = await import(base + "owned-terminal.ts")
   const { runProbeBatch } = await import(base + "probes/unified.ts")
   const { openControllingTTY, withRawMode } = await import(base + "tty.ts")
@@ -454,6 +483,38 @@ try {
     const foreign = new WriteStream(foreignFd)
     await assert.rejects(factory(foreign), /Owned output device/)
     const adapter = await factory(process.stdout)
+    assert.equal(typeof adapter.getScrollback, "function", "owned Linux Kitty history callback is missing")
+    const history = await adapter.getScrollback()
+    assert.deepEqual(history, { totalLines: 44, screenLines: 24 })
+    assert.equal("viewportOffset" in history, false)
+    kittyRefused = true
+    await assert.rejects(adapter.getScrollback(), /Kitty all get-text unavailable: .*"status":2/)
+    kittyRefused = false
+    const liveAssert = adapter.clipboard.assertOwned
+    const lostOwner = new Error("owned Kitty attachment lost")
+    for (const boundary of [1, 2]) {
+      let checks = 0
+      const readsBefore = kittyReads
+      adapter.clipboard.assertOwned = async () => {
+        if (++checks === boundary) throw lostOwner
+        await liveAssert()
+      }
+      await assert.rejects(adapter.getScrollback(), error => error === lostOwner)
+      assert.equal(kittyReads - readsBefore, boundary === 1 ? 0 : 2)
+    }
+    adapter.clipboard.assertOwned = liveAssert
+    const readsBefore = kittyReads
+    forwardMuxHistory = true
+    const muxOwner = await factory(process.stdout, "e".repeat(32))
+    assert.deepEqual(await muxOwner.getScrollback(), { totalLines: 55, screenLines: 24, viewportOffset: 17 })
+    await muxOwner.dispose()
+    forwardMuxHistory = false
+    process.env.TERMINFO_TARGET_ID = "xterm"
+    const otherApp = await factory(process.stdout, "f".repeat(32))
+    assert.equal(otherApp.getScrollback, undefined, "foreign Kitty child variables cannot select the App reader")
+    await otherApp.dispose()
+    process.env.TERMINFO_TARGET_ID = "kitty"
+    assert.equal(kittyReads, readsBefore, "a mux or other App must never query the outer Kitty")
     assert.deepEqual([adapter.geometryAtGrant.status, adapter.geometryAtGrant.rows, adapter.geometryAtGrant.cols],
       ["measured", 24, 61])
     assert.deepEqual(JSON.parse(adapter.summary).geometryAtGrant, adapter.geometryAtGrant)
@@ -597,6 +658,7 @@ try {
     await aliasAdapter.dispose()
     await new Promise((resolve) => alias.end(resolve))
     await adapter.dispose()
+    await assert.rejects(adapter.getScrollback(), /no live bound capture/)
     await assert.rejects(adapter.readGeometry(), /no live bound capture/)
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), false)
     const disposed = await runProbeBatch({ ids: ["reset.ris"], captureRunId: capture,
