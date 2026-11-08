@@ -37,6 +37,8 @@ export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenSc
   const result = spawnSync(options.executable, ["-S", session, "-X", "hardcopy", "-h", options.hardcopyPath], {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, SCREENDIR: socketDirectory },
+    timeout: 3000,
+    killSignal: "SIGKILL",
   })
   const stdout = result.stdout?.toString() ?? ""
   const stderr = result.stderr?.toString() ?? ""
@@ -55,7 +57,10 @@ export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenSc
       reason: `screen hardcopy left no readable file at ${options.hardcopyPath}: ${String((error as Error).message)}`,
     }
   }
-  const lines = text === "" ? [] : text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n")
+  if (text === "") {
+    return { status: "refused", reason: `screen hardcopy left an empty file at ${options.hardcopyPath}` }
+  }
+  const lines = text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n")
   return {
     status: "read",
     totalLines: lines.length,
