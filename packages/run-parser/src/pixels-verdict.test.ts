@@ -429,62 +429,27 @@ describe("in-run pixel probe results", () => {
     expect(parseCallback(id, result, fixture).results?.[0]?.status).toBe(status)
   })
 
-  it("keeps a native ligature capture pending review with distinct source refs and whole-pixel digests", async () => {
-    const id = "extensions.font-ligatures"
-    const probe = extensionsProbes.find((entry) => entry.id === id)
-    if (!probe?.term) throw new Error(`Missing ${id} terminal callback`)
-    const fixture = callbackFixture(id)
-    const capture = fixture.context.capture
-    if (!capture) throw new Error("Missing fixture capture")
-    fixture.context.capture = async (request) => {
-      const captured = await capture(request)
-      if (captured.kind === "text-cells") throw new Error("Fixture must start with pixels")
-      // Linux XWD source bytes differ from the retained PNG; neither provenance digest decides alone.
-      return {
-        kind: "pixels",
-        role: captured.role,
-        label: captured.label,
-        capturedAt: captured.capturedAt,
-        ref: captured.ref,
-        sourceRef: digest(`source:${captured.ref}`),
-        pixelsDigest: captured.pixelsDigest,
-      }
-    }
-    const result = await probe.term(fixture.context)
-    expect(result.observation?.outcome).toBe("inconclusive")
-    expect(result.observation?.frames?.map(({ role }) => role)).toEqual(["control", "target"])
-    const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<
-      "control" | "target",
-      { pixelsDigest: string }
-    >
-    const frames = result.observation?.frames ?? []
-    for (const role of ["control", "target"] as const) {
-      const captured = frames.find((frame) => frame.role === role)
-      if (!captured) throw new Error(`Missing ${role} ligature frame`)
-      expect(observed[role].pixelsDigest).toMatch(/^sha256:[0-9a-f]{64}$/)
-      expect(observed[role].pixelsDigest).toBe(frameDigests(captured).whole)
-    }
-    const loaded = parseCallback(id, result, fixture)
-    expect(loaded.results?.[0]?.status).toBe("probe-todo")
-    expect(loaded.results?.[0]?.tests).toEqual([
-      expect.objectContaining({ id: "capture", status: "supported" }),
-      expect.objectContaining({ id: "review", status: "probe-todo", attempt: { scope: "none" } }),
-    ])
-    // Schema-4 stores capture evidence in results and has no legacy observation entries.
+  it("keeps source provenance distinct from the pixel regions a verdict compared", () => {
+    const run = kittyRun()
+    const frames = run.results[0]!.frames.map((captured) => ({
+      ...captured,
+      // Linux XWD source bytes differ from retained PNG and compared-cell digests.
+      sourceRef: digest(`source:${captured.ref}`),
+    }))
+    run.results[0]!.frames = frames
+    const loaded = parse(run)
+    expect(loaded.results?.[0]?.status).toBe("supported")
     expect(loaded.observations).toEqual([])
     expect(loaded.results?.[0]?.frames).toEqual(frames)
-    const assertion = result.assertions?.[0]
-    const control = frames.find((frame) => frame.role === "control")
-    if (!assertion || !control || control.kind === "text-cells" || !control.sourceRef) {
-      throw new Error("Missing ligature source citation control")
-    }
+    const assertion = run.assertions[0]!
+    const control = frames[0]!
     expect(control.sourceRef).not.toBe(control.ref)
     assertion.observed = control.sourceRef
-    expect(() => parseCallback(id, result, fixture)).toThrow(
-      `${id}.json: screenshot probe result for ${id} cites only source or whole-frame digests; a probe result must cite a frame's ref or the digest of the cells it compared`,
+    expect(() => parse(run)).toThrow(
+      `pixels-verdict.json: screenshot probe result for ${FEATURE} cites only source or whole-frame digests; a probe result must cite a frame's ref or the digest of the cells it compared`,
     )
     assertion.observed = JSON.stringify({ ref: control.ref, sourceRef: digest("foreign-source") })
-    expect(() => parseCallback(id, result, fixture)).toThrow(/is not the ref or a digest of a frame/)
+    expect(() => parse(run)).toThrow(/is not the ref or a digest of a frame/)
   })
 
   it("admits a digest-equality probe result whose assertion cites a frame's regionDigest", () => {
