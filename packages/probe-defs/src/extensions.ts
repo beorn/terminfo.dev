@@ -1541,7 +1541,9 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
   const input = ctx.input
   const move = input?.injectMove?.bind(input)
   const readInput = ctx.readInput
-  let coordinates: { x: number; y: number } | undefined
+  const coordinates = geometry
+    ? { x: Math.floor(geometry.textWidth / 2), y: Math.floor(geometry.textHeight / 2) }
+    : undefined
   const controls: {
     mouseModes: Array<{ mode: number; reading: string | null }>
     visibility?: string | null
@@ -1553,7 +1555,7 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
     response: JSON.stringify(state()),
     tests: [{ id: "criterion", status: invalid ? "probe-invalid" : "probe-todo", reason }],
   })
-  if (!capture || ctx.captureKind === "text-cells" || !input || !move || !readInput || !geometry) {
+  if (!capture || ctx.captureKind === "text-cells" || !input || !move || !readInput || !coordinates) {
     return pending(`${id}: owned pointer pixels, motion, raw key input and measured geometry are required`)
   }
   // DECRQM's unknown means this App does not recognize that mode. Silence cannot establish OFF.
@@ -1569,7 +1571,6 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
   if (visibleCursor !== "set" && visibleCursor !== "reset") {
     return pending(`${id}: incoming text-cursor visibility cannot be restored`)
   }
-  coordinates = { x: Math.floor(geometry.textWidth / 2), y: Math.floor(geometry.textHeight / 2) }
   const { x, y } = coordinates
   // An actual motion event is needed even when the pointer is already at the requested position.
   const position = async () => {
