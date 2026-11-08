@@ -279,8 +279,8 @@ const ITERM2_RED_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mP4z8CAFTEMLQkAKP8/wc53yE8AAAAASUVORK5CYII="
 
 /**
- * Font-ligature sample: ONE line so the pair fits the minimum admitted capture geometry, and the
- * control keeps each operator pair apart so no shaping rule can join it.
+ * Font-ligature sample: one line fits the minimum capture geometry; two isolated-character
+ * controls use these same cell positions without putting an operator pair together.
  */
 const FONT_LIGATURE_TARGET = "!= -> => <= =="
 
@@ -5232,7 +5232,8 @@ const extensionDefinitions: ProbeDefinition[] = [
           beginCaptureLifecycle(ctx)
           for (const phase of phases) {
             const label = id + ": " + phase.name
-            const witnessColumn = phase.name === "second" ? 4 : 3
+            // This cell was blank in the preceding phase even if the clear has not painted yet.
+            const witnessColumn = phase.name === "second" || phase.name === "target" ? 4 : 3
             const witnessCell = { top: 3, left: witnessColumn, bottom: 3, right: witnessColumn }
             ctx.write("\x1b[0m\x1b[2J\x1b[2;1H")
             const baseline = await read({
