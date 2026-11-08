@@ -492,7 +492,9 @@ export async function createLinuxClipboardAdapter(
   if (process.platform !== "linux") throw new Error("Owned clipboard fixture requires Linux")
   const receiptBytes = readFileSync(ownedReceipt(receiptPath))
   const receipt = parseLinuxClipboardReceipt(JSON.parse(receiptBytes.toString("utf8")) as unknown)
+  const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   if (
+    !captureDirectory ||
     receipt.runId !== expectedLaunchRunId ||
     process.env.DISPLAY !== receipt.display.name ||
     process.env.TERMINFO_CLIPBOARD_PROFILE !== receipt.profile ||
@@ -674,7 +676,6 @@ export async function createLinuxClipboardAdapter(
   }
   const withClipboardFixture = createClipboardTransaction(baseline, { readText, writeText })
   const screenTarget = receipt.target?.kind === "mux" && receipt.target.mux === "screen" ? receipt.target : undefined
-  const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY!
   let screenRead = 0
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
