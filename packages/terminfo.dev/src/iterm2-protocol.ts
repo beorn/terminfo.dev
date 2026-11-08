@@ -103,7 +103,17 @@ end tell`,
         else resolve()
       }
       ws.onopen = () => finish()
-      ws.onerror = () => finish(new Error("API Unix WebSocket connection failed"))
+      ws.onerror = (event) => {
+        const cause = event.error instanceof Error ? event.error : undefined
+        const code = cause && "code" in cause && typeof cause.code === "string" ? cause.code : ""
+        const message = cause?.message || event.message || "underlying WebSocket error unavailable"
+        const detail = [code, message]
+          .filter(Boolean)
+          .join(": ")
+          .replaceAll(cookie, "[redacted]")
+          .replaceAll(key, "[redacted]")
+        finish(new Error(`API Unix WebSocket connection failed: ${detail}`, { cause }))
+      }
       ws.onclose = () => finish(new Error("API Unix WebSocket closed before opening"))
     })
     let nextId = 0

@@ -40,20 +40,28 @@ test.each([
   const socket = join(fixture.home, "Library/Application Support/iTerm2/private/socket")
   mkdirSync(join(socket, ".."), { recursive: true })
   if (mode === "refused") writeFileSync(socket, "not a listening socket")
-  const server = mode === "unauthorized"
-    ? Bun.serve({ unix: socket, fetch: () => new Response("denied", { status: 401 }) })
-    : undefined
+  const server =
+    mode === "unauthorized"
+      ? Bun.serve({ unix: socket, fetch: () => new Response("denied", { status: 401 }) })
+      : undefined
   const packageUrl = import.meta.resolve("ws/package.json")
   const metadata = JSON.parse(readFileSync(new URL(packageUrl), "utf8")) as { exports: { ".": { import: string } } }
   const actual = (await import(new URL(metadata.exports["."].import, packageUrl).href)) as typeof import("ws")
   const setOnError = Object.getOwnPropertyDescriptor(actual.default.prototype, "onerror")?.set
   if (!setOnError) throw new Error("The locked ws client has no onerror setter")
   // A WebSocket ErrorEvent may omit both details. Exercise the same real connection lifecycle.
-  const noDetail = mode === "no-detail"
-    ? vi.spyOn(actual.default.prototype, "onerror", "set").mockImplementation(function (this: WebSocketType, listener) {
-      setOnError.call(this, listener ? () => listener({ message: "" } as Parameters<NonNullable<typeof listener>>[0]) : null)
-    })
-    : undefined
+  const noDetail =
+    mode === "no-detail"
+      ? vi.spyOn(actual.default.prototype, "onerror", "set").mockImplementation(function (
+          this: WebSocketType,
+          listener,
+        ) {
+          setOnError.call(
+            this,
+            listener ? () => listener({ message: "" } as Parameters<NonNullable<typeof listener>>[0]) : null,
+          )
+        })
+      : undefined
   const replies = vi.fn()
   try {
     const result = await readITermCells({ tty: "/dev/ttys004", cols: 4, rows: 2, onReply: replies })
