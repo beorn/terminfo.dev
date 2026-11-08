@@ -100,6 +100,9 @@ test("suite identity changes with executable collection, ownership, capture and 
     "packages/terminfo.dev/src/capture-core.ts",
     "packages/terminfo.dev/src/darwin-capture.ts",
     "packages/terminfo.dev/src/darwin-terminal-text.ts",
+    "packages/terminfo.dev/src/iterm2-protocol.ts",
+    "packages/terminfo.dev/src/iterm2-api.proto",
+    "bun.lock",
     "packages/terminfo.dev/src/capture-calibration.ts",
     "packages/terminfo.dev/src/linux-input.ts",
     "packages/terminfo.dev/src/serve.ts",
@@ -227,7 +230,15 @@ test("text claims derive only from explicitly eligible app definitions and survi
     expect(snapshot.textClaims).not.toContain(headless.id)
     expect(derivedSuiteManifest(snapshot)).toMatchObject({
       textClaims: expected,
-      textQualification: { version: 2, recipes: ["macos-text-cells-v1", "windows-terminal-text-cells-v1"] },
+      textQualification: {
+        version: 2,
+        recipes: [
+          "iterm2-api-text-cells-v1",
+          "macos-text-cells-v1",
+          "windows-terminal-text-cells-v1",
+          "wezterm-windows-text-cells-v1",
+        ],
+      },
     })
     const { textClaims: _claims, textQualification: _spec, ...old } = snapshot
     expect(derivedSuiteManifest(old)).not.toHaveProperty("textClaims")
@@ -339,7 +350,7 @@ test("prose-only edits to content/features.json change no catalogEntrySha256 and
   const withFeatures = (mutate: (bold: Record<string, unknown>) => void) => {
     const dir = mkdtempSync(join(tmpdir(), "terminfo-suite-prose-"))
     try {
-      for (const top of ["packages", "scripts", "docs", ".github"]) {
+      for (const top of ["packages", "scripts", "docs", ".github", "bun.lock"]) {
         symlinkSync(join(SUITE_ROOT, top), join(dir, top))
       }
       mkdirSync(join(dir, "content"), { recursive: true })

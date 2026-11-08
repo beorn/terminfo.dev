@@ -213,7 +213,14 @@ printf 'xwd-window-%s' "\$id"`,
       'printf started > "$TEST_CAPTURE_STARTED"',
       'while [ ! -e "$TEST_CAPTURE_RELEASE" ]; do sleep 0.01; done',
       'printf finished > "$TEST_CAPTURE_FINISHED"',
-      'cat "$TEST_CAPTURE_PNG"',
+      // scrot opens its output filename; "-" reopens /dev/stdout rather than writing fd 1.
+      // A plain cat-to-stdout fixture hides ENXIO under the real spawn pipe transport.
+      "output=",
+      "previous=",
+      'for arg; do if [ "$previous" = --file ]; then output=$arg; fi; previous=$arg; done',
+      'if [ "$output" = - ]; then output=/dev/stdout; fi',
+      'cat "$TEST_CAPTURE_PNG" > "$output"',
+      'if [ "$TEST_CAPTURE_FAIL" = scrot ]; then printf "scrot output failed\\n" >&2; exit 23; fi',
     ].join("\n"),
   )
   executable(
@@ -353,20 +360,40 @@ test.runIf(process.platform === "linux")("OSC22 captures pointer PNG through the
     role: "control",
     label: "pointer baseline",
   })
-  expect(readFileSync(`${png}.scrot-args`, "utf8").trim().split("\n")).toEqual([
-    "--pointer",
-    "--window",
-    "42",
-    "--silent",
-    "--format",
-    "png",
-    "--file",
-    "-",
-  ])
+  const args = readFileSync(`${png}.scrot-args`, "utf8").trim().split("\n")
+  expect(args.slice(0, -1)).toEqual(["--pointer", "--window", "42", "--silent", "--format", "png", "--file"])
+  expect(args.at(-1)).toMatch(/\/frames\/\.osc22-[^/]+\/pointer\.png$/)
+  expect(existsSync(args.at(-1)!)).toBe(false)
+  expect(readdirSync(join(directory, "frames")).some((name) => name.startsWith(".osc22-"))).toBe(false)
   expect(readFileSync(stdin)).toEqual(readFileSync(png))
   expect(result.frame.sourceRef).toBe(`sha256:${createHash("sha256").update(readFileSync(png)).digest("hex")}`)
   expect(readdirSync(join(directory, "frames")).some((name) => name.endsWith(".xwd"))).toBe(false)
 })
+
+// A failed producer can leave partial PNG bytes; they must never survive as capture evidence.
+test.runIf(process.platform === "linux").each(["failure", "deadline"] as const)(
+  "OSC22 %s removes temporary output and preserves the command error",
+  async (mode) => {
+    const { directory, release } = fixture()
+    if (mode === "failure") {
+      writeFileSync(release, "continue")
+      process.env.TEST_CAPTURE_FAIL = "scrot"
+    }
+    const frames = join(directory, "frames")
+    const { captureRaw } = await createLinuxCapture(frames, liveExecutable(), () => {})
+    await expect(
+      captureRaw(
+        { featureId: "extensions.osc22-pointer", role: "target", label: "failed pointer" },
+        mode === "deadline" ? Date.now() + 1500 : undefined,
+      ),
+    ).rejects.toMatchObject(
+      mode === "failure"
+        ? { code: 23, message: expect.stringContaining("scrot output failed") }
+        : { killed: true, signal: "SIGKILL" },
+    )
+    expect(readdirSync(frames)).toEqual([])
+  },
+)
 
 test.runIf(process.platform === "linux")(
   "OSC22 pointer capture rejects ownership lost during acquisition",

@@ -389,6 +389,8 @@ test("iTerm startup records window and transfer consent policies before launch a
       { status: 0, stdout: "3.6.11\n" },
       { status: 1, stdout: "" },
       { status: 0, stdout: "" },
+      { status: 0, stdout: "1\n" },
+      { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
@@ -413,6 +415,8 @@ test("iTerm startup records window and transfer consent policies before launch a
     ["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", `${bundle}/Contents/Info.plist`]],
     ["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", `${bundle}/Contents/Info.plist`]],
     ["/usr/bin/pgrep", ["-x", "iTerm2"]],
+    ["/usr/bin/defaults", ["write", "com.googlecode.iterm2", "EnableAPIServer", "-bool", "true"]],
+    ["/usr/bin/defaults", ["read", "com.googlecode.iterm2", "EnableAPIServer"]],
     ["/usr/bin/defaults", ["write", "com.googlecode.iterm2", "OpenNoWindowsAtStartup", "-bool", "true"]],
     ["/usr/bin/defaults", ["write", "com.googlecode.iterm2", "NoSyncSuppressDownloadConfirmation", "-bool", "true"]],
     [
@@ -422,7 +426,7 @@ test("iTerm startup records window and transfer consent policies before launch a
     ["/usr/bin/open", ["-a", bundle, "--args", command]],
   ])
   // The retained launch log must disclose the configured permission state.
-  const policies = success.stdout.write.mock.calls.map(([line]) => JSON.parse(line)).slice(4, 6)
+  const policies = success.stdout.write.mock.calls.map(([line]) => JSON.parse(line)).slice(6, 8)
   expect(policies).toMatchObject([
     {
       name: "transfer consent policy",
@@ -436,7 +440,7 @@ test("iTerm startup records window and transfer consent policies before launch a
     },
   ])
   expect(success.spawnSync.mock.calls.map(([, , options]) => options)).toEqual([
-    ...Array.from({ length: 6 }, () =>
+    ...Array.from({ length: 8 }, () =>
       expect.objectContaining({ timeout: 5000, killSignal: "SIGKILL", maxBuffer: 262144 }),
     ),
     expect.objectContaining({ timeout: 10000, killSignal: "SIGKILL", maxBuffer: 262144 }),
@@ -447,14 +451,20 @@ test("iTerm startup records window and transfer consent policies before launch a
     [2, { status: 0, stdout: "123" }, "already running"],
     [2, { status: 2 }, "pgrep"],
     [2, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "pgrep"],
-    [3, { status: 1 }, "startup policy"],
-    [3, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "startup policy"],
-    [4, { status: 1 }, "transfer consent policy"],
-    [4, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent policy"],
-    [5, { status: 1 }, "transfer consent selection"],
-    [5, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent selection"],
-    [6, { status: 1 }, "open"],
-    [6, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
+    [3, { status: 1 }, "API server policy"],
+    [3, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "API server policy"],
+    [4, { status: 1 }, "API server preference readback"],
+    [4, { stdout: "" }, "API server preference readback"],
+    [4, { stdout: "0\n" }, "API server preference readback"],
+    [4, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "API server readback"],
+    [5, { status: 1 }, "startup policy"],
+    [5, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "startup policy"],
+    [6, { status: 1 }, "transfer consent policy"],
+    [6, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent policy"],
+    [7, { status: 1 }, "transfer consent selection"],
+    [7, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent selection"],
+    [8, { status: 1 }, "open"],
+    [8, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
   ] as const) {
     const failure = run({ [index]: result })
     expect(failure.execute).toThrow(diagnostic)

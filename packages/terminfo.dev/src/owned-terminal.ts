@@ -2,7 +2,7 @@ import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_pr
 import { createHash } from "node:crypto"
 import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
 import { isatty, WriteStream } from "node:tty"
-import { dirname, isAbsolute, join } from "node:path"
+import { dirname, isAbsolute, join, win32 } from "node:path"
 import type {
   DarwinMuxAttachmentProof,
   MuxAttachmentProof,
@@ -42,11 +42,11 @@ import { kernelExecPath } from "./darwin-kernel-exec.ts"
 import {
   mapSnapshotToCells,
   readTerminalTextSnapshot,
-  type OsascriptReply,
   type TerminalTextApp,
   type TerminalTextRead,
 } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
+import { readITermCells } from "./iterm2-protocol.ts"
 import {
   HOSTED_WINDOWS_EXECUTABLE,
   hostedWindowsAppFromExecutablePath,
@@ -69,6 +69,7 @@ import {
   readWindowsTerminalRows,
   readWindowsTerminalText,
 } from "./windows-terminal-text.ts"
+import { readWindowsWezTermRows, readWindowsWezTermText } from "./windows-wezterm-text.ts"
 
 export { HOSTED_WINDOWS_EXECUTABLE, hostedWindowsAppFromExecutablePath, type HostedWindowsApp, type HostedWindowsAppId }
 
@@ -1045,6 +1046,7 @@ export async function createOwnedTerminal(options: {
   let binding: OutputBinding
   let hostedApp: HostedDarwinApp | undefined
   let hostedWindowsApp: HostedWindowsApp | undefined
+  let windowsWezTermExecutable: string | undefined
   let hostedAncestor: AncestryRow | undefined
   let processOwnerPid: number | undefined
   let processOwnerBasis: string | undefined
@@ -1144,6 +1146,9 @@ export async function createOwnedTerminal(options: {
       throw new Error("Hosted Windows github-hosted-runner receipt names no win32 appLaunch")
     }
     hostedWindowsApp = hostedWindowsAppFromExecutablePath(appLaunch.executablePath)
+    if (hostedWindowsApp.id === "wezterm") {
+      windowsWezTermExecutable = win32.join(win32.dirname(appLaunch.executablePath), "wezterm.exe")
+    }
     // The receipt's own launch id must be THIS launch, the same claim the Terminal.app arm makes.
     if (receipt.runId !== expectedLaunchRunId) {
       throw new Error(`Hosted Windows receipt run id ${receipt.runId} differs from this launch ${expectedLaunchRunId}`)
@@ -1245,9 +1250,23 @@ export async function createOwnedTerminal(options: {
     })
     const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
     const appPid = hostedAncestor?.pid ?? processOwnerPid
-    // Windows Terminal answers for its own buffer through UI Automation. Alacritty and WezTerm have no
-    // such observer here, so their reads stay the console host's buffer (#30720).
+    // WT uses UIA; WezTerm's candidate uses the owned pane CLI. Both must pass the shared writer's
+    // mapping and host-ownership witnesses. Alacritty retains its explicitly unqualified host read.
     const windowsTerminalPid = hostedWindowsApp?.id === "windows-terminal" ? hostedAncestor?.pid : undefined
+    const wezTermExecutable = windowsWezTermExecutable
+    const readOwnedWindowsRows =
+      windowsTerminalPid !== undefined
+        ? (geometry: { rows: number; cols: number }) =>
+            readWindowsTerminalRows({ pid: windowsTerminalPid, rows: geometry.rows })
+        : wezTermExecutable !== undefined
+          ? (geometry: { rows: number; cols: number }) =>
+              readWindowsWezTermRows({
+                executable: wezTermExecutable,
+                pane: process.env.WEZTERM_PANE,
+                socket: process.env.WEZTERM_UNIX_SOCKET,
+                ...geometry,
+              })
+          : undefined
     const renditions = windowsTerminalPid === undefined ? undefined : createLineRenditionTracker()
     const readConsoleHostCells = async (): Promise<ConsoleCellRead> => {
       if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
@@ -1340,7 +1359,25 @@ export async function createOwnedTerminal(options: {
         }
         return readBoundGeometry(current, windowsKernel)
       },
-      ...(hostedWindowsApp && windowsTerminalPid === undefined && { readCells: readConsoleHostCells }),
+      ...(hostedWindowsApp?.id === "alacritty" && { readCells: readConsoleHostCells }),
+      ...(wezTermExecutable !== undefined && {
+        textRecipe: "wezterm-windows-text-cells-v1" as const,
+        async readCells(): Promise<TerminalTextRead> {
+          // This collector IS the verified terminal child. Read its environment only after the
+          // live owner/console recheck, never from the workflow parent or a pane-list fallback.
+          const geometry = await owner.readGeometry()
+          if (geometry.status !== "measured") {
+            return { status: "refused", reason: `WezTerm owned text needs a measured grid: ${geometry.diagnostic}` }
+          }
+          return readWindowsWezTermText({
+            executable: wezTermExecutable,
+            pane: process.env.WEZTERM_PANE,
+            socket: process.env.WEZTERM_UNIX_SOCKET,
+            cols: geometry.cols,
+            rows: geometry.rows,
+          })
+        },
+      }),
       ...(windowsTerminalPid !== undefined && {
         textRecipe: "windows-terminal-text-cells-v1" as const,
         observeWrite: (written: string) => renditions?.observe(written),
@@ -1357,6 +1394,8 @@ export async function createOwnedTerminal(options: {
           if (doubled !== undefined) return { status: "refused", reason: doubled }
           return readWindowsTerminalText({ pid: windowsTerminalPid, cols: geometry.cols, rows: geometry.rows })
         },
+      }),
+      ...(readOwnedWindowsRows !== undefined && {
         async consoleHostOwnership(): Promise<TextQualificationOwnership> {
           const geometry = await owner.readGeometry()
           if (geometry.status !== "measured") {
@@ -1367,16 +1406,17 @@ export async function createOwnedTerminal(options: {
           await writeConsoleCellsRaw("\u0001", windowsKernel)
           const host = await readConsoleHostCells()
           if (host.status === "refused") throw new Error(`The console host's read refused: ${host.reason}`)
-          const observer = readWindowsTerminalRows({ pid: windowsTerminalPid, rows: geometry.rows })
-          if (observer.status === "refused") throw new Error(`Windows Terminal's read refused: ${observer.reason}`)
+          const observer = readOwnedWindowsRows(geometry)
+          if (observer.status === "refused") throw new Error(`Owned Windows text read refused: ${observer.reason}`)
           const observerRow = observer.rows[row - 1]
-          if (observerRow === undefined) throw new Error(`Windows Terminal returned no row ${String(row)}`)
+          if (observerRow === undefined) throw new Error(`Owned Windows text returned no row ${String(row)}`)
           return { cell: { row, col }, host: host.grid.text[row - 1]?.charAt(col - 1) ?? "", observerRow }
         },
       }),
       ...(darwinTextApp !== undefined &&
         darwinTextTty !== undefined && {
-          textRecipe: "macos-text-cells-v1" as const,
+          textRecipe:
+            darwinTextApp === "iterm2" ? ("iterm2-api-text-cells-v1" as const) : ("macos-text-cells-v1" as const),
           async readCells(checkpoint?: Parameters<NonNullable<OwnedTerminal["readCells"]>>[0]) {
             if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
             const geometry = await owner.readGeometry()
@@ -1448,16 +1488,14 @@ export async function createOwnedTerminal(options: {
               }
               return { status: "read", app: "kitty", cells }
             }
-            return readTerminalTextSnapshot({
-              app: darwinTextApp,
-              tty: darwinTextTty,
-              cols: geometry.cols,
-              rows: geometry.rows,
-              ...(darwinTextApp === "iterm2" &&
-                (checkpoint?.label === "text qualification soft-wrap target" ||
-                  checkpoint?.label === "text qualification prior-scrollback control") && {
-                  onReply: (reply: OsascriptReply) => {
-                    // Use the existing artifact observer; no parsed/reconstructed contents replace native stdout.
+            if (darwinTextApp === "iterm2") {
+              return readITermCells({
+                tty: darwinTextTty,
+                cols: geometry.cols,
+                rows: geometry.rows,
+                ...(checkpoint && {
+                  onReply: (bytes: Uint8Array) => {
+                    const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
                     retain(
                       checkpoint.directory,
                       Buffer.from(
@@ -1474,6 +1512,13 @@ export async function createOwnedTerminal(options: {
                     )
                   },
                 }),
+              })
+            }
+            return readTerminalTextSnapshot({
+              app: darwinTextApp,
+              tty: darwinTextTty,
+              cols: geometry.cols,
+              rows: geometry.rows,
             })
           },
         }),
