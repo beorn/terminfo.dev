@@ -61,3 +61,19 @@ test("failed connection retains exit, stderr and partial bytes without another r
   expect(result.reason).toContain(Buffer.from("owned socket refused").toString("base64"))
   expect(run).toHaveBeenCalledTimes(1)
 })
+
+// History counts must include physical blank rows; the visible-grid suite cannot catch a
+// history request accidentally retaining its old zero start or rejecting extra history rows.
+test("owned history reads negative start through the same CLI and preserves physical rows", () => {
+  answer("old\n\nA\n\n")
+  const read = readWindowsWezTermRows({ ...options, startLine: -2147483648 })
+  expect(read).toMatchObject({ status: "read", rows: ["old", "", "A", ""] })
+  expect(read).not.toHaveProperty("viewportOffset")
+  expect(run).toHaveBeenCalledWith(
+    options.executable,
+    ["cli", "--no-auto-start", "get-text", "--pane-id", "42", "--start-line", "-2147483648", "--end-line", "1"],
+    expect.objectContaining({
+      env: expect.objectContaining({ WEZTERM_UNIX_SOCKET: options.socket, WEZTERM_PANE: options.pane }),
+    }),
+  )
+})

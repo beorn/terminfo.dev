@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, realpathSync } from "node:fs"
-import { join } from "node:path"
+import { isAbsolute, join } from "node:path"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import {
   runningTerminal,
@@ -25,6 +25,13 @@ const AUTOMATION_OR_UNANSWERED = /ETIMEDOUT|timed out|not authori[sz]ed|not perm
 
 /** AppleScript takes a before-ID census and returns its new window ID plus the exact tab TTY. */
 export function launchTerminalWindow(scriptPath: string): TerminalAppWindow {
+  // The path is interpolated into `do script` verbatim, so a missing one reaches AppleScript as the
+  // literal `undefined` and fails as a script error instead of naming the broken caller (30729).
+  if (typeof scriptPath !== "string" || !isAbsolute(scriptPath)) {
+    throw new Error(
+      `Terminal launch requires the absolute path of the command script to run, but received ${JSON.stringify(scriptPath)}`,
+    )
+  }
   const script = `tell application "Terminal"
   set AppleScript's text item delimiters to ","
   set priorList to id of every window
@@ -53,7 +60,7 @@ end tell`
     // Naming the permission is the difference between "a human grants this" and "a script broke".
     if (!AUTOMATION_OR_UNANSWERED.test(detail)) throw error
     throw new Error(
-      `Automation (TCC) denied control of Terminal, or the launch did not answer within ${TERMINAL_LAUNCH_TIMEOUT_MS}ms; grant Automation for osascript and rerun: ${detail}`,
+      `Automation (TCC) denied control of Terminal, or the launch did not answer within ${TERMINAL_LAUNCH_TIMEOUT_MS}ms; grant Automation to the process that sends this Apple event (/opt/hca/hosted-compute-agent on the hosted runner, osascript on a local Mac), not to Terminal, and rerun: ${detail}`,
     )
   }
   const output = answered.trimEnd()

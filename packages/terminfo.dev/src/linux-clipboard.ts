@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
-import { basename, dirname, sep } from "node:path"
+import { basename, dirname, join, sep } from "node:path"
 import type {
   ClipboardFixture,
   LinuxMuxAttachmentProof,
@@ -10,6 +10,7 @@ import type {
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
+import { readScreenScrollback } from "./linux-screen-text.ts"
 
 type MuxReceiptTarget = Pick<
   LinuxMuxAttachmentProof,
@@ -52,6 +53,7 @@ export interface ClipboardTraceEvent {
 }
 
 export interface LinuxClipboardAdapter {
+  readonly getScrollback?: TermProbeSource["getScrollback"]
   readonly profile: ClipboardReceipt["profile"]
   readonly config: string
   readonly permissions: string
@@ -490,7 +492,9 @@ export async function createLinuxClipboardAdapter(
   if (process.platform !== "linux") throw new Error("Owned clipboard fixture requires Linux")
   const receiptBytes = readFileSync(ownedReceipt(receiptPath))
   const receipt = parseLinuxClipboardReceipt(JSON.parse(receiptBytes.toString("utf8")) as unknown)
+  const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   if (
+    !captureDirectory ||
     receipt.runId !== expectedLaunchRunId ||
     process.env.DISPLAY !== receipt.display.name ||
     process.env.TERMINFO_CLIPBOARD_PROFILE !== receipt.profile ||
@@ -671,6 +675,8 @@ export async function createLinuxClipboardAdapter(
     throw new Error("Initial owned clipboard readback differs from generated baseline")
   }
   const withClipboardFixture = createClipboardTransaction(baseline, { readText, writeText })
+  const screenTarget = receipt.target?.kind === "mux" && receipt.target.mux === "screen" ? receipt.target : undefined
+  let screenRead = 0
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
     config: receipt.config,
@@ -696,6 +702,56 @@ export async function createLinuxClipboardAdapter(
       // Preserve title whitespace, stripping only the command's one output line terminator.
       return title.replace(/\n$/u, "")
     },
+    ...(screenTarget && {
+      async getScrollback() {
+        await assertOwned()
+        const read = readScreenScrollback({
+          executable: screenTarget.executable.path,
+          session: screenTarget.session,
+          socketDirectory: dirname(screenTarget.socketPath),
+          hardcopyPath: join(captureDirectory, `${screenTarget.session}-history-${++screenRead}.txt`),
+        })
+        await assertOwned()
+        if (read.status === "refused") throw new Error(read.reason)
+        return { totalLines: read.totalLines }
+      },
+    }),
+    ...(receipt.target?.kind === "mux" &&
+      receipt.target.mux === "tmux" && {
+        async getScrollback() {
+          await assertOwned()
+          const target = receipt.target
+          if (target?.kind !== "mux" || target.mux !== "tmux") throw new Error("Owned tmux history target lost")
+          const raw = await command(
+            target.executable.path,
+            [
+              "-S",
+              target.socketPath,
+              "display-message",
+              "-p",
+              "-t",
+              target.session,
+              "#{history_size} #{pane_height} #{scroll_position} #{pane_in_mode}",
+            ],
+            env,
+          )
+          await assertOwned()
+          const fields = /^(\d+) (\d+) (\d*) ([01])\n?$/u.exec(raw)
+          if (!fields) throw new Error(`Owned tmux scrollback reading malformed: ${JSON.stringify(raw)}`)
+          const history = Number(fields[1]),
+            rows = Number(fields[2])
+          if (fields[4] === "1" && fields[3] === "") throw new Error("Owned tmux copy mode reports no scroll position")
+          const fromBottom = fields[4] === "0" ? 0 : Number(fields[3])
+          if (
+            ![history, rows, fromBottom, history + rows].every(Number.isSafeInteger) ||
+            rows < 1 ||
+            fromBottom > history
+          ) {
+            throw new Error(`Owned tmux scrollback counts invalid: ${JSON.stringify(raw)}`)
+          }
+          return { totalLines: history + rows, screenLines: rows, viewportOffset: history - fromBottom }
+        },
+      }),
     get muxAttachmentProof() {
       return muxAttachmentProof ? globalThis.structuredClone(muxAttachmentProof) : undefined
     },

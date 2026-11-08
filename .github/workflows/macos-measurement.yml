@@ -350,7 +350,7 @@ jobs:
           chmod +x "$COMMAND_PATH"
           case "$APP_ID" in
             terminal-app)
-              bun --eval "$(cat <<'HOSTED_TERMINAL_LAUNCH'
+              COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_TERMINAL_LAUNCH'
           const { writeFileSync } = require("node:fs");
           const { join } = require("node:path");
           const { launchTerminalWindow } = require(process.cwd() + "/packages/admin/src/terminal-app-receipt.ts");

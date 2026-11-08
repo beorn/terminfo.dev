@@ -31,6 +31,8 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { mock } from "bun:test"
 const root = fs.mkdtempSync(join(os.tmpdir(), "terminfo-mux-owner-"))
+fs.mkdirSync(join(root, "artifacts"))
+const hardcopies = []
 const hash = x => createHash("sha256").update(x).digest("hex")
 const launch = "a".repeat(32), capture = "b".repeat(32)
 const baseline = "terminfo-owned-clipboard-" + launch
@@ -96,10 +98,30 @@ mock.module("node:fs", () => ({...fs,
   },
 }))
 mock.module("node:child_process", () => ({...cp,
+  spawnSync(file,args,options) {
+    assert.equal(file,exe("screen"))
+    assert.deepEqual(args.slice(0,5),["-S",muxTarget.session,"-X","hardcopy","-h"])
+    assert.equal(options.env.SCREENDIR,root)
+    const path=args[5]
+    assert.equal(path.slice(0,path.lastIndexOf("/")),join(root,"artifacts"))
+    assert(path.includes(muxTarget.session))
+    assert(!hardcopies.includes(path),"each Screen read needs its own retained hardcopy")
+    hardcopies.push(path)
+    if(variant==="screen-refused")return {status:2,stdout:Buffer.alloc(0),stderr:Buffer.from("screen fixture refusal")}
+    real.writeFileSync(path,"row\n".repeat(variant==="screen-more"?45:44))
+    if(variant==="screen-owner-lost")variant="detached"
+    return {status:0,stdout:Buffer.alloc(0),stderr:Buffer.alloc(0)}
+  },
   spawn(){spawns++;throw new Error("unowned clipboard writer spawned")},
   execFile(file,args,options,callback) {
     if (file === "xdotool") callback(null,"76\n")
     else if (file === exe("tmux")) {
+      if(args.includes("display-message")) {
+        assert.deepEqual(args,["-S",socket,"display-message","-p","-t",muxTarget.session,"#{history_size} #{pane_height} #{scroll_position} #{pane_in_mode}"])
+        if(variant==="scrollback-failed")callback(new Error("tmux history command failed"),"")
+        else callback(null,variant==="scrollback-malformed"?"not counts\n":variant==="scrollback-bottom"?"20 24  0\n":variant==="scrollback-empty-mode"?"20 24  1\n":"20 24 3 1\n")
+        return {}
+      }
       const server = args.at(-1).includes("#{pid}") ? (variant === "foreign-server" ? "149" : "145") + "\t" : ""
       if (variant === "detached") callback(null,"")
       else callback(null, server + (variant === "client-changed" ? "150" : "148") + "\t/dev/pts/0\tterminfo-" + launch + "\t" + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n" + (variant === "second-client" ? server+"150\t/dev/pts/2\tterminfo-"+launch+"\t"+socket+"\n" : ""))
@@ -155,6 +177,33 @@ try {
     assert.equal(adapter.muxAttachmentProof.collector.ttyRdev,34817)
     assert.equal(adapter.muxAttachmentProof.attachedClient.ttyRdev,34816)
     assert.equal(adapter.muxAttachmentProof.receiptSha256,hash(real.readFileSync(receiptPath)))
+    if (kind === "tmux") {
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:17})
+      variant="scrollback-bottom"
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:20})
+      variant="scrollback-empty-mode"
+      await assert.rejects(()=>adapter.getScrollback(),/copy mode reports no scroll position/)
+      variant="scrollback-malformed"
+      await assert.rejects(()=>adapter.getScrollback(),/scrollback.*malformed/i)
+      variant="scrollback-failed"
+      await assert.rejects(()=>adapter.getScrollback(),/tmux history command failed/)
+      variant="valid"
+    } else {
+      assert.equal(typeof adapter.getScrollback,"function","owned Screen history reader must be reachable")
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:44})
+      variant="screen-more"
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:45})
+      for(const path of hardcopies)assert(real.existsSync(path),"hardcopy evidence must remain retained")
+      variant="screen-refused"
+      await assert.rejects(()=>adapter.getScrollback(),{message:'screen hardcopy exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})
+      variant="detached"
+      const before=hardcopies.length
+      await assert.rejects(()=>adapter.getScrollback(),/attached|display/i)
+      assert.equal(hardcopies.length,before,"ownership refusal must precede the Screen command")
+      variant="screen-owner-lost"
+      await assert.rejects(()=>adapter.getScrollback(),/attached|display/i)
+      variant="valid"
+    }
     // The batch's verifier must own every existing transaction check, not only its outer boundary.
     for (const [site, failAt] of [["start",1],["read",2],["write",3]]) {
       let tests=0, callbacks=0

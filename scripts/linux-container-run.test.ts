@@ -1450,3 +1450,107 @@ it.each([false, true])("writes a Linux completion receipt for captured bytes, pe
     })
   }
 })
+
+// #32751: projected from retained tmux capture 76a2e18a19dfef55d3e1ad3191450ca7.
+// Run the production admission, not a second predicate; no container or window starts.
+const retainedTmuxAdmission = {
+  schemaVersion: 4,
+  runId: "76a2e18a19dfef55d3e1ad3191450ca7",
+  subject: {
+    kind: "mux",
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    osVersion: "7.0.0-34-generic",
+    outerTerminal: "kitty",
+    mux: "tmux",
+    config: "/out/mux-empty.conf",
+    permissions: null,
+  },
+  identity: "verified",
+  origin: {
+    kind: "collector",
+  },
+  probeHash: "c189fc171f0b",
+  suiteId: "c189fc171f0b",
+  sourceRevision: "6862bb5d1e761ba5e90a4bd31917d7919ee21702",
+  outerApp: {
+    subject: {
+      id: "kitty",
+    },
+    provenance: {
+      executable: {
+        path: "/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty",
+        sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+        version: "kitty 0.49.2 created by Kovid Goyal",
+      },
+    },
+  },
+  rawReplies: {
+    "collector.identityCheck":
+      '{"ok":true,"checked":true,"executable":{"path":"/nix/store/k111lnbq1vw0k4v4cjhi1iwp5lky3ryn-tmux-3.8/bin/tmux","sha256":"da3d96d5d01388873e01b326b7c7be219c9c382b976f726811cb1f7cf054e379","version":"3.8"}}',
+  },
+  assertions: [],
+  results: [],
+}
+
+it.each(["verified", "unverified", "missing", "malformed", "bad-hash", "not-ok", "wrong-target"])(
+  "enforces canonical unverified collector drafts for retained tmux %s",
+  (scenario) => {
+    const capture = structuredClone(retainedTmuxAdmission)
+    if (scenario === "unverified") capture.identity = "unverified"
+    if (scenario === "missing") Reflect.deleteProperty(capture.rawReplies, "collector.identityCheck")
+    if (scenario === "malformed") capture.rawReplies["collector.identityCheck"] = "{broken"
+    if (scenario === "bad-hash" || scenario === "not-ok") {
+      const identity = JSON.parse(capture.rawReplies["collector.identityCheck"]) as {
+        ok: boolean
+        executable: { sha256: string }
+      }
+      if (scenario === "bad-hash") identity.executable.sha256 = "short"
+      else identity.ok = false
+      capture.rawReplies["collector.identityCheck"] = JSON.stringify(identity)
+    }
+    if (scenario === "wrong-target") {
+      capture.identity = "unverified"
+      capture.outerApp.subject.id = "xterm"
+    }
+    const raw = join(dir, "retained-capture.json"),
+      build = join(dir, "build.json")
+    writeFileSync(raw, JSON.stringify(capture))
+    writeFileSync(
+      build,
+      JSON.stringify({
+        probeHash: capture.probeHash,
+        collectorRevision: capture.sourceRevision,
+      }),
+    )
+    const source = readFileSync(launcher, "utf8")
+    const start = source.indexOf('  jq -e --slurpfile build "$build_receipt"')
+    const end = source.indexOf("  probe_run_id=", start)
+    if (start < 0 || end < 0) throw new Error("Production capture admission block is missing")
+    const admission = source.slice(start, end).replaceAll("/out/v3-capture.json", '"$capture"')
+    const executable = capture.outerApp.provenance.executable
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `set -euo pipefail
+build_receipt=$1 capture=$2 live_executable=$3 live_executable_sha=$4
+target_id=kitty TERMINFO_MUX_KIND=tmux
+${admission}`,
+        "_",
+        build,
+        raw,
+        executable.path,
+        executable.sha256,
+      ],
+      { encoding: "utf8" },
+    )
+    expect(result.status, result.stderr).toBe(scenario === "unverified" ? 0 : 2)
+    if (scenario === "wrong-target") expect(result.stderr).toContain("named a target other than kitty")
+    else if (scenario !== "unverified") {
+      expect(result.stderr).toContain("invalid schema-4 capture")
+      expect(result.stderr).not.toContain("named a target other than")
+    }
+  },
+)

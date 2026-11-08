@@ -898,19 +898,24 @@ if [[ "${1:-}" == "--inside" ]]; then
       exit 2
     }
   fi
-  jq -e --slurpfile build "$build_receipt" --arg executablePath "$live_executable" \
-    --arg executableSha "$live_executable_sha" --arg target "$target_id" --arg mux "${TERMINFO_MUX_KIND:-}" '
+  jq -e --slurpfile build "$build_receipt" '
     .schemaVersion == 4 and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
-    (if $mux == "" then .subject.kind == "term" and .subject.id == $target and
-       .provenance.executable.path == $executablePath and .provenance.executable.sha256 == $executableSha
-     else .subject.kind == "mux" and .subject.id == $mux and .outerApp.subject.id == $target and
-       .outerApp.provenance.executable.path == $executablePath and .outerApp.provenance.executable.sha256 == $executableSha end) and
     .identity == "unverified" and .origin.kind == "collector" and
     .probeHash == $build[0].probeHash and .suiteId == $build[0].probeHash and
     .sourceRevision == $build[0].collectorRevision and
     (.rawReplies | type == "object") and (.assertions | type == "array") and
     (.results | type == "array") and (has("observations") | not)' /out/v3-capture.json >/dev/null || {
-    echo "Daemon returned an invalid schema-4 capture, or named a target other than $target_id ($(jq -c '.subject // null' /out/v3-capture.json)); raw response retained" >&2
+    echo "Daemon returned an invalid schema-4 capture: schema, identity, origin, suite, source or collection fields disagree; raw response retained" >&2
+    exit 2
+  }
+  jq -e --arg executablePath "$live_executable" --arg executableSha "$live_executable_sha" \
+    --arg target "$target_id" --arg mux "${TERMINFO_MUX_KIND:-}" '
+    if $mux == "" then .subject.kind == "term" and .subject.id == $target and
+       .provenance.executable.path == $executablePath and .provenance.executable.sha256 == $executableSha
+     else .subject.kind == "mux" and .subject.id == $mux and .outerApp.subject.id == $target and
+       .outerApp.provenance.executable.path == $executablePath and .outerApp.provenance.executable.sha256 == $executableSha end' \
+    /out/v3-capture.json >/dev/null || {
+    echo "Daemon named a target other than $target_id or a different executable ($(jq -c '.subject // null' /out/v3-capture.json)); raw response retained" >&2
     exit 2
   }
   probe_run_id=$(jq -er .runId /out/v3-capture.json)

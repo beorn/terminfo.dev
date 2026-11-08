@@ -67,6 +67,10 @@ test.each([
     const result = await readITermCells({ tty: "/dev/ttys004", cols: 4, rows: 2, onReply: replies })
     expect(result).toEqual({ status: "refused", reason: expect.stringContaining(detail) })
     if (result.status !== "refused") throw new Error("Opening failure produced cells")
+    expect(result.reason).not.toContain(fixture.home)
+    if (mode === "absent" || mode === "refused") {
+      expect(result.reason).toContain("~/Library/Application Support/iTerm2/private/socket")
+    }
     expect(result.reason).not.toContain("test-cookie")
     expect(result.reason).not.toContain("test-key")
     expect(replies).not.toHaveBeenCalled()

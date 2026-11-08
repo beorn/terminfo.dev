@@ -16,6 +16,8 @@ This describes the implemented system. Callbacks still perform live I/O and eval
 
 The six assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard; `process_environment` reads a terminal child's allowlisted export with its same-run launch, PID and TTY controls. Probe setup and feed writes retain their existing order and bytes; they are not assertion types.
 
+The owned App source may supply `getScrollback`, as an async `TerminalScrollbackReading` (total lines, optional screen rows and top-relative viewport offset; unreported fields are absent). Its history callbacks use rows from run geometry and require an unchanged no-overflow count and a changed overflow count before applying the existing history criteria. Without a complete owned reading, the existing named observation gaps remain.
+
 The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;
@@ -63,8 +65,13 @@ The App font-ligature callback compares ten one-cell pixel crops of contiguous o
 with two isolated-character checkpoints at those exact cells. Each checkpoint uses the
 shared cleared-frame paint witness and space/glyph return, stable pixels and measured
 geometry, with the cursor outside the sample. A changed-character control must change
-the same-cell pixels. With those controls, any target-cell difference decides Supported;
-all ten equal decide Unsupported. Missing sensitivity or moved crops remain unresolved.
+the same-cell pixels. Two further checkpoints put underscore neighbours against those
+same ten operator cells, testing shared-edge ink without the target operator pairs. Every
+such crop must match its isolated control; a mismatch remains inconclusive because bleed
+can explain a target difference. With those controls passing, a target-cell difference
+decides Supported; all ten equal decide Unsupported. Missing sensitivity or moved crops remain unresolved.
+The response retains the OSC 50 font reply or explicitly records `font: unreported`;
+font availability never gates the verdict and a configured font is never inferred as the actual font.
 Text snapshots cannot decide glyph shaping; the library declaration stays Untestable.
 
 Callback observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`, not five result statuses.

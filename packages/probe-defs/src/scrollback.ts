@@ -389,6 +389,12 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
 
 /** One reviewed app context; the existing job omits its bound until pinned-code evidence justifies it. */
 async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  if (ctx.getScrollback) {
+    const reading = await ctx.getScrollback()
+    if (reading.viewportOffset === undefined || reading.screenLines === undefined) {
+      return notTestedResult("terminal reports no viewport offset", reading)
+    }
+  }
   const capture = ctx.capture
   const input = ctx.input
   const readInput = ctx.readInput
@@ -556,6 +562,47 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   }
 }
 
+/** The App reader uses the existing library history criteria, with same-path controls. */
+async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCallbackResult> {
+  const read = ctx.getScrollback
+  if (!read) return notTestedResult("owned scrollback history reader", {})
+  const refusal = tooSmall(ctx, 1, `line ${ctx.rows + 9}`.length, "Scrollback fixture")
+  if (refusal) return refusal
+  ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  if (!(await ctx.queryCursorPosition())) return replyFailure("No cursor reply to fence scrollback baseline output")
+  const baseline = await read()
+  if (!validSize(baseline.totalLines, 0)) {
+    return notTestedResult("scrollback reader geometry differs from measured screen", { baseline, rows: ctx.rows })
+  }
+  for (let i = 0; i < ctx.rows - 1; i++) ctx.write("c\r\n")
+  if (!(await ctx.queryCursorPosition())) return replyFailure("No cursor reply to fence no-overflow control")
+  const control = await read()
+  if (control.totalLines !== baseline.totalLines) {
+    return notTestedResult("no-overflow output changed the retained history count", { baseline, control })
+  }
+  ctx.write("\x1b[H")
+  const lineCount = ctx.rows + 10
+  for (let i = 0; i < lineCount; i++) ctx.write(`line ${i}\r\n`)
+  if (!(await ctx.queryCursorPosition())) return replyFailure("No cursor reply to fence scrollback overflow output")
+  const scroll = await read()
+  if (!validSize(scroll.totalLines, 0)) {
+    return notTestedResult("scrollback reader geometry changed after overflow", { baseline, control, scroll })
+  }
+  if (scroll.totalLines === baseline.totalLines) {
+    return notTestedResult(
+      "retained history count did not change after the overflow lines; no same-path control shows this reader counts history",
+      { baseline, control, lineCount, scroll, rows: ctx.rows, geometrySource: "rows from run geometry" },
+    )
+  }
+  return parserStateResult(
+    total ? scroll.totalLines - baseline.totalLines >= lineCount - ctx.rows : scroll.totalLines > baseline.totalLines,
+    total
+      ? "Measured history grows by at least the overflow beyond the screen"
+      : "Written lines increase measured scrollback history",
+    { baseline, control, lineCount, scroll, rows: ctx.rows, geometrySource: "rows from run geometry" },
+  )
+}
+
 export const scrollbackProbes: ProbeDefinition[] = [
   {
     ...probe(
@@ -586,6 +633,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        if (ctx.getScrollback) return appHistory(ctx, false)
         const capture = ctx.capture
         if (capture) {
           const refusal = tooSmall(ctx, 3, `line-${ctx.rows + 9}`.length, "Scrollback fixture")
@@ -700,6 +748,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        if (ctx.getScrollback) return appHistory(ctx, true)
         const capture = ctx.capture
         if (capture) {
           const refusal = tooSmall(ctx, 5, `total-${ctx.rows + 9}`.length, "Scrollback fixture")

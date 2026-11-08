@@ -1061,8 +1061,18 @@ export type AppSemanticReading =
     }
   | { status: "unavailable" | "invalid"; reason: string; detail?: object }
 
+/** Same-session terminal report. Unreported fields are absent, never inferred. */
+export type TerminalScrollbackReading = Readonly<{
+  totalLines: number
+  screenLines?: number
+  /** Top-relative, as in the library reading. */
+  viewportOffset?: number
+}>
+
 export interface TermProbeSource {
   readonly kind: ProbeSourceKind
+  /** Same-session owned history. Absent when the terminal exposes no complete reading. */
+  getScrollback?: () => Promise<TerminalScrollbackReading>
   /** This run's owned public title surface; empty is a title, and a failed read throws its cause. */
   readTitle?: () => Promise<string>
   /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */

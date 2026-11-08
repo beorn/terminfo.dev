@@ -49,7 +49,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
         fixture:{definition:"callbacks",config:"--config NONE",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}}
     const path=join(process.env.HOME,"runtime.json")
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
-    let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
+    let suppliedTarget=target,hasAttachment=true,hasBinary=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
@@ -63,8 +63,8 @@ it.each(["tmux", "screen", "darwin-screen"])(
       }
       if(darwin)assert.equal(options.process.asserter,"terminfo-admin")
       else assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
-      const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
-      return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({muxAttachment:attachment}),
+      const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{...(hasBinary?{path:"/fixture/"+mux,sha256:"ab".repeat(32)}:{}),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
+      return {geometryAtGrant:{status:"measured",rows:24,cols:80},getScrollback:async()=>({totalLines:24}),summary:JSON.stringify({muxAttachment:attachment}),
         ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
         ...(darwin?{textRecipe:"macos-text-cells-v1",readCells:async()=>{throw new Error("This subject-join test does not request a text frame")}}:{}),
         ...(!darwin?{clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(!hasAttachment?{muxAttachmentProof:attachment}:{})}}:{}),dispose:async()=>{}}
@@ -94,6 +94,10 @@ it.each(["tmux", "screen", "darwin-screen"])(
     if(darwin)process.env.TERMINFO_CAPTURE_DIRECTORY=join(process.env.HOME,"capture")
     const collect=()=>collectProbeRun({ids:["device.xtversion"],...(darwin?{processOwner:{asserter:"terminfo-admin",launchRunId:"a".repeat(32),workerPid:process.pid,provider:"cli-process",ownerPid:123,executablePath:"/fixture/kitty",marker:{flag:"--run",value:"a".repeat(32)},tty:"/dev/ttys000",intendedVersion:"0.49.2"}}:{})})
     const run=await collect()
+    const {decodeCollectorDraft}=await import("./packages/run-parser/src/index.ts")
+    assert.equal(decodeCollectorDraft("owned-history fixture",JSON.stringify(run),globalThis.__TERMINFO_BUNDLED_SUITE__.manifest,revision).kind,"captured")
+    assert.equal(run.identity,"unverified","placement owns verification; binary proof stays in raw replies")
+    assert.deepEqual(JSON.parse(run.rawReplies["collector.historyIdentityCheck"]).executable,{path:"/fixture/"+mux,sha256:"ab".repeat(32),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version})
     assert.deepEqual(JSON.parse(run.rawReplies["collector.collectionAttempt"]),{...JSON.parse(collectionAttempt),result:"completed"})
     assert.equal(run.rawReplies["fixture.reply"],"batch-reply")
     if(!darwin){
@@ -103,6 +107,11 @@ it.each(["tmux", "screen", "darwin-screen"])(
     assert.equal(verifierCalls,2)
     custodyFailure=undefined
     }
+    hasBinary=false
+    const unverified=await collect()
+    assert.equal(unverified.identity,"unverified")
+    assert.match(JSON.parse(unverified.rawReplies["collector.historyIdentityCheck"]).reason,/binary path, sha256 and version unavailable/)
+    hasBinary=true
     assert.deepEqual(run.subject,target)
     assert.deepEqual(run.outerApp,outerApp)
     assert.equal(run.provenance,undefined)
