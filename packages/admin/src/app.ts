@@ -511,7 +511,9 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
 
 function launchWithServe(app: AppDef, run: Run): AppLaunch {
   const captureDirectory =
-    app.id === "kitty" || app.cliLaunch?.capture === "artifact-directory" ? join(run.directory, "artifacts") : undefined
+    app.id === "kitty" || app.id === "terminal-app" || app.cliLaunch?.capture === "artifact-directory"
+      ? join(run.directory, "artifacts")
+      : undefined
   const serveCmd = serveCommand(run, captureDirectory)
   const identityPath =
     app.id === "kitty"
@@ -525,7 +527,8 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
       : app.cliLaunch
         ? `printf '%s\\n' "$(tty)" > ${shellQuote(identityPath)}\n`
         : `printf '%s\\n' "\${KITTY_WINDOW_ID:-}" "\${KITTY_PID:-}" "$(tty)" "\${TERM:-}" > ${shellQuote(identityPath)}\n`
-  writeFileSync(run.scriptPath, `#!/bin/bash -p\n${identityWrite}${serveCmd}\n`, {
+  const retainedStderr = app.id === "terminal-app" ? ` 2> ${shellQuote(join(run.directory, "worker.stderr.log"))}` : ""
+  writeFileSync(run.scriptPath, `#!/bin/bash -p\n${identityWrite}${serveCmd}${retainedStderr}\n`, {
     flag: "wx",
     mode: 0o700,
   })
@@ -593,10 +596,9 @@ end tell`,
   throw new Error(`${app.name} requires manually starting the probe server`)
 }
 
-export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): void {
+export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): string | void {
   if (launch.terminalWindow) {
-    closeOwnedTerminalWindow(launch.terminalWindow)
-    return
+    return closeOwnedTerminalWindow(launch.terminalWindow)
   }
   // A cli-process launch whose owner was never resolved leaves only the CLI shim in hand. That shim is
   // not the window we launched, so there is nothing here we may signal — but a window may still be open
@@ -634,6 +636,8 @@ interface ProbeOptions {
   launcherStderr?: string
   /** The Darwin owner launch record's exact text, retained as collector.outerLaunch (#30518 D4.6). */
   outerLaunch?: string
+  /** Only Terminal.app defers the existing writer until its launcher proves disposal. */
+  beforeSave?: (run: Parameters<typeof writeCollectedRun>[0]) => Promise<void>
 }
 
 async function probeDaemon(
@@ -692,6 +696,7 @@ async function probeDaemon(
       }),
     },
   }
+  await options.beforeSave?.(run)
   const mode = outputDirectory === undefined ? "written" : "retained"
   if (outputDirectory !== undefined) {
     const source = retainCollectedRun(
@@ -855,6 +860,8 @@ async function runApp(
   const run = createProbeRun()
   let launch: AppLaunch | undefined
   let daemon: OwnedDaemon | null = null
+  let daemonStopAttempted = false
+  let windowCloseAttempted = false
   let outcome: { success: boolean; error?: string } = { success: false, error: "probe did not complete" }
   try {
     console.log(`  Launching ${app.name} v${version}...`)
@@ -886,6 +893,8 @@ async function runApp(
           )
         : undefined
     console.log(`  Probing on port ${daemon.registration.port}...`)
+    const capturedDaemon = daemon
+    const capturedLaunch = launch
     const result = await probeDaemon(daemon.registration, {
       captureBundleRoot: run.directory,
       appId: app.id,
@@ -895,14 +904,40 @@ async function runApp(
       outputDirectory: opts.output,
       launcherStderr: launch.launcherStderr,
       outerLaunch,
+      ...(ownedWindow.provider === "terminal-app" && {
+        beforeSave: async (captured: Parameters<typeof writeCollectedRun>[0]) => {
+          daemonStopAttempted = true
+          await stopOwnedDaemon(capturedDaemon)
+          windowCloseAttempted = true
+          const proof = stopLaunchedApp(app, capturedLaunch)
+          if (proof === undefined) {
+            throw Object.assign(new Error("Terminal.app close returned no absence proof"), {
+              name: "CaptureRestoreFailed",
+            })
+          }
+          captured.rawReplies["collector.windowDisposal"] = proof
+          captured.rawReplies["collector.workerStderr"] = readFileSync(join(run.directory, "worker.stderr.log"), "utf8")
+        },
+      }),
     })
     console.log(`  ${result.summary} (${result.mode})`)
     outcome = { success: true }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }
+    if (app.id === "terminal-app") {
+      writeFileSync(
+        join(run.directory, "collection-error.json"),
+        JSON.stringify({
+          name: err instanceof Error ? err.name : "Error",
+          error: outcome.error,
+          ...(err instanceof Error && "captureCommand" in err ? { captureCommand: err.captureCommand } : {}),
+        }),
+        { flag: "wx", mode: 0o600 },
+      )
+    }
   } finally {
     const cleanupErrors: string[] = []
-    if (daemon) {
+    if (daemon && !daemonStopAttempted) {
       try {
         await stopOwnedDaemon(daemon)
       } catch (err) {
@@ -921,7 +956,7 @@ async function runApp(
         }
       }
       try {
-        stopLaunchedApp(app, launch)
+        if (!windowCloseAttempted) stopLaunchedApp(app, launch)
       } catch (err) {
         cleanupErrors.push(`window: ${String(err)}`)
       }

@@ -448,15 +448,25 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       processOwner: options.processOwner,
       platform: process.platform,
     })
-    if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted" && kind !== "process") {
-      throw new Error("Darwin capture directory requires a verified hosted-runner receipt or owned process")
+    if (
+      process.platform === "darwin" &&
+      captureDirectory &&
+      kind !== "darwinHosted" &&
+      kind !== "process" &&
+      kind !== "terminalApp"
+    ) {
+      throw new Error(
+        "Darwin capture directory requires a verified hosted-runner receipt, owned process or Terminal.app owner",
+      )
     }
     // A hosted capture is a runner-owned terminal and a Darwin owned-process capture is an app the
     // owner proof verified; neither is a controlled Linux run, so neither can supply Linux runtime
-    // provenance. macOS names darwinHosted or process, and Windows names windowsHosted.
+    // provenance. macOS names darwinHosted, process or terminalApp; Windows names windowsHosted.
     const nonLinuxCapture =
       Boolean(captureDirectory) &&
-      (kind === "darwinHosted" || kind === "windowsHosted" || (kind === "process" && process.platform === "darwin"))
+      (kind === "darwinHosted" ||
+        kind === "windowsHosted" ||
+        ((kind === "process" || kind === "terminalApp") && process.platform === "darwin"))
     const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
     if ((captureDirectory || clipboardReceipt) && !provenancePath && !nonLinuxCapture) {
       throw new Error("Controlled Linux collection requires runtime provenance")
@@ -521,6 +531,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      * the app arm — but only when the run supplies a retention directory. Without one the arm names
      * that skip and every row keeps its own no-capture branch rather than grading an unretainable read.
      */
+    let disposeQualifiedWindow = false
     const installTextCapture = (terminal: OwnedTerminal): boolean => {
       const readCells = terminal.readCells?.bind(terminal)
       if (!readCells) return false
@@ -571,12 +582,15 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       // has none, and its text rows stay test-todo.
       const recipe = terminal.textRecipe
       if (recipe !== undefined) {
+        disposeQualifiedWindow = kind === "terminalApp" && process.platform === "darwin"
         const textAdapter = capture
         const consoleHostOwnership = terminal.consoleHostOwnership?.bind(terminal)
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
+          if (disposeQualifiedWindow) await drainStdin(1000)
           textQualification = await collectTextQualification({
             ctx: probeSource,
             recipe,
+            ...(disposeQualifiedWindow && { ending: "owned-window-disposal" as const }),
             ...(consoleHostOwnership && {
               ownership: async () => {
                 await consoleBarrier("text qualification console-host-ownership")
@@ -985,6 +999,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(ownedTerminal?.observeWrite && { onWrite: ownedTerminal.observeWrite.bind(ownedTerminal) }),
                 ...(geometryCorroboration && { geometryCorroboration }),
                 ...(prepareCapture && { prepareCapture }),
+                ...(disposeQualifiedWindow && { prepareCapturePhase: "after-probes" as const }),
               })
               if (sessionBus) result.rawReplies["collector.sessionBus"] = JSON.stringify(sessionBus)
               if (identityQuery) {
@@ -998,7 +1013,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               if (captureCalibration) {
                 result.rawReplies["collector.captureCalibration"] = JSON.stringify(captureCalibration)
               }
-              await drainStdin(1000)
+              if (!disposeQualifiedWindow) await drainStdin(1000)
               return result
             },
             out,
@@ -1066,6 +1081,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       ...((batch.textSnapshotRefs?.length ?? 0) > 0 && { textSnapshotRefs: batch.textSnapshotRefs }),
       ...(textQualification === undefined ? {} : { textQualification }),
       results: batch.results,
+    }
+    if (disposeQualifiedWindow) {
+      captured.rawReplies["collector.windowDisposal"] =
+        "owned-window-disposal: measured prior modes not restored; pending launcher daemon stop, exact-window close and absence proof"
+      captured.rawReplies["collector.collectionStatus"] =
+        `Collected selected probe results; draft ${captured.runId} awaits final writer`
     }
     const fontResult = captured.results.find((result) => result.featureId === "extensions.font-ligatures")
     const fontReview = fontResult?.tests.find((test) => test.id === "review")
@@ -1302,13 +1323,15 @@ export function startDaemon(port = 0): void {
           processOwner,
           expectedLaunchRunId: runId,
         })
-        console.log(
-          s.dim(
-            requestedIds?.length === 0
-              ? `Empty selection; draft ${run.runId} retained; no probes executed`
-              : `Collected selected probe results; draft ${run.runId} awaits final writer`,
-          ),
-        )
+        if (!run.rawReplies["collector.windowDisposal"]) {
+          console.log(
+            s.dim(
+              requestedIds?.length === 0
+                ? `Empty selection; draft ${run.runId} retained; no probes executed`
+                : `Collected selected probe results; draft ${run.runId} awaits final writer`,
+            ),
+          )
+        }
         res.end(JSON.stringify(run))
         return
       }

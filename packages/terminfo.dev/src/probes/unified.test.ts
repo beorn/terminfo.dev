@@ -1649,85 +1649,100 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   })
 })
 
-it("prepares capture once before the first eligible callback and retains its calibration trace", async () => {
-  verifiedBatchFixture()
-  const ids = ["reset.ris", "reset.decaln"]
-  const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
-  const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
-    term,
-    termNeedsGeometry,
-    termWrites,
-  }))
-  const order: string[] = []
-  const writes: string[] = []
-  let prepared = false
-  const captureRef = `sha256:${"a".repeat(64)}`
-  process.stdout.write = ((text: string) => {
-    writes.push(text)
-    return true
-  }) as typeof process.stdout.write
-  try {
-    for (const [index, definition] of definitions.entries()) {
-      if (index === 0) delete definition.termNeedsGeometry
-      else definition.termNeedsGeometry = true
-      if (index === 0) definition.termWrites = "query"
-      definition.term = async (probeSource) => {
-        expect(prepared, `${ids[index]} must observe capture preparation`).toBe(true)
-        expect(probeSource.captureGeometry).toEqual({
-          geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
-          source: "measured by complete raster calibration",
-        })
-        order.push(`callback:${ids[index]}`)
-        probeSource.write(`fixture:${ids[index]}`)
-        return {
-          pass: false,
-          tests: [
-            { id: "criterion", status: "probe-todo", reason: "Lifecycle fixture does not measure terminal support" },
-          ],
+it.each([undefined, "after-probes"] as const)(
+  "prepares capture once with the full retained trace (phase: %s)",
+  async (phase) => {
+    verifiedBatchFixture()
+    const ids = ["reset.ris", "reset.decaln"]
+    const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
+    const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
+      term,
+      termNeedsGeometry,
+      termWrites,
+    }))
+    const order: string[] = []
+    const writes: string[] = []
+    let prepared = false
+    const captureRef = `sha256:${"a".repeat(64)}`
+    process.stdout.write = ((text: string) => {
+      writes.push(text)
+      if (text === "\x1b[?25$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?25;1$y\x1b[?62c"))
+      return true
+    }) as typeof process.stdout.write
+    try {
+      for (const [index, definition] of definitions.entries()) {
+        if (index === 0) delete definition.termNeedsGeometry
+        else definition.termNeedsGeometry = true
+        if (index === 0) definition.termWrites = "query"
+        definition.term = async (probeSource) => {
+          expect(prepared, `${ids[index]} must observe its selected preparation phase`).toBe(phase === undefined)
+          if (phase === undefined) {
+            expect(probeSource.captureGeometry).toEqual({
+              geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+              source: "measured by complete raster calibration",
+            })
+          } else expect(probeSource.captureGeometry).toBeUndefined()
+          order.push(`callback:${ids[index]}`)
+          probeSource.write(`fixture:${ids[index]}`)
+          return {
+            pass: false,
+            tests: [
+              { id: "criterion", status: "probe-todo", reason: "Lifecycle fixture does not measure terminal support" },
+            ],
+          }
         }
       }
+      const batch = await runProbeBatch({
+        ids,
+        ...(phase && { prepareCapturePhase: phase }),
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async ({ source: probeSource, featureId, recordCapture }) => {
+          expect(featureId).toBe("collector.captureCalibration")
+          expect(prepared).toBe(false)
+          order.push("prepare")
+          expect(await probeSource.queryMode(25)).toBe("set")
+          probeSource.write("calibration:paint-witness")
+          prepared = true
+          Object.assign(probeSource, {
+            captureGeometry: {
+              geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+              source: "measured by complete raster calibration",
+            },
+          })
+          recordCapture({
+            frame: { role: "control", ref: captureRef, capturedAt: 1, label: "origin calibration" },
+            trace: { captureCommand: "fixture-capture" },
+          })
+        },
+      })
+      expect(order).toEqual(
+        phase === undefined
+          ? ["prepare", "callback:reset.ris", "callback:reset.decaln"]
+          : ["callback:reset.ris", "callback:reset.decaln", "prepare"],
+      )
+      expect(writes).toContain("calibration:paint-witness")
+      if (phase === undefined) {
+        expect(writes.indexOf("calibration:paint-witness")).toBeLessThan(writes.indexOf("fixture:reset.ris"))
+      } else expect(writes.at(-1)).toBe("calibration:paint-witness")
+      expect(writes).not.toContain("calibration:paint-witness\n")
+      expect(batch.screenshotRefs).toEqual([captureRef])
+      expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({
+        writes: ["fixture:reset.ris"],
+      })
+      expect(JSON.parse(batch.rawReplies["reset.ris"]!)).not.toHaveProperty("captures")
+      expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+        writes: ["calibration:paint-witness"],
+        queries: [expect.objectContaining({ sequence: "\x1b[?25$p\x1b[c", raw: "\x1b[?25;1$y\x1b[?62c" })],
+        captures: [{ frame: { ref: captureRef }, trace: { captureCommand: "fixture-capture" } }],
+      })
+      expect(JSON.parse(batch.rawReplies["reset.decaln"]!)).toMatchObject({
+        writes: ["fixture:reset.decaln"],
+      })
+    } finally {
+      definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
     }
-    const batch = await runProbeBatch({
-      ids,
-      ownedTerminal: geometryOwner(measured(24, 80)),
-      prepareCapture: async ({ source: probeSource, featureId, recordCapture }) => {
-        expect(featureId).toBe("collector.captureCalibration")
-        expect(prepared).toBe(false)
-        order.push("prepare")
-        probeSource.write("calibration:paint-witness")
-        prepared = true
-        Object.assign(probeSource, {
-          captureGeometry: {
-            geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
-            source: "measured by complete raster calibration",
-          },
-        })
-        recordCapture({
-          frame: { role: "control", ref: captureRef, capturedAt: 1, label: "origin calibration" },
-          trace: { captureCommand: "fixture-capture" },
-        })
-      },
-    })
-    expect(order).toEqual(["prepare", "callback:reset.ris", "callback:reset.decaln"])
-    expect(writes).toContain("calibration:paint-witness")
-    expect(writes.indexOf("calibration:paint-witness")).toBeLessThan(writes.indexOf("fixture:reset.ris"))
-    expect(writes).not.toContain("calibration:paint-witness\n")
-    expect(batch.screenshotRefs).toEqual([captureRef])
-    expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({
-      writes: ["fixture:reset.ris"],
-    })
-    expect(JSON.parse(batch.rawReplies["reset.ris"]!)).not.toHaveProperty("captures")
-    expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
-      writes: ["calibration:paint-witness"],
-      captures: [{ frame: { ref: captureRef }, trace: { captureCommand: "fixture-capture" } }],
-    })
-    expect(JSON.parse(batch.rawReplies["reset.decaln"]!)).toMatchObject({
-      writes: ["fixture:reset.decaln"],
-    })
-  } finally {
-    definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
-  }
-})
+  },
+)
 
 it("keeps query-only and nongeometry callbacks runnable when owned size is unavailable", async () => {
   verifiedBatchFixture()
@@ -3967,6 +3982,95 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
       expect(batch.observations).toContainEqual(
         expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", assertionType: "query_reply" }),
       )
+    } finally {
+      vi.useRealTimers()
+    }
+  },
+)
+
+// 32670: disposal must leave the five fixture reads intact even when prior modes are unavailable,
+// then end with the unchanged shared normalization. The diagnostic-only cases above never paint,
+// so cannot catch accidental measured-mode restoration or the default ending changing with this arm.
+it.each([
+  { disposal: false, priorAvailable: true },
+  { disposal: false, priorAvailable: false },
+  { disposal: true, priorAvailable: true },
+  { disposal: true, priorAvailable: false },
+])(
+  "text qualification ending disposal=$disposal priorAvailable=$priorAvailable",
+  async ({ disposal, priorAvailable }) => {
+    verifiedBatchFixture()
+    vi.useFakeTimers()
+    const writes: string[] = []
+    const da1 = "\x1b[?62;4c"
+    vi.spyOn(process.stdout, "write").mockImplementation(((text: string) => {
+      writes.push(text)
+      for (const mode of [25, 7]) {
+        if (text === `\x1b[?${mode}$p\x1b[c`) {
+          process.stdin.emit("data", Buffer.from(`\x1b[?${mode};${priorAvailable ? 2 : 0}$y${da1}`))
+        }
+        if (text === `\x1b[?${mode}$p`) process.stdin.emit("data", Buffer.from(`\x1b[?${mode};0$y`))
+      }
+      if (text === "\x1b[c") process.stdin.emit("data", Buffer.from(da1))
+      return true
+    }) as typeof process.stdout.write)
+    const blank = `sha256:${createHash("sha256")
+      .update(Array.from({ length: 24 }, () => " ".repeat(80)).join("\n"))
+      .digest("hex")}`
+    const capture = vi.fn(
+      async ({ role, label }: { role: ObservationFrame["role"]; label: string }): Promise<ObservationFrame> => ({
+        kind: "text-cells",
+        role,
+        label,
+        capturedAt: 1,
+        ref: blank,
+        frameDigest: blank,
+        cellDigest: blank,
+        cellRectangle: { top: 1, left: 1, bottom: 24, right: 80 },
+      }),
+    )
+    let qualification: TextQualification | undefined
+    let endingWrites: string[] = []
+    try {
+      const pending = runProbeBatch({
+        ids: ["device.primary-da"],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async ({ source: probeSource }) => {
+          qualification = await collectTextQualification({
+            ctx: probeSource,
+            recipe: "macos-text-cells-v1",
+            capture,
+            ...(disposal && { ending: "owned-window-disposal" as const }),
+          })
+          endingWrites = [...writes]
+        },
+      })
+      const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
+      const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!) as {
+        queries: unknown[]
+        writes: string[]
+      }
+      expect(qualification?.shapes).toHaveLength(5)
+      expect(capture).toHaveBeenCalledTimes(disposal ? 11 : priorAvailable ? 12 : 0)
+      expect(trace.queries).toHaveLength(priorAvailable ? (disposal ? 2 : 4) : 4)
+      if (disposal) {
+        expect(endingWrites.slice(-2)).toEqual(["\x1b[?25h", "\x1b[0m\x1b[2J\x1b[H"])
+        expect(capture.mock.calls.map(([checkpoint]) => checkpoint.label)).not.toContain(
+          "text qualification restored blank grid",
+        )
+      } else if (!priorAvailable) {
+        expect(trace.writes).toEqual([])
+        expect(qualification?.shapes.every((shape) => "reason" in shape)).toBe(true)
+      } else {
+        expect(endingWrites.slice(-6)).toEqual([
+          "\x1b[?7l",
+          "\x1b[?25h",
+          "\x1b[0m\x1b[2J\x1b[H",
+          "\x1b[?25l",
+          "\x1b[?25$p\x1b[c",
+          "\x1b[?7$p\x1b[c",
+        ])
+      }
     } finally {
       vi.useRealTimers()
     }

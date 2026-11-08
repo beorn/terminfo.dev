@@ -1178,6 +1178,15 @@ The execution writer freezes the qualification test before seal. The canonical p
 version-2 observer context against the same table; site projection preserves recorded results.
 Source verification supplies no native main-run, collection, grading or publication authority.
 
+The verified owned Terminal.app text route runs these same five witnesses after feature callbacks
+and the final stdin drain, using the existing preparation source and trace. Its ending normalizes
+the screen for disposal without claiming restoration of prior modes. The worker retains status
+instead of printing after qualification, and its stderr goes to the private launch directory.
+The launcher retains the immutable HTTP response, stops the daemon, atomically rechecks and closes
+the exact single-tab/TTY window, and requires that same script to report zero remaining matches
+before the existing final writer runs. Failed absence proof retains a failure and prevents saving.
+Other routes retain their existing before-probe preparation and measured restoration.
+
 The iTerm2 API observer uses its app-specific recipe and the same five mapping witnesses.
 It reads physical rows through the pinned official protocol, with exact owned-TTY binding before
 and after the buffer read. Interior uninitialized cells remain refused; only named trailing blank

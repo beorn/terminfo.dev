@@ -27,12 +27,15 @@ export async function collectTextQualification({
   capture,
   ownership,
   onAttempt,
+  ending = "restore",
 }: {
   ctx: TermProbeSource
   recipe: TextQualificationRecipe
   capture: (checkpoint: TextFrameCheckpoint) => Promise<ObservationFrame>
   ownership?: () => Promise<TextQualificationOwnership>
   onAttempt?: () => void
+  /** The verified Terminal.app owner destroys this window after retaining the response. */
+  ending?: "restore" | "owned-window-disposal"
 }): Promise<TextQualification> {
   const grid = { rows: ctx.rows, cols: ctx.cols }
   const header = { version: TEXT_QUALIFICATION_SPEC.version, recipe }
@@ -52,9 +55,11 @@ export async function collectTextQualification({
     // diagnostic reply does not establish the prior state used by this qualification attempt.
     await ctx.queryOutcome("\x1b[?25$p", /\x1b\[\?25;[0-4]\$y/, 5000)
     await ctx.queryOutcome("\x1b[?7$p", /\x1b\[\?7;[0-4]\$y/, 5000)
-    return unavailable(
-      `Prior cursor visibility or autowrap state is unavailable (DECTCEM=${visibility}, DECAWM=${autowrap})`,
-    )
+    if (ending === "restore") {
+      return unavailable(
+        `Prior cursor visibility or autowrap state is unavailable (DECTCEM=${visibility}, DECAWM=${autowrap})`,
+      )
+    }
   }
   const cells = { top: 1, left: 1, bottom: grid.rows, right: grid.cols }
   const read = async (role: ObservationFrame["role"], label: string): Promise<TextCellsObservationFrame> => {
@@ -96,28 +101,31 @@ export async function collectTextQualification({
   } finally {
     const failures: unknown[] = []
     try {
-      endCaptureLifecycle(ctx, `\x1b[?7${autowrap === "set" ? "h" : "l"}`)
+      if (ending === "owned-window-disposal") endCaptureLifecycle(ctx)
+      else endCaptureLifecycle(ctx, `\x1b[?7${autowrap === "set" ? "h" : "l"}`)
     } catch (cause) {
       failures.push(cause)
     }
-    try {
-      ctx.write(`\x1b[?25${visibility === "set" ? "h" : "l"}`)
-      if ((await ctx.queryMode(25)) !== visibility || (await ctx.queryMode(7)) !== autowrap) {
-        throw new Error("Restored cursor visibility or autowrap differs from its measured prior state")
+    if (ending === "restore") {
+      try {
+        ctx.write(`\x1b[?25${visibility === "set" ? "h" : "l"}`)
+        if ((await ctx.queryMode(25)) !== visibility || (await ctx.queryMode(7)) !== autowrap) {
+          throw new Error("Restored cursor visibility or autowrap differs from its measured prior state")
+        }
+      } catch (cause) {
+        failures.push(cause)
       }
-    } catch (cause) {
-      failures.push(cause)
-    }
-    try {
-      const restored = await read("target", "text qualification restored blank grid")
-      const expected = `sha256:${createHash("sha256")
-        .update(Array.from({ length: grid.rows }, () => " ".repeat(grid.cols)).join("\n"))
-        .digest("hex")}`
-      if (restored.frameDigest !== expected || restored.cellDigest !== expected) {
-        throw new Error("Restored text grid does not match the complete blank grid")
+      try {
+        const restored = await read("target", "text qualification restored blank grid")
+        const expected = `sha256:${createHash("sha256")
+          .update(Array.from({ length: grid.rows }, () => " ".repeat(grid.cols)).join("\n"))
+          .digest("hex")}`
+        if (restored.frameDigest !== expected || restored.cellDigest !== expected) {
+          throw new Error("Restored text grid does not match the complete blank grid")
+        }
+      } catch (cause) {
+        failures.push(cause)
       }
-    } catch (cause) {
-      failures.push(cause)
     }
     if (failures.length > 0) {
       const error = new AggregateError(failures, "Text qualification restoration could not be proved")

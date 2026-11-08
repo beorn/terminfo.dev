@@ -149,6 +149,9 @@ beforeEach(() => {
   })
   vi.mocked(captureTerminalAppReceipt).mockReturnValue({ receipt, trace: { daemonTty: "/dev/ttys003" } })
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
+  vi.mocked(closeOwnedTerminalWindow).mockReturnValue(
+    JSON.stringify({ windowId: 14, tty: "/dev/ttys003", status: 0, stdout: "0\n", stderr: "", remaining: 0 }),
+  )
 })
 
 describe("probe app --output", () => {
@@ -174,6 +177,9 @@ describe("probe app --output", () => {
         "/private/run",
       )
       expect(writeCollectedRun).not.toHaveBeenCalled()
+      expect(vi.mocked(closeOwnedTerminalWindow).mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(retainCollectedRun).mock.invocationCallOrder[0]!,
+      )
       const lines = log.mock.calls.map((call) => String(call[0]))
       log.mockRestore()
       const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
