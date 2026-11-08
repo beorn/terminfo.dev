@@ -157,8 +157,8 @@ test.each([
   },
 )
 
-// The real WezTerm warnings qualify only these two cells; Kitty's log grammar
-// cannot catch a lost WezTerm route, wrong 710 payload or borrowed old warning.
+// WezTerm's seven OSC633 rows share a code, so only the exact payload warning
+// distinguishes a row from its sibling. Keep each row's controls independent.
 test.each(
   (
     [
@@ -166,9 +166,18 @@ test.each(
       ["kitty", "0.49.2", "extensions.osc710-font-normal", "710", "710;monospace"],
       ["wezterm", "0-unstable-2026-10-10", "extensions.osc555-flash", "555", "555"],
       ["wezterm", "0-unstable-2026-10-10", "extensions.osc710-font-normal", "710", "710;fixed"],
+      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-a", "633", "633;A"],
+      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-b", "633", "633;B"],
+      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-c", "633", "633;C"],
+      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-d", "633", "633;D;0"],
+      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-e", "633", "633;E;ls -la;nonce123"],
+      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-p", "633", "633;P;Cwd=/tmp"],
+      ["wezterm", "0-unstable-2026-10-10", "extensions.osc-633-vscode", "633", "633;A"],
     ] as const
   ).flatMap(([app, version, featureId, code, targetBody]) =>
-    (app === "wezterm"
+    (code === "633"
+      ? (["exact", "sibling-row"] as const)
+      : app === "wezterm"
       ? ([
           "exact",
           "silent-target",
@@ -258,7 +267,15 @@ test.each(
               !(variant === "silent-unknown" && body.startsWith("7654;")) &&
               !(variant === "missing-sentinel" && body.startsWith("7655;"))
             ) {
-              appendFileSync(log, line(variant === "wrong-payload" && body === targetBody ? `${code};wrong` : body))
+              const reportedBody =
+                variant === "sibling-row" && body === targetBody
+                  ? targetBody === "633;A"
+                    ? "633;B"
+                    : "633;A"
+                  : variant === "wrong-payload" && body === targetBody
+                    ? `${code};wrong`
+                    : body
+              appendFileSync(log, line(reportedBody))
             }
           }
         },
@@ -288,6 +305,7 @@ test.each(
         [
           "handled-refusal",
           "wrong-payload",
+          "sibling-row",
           "missing-sentinel",
           "missing-digest",
           "wrong-digest",
@@ -296,6 +314,7 @@ test.each(
         ].includes(variant)
       ) {
         expect(result).toMatchObject({ status: "invalid" })
+        if (variant === "sibling-row") expect(result).toHaveProperty("reason", expect.stringContaining("Unrecognized"))
         if (variant !== "restore-failure") expect(title).toBe("original title")
         if (variant === "missing-digest" || variant === "wrong-digest" || variant === "missing-flag") {
           expect(writes).toEqual([])

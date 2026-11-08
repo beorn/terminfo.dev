@@ -137,6 +137,13 @@ const declarations: readonly AppSemanticCapability[] = [
     [
       ["extensions.osc555-flash", "555", "555"],
       ["extensions.osc710-font-normal", "710", "710;fixed"],
+      ["extensions.osc633-a", "633", "633;A"],
+      ["extensions.osc633-b", "633", "633;B"],
+      ["extensions.osc633-c", "633", "633;C"],
+      ["extensions.osc633-d", "633", "633;D;0"],
+      ["extensions.osc633-e", "633", "633;E;ls -la;nonce123"],
+      ["extensions.osc633-p", "633", "633;P;Cwd=/tmp"],
+      ["extensions.osc-633-vscode", "633", "633;A"],
     ] as const
   ).map(([featureId, code, body]) => ({
     kind: "term",
