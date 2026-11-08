@@ -2191,15 +2191,13 @@ test.skipIf(!isKittyAvailable())("Kitty OSC 777 notify payloads reach the probe 
   }
 })
 
-// Standalone component CI checks out terminfo.dev alone and resolves the published @termless 0.10.2, whose Kitty and
-// Ghostty native backends predate osc-metadata getProgress (#32271); CI run 41794400168 failed both rows there. Every
-// row runs in both homes: OWNED_LAYOUT picks the owned Termless contract (reader declared and tested) or the published
-// one (no reader, PROBE TODO), so a broken owned reader still fails.
+// Pinned @termless 0.11.0 packages and CI WezTerm source 642d6de0 declare these readers in both layouts.
+// Require that declared contract independently of runtime capability presence, so a missing reader fails.
 // @failure #32053, #32272: engine stores parsed toasts only; OSC 9 and 777;notify;X arrive identical. WezTerm
 // (performer.rs:904-933) and Ghostty (osc.zig:94-98) keep {title, body} toasts, so no raw reader can attribute the
 // code or rebuild the payload (@cto 94631c52, 91f6fd75). The owned Termless exposes that store as getToasts, tested by
-// single-sequence deltas with a cross control (@cto 3cc4a3ae); the published 0.10.2 has no reader, so its cells stay
-// PROBE TODO, never Unsupported. The owned ghostty-web WASM keeps the same toasts as the native engine (@cto c65d2a67).
+// single-sequence deltas with a cross control (@cto 3cc4a3ae). The pinned ghostty-web WASM keeps the same toasts
+// as the native engine (@cto c65d2a67).
 // @level l1
 // @consumer extensions.notifications and extensions.osc777-notify through the actual LibProbeSource
 function weztermNativeAvailable(): boolean {
@@ -2213,49 +2211,38 @@ function weztermNativeAvailable(): boolean {
 
 // The OSC 9 title each engine stores: Ghostty builds "" (osc9.zig:279-281), WezTerm reports none (performer.rs:904-911).
 test.for([
-  ["wezterm", weztermNativeAvailable(), OWNED_LAYOUT, null, async () => createWeztermBackend()],
-  ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, "", async () => createGhosttyNativeBackend()],
-  ["ghostty wasm", true, OWNED_LAYOUT, "", () => resolveGhosttyWasm()],
+  ["wezterm", weztermNativeAvailable(), null, async () => createWeztermBackend()],
+  ["ghostty-native", isGhosttyNativeAvailable(), "", async () => createGhosttyNativeBackend()],
+  ["ghostty wasm", true, "", () => resolveGhosttyWasm()],
 ] as const)(
   "%s parsed-toast engine records OSC 9 and OSC 777 probe results only through its toast reader",
-  async ([name, available, reader, osc9Title, create], context) => {
+  async ([name, available, osc9Title, create], context) => {
     if (!available) context.skip(`${name} native addon unavailable (NOT MEASURED)`)
     const value = await create()
     value.init({ cols: 80, rows: 24 })
     try {
-      expect(hasExtension(value, "osc-metadata")).toBe(reader)
+      expect(hasExtension(value, "osc-metadata")).toBe(true)
       const source = createLibProbeSource(value, undefined, undefined, undefined)
       expect(source.getNotifications).toBeUndefined()
       expect(source.getOsc777Payloads).toBeUndefined()
       const [notifications, osc777] = registryDefinitions(["extensions.notifications", "extensions.osc777-notify"]).map(
         (definition) => definition.lib!(source),
       )
-      if (reader) {
-        for (const result of [notifications!, osc777!]) {
-          expect(result.notTested).toBeUndefined()
-          expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
-        }
-        // Each step's added toasts are the engine's own fields: the OSC 9 title is recorded verbatim, never used to decide the probe result.
-        expect(JSON.parse(notifications!.response!)).toMatchObject({
-          noToast: { added: [] },
-          cross: { added: [{ title: "terminfo-9-cross-title", body: "terminfo-9-cross-body" }] },
-          graded: { added: [{ title: osc9Title, body: "terminfo-9-toast" }] },
-        })
-        expect(JSON.parse(osc777!.response!)).toMatchObject({
-          noToast: { added: [] },
-          cross: { added: [{ title: osc9Title, body: "terminfo-777-cross-body" }] },
-          graded: { added: [{ title: "terminfo-777-toast-title", body: "terminfo-777-toast-body" }] },
-        })
-        return
-      }
-      expect(source.getToasts).toBeUndefined()
-      expect(notifications!.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-      expect(notifications!.tests).toMatchObject([{ id: "review", status: "probe-todo" }])
-      expect(osc777!.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
       for (const result of [notifications!, osc777!]) {
-        expect(result.observation).toBeUndefined()
-        expect(result.assertions).toBeUndefined()
+        expect(result.notTested).toBeUndefined()
+        expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
       }
+      // Each step's added toasts are the engine's own fields: the OSC 9 title is recorded verbatim, never used to decide the probe result.
+      expect(JSON.parse(notifications!.response!)).toMatchObject({
+        noToast: { added: [] },
+        cross: { added: [{ title: "terminfo-9-cross-title", body: "terminfo-9-cross-body" }] },
+        graded: { added: [{ title: osc9Title, body: "terminfo-9-toast" }] },
+      })
+      expect(JSON.parse(osc777!.response!)).toMatchObject({
+        noToast: { added: [] },
+        cross: { added: [{ title: osc9Title, body: "terminfo-777-cross-body" }] },
+        graded: { added: [{ title: "terminfo-777-toast-title", body: "terminfo-777-toast-body" }] },
+      })
     } finally {
       value.destroy()
     }
@@ -2265,17 +2252,17 @@ test.for([
 // @failure #32271: Kitty and Ghostty native store the last OSC 9;4 report, but no binding read it, so the progress
 // criterion stayed grid-only. WezTerm exposes current state only: initial/clear/pause all read state0/null
 // (CTO f7cf72f9); the callback must qualify transitions and restore incoming progress. The owned ghostty-web WASM
-// stores the last report like the native engine (@cto c65d2a67); the published 0.10.2 has no reader.
+// stores the last report like the native engine (@cto c65d2a67); pinned 0.11.0 exposes the same reader.
 // @level l1
 // @consumer extensions.osc9-progress through the actual LibProbeSource
 test.for([
-  ["kitty", isKittyAvailable(), OWNED_LAYOUT, async () => createKittyBackend()],
-  ["ghostty-native", isGhosttyNativeAvailable(), OWNED_LAYOUT, async () => createGhosttyNativeBackend()],
-  ["wezterm", weztermNativeAvailable(), OWNED_LAYOUT, async () => createWeztermBackend()],
-  ["ghostty wasm", true, OWNED_LAYOUT, () => resolveGhosttyWasm()],
+  ["kitty", isKittyAvailable(), async () => createKittyBackend()],
+  ["ghostty-native", isGhosttyNativeAvailable(), async () => createGhosttyNativeBackend()],
+  ["wezterm", weztermNativeAvailable(), async () => createWeztermBackend()],
+  ["ghostty wasm", true, () => resolveGhosttyWasm()],
 ] as const)(
   "%s OSC 9;4 progress probe results are decided through the stored-report reader only where the engine stores one",
-  async ([name, available, reader, create], context) => {
+  async ([name, available, create], context) => {
     if (!available) context.skip(`${name} engine unavailable (NOT MEASURED)`)
     const configDirectory = name === "kitty" ? mkdtempSync(join(tmpdir(), "terminfo-kitty-config-")) : undefined
     if (configDirectory) vi.stubEnv("KITTY_CONFIG_DIRECTORY", configDirectory)
@@ -2284,18 +2271,12 @@ test.for([
     try {
       const source = createLibProbeSource(value, undefined, undefined, undefined)
       // Existing default-state tests missed stale controls and destruction of incoming progress.
-      if (reader) source.feed("\x1b]9;4;1;37\x07")
+      source.feed("\x1b]9;4;1;37\x07")
       const result = registryDefinitions(["extensions.osc9-progress"])[0]!.lib!(source)
-      if (reader) {
-        expect(result.notTested).toBeUndefined()
-        expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
-        // Probe cleanup restores the incoming report, including a value matching its first control.
-        expect(source.getProgress!()).toEqual({ state: 1, value: 37 })
-      } else {
-        expect(source.getProgress).toBeUndefined()
-        expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
-        expect(result.observation).toBeUndefined()
-      }
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      // Probe cleanup restores the incoming report, including a value matching its first control.
+      expect(source.getProgress!()).toEqual({ state: 1, value: 37 })
     } finally {
       value.destroy()
       if (configDirectory) {
@@ -4425,10 +4406,10 @@ test.each([
     // (_core._inputHandler.onColor events; #31735, @cto 863bef67), while the 7 default/stack
     // queries remain silent and now declare no setup after their own control.
     const cellWitnessIds = engine === "xtermjs" ? ["extensions.osc104-reset-palette"] : []
-    // libvterm and the owned DEC adapters report the two pointer resets as unhandled.
-    // Published DEC adapters lack that reader; other silent resets keep their review and raw query.
+    // libvterm and pinned DEC 0.11.0 adapters declare these unhandled reports in both layouts.
+    // Other silent resets keep their review and raw query.
     const unhandledReportIds =
-      engine === "libvterm" || (OWNED_LAYOUT && (engine === "vt100" || engine === "vt220"))
+      engine === "libvterm" || engine === "vt100" || engine === "vt220"
         ? [
             "extensions.osc104-reset-palette",
             "extensions.osc110-reset-fg",
@@ -4467,8 +4448,7 @@ test.each([
         expect(result.criterionBranch, result.featureId).toBeUndefined()
         continue
       }
-      const publishedDec = !OWNED_LAYOUT && (engine === "vt100" || engine === "vt220")
-      const noSetup = engine === "xtermjs" || (publishedDec && result.featureId !== "extensions.osc104-reset-palette")
+      const noSetup = engine === "xtermjs"
       expect(result.status, result.featureId).toBe(noSetup ? "untestable" : "probe-todo")
       expect(result.criterionBranch, result.featureId).toBe(
         noSetup ? "headless-observable-review" : "color-readback-review",
