@@ -1261,7 +1261,7 @@ test.each(["granted", "unreadable", "other-app"] as const)(
   (scenario) => {
     const steps = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")).jobs[
       "measure-macos"
-    ].steps as { name?: string; id?: string; if?: string; run: string }[]
+    ].steps as { name?: string; id?: string; if?: string; env: Record<string, string>; run: string }[]
     const grant = steps.find((step) => step.name?.startsWith("Grant Screen Recording"))
     if (!grant?.if) throw new Error("the macOS workflow has no Screen Recording grant condition")
     expect(steps.indexOf(grant)).toBeLessThan(steps.findIndex((step) => step.id === "collect"))
@@ -1291,12 +1291,19 @@ test.each(["granted", "unreadable", "other-app"] as const)(
         {
           encoding: "utf8",
           env: {
-            ...process.env,
             PATH: `${bin}:${process.env.PATH}`,
             HOME: directory,
             RUNNER_TEMP: directory,
-            APP_BUNDLE: "/Applications/Term.app",
-            APP_ID: appId,
+            // Only the workflow's declared app inputs reach this strict shell; fixture defaults
+            // previously supplied APP_ID even when the hosted step had never bound it.
+            ...Object.fromEntries(
+              Object.entries(grant.env).map(([key, expression]) => [
+                key,
+                runInNewContext(expression.replace(/^\$\{\{\s*|\s*\}\}$/g, ""), {
+                  matrix: { id: appId, bundle: "/Applications/Term.app" },
+                }),
+              ]),
+            ),
           },
         },
       )

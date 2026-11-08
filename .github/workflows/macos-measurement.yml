@@ -218,6 +218,7 @@ jobs:
       - name: Grant Screen Recording to apps that are their own responsible process
         if: matrix.id == 'terminal-app' || matrix.id == 'iterm2' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode'
         env:
+          APP_ID: ${{ matrix.id }}
           APP_BUNDLE: ${{ matrix.bundle }}
         run: |
           set -euo pipefail
