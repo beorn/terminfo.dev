@@ -296,6 +296,33 @@ jobs:
           export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
           export TERMINFO_CAPTURE_DIRECTORY="$OUT/artifacts"
           export TERMINFO_CAPTURE_RUN_ID="$CAPTURE_RUN_ID"
+          # Route B identity: the command records what it is, rather than asking Terminal to describe
+          # it. The nonce becomes the tab title (OSC 0) so the window can be found again by the window
+          # server without sending the app an Apple event; the pids let cleanup stop only this run.
+          nonce="\$(uuidgen)"
+          tty_name="\$(tty 2>/dev/null || true)"
+          # \`tty\` prints "not a tty" on stdout when the tab never attached; a non-device names nothing.
+          case "\$tty_name" in /dev/*) ;; *) tty_name="" ;; esac
+          terminal_pid=""
+          walk="\$\$"
+          for _ in 1 2 3 4; do
+            walk="\$(ps -o ppid= -p "\$walk" 2>/dev/null | tr -d ' ')"
+            [ -n "\$walk" ] || break
+            case "\$(ps -o comm= -p "\$walk" 2>/dev/null)" in
+              */Terminal | Terminal) terminal_pid="\$walk"; break ;;
+            esac
+          done
+          # The title goes to the tab's own TTY, never to stdout: stdout is the collector's probe channel.
+          if [ -n "\$tty_name" ]; then printf '\033]0;%s\007' "\$nonce" > "\$tty_name"; fi
+          preexisting="\$(sed -n 's/^preexisting-terminal=//p' "$OUT/terminal-preexisting" 2>/dev/null || true)"
+          printf '{"appId":"terminal-app","nonce":"%s","tty":%s,"shellPid":%s,"terminalPid":%s,"preexistingTerminal":%s}\n' \
+            "\$nonce" \
+            "\$(if [ -n "\$tty_name" ]; then printf '"%s"' "\$tty_name"; else printf 'null'; fi)" \
+            "\$\$" \
+            "\$(if [ -n "\$terminal_pid" ]; then printf '%s' "\$terminal_pid"; else printf 'null'; fi)" \
+            "\$(if [ "\$preexisting" = yes ]; then printf true; else printf false; fi)" \
+            > "$OUT/terminal-launch.json"
+          chmod 600 "$OUT/terminal-launch.json"
           printf 'phase=entry utc=%s pid=%s tty=%s\n' "\$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "\$\$" "\$(tty)" >> "$OUT/collector.log"
           exec 2>> "$OUT/collector.log"
           attempts=0
@@ -330,18 +357,15 @@ jobs:
           chmod +x "$COMMAND_PATH"
           case "$APP_ID" in
             terminal-app)
-              bun --eval "$(cat <<'HOSTED_TERMINAL_LAUNCH'
-          const { writeFileSync } = require("node:fs");
-          const { join } = require("node:path");
-          const { launchTerminalWindow } = require(process.cwd() + "/packages/admin/src/terminal-app-receipt.ts");
-          // The owned-window launch replaces `open -a`: the window id and exact tab TTY are the close handle.
-          const terminalWindow = launchTerminalWindow(process.env.COMMAND_PATH);
-          if (!terminalWindow || !terminalWindow.tty) throw new Error("Hosted Terminal launch resolved no owned window id and TTY");
-          const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
-          writeFileSync(join(out, "terminal-launch.json"), JSON.stringify({ appId: process.env.APP_ID, terminalWindow }), { mode: 0o600 });
-          console.log(JSON.stringify({ terminalWindow }));
-          HOSTED_TERMINAL_LAUNCH
-          )" > "$OUT/launcher.log" 2>&1
+              # Route B (@cto 29c34b02): LaunchServices only. No Apple events means no consent dialog
+              # to answer, which is what killed run 42479488706. Whether Terminal was already running
+              # is recorded BEFORE the launch, because a job may only stop a Terminal it started.
+              if pgrep -x Terminal > /dev/null 2>&1; then
+                printf 'preexisting-terminal=yes\n' > "$OUT/terminal-preexisting"
+              else
+                printf 'preexisting-terminal=no\n' > "$OUT/terminal-preexisting"
+              fi
+              open -a "$APP_BUNDLE" "$COMMAND_PATH"
               ;;
             iterm2)
               printf 'iterm_launch_start=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
@@ -779,26 +803,47 @@ jobs:
           bun --eval "$(cat <<'HOSTED_TERMINAL_CLOSE'
           const { existsSync, readFileSync, writeFileSync } = require("node:fs");
           const { join } = require("node:path");
-          const { closeOwnedTerminalWindow } = require(process.cwd() + "/packages/terminfo.dev/src/terminal-app-window.ts");
+          const { spawnSync } = require("node:child_process");
           const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
           const record = join(out, "terminal-launch.json");
+          const census = [
+            "ObjC.import('CoreGraphics')",
+            "var info = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll, $.kCGNullWindowID)",
+            "var rows = []",
+            "for (var i = 0; i < info.count; i++) {",
+            "  var d = ObjC.castRefToObject(info.objectAtIndex(i))",
+            "  var name = d.objectForKey('kCGWindowName')",
+            "  var pid = d.objectForKey('kCGWindowOwnerPID')",
+            "  rows.push({ pid: Number(pid), name: name ? String(ObjC.unwrap(name)) : '' })",
+            "}",
+            "JSON.stringify(rows)",
+          ].join("\n");
           if (!existsSync(record)) {
-            // The arm below truncates this log the moment it runs, so its presence is proof an attempt
-            // happened. A failed attempt is never reported as "no launch": that would name an absent
-            // window while a window may exist and no record can close it.
-            if (existsSync(join(out, "launcher.log"))) throw new Error("Terminal launch ran but recorded no owned window; read " + join(out, "launcher.log"));
-            console.log("terminal-app run did not reach the launch arm; nothing owned to close");
+            // A failed launch also leaves no record. Never report that as "no launch happened".
+            throw new Error("Terminal launch recorded no owned identity; read " + join(out, "collector.log") + " and terminal-app-failure-evidence.json");
           }
-          else {
-            const { appId, terminalWindow } = JSON.parse(readFileSync(record, "utf8"));
-            // Recheck the exact window id and tab TTY, then close only that window.
-            closeOwnedTerminalWindow(terminalWindow);
-            const probe = Bun.spawnSync(["osascript", "-e", `tell application "Terminal"\nreturn count of (every window whose id is ${terminalWindow.windowId})\nend tell`]);
-            if (probe.exitCode !== 0) throw new Error("Owned Terminal window close readback failed: " + probe.stderr.toString());
-            const remaining = Number(probe.stdout.toString().trim());
-            writeFileSync(join(out, "terminal-window-disposal.json"), JSON.stringify({ appId, windowId: terminalWindow.windowId, tty: terminalWindow.tty, remaining }, null, 2), { mode: 0o600 });
-            if (remaining !== 0) throw new Error("Owned Terminal window survived its close: remaining " + remaining);
+          const identity = JSON.parse(readFileSync(record, "utf8"));
+          // Route B accepts only recorded ownership. A record that cannot name its window is
+          // inconclusive: it is neither closed nor proven absent.
+          if (!identity.nonce || !identity.tty || !/^\/dev\//.test(identity.tty) || !Number.isSafeInteger(identity.shellPid)) {
+            throw new Error("Terminal launch identity is inconclusive: " + JSON.stringify(identity));
           }
+          const stop = (target) => { try { process.kill(target, "SIGTERM") } catch {} };
+          // Our shell's process group is what this run owns; Terminal only if this run started it.
+          stop(-identity.shellPid);
+          if (!identity.preexistingTerminal && Number.isSafeInteger(identity.terminalPid)) stop(identity.terminalPid);
+          let remaining = null;
+          const deadline = Date.now() + 20_000;
+          while (Date.now() < deadline) {
+            const result = spawnSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", census], { encoding: "utf8" });
+            if (result.status !== 0) throw new Error("Owned Terminal window census failed: " + String(result.stderr ?? ""));
+            remaining = JSON.parse(result.stdout).filter((row) => row.name.includes(identity.nonce)).length;
+            if (remaining === 0) break;
+            Bun.sleepSync(500);
+          }
+          const ttyReleased = !existsSync("/dev/" + String(identity.tty).replace(/^\/dev\//, ""));
+          writeFileSync(join(out, "terminal-window-disposal.json"), JSON.stringify({ appId: identity.appId, nonce: identity.nonce, tty: identity.tty, shellPid: identity.shellPid, terminalPid: identity.terminalPid, preexistingTerminal: identity.preexistingTerminal, remaining, ttyReleased }, null, 2), { mode: 0o600 });
+          if (remaining !== 0) throw new Error("Owned Terminal window survived its close: remaining " + remaining);
           HOSTED_TERMINAL_CLOSE
           )"
 
