@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { scrollbackProbes } from "./scrollback.ts"
 import {
   contractGaps,
+  replayTermProbeSource,
   inertLibProbeSource,
   libProbeSource,
   missingContractTests,
@@ -238,3 +239,76 @@ test.each(SCROLLBACK_SEMANTIC_SURFACE_CONTROLS)(
     )
   },
 )
+
+// @failure App count-only readers are ignored, invented fields become required, or failed controls grade support.
+// Library-only controls cannot execute the App callback; reuse the same semantic engine at that boundary.
+// @level l1
+// @consumer Owned App history results (31744).
+test.each(["count", "count+screen", "tmux"] as const)(
+  "App history accepts %s and refuses inert counts",
+  async (shape) => {
+    for (const id of ["scrollback.accumulate", "scrollback.total-lines"]) {
+      for (const mutations of [[], ["total-lines-noop"]]) {
+        const surface = createSemanticSurface({ rows: 12, cols: 80, mutations })
+        const library = libProbeSource(surface)
+        const ctx = replayTermProbeSource(new Map(), {
+          rows: 12,
+          cols: 80,
+          write: (bytes) => surface.feed(bytes),
+          queryCursorPosition: async () => ({ row: 1, col: 1 }),
+          getScrollback: async () => {
+            const reading = library.getScrollback()
+            return {
+              totalLines: reading.totalLines,
+              ...(shape !== "count" && { screenLines: reading.screenLines }),
+              ...(shape === "tmux" && { viewportOffset: reading.viewportOffset }),
+            }
+          },
+        })
+        const definition = scrollbackProbes.find((probe) => probe.id === id)!
+        const result = await definition.term!(ctx)
+        if (mutations.length === 0) {
+          expect(result.observation?.outcome).toBe("supported")
+          expect(result.assertions?.[0]?.kind).toBe("positive")
+          expect(result.response).toContain("rows from run geometry")
+        } else {
+          expect(result.pass).toBe(false)
+          expect(result.notTested?.noObservable).toContain("retained history count did not change")
+          expect(result.assertions).toBeUndefined()
+        }
+        const failure = new Error("same-session history command refused")
+        ctx.getScrollback = async () => {
+          throw failure
+        }
+        await expect(definition.term!(ctx)).rejects.toBe(failure)
+      }
+    }
+  },
+)
+
+// @failure A mismatched real screen or a reader counting painted content passes the no-overflow control.
+// @level l1
+// @consumer Count-only App history qualification (CTO 3c344547).
+test.each(["smaller-screen", "visible-content"] as const)("App history refuses %s counts", async (fault) => {
+  const surface = createSemanticSurface({ rows: fault === "smaller-screen" ? 6 : 12, cols: 80 })
+  const library = libProbeSource(surface)
+  let writtenLines = 0
+  const ctx = replayTermProbeSource(new Map(), {
+    rows: 12,
+    cols: 80,
+    write: (bytes) => {
+      surface.feed(bytes)
+      writtenLines += bytes.split("\n").length - 1
+    },
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    getScrollback: async () => ({
+      totalLines: fault === "visible-content" ? writtenLines : library.getScrollback().totalLines,
+    }),
+  })
+  for (const id of ["scrollback.accumulate", "scrollback.total-lines"]) {
+    const result = await scrollbackProbes.find((probe) => probe.id === id)!.term!(ctx)
+    expect(result.pass).toBe(false)
+    expect(result.notTested?.noObservable).toContain("no-overflow output changed")
+    expect(result.assertions).toBeUndefined()
+  }
+})

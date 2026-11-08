@@ -7692,6 +7692,12 @@ const extensionDefinitions: ProbeDefinition[] = [
   // OSC 720 — rxvt-unicode scroll view up
   {
     ...probe("extensions.osc720-scroll-up", osc720ScrollProbe(), async (ctx) => {
+      if (ctx.getScrollback) {
+        const reading = await ctx.getScrollback()
+        if (reading.viewportOffset === undefined || reading.screenLines === undefined) {
+          return notTestedResult("terminal reports no viewport offset", reading)
+        }
+      }
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]720\x07")
       const pos = await ctx.queryCursorPosition()

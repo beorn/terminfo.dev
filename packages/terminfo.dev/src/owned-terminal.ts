@@ -241,6 +241,7 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
 }
 
 export interface OwnedTerminal {
+  readonly getScrollback?: TermProbeSource["getScrollback"]
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
   readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
@@ -1211,6 +1212,7 @@ export async function createOwnedTerminal(options: {
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
     const readTitle = clipboard?.readTitle.bind(clipboard)
+    const readScrollback = clipboard?.getScrollback?.bind(clipboard)
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
     const summary = JSON.stringify({
@@ -1295,6 +1297,12 @@ export async function createOwnedTerminal(options: {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
           return readTitle()
+        },
+      }),
+      ...(readScrollback && {
+        async getScrollback() {
+          if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned history read has no live bound capture")
+          return readScrollback()
         },
       }),
       ...(muxAttachmentProof && { muxAttachmentProof }),
