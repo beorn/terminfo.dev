@@ -178,21 +178,21 @@ test.each(
     (code === "633"
       ? (["exact", "sibling-row"] as const)
       : app === "wezterm"
-      ? ([
-          "exact",
-          "silent-target",
-          "silent-unknown",
-          "handled-refusal",
-          "wrong-payload",
-          "missing-sentinel",
-          "missing-digest",
-          "wrong-digest",
-          "missing-flag",
-          "restore-failure",
-          "wrong-version",
-          "missing-cli",
-        ] as const)
-      : (["exact"] as const)
+        ? ([
+            "exact",
+            "silent-target",
+            "silent-unknown",
+            "handled-refusal",
+            "wrong-payload",
+            "missing-sentinel",
+            "missing-digest",
+            "wrong-digest",
+            "missing-flag",
+            "restore-failure",
+            "wrong-version",
+            "missing-cli",
+          ] as const)
+        : (["exact"] as const)
     ).map((variant) => ({ app, version, featureId, code, targetBody, variant })),
   ),
 )(
