@@ -88,6 +88,7 @@ end tell`,
         "x-iterm2-key": key,
         "x-iterm2-disable-auth-ui": "true",
         "x-iterm2-advisory-name": "terminfo.dev",
+        "x-iterm2-library-version": "terminfo.dev 1",
       },
     })
     socket = ws

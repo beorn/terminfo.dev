@@ -99,7 +99,13 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
         request.headers.get("x-iterm2-key") ?? "",
         request.headers.get("x-iterm2-disable-auth-ui") ?? "",
         request.headers.get("sec-websocket-protocol") ?? "",
+        request.headers.get("x-iterm2-library-version") ?? "",
       )
+      // iTerm rejects a missing library header or a value without exactly two space-separated parts.
+      const libraryVersion = request.headers.get("x-iterm2-library-version")
+      if (!libraryVersion || libraryVersion.split(" ").length !== 2) {
+        return new Response("invalid library version", { status: 400 })
+      }
       if (server.upgrade(request, { headers: { "Sec-WebSocket-Protocol": "api.iterm2.com" } })) return
       return new Response("upgrade failed", { status: 400 })
     },
@@ -175,8 +181,14 @@ test.each(["match", "missing", "changed"] as const)("physical read requires an e
       rows: 2,
       onReply: (bytes) => retained.push(bytes),
     })
-    expect(sends).toHaveBeenCalled()
-    expect(headers, JSON.stringify(result)).toEqual(["test-cookie", "test-key", "true", "api.iterm2.com"])
+    expect(sends, JSON.stringify(result)).toHaveBeenCalled()
+    expect(headers, JSON.stringify(result)).toEqual([
+      "test-cookie",
+      "test-key",
+      "true",
+      "api.iterm2.com",
+      "terminfo.dev 1",
+    ])
     if (mode === "match") {
       expect(result).toEqual({
         status: "read",
