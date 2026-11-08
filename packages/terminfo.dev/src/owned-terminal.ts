@@ -22,6 +22,7 @@ import {
 } from "./disposable-receipt.ts"
 import type { LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
+import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 import {
   TEXT_QUALIFICATION_OWNERSHIP_CELL,
@@ -1212,7 +1213,28 @@ export async function createOwnedTerminal(options: {
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
     const readTitle = clipboard?.readTitle.bind(clipboard)
-    const readScrollback = clipboard?.getScrollback?.bind(clipboard)
+    // A mux's own reader wins; the outer Kitty's buffer is never that mux's history.
+    const kittyClipboard = !muxAttachmentProof && process.env.TERMINFO_TARGET_ID === "kitty" ? clipboard : undefined
+    const kittySocket = process.env.KITTY_LISTEN_ON
+    const kittyWindow = process.env.KITTY_WINDOW_ID
+    const readScrollback =
+      clipboard?.getScrollback?.bind(clipboard) ??
+      (linux && kittyClipboard
+        ? async () => {
+            await kittyClipboard.assertOwned()
+            if (kittySocket === undefined || kittyWindow === undefined) {
+              throw new Error("Owned Kitty history requires KITTY_LISTEN_ON and KITTY_WINDOW_ID from its child")
+            }
+            const read = readLinuxKittyScrollback({
+              kitten: join(dirname(linux.executable.path), "kitten"),
+              socket: kittySocket,
+              window: kittyWindow,
+            })
+            await kittyClipboard.assertOwned()
+            if (read.status === "refused") throw new Error(read.reason)
+            return { totalLines: read.totalLines, screenLines: read.screenLines }
+          }
+        : undefined)
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
     const summary = JSON.stringify({

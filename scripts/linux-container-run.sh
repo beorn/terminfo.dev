@@ -472,7 +472,8 @@ if [[ "${1:-}" == "--inside" ]]; then
     kitty)
       target_launch_args=(--config NONE --class "terminfo-$target_id-container-daemon"
         -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600
-        -o 'font_family=JetBrains Mono' -o font_size=16)
+        -o 'font_family=JetBrains Mono' -o font_size=16
+        -o allow_remote_control=socket-only --listen-on "unix:/out/kitty-${TERMINFO_RUN_ID}.sock")
       # Retain commands received by the outer Kitty in the existing daemon.log.
       if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
         target_launch_args+=(--dump-commands)
