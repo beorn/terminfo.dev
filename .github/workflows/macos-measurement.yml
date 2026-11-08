@@ -251,7 +251,7 @@ jobs:
           # unexplained launch timeout. Whether this row stops the consent dialog is UNPROVED until
           # a run tries it.
           if [ "$APP_ID" = terminal-app ]; then
-            events="'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'com.apple.Terminal',X'$csreq_hex',0,$now,NULL,'UNUSED',$now"
+            events="'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'com.apple.Terminal',X'$csreq_hex',0,$now,NULL,NULL,'UNUSED',$now"
             grant_events() {
               local db="${*: -1}"
               "$@" "INSERT OR REPLACE INTO access VALUES($events);"

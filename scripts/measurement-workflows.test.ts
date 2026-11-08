@@ -1314,6 +1314,15 @@ test.each(["granted", "unreadable", "other-app"] as const)(
         expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE`)
         expect(calls).toContain("defaults write")
         expect(calls).toContain("/Applications/Term.app/Contents/MacOS/Term -date")
+        // The access table takes 17 values. A row with 16 is refused by sqlite and set -e kills the
+        // step, so the grant is never tried; this counts every inserted row against the Screen
+        // Recording row, which is the one proved to read back on the hosted image.
+        const inserts = [...calls.matchAll(/INSERT OR REPLACE INTO access VALUES\(([^)]*)\)/gu)].map(
+          (match) => (match[1] ?? "").split(",").length,
+        )
+        expect(inserts.length).toBeGreaterThan(0)
+        expect(new Set(inserts).size).toBe(1)
+        expect(inserts[0]).toBe(17)
         const events = `'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'com.apple.Terminal',X'${Buffer.from("csreq").toString("hex")}'`
         if (scenario === "other-app") {
           expect(calls).not.toContain("kTCCServiceAppleEvents")
