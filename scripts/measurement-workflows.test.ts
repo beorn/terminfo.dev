@@ -595,6 +595,35 @@ test.each([
   },
 )
 
+// 30729: Terminal must be launched and closed through the owned-window helpers, not `open -a`, and the
+// close has to survive collection failure so a hosted job never leaves a Terminal window behind.
+test("hosted Terminal launch owns its window and closes only it before upload", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const steps = workflow.jobs["measure-macos"].steps as Array<{
+    name?: string
+    if?: string
+    run?: string
+    uses?: string
+  }>
+  const collect = steps.find((step) => step.name === "Launch, emit the receipt, and collect as the last mutating step")
+  expect(collect, "the existing launch step owns the terminal arm").toBeDefined()
+  expect(collect?.run).toContain("launchTerminalWindow")
+  expect(collect?.run).toContain("terminal-launch.json")
+  expect(collect?.run).not.toContain('open -a "$APP_BUNDLE"')
+  const close = steps.find((step) => step.name === "Close the owned Terminal window before upload")
+  expect(close, "terminal-app has a sibling owned close").toBeDefined()
+  expect(close?.if).toContain("always()")
+  expect(close?.if).toContain("matrix.id == 'terminal-app'")
+  expect(close?.run).toContain("closeOwnedTerminalWindow")
+  expect(close?.run).toContain("terminal-window-disposal.json")
+  // A launch that ran and recorded nothing must fail loudly, never read as "no launch happened".
+  expect(close?.run).toContain("launcher.log")
+  expect(close?.run).toContain("recorded no owned window")
+  const upload = steps.find((step) => step.uses === "actions/upload-artifact@v4")
+  expect(upload).toBeDefined()
+  expect(steps.indexOf(close!)).toBeLessThan(steps.indexOf(upload!))
+})
+
 // The actual shared DMG caller must verify Warp before mount/copy, without changing Alacritty's operation.
 test("shared hosted DMG caller rejects altered pinned bytes before install and preserves Alacritty arguments", async () => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
