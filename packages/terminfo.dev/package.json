@@ -41,11 +41,11 @@
     "prepack": "bun run build"
   },
   "dependencies": {
-    "@silvery/ansi": "0.26.0",
-    "@silvery/commander": "0.26.0",
+    "@silvery/ansi": "0.29.0",
+    "@silvery/commander": "0.29.0",
     "commander": "15.1.0",
     "react": "19.3.1",
-    "silvery": "0.26.0"
+    "silvery": "0.29.0"
   },
   "devDependencies": {
     "viprobe": "workspace:*"
