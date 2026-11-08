@@ -113,12 +113,41 @@ describe("owned Terminal.app receipt", () => {
   })
 
   test("cleanup addresses only the launched window and its unchanged sole tab", () => {
-    vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout: "", stderr: "" } as ReturnType<typeof spawnSync>)
-    closeOwnedTerminalWindow({ provider: "terminal-app", windowId: 14, tty: "/dev/ttys003" })
+    vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout: "0\n", stderr: "" } as ReturnType<typeof spawnSync>)
+    const proof = closeOwnedTerminalWindow({ provider: "terminal-app", windowId: 14, tty: "/dev/ttys003" })
+    expect(JSON.parse(String(proof))).toMatchObject({
+      windowId: 14,
+      tty: "/dev/ttys003",
+      status: 0,
+      stdout: "0\n",
+      stderr: "",
+      remaining: 0,
+    })
     const script = vi.mocked(spawnSync).mock.calls[0]?.[1]?.[1]
     expect(script).toContain("every window whose id is 14")
     expect(script).toContain("count of tabs of w) is not 1")
     expect(script).toContain('tty of tab 1 of w) is not "/dev/ttys003"')
+    expect(script).toContain("close w\n  return count of (every window whose id is 14)")
+  })
+
+  test.each([
+    { status: 0, stdout: "", stderr: "", reason: "missing absence count" },
+    { status: 0, stdout: "1\n", stderr: "", reason: "window remains" },
+    { status: 0, stdout: "0 trailing\n", stderr: "", reason: "malformed absence count" },
+    { status: 1, stdout: "", stderr: "owned Terminal window no longer exists uniquely", reason: "already absent" },
+    { status: 1, stdout: "", stderr: "query denied", reason: "query error" },
+  ])("retains failed close evidence: $reason", (result) => {
+    vi.mocked(spawnSync).mockReturnValueOnce(result as ReturnType<typeof spawnSync>)
+    let failure: unknown
+    try {
+      closeOwnedTerminalWindow({ provider: "terminal-app", windowId: 14, tty: "/dev/ttys003" })
+    } catch (cause) {
+      failure = cause
+    }
+    expect(failure).toMatchObject({
+      name: "CaptureRestoreFailed",
+      captureCommand: { status: result.status, stdout: result.stdout, stderr: result.stderr },
+    })
   })
 
   test("binds daemon TTY to one live signed process and a sealed OS snapshot", () => {

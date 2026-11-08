@@ -190,6 +190,9 @@ beforeEach(() => {
   vi.mocked(saveDaemonProbeRun).mockReturnValue("/raw/terminal-app.json")
   vi.mocked(placeCollectedRun).mockReturnValue("/corpus/terminal-app.json")
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
+  vi.mocked(closeOwnedTerminalWindow).mockReturnValue(
+    JSON.stringify({ windowId: 14, tty: "/dev/ttys003", status: 0, stdout: "0\n", stderr: "", remaining: 0 }),
+  )
   vi.mocked(spawn).mockReturnValue({ unref: vi.fn() } as unknown as ReturnType<typeof spawn>)
   // Cursor's launch reads its installed bundle to prove its pinned launch quirks are still honoured.
   const shippedCursorBundle = CURSOR_BUNDLE_PINS.map((pin) => pin.substring).join(";")
@@ -813,13 +816,31 @@ describe("Terminal.app app collection", () => {
     })
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
+    expect(vi.mocked(readRetainedDaemonProbeResponse).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(stopOwnedDaemon).mock.invocationCallOrder[0]!,
+    )
+    expect(vi.mocked(stopOwnedDaemon).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(closeOwnedTerminalWindow).mock.invocationCallOrder[0]!,
+    )
+    expect(vi.mocked(closeOwnedTerminalWindow).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(saveDaemonProbeRun).mock.invocationCallOrder[0]!,
+    )
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledOnce()
+    expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0].rawReplies["collector.windowDisposal"]).toContain(
+      '"remaining":0',
+    )
+    const script = vi.mocked(writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1]
+    expect(script).toContain("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'")
+    expect(script).toContain("2> '/private/run/worker.stderr.log'")
     expect(removeProbeRun).toHaveBeenCalledOnce()
   })
 
-  test.each(["daemon startup", "owned close"])(
+  test.each(["daemon startup", "daemon stop", "owned close"])(
     "retains the private launch directory after %s failure",
     async (failure) => {
       if (failure === "daemon startup") vi.mocked(findOwnedDaemon).mockResolvedValueOnce(null)
+      else if (failure === "daemon stop")
+        vi.mocked(stopOwnedDaemon).mockRejectedValueOnce(new Error("daemon stop failed"))
       else {
         vi.mocked(closeOwnedTerminalWindow).mockImplementationOnce(() => {
           throw new Error("owned close failed")
@@ -828,8 +849,19 @@ describe("Terminal.app app collection", () => {
       const error = vi.spyOn(console, "error").mockImplementation(() => {})
       try {
         await expect(handleApp("terminal-app", {})).rejects.toThrow(
-          failure === "daemon startup" ? /Owned daemon did not register/ : /owned close failed/,
+          failure === "daemon startup"
+            ? /Owned daemon did not register/
+            : failure === "daemon stop"
+              ? /daemon stop failed/
+              : /owned close failed/,
         )
+        expect(saveDaemonProbeRun).not.toHaveBeenCalled()
+        expect(closeOwnedTerminalWindow).toHaveBeenCalledOnce()
+        expect(stopOwnedDaemon).toHaveBeenCalledTimes(failure === "daemon startup" ? 0 : 1)
+        expect(writeFileSync).toHaveBeenCalledWith("/private/run/collection-error.json", expect.any(String), {
+          flag: "wx",
+          mode: 0o600,
+        })
         expect(removeProbeRun).not.toHaveBeenCalled()
         expect(error.mock.calls.flat().join("\n")).toContain("/private/run")
       } finally {

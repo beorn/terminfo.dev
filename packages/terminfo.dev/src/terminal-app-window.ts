@@ -106,7 +106,7 @@ function ownedWindowScript(window: TerminalAppWindow, close: boolean): string {
   set w to item 1 of matchingWindows
   if (count of tabs of w) is not 1 then error "owned Terminal window has other tabs"
   if (tty of tab 1 of w) is not ${JSON.stringify(tabTty)} then error "owned Terminal tab TTY changed"
-  ${close ? "close w" : "return true"}
+  ${close ? `close w\n  return count of (every window whose id is ${window.windowId})` : "return true"}
 end tell`
 }
 
@@ -248,11 +248,29 @@ export function assertOwnedTerminalWindow(window: OwnedTerminalWindow, daemonPid
 }
 
 /** Recheck and close atomically in the same operation: AppleScript closes Terminal; kitty gets the pid. */
-export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): void {
+export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | void {
   switch (window.provider) {
-    case "terminal-app":
-      run("osascript", ["-e", ownedWindowScript(window, true)])
-      return
+    case "terminal-app": {
+      const argv = ["-e", ownedWindowScript(window, true)]
+      const result = spawnSync("osascript", argv, { encoding: "utf8", timeout: 15_000 })
+      const trace = {
+        windowId: window.windowId,
+        tty: window.tty,
+        command: "osascript",
+        argv,
+        status: result.status,
+        stdout: String(result.stdout ?? ""),
+        stderr: String(result.stderr ?? ""),
+        ...(result.error && { error: result.error.message }),
+      }
+      if (result.error || result.status !== 0 || trace.stdout.trim() !== "0") {
+        throw Object.assign(new Error("Owned Terminal window close and zero-match absence could not be proved"), {
+          name: "CaptureRestoreFailed",
+          captureCommand: trace,
+        })
+      }
+      return JSON.stringify({ ...trace, remaining: 0 })
+    }
     case "kitty": {
       closeOwnedProcess(kittyOwnedProcess(window), "kitty")
       return

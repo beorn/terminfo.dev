@@ -1404,28 +1404,39 @@ describe("private finite daemon startup", () => {
     { arm: "darwinHosted", app: "kitty", route: "text-cells", retained: true, pid: true },
     { arm: "darwinHosted", app: "iterm2", route: "pixels", retained: true, pid: true },
     { arm: "darwinHosted", app: "terminal-app", route: "pixels", retained: true, pid: true },
-    { arm: "terminalApp", app: "terminal-app", route: "refused", retained: true, pid: true },
+    { arm: "terminalApp", app: "terminal-app", route: "text-cells", retained: true, pid: true },
+    {
+      arm: "terminalApp",
+      app: "terminal-app",
+      route: "platform-refused",
+      retained: true,
+      pid: true,
+      platform: "linux",
+    },
+    { arm: "terminalApp", app: "terminal-app", route: "owner-refused", retained: true, pid: true, ownerFails: true },
     { arm: "darwinHosted", app: "iterm2", route: "pixels", retained: true, pid: false },
-  ])("handles $arm $app capture route $route (retained=$retained, pid=$pid)", ({ arm, app, route, retained, pid }) => {
-    home = mkdtempSync(join(tmpdir(), "terminfo-serve-windows-skip-"))
-    const result = spawnSync(
-      process.execPath,
-      [
-        "-e",
-        `
+  ])(
+    "handles $arm $app capture route $route (retained=$retained, pid=$pid)",
+    ({ arm, app, route, retained, pid, platform, ownerFails }) => {
+      home = mkdtempSync(join(tmpdir(), "terminfo-serve-windows-skip-"))
+      const result = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          `
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
       const arm = process.env.FIXTURE_ARM
       const app = process.env.FIXTURE_APP
       const route = process.env.FIXTURE_ROUTE
       const retained = process.env.FIXTURE_RETAINED === "yes"
-      Object.defineProperty(process, "platform", { value: arm === "windowsHosted" ? "win32" : "darwin" })
+      Object.defineProperty(process, "platform", { value: process.env.FIXTURE_PLATFORM || (arm === "windowsHosted" ? "win32" : "darwin") })
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
       let capture
       let captureKind = "absent"
-      let reads = 0
+      let reads = 0, drains = 0
       let pixelFrames = 0, calibrations = 0
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
@@ -1436,18 +1447,27 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
-        createOwnedTerminal: async () => ({
+        createOwnedTerminal: async options => {
+          if (arm === "terminalApp") {
+            assert.ok(options.terminalApp, "Terminal text must retain its existing owner proof")
+            if (process.env.FIXTURE_OWNER_FAILS === "yes") throw new Error("owned Terminal.app proof failed")
+          }
+          return {
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
           ...(arm !== "terminalApp" && { hostedAppId: app }),
           ...(process.env.FIXTURE_PID === "yes" && { appPid: 5705 }),
           summary: "owned fixture",
           ...(arm !== "windowsHosted" && { textRecipe: "macos-text-cells-v1" }),
-          readCells: async () => { reads += 1; return { status: "refused", reason: "no retention directory in this run" } },
+          readCells: async () => {
+            if (arm === "terminalApp") assert.equal(drains, 1, "Terminal qualification must drain before its first cell read")
+            reads += 1
+            return { status: "refused", reason: "text read refused by route fixture" }
+          },
           dispose: async () => {}
-        })
+        }}
       }))
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
-        withRawMode: async callback => callback(), drainStdin: async () => {},
+        withRawMode: async callback => callback(), drainStdin: async () => { drains++ },
         queryWithSentinelOutcome: async (sequence, pattern) => {
           const raw = sequence === "\\x1b[18t" ? "\\x1b[8;24;80t"
             : sequence === "\\x1b[16t" ? "\\x1b[6;17;8t"
@@ -1480,6 +1500,7 @@ describe("private finite daemon startup", () => {
           }
           if (retained) {
             assert.equal(typeof options.prepareCapture, "function", "macOS text needs once-per-run preparation")
+            assert.equal(options.prepareCapturePhase, arm === "terminalApp" ? "after-probes" : undefined)
             await options.prepareCapture({
               source: {
                 rows: 4, cols: 12, queryMode: async () => "unknown",
@@ -1501,8 +1522,10 @@ describe("private finite daemon startup", () => {
       const collect = () => arm === "terminalApp"
         ? collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: {} })
         : collectProbeRun({ ids: ["device.xtversion"] })
-      if (route === "refused") {
-        await assert.rejects(collect(), /Darwin capture directory requires a verified hosted-runner receipt or owned process/)
+      if (route === "platform-refused" || route === "owner-refused") {
+        await assert.rejects(collect(), route === "platform-refused"
+          ? /Controlled Linux collection requires runtime provenance/
+          : /owned Terminal.app proof failed/)
         assert.equal(reads, 0)
         assert.equal(pixelFrames, 0)
         process.exit(0)
@@ -1514,9 +1537,14 @@ describe("private finite daemon startup", () => {
         process.exit(0)
       }
       const run = await collect()
+      if (arm === "terminalApp" && retained) {
+        assert.match(run.rawReplies["collector.windowDisposal"], /pending launcher/)
+        assert.equal(run.rawReplies["collector.collectionStatus"], "Collected selected probe results; draft " + run.runId + " awaits final writer")
+      } else assert.equal(run.rawReplies["collector.windowDisposal"], undefined)
       assert.equal(typeof capture, retained ? "function" : "undefined")
       assert.equal(captureKind, route === "text-cells" ? "text-cells" : "absent")
-      assert.equal(reads, 0)
+      assert.equal(reads, arm === "terminalApp" && retained ? 1 : 0)
+      assert.equal(drains, 1, "Each completed collection drains once, never after Terminal qualification")
       assert.equal(pixelFrames, route === "pixels" ? 1 : 0)
       assert.equal(calibrations, route === "pixels" ? 1 : 0)
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
@@ -1528,35 +1556,38 @@ describe("private finite daemon startup", () => {
         assert.ok(run.textQualification.shapes.every(shape => typeof shape.reason === "string" && !shape.frames))
       } else assert.equal(run.textQualification, undefined)
     `,
-      ],
-      {
-        cwd: packageRoot,
-        env: {
-          ...process.env,
-          HOME: home,
-          FIXTURE_ARM: arm,
-          FIXTURE_APP: app,
-          FIXTURE_ROUTE: route,
-          FIXTURE_PID: pid ? "yes" : "no",
-          FIXTURE_RETAINED: retained ? "yes" : "no",
-          TERMINFO_CAPTURE_DIRECTORY: retained ? join(home, "capture") : "",
-          TERMINFO_DISPOSABLE_RECEIPT: arm !== "terminalApp" ? "hardware-receipt-fixture" : "",
-          TERMINFO_RUNTIME_PROVENANCE: "",
-          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        ],
+        {
+          cwd: packageRoot,
+          env: {
+            ...process.env,
+            HOME: home,
+            FIXTURE_ARM: arm,
+            FIXTURE_APP: app,
+            FIXTURE_ROUTE: route,
+            FIXTURE_PID: pid ? "yes" : "no",
+            FIXTURE_RETAINED: retained ? "yes" : "no",
+            FIXTURE_PLATFORM: platform ?? "",
+            FIXTURE_OWNER_FAILS: ownerFails ? "yes" : "no",
+            TERMINFO_CAPTURE_DIRECTORY: retained ? join(home, "capture") : "",
+            TERMINFO_DISPOSABLE_RECEIPT: arm !== "terminalApp" ? "hardware-receipt-fixture" : "",
+            TERMINFO_RUNTIME_PROVENANCE: "",
+            TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+          },
+          encoding: "utf8",
+          timeout: 10_000,
         },
-        encoding: "utf8",
-        timeout: 10_000,
-      },
-    )
-    const lines = result.stderr.split("\n").filter(Boolean)
-    expect(result.status, result.stderr).toBe(0)
-    expect(lines).toHaveLength(retained ? 0 : 1)
-    if (!retained) {
-      expect(lines[0]).toMatch(new RegExp(`^${arm}: this arm can read cells from the terminal's own text`, "u"))
-      expect(lines[0]).toMatch(/no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in/u)
-      expect(lines[0]).toMatch(/no-capture branch$/u)
-    }
-  })
+      )
+      const lines = result.stderr.split("\n").filter(Boolean)
+      expect(result.status, result.stderr).toBe(0)
+      expect(lines).toHaveLength(retained ? 0 : 1)
+      if (!retained) {
+        expect(lines[0]).toMatch(new RegExp(`^${arm}: this arm can read cells from the terminal's own text`, "u"))
+        expect(lines[0]).toMatch(/no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in/u)
+        expect(lines[0]).toMatch(/no-capture branch$/u)
+      }
+    },
+  )
 
   it.each([
     "capture",
