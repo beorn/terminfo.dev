@@ -159,7 +159,7 @@ const alacrittyTable: readonly TableRow[] = [
 // console-host buffer off as terminal text. Existing Alacritty coverage cannot catch that selection.
 test("hosted WezTerm selects its own text recipe while preserving the measured host binding", () => {
   const receiptPath = writeHostedReceipt("D:\\a\\_temp\\wezterm\\wezterm-gui.exe")
-  const receipt = JSON.parse(readFileSync(receiptPath, "utf8"))
+  const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as { appLaunch: Record<string, unknown> }
   receipt.appLaunch.productVersion = "20240203-110809-5046fc22"
   receipt.appLaunch.sourceArtifact = {
     kind: "portable-zip",
