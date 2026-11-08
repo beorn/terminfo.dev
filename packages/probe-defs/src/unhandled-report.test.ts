@@ -674,7 +674,7 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
     }
   })
 
-  // The five remaining D2 interface absences declare only this audited 0.16.2 subject.
+  // The six remaining D2 interface absences declare only this audited 0.16.2 engine and adapter.
   // The six app-job OSCs moved to run-derived controls in declared-untestable.test.ts.
   // Negative-only coverage could not prove the declaration or retain its versioned reason.
   test.each(declared)("%s declares Untestable only for the audited vt100 0.16.2 subject", (id) => {
@@ -687,13 +687,31 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
       { runtimeIdentity: undefined },
       { backendName: "libvterm" },
       { runtimeIdentity: { ...identity, engineVersion: "0.16.3" } },
-      { runtimeIdentity: { ...identity, provenance: { ...identity.provenance, lockSha256: "0".repeat(64) } } },
     ]) {
       expect(
         isDeclaredUntestable(
           lib({ ...inertLibProbeSource(), backendName: "vt100-rust", runtimeIdentity: identity, ...overrides }),
         ),
       ).toBe(false)
+    }
+  })
+
+  // Build-only provenance changes must not reopen the same audited engine's results.
+  // Existing unknown-identity cases used to reject these changes and encoded the regression.
+  test.each([
+    { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+    { ...identity, provenance: { ...identity.provenance, sourceCommit: "0".repeat(40) } },
+    { ...identity, provenance: { ...identity.provenance, lockSha256: "0".repeat(64) } },
+  ])("build changes preserve controlled reports and interface declarations: %j", (runtimeIdentity) => {
+    const [id, feed, kind, code] = targets[0]
+    expect(definition(id).lib!(source(feed, kind, code, { runtimeIdentity })).observation?.outcome).toBe("unsupported")
+    for (const declaredId of declared) {
+      expect(
+        isDeclaredUntestable(
+          definition(declaredId).lib!({ ...inertLibProbeSource(), backendName: "vt100-rust", runtimeIdentity }),
+        ),
+        declaredId,
+      ).toBe(true)
     }
   })
 
@@ -711,15 +729,6 @@ describe("vt100-rust controlled reports at the ALL_PROBES consumer", () => {
       source(feed, kind, code, { getUnhandledSequences: undefined }),
       source(feed, kind, code, { backendName: "libvterm" }),
       source(feed, kind, code, { runtimeIdentity: { ...identity, engineVersion: "0.16.3" } }),
-      source(feed, kind, code, {
-        runtimeIdentity: { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
-      }),
-      source(feed, kind, code, {
-        runtimeIdentity: { ...identity, provenance: { ...identity.provenance, sourceCommit: "0".repeat(40) } },
-      }),
-      source(feed, kind, code, {
-        runtimeIdentity: { ...identity, provenance: { ...identity.provenance, lockSha256: "0".repeat(64) } },
-      }),
       source(feed, kind, code, {
         runtimeIdentity: {
           ...identity,

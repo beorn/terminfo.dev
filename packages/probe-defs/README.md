@@ -691,11 +691,13 @@ reasons state that the public library has no host delivery route. Public reports
 and already decided results win; unknown identities retain their original path.
 The default OSC-absence cohort and every other library retain their existing paths.
 
-The twelve proposed Untestable declarations remain outside this negative-only cut pending
-operator wording approval: DECRQSS, XTGETTCAP, XTGETXRES, the Kitty graphics query/transmit
-cells, and OSC 22, 176, 3008, 440, 555, 666 and 710 retain their prior paths. OSC52 read also
-retains its public host-request path; no reply is invented. Other libraries and every terminal
-arm retain their existing paths.
+The six vt100-rust interface-absence declarations cover DECRQSS, XTGETTCAP, XTGETXRES,
+and the Kitty graphics query, transmit and display cells. They require native vt100 0.16.2
+and its audited adapter sources. Native Alacritty similarly requires alacritty_terminal 0.26.0
+and an existing audited adapter source set. Build binary, source-commit and whole-lock hashes
+do not select either engine cohort. Measured report and colour results still require their own
+same-run controls; a failed control stays Open. OSC52 read retains its public host-request path;
+no reply is invented. Other libraries and every terminal arm retain their existing paths.
 
 ## Evidence, capture and assertion
 

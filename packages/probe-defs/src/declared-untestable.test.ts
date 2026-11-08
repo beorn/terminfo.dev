@@ -1061,6 +1061,12 @@ describe("audited OSC interface absence", () => {
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
   } satisfies HeadlessRuntimeIdentity
+  // Rebuild provenance is distinct from the engine and public adapter contract.
+  const alacrittyRebuilds = [
+    { ...alacritty, loadedBinary: { ...alacritty.loadedBinary, sha256: "0".repeat(64) } },
+    { ...alacritty, provenance: { ...alacritty.provenance, sourceCommit: "0".repeat(40) } },
+    { ...alacritty, provenance: { ...alacritty.provenance, lockSha256: "0".repeat(64) } },
+  ] satisfies HeadlessRuntimeIdentity[]
   // Original Operator D2 literal23; the routes-48 additions are checked separately below.
   const alacrittyD2 = [
     "extensions.osc777-notify",
@@ -1262,7 +1268,6 @@ describe("audited OSC interface absence", () => {
       { runtimeIdentity: undefined },
       { backendName: "kitty" },
       { runtimeIdentity: { ...alacritty, engineVersion: "0.26.1" } },
-      { runtimeIdentity: { ...alacritty, provenance: { ...alacritty.provenance, lockSha256: "0".repeat(64) } } },
       { getUnhandledSequences: () => [] },
       { getOsc777Payloads: () => [] },
       { getToasts: () => [] },
@@ -1433,6 +1438,7 @@ describe("audited OSC interface absence", () => {
       for (const scenario of [
         { label: "audited", identity: alacritty, seed: true },
         { label: "public", identity: alacritty0110, seed: true },
+        { label: "rebuilt", identity: alacrittyRebuilds[2]!, seed: true },
         { label: "stale", identity: stale, seed: true },
         { label: "failed seed", identity: alacritty, seed: false },
         { label: "initial positive", identity: alacritty, seed: true, initial: true },
@@ -1454,7 +1460,7 @@ describe("audited OSC interface absence", () => {
             },
           }),
         )
-        const declared = scenario.label === "audited" || scenario.label === "public"
+        const declared = scenario.label === "audited" || scenario.label === "public" || scenario.label === "rebuilt"
         expect(isDeclaredUntestable(result), `${id}: ${scenario.label}`).toBe(declared)
         if (declared) {
           expect(fold(id, result).status).toBe("untestable")
@@ -1480,6 +1486,7 @@ describe("audited OSC interface absence", () => {
     ...current,
     ["alacritty", alacritty],
     ["alacritty", alacritty0110],
+    ...alacrittyRebuilds.map((identity) => ["alacritty", identity] as const),
   ] as const)("%s's audited source declares notification absence without a measured assertion", (backend, identity) => {
     let feeds = 0
     const result = run(backend, identity, {
@@ -1549,16 +1556,6 @@ describe("audited OSC interface absence", () => {
       { ...vt100, integrity: { ...vt100.integrity, repository: "https://example.invalid/vterm.git" } },
     ],
     ["a registry package", "vt100", { ...vt100, integrity: { kind: "registry", lockIntegrity: "unreviewed" } }],
-    [
-      "a changed lock",
-      "alacritty",
-      { ...alacritty, provenance: { ...alacritty.provenance, lockSha256: "0".repeat(64) } },
-    ],
-    [
-      "a changed native source",
-      "alacritty",
-      { ...alacritty, provenance: { ...alacritty.provenance, sourceCommit: "0".repeat(40) } },
-    ],
     [
       "a changed adapter blob",
       "alacritty",

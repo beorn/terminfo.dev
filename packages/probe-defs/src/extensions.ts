@@ -204,13 +204,11 @@ export function hasAuditedOscInterfaceAbsence(
     )
   }
   if (cohort === "vt100-rust-d2") {
+    // CTO 90d6183a: engine and audited adapter identity survive build-only dependency bumps.
     return (
       ctx.backendName === "vt100-rust" &&
       identity?.kind === "native" &&
       identity.engineVersion === "0.16.2" &&
-      identity.loadedBinary.sha256 === "72855b1d5462ac4c168d6c2f4a6252ab0bbfbd8682bcd68c732521ed1f4e661c" &&
-      identity.provenance.sourceCommit === "3a0bcc0f615cc22d64ea6b756026521d697f0c61" &&
-      identity.provenance.lockSha256 === "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6" &&
       auditedAdapterSources(identity, "vt100RustDdabecd4")
     )
   }
@@ -237,12 +235,9 @@ export function hasAuditedOscInterfaceAbsence(
   if (identity?.kind === "native") {
     return (
       identity.engineVersion === "0.26.0" &&
-      identity.provenance.lockSha256 === "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497" &&
-      ((identity.provenance.sourceCommit === "6e497eb0310dd6747dfce240fc241e12c07d0615" &&
-        (auditedAdapterSources(identity, "alacritty23b6874c") || auditedAdapterSources(identity, "alacritty0110"))) ||
-        (identity.provenance.sourceCommit === "84b7450963908738cc75e934bb1e4d6f71d00810" &&
-          identity.loadedBinary.sha256 === "1f8b691a60fe07da6dd1a12307a5a1c753b730dde76a7e13e77d0dd770c94757" &&
-          auditedAdapterSources(identity, "alacrittyClipboardReads")))
+      (auditedAdapterSources(identity, "alacritty23b6874c") ||
+        auditedAdapterSources(identity, "alacritty0110") ||
+        auditedAdapterSources(identity, "alacrittyClipboardReads"))
     )
   }
   if (
