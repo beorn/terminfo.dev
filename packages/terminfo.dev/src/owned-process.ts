@@ -18,8 +18,15 @@ export interface OwnedProcess {
   tty: string
 }
 
-export function run(command: string, args: string[]): { stdout: string; stderr: string } {
-  const result = spawnSync(command, args, { encoding: "utf8", timeout: 15_000 })
+export function run(
+  command: string,
+  args: string[],
+  options: { timeoutMs?: number } = {},
+): { stdout: string; stderr: string } {
+  // 15s suits a warm app answering a query. A cold Terminal.app launch plus its window census is a
+  // different job, so a caller that starts one names its own budget instead of inheriting this one
+  // (hosted run 42479488706 died here as a bare ETIMEDOUT after exactly 15s).
+  const result = spawnSync(command, args, { encoding: "utf8", timeout: options.timeoutMs ?? 15_000 })
   if (result.error || result.status !== 0) {
     throw new Error(
       `${command} ${args[0] ?? ""} failed: ${result.error?.message ?? result.stderr ?? `exit ${result.status}`}`,
