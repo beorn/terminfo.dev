@@ -239,10 +239,29 @@ jobs:
           }
           grant sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db"
           grant sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db"
-          # Terminal is NOT granted Automation here, on purpose. @cto 29c34b02 selected the
-          # LaunchServices route: the job launches its own per-run .command with `open -a` and records
-          # the identity it needs, so no job writes Apple-event permissions and none are assumed. The
-          # Screen Recording row above is unchanged and unrelated.
+          # Terminal.app is driven entirely through Apple events: `do script`, the window id and the
+          # exact tab TTY are AppleScript, and the job runs osascript itself rather than through
+          # `open -a`. The responsible process for those events is therefore the hosted agent, not
+          # osascript: run 42479488706's consent dialog named "hosted-compute-agent", and the image
+          # seeds Apple-events rows for that same agent rather than for osascript
+          # (runner-images images/macos/scripts/build/configure-tccdb-macos.sh). Seed the row for
+          # /opt/hca/hosted-compute-agent against com.apple.Terminal, carry Terminal's designated
+          # requirement the way that image's Finder row carries Finder's, and read the row back like
+          # the Screen Recording grant above so a missing row fails here instead of surfacing as an
+          # unexplained launch timeout. Whether this row stops the consent dialog is UNPROVED until
+          # a run tries it.
+          if [ "$APP_ID" = terminal-app ]; then
+            events="'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'com.apple.Terminal',X'$csreq_hex',0,$now,NULL,'UNUSED',$now"
+            grant_events() {
+              local db="${*: -1}"
+              "$@" "INSERT OR REPLACE INTO access VALUES($events);"
+              granted="$("$@" "SELECT auth_value FROM access WHERE service='kTCCServiceAppleEvents' AND client='/opt/hca/hosted-compute-agent' AND indirect_object_identifier='com.apple.Terminal';")"
+              test "$granted" = 2 || { echo "Automation grant for /opt/hca/hosted-compute-agent to Terminal did not read back from $db (got '$granted')" >&2; exit 1; }
+              printf 'Automation granted to /opt/hca/hosted-compute-agent for Terminal in %s\n' "$db"
+            }
+            grant_events sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db"
+            grant_events sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db"
+          fi
           approvals="$HOME/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist"
           mkdir -p "$(dirname "$approvals")"
           defaults write "$approvals" "$executable" -date "3024-01-01 00:00:00 +0000"

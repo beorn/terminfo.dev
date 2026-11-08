@@ -1251,9 +1251,12 @@ test("macOS workflow's two-window diagnostic grep matches the census refusal the
 // as well as the grant step; omitting Terminal used to pass. No other test runs the grant step: this
 // executes it with the macOS commands as fixtures, proving it grants the bundle's own identifier in
 // both TCC databases before launch and fails the job when a grant does not read back.
-// 30729: Terminal is launched through LaunchServices on @cto 29c34b02's route B, so this step must
-// grant Screen Recording only. A job also writing Apple-event rows was tried and is refused here.
-test.each(["granted", "unreadable"] as const)(
+// 30729: @cto later found the LaunchServices route is not this job's: Terminal is driven by osascript
+// the job runs itself, so the responsible process is the hosted agent and Terminal needs an
+// Automation row too (run 42479488706's consent dialog named "hosted-compute-agent"). The route-B note
+// that forbade every Apple-event row is history; this test now requires the row for terminal-app and
+// its absence for every other self-responsible app.
+test.each(["granted", "unreadable", "other-app"] as const)(
   "Screen Recording grant step for self-responsible apps: %s",
   (scenario) => {
     const steps = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")).jobs[
@@ -1279,8 +1282,9 @@ test.each(["granted", "unreadable"] as const)(
       fixture("csreq", `cat > /dev/null; printf 'csreq' > "$3"`)
       fixture("xxd", `od -An -tx1 "$2" | tr -d ' '`)
       fixture("sudo", `exec "$@"`)
-      fixture("sqlite3", `case "$2" in SELECT*) ${scenario === "granted" ? "echo 2" : "true"} ;; esac`)
+      fixture("sqlite3", `case "$2" in SELECT*) ${scenario === "unreadable" ? "true" : "echo 2"} ;; esac`)
       fixture("defaults", "")
+      const appId = scenario === "other-app" ? "iterm2" : "terminal-app"
       const run = spawnSync(
         "/bin/bash",
         ["-c", grant.run.replaceAll("/usr/libexec/PlistBuddy", join(bin, "PlistBuddy"))],
@@ -1292,26 +1296,31 @@ test.each(["granted", "unreadable"] as const)(
             HOME: directory,
             RUNNER_TEMP: directory,
             APP_BUNDLE: "/Applications/Term.app",
+            APP_ID: appId,
           },
         },
       )
       const calls = readFileSync(journal, "utf8").split("\0").join(" ")
-      expect(run.status, run.stderr).toBe(scenario === "granted" ? 0 : 1)
+      expect(run.status, run.stderr).toBe(scenario === "unreadable" ? 1 : 0)
       const system = "/Library/Application Support/com.apple.TCC/TCC.db"
       const user = `${directory}/Library/Application Support/com.apple.TCC/TCC.db`
       expect(calls).toContain(
         `sudo sqlite3 ${system} INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.example.term',0,2,4,1,X'${Buffer.from("csreq").toString("hex")}'`,
       )
-      if (scenario === "granted") {
-        expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE`)
-        // Route B writes no Apple-event row: a job that seeds one is buying a consent dialog it
-        // cannot answer, which is exactly how run 42479488706 died.
-        expect(calls).not.toContain("kTCCServiceAppleEvents")
-        expect(calls).toContain("defaults write")
-        expect(calls).toContain("/Applications/Term.app/Contents/MacOS/Term -date")
-      } else {
+      if (scenario === "unreadable") {
         expect(run.stderr).toContain(`Screen Recording grant for com.example.term did not read back from ${system}`)
         expect(calls).not.toContain(`sqlite3 ${user}`)
+      } else {
+        expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE`)
+        expect(calls).toContain("defaults write")
+        expect(calls).toContain("/Applications/Term.app/Contents/MacOS/Term -date")
+        const events = `'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'com.apple.Terminal',X'${Buffer.from("csreq").toString("hex")}'`
+        if (scenario === "other-app") {
+          expect(calls).not.toContain("kTCCServiceAppleEvents")
+        } else {
+          expect(calls).toContain(`sudo sqlite3 ${system} INSERT OR REPLACE INTO access VALUES(${events}`)
+          expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE INTO access VALUES(${events}`)
+        }
       }
     } finally {
       rmSync(directory, { recursive: true, force: true })
