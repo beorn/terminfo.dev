@@ -5182,17 +5182,28 @@ const extensionDefinitions: ProbeDefinition[] = [
         const read = collectorRegionRead({ ...ctx, cells: undefined })
         if (!read) return notTestedResult("Font ligatures need an owned pixel reader", {})
         const columns = [3, 4, 6, 7, 9, 10, 12, 13, 15, 16]
+        const fontReply = await ctx.queryWithSentinelOutcome(
+          "\x1b]50;?\x07",
+          /\x1b\]50;([^\x07\x1b]+)(?:\x07|\x1b\\)/,
+          1000,
+        )
+        const font = fontReply.match?.[1] ?? "unreported"
         const phases = [
           { name: "first", text: "!  -  =  <  = ", columns: [3, 6, 9, 12, 15] },
           { name: "second", text: " =  >  >  =  =", columns: [4, 7, 10, 13, 16] },
           { name: "positive", text: "-  -  =  <  = ", columns: [3] },
           { name: "target", text: FONT_LIGATURE_TARGET, columns },
+          // Underscores span the advance and put ink at the shared edge, unlike H's
+          // side bearings. Any contextual alternate can only refuse this control.
+          // Terminal-drawn blocks/boxes would hide font bleed by clipping to the cell.
+          { name: "bleed-first", text: "!_ -_ =_ <_ =_", columns: [3, 6, 9, 12, 15] },
+          { name: "bleed-second", text: "_= _> _> _= _=", columns: [4, 7, 10, 13, 16] },
         ]
         const frames: ObservationFrame[] = []
         const samples: Array<{ phase: string; column: number; digest: string; frame: ObservationFrame }> = []
         const finish = (outcome: "supported" | "unsupported" | "inconclusive", note: string): ProbeCallbackResult => {
           const decided = outcome !== "inconclusive"
-          const response = JSON.stringify({ pixelGeometry, geometrySource: reported.source, samples })
+          const response = JSON.stringify({ font, fontReply, pixelGeometry, geometrySource: reported.source, samples })
           return {
             pass: outcome === "supported",
             note,
@@ -5220,7 +5231,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                       assertionType: "screenshot" as const,
                       kind: outcome === "supported" ? ("positive" as const) : ("negative" as const),
                       expected:
-                        "Same-cell isolated characters match all ten target cells unless the renderer shapes an operator pair; a changed character must change the compared pixels",
+                        "Underscore neighbours match all ten isolated same-cell controls; a changed character changes pixels; target operator pairs alone may change them through shaping",
                       observed: response,
                     },
                   ],
@@ -5234,7 +5245,12 @@ const extensionDefinitions: ProbeDefinition[] = [
             const label = id + ": " + phase.name
             // This cell was blank in the preceding phase even if the clear has not painted yet.
             const witnessColumn = phase.name === "second" || phase.name === "target" ? 4 : 3
-            const witnessCell = { top: 3, left: witnessColumn, bottom: 3, right: witnessColumn }
+            // Each extra control uses a different previously blank marker cell. Its target
+            // region must also pass the existing stability pair before any cell is compared.
+            const bleedMarker = phase.name === "bleed-first" ? 1 : phase.name === "bleed-second" ? 2 : undefined
+            const witnessRow = bleedMarker === undefined ? 3 : 1
+            const witnessCol = bleedMarker ?? witnessColumn
+            const witnessCell = { top: witnessRow, left: witnessCol, bottom: witnessRow, right: witnessCol }
             ctx.write("\x1b[0m\x1b[2J\x1b[2;1H")
             const baseline = await read({
               role: "control",
@@ -5243,7 +5259,8 @@ const extensionDefinitions: ProbeDefinition[] = [
               pixelGeometry,
             })
             frames.push(baseline.frame)
-            const paint = "\x1b[3;3H" + phase.text + "\x1b[2;1H"
+            const paint =
+              (bleedMarker === undefined ? "" : "\x1b[1;" + bleedMarker + "HH") + "\x1b[3;3H" + phase.text + "\x1b[2;1H"
             ctx.write(paint)
             const options = {
               read,
@@ -5263,7 +5280,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             }
             frames.push(painted.witness.frame)
             // Reuse the shared space/glyph roundtrip: clearing alone must not impersonate the paint.
-            ctx.write("\x1b[3;" + witnessColumn + "H \x1b[2;1H")
+            ctx.write("\x1b[" + witnessRow + ";" + witnessCol + "H \x1b[2;1H")
             const cleared = await awaitPaintWitness({ ...options, expectedDigest: baseline.regionDigest })
             if (!("witness" in cleared)) {
               return finish("inconclusive", cleared.observation?.note ?? label + ": no clear witness")
@@ -5302,9 +5319,10 @@ const extensionDefinitions: ProbeDefinition[] = [
           const second = samples.filter((sample) => sample.phase === "second")
           const positive = samples.filter((sample) => sample.phase === "positive")
           const target = samples.filter((sample) => sample.phase === "target")
+          const bleed = samples.filter((sample) => sample.phase.startsWith("bleed-"))
           let positiveChanged = false
           let changed = 0
-          for (const sample of [...target, ...positive]) {
+          for (const sample of [...bleed, ...target, ...positive]) {
             const control = [...first, ...second].find((entry) => entry.column === sample.column)
             if (!control) {
               return finish("inconclusive", "Missing isolated same-cell control for column " + sample.column)
@@ -5320,7 +5338,16 @@ const extensionDefinitions: ProbeDefinition[] = [
               screenshotRef: sample.frame.ref,
             })
             if (moved) return moved
-            if (sample.phase === "positive") positiveChanged = sample.digest !== control.digest
+            if (sample.phase.startsWith("bleed-")) {
+              if (sample.digest !== control.digest) {
+                return finish(
+                  "inconclusive",
+                  "Underscore neighbour changed same-cell pixels at column " +
+                    sample.column +
+                    "; glyph bleed is not shaping evidence",
+                )
+              }
+            } else if (sample.phase === "positive") positiveChanged = sample.digest !== control.digest
             else if (sample.digest !== control.digest) changed++
           }
           if (!positiveChanged) {

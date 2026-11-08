@@ -65,8 +65,13 @@ The App font-ligature callback compares ten one-cell pixel crops of contiguous o
 with two isolated-character checkpoints at those exact cells. Each checkpoint uses the
 shared cleared-frame paint witness and space/glyph return, stable pixels and measured
 geometry, with the cursor outside the sample. A changed-character control must change
-the same-cell pixels. With those controls, any target-cell difference decides Supported;
-all ten equal decide Unsupported. Missing sensitivity or moved crops remain unresolved.
+the same-cell pixels. Two further checkpoints put underscore neighbours against those
+same ten operator cells, testing shared-edge ink without the target operator pairs. Every
+such crop must match its isolated control; a mismatch remains inconclusive because bleed
+can explain a target difference. With those controls passing, a target-cell difference
+decides Supported; all ten equal decide Unsupported. Missing sensitivity or moved crops remain unresolved.
+The response retains the OSC 50 font reply or explicitly records `font: unreported`;
+font availability never gates the verdict and a configured font is never inferred as the actual font.
 Text snapshots cannot decide glyph shaping; the library declaration stays Untestable.
 
 Callback observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`, not five result statuses.

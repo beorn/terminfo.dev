@@ -269,7 +269,15 @@ test("each image target refuses missing pixel geometry before painting any paylo
 
 // CTO47c0b849: prior visual-review tests never compared same-cell pixels or qualified a negative.
 function ligatureApp(
-  options: { pair?: number; blind?: boolean; text?: boolean; moved?: boolean; lagPaint?: boolean } = {},
+  options: {
+    pair?: number
+    font?: string
+    bleed?: boolean
+    blind?: boolean
+    text?: boolean
+    moved?: boolean
+    lagPaint?: boolean
+  } = {},
 ) {
   const app = captureApp(3, 80)
   const surface = createSemanticSurface({ rows: 3, cols: 80 })
@@ -279,6 +287,16 @@ function ligatureApp(
     source: "measured by complete raster calibration",
   }
   app.context.captureKind = options.text ? "text-cells" : "pixels"
+  app.context.queryWithSentinelOutcome = async (sequence, pattern) => {
+    app.writes.push(sequence)
+    const raw = options.font ? "\x1b]50;" + options.font + "\x07" : ""
+    return {
+      match: raw.match(pattern),
+      reason: raw ? "reply" : "timeout",
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+    }
+  }
   app.context.write = (bytes) => {
     app.writes.push(bytes)
     if (options.lagPaint) pending.push(bytes)
@@ -291,6 +309,15 @@ function ligatureApp(
       for (let row = cells.top; row <= cells.bottom; row++) {
         for (let col = cells.left; col <= cells.right; col++) {
           let glyph = surface.getCell(row - 1, col - 1).char
+          // A raster crop may include neighbouring ink without any shaping engine.
+          if (
+            row === 3 &&
+            options.bleed &&
+            glyph !== " " &&
+            [surface.getCell(2, col - 2).char, surface.getCell(2, col).char].some((char) => char !== " ")
+          ) {
+            glyph += ":neighbour-ink"
+          }
           const first = options.pair
           if (row === 3 && first !== undefined && (col === first || col === first + 1)) {
             const pair = surface.getCell(2, first - 1).char + surface.getCell(2, first).char
@@ -330,7 +357,9 @@ test.each([
   // Synchronous surfaces cannot catch a stale positive glyph becoming the target's blank baseline.
   ["paint lags one capture", { lagPaint: true }, "unsupported"],
   ["only first pair shapes", { pair: 3 }, "supported"],
-  ["only last pair shapes", { pair: 15 }, "supported"],
+  ["only last pair shapes, rendering font reported", { pair: 15, font: "JetBrains Mono" }, "supported"],
+  ["neighbour bleed without shaping", { bleed: true }, "inconclusive"],
+  ["neighbour bleed even with shaping", { bleed: true, pair: 3 }, "inconclusive"],
   ["blind positive control", { blind: true }, "inconclusive"],
   ["text cells cannot show shaping", { text: true }, "inconclusive"],
   ["target crop moved", { moved: true }, "inconclusive"],
@@ -340,6 +369,7 @@ test.each([
   expect(result.observation?.outcome ?? "inconclusive").toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (outcome !== "inconclusive") {
+    expect(JSON.parse(result.response!)).toMatchObject({ font: "font" in options ? options.font : "unreported" })
     expect(result.assertions).toHaveLength(1)
     const target = frames.filter((frame) => frame.role === "target")
     expect(target).toHaveLength(10)
