@@ -5,10 +5,11 @@
  * @consumer OwnedTerminal.readCells on the iTerm2 arm.
  * @testonly none
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import protobuf from "protobufjs"
 import { afterEach, expect, test, vi } from "vitest"
+import type WebSocketType from "ws"
 import { readITermCells } from "./iterm2-protocol.ts"
 
 const fixture = vi.hoisted(() => ({ home: "" }))
@@ -25,6 +26,46 @@ const directories: string[] = []
 afterEach(() => {
   // raw-delete-allow: only this suite's mkdtemp roots; standalone component has no removely dependency
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
+})
+
+// Opening diagnostics must survive the existing refused-result boundary without leaking auth.
+test.each([
+  ["absent", "ENOENT"],
+  ["refused", "ECONNREFUSED"],
+  ["unauthorized", "401"],
+  ["no-detail", "underlying WebSocket error unavailable"],
+] as const)("physical read retains a safe opening failure: %s", async (mode, detail) => {
+  fixture.home = mkdtempSync("/var/tmp/i-test-cookie-test-key-")
+  directories.push(fixture.home)
+  const socket = join(fixture.home, "Library/Application Support/iTerm2/private/socket")
+  mkdirSync(join(socket, ".."), { recursive: true })
+  if (mode === "refused") writeFileSync(socket, "not a listening socket")
+  const server = mode === "unauthorized"
+    ? Bun.serve({ unix: socket, fetch: () => new Response("denied", { status: 401 }) })
+    : undefined
+  const packageUrl = import.meta.resolve("ws/package.json")
+  const metadata = JSON.parse(readFileSync(new URL(packageUrl), "utf8")) as { exports: { ".": { import: string } } }
+  const actual = (await import(new URL(metadata.exports["."].import, packageUrl).href)) as typeof import("ws")
+  const setOnError = Object.getOwnPropertyDescriptor(actual.default.prototype, "onerror")?.set
+  if (!setOnError) throw new Error("The locked ws client has no onerror setter")
+  // A WebSocket ErrorEvent may omit both details. Exercise the same real connection lifecycle.
+  const noDetail = mode === "no-detail"
+    ? vi.spyOn(actual.default.prototype, "onerror", "set").mockImplementation(function (this: WebSocketType, listener) {
+      setOnError.call(this, listener ? () => listener({ message: "" } as Parameters<NonNullable<typeof listener>>[0]) : null)
+    })
+    : undefined
+  const replies = vi.fn()
+  try {
+    const result = await readITermCells({ tty: "/dev/ttys004", cols: 4, rows: 2, onReply: replies })
+    expect(result).toEqual({ status: "refused", reason: expect.stringContaining(detail) })
+    if (result.status !== "refused") throw new Error("Opening failure produced cells")
+    expect(result.reason).not.toContain("test-cookie")
+    expect(result.reason).not.toContain("test-key")
+    expect(replies).not.toHaveBeenCalled()
+  } finally {
+    noDetail?.mockRestore()
+    server?.stop(true)
+  }
 })
 
 // This exercises the Unix WebSocket client against a local protocol fixture, never an iTerm process.
