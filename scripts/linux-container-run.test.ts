@@ -1502,7 +1502,7 @@ it.each(["verified", "unverified", "missing", "malformed", "bad-hash", "not-ok",
     if (scenario === "missing") Reflect.deleteProperty(capture.rawReplies, "collector.identityCheck")
     if (scenario === "malformed") capture.rawReplies["collector.identityCheck"] = "{broken"
     if (scenario === "bad-hash" || scenario === "not-ok") {
-      const identity = JSON.parse(capture.rawReplies["collector.identityCheck"])
+      const identity = JSON.parse(capture.rawReplies["collector.identityCheck"]) as { ok: boolean; executable: { sha256: string } }
       if (scenario === "bad-hash") identity.executable.sha256 = "short"
       else identity.ok = false
       capture.rawReplies["collector.identityCheck"] = JSON.stringify(identity)
