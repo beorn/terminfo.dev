@@ -472,7 +472,7 @@ export function classifyResultMethod(
     }
   }
 
-  const isDecided = result.status === "supported" || result.status === "unsupported" || result.status === "untestable"
+  const isDecided = result.status === "supported" || result.status === "unsupported"
 
   const onlyType = distinctTypes.size === 1 ? [...distinctTypes][0] : undefined
   if (onlyType !== undefined) {

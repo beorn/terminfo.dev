@@ -9,7 +9,7 @@
  * @reach fs-walk vendor/terminfo.dev/docs/** vendor/terminfo.dev/scripts/**
  * @testonly none
  */
-import { readFileSync, mkdtempSync, rmSync } from "node:fs"
+import { readFileSync, mkdtempSync, rmSync, mkdirSync, readdirSync, symlinkSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -546,65 +546,141 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
 })
 
 describe("probe method classification", () => {
+  // The historical pins describe these records, while new accepted runs keep joining the live corpus.
+  const historicalRunPaths = [
+    "probes-apps/alacritty-0.17.0-linux-984b034da17ca52406e50e60a3b88bc4.json",
+    "probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
+    "probes-apps/ghostty-1.3.1-linux-3d1eb75c5fa11383e3a6327d32a2c1a0.json",
+    "probes-apps/ghostty-1.3.1-linux-633c90aa4d9d9915dbfa8bbb0e1bc68e.json",
+    "probes-apps/iterm2-3.6.11-macos-baafb08bace3486d4f97bacbae912412.json",
+    "probes-apps/kitty-0.49.2-linux-0f6a17be820e41ecf3404199ff00fbb7.json",
+    "probes-apps/kitty-0.49.2-linux-8a04af6f8377b1c3ddd66746caa30cbf.json",
+    "probes-apps/terminal-app-2.15-macos-404cc558e74169b209dae16f8e365373.json",
+    "probes-apps/warp-v0.2026.10.14.08.27.stable_01-macos-41ab1e8a4a9bf9c0e92f66af36479f39.json",
+    "probes-libs/ghostty-0.4.0-linux-3bacc3ae-a7c9-4fed-9f3f-a2c0ce01e6f5.json",
+    "probes-libs/vterm-0.10.1-linux-a22f06ca-2505-4c0d-a518-b0b01f8bbe76.json",
+    "probes-libs/vterm-0.10.1-linux-a83eee05-fe66-4ab9-913d-d08d16a74bc8.json",
+    "probes-libs/vterm-0.9.0-linux-2cbc1874-597d-4246-836a-3750adc006c6.json",
+    "probes-libs/xtermjs-6.0.0-linux-5224bdc2-4351-4663-9ad2-75444302848d.json",
+    "probes-mux/screen-5.0.2-linux-38fe936ce745c9906840a50b8ea25138.json",
+    "probes-mux/screen-5.0.2-linux-ff1d93308fe7f5044d692f7da0fcfe2b.json",
+    "probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json",
+  ] as const
+
+  function withHistoricalCorpus(assertions: (historicalContentDir: string) => void): void {
+    const historicalContentDir = mkdtempSync(join(tmpdir(), "terminfo-historical-corpus-"))
+    const runDirectories = ["probes-apps", "probes-libs", "probes-mux"]
+    try {
+      for (const entry of readdirSync(contentDir, { withFileTypes: true })) {
+        if (runDirectories.includes(entry.name)) continue
+        symlinkSync(
+          join(contentDir, entry.name),
+          join(historicalContentDir, entry.name),
+          entry.isDirectory() ? "dir" : "file",
+        )
+      }
+      for (const directory of runDirectories) mkdirSync(join(historicalContentDir, directory))
+      for (const path of historicalRunPaths) {
+        symlinkSync(join(contentDir, path), join(historicalContentDir, path), "file")
+      }
+      assertions(historicalContentDir)
+    } finally {
+      // raw-delete-allow: only the test-owned temporary view and symlinks are removed; stored files stay unchanged.
+      rmSync(historicalContentDir, { recursive: true, force: true })
+    }
+  }
+
   // Pre-refactor baseline: component 2ee594d33, after source-answer retirement and the retained VTerm run.
   // Old test-todo/test-failure words normalize 1:1 to probe-todo/probe-invalid; no corpus verdict may move.
   // Synthetic same-suite cases miss a historical probe leaking across suite boundaries.
-  it("preserves the 17 stored run bytes and all 13 published corpus feature statuses and origins", () => {
-    const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
-    const runs = loadStoredRuns(contentDir, Object.keys(catalog).sort())
-    expect(runs).toHaveLength(17)
-    const inventory = runs
-      .map((run): [string, string] => [
-        run.path.slice(contentDir.length + 1),
-        createHash("sha256").update(readFileSync(run.path)).digest("hex"),
-      ])
-      .sort(([left], [right]) => left.localeCompare(right))
-    expect(digest(inventory)).toBe("6c085c4d7a9b520b83327b2146fd8f355f8ada5638e913330d4763f0b1987690")
-    const out = mkdtempSync(join(tmpdir(), "terminfo-corpus-status-"))
-    try {
-      const { dataPath } = generateApi(out, { contentDir, working: null })
-      const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
-        contexts: Record<
-          string,
-          { catalogIds: string[]; featureResults: Record<string, { status: string; origin: { runId: string } }> }
-        >
-      }
-      expect(Object.keys(api.contexts)).toHaveLength(13)
-      const pins = Object.entries(api.contexts)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, context]) => [
-          key,
-          digest(
-            [...context.catalogIds]
-              .sort((left, right) => left.localeCompare(right))
-              .map((id) => [
-                id,
-                context.featureResults[id]?.status ?? "probe-todo",
-                context.featureResults[id]?.origin.runId ?? null,
-              ]),
-          ),
+  it("preserves the 17 stored run bytes and all 13 published corpus feature statuses and origins", () =>
+    withHistoricalCorpus((historicalContentDir) => {
+      const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
+      const runs = loadStoredRuns(historicalContentDir, Object.keys(catalog).sort())
+      expect(runs).toHaveLength(17)
+      const inventory = runs
+        .map((run): [string, string] => [
+          run.path.slice(historicalContentDir.length + 1),
+          createHash("sha256").update(readFileSync(run.path)).digest("hex"),
         ])
-      expect(digest(pins)).toBe("c228b11dab50616727f15958420173202746b715543cdf668be15cb5f4ae2daf")
-    } finally {
-      // raw-delete-allow: this test owns the temporary API output directory.
-      rmSync(out, { recursive: true, force: true })
-    }
-  })
+        .sort(([left], [right]) => left.localeCompare(right))
+      expect(digest(inventory)).toBe("6c085c4d7a9b520b83327b2146fd8f355f8ada5638e913330d4763f0b1987690")
+      const out = mkdtempSync(join(tmpdir(), "terminfo-corpus-status-"))
+      try {
+        const { dataPath } = generateApi(out, { contentDir: historicalContentDir, working: null })
+        const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
+          contexts: Record<
+            string,
+            { catalogIds: string[]; featureResults: Record<string, { status: string; origin: { runId: string } }> }
+          >
+        }
+        expect(Object.keys(api.contexts)).toHaveLength(13)
+        const pins = Object.entries(api.contexts)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, context]) => [
+            key,
+            digest(
+              [...context.catalogIds]
+                .sort((left, right) => left.localeCompare(right))
+                .map((id) => [
+                  id,
+                  context.featureResults[id]?.status ?? "probe-todo",
+                  context.featureResults[id]?.origin.runId ?? null,
+                ]),
+            ),
+          ])
+        expect(digest(pins)).toBe("c228b11dab50616727f15958420173202746b715543cdf668be15cb5f4ae2daf")
+      } finally {
+        // raw-delete-allow: this test owns the temporary API output directory.
+        rmSync(out, { recursive: true, force: true })
+      }
+    }))
 
-  it("maps retained corpus probes without promoting a source answer", () => {
+  it("maps retained corpus probes without promoting a source answer", () =>
+    withHistoricalCorpus((historicalContentDir) => {
+      const runs = loadStoredRuns(historicalContentDir, Object.keys(catalog).sort())
+      const counts = { internal: 0, output: 0, visual: 0, "end-to-end": 0, source: 0 }
+      for (const run of runs) {
+        for (const result of run.results ?? []) {
+          if (!scoredFeatureIds([result.featureId]).length) continue
+          const classified = classifyResultMethod(result, run.subject, run.assertions)
+          expect(classified.kind).not.toBe("mixed")
+          expect(classified.kind).not.toBe("unmapped")
+          if (classified.kind === "method") counts[classified.method]++
+        }
+      }
+      expect(runs).toHaveLength(17)
+      expect(counts).toEqual({ internal: 1067, output: 1712, visual: 477, "end-to-end": 100, source: 0 })
+    }))
+
+  it("maps the growing live corpus without promoting a source answer", () => {
     const runs = loadStoredRuns(contentDir, Object.keys(catalog).sort())
-    const counts = { internal: 0, output: 0, visual: 0, "end-to-end": 0, source: 0 }
+    let sourceMethods = 0
     for (const run of runs) {
       for (const result of run.results ?? []) {
         if (!scoredFeatureIds([result.featureId]).length) continue
         const classified = classifyResultMethod(result, run.subject, run.assertions)
         expect(classified.kind).not.toBe("mixed")
         expect(classified.kind).not.toBe("unmapped")
-        if (classified.kind === "method") counts[classified.method]++
+        if (classified.kind === "method" && classified.method === "source") sourceMethods++
       }
     }
-    expect(runs).toHaveLength(17)
-    expect(counts).toEqual({ internal: 1067, output: 1712, visual: 477, "end-to-end": 100, source: 0 })
+    expect(sourceMethods).toBe(0)
+  })
+
+  // The frozen records had no declaration-only result; the accepted iTerm runs expose this boundary.
+  it.each([
+    { status: "untestable", kind: "unobserved-open" },
+    { status: "supported", kind: "unmapped" },
+  ] as const)("classifies $status without an observation as $kind", ({ status, kind }) => {
+    const result: ProbeResult = {
+      featureId: "reset.method",
+      status,
+      attempt: { scope: "none" },
+      tests: [],
+      reason: "Untestable (no way): the app has no reset method or equivalent state readback",
+    }
+    expect(classifyResultMethod(result, { kind: "term", version: "1.0.0" }, []).kind).toBe(kind)
   })
 
   it("retains mixed assertion types instead of claiming one method", () => {
