@@ -59,6 +59,14 @@ controls remain PROBE TODO naming the condition. The negative reason states the 
 and its slower-period limit; the existing subject-aware finalizer keeps mux flat results PROBE TODO
 and names the recorded outer terminal. These controls use existing input and capture fixtures.
 
+The App font-ligature callback compares ten one-cell pixel crops of contiguous operators
+with two isolated-character checkpoints at those exact cells. Each checkpoint uses the
+shared cleared-frame paint witness and space/glyph return, stable pixels and measured
+geometry, with the cursor outside the sample. A changed-character control must change
+the same-cell pixels. With those controls, any target-cell difference decides Supported;
+all ten equal decide Unsupported. Missing sensitivity or moved crops remain unresolved.
+Text snapshots cannot decide glyph shaping; the library declaration stays Untestable.
+
 Callback observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`, not five result statuses.
 The App 47/1047 callbacks share the existing region reader: after primary-marker restoration,
 47 re-entry must retain an independently painted alternate marker. Only a passing same-run

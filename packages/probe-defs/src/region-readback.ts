@@ -360,7 +360,7 @@ function regionRefusal(
  * unable to tell a reported geometry from a derived one (28763: the ordinary branch
  * returned before the payload carrying the source was built).
  */
-async function awaitPaintWitness(options: {
+export async function awaitPaintWitness(options: {
   read: RegionRead
   id: string
   label: string
