@@ -1316,9 +1316,9 @@ describe("xterm rendering is pinned AND RECORDED so a repaint is byte-exact (#28
  * @consumer scripts/linux-container-run.sh PROBE_BATCH_TIMEOUT_SECONDS (@dev/3 51326e54)
  */
 describe("declared probe-batch timeout is one value for curl and host attach", () => {
-  it("uses PROBE_BATCH_TIMEOUT_SECONDS=900 for both curl --max-time and docker start --attach", () => {
+  it("uses PROBE_BATCH_TIMEOUT_SECONDS=1200 for both curl --max-time and docker start --attach", () => {
     const source = readFileSync(launcher, "utf8")
-    expect(source).toMatch(/^PROBE_BATCH_TIMEOUT_SECONDS=900$/m)
+    expect(source).toMatch(/^PROBE_BATCH_TIMEOUT_SECONDS=1200$/m)
     expect(source).toMatch(/curl [^\n]*--max-time "\$PROBE_BATCH_TIMEOUT_SECONDS"/)
     expect(source).toMatch(/timeout "\$PROBE_BATCH_TIMEOUT_SECONDS" docker start --attach/)
     expect(source).not.toMatch(/--max-time 120\b/)
