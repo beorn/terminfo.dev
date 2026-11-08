@@ -624,6 +624,48 @@ test("hosted Terminal launch owns its window and closes only it before upload", 
   expect(steps.indexOf(close!)).toBeLessThan(steps.indexOf(upload!))
 })
 
+// 30729 P0: the terminal-app arm read COMMAND_PATH from a bun --eval child while the shell never
+// exported it, so the child got undefined and AppleScript ran `do script undefined`. Run the arm the
+// way bash does and hand it a bun stand-in that records what the child really receives.
+test("the hosted terminal-app arm hands the collector command path to its child", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const steps = workflow.jobs["measure-macos"].steps as Array<{ name?: string; run?: string }>
+  const collect = steps.find((step) => step.name === "Launch, emit the receipt, and collect as the last mutating step")
+  expect(collect?.run, "the launch step exists").toBeTypeOf("string")
+  const arm = /^[ ]*terminal-app\)\n([\s\S]*?)^[ ]*;;$/mu.exec(collect!.run!)?.[0]
+  expect(arm, "the terminal-app case arm exists").toBeTypeOf("string")
+  const directory = mkdtempSync(join(tmpdir(), "hosted-terminal-arm-"))
+  try {
+    const bin = join(directory, "bin")
+    mkdirSync(bin)
+    mkdirSync(join(directory, "out"))
+    // The stand-in is the child `bun --eval`: it records the environment and body it was given.
+    writeFileSync(
+      join(bin, "bun"),
+      `#!/bin/bash\nenv > "${directory}/child-env"\nprintf '%s' "$2" > "${directory}/child-body"\n`,
+      { mode: 0o755 },
+    )
+    // The arm sees only the step env and whatever the run script exports or passes inline.
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `set -euo pipefail\nOUT="${directory}/out"\nCOMMAND_PATH="$RUNNER_TEMP/collect.command"\ncase "terminal-app" in\n${arm}\nesac`,
+      ],
+      { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin`, RUNNER_TEMP: directory, APP_ID: "terminal-app" } },
+    )
+    expect(result.status, result.stderr).toBe(0)
+    const commandPath = join(directory, "collect.command")
+    // Red on 6c6def1e2: the child inherited no COMMAND_PATH at all.
+    expect(readFileSync(join(directory, "child-env"), "utf8")).toContain(`COMMAND_PATH=${commandPath}\n`)
+    expect(readFileSync(join(directory, "child-body"), "utf8")).toContain(
+      "launchTerminalWindow(process.env.COMMAND_PATH)",
+    )
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // The actual shared DMG caller must verify Warp before mount/copy, without changing Alacritty's operation.
 test("shared hosted DMG caller rejects altered pinned bytes before install and preserves Alacritty arguments", async () => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")

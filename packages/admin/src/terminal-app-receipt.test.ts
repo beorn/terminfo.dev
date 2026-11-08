@@ -112,6 +112,15 @@ describe("owned Terminal.app receipt", () => {
     }
   })
 
+  // 30729 P0: the hosted arm passed an unexported shell variable, so the interpolated command was the
+  // literal `undefined`. Name the caller's mistake here instead of failing as an AppleScript -2753.
+  test("launch refuses a command path that is not absolute", () => {
+    for (const scriptPath of [undefined, "", "collect.command", "./collect.command"] as unknown as string[]) {
+      expect(() => launchTerminalWindow(scriptPath)).toThrow(/requires the absolute path of the command script/u)
+    }
+    expect(spawnSync).not.toHaveBeenCalled()
+  })
+
   // 30729: hosted run 42479488706 launched Terminal through Apple events and got no reply at all,
   // because the runner had no Automation grant. The shared 15s budget is sized for a warm app, and an
   // unanswered consent prompt must be named as the permission it needs, never as a script failure.
