@@ -180,6 +180,8 @@ test.each(
           "wrong-digest",
           "missing-flag",
           "restore-failure",
+          "wrong-version",
+          "missing-cli",
         ] as const)
       : (["exact"] as const)
     ).map((variant) => ({ app, version, featureId, code, targetBody, variant })),
@@ -225,7 +227,17 @@ test.each(
     }
     let title = "original title"
     vi.mocked(execFileSync).mockImplementation((file, args) => {
-      if (file === executable) return app === "kitty" ? "kitty 0.49.2 created by Kovid Goyal\n" : `wezterm ${version}\n`
+      // The owned GUI reports this placeholder before its bootstrap; its same-output
+      // sibling CLI reports the build version. One mock for both hid the native failure.
+      if (file === executable) {
+        return app === "kitty"
+          ? "kitty 0.49.2 created by Kovid Goyal\n"
+          : "wezterm-gui someone forgot to call assign_version_info\n"
+      }
+      if (app === "wezterm" && file === "/owned/wezterm") {
+        if (variant === "missing-cli") throw new Error("ENOENT: /owned/wezterm")
+        return `wezterm ${variant === "wrong-version" ? "different" : version}\n`
+      }
       return Array.isArray(args) && args[0] === "search" ? "123\n" : title
     })
     const writes: string[] = []
@@ -251,6 +263,27 @@ test.each(
           }
         },
       })
+      if (app === "wezterm") {
+        expect(result).toMatchObject({
+          detail: {
+            commands: expect.not.arrayContaining([expect.objectContaining({ argv: [executable, "--version"] })]),
+          },
+        })
+        if (variant === "missing-cli") {
+          expect(result).toMatchObject({ status: "invalid", reason: expect.stringContaining("ENOENT") })
+          expect(writes).toEqual([])
+          return
+        }
+        expect(result).toHaveProperty("detail.commands.0", {
+          argv: ["/owned/wezterm", "--version"],
+          stdout: `wezterm ${variant === "wrong-version" ? "different" : version}\n`,
+        })
+        if (variant === "wrong-version") {
+          expect(result).toMatchObject({ status: "invalid", reason: expect.stringContaining("version differs") })
+          expect(writes).toEqual([])
+          return
+        }
+      }
       if (
         [
           "handled-refusal",

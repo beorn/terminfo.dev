@@ -801,13 +801,11 @@ export async function readAppSemanticState(input: {
       if (appId === "kitty" && String(pid) !== env.KITTY_PID) {
         throw new Error("App semantic reader Kitty PID differs from its owned ancestor")
       }
-      const versionText = run([input.executable.path, "--version"])
+      const versionExecutable =
+        appId === "wezterm" ? join(dirname(input.executable.path), "wezterm") : input.executable.path
+      const versionText = run([versionExecutable, "--version"])
       const version = (
-        appId === "kitty"
-          ? /^kitty (\S+) created by /m
-          : appId === "wezterm"
-            ? /^wezterm(?:-gui)? (\S+)/m
-            : /^Ghostty (\S+)/m
+        appId === "kitty" ? /^kitty (\S+) created by /m : appId === "wezterm" ? /^wezterm (\S+)/m : /^Ghostty (\S+)/m
       ).exec(versionText)?.[1]
       if (!version || version !== env.TERMINFO_TARGET_VERSION) {
         throw new Error(`App semantic reader ${appId} version differs from its launch`)
