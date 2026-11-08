@@ -16,7 +16,9 @@ beforeEach(() => run.mockReset())
 function answer(stdout: string, status = 0, stderr = "") {
   run.mockReturnValue({ status, signal: null, stdout: Buffer.from(stdout), stderr: Buffer.from(stderr) })
 }
-const rows = (count: number) => Array.from({ length: count }, (_, index) => `r${index}`).join("\n") + "\n"
+// Real --add-wrap-markers bytes: every row closes with a carriage return and an unwrapped predecessor adds
+// the newline separator, so hard row ends arrive as "\r\n".
+const rows = (count: number) => Array.from({ length: count }, (_, index) => `r${index}`).join("\r\n") + "\r\n"
 
 test("the reader reports the scrollback and visible counts and never a viewport offset", () => {
   run.mockReturnValueOnce({ status: 0, signal: null, stdout: Buffer.from(rows(30)), stderr: Buffer.from("") })
@@ -31,8 +33,28 @@ test("each read names this run's socket, window and extent", () => {
   run.mockReturnValue({ status: 0, signal: null, stdout: Buffer.from(rows(2)), stderr: Buffer.from("") })
   readLinuxKittyScrollback(options)
   expect(run.mock.calls.map((call) => call[1])).toEqual([
-    ["@", "--to", options.socket, "get-text", "--extent", "all", "--match", `id:${options.window}`],
-    ["@", "--to", options.socket, "get-text", "--extent", "screen", "--match", `id:${options.window}`],
+    [
+      "@",
+      "--to",
+      options.socket,
+      "get-text",
+      "--extent",
+      "all",
+      "--add-wrap-markers",
+      "--match",
+      `id:${options.window}`,
+    ],
+    [
+      "@",
+      "--to",
+      options.socket,
+      "get-text",
+      "--extent",
+      "screen",
+      "--add-wrap-markers",
+      "--match",
+      `id:${options.window}`,
+    ],
   ])
 })
 
@@ -46,25 +68,60 @@ test.each([
 })
 
 test("a failed connection retains exit, stderr and partial bytes", () => {
-  answer("partial\n", 17, "owned socket refused")
+  answer("partial\r", 17, "owned socket refused")
   const result = readLinuxKittyScrollback(options)
   expect(result.status).toBe("refused")
   if (result.status !== "refused") throw new Error("Expected a refusal")
   expect(result.reason).toContain('"status":17')
-  expect(result.reason).toContain(Buffer.from("partial\n").toString("base64"))
+  expect(result.reason).toContain(Buffer.from("partial\r").toString("base64"))
 })
 
 test("an unterminated screen is refused with its actual bytes", () => {
   run.mockReturnValueOnce({ status: 0, signal: null, stdout: Buffer.from(rows(4)), stderr: Buffer.from("") })
-  answer("r0\nr1")
+  answer("r0\r\nr1")
   const result = readLinuxKittyScrollback(options)
   expect(result.status).toBe("refused")
   if (result.status !== "refused") throw new Error("Expected a refusal")
-  expect(result.reason).toContain(Buffer.from("r0\nr1").toString("base64"))
+  expect(result.reason).toContain(Buffer.from("r0\r\nr1").toString("base64"))
 })
 
 test("a visible screen taller than the scrollback is refused, never clamped", () => {
   run.mockReturnValueOnce({ status: 0, signal: null, stdout: Buffer.from(rows(3)), stderr: Buffer.from("") })
   run.mockReturnValueOnce({ status: 0, signal: null, stdout: Buffer.from(rows(5)), stderr: Buffer.from("") })
   expect(readLinuxKittyScrollback(options)).toMatchObject({ status: "refused" })
+})
+
+// Pinned kitty as_text_generic: a soft-wrapped row ends with a carriage-return marker and NO newline;
+// only a hard row end emits one. Counting newlines alone therefore merges every wrapped pair into one.
+test("a soft-wrapped row counts as its own physical row", () => {
+  run.mockReturnValueOnce({
+    status: 0,
+    signal: null,
+    stdout: Buffer.from("wrap-pair\rrest\r\n"),
+    stderr: Buffer.from(""),
+  })
+  run.mockReturnValueOnce({
+    status: 0,
+    signal: null,
+    stdout: Buffer.from("wrap-pair\rrest\r\n"),
+    stderr: Buffer.from(""),
+  })
+  expect(readLinuxKittyScrollback(options)).toMatchObject({ status: "read", totalLines: 2, screenLines: 2 })
+})
+
+test("hard newlines and wrap markers count together, and blank rows survive", () => {
+  // hard row, blank hard row, then a wrapped pair: four physical rows in all.
+  run.mockReturnValueOnce({
+    status: 0,
+    signal: null,
+    stdout: Buffer.from("a\r\n\r\nb\rc\r\n"),
+    stderr: Buffer.from(""),
+  })
+  run.mockReturnValueOnce({
+    status: 0,
+    signal: null,
+    stdout: Buffer.from("a\r\n\r\nb\rc\r\n"),
+    stderr: Buffer.from(""),
+  })
+  expect(readLinuxKittyScrollback(options)).toMatchObject({ status: "read", totalLines: 4, screenLines: 4 })
 })

@@ -34,7 +34,17 @@ function readExtent(
 ): { readonly status: "read"; readonly read: ExtentRead } | { readonly status: "refused"; readonly reason: string } {
   const result = spawnSync(
     options.kitten,
-    ["@", "--to", options.socket, "get-text", "--extent", extent, "--match", `id:${options.window}`],
+    [
+      "@",
+      "--to",
+      options.socket,
+      "get-text",
+      "--extent",
+      extent,
+      "--add-wrap-markers",
+      "--match",
+      `id:${options.window}`,
+    ],
     { encoding: "buffer", timeout: 5000, maxBuffer: 1024 * 1024 },
   )
   const receipt = {
@@ -57,14 +67,18 @@ function readExtent(
   } catch {
     return { status: "refused", reason: `Kitty ${extent} get-text did not return UTF-8: ${JSON.stringify(receipt)}` }
   }
-  // get-text terminates every physical row with one newline. Never trim blank rows or invent missing ones.
-  if (!text.endsWith("\n")) {
+  // With --add-wrap-markers this Kitty ends every physical row with a carriage return and emits a newline
+  // only where the previous row was not soft-wrapped (line.c as_text_generic). A hard row end therefore
+  // arrives as "\r\n" and a wrap edge as a lone "\r"; counting newlines alone would merge wrapped pairs.
+  // Never trim blank rows or invent missing ones.
+  const terminator = text.endsWith("\r\n") ? "\r\n" : text.endsWith("\r") ? "\r" : null
+  if (terminator == null) {
     return {
       status: "refused",
       reason: `Kitty ${extent} get-text returned no complete row terminator: ${JSON.stringify(receipt)}`,
     }
   }
-  return { status: "read", read: { lines: text.slice(0, -1).split("\n"), receipt } }
+  return { status: "read", read: { lines: text.slice(0, -terminator.length).split(/\r\n?|\n/u), receipt } }
 }
 
 /** Read this run's own Kitty window: its whole scrollback size and its visible row count. */
