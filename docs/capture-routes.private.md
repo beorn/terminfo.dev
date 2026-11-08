@@ -122,6 +122,20 @@ Headless Kitty collection requires an absolute `KITTY_BINARY`. Its
 the resolved Nix-store binary, closure/derivation metadata and declared-source proof.
 Those checks do not establish which shell supplied the path or a measured capability result.
 
+## Read retained runs
+
+Start with `pass.json` → `contexts[].rawRun`, the [collection owner's recorded run path](../scripts/release1-collection.ts).
+`pass-<x>/term-<app>-<os>.draft.json` can be a selection-only pass draft, with `collector.selection`
+but no measured identity or assertions. Its missing DA1 does not establish that the run retained no DA1.
+For Linux apps, the run is under `pass-<x>/linux/<app>/<hash>/raw/`, commonly `v3-run.draft.json`;
+the recorded path can instead name `v3-run.json` or a retained producer draft after a failed HTTP response.
+Read that run's `rawReplies`, including `device.primary-da` and `collector.xtversion`, for the identity evidence.
+
+The [Linux launcher](../scripts/linux-container-run.sh) also retains `font.txt`, `da1-observation.json`,
+`runtime-provenance.json` and receipts in `raw/`. Image hashes resolve through `raw/capture-hashes.txt`
+to `raw/artifacts/<sha>.png`. A pass summary, a raw run and its receipts answer different questions;
+reading them does not establish admission, a capability verdict or publication authority.
+
 ## Headless runtime prerequisites
 
 In the owned hh layout, the existing `placeArtifacts` in root
