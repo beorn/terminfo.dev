@@ -36,6 +36,17 @@ the existing no-setup result stands; a failed control is PROBE INVALID. Kitty re
 
 The five probe-result labels are Supported, Unsupported, Untestable, PROBE TODO and PROBE INVALID. Their code values are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`. Immutable stored runs retain their original `test-todo` and `test-failure` words; the run reader decodes those as `probe-todo` and `probe-invalid` without rewriting the stored bytes. A missing same-run control is a reason under PROBE TODO, not an additional status.
 
+The OSC22 image arm uses the existing owned Linux capture and input adapters only for xterm411 and
+WezTerm0-unstable-2026-10-10. Their pre-batch measured XTVERSION selects the exact tuple in the
+collector; Kitty, muxes and unmatched tuples keep the selected-shape query path. Pointer-inclusive
+PNG captures retain the source bytes and decoded pixel digest. At fixed text-window coordinates,
+two stable baseline images precede every OSC22. With mouse reporting off, a consumed key must hide
+the pointer and motion must restore its image. The made-up name stays inert at baseline; crosshair
+then changes the image for Supported or leaves it unchanged for Unsupported. Both require the
+independent control and two final images equal to the initial image after OSC22;xterm. Failed
+restoration or contradictory controls are invalid; missing sensitivity stays open. This adds no
+library criterion, cursor-name inference or runtime/publication authority.
+
 A feature result answers one feature on one subject from its current probes. Source never decides it. Supported/Unsupported disagreement between any valid non-source probes is PROBE CONFLICT (`probe-conflict`), naming those probes, regardless of strength. Otherwise the strongest decided probe wins; Untestable alone cannot conflict with a decided answer. With no decided probe, invalid takes precedence over todo, then all-untestable. A conflict counts as open and tier 2 when there is no todo. The [feature-result calculator](../../docs/data/release-scope.ts) replaces the old report-only minimum-method findings.
 
 The App blink callback retains nine styled/plain samples across requested offsets from 0 to 3000 ms.

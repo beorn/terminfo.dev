@@ -207,6 +207,16 @@ printf '%sx%s' "\$w" "\$h" > "$TEST_CAPTURE_XWD_SIZE"
 printf 'xwd-window-%s' "\$id"`,
   )
   executable(
+    join(directory, "scrot"),
+    [
+      'printf "%s\\n" "$@" > "$TEST_CAPTURE_PNG.scrot-args"',
+      'printf started > "$TEST_CAPTURE_STARTED"',
+      'while [ ! -e "$TEST_CAPTURE_RELEASE" ]; do sleep 0.01; done',
+      'printf finished > "$TEST_CAPTURE_FINISHED"',
+      'cat "$TEST_CAPTURE_PNG"',
+    ].join("\n"),
+  )
+  executable(
     join(directory, "xdpyinfo"),
     `printf 'root window id: 0x21f\\n  dimensions:    %sx%s pixels\\n' "\${TEST_CAPTURE_SCREEN_WIDTH:-1920}" "\${TEST_CAPTURE_SCREEN_HEIGHT:-1080}"`,
   )
@@ -330,6 +340,48 @@ test.runIf(process.platform === "linux")(
     const { result } = await pending
     expect(result.frame.ref).toMatch(/^sha256:[a-f0-9]{64}$/)
     expect(readFileSync(stdin, "utf8")).toBe("xwd-window-42")
+  },
+)
+
+// The existing XWD fixtures cannot prove that an OSC22 frame contains the X pointer.
+test.runIf(process.platform === "linux")("OSC22 captures pointer PNG through the same owned window", async () => {
+  const { directory, release, stdin, png } = fixture()
+  writeFileSync(release, "continue")
+  const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
+  const { result } = await captureRaw({
+    featureId: "extensions.osc22-pointer",
+    role: "control",
+    label: "pointer baseline",
+  })
+  expect(readFileSync(`${png}.scrot-args`, "utf8").trim().split("\n")).toEqual([
+    "--pointer",
+    "--window",
+    "42",
+    "--silent",
+    "--format",
+    "png",
+    "--file",
+    "-",
+  ])
+  expect(readFileSync(stdin)).toEqual(readFileSync(png))
+  expect(result.frame.sourceRef).toBe(`sha256:${createHash("sha256").update(readFileSync(png)).digest("hex")}`)
+  expect(readdirSync(join(directory, "frames")).some((name) => name.endsWith(".xwd"))).toBe(false)
+})
+
+test.runIf(process.platform === "linux")(
+  "OSC22 pointer capture rejects ownership lost during acquisition",
+  async () => {
+    const { directory, started, release } = fixture()
+    const frames = join(directory, "frames")
+    const { captureRaw } = await createLinuxCapture(frames, liveExecutable(), () => {})
+    const pending = captureRaw({ featureId: "extensions.osc22-pointer", role: "target", label: "pointer target" })
+    const rejected = expect(pending).rejects.toThrow("no longer belongs to Kitty")
+    for (let n = 0; n < 100 && !existsSync(started); n++) await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(existsSync(started)).toBe(true)
+    process.env.TEST_CAPTURE_OWNER_PID = "1"
+    writeFileSync(release, "continue")
+    await rejected
+    expect(readdirSync(frames)).toEqual([])
   },
 )
 

@@ -907,6 +907,41 @@ it("retains the focus report emitted while enabling 1004", async () => {
   })
 })
 
+// @failure A Linux-owned motion fixture is dropped before the OSC22 callback can place its pointer.
+// The focus case exercises another optional method, so it cannot detect missing motion forwarding.
+// @level l1
+// @consumer App native batch -> OSC22 pointer-image callback -> owned XTEST input.
+it("forwards owned buttonless motion with its fixture binding", async () => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const definition = ALL_PROBES.find((probe) => probe.id === "device.primary-da")!
+  const original = definition.term
+  const moves: number[][] = []
+  const input = {
+    injectClick: async () => {},
+    injectKey: async () => {},
+    async injectMove(x: number, y: number) {
+      expect(this).toBe(input)
+      moves.push([x, y])
+    },
+  }
+  try {
+    definition.term = async (ctx) => {
+      if (!ctx.input?.injectMove) throw new Error("Missing owned motion fixture")
+      await ctx.input.injectMove(32, 48)
+      return notTestedResult("Motion forwarding exercised", {})
+    }
+    await runProbeBatch({
+      ids: [definition.id],
+      ownedTerminal: geometryOwner(noGeometry),
+      input,
+    })
+    expect(moves).toEqual([[32, 48]])
+  } finally {
+    definition.term = original
+  }
+})
+
 it.each(
   ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
     ["controls", "query"].map((failure) => ({ id, failure })),
@@ -2294,6 +2329,56 @@ it("offers a text run's adapter to cell-readback probes alone and never gates it
   expect(captureAdapterEligible({ cellReadback: true }, "pixels", refused)).toBe(false)
   expect(captureAdapterEligible({ cellReadback: true }, "pixels", undefined)).toBe(true)
   expect(captureAdapterEligible({}, undefined, undefined)).toBe(true)
+})
+
+// @failure The OSC22 image path replaces Kitty's query reader or reaches an unreviewed App tuple.
+// Generic capture eligibility has no subject/version boundary; exercise the actual batch wiring.
+// @level l1
+// @consumer Exact owned App subject -> unified capture forwarding -> OSC22 callback.
+it.each([
+  { kind: "term", id: "xterm", version: "411", os: "linux", allowed: true },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", os: "linux", allowed: true },
+  { kind: "term", id: "kitty", version: "0.49.2", os: "linux", allowed: false },
+  { kind: "mux", id: "tmux", version: "3.8", os: "linux", allowed: false },
+  { kind: "term", id: "xterm", version: "412", os: "linux", allowed: false },
+  { kind: "term", id: "xterm", version: "411", os: "darwin", allowed: false },
+] as const)("limits OSC22 image forwarding to the reviewed $id/$version/$os tuple", async (entry) => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const definitions = ["extensions.osc22-pointer", "device.primary-da"].map((id) =>
+    ALL_PROBES.find((p) => p.id === id)!,
+  )
+  const originals = definitions.map(({ term, termNeedsDisposable }) => ({ term, termNeedsDisposable }))
+  const seen: boolean[] = []
+  try {
+    for (const definition of definitions) {
+      // This routing-only callback performs no mutation; ownership itself is covered above.
+      delete definition.termNeedsDisposable
+      definition.term = async (ctx) => {
+        seen.push(typeof ctx.capture === "function")
+        return notTestedResult("Capture routing exercised without terminal operations", {})
+      }
+    }
+    await runProbeBatch({
+      ids: definitions.map(({ id }) => id),
+      subject: { kind: entry.kind, id: entry.id, version: entry.version, os: entry.os },
+      draft: {
+        results: definitions.map(({ id }) => ({
+          featureId: id,
+          status: "probe-todo",
+          attempt: { scope: "none" },
+          tests: [],
+        })),
+      },
+      ownedTerminal: geometryOwner(noGeometry),
+      capture: async () => {
+        throw new Error("Routing test must not capture")
+      },
+    })
+    expect(seen).toEqual([entry.allowed, true])
+  } finally {
+    definitions.forEach((definition, index) => Object.assign(definition, originals[index]!))
+  }
 })
 
 it("hands no adapter to a non-cell-readback probe on a text run", async () => {

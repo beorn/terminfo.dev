@@ -1323,7 +1323,12 @@ test("every inconclusive extension contract row evaluates to inconclusive under 
     const probe = extensionsProbes.find((p) => p.id === row.id)
     expect(probe, `missing probe for ${row.id}`).toBeDefined()
     if (!probe) continue
-    const rowTerm = ["extensions.truecolor", "extensions.osc9-progress", "extensions.osc555-flash"].includes(row.id)
+    const rowTerm = [
+      "extensions.truecolor",
+      "extensions.osc9-progress",
+      "extensions.osc555-flash",
+      "extensions.osc22-pointer",
+    ].includes(row.id)
       ? replayTermProbeSource(new Map())
       : term
     const callbackResult = probe.term ? await probe.term(rowTerm) : probe.lib?.(headless)

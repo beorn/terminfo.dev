@@ -1532,6 +1532,152 @@ async function cursorColorSetupAppCapture(
   }
 }
 
+/** The collector selects the reviewed App tuples; this recipe reads only their owned pixels. */
+async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const id = "extensions.osc22-pointer"
+  const frames: ObservationFrame[] = []
+  const geometry = ctx.captureGeometry?.geometry
+  const capture = ctx.capture
+  const input = ctx.input
+  const move = input?.injectMove?.bind(input)
+  const readInput = ctx.readInput
+  const coordinates = geometry
+    ? { x: Math.floor(geometry.textWidth / 2), y: Math.floor(geometry.textHeight / 2) }
+    : undefined
+  const controls: {
+    mouseModes: Array<{ mode: number; reading: string | null }>
+    visibility?: string | null
+    key?: string[] | null
+  } = { mouseModes: [] }
+  const state = () => ({ frames, geometry, coordinates, controls })
+  const pending = (reason: string, invalid = false): ProbeCallbackResult => ({
+    pass: false,
+    response: JSON.stringify(state()),
+    tests: [{ id: "criterion", status: invalid ? "probe-invalid" : "probe-todo", reason }],
+  })
+  if (!capture || ctx.captureKind === "text-cells" || !input || !move || !readInput || !coordinates) {
+    return pending(`${id}: owned pointer pixels, motion, raw key input and measured geometry are required`)
+  }
+  // DECRQM's unknown means this App does not recognize that mode. Silence cannot establish OFF.
+  for (const mode of [9, 1000, 1001, 1002, 1003]) {
+    const reading = await ctx.queryMode(mode)
+    controls.mouseModes.push({ mode, reading })
+    if (reading !== "reset" && reading !== "unknown") {
+      return pending(`${id}: mouse reporting mode ${mode} is not measured off`)
+    }
+  }
+  const visibleCursor = await ctx.queryMode(25)
+  controls.visibility = visibleCursor
+  if (visibleCursor !== "set" && visibleCursor !== "reset") {
+    return pending(`${id}: incoming text-cursor visibility cannot be restored`)
+  }
+  const { x, y } = coordinates
+  // An actual motion event is needed even when the pointer is already at the requested position.
+  const position = async () => {
+    await move(x + 1, y)
+    await move(x, y)
+  }
+  const shoot = async (label: string, role: "control" | "target" = "control") => {
+    const frame = await capture({ role, label: `${id}: ${label}` })
+    const digest = frameDigests(frame).whole
+    if (frame.kind === "text-cells" || !digest) throw new Error(`${id}: capture has no decoded pointer pixel digest`)
+    frames.push(frame)
+    return { frame, pixelsDigest: digest }
+  }
+  let baseline: string | undefined
+  let pointerWritten = false
+  let result: ProbeCallbackResult
+  beginCaptureLifecycle(ctx)
+  try {
+    ctx.write("\x1b[2J\x1b[H")
+    await position()
+    const measure = async (): Promise<ProbeCallbackResult> => {
+      // In xterm even ?__current__ is a setter; no OSC22 precedes these two initial images.
+      const stable = await captureStabilityPair(
+        id,
+        "screenshot",
+        () => shoot("baseline first"),
+        () => shoot("baseline second"),
+      )
+      if (stable.refusal) return stable.refusal
+      baseline = stable.second.pixelsDigest
+      const key = await readInput(/^a$/, 1000, () => input.injectKey("a"))
+      controls.key = key
+      if (key?.[0] !== "a") return pending(`${id}: injected key was not consumed by the owned raw input`, true)
+      const hidden = await shoot("keypress hides pointer")
+      await position()
+      const shown = await shoot("motion restores pointer")
+      if (hidden.pixelsDigest === baseline) return pending(`${id}: keypress did not qualify pointer sensitivity`)
+      if (shown.pixelsDigest !== baseline) {
+        return pending(`${id}: motion did not restore the initial pointer image`, true)
+      }
+      pointerWritten = true
+      ctx.write("\x1b]22;terminfo-unknown-shape\x07")
+      const unknown = await shoot("made-up name at baseline")
+      if (unknown.pixelsDigest !== baseline) {
+        return pending(`${id}: made-up pointer name changed the baseline image`, true)
+      }
+      ctx.write("\x1b]22;crosshair\x07")
+      const target = await captureStabilityPair(
+        id,
+        "screenshot",
+        () => shoot("crosshair first", "target"),
+        () => shoot("crosshair second", "target"),
+      )
+      if (target.refusal) return target.refusal
+      const supported = target.second.pixelsDigest !== baseline
+      return {
+        pass: supported,
+        observation: {
+          outcome: supported ? "supported" : "unsupported",
+          assertionType: "screenshot",
+          frames,
+          screenshotRef: target.second.frame.ref,
+        },
+        assertions: [
+          {
+            assertionType: "screenshot",
+            kind: supported ? "positive" : "negative",
+            expected:
+              "OSC22 crosshair changes the pointer after independent keypress/motion and made-up-name controls, with exact restoration",
+            observed: JSON.stringify(state()),
+          },
+        ],
+      }
+    }
+    result = await measure()
+  } catch (error) {
+    result = pending(error instanceof Error ? error.message : String(error), true)
+  } finally {
+    try {
+      // xterm411's compiled pointerShape is xterm (charproc.c550); equality proves this launch's default.
+      if (pointerWritten) ctx.write("\x1b]22;xterm\x07")
+      await position()
+      if (baseline !== undefined) {
+        const first = await shoot("restored first")
+        const second = await shoot("restored second")
+        if (first.pixelsDigest !== baseline || second.pixelsDigest !== baseline) {
+          result = pending(`${id}: final pointer image does not equal the initial image`, true)
+        }
+      }
+    } catch (error) {
+      result = pending(
+        `${id}: pointer restoration failed: ${error instanceof Error ? error.message : String(error)}`,
+        true,
+      )
+    } finally {
+      endCaptureLifecycle(ctx)
+      if (visibleCursor === "reset") ctx.write("\x1b[?25l")
+    }
+  }
+  // Include restoration frames in pending responses and graded assertion payloads.
+  if (result.response !== undefined) {
+    result.response = JSON.stringify({ ...(JSON.parse(result.response) as Record<string, unknown>), ...state() })
+  }
+  for (const assertion of result.assertions ?? []) assertion.observed = JSON.stringify(state())
+  return result
+}
+
 /** Original whole-window recipes: qualify capture sensitivity before progress/flash no-change. */
 async function wholeWindowOscAppCapture(
   ctx: TermProbeSource,
@@ -7093,6 +7239,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         return osc22QueryResult(controlShape, evidence)
       },
       async (ctx) => {
+        if (ctx.capture && ctx.captureKind !== "text-cells") return osc22PointerAppCapture(ctx)
         const query = OSC22_CURRENT_QUERY
         const read = async () => {
           const outcome = await ctx.queryOutcome(query, OSC22_SHAPE_REPLY)

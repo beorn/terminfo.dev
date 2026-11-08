@@ -295,7 +295,7 @@ export async function runProbeBatch(
     geometryCorroboration?: GeometryCorroboration
     /** The target this run is measuring, from the measured side (the launched app), never read out
      * of the receipt. A receipt naming another target is refused before the first write (27874). */
-    subject?: { kind: "term" | "lib" | "mux"; id: string; os: string }
+    subject?: { kind: "term" | "lib" | "mux"; id: string; os: string; version?: string }
     /** Exact-version App declarations selected by the collector; only unresolved callbacks use them. */
     appDeclarations?: Readonly<Record<string, string>>
     draft?: Pick<RunDraft, "results"> & Partial<Pick<RunDraft, "subject">>
@@ -585,6 +585,7 @@ export async function runProbeBatch(
     }
     if (options.input) {
       const input = options.input
+      const injectMove = input.injectMove?.bind(input)
       const injectDrag = input.injectDrag?.bind(input)
       const focusRoundTrip = input.focusRoundTrip?.bind(input)
       const resizeWindow = input.resizeWindow?.bind(input)
@@ -592,6 +593,9 @@ export async function runProbeBatch(
         ...(input.wheelPlacement && { wheelPlacement: input.wheelPlacement }),
         injectKey: (keys) => withTTYOperation(() => input.injectKey(keys), out, verify),
         injectClick: (button, position) => withTTYOperation(() => input.injectClick(button, position), out, verify),
+        ...(injectMove && {
+          injectMove: (x: number, y: number) => withTTYOperation(() => injectMove(x, y), out, verify),
+        }),
         ...(injectDrag && { injectDrag: (button: 1) => withTTYOperation(() => injectDrag(button), out, verify) }),
         ...(focusRoundTrip && { focusRoundTrip: () => withTTYOperation(focusRoundTrip, out, verify) }),
         ...(resizeWindow && {
@@ -606,7 +610,16 @@ export async function runProbeBatch(
     // its own named no-capture branch — an error row where a named refusal belongs is exactly what
     // the no-capture branches exist to avoid.
     const textCells = options.captureKind === "text-cells"
-    const captureEligible = captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
+    const imageSubject = options.subject
+    const pointerImageEligible =
+      probe.id !== "extensions.osc22-pointer" ||
+      (ownsTerminal &&
+        imageSubject?.kind === "term" &&
+        imageSubject.os === "linux" &&
+        ((imageSubject.id === "xterm" && imageSubject.version === "411") ||
+          (imageSubject.id === "wezterm" && imageSubject.version === "0-unstable-2026-10-10")))
+    const captureEligible =
+      pointerImageEligible && captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
     if (capture && captureEligible) {
       if (textCells) {
         probeSource.captureKind = "text-cells"
