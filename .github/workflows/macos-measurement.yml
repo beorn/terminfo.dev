@@ -325,7 +325,20 @@ jobs:
           SCRIPT
           chmod +x "$COMMAND_PATH"
           case "$APP_ID" in
-            terminal-app) open -a "$APP_BUNDLE" "$COMMAND_PATH" ;;
+            terminal-app)
+              bun --eval "$(cat <<'HOSTED_TERMINAL_LAUNCH'
+          const { writeFileSync } = require("node:fs");
+          const { join } = require("node:path");
+          const { launchTerminalWindow } = require(process.cwd() + "/packages/admin/src/terminal-app-receipt.ts");
+          // The owned-window launch replaces `open -a`: the window id and exact tab TTY are the close handle.
+          const terminalWindow = launchTerminalWindow(process.env.COMMAND_PATH);
+          if (!terminalWindow || !terminalWindow.tty) throw new Error("Hosted Terminal launch resolved no owned window id and TTY");
+          const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
+          writeFileSync(join(out, "terminal-launch.json"), JSON.stringify({ appId: process.env.APP_ID, terminalWindow }), { mode: 0o600 });
+          console.log(JSON.stringify({ terminalWindow }));
+          HOSTED_TERMINAL_LAUNCH
+          )" > "$OUT/launcher.log" 2>&1
+              ;;
             iterm2)
               printf 'iterm_launch_start=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
               test -d "$APP_BUNDLE" || {
@@ -754,6 +767,29 @@ jobs:
             }
           }
           HOSTED_EDITOR_CLOSE
+          )"
+
+      - name: Close the owned Terminal window before upload
+        if: always() && matrix.id == 'terminal-app'
+        run: |
+          bun --eval "$(cat <<'HOSTED_TERMINAL_CLOSE'
+          const { existsSync, readFileSync, writeFileSync } = require("node:fs");
+          const { join } = require("node:path");
+          const { closeOwnedTerminalWindow } = require(process.cwd() + "/packages/terminfo.dev/src/terminal-app-window.ts");
+          const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
+          const record = join(out, "terminal-launch.json");
+          if (!existsSync(record)) { console.log("No Terminal launch was created; nothing owned to close"); }
+          else {
+            const { appId, terminalWindow } = JSON.parse(readFileSync(record, "utf8"));
+            // Recheck the exact window id and tab TTY, then close only that window.
+            closeOwnedTerminalWindow(terminalWindow);
+            const probe = Bun.spawnSync(["osascript", "-e", `tell application "Terminal"\nreturn count of (every window whose id is ${terminalWindow.windowId})\nend tell`]);
+            if (probe.exitCode !== 0) throw new Error("Owned Terminal window close readback failed: " + probe.stderr.toString());
+            const remaining = Number(probe.stdout.toString().trim());
+            writeFileSync(join(out, "terminal-window-disposal.json"), JSON.stringify({ appId, windowId: terminalWindow.windowId, tty: terminalWindow.tty, remaining }, null, 2), { mode: 0o600 });
+            if (remaining !== 0) throw new Error("Owned Terminal window survived its close: remaining " + remaining);
+          }
+          HOSTED_TERMINAL_CLOSE
           )"
 
       - name: Upload the receipt beside the exact collected run
