@@ -97,7 +97,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
     const {decodeCollectorDraft}=await import("./packages/run-parser/src/index.ts")
     assert.equal(decodeCollectorDraft("owned-history fixture",JSON.stringify(run),globalThis.__TERMINFO_BUNDLED_SUITE__.manifest,revision).kind,"captured")
     assert.equal(run.identity,"unverified","placement owns verification; binary proof stays in raw replies")
-    assert.deepEqual(JSON.parse(run.rawReplies["collector.identityCheck"]).executable,{path:"/fixture/"+mux,sha256:"ab".repeat(32),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version})
+    assert.deepEqual(JSON.parse(run.rawReplies["collector.historyIdentityCheck"]).executable,{path:"/fixture/"+mux,sha256:"ab".repeat(32),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version})
     assert.deepEqual(JSON.parse(run.rawReplies["collector.collectionAttempt"]),{...JSON.parse(collectionAttempt),result:"completed"})
     assert.equal(run.rawReplies["fixture.reply"],"batch-reply")
     if(!darwin){
@@ -110,7 +110,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
     hasBinary=false
     const unverified=await collect()
     assert.equal(unverified.identity,"unverified")
-    assert.match(JSON.parse(unverified.rawReplies["collector.identityCheck"]).reason,/binary path, sha256 and version unavailable/)
+    assert.match(JSON.parse(unverified.rawReplies["collector.historyIdentityCheck"]).reason,/binary path, sha256 and version unavailable/)
     hasBinary=true
     assert.deepEqual(run.subject,target)
     assert.deepEqual(run.outerApp,outerApp)

@@ -1081,7 +1081,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       historyExecutable?.path && /^[a-f0-9]{64}$/u.test(historyExecutable.sha256) && historyExecutable.version,
     )
     if (historyIdentity) {
-      batch.rawReplies["collector.identityCheck"] = JSON.stringify({
+      batch.rawReplies["collector.historyIdentityCheck"] = JSON.stringify({
         ...historyIdentity,
         ...(historyExecutable && { executable: historyExecutable }),
         ...(!hasHistoryExecutable && { reason: "owned scrollback binary path, sha256 and version unavailable" }),
