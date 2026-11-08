@@ -297,7 +297,7 @@ function ligatureApp(options: { pair?: number; blind?: boolean; text?: boolean; 
       }
     }
     const frame: ObservationFrame = {
-      kind: options.text ? "text-cells" : "pixels",
+      kind: "pixels",
       role,
       label,
       capturedAt: index,

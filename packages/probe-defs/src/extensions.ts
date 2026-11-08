@@ -5177,10 +5177,10 @@ const extensionDefinitions: ProbeDefinition[] = [
         })
         if ("pass" in reported) return reported
         const pixelGeometry = reported.geometry
-        if (!pixelGeometry) return notTestedResult("Font ligatures need measured pixel geometry")
+        if (!pixelGeometry) return notTestedResult("Font ligatures need measured pixel geometry", {})
         // Glyph shaping is never a text-cell comparison, even if a collector offers both arms.
         const read = collectorRegionRead({ ...ctx, cells: undefined })
-        if (!read) return notTestedResult("Font ligatures need an owned pixel reader")
+        if (!read) return notTestedResult("Font ligatures need an owned pixel reader", {})
         const columns = [3, 4, 6, 7, 9, 10, 12, 13, 15, 16]
         const phases = [
           { name: "first", text: "!  -  =  <  = ", columns: [3, 6, 9, 12, 15] },
