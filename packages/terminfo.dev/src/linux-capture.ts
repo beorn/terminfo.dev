@@ -166,9 +166,22 @@ export async function createLinuxCapture(
       await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)
     ).toString()
     if (before !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
-    const original = await command("xwd", ["-id", windowId, "-nobdrs", "-silent"], undefined, deadline)
+    const pointerImage = featureId === "extensions.osc22-pointer"
+    const original = pointerImage
+      ? await command(
+          "scrot",
+          ["--pointer", "--window", windowId, "--silent", "--format", "png", "--file", "-"],
+          undefined,
+          deadline,
+        )
+      : await command("xwd", ["-id", windowId, "-nobdrs", "-silent"], undefined, deadline)
     const capturedAt = Date.now()
-    const png = await command("magick", [...PNG_CONVERSION_ARGS], original, deadline)
+    const png = await command(
+      "magick",
+      pointerImage ? ["png:-", ...PNG_CONVERSION_ARGS.slice(1)] : [...PNG_CONVERSION_ARGS],
+      original,
+      deadline,
+    )
     if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
       throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
     }
@@ -176,7 +189,13 @@ export async function createLinuxCapture(
     const after = (await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)).toString()
     if (after !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
     return {
-      source: { bytes: original, format: "xwd" as const, width: window.width, height: window.height, capturedAt },
+      source: {
+        bytes: original,
+        format: pointerImage ? ("png" as const) : ("xwd" as const),
+        width: window.width,
+        height: window.height,
+        capturedAt,
+      },
       png,
       trace: {
         featureId,
