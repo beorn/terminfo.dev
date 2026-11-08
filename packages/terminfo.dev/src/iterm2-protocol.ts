@@ -10,6 +10,8 @@ import { mapITermBufferToCells, type ITermLineContents, type TerminalTextRead } 
 /** The existing CLI builder embeds the exact vendored bytes; source execution reads that file. */
 declare const __TERMINFO_ITERM_PROTO__: string | undefined
 
+const LIBRARY_VERSION = "terminfo.dev 1"
+
 const object = (value: unknown, label: string): Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${label} is not an object`)
   return value as Record<string, unknown>
@@ -88,7 +90,7 @@ end tell`,
         "x-iterm2-key": key,
         "x-iterm2-disable-auth-ui": "true",
         "x-iterm2-advisory-name": "terminfo.dev",
-        "x-iterm2-library-version": "terminfo.dev 1",
+        "x-iterm2-library-version": LIBRARY_VERSION,
       },
     })
     socket = ws
@@ -113,7 +115,12 @@ end tell`,
           .join(": ")
           .replaceAll(cookie, "[redacted]")
           .replaceAll(key, "[redacted]")
-        finish(new Error(`API Unix WebSocket connection failed: ${detail}`, { cause }))
+        finish(
+          new Error(
+            `API Unix WebSocket connection failed: ${detail}; sent x-iterm2-library-version ${JSON.stringify(LIBRARY_VERSION)}`,
+            { cause },
+          ),
+        )
       }
       ws.onclose = () => finish(new Error("API Unix WebSocket closed before opening"))
     })
@@ -179,7 +186,7 @@ end tell`,
       const response = await rpc("variable_request", { session_id: session, get: ["tty"] }, "variable_response")
       const values = array(response.values, "TTY variable values")
       if (values.length !== 1 || typeof values[0] !== "string") {
-        throw new Error("TTY variable did not return one JSON value")
+        throw new Error(`TTY variable did not return one JSON value: got ${values.length}`)
       }
       return JSON.parse(values[0]) as unknown
     }
@@ -194,27 +201,39 @@ end tell`,
     const match = matches[0]
     if (!match) throw new Error("The matched TTY session is absent")
     const session = String(match.unique_identifier)
-    const checkGrid = (value: unknown) => {
+    const checkGrid = (value: unknown, source: string) => {
       const size = object(value, "session grid")
       if (size.width !== options.cols || size.height !== options.rows) {
-        throw new Error("API session grid differs from measured grid")
+        throw new Error(
+          `API session grid from ${source} is ${String(size.width)}x${String(size.height)}, measured grid is ${options.cols}x${options.rows}`,
+        )
       }
     }
-    checkGrid(match.grid_size)
+    checkGrid(match.grid_size, "list_sessions")
     const buffer = await rpc(
       "get_buffer_request",
       { session, line_range: { screen_contents_only: true }, include_styles: true },
       "get_buffer_response",
     )
-    if ((await tty(session)) !== options.tty) throw new Error("API session changed its TTY during the physical read")
+    const reread = await tty(session)
+    if (reread !== options.tty) {
+      throw new Error(
+        `API session TTY changed during the physical read: expected ${options.tty}, now ${String(reread)}`,
+      )
+    }
     const grid = await rpc("get_property_request", { session_id: session, name: "grid_size" }, "get_property_response")
-    if (typeof grid.json_value !== "string") throw new Error("API grid property is not JSON")
+    if (typeof grid.json_value !== "string") {
+      throw new Error(`API grid property is not JSON: got ${typeof grid.json_value}`)
+    }
     // The `grid_size` property is zero-based inclusive: iTermAPIHelper.m getGridSize answers
     // session.screen.width - 1 and session.screen.height - 1 (v3.6.11), one less than the
     // list_sessions value checked above. Restore those extents here and keep the check exact, so a
     // session that really changed geometry still refuses.
     const property = object(JSON.parse(grid.json_value), "session grid property")
-    checkGrid({ width: Number(property.width) + 1, height: Number(property.height) + 1 })
+    checkGrid(
+      { width: Number(property.width) + 1, height: Number(property.height) + 1 },
+      `grid_size property ${String(property.width)}x${String(property.height)} plus 1`,
+    )
     // The official decoder supplies proto2 defaults and repeated arrays from the pinned schema.
     const contents = array(buffer.contents, "get_buffer_response.contents") as ITermLineContents[]
     const cells = mapITermBufferToCells(contents, options.cols, options.rows)

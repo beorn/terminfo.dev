@@ -78,7 +78,7 @@ test.each([
 
 // This exercises the Unix WebSocket client against a local protocol fixture, never an iTerm process.
 // The independent server reads the official schema and inspects the actual request fields.
-const modes = ["match", "missing", "changed", "grid", "wide"] as const
+const modes = ["match", "missing", "changed", "grid", "wide", "ws400"] as const
 test.each(modes)("physical read requires an exact stable TTY: %s", async (mode) => {
   const cols = mode === "wide" ? 80 : 4
   const rows = mode === "wide" ? 25 : 2
@@ -106,7 +106,7 @@ test.each(modes)("physical read requires an exact stable TTY: %s", async (mode) 
       )
       // iTerm rejects a missing library header or a value without exactly two space-separated parts.
       const libraryVersion = request.headers.get("x-iterm2-library-version")
-      if (!libraryVersion || libraryVersion.split(" ").length !== 2) {
+      if (mode === "ws400" || !libraryVersion || libraryVersion.split(" ").length !== 2) {
         return new Response("invalid library version", { status: 400 })
       }
       if (server.upgrade(request, { headers: { "Sec-WebSocket-Protocol": "api.iterm2.com" } })) return
@@ -192,7 +192,9 @@ test.each(modes)("physical read requires an exact stable TTY: %s", async (mode) 
       rows,
       onReply: (bytes) => retained.push(bytes),
     })
-    expect(sends, JSON.stringify(result)).toHaveBeenCalled()
+    // A rejected upgrade never opens a socket, so no protobuf request is ever sent.
+    if (mode === "ws400") expect(sends).not.toHaveBeenCalled()
+    else expect(sends, JSON.stringify(result)).toHaveBeenCalled()
     expect(headers, JSON.stringify(result)).toEqual([
       "test-cookie",
       "test-key",
@@ -214,10 +216,17 @@ test.each(modes)("physical read requires an exact stable TTY: %s", async (mode) 
       })
       expect(retained.length).toBeGreaterThan(0)
     } else {
-      expect(result).toMatchObject({
-        status: "refused",
-        reason: expect.stringMatching(mode === "grid" ? /grid/u : /TTY/u),
-      })
+      // Every refusal names the values it compared, so a hosted failure is diagnosable from its text.
+      const named =
+        mode === "grid"
+          ? [`grid_size property ${cols}x${rows - 1} plus 1`, `${cols + 1}x${rows}`, `measured grid is ${cols}x${rows}`]
+          : mode === "changed"
+            ? ["TTY changed during the physical read", "/dev/ttys004", "/dev/ttys999"]
+            : mode === "missing"
+              ? ["owned TTY /dev/ttys004 matches 0 API sessions"]
+              : ["Unexpected server response: 400", 'x-iterm2-library-version "terminfo.dev 1"']
+      if (result.status !== "refused") throw new Error(`expected a refusal, got ${JSON.stringify(result)}`)
+      for (const value of named) expect(result.reason).toContain(value)
       if (mode === "missing") expect(requests.some((request) => request.get_buffer_request)).toBe(false)
     }
   } finally {
