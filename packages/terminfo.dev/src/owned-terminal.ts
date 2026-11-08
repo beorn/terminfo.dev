@@ -42,11 +42,11 @@ import { kernelExecPath } from "./darwin-kernel-exec.ts"
 import {
   mapSnapshotToCells,
   readTerminalTextSnapshot,
-  type OsascriptReply,
   type TerminalTextApp,
   type TerminalTextRead,
 } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
+import { readITermCells } from "./iterm2-protocol.ts"
 import {
   HOSTED_WINDOWS_EXECUTABLE,
   hostedWindowsAppFromExecutablePath,
@@ -1448,32 +1448,23 @@ export async function createOwnedTerminal(options: {
               }
               return { status: "read", app: "kitty", cells }
             }
+            if (darwinTextApp === "iterm2") {
+              return readITermCells({
+                tty: darwinTextTty,
+                cols: geometry.cols,
+                rows: geometry.rows,
+                ...(checkpoint && {
+                  onReply: (bytes: Uint8Array) => {
+                    retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
+                  },
+                }),
+              })
+            }
             return readTerminalTextSnapshot({
               app: darwinTextApp,
               tty: darwinTextTty,
               cols: geometry.cols,
               rows: geometry.rows,
-              ...(darwinTextApp === "iterm2" &&
-                (checkpoint?.label === "text qualification soft-wrap target" ||
-                  checkpoint?.label === "text qualification prior-scrollback control") && {
-                  onReply: (reply: OsascriptReply) => {
-                    // Use the existing artifact observer; no parsed/reconstructed contents replace native stdout.
-                    retain(
-                      checkpoint.directory,
-                      Buffer.from(
-                        JSON.stringify({
-                          captureRunId,
-                          checkpoint: checkpoint.label,
-                          tty: darwinTextTty,
-                          grid: { rows: geometry.rows, cols: geometry.cols },
-                          reply,
-                        }),
-                      ),
-                      "json",
-                      checkpoint.onRetained,
-                    )
-                  },
-                }),
             })
           },
         }),
