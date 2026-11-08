@@ -13,7 +13,7 @@
     "@terminfo/run-parser": "workspace:*"
   },
   "devDependencies": {
-    "tsdown": "0.23.0",
+    "tsdown": "0.23.7",
     "typescript": "6.0.3"
   },
   "tsdown": {
