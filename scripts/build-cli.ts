@@ -3,7 +3,7 @@
 
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../packages/admin/versions.ts"
@@ -20,6 +20,24 @@ async function main(): Promise<void> {
     ? verifySuiteManifest(manifestPath, snapshot)
     : derivedSuiteManifest(snapshot)
   const collectorRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
+  const proto = readFileSync(join(ROOT, "packages/terminfo.dev/src/iterm2-api.proto"))
+  const lock = Bun.JSONC.parse(readFileSync(join(ROOT, "bun.lock"), "utf8")) as {
+    packages: Record<string, readonly unknown[]>
+  }
+  const dependency = (name: string) => {
+    const entry = lock.packages[name]
+    const spec = entry?.[0]
+    const integrity = entry?.[3]
+    if (typeof spec !== "string" || !spec.startsWith(`${name}@`) || typeof integrity !== "string") {
+      throw new Error(`Collector client dependency ${name} lacks its version/integrity in ${join(ROOT, "bun.lock")}`)
+    }
+    return { name, version: spec.slice(name.length + 1), integrity }
+  }
+  const clientClosure = {
+    protoSha256: createHash("sha256").update(proto).digest("hex"),
+    codec: dependency("protobufjs"),
+    websocket: dependency("ws"),
+  }
   const result = await Bun.build({
     entrypoints: [join(ROOT, "packages", "terminfo.dev", "src", "index.tsx")],
     target: "bun",
@@ -30,7 +48,10 @@ async function main(): Promise<void> {
     // Bun.build falls back to its development JSX transform unless the runtime is named here — the
     // estate-wide `jsx: "react-jsx"` pin lives in the root tsconfig, which this build never reads.
     jsx: { runtime: "automatic", development: false },
-    define: { __TERMINFO_BUNDLED_SUITE__: JSON.stringify({ manifest, collectorRevision }) },
+    define: {
+      __TERMINFO_BUNDLED_SUITE__: JSON.stringify({ manifest, collectorRevision }),
+      __TERMINFO_ITERM_PROTO__: JSON.stringify(proto.toString("utf8")),
+    },
   })
   if (!result.success || result.outputs.length !== 1) {
     throw new Error(
@@ -52,6 +73,7 @@ async function main(): Promise<void> {
     probeHash: manifest.probeHash,
     collectorRevision,
     bundleSha256: sha256(bundle),
+    clientClosure,
   }
   const receiptPath = join(dist, "terminfo.bundle.receipt.json")
   const receiptTemporary = `${receiptPath}.tmp-${process.pid}`

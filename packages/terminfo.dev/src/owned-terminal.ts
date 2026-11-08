@@ -42,11 +42,11 @@ import { kernelExecPath } from "./darwin-kernel-exec.ts"
 import {
   mapSnapshotToCells,
   readTerminalTextSnapshot,
-  type OsascriptReply,
   type TerminalTextApp,
   type TerminalTextRead,
 } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
+import { readITermCells } from "./iterm2-protocol.ts"
 import {
   HOSTED_WINDOWS_EXECUTABLE,
   hostedWindowsAppFromExecutablePath,
@@ -1376,7 +1376,8 @@ export async function createOwnedTerminal(options: {
       }),
       ...(darwinTextApp !== undefined &&
         darwinTextTty !== undefined && {
-          textRecipe: "macos-text-cells-v1" as const,
+          textRecipe:
+            darwinTextApp === "iterm2" ? ("iterm2-api-text-cells-v1" as const) : ("macos-text-cells-v1" as const),
           async readCells(checkpoint?: Parameters<NonNullable<OwnedTerminal["readCells"]>>[0]) {
             if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
             const geometry = await owner.readGeometry()
@@ -1448,16 +1449,14 @@ export async function createOwnedTerminal(options: {
               }
               return { status: "read", app: "kitty", cells }
             }
-            return readTerminalTextSnapshot({
-              app: darwinTextApp,
-              tty: darwinTextTty,
-              cols: geometry.cols,
-              rows: geometry.rows,
-              ...(darwinTextApp === "iterm2" &&
-                (checkpoint?.label === "text qualification soft-wrap target" ||
-                  checkpoint?.label === "text qualification prior-scrollback control") && {
-                  onReply: (reply: OsascriptReply) => {
-                    // Use the existing artifact observer; no parsed/reconstructed contents replace native stdout.
+            if (darwinTextApp === "iterm2") {
+              return readITermCells({
+                tty: darwinTextTty,
+                cols: geometry.cols,
+                rows: geometry.rows,
+                ...(checkpoint && {
+                  onReply: (bytes: Uint8Array) => {
+                    const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
                     retain(
                       checkpoint.directory,
                       Buffer.from(
@@ -1474,6 +1473,13 @@ export async function createOwnedTerminal(options: {
                     )
                   },
                 }),
+              })
+            }
+            return readTerminalTextSnapshot({
+              app: darwinTextApp,
+              tty: darwinTextTty,
+              cols: geometry.cols,
+              rows: geometry.rows,
             })
           },
         }),

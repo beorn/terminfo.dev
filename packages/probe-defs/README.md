@@ -1172,6 +1172,14 @@ The execution writer freezes the qualification test before seal. The canonical p
 version-2 observer context against the same table; site projection preserves recorded results.
 Source verification supplies no native main-run, collection, grading or publication authority.
 
+The iTerm2 API observer uses its app-specific recipe and the same five mapping witnesses.
+It reads physical rows through the pinned official protocol, with exact owned-TTY binding before
+and after the buffer read. Interior uninitialized cells remain refused; only named trailing blank
+padding is allowed. Raw server frames and checkpoint bindings use the existing artifact observer.
+The CLI bundle retains the official protocol bytes and its existing build receipt records their
+hash plus the locked protobuf and WebSocket dependency identities. Older declared macOS recipes
+remain assessed as recorded; the historical parser and retained results are unchanged.
+
 The five admin routes share definitions, but do not all execute or persist through the same path:
 
 - **Headless:** [admin/src/termless.ts](../admin/src/termless.ts) calls [collect-headless.ts](../probes/collect-headless.ts), which runs isolated engine workers using `headless-batch.ts` and retains private runs.
