@@ -3973,6 +3973,92 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
   },
 )
 
+// 32670: disposal must leave the five fixture reads intact even when prior modes are unavailable,
+// then end with the unchanged shared normalization. The diagnostic-only cases above never paint,
+// so cannot catch accidental measured-mode restoration or the default ending changing with this arm.
+it.each([
+  { disposal: false, priorAvailable: true },
+  { disposal: false, priorAvailable: false },
+  { disposal: true, priorAvailable: true },
+  { disposal: true, priorAvailable: false },
+])(
+  "text qualification ending disposal=$disposal priorAvailable=$priorAvailable",
+  async ({ disposal, priorAvailable }) => {
+    verifiedBatchFixture()
+    vi.useFakeTimers()
+    const writes: string[] = []
+    const da1 = "\x1b[?62;4c"
+    vi.spyOn(process.stdout, "write").mockImplementation(((text: string) => {
+      writes.push(text)
+      for (const mode of [25, 7]) {
+        if (text === `\x1b[?${mode}$p\x1b[c`) {
+          process.stdin.emit("data", Buffer.from(`\x1b[?${mode};${priorAvailable ? 2 : 0}$y${da1}`))
+        }
+        if (text === `\x1b[?${mode}$p`) process.stdin.emit("data", Buffer.from(`\x1b[?${mode};0$y`))
+      }
+      if (text === "\x1b[c") process.stdin.emit("data", Buffer.from(da1))
+      return true
+    }) as typeof process.stdout.write)
+    const blank = `sha256:${createHash("sha256")
+      .update(Array.from({ length: 24 }, () => " ".repeat(80)).join("\n"))
+      .digest("hex")}`
+    const capture = vi.fn(
+      async ({ role, label }: { role: ObservationFrame["role"]; label: string }): Promise<ObservationFrame> => ({
+        kind: "text-cells",
+        role,
+        label,
+        capturedAt: 1,
+        ref: blank,
+        frameDigest: blank,
+        cellDigest: blank,
+        cellRectangle: { top: 1, left: 1, bottom: 24, right: 80 },
+      }),
+    )
+    let qualification: TextQualification | undefined
+    let endingWrites: string[] = []
+    try {
+      const pending = runProbeBatch({
+        ids: ["device.primary-da"],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async ({ source: probeSource }) => {
+          qualification = await collectTextQualification({
+            ctx: probeSource,
+            recipe: "macos-text-cells-v1",
+            capture,
+            ...(disposal && { ending: "owned-window-disposal" as const }),
+          })
+          endingWrites = [...writes]
+        },
+      })
+      const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
+      const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
+      expect(qualification?.shapes).toHaveLength(5)
+      expect(capture).toHaveBeenCalledTimes(disposal ? 11 : priorAvailable ? 12 : 0)
+      expect(trace.queries).toHaveLength(priorAvailable ? (disposal ? 2 : 4) : 4)
+      if (disposal) {
+        expect(endingWrites.slice(-2)).toEqual(["\x1b[?25h", "\x1b[0m\x1b[2J\x1b[H"])
+        expect(capture.mock.calls.map(([checkpoint]) => checkpoint.label)).not.toContain(
+          "text qualification restored blank grid",
+        )
+      } else if (!priorAvailable) {
+        expect(trace.writes).toEqual([])
+        expect(qualification?.shapes.every((shape) => "reason" in shape)).toBe(true)
+      } else {
+        expect(endingWrites.slice(-6)).toEqual([
+          "\x1b[?7l",
+          "\x1b[?25h",
+          "\x1b[0m\x1b[2J\x1b[H",
+          "\x1b[?25l",
+          "\x1b[?25$p\x1b[c",
+          "\x1b[?7$p\x1b[c",
+        ])
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  },
+)
+
 // The new execution contract requires the direct native batch to record status at its real
 // callback attempt. Existing observation/coverage assertions cannot prove frozen-catalog TODOs.
 it("records actual native callback failure and leaves an unscheduled frozen capability TODO", async () => {
