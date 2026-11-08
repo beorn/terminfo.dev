@@ -1672,7 +1672,7 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
   }
   // Include restoration frames in pending responses and graded assertion payloads.
   if (result.response !== undefined) {
-    result.response = JSON.stringify({ ...JSON.parse(result.response), ...state() })
+    result.response = JSON.stringify({ ...(JSON.parse(result.response) as Record<string, unknown>), ...state() })
   }
   for (const assertion of result.assertions ?? []) assertion.observed = JSON.stringify(state())
   return result

@@ -215,7 +215,8 @@ test.each(["unknown-changes", "restore-disabled", "nondefault"])(
     const result = await definition().term!(input.source)
     expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
     if (typeof result.response !== "string") throw new Error("Invalid pointer images must retain their response")
-    expect(JSON.parse(result.response).frames.at(-1).label).toContain("restored second")
+    const response = JSON.parse(result.response) as { frames: Array<{ label: string }> }
+    expect(response.frames.at(-1)?.label).toContain("restored second")
     expect(result.observation?.outcome).not.toBe("supported")
     expect(result.observation?.outcome).not.toBe("unsupported")
     expect(input.modes.get(25)).toBe(true)
@@ -227,7 +228,8 @@ test.each(["control-disabled", "motion-disabled"])("OSC22 image control %s canno
   const result = await definition().term!(input.source)
   expect(input.events).toContain("key:a")
   if (typeof result.response !== "string") throw new Error("Unqualified pointer images must retain their response")
-  expect(JSON.parse(result.response).frames.at(-1).label).toContain("restored second")
+  const response = JSON.parse(result.response) as { frames: Array<{ label: string }> }
+  expect(response.frames.at(-1)?.label).toContain("restored second")
   expect(result.observation?.outcome).not.toBe("supported")
   expect(result.observation?.outcome).not.toBe("unsupported")
   expect(input.events).not.toContain("\x1b]22;crosshair\x07")
