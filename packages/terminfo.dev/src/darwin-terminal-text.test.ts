@@ -62,8 +62,11 @@ const terminalTab = (overrides: Partial<FakeTerminalTab> = {}): FakeTerminalTab 
 const itermSession = (overrides: Partial<FakeSession> = {}): FakeSession => ({
   tty: () => "/dev/ttys007",
   contents: () => "ab\ncd\n",
-  rows: () => 2,
-  columns: () => 4,
+  // The real app answers zero-based inclusive extents (iTermAPIHelper.m getGridSize returns
+  // screen.height - 1 and screen.width - 1), so a 4x2 screen answers 3x1. The fake lies the way
+  // the app lies; the script is what restores the extents.
+  rows: () => 1,
+  columns: () => 3,
   ...overrides,
 })
 
@@ -583,7 +586,8 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
   })
 
   it("runs its own generated script against the app's object model end to end", () => {
-    const session = itermSession({ contents: () => "scrolled away\nscroll\naaa\n", columns: () => 6 })
+    // Raw property for a 6-column screen: the app answers one less and the script restores it.
+    const session = itermSession({ contents: () => "scrolled away\nscroll\naaa\n", columns: () => 5 })
     const read = readTerminalTextSnapshot({
       ...base,
       cols: 6,

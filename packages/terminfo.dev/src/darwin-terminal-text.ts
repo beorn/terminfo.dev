@@ -111,8 +111,12 @@ export function terminalTextScript(app: TerminalTextApp, tty: string, cols: numb
     app === "terminal-app"
       ? `    var appCols = Number(match.numberOfColumns())
     var appRows = Number(match.numberOfRows())`
-      : `    var appCols = Number(match.columns())
-    var appRows = Number(match.rows())`
+      : `    // iTerm2's grid size is zero-based inclusive: the accessor behind these two properties
+    // answers session.screen.width - 1 and session.screen.height - 1 (iTermAPIHelper.m
+    // getGridSize, v3.6.11), so an 80x25 screen reports 79x24. The text it returns is the full
+    // 80x25, so the extents are restored here rather than loosening the check downstream.
+    var appCols = Number(match.columns()) + 1
+    var appRows = Number(match.rows()) + 1`
   return `function run() {
   var refused = function (reason, diagnostic) {
     var response = { status: "refused", reason: ${JSON.stringify(label)} + " " + reason }
