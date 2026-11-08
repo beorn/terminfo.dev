@@ -268,9 +268,12 @@ test("each image target refuses missing pixel geometry before painting any paylo
 })
 
 // CTO47c0b849: prior visual-review tests never compared same-cell pixels or qualified a negative.
-function ligatureApp(options: { pair?: number; blind?: boolean; text?: boolean; moved?: boolean } = {}) {
+function ligatureApp(
+  options: { pair?: number; blind?: boolean; text?: boolean; moved?: boolean; lagPaint?: boolean } = {},
+) {
   const app = captureApp(3, 80)
   const surface = createSemanticSurface({ rows: 3, cols: 80 })
+  const pending: string[] = []
   app.context.captureGeometry = {
     geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 48 },
     source: "measured by complete raster calibration",
@@ -278,7 +281,8 @@ function ligatureApp(options: { pair?: number; blind?: boolean; text?: boolean; 
   app.context.captureKind = options.text ? "text-cells" : "pixels"
   app.context.write = (bytes) => {
     app.writes.push(bytes)
-    surface.feed(bytes)
+    if (options.lagPaint) pending.push(bytes)
+    else surface.feed(bytes)
   }
   app.context.capture = async ({ role, label, cells }) => {
     const index = app.frames.length + 1
@@ -314,6 +318,7 @@ function ligatureApp(options: { pair?: number; blind?: boolean; text?: boolean; 
       }),
     }
     app.frames.push(frame)
+    for (const bytes of pending.splice(0)) surface.feed(bytes)
     return frame
   }
   return app
@@ -321,6 +326,9 @@ function ligatureApp(options: { pair?: number; blind?: boolean; text?: boolean; 
 
 test.each([
   ["no shaped pair, moving whole frame", {}, "unsupported"],
+  // A renderer may expose the preceding write for one capture, including a not-yet-painted clear.
+  // Synchronous surfaces cannot catch a stale positive glyph becoming the target's blank baseline.
+  ["paint lags one capture", { lagPaint: true }, "unsupported"],
   ["only first pair shapes", { pair: 3 }, "supported"],
   ["only last pair shapes", { pair: 15 }, "supported"],
   ["blind positive control", { blind: true }, "inconclusive"],
