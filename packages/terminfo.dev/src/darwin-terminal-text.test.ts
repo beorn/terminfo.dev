@@ -15,6 +15,7 @@ import {
   classifyOsascriptFailure,
   isSingleCellCodePoint,
   mapSnapshotToCells,
+  mapITermBufferToCells,
   NAMED_SINGLE_CELL_GLYPHS,
   osascriptReply,
   readTerminalTextSnapshot,
@@ -396,6 +397,80 @@ describe("mapSnapshotToCells — exact, or padded-and-named, never guessed", () 
 
   it("refuses a geometry that is not a size", () => {
     expect(mapSnapshotToCells(["ab"], 0, 1, 0)).toMatch(/not a size: 0x1/u)
+  })
+})
+
+describe("iTerm2 physical buffer mapping", () => {
+  // api.proto LineContents is a physical row, including soft continuations. This is a protocol
+  // contract fixture, not a claim that a hosted app returned these bytes.
+  it("keeps physical soft-wrap/blank rows and names omitted or explicit trailing blanks", () => {
+    expect(
+      mapITermBufferToCells(
+        [
+          { text: "abcd", code_points_per_cell: [{ repeats: 4 }], continuation: 2, style: [{ repeats: 4 }] },
+          {
+            text: "ef",
+            code_points_per_cell: [
+              { num_code_points: 1, repeats: 2 },
+              { num_code_points: 0, repeats: 1 },
+            ],
+            continuation: 1,
+            style: [{ repeats: 4 }],
+          },
+          { text: "", code_points_per_cell: [], style: [{ repeats: 4 }] },
+        ],
+        4,
+        3,
+      ),
+    ).toEqual({ cols: 4, rows: 3, text: ["abcd", "ef  ", "    "], paddedRows: [2, 3], droppedLines: 0 })
+  })
+
+  it.each([
+    {
+      name: "interior uninitialized cell",
+      line: {
+        text: "ab",
+        code_points_per_cell: [{ repeats: 1 }, { num_code_points: 0, repeats: 1 }, { repeats: 1 }],
+        style: [{ repeats: 4 }],
+      },
+      reason: /interior uninitialized cell/u,
+    },
+    {
+      name: "unconsumed code points",
+      line: { text: "ab", code_points_per_cell: [{ repeats: 1 }], style: [{ repeats: 4 }] },
+      reason: /code.point consumption/u,
+    },
+    {
+      name: "map beyond physical columns",
+      line: { text: "abcde", code_points_per_cell: [{ repeats: 5 }], style: [{ repeats: 4 }] },
+      reason: /map.*columns/u,
+    },
+    {
+      name: "missing repeat count",
+      line: { text: "a", code_points_per_cell: [{}], style: [{ repeats: 4 }] },
+      reason: /repeat/u,
+    },
+    {
+      name: "multiple code points in one cell",
+      line: { text: "a\u0301", code_points_per_cell: [{ num_code_points: 2, repeats: 1 }], style: [{ repeats: 4 }] },
+      reason: /code points per cell/u,
+    },
+    {
+      name: "omitted image cells",
+      line: { text: "", code_points_per_cell: [], style: [{ repeats: 4, image: 1 }] },
+      reason: /image/u,
+    },
+    {
+      name: "unproved image-free trailing cells",
+      line: { text: "a", code_points_per_cell: [{ repeats: 1 }], style: [] },
+      reason: /style.*coverage/u,
+    },
+  ])("refuses $name without reconstructing its cells", ({ line, reason }) => {
+    expect(mapITermBufferToCells([line], 4, 1)).toMatch(reason)
+  })
+
+  it("requires the complete measured row count", () => {
+    expect(mapITermBufferToCells([], 4, 1)).toMatch(/0 rows.*1/u)
   })
 })
 

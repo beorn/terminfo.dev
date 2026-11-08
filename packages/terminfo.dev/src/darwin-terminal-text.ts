@@ -299,6 +299,76 @@ export function mapSnapshotToCells(
   return { cols, rows, text: mapped, paddedRows, droppedLines }
 }
 
+/** Fields from the vendored official api.proto; each entry is one physical screen row. */
+export interface ITermLineContents {
+  readonly text?: string
+  readonly code_points_per_cell: readonly { readonly num_code_points?: number; readonly repeats?: number }[]
+  readonly continuation?: number
+  readonly style: readonly { readonly image?: number; readonly repeats?: number }[]
+}
+
+/**
+ * Validate the protocol's physical-cell map before handing its strings to the existing mapper.
+ * Only trailing uninitialized cells may use that mapper's named blank padding. Raw protocol
+ * retention preserves continuation/style metadata; no logical-line joining happens here.
+ */
+export function mapITermBufferToCells(
+  contents: readonly ITermLineContents[],
+  cols: number,
+  rows: number,
+): TerminalCellGrid | string {
+  if (!Number.isSafeInteger(cols) || !Number.isSafeInteger(rows) || cols < 1 || rows < 1) {
+    return `the measured geometry is not a size: ${String(cols)}x${String(rows)}`
+  }
+  if (contents.length !== rows) return `iTerm2 returned ${contents.length} rows where the measured screen has ${rows}`
+  const lines: string[] = []
+  for (const [index, line] of contents.entries()) {
+    const row = index + 1
+    if ((line.continuation ?? 1) !== 1 && line.continuation !== 2) {
+      return `iTerm2 row ${row} has an unknown continuation`
+    }
+    // api.proto promises styles 1:1 with cells when include_styles is requested. Images are
+    // omitted from the text map, so missing styles cannot prove that omitted cells are blank.
+    let styled = 0
+    for (const style of line.style) {
+      if ((style.image ?? 0) !== 0) return `iTerm2 row ${row} contains image cells omitted from its text map`
+      if (!Number.isSafeInteger(style.repeats) || style.repeats === undefined || style.repeats < 1) {
+        return `iTerm2 row ${row} has an invalid style repeat count`
+      }
+      styled += style.repeats
+      if (styled > cols) return `iTerm2 row ${row} style coverage exceeds ${cols} columns`
+    }
+    if (styled !== cols) return `iTerm2 row ${row} style coverage is ${styled} cells where the screen has ${cols}`
+    const text = line.text ?? ""
+    const points = [...text]
+    let consumed = 0
+    let cells = 0
+    let trailingEmpty = false
+    for (const run of line.code_points_per_cell) {
+      if (!Number.isSafeInteger(run.repeats) || run.repeats === undefined || run.repeats < 1) {
+        return `iTerm2 row ${row} has an invalid cell-map repeat count`
+      }
+      cells += run.repeats
+      if (cells > cols) return `iTerm2 row ${row} cell map exceeds ${cols} columns`
+      // The proto2 default is one, not zero; preserve an explicitly encoded zero.
+      const count = run.num_code_points ?? 1
+      if (count === 0) {
+        trailingEmpty = true
+      } else if (count === 1) {
+        if (trailingEmpty) return `iTerm2 row ${row} has an interior uninitialized cell`
+        consumed += run.repeats
+      } else {
+        return `iTerm2 row ${row} has unsupported code points per cell: ${count}`
+      }
+    }
+    if (consumed !== points.length) {
+      return `iTerm2 row ${row} code-point consumption is ${consumed}, but its text has ${points.length}`
+    }
+    lines.push(text)
+  }
+  return mapSnapshotToCells(lines, cols, rows, 0)
+}
+
 export interface TerminalTextReadOptions {
   readonly app: TerminalTextApp
   readonly tty: string
