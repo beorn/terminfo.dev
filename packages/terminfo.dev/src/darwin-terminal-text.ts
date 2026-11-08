@@ -114,8 +114,10 @@ export function terminalTextScript(app: TerminalTextApp, tty: string, cols: numb
       : `    var appCols = Number(match.columns())
     var appRows = Number(match.rows())`
   return `function run() {
-  var refused = function (reason) {
-    return JSON.stringify({ status: "refused", reason: ${JSON.stringify(label)} + " " + reason })
+  var refused = function (reason, diagnostic) {
+    var response = { status: "refused", reason: ${JSON.stringify(label)} + " " + reason }
+    if (diagnostic !== undefined) response.diagnostic = diagnostic
+    return JSON.stringify(response)
   }
   try {
     var app = Application(${JSON.stringify(application)})
@@ -127,15 +129,25 @@ ${select}
     if (matches.length > 1) return refused("has more than one session on the owned TTY")
     var match = matches[0]
     var text = String(match.contents())
-    if (String(match.tty()) !== ${JSON.stringify(tty)}) {
+    var readTty = String(match.tty())
+    if (readTty !== ${JSON.stringify(tty)}) {
       return refused("changed the session's TTY while its text was read")
     }
 ${geometry}
     var lines = text.split(/\\r?\\n/)
-    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop()
+    var splitRows = lines.length
+    var terminatorRemoved = lines.length > 0 && lines[lines.length - 1] === ""
+    if (terminatorRemoved) lines.pop()
     var dropped = lines.length - ${String(rows)}
     if (dropped < 0) {
-      return refused("returned " + lines.length + " rows where the measured screen has ${String(rows)}")
+      return refused("returned " + lines.length + " rows where the measured screen has ${String(rows)}", ${
+        app === "iterm2"
+          ? `{
+        contents: text, tty: readTty, appCols: appCols, appRows: appRows,
+        splitRows: splitRows, terminatorRemoved: terminatorRemoved, rowsAfterPop: lines.length
+      }`
+          : "undefined"
+      })
     }
     return JSON.stringify({
       status: "read",
@@ -295,6 +307,8 @@ export interface TerminalTextReadOptions {
   readonly timeoutMs?: number
   /** Injection seam for tests; production runs /usr/bin/osascript. */
   readonly run?: (script: string) => OsascriptReply
+  /** Owned retention consumes the original transport reply before refusal discards its diagnostics. */
+  readonly onReply?: (reply: OsascriptReply) => void
 }
 
 const stringArray = (value: unknown): readonly string[] | undefined =>
@@ -305,6 +319,7 @@ export function readTerminalTextSnapshot(options: TerminalTextReadOptions): Term
   const { label } = TERMINAL_TEXT_APPS[options.app]
   const run = options.run ?? ((script: string) => defaultRun(script, options.timeoutMs ?? 5_000))
   const reply = run(terminalTextScript(options.app, options.tty, options.cols, options.rows))
+  options.onReply?.(reply)
   if (reply.timedOut || reply.status !== 0) {
     return { status: "refused", reason: classifyOsascriptFailure(reply, options.app) }
   }

@@ -557,7 +557,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             })
           })
         }
-        const read = await readCells()
+        const read = await readCells({ label: checkpoint.label, directory: artifactDirectory, onRetained })
         const result = textCellsFrame(checkpoint, read, Date.now())
         // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
         // second write, and a digest that maps to different bytes is named instead of overwritten.

@@ -1,5 +1,6 @@
 /**
- * @failure Hosted macOS geometry probes skip, or a PTY bind attributes geometry to the wrong app.
+ * @failure Hosted macOS geometry probes skip, a PTY bind attributes geometry to the wrong app,
+ *   or a failed iTerm qualification read loses its original diagnostic inputs.
  * @level l1
  * @consumer createOwnedTerminal darwinHosted arm used by collectProbeRun on hosted Mac.
  * @testonly none
@@ -66,6 +67,92 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
     assert.equal(owner.appPid, 4242)
     assert.equal(typeof owner.readCells, "function")
     await owner.dispose()
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
+})
+
+// The native API's contents are a supplied input here, not a claim about the missing hosted bytes.
+// Exercise the real reader and retention owner: removing retention must fail without changing refusal.
+test("retains both failed iTerm qualification inputs with their checkpoint and unchanged refusal", () => {
+  const directory = mkdtempSync(join(tmpdir(), "iterm-failed-inputs-"))
+  directories.push(directory)
+  const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    import { runInNewContext } from "node:vm"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const directory = ${JSON.stringify(directory)}
+    process.env.TERMINFO_CAPTURE_DIRECTORY = directory
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device,
+      openSync: (path, ...args) => path === "/dev/fd/1" ? 900 : fs.openSync(path, ...args),
+      closeSync: (fd) => fd === 900 ? undefined : fs.closeSync(fd) }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    const contents = "W".repeat(80) + "XY" + "\\n".repeat(24)
+    const nativeStdout = []
+    mock.module("node:child_process", () => ({ ...cp,
+      execFileSync: (command, args) => {
+        assert.equal(command, "/bin/ps")
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid ? process.pid + " 4242 /bin/zsh"
+          : pid === 4242 ? "4242 1 /Applications/iTerm.app/Contents/MacOS/iTerm2" : "1 0 /sbin/launchd"
+      },
+      spawnSync: (command, args) => {
+        assert.equal(command, "/usr/bin/osascript")
+        const session = { tty: () => "/dev/ttys004", contents: () => contents, columns: () => 80, rows: () => 25 }
+        const app = { running: () => true, frontmost: () => true, windows: [{ tabs: [{ sessions: [session] }] }] }
+        const stdout = String(runInNewContext(args[args.indexOf("-e") + 1] + "\\nrun()", { Application: () => app }))
+        nativeStdout.push(stdout)
+        return { status: 0, stdout, stderr: "", signal: null }
+      },
+      spawn: () => {
+        const child = new EventEmitter()
+        child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => true
+        queueMicrotask(() => { child.stdout.emit("data", Buffer.from("25 80\\n")); child.emit("close", 0) })
+        return child
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
+      readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64),
+        appLaunch: { executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2" } }) }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const retained = []
+    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: (artifact) => retained.push(artifact) })
+    const labels = ["text qualification soft-wrap target", "text qualification prior-scrollback control"]
+    try {
+      for (const label of [...labels, "another checkpoint"]) {
+        assert.deepEqual(await owner.readCells({ label, directory, onRetained: (artifact) => retained.push(artifact) }),
+          { status: "refused", reason: "iTerm2 returned 24 rows where the measured screen has 25" })
+      }
+      assert.equal(retained.length, 2, "both failed checkpoints must retain input; other checkpoints must not")
+      for (const [index, artifact] of retained.entries()) {
+        const bytes = fs.readFileSync(artifact.path)
+        const envelope = JSON.parse(bytes.toString("utf8"))
+        assert.equal(envelope.captureRunId, "a".repeat(32))
+        assert.equal(envelope.checkpoint, labels[index])
+        assert.equal(envelope.tty, "/dev/ttys004")
+        assert.deepEqual(envelope.grid, { rows: 25, cols: 80 })
+        assert.equal(envelope.reply.stdout, nativeStdout[index])
+        const diagnostic = JSON.parse(envelope.reply.stdout).diagnostic
+        assert.equal(diagnostic.contents, contents)
+        assert.equal(diagnostic.tty, "/dev/ttys004")
+        assert.equal(diagnostic.appRows, 25); assert.equal(diagnostic.appCols, 80)
+        assert.equal(diagnostic.splitRows, 25); assert.equal(diagnostic.terminatorRemoved, true)
+        assert.equal(diagnostic.rowsAfterPop, 24)
+        assert.equal((await import("node:crypto")).createHash("sha256").update(bytes).digest("hex"), artifact.sha256)
+      }
+    } finally { await owner.dispose() }
   `
   const result = spawnSync(process.execPath, ["-e", script], {
     cwd: join(import.meta.dirname, "../../.."),

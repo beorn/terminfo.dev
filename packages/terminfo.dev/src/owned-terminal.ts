@@ -42,6 +42,7 @@ import { kernelExecPath } from "./darwin-kernel-exec.ts"
 import {
   mapSnapshotToCells,
   readTerminalTextSnapshot,
+  type OsascriptReply,
   type TerminalTextApp,
   type TerminalTextRead,
 } from "./darwin-terminal-text.ts"
@@ -264,7 +265,11 @@ export interface OwnedTerminal {
    * WITH prior scrollback: an app that leaves trailing blank rows out of its contents would pull
    * scrollback onto the screen without refusing, which no separate shape can show. Until then the
    * text snapshot is admitted as non-measuring evidence. */
-  readCells?(): Promise<ConsoleCellRead | TerminalTextRead>
+  readCells?(checkpoint?: {
+    label: string
+    directory: string
+    onRetained: Parameters<typeof retain>[3]
+  }): Promise<ConsoleCellRead | TerminalTextRead>
   /** The qualification recipe of a terminal-owned `readCells`: the macOS text snapshot, or Windows
    * Terminal through UI Automation. Absent where the read is the console host's buffer. */
   readonly textRecipe?: TextQualificationRecipe
@@ -1372,7 +1377,7 @@ export async function createOwnedTerminal(options: {
       ...(darwinTextApp !== undefined &&
         darwinTextTty !== undefined && {
           textRecipe: "macos-text-cells-v1" as const,
-          async readCells() {
+          async readCells(checkpoint?: Parameters<NonNullable<OwnedTerminal["readCells"]>>[0]) {
             if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
             const geometry = await owner.readGeometry()
             if (geometry.status !== "measured") {
@@ -1448,6 +1453,27 @@ export async function createOwnedTerminal(options: {
               tty: darwinTextTty,
               cols: geometry.cols,
               rows: geometry.rows,
+              ...(darwinTextApp === "iterm2" &&
+                (checkpoint?.label === "text qualification soft-wrap target" ||
+                  checkpoint?.label === "text qualification prior-scrollback control") && {
+                  onReply: (reply: OsascriptReply) => {
+                    // Use the existing artifact observer; no parsed/reconstructed contents replace native stdout.
+                    retain(
+                      checkpoint.directory,
+                      Buffer.from(
+                        JSON.stringify({
+                          captureRunId,
+                          checkpoint: checkpoint.label,
+                          tty: darwinTextTty,
+                          grid: { rows: geometry.rows, cols: geometry.cols },
+                          reply,
+                        }),
+                      ),
+                      "json",
+                      checkpoint.onRetained,
+                    )
+                  },
+                }),
             })
           },
         }),
