@@ -75,7 +75,7 @@ export interface Probe {
 }
 
 /** Build a TermProbeSource from the tty.ts helpers */
-function createTermProbeSource({
+export function createTermProbeSource({
   probe,
   geometry,
   utf8Decoding,
