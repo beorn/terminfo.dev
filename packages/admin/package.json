@@ -22,13 +22,13 @@
     "build": "tsdown"
   },
   "dependencies": {
-    "@silvery/commander": "0.26.0",
+    "@silvery/commander": "0.29.1",
     "@terminfo/catalog": "workspace:*",
     "@terminfo/probe-defs": "workspace:*",
-    "@termless/core": "0.10.2",
+    "@termless/core": "0.11.0",
     "loggily": "0.13.0",
     "react": "19.3.1",
-    "silvery": "0.26.0",
+    "silvery": "0.29.0",
     "terminfo.dev": "workspace:*"
   },
   "devDependencies": {
