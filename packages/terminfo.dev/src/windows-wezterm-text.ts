@@ -1,4 +1,4 @@
-/** The pinned Windows WezTerm GUI's own visible rows, through its sibling CLI. */
+/** The owned WezTerm pane's physical rows, through its own CLI. */
 import { spawnSync } from "node:child_process"
 import { mapSnapshotToCells, type TerminalTextRead } from "./darwin-terminal-text.ts"
 
@@ -9,6 +9,8 @@ interface WezTermTextOptions {
   readonly socket: string | undefined
   readonly cols: number
   readonly rows: number
+  /** Negative start includes retained history; omitted reads only the visible grid. */
+  readonly startLine?: number
 }
 
 export function readWindowsWezTermRows(
@@ -31,7 +33,7 @@ export function readWindowsWezTermRows(
       "--pane-id",
       options.pane,
       "--start-line",
-      "0",
+      String(options.startLine ?? 0),
       "--end-line",
       String(options.rows - 1),
     ],
@@ -67,7 +69,7 @@ export function readWindowsWezTermRows(
     return { status: "refused", reason: `WezTerm get-text returned no complete row terminator: ${retained}` }
   }
   const rows = text.slice(0, text.endsWith("\r\n") ? -2 : -1).split(/\r?\n/u)
-  if (rows.length !== options.rows) {
+  if ((options.startLine ?? 0) < 0 ? rows.length < options.rows : rows.length !== options.rows) {
     return {
       status: "refused",
       reason: `WezTerm get-text returned ${rows.length} rows for ${options.rows}: ${retained}`,
