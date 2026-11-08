@@ -404,6 +404,30 @@ describe("iTerm2 physical buffer mapping", () => {
   // api.proto LineContents is a physical row, including soft continuations. This is a protocol
   // contract fixture, not a claim that a hosted app returned these bytes.
   it("keeps physical soft-wrap/blank rows and names omitted or explicit trailing blanks", () => {
+    // GHA 42490280120, iTerm2 3.6.11 buffer 616bf541: Q has one mapped/styled cell;
+    // its blank rows have neither. Written spaces remain cells, unlike omitted trailing nulls.
+    expect(
+      mapITermBufferToCells(
+        [
+          {
+            text: "Q",
+            code_points_per_cell: [{ num_code_points: 1, repeats: 1 }],
+            continuation: 1,
+            style: [{ image: 0, repeats: 1 }],
+          },
+          { text: "", code_points_per_cell: [], continuation: 1, style: [] },
+          { text: " ".repeat(80), code_points_per_cell: [{ repeats: 80 }], style: [{ repeats: 80 }] },
+        ],
+        80,
+        3,
+      ),
+    ).toEqual({
+      cols: 80,
+      rows: 3,
+      text: ["Q" + " ".repeat(79), " ".repeat(80), " ".repeat(80)],
+      paddedRows: [1, 2],
+      droppedLines: 0,
+    })
     expect(
       mapITermBufferToCells(
         [
@@ -415,9 +439,9 @@ describe("iTerm2 physical buffer mapping", () => {
               { num_code_points: 0, repeats: 1 },
             ],
             continuation: 1,
-            style: [{ repeats: 4 }],
+            style: [{ repeats: 3 }],
           },
-          { text: "", code_points_per_cell: [], style: [{ repeats: 4 }] },
+          { text: "", code_points_per_cell: [], style: [] },
         ],
         4,
         3,
@@ -464,6 +488,16 @@ describe("iTerm2 physical buffer mapping", () => {
       name: "unproved image-free trailing cells",
       line: { text: "a", code_points_per_cell: [{ repeats: 1 }], style: [] },
       reason: /style.*coverage/u,
+    },
+    {
+      name: "styles longer than the returned cell map",
+      line: { text: "a", code_points_per_cell: [{ repeats: 1 }], style: [{ repeats: 4 }] },
+      reason: /style.*cell map has 1/u,
+    },
+    {
+      name: "styles beyond physical columns",
+      line: { text: "abcd", code_points_per_cell: [{ repeats: 4 }], style: [{ repeats: 5 }] },
+      reason: /style coverage exceeds 4 columns/u,
     },
   ])("refuses $name without reconstructing its cells", ({ line, reason }) => {
     expect(mapITermBufferToCells([line], 4, 1)).toMatch(reason)

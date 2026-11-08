@@ -166,13 +166,14 @@ test.each(modes)("physical read requires an exact stable TTY: %s", async (mode) 
           })
           const fixed = [
             { text: "abcd", code_points_per_cell: [{ repeats: 4 }], continuation: 2, style: [{ repeats: 4 }] },
-            { text: "ef", code_points_per_cell: [{ repeats: 2 }], continuation: 1, style: [{ repeats: 4 }] },
+            { text: "ef", code_points_per_cell: [{ repeats: 2 }], continuation: 1, style: [{ repeats: 2 }] },
           ]
+          // Real 3.6.11 buffer 616bf541 contains Q, then omitted trailing/empty cells.
           const full = Array.from({ length: rows }, (_, index) => ({
-            text: "x".repeat(cols),
-            code_points_per_cell: [{ repeats: cols }],
-            continuation: index === rows - 1 ? 1 : 2,
-            style: [{ repeats: cols }],
+            text: index === 0 ? "Q" : "",
+            code_points_per_cell: index === 0 ? [{ repeats: 1 }] : [],
+            continuation: 1,
+            style: index === 0 ? [{ repeats: 1 }] : [],
           }))
           reply = { get_buffer_response: { status: 0, contents: mode === "wide" ? full : fixed } }
         }
@@ -209,8 +210,11 @@ test.each(modes)("physical read requires an exact stable TTY: %s", async (mode) 
         cells: {
           cols,
           rows,
-          text: mode === "wide" ? Array.from({ length: rows }, () => "x".repeat(cols)) : ["abcd", "ef  "],
-          paddedRows: mode === "wide" ? [] : [2],
+          text:
+            mode === "wide"
+              ? ["Q" + " ".repeat(cols - 1), ...Array.from({ length: rows - 1 }, () => " ".repeat(cols))]
+              : ["abcd", "ef  "],
+          paddedRows: mode === "wide" ? Array.from({ length: rows }, (_, index) => index + 1) : [2],
           droppedLines: 0,
         },
       })

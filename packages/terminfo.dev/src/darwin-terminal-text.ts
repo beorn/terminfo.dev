@@ -327,8 +327,8 @@ export function mapITermBufferToCells(
     if ((line.continuation ?? 1) !== 1 && line.continuation !== 2) {
       return `iTerm2 row ${row} has an unknown continuation`
     }
-    // api.proto promises styles 1:1 with cells when include_styles is requested. Images are
-    // omitted from the text map, so missing styles cannot prove that omitted cells are blank.
+    // PTYSession.stringForLine (iTerm2 3.6.11) emits styles and the cell map over the same
+    // returned cells. Both omit trailing uninitialized cells; images must still refuse.
     let styled = 0
     for (const style of line.style) {
       if ((style.image ?? 0) !== 0) return `iTerm2 row ${row} contains image cells omitted from its text map`
@@ -338,7 +338,6 @@ export function mapITermBufferToCells(
       styled += style.repeats
       if (styled > cols) return `iTerm2 row ${row} style coverage exceeds ${cols} columns`
     }
-    if (styled !== cols) return `iTerm2 row ${row} style coverage is ${styled} cells where the screen has ${cols}`
     const text = line.text ?? ""
     const points = [...text]
     let consumed = 0
@@ -364,6 +363,7 @@ export function mapITermBufferToCells(
     if (consumed !== points.length) {
       return `iTerm2 row ${row} code-point consumption is ${consumed}, but its text has ${points.length}`
     }
+    if (styled !== cells) return `iTerm2 row ${row} style coverage is ${styled} cells, but its cell map has ${cells}`
     lines.push(text)
   }
   return mapSnapshotToCells(lines, cols, rows, 0)
