@@ -585,6 +585,7 @@ export async function runProbeBatch(
     }
     if (options.input) {
       const input = options.input
+      const injectMove = input.injectMove?.bind(input)
       const injectDrag = input.injectDrag?.bind(input)
       const focusRoundTrip = input.focusRoundTrip?.bind(input)
       const resizeWindow = input.resizeWindow?.bind(input)
@@ -592,6 +593,7 @@ export async function runProbeBatch(
         ...(input.wheelPlacement && { wheelPlacement: input.wheelPlacement }),
         injectKey: (keys) => withTTYOperation(() => input.injectKey(keys), out, verify),
         injectClick: (button, position) => withTTYOperation(() => input.injectClick(button, position), out, verify),
+        ...(injectMove && { injectMove: (x: number, y: number) => withTTYOperation(() => injectMove(x, y), out, verify) }),
         ...(injectDrag && { injectDrag: (button: 1) => withTTYOperation(() => injectDrag(button), out, verify) }),
         ...(focusRoundTrip && { focusRoundTrip: () => withTTYOperation(focusRoundTrip, out, verify) }),
         ...(resizeWindow && {

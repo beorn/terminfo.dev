@@ -907,6 +907,41 @@ it("retains the focus report emitted while enabling 1004", async () => {
   })
 })
 
+// @failure A Linux-owned motion fixture is dropped before the OSC22 callback can place its pointer.
+// The focus case exercises another optional method, so it cannot detect missing motion forwarding.
+// @level l1
+// @consumer App native batch -> OSC22 pointer-image callback -> owned XTEST input.
+it("forwards owned buttonless motion with its fixture binding", async () => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const definition = ALL_PROBES.find((probe) => probe.id === "device.primary-da")!
+  const original = definition.term
+  const moves: number[][] = []
+  const input = {
+    injectClick: async () => {},
+    injectKey: async () => {},
+    async injectMove(x: number, y: number) {
+      expect(this).toBe(input)
+      moves.push([x, y])
+    },
+  }
+  try {
+    definition.term = async (ctx) => {
+      if (!ctx.input?.injectMove) throw new Error("Missing owned motion fixture")
+      await ctx.input.injectMove(32, 48)
+      return notTestedResult("Motion forwarding exercised")
+    }
+    await runProbeBatch({
+      ids: [definition.id],
+      ownedTerminal: geometryOwner(noGeometry),
+      input,
+    })
+    expect(moves).toEqual([[32, 48]])
+  } finally {
+    definition.term = original
+  }
+})
+
 it.each(
   ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
     ["controls", "query"].map((failure) => ({ id, failure })),
