@@ -41,7 +41,7 @@
     "@silvery/ansi": "0.26.0",
     "@silvery/commander": "0.26.0",
     "@termless/core": "0.10.2",
-    "commander": "15.0.0",
+    "commander": "15.1.0",
     "loggily": "0.13.0",
     "silvery": "0.26.0"
   },
@@ -52,13 +52,13 @@
     "@terminfo/probes": "workspace:*",
     "@terminfo/run-parser": "workspace:*",
     "@termless/xtermjs": "0.10.2",
-    "@vue/server-renderer": "3.5.43",
+    "@vue/server-renderer": "3.5.45",
     "oxfmt": "0.76.0",
     "terminfo.dev": "workspace:*",
     "vitepress": "1.6.4",
     "vitepress-enrich": "0.5.0",
     "vitest": "5.1.0",
-    "vue": "3.5.43",
+    "vue": "3.5.45",
     "yaml": "2.9.1"
   },
   "overrides": {
