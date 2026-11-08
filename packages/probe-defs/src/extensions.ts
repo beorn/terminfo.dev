@@ -1670,7 +1670,10 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
       if (visibleCursor === "reset") ctx.write("\x1b[?25l")
     }
   }
-  // Include restoration frames in both the graded observation and its retained assertion payload.
+  // Include restoration frames in pending responses and graded assertion payloads.
+  if (result.response !== undefined) {
+    result.response = JSON.stringify({ ...JSON.parse(result.response), ...state() })
+  }
   for (const assertion of result.assertions ?? []) assertion.observed = JSON.stringify(state())
   return result
 }
