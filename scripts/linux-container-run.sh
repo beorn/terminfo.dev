@@ -900,10 +900,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   fi
   jq -e --slurpfile build "$build_receipt" '
     .schemaVersion == 4 and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
-    (.identity == "unverified" or (.identity == "verified" and
-      (.rawReplies["collector.identityCheck"] | fromjson |
-        .ok == true and (.executable.sha256 | type == "string" and test("^[0-9a-fA-F]{64}$"))))) and
-    .origin.kind == "collector" and
+    .identity == "unverified" and .origin.kind == "collector" and
     .probeHash == $build[0].probeHash and .suiteId == $build[0].probeHash and
     .sourceRevision == $build[0].collectorRevision and
     (.rawReplies | type == "object") and (.assertions | type == "array") and

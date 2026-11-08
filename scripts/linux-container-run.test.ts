@@ -1495,7 +1495,7 @@ const retainedTmuxAdmission = {
 }
 
 it.each(["verified", "unverified", "missing", "malformed", "bad-hash", "not-ok", "wrong-target"])(
-  "admits consistent retained tmux identity and refuses %s disagreements loudly",
+  "enforces canonical unverified collector drafts for retained tmux %s",
   (scenario) => {
     const capture = structuredClone(retainedTmuxAdmission)
     if (scenario === "unverified") capture.identity = "unverified"
@@ -1510,7 +1510,10 @@ it.each(["verified", "unverified", "missing", "malformed", "bad-hash", "not-ok",
       else identity.ok = false
       capture.rawReplies["collector.identityCheck"] = JSON.stringify(identity)
     }
-    if (scenario === "wrong-target") capture.outerApp.subject.id = "xterm"
+    if (scenario === "wrong-target") {
+      capture.identity = "unverified"
+      capture.outerApp.subject.id = "xterm"
+    }
     const raw = join(dir, "retained-capture.json"),
       build = join(dir, "build.json")
     writeFileSync(raw, JSON.stringify(capture))
@@ -1543,9 +1546,9 @@ ${admission}`,
       ],
       { encoding: "utf8" },
     )
-    expect(result.status, result.stderr).toBe(["verified", "unverified"].includes(scenario) ? 0 : 2)
+    expect(result.status, result.stderr).toBe(scenario === "unverified" ? 0 : 2)
     if (scenario === "wrong-target") expect(result.stderr).toContain("named a target other than kitty")
-    else if (!["verified", "unverified"].includes(scenario)) {
+    else if (scenario !== "unverified") {
       expect(result.stderr).toContain("invalid schema-4 capture")
       expect(result.stderr).not.toContain("named a target other than")
     }
