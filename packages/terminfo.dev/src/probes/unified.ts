@@ -295,7 +295,7 @@ export async function runProbeBatch(
     geometryCorroboration?: GeometryCorroboration
     /** The target this run is measuring, from the measured side (the launched app), never read out
      * of the receipt. A receipt naming another target is refused before the first write (27874). */
-    subject?: { kind: "term" | "lib" | "mux"; id: string; os: string }
+    subject?: { kind: "term" | "lib" | "mux"; id: string; os: string; version?: string }
     /** Exact-version App declarations selected by the collector; only unresolved callbacks use them. */
     appDeclarations?: Readonly<Record<string, string>>
     draft?: Pick<RunDraft, "results"> & Partial<Pick<RunDraft, "subject">>
@@ -610,7 +610,7 @@ export async function runProbeBatch(
     // its own named no-capture branch — an error row where a named refusal belongs is exactly what
     // the no-capture branches exist to avoid.
     const textCells = options.captureKind === "text-cells"
-    const imageSubject = options.draft?.subject
+    const imageSubject = options.subject
     const pointerImageEligible =
       probe.id !== "extensions.osc22-pointer" ||
       (ownsTerminal &&

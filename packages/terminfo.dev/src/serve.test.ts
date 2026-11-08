@@ -1285,7 +1285,7 @@ describe("private finite daemon startup", () => {
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
       let raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c", disposed = 0, calls = []
-      let launch
+      let launch, expectedBatchVersion
       let terminal={name:"kitty",version:"",os:"linux",osVersion:"fixture"}
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
@@ -1303,11 +1303,13 @@ describe("private finite daemon startup", () => {
           return {raw:reply,rawBase64:Buffer.from(reply).toString("base64"),match:pattern.exec(reply),reason:pattern.test(reply)?"reply":"sentinel"}
         }
       }))
-      mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({...unified,runProbeBatch:async options=>({
+      mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({...unified,runProbeBatch:async options=>{
+        if(expectedBatchVersion!==undefined)assert.equal(options.subject.version,expectedBatchVersion,"measured version must reach the batch before callbacks")
+        return {
         results:options.draft.results,rawReplies:{"fixture.selected":JSON.stringify(options.ids),...(options.ids.includes("device.xtversion")?{"device.xtversion":"feature-owned reply"}:{})},
         observations:options.ids.map(featureId=>({featureId})), assertions:[],screenshotRefs:[],ungradedDiagnostics:{},suiteComplete:false,
         ...(launch && { appLaunch: launch })
-      })}))
+      }}}))
       const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
       const ids=unified.ALL_PROBES.filter(p=>p.id!=="device.xtversion").slice(0,10).map(p=>p.id)
       // 28216: the collector COPIES the apparatus-measured launch block into origin.appLaunch, and a
@@ -1338,6 +1340,19 @@ describe("private finite daemon startup", () => {
       launch=undefined
       const unlaunched=await collectProbeRun({ids:["device.xtversion"],terminalAppOwner:{}})
       assert.deepEqual(unlaunched.origin,{kind:"collector"})
+      // OSC22 routing cannot consume a version that the collector only assigns after the batch.
+      // These payloads are the retained original xterm/WezTerm XTVERSION replies; a new version
+      // is forwarded too, so the existing exact-tuple batch test can exclude it.
+      const originalRaw=raw,originalTerminal=terminal
+      for(const [id,version,payload] of [["xterm","411","XTerm(411)"],["wezterm","0-unstable-2026-10-10","WezTerm 0-unstable-2026-10-10"],["xterm","412","XTerm(412)"]]){
+        terminal={name:id,version:"",os:"linux",osVersion:"fixture"}
+        raw=String.fromCharCode(27)+"P>|"+payload+String.fromCharCode(27)+String.fromCharCode(92)+String.fromCharCode(27)+"[?64;1;2c"
+        expectedBatchVersion=version
+        const measured=await collectProbeRun({ids:["device.xtversion"],terminalAppOwner:{}})
+        assert.equal(measured.subject.version,version)
+      }
+      raw=originalRaw;terminal=originalTerminal;expectedBatchVersion=undefined
+      const disposedBeforeMalformed=disposed
       launch={bundlePath:"/Applications/iTerm.app",cfBundleShortVersionString:"3.6.11",cfBundleVersion:"3.6.11",
         executablePath:"/Applications/iTerm.app/Contents/MacOS/iTerm2",executableSha256:"a".repeat(64),
         sourceArtifact:{path:"/Library/Caches/Homebrew/downloads/iterm2.zip",sha256:"b".repeat(64)}}
@@ -1345,7 +1360,7 @@ describe("private finite daemon startup", () => {
         raw=invalid
         await assert.rejects(collectProbeRun({ids,terminalAppOwner:{}}),/identity: XTVERSION preflight/)
       }
-      assert.equal(disposed,5)
+      assert.equal(disposed,disposedBeforeMalformed+2)
       calls=[]
       const nonowned=await collectProbeRun({ids})
       assert.equal(nonowned.subject.version,"unknown")

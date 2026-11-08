@@ -964,6 +964,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                   kind: muxSubject?.kind ?? "term",
                   id: measuredTerminal.name,
                   os: terminal.os,
+                  ...(declarationVersion !== undefined && { version: declarationVersion }),
                 },
                 appDeclarations:
                   declarationVersion === undefined

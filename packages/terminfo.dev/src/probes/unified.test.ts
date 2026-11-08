@@ -2361,16 +2361,8 @@ it.each([
     }
     await runProbeBatch({
       ids: definitions.map(({ id }) => id),
-      subject: { kind: entry.kind, id: entry.id, os: entry.os },
+      subject: { kind: entry.kind, id: entry.id, version: entry.version, os: entry.os },
       draft: {
-        subject: {
-          kind: entry.kind,
-          id: entry.id,
-          version: entry.version,
-          os: entry.os,
-          osVersion: null,
-          outerTerminal: null,
-        },
         results: definitions.map(({ id }) => ({
           featureId: id,
           status: "probe-todo",
