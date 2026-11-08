@@ -839,9 +839,9 @@ describe("Terminal.app app collection", () => {
     "retains the private launch directory after %s failure",
     async (failure) => {
       if (failure === "daemon startup") vi.mocked(findOwnedDaemon).mockResolvedValueOnce(null)
-      else if (failure === "daemon stop")
+      else if (failure === "daemon stop") {
         vi.mocked(stopOwnedDaemon).mockRejectedValueOnce(new Error("daemon stop failed"))
-      else {
+      } else {
         vi.mocked(closeOwnedTerminalWindow).mockImplementationOnce(() => {
           throw new Error("owned close failed")
         })

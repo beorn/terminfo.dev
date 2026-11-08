@@ -137,7 +137,12 @@ describe("owned Terminal.app receipt", () => {
     { status: 1, stdout: "", stderr: "owned Terminal window no longer exists uniquely", reason: "already absent" },
     { status: 1, stdout: "", stderr: "query denied", reason: "query error" },
   ])("retains failed close evidence: $reason", (result) => {
-    vi.mocked(spawnSync).mockReturnValueOnce(result as ReturnType<typeof spawnSync>)
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      ...result,
+      pid: 1,
+      signal: null,
+      output: [null, result.stdout, result.stderr],
+    })
     let failure: unknown
     try {
       closeOwnedTerminalWindow({ provider: "terminal-app", windowId: 14, tty: "/dev/ttys003" })

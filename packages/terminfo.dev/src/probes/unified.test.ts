@@ -1721,9 +1721,9 @@ it.each([undefined, "after-probes"] as const)(
           : ["callback:reset.ris", "callback:reset.decaln", "prepare"],
       )
       expect(writes).toContain("calibration:paint-witness")
-      if (phase === undefined)
+      if (phase === undefined) {
         expect(writes.indexOf("calibration:paint-witness")).toBeLessThan(writes.indexOf("fixture:reset.ris"))
-      else expect(writes.at(-1)).toBe("calibration:paint-witness")
+      } else expect(writes.at(-1)).toBe("calibration:paint-witness")
       expect(writes).not.toContain("calibration:paint-witness\n")
       expect(batch.screenshotRefs).toEqual([captureRef])
       expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({
@@ -4046,7 +4046,10 @@ it.each([
         },
       })
       const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
-      const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
+      const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!) as {
+        queries: unknown[]
+        writes: string[]
+      }
       expect(qualification?.shapes).toHaveLength(5)
       expect(capture).toHaveBeenCalledTimes(disposal ? 11 : priorAvailable ? 12 : 0)
       expect(trace.queries).toHaveLength(priorAvailable ? (disposal ? 2 : 4) : 4)
