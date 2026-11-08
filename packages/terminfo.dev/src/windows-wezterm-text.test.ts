@@ -12,6 +12,9 @@ vi.mock("node:child_process", () => ({ spawnSync: run }))
 import { readWindowsWezTermRows, readWindowsWezTermText } from "./windows-wezterm-text.ts"
 
 const options = { executable: "C:\\owned\\wezterm.exe", pane: "42", socket: "C:\\owned\\gui.sock", rows: 2, cols: 8 }
+// Visible text cannot select history; only the row reader accepts that input.
+// @ts-expect-error startLine is excluded from the visible-only entry point.
+void ({ ...options, startLine: -2147483648 } satisfies Parameters<typeof readWindowsWezTermText>[0])
 beforeEach(() => run.mockReset())
 function answer(stdout: string, status = 0, stderr = "") {
   run.mockReturnValue({ status, signal: null, stdout: Buffer.from(stdout), stderr: Buffer.from(stderr) })

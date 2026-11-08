@@ -78,7 +78,7 @@ export function readWindowsWezTermRows(
   return { status: "read", rows, receipt: retained }
 }
 
-export function readWindowsWezTermText(options: WezTermTextOptions): TerminalTextRead {
+export function readWindowsWezTermText(options: Omit<WezTermTextOptions, "startLine">): TerminalTextRead {
   const read = readWindowsWezTermRows(options)
   if (read.status === "refused") return read
   const cells = mapSnapshotToCells(read.rows, options.cols, options.rows, 0)
