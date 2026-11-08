@@ -113,6 +113,7 @@ end tell`,
         const detail = [code, message]
           .filter(Boolean)
           .join(": ")
+          .replaceAll(homedir(), "~")
           .replaceAll(cookie, "[redacted]")
           .replaceAll(key, "[redacted]")
         finish(
