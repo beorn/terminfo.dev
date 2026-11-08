@@ -60,7 +60,7 @@ end tell`
     // Naming the permission is the difference between "a human grants this" and "a script broke".
     if (!AUTOMATION_OR_UNANSWERED.test(detail)) throw error
     throw new Error(
-      `Automation (TCC) denied control of Terminal, or the launch did not answer within ${TERMINAL_LAUNCH_TIMEOUT_MS}ms; grant Automation to the process that sends this Apple event (/opt/hca/hosted-compute-agent on the hosted runner, osascript on a local Mac), not to Terminal, and rerun: ${detail}`,
+      `Automation (TCC) denied control of Terminal, or the launch did not answer within ${TERMINAL_LAUNCH_TIMEOUT_MS}ms; grant Automation for osascript and rerun: ${detail}`,
     )
   }
   const output = answered.trimEnd()

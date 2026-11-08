@@ -624,67 +624,46 @@ test("hosted Terminal launch owns its window and closes only it before upload", 
   expect(steps.indexOf(close!)).toBeLessThan(steps.indexOf(upload!))
 })
 
-// 30729 P0: the terminal-app arm read process.env.COMMAND_PATH from a shell variable that was never
-// exported, so `bun --eval` started with undefined and AppleScript ran `do script undefined`. An
-// eval'd body is a child process: it sees the step env, GitHub's own variables, and only what the
-// shell exported or passed inline on the command line. Anything else is invisible to it.
-test("every process.env read inside a bun --eval arm reaches that child process", () => {
+// 30729 P0: the terminal-app arm read COMMAND_PATH from a bun --eval child while the shell never
+// exported it, so the child got undefined and AppleScript ran `do script undefined`. Run the arm the
+// way bash does and hand it a bun stand-in that records what the child really receives.
+test("the hosted terminal-app arm hands the collector command path to its child", () => {
   const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
-  type Step = { name?: string; env?: Record<string, string>; run?: string }
-  const jobSteps = workflow.jobs["measure-macos"].steps as Step[]
-  const jobEnv = Object.keys((workflow.jobs["measure-macos"] as { env?: Record<string, string> }).env ?? {})
-  // GitHub sets these for every step without this workflow declaring them.
-  const runnerProvided = [
-    "RUNNER_TEMP",
-    "GITHUB_WORKSPACE",
-    "GITHUB_OUTPUT",
-    "GITHUB_ENV",
-    "GITHUB_STEP_SUMMARY",
-    "GITHUB_PATH",
-    "GITHUB_SHA",
-    "GITHUB_REF",
-    "GITHUB_RUN_ID",
-    "GITHUB_REPOSITORY",
-    "HOME",
-    "PATH",
-  ]
-  const arms: string[] = []
-  const unreachable: string[] = []
-  for (const step of jobSteps) {
-    if (typeof step.run !== "string") continue
-    const provided = new Set([...jobEnv, ...runnerProvided, ...Object.keys(step.env ?? {})])
-    for (const exported of step.run.matchAll(/^\s*export\s+([A-Z_][A-Z0-9_]*)=/gmu)) provided.add(exported[1]!)
-    const lines = step.run.split("\n")
-    for (let index = 0; index < lines.length; index += 1) {
-      const call = lines[index]!.indexOf("bun --eval")
-      if (call < 0) continue
-      const armLine = index + 1
-      // `COMMAND_PATH="$COMMAND_PATH" bun --eval` is the inline pass the sibling arms use.
-      const passedInline = new Set(
-        [...lines[index]!.slice(0, call).matchAll(/([A-Z_][A-Z0-9_]*)=/gu)].map((match) => match[1]!),
-      )
-      const marker = /<<'([A-Z_][A-Z0-9_]*)'/.exec(lines[index]!)?.[1]
-      const body: string[] = []
-      for (index += 1; index < lines.length; index += 1) {
-        if (lines[index]!.trim() === (marker ?? "'")) break
-        body.push(lines[index]!)
-      }
-      const reads = new Set(
-        [...body.join("\n").matchAll(/process\.env\.([A-Za-z_][A-Za-z0-9_]*)/gu)].map((match) => match[1]!),
-      )
-      // Extraction rot fails here rather than passing an arm whose body was never found.
-      expect(reads.size, `${step.name}: bun --eval arm at line ${armLine} reads no process.env`).toBeGreaterThan(0)
-      arms.push(step.name ?? "")
-      for (const name of reads) {
-        if (provided.has(name) || passedInline.has(name)) continue
-        unreachable.push(
-          `${step.name ?? "(unnamed step)"} line ${armLine} reads process.env.${name}, and the shell neither exports it nor passes it to bun --eval`,
-        )
-      }
-    }
+  const steps = workflow.jobs["measure-macos"].steps as Array<{ name?: string; run?: string }>
+  const collect = steps.find((step) => step.name === "Launch, emit the receipt, and collect as the last mutating step")
+  expect(collect?.run, "the launch step exists").toBeTypeOf("string")
+  const arm = /^[ ]*terminal-app\)\n([\s\S]*?)^[ ]*;;$/mu.exec(collect!.run!)?.[0]
+  expect(arm, "the terminal-app case arm exists").toBeTypeOf("string")
+  const directory = mkdtempSync(join(tmpdir(), "hosted-terminal-arm-"))
+  try {
+    const bin = join(directory, "bin")
+    mkdirSync(bin)
+    mkdirSync(join(directory, "out"))
+    // The stand-in is the child `bun --eval`: it records the environment and body it was given.
+    writeFileSync(
+      join(bin, "bun"),
+      `#!/bin/bash\nenv > "${directory}/child-env"\nprintf '%s' "$2" > "${directory}/child-body"\n`,
+      { mode: 0o755 },
+    )
+    // The arm sees only the step env and whatever the run script exports or passes inline.
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `set -euo pipefail\nOUT="${directory}/out"\nCOMMAND_PATH="$RUNNER_TEMP/collect.command"\ncase "terminal-app" in\n${arm}\nesac`,
+      ],
+      { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin`, RUNNER_TEMP: directory, APP_ID: "terminal-app" } },
+    )
+    expect(result.status, result.stderr).toBe(0)
+    const commandPath = join(directory, "collect.command")
+    // Red on 6c6def1e2: the child inherited no COMMAND_PATH at all.
+    expect(readFileSync(join(directory, "child-env"), "utf8")).toContain(`COMMAND_PATH=${commandPath}\n`)
+    expect(readFileSync(join(directory, "child-body"), "utf8")).toContain(
+      "launchTerminalWindow(process.env.COMMAND_PATH)",
+    )
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
   }
-  expect(arms.length, "the workflow still runs JS arms through bun --eval").toBeGreaterThan(0)
-  expect(unreachable).toEqual([])
 })
 
 // The actual shared DMG caller must verify Warp before mount/copy, without changing Alacritty's operation.
