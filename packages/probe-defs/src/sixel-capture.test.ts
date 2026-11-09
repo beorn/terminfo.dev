@@ -295,3 +295,65 @@ test("a text-cells arm is the named instrument limit before a byte, not a query 
   expect(result.tests).toMatchObject([expect.objectContaining({ status: "probe-todo", reason: expect.any(String) })])
   expect(writes).toHaveLength(0)
 })
+
+/** Screen's iTerm2 arm (32802): OSC 1337 draws nothing, truecolor SGR paints nothing, indexed red works. */
+function screenIterm2Arm(options: { truecolor?: boolean; indexed?: boolean } = {}) {
+  const { context, writes } = calibratedPixelArm()
+  let plane = "blank"
+  let glyph = ""
+  let reads = 0
+  context.write = (bytes) => {
+    writes.push(bytes)
+    if (bytes.includes("\x1b[2J")) plane = "blank"
+    // The OSC itself is swallowed; only its body written as plain text prints.
+    if (bytes.includes("1337;File=") && !bytes.includes("\x1b]1337;File=")) plane = "printed"
+    if (bytes.includes("\x1b[48;2;255;0;0m") && options.truecolor) plane = "red"
+    if (bytes.includes("\x1b[48;5;196m") && options.indexed !== false) plane = "red"
+    if (/^\x1b\[1;1H.$/.test(bytes)) glyph = bytes.slice(-1)
+  }
+  context.capture = async ({ role, label, cells }) =>
+    ({
+      role,
+      label,
+      capturedAt: ++reads,
+      ref: `sha256:frame${reads}`,
+      regionDigest: cells?.top === 1 && cells.left === 1 ? `witness:${glyph}` : `plane:${plane}`,
+      pixelsDigest: `window:${plane}:${glyph}`,
+    }) satisfies ObservationFrame
+  return { context, writes }
+}
+
+// 32802 (@cto 9af9ad0f): iTerm2 images share extensions.sixel's one palette-red retry.
+test.each([
+  {
+    name: "a collapsed truecolor reference retries once with 48;5;196 and decides",
+    options: { truecolor: false },
+    outcome: "unsupported",
+    palette: true,
+  },
+  {
+    name: "a palette reference that also equals the seed stays undecided after one retry",
+    options: { truecolor: false, indexed: false },
+    outcome: "inconclusive",
+    palette: true,
+  },
+  {
+    name: "a distinct first reference writes no second attempt",
+    options: { truecolor: true },
+    outcome: "unsupported",
+    palette: false,
+  },
+])("iTerm2 images on Screen: $name", async ({ options, outcome, palette }) => {
+  const { context, writes } = screenIterm2Arm(options)
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.iterm2-images")
+  if (!definition?.term) throw new Error("missing iTerm2 images callback")
+  const result = await definition.term(context)
+  expect(result.observation?.outcome).toBe(outcome)
+  const truecolor = writes.filter((bytes) => bytes.includes("\x1b[48;2;255;0;0m")).length
+  const indexed = writes.filter((bytes) => bytes.includes("\x1b[48;5;196m")).length
+  expect(truecolor).toBeGreaterThan(0)
+  // One retry at most: the palette reference is written exactly as often as the truecolor one was.
+  expect(indexed).toBe(palette ? truecolor : 0)
+  if (outcome === "unsupported") expect(result.criterionBranch).toBe("iterm2-images-no-change")
+  else expect(result.observation?.note).toContain("seed frame and the expected frame read the same cells")
+})

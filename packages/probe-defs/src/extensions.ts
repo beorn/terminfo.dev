@@ -61,7 +61,6 @@ import {
   captureRegionCallbackResult,
   captureStabilityPair,
   cropPositionRefusal,
-  captureRegionReadbackDecision,
   collectorRegionRead,
   endCaptureLifecycle,
 } from "./region-readback.ts"
@@ -97,7 +96,13 @@ import {
   kittyWait,
   type KittyDigestPair,
 } from "./kitty-capture.ts"
-import { SIXEL_BOUNDS, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
+import {
+  decideWithPaletteRedRetry,
+  readbackPlaneDigest,
+  SIXEL_BOUNDS,
+  SIXEL_REGION,
+  sixelReadback,
+} from "./sixel-capture.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 // The OSC 7/9 public-interface census qualifies these exact sources, not every
@@ -6231,35 +6236,18 @@ const extensionDefinitions: ProbeDefinition[] = [
         const read = collectorRegionRead(ctx)
         if (!read) throw new Error("extensions.sixel: a pixel arm reached the region oracle without an owned capture")
         try {
-          let decided = await captureRegionReadbackDecision(
+          const decided = await decideWithPaletteRedRetry(
             ctx,
             "extensions.sixel",
-            { ...sixelReadback(geometry), pixelGeometry: geometry, geometrySource: reported.source },
+            (background) => ({
+              ...sixelReadback(geometry, background),
+              pixelGeometry: geometry,
+              geometrySource: reported.source,
+            }),
             read,
           )
-          const digest = (plane: string) => {
-            const frame = decided?.observation?.frames?.find((frame) => frame.label === `extensions.sixel: ${plane}`)
-            return frame === undefined ? undefined : frameDigests(frame).cells
-          }
+          const digest = (plane: string) => readbackPlaneDigest(decided, "extensions.sixel", plane)
           const seed = digest("pre-edit seed")
-          // Retry only this run's witnessed collapsed truecolor reference, never a third frame or failed capture.
-          if (
-            decided?.observation?.outcome === "inconclusive" &&
-            !decided.tests?.some((test) => test.status === "probe-invalid") &&
-            seed &&
-            seed === digest("expected frame")
-          ) {
-            decided = await captureRegionReadbackDecision(
-              ctx,
-              "extensions.sixel",
-              {
-                ...sixelReadback(geometry, "\x1b[48;5;196m"),
-                pixelGeometry: geometry,
-                geometrySource: reported.source,
-              },
-              read,
-            )
-          }
           if (decided) {
             const after = digest("post-sequence target")
             if (
@@ -7557,28 +7545,25 @@ const extensionDefinitions: ProbeDefinition[] = [
           throw new Error("extensions.iterm2-images: a pixel arm reached the region oracle without an owned capture")
         }
         try {
-          const base = sixelReadback(geometry)
           const body = `1337;File=inline=1;width=3;height=3;preserveAspectRatio=0:${ITERM2_RED_PNG}`
-          const park = `\x1b[${base.cursorRow};1H`
-          const decided = await captureRegionReadbackDecision(
+          const decided = await decideWithPaletteRedRetry(
             ctx,
             "extensions.iterm2-images",
-            {
-              ...base,
-              edit: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H\x1b]${body}\x07${park}`,
-              ignored: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H${body}${park}`,
-              pixelGeometry: geometry,
-              geometrySource: reported.source,
+            (background) => {
+              const base = sixelReadback(geometry, background)
+              const park = `\x1b[${base.cursorRow};1H`
+              return {
+                ...base,
+                edit: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H\x1b]${body}\x07${park}`,
+                ignored: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H${body}${park}`,
+                pixelGeometry: geometry,
+                geometrySource: reported.source,
+              }
             },
             read,
           )
           if (decided) {
-            const digest = (plane: string) => {
-              const frame = decided.observation?.frames?.find(
-                (entry) => entry.label === `extensions.iterm2-images: ${plane}`,
-              )
-              return frame === undefined ? undefined : frameDigests(frame).cells
-            }
+            const digest = (plane: string) => readbackPlaneDigest(decided, "extensions.iterm2-images", plane)
             const after = digest("post-sequence target")
             if (decided.observation?.outcome === "unsupported" && after !== undefined) {
               if (after === digest("ignored-attribute frame")) {
