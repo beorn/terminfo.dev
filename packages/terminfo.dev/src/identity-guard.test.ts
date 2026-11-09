@@ -5,7 +5,12 @@
  * @testonly none
  */
 import { describe, it, expect } from "vitest"
-import { declaredAppVersion, deriveIdentity, resolveMeasuredAppVersion, verifyTerminalIdentity } from "./identity-guard.ts"
+import {
+  declaredAppVersion,
+  deriveIdentity,
+  resolveMeasuredAppVersion,
+  verifyTerminalIdentity,
+} from "./identity-guard.ts"
 import muxIdentity from "./fixtures/mux-identity.json"
 
 describe("measured multiplexer identity", () => {
