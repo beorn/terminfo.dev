@@ -38,6 +38,7 @@ import {
   isDeclaredUntestable,
   productViewportAbsenceResult,
   auditedAdapterSources,
+  sameFrame,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
   sentinelSilenceResult,
@@ -3046,6 +3047,247 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
     const pass = after.viewportOffset < before.viewportOffset
     return parserStateResult(pass, OSC720_CLAIM, { before, after, control })
   }
+}
+
+/**
+ * App extensions.osc720-scroll-up (#32785, @cto a4c6f79d, 85d819da):
+ * 1. Route order: tmux and Screen keep today's result; then wheel plus capture; otherwise today's
+ *    code, unchanged.
+ * 2. tmux and Screen are excluded (Condition 6): tmux's first wheel-up only enters copy mode and
+ *    Screen ignores the wheel, so their cells keep today's result.
+ */
+async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  if (ctx.mux === "tmux" || ctx.mux === "screen") {
+    if (ctx.getScrollback) {
+      const reading = await ctx.getScrollback()
+      if (reading.viewportOffset === undefined || reading.screenLines === undefined) {
+        return notTestedResult("terminal reports no viewport offset", reading)
+      }
+    }
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write("\x1b]720\x07")
+    const pos = await ctx.queryCursorPosition()
+    return unverifiedEffect(
+      ctx,
+      pos ? "Cursor answered; scrollback viewport was not measured" : "No cursor response after OSC 720",
+    )
+  }
+
+  const capture = ctx.capture
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (capture && ctx.captureKind !== "text-cells" && input && readInput) {
+    if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
+      const reason = `wheel+capture route: OSC 720 fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`
+      return {
+        pass: false,
+        note: reason,
+        tests: [{ id: "criterion", status: "probe-todo", reason }],
+      }
+    }
+    const control = (await readInput(/^a/, 1000, () => input.injectKey("a")))?.[0]
+    if (!control) {
+      const reason = "wheel+capture route: XTEST delivery control failed (plain a did not reach the app)"
+      return {
+        pass: false,
+        note: reason,
+        tests: [{ id: "criterion", status: "probe-todo", reason }],
+      }
+    }
+    try {
+      beginCaptureLifecycle(ctx)
+      const mark = Math.min(ctx.cols, 40)
+      ctx.write("\x1b[2J\x1b[H")
+      ctx.write(`${"H".repeat(mark)}\r\n`.repeat(ctx.rows + 2))
+      ctx.write("B".repeat(mark))
+      const bottom = await capture({ role: "control", label: "Bottom of seeded buffer" })
+      await input.injectClick(4)
+      const history = await capture({ role: "control", label: "After wheel-up control" })
+      if (sameFrame(history, bottom)) {
+        const targetHistory: ObservationFrame = { ...history, role: "target" }
+        const frames = [bottom, targetHistory]
+        const note = "wheel+capture route: wheel-up control did not change the captured frame"
+        const observed = { route: "wheel+capture", control, bottom: bottom.ref, history: targetHistory.ref }
+        return {
+          pass: false,
+          note,
+          response: JSON.stringify(observed),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            assertionType: "screenshot",
+            screenshotRef: targetHistory.ref,
+            frames,
+            note,
+          },
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+        }
+      }
+      await input.injectClick(5)
+      const restored = await capture({ role: "control", label: "After wheel-down control" })
+      if (!sameFrame(restored, bottom)) {
+        const targetRestored: ObservationFrame = { ...restored, role: "target" }
+        const frames = [bottom, history, targetRestored]
+        const note = "wheel+capture route: wheel-down control did not return to the bottom frame"
+        const observed = {
+          route: "wheel+capture",
+          control,
+          bottom: bottom.ref,
+          history: history.ref,
+          restored: targetRestored.ref,
+        }
+        return {
+          pass: false,
+          note,
+          response: JSON.stringify(observed),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            assertionType: "screenshot",
+            screenshotRef: targetRestored.ref,
+            frames,
+            note,
+          },
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+        }
+      }
+      ctx.write("\x1b]720\x07")
+      const fence = await ctx.queryCursorPosition()
+      const afterOsc720 = await capture({ role: "target", label: "After OSC 720" })
+      if (!fence) {
+        const frames = [bottom, history, restored, afterOsc720]
+        const note = "wheel+capture route: no cursor-position fence reply after OSC 720"
+        const observed = {
+          route: "wheel+capture",
+          control,
+          bottom: bottom.ref,
+          history: history.ref,
+          restored: restored.ref,
+          afterOsc720: afterOsc720.ref,
+        }
+        return {
+          pass: false,
+          note,
+          response: JSON.stringify(observed),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            assertionType: "screenshot",
+            screenshotRef: afterOsc720.ref,
+            frames,
+            note,
+          },
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+        }
+      }
+      if (sameFrame(afterOsc720, bottom)) {
+        const frames = [bottom, history, restored, afterOsc720]
+        const note = "wheel+capture route: frame after OSC 720 equals bottom with wheel controls held"
+        const observed = {
+          route: "wheel+capture",
+          control,
+          fence,
+          bottom: bottom.ref,
+          history: history.ref,
+          restored: restored.ref,
+          afterOsc720: afterOsc720.ref,
+        }
+        const response = JSON.stringify(observed)
+        return {
+          pass: false,
+          note,
+          response,
+          observation: {
+            outcome: "unsupported",
+            assertionType: "screenshot",
+            screenshotRef: afterOsc720.ref,
+            frames,
+            note,
+          },
+          assertions: [
+            {
+              assertionType: "screenshot",
+              kind: "negative",
+              expected: OSC720_CLAIM,
+              observed: response,
+              action: "extensions.osc720-scroll-up:osc720",
+            },
+          ],
+        }
+      }
+      await input.injectClick(5)
+      const afterWheelDown = await capture({ role: "target", label: "After wheel-down following OSC 720" })
+      const frames = [bottom, history, restored, afterOsc720, afterWheelDown]
+      const observed = {
+        route: "wheel+capture",
+        control,
+        fence,
+        bottom: bottom.ref,
+        history: history.ref,
+        restored: restored.ref,
+        afterOsc720: afterOsc720.ref,
+        afterWheelDown: afterWheelDown.ref,
+      }
+      const response = JSON.stringify(observed)
+      if (sameFrame(afterWheelDown, bottom)) {
+        const note = "wheel+capture route: frame after OSC 720 differed from bottom and wheel-down returned to bottom"
+        return {
+          pass: true,
+          note,
+          response,
+          observation: {
+            outcome: "supported",
+            assertionType: "screenshot",
+            screenshotRef: afterOsc720.ref,
+            frames,
+            note,
+          },
+          assertions: [
+            {
+              assertionType: "screenshot",
+              kind: "positive",
+              expected: OSC720_CLAIM,
+              observed: response,
+              action: "extensions.osc720-scroll-up:osc720",
+            },
+          ],
+        }
+      }
+      const note =
+        "wheel+capture route: frame after OSC 720 changed from bottom, but wheel-down did not restore the bottom frame"
+      return {
+        pass: false,
+        note,
+        response,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          assertionType: "screenshot",
+          screenshotRef: afterWheelDown.ref,
+          frames,
+          note,
+        },
+        tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+      }
+    } finally {
+      await input.injectClick(5)
+      endCaptureLifecycle(ctx)
+    }
+  }
+
+  if (ctx.getScrollback) {
+    const reading = await ctx.getScrollback()
+    if (reading.viewportOffset === undefined || reading.screenLines === undefined) {
+      return notTestedResult("terminal reports no viewport offset", reading)
+    }
+  }
+  ctx.write("\x1b[1;1H\x1b[2K")
+  ctx.write("\x1b]720\x07")
+  const pos = await ctx.queryCursorPosition()
+  return unverifiedEffect(
+    ctx,
+    pos ? "Cursor answered; scrollback viewport was not measured" : "No cursor response after OSC 720",
+  )
 }
 
 /** A complete DA1 reply (CSI ? <params> c); a truncated `\x1b[?62;` is not a reply. */
@@ -7718,22 +7960,9 @@ const extensionDefinitions: ProbeDefinition[] = [
 
   // OSC 720 — rxvt-unicode scroll view up
   {
-    ...probe("extensions.osc720-scroll-up", osc720ScrollProbe(), async (ctx) => {
-      if (ctx.getScrollback) {
-        const reading = await ctx.getScrollback()
-        if (reading.viewportOffset === undefined || reading.screenLines === undefined) {
-          return notTestedResult("terminal reports no viewport offset", reading)
-        }
-      }
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]720\x07")
-      const pos = await ctx.queryCursorPosition()
-      return unverifiedEffect(
-        ctx,
-        pos ? "Cursor answered; scrollback viewport was not measured" : "No cursor response after OSC 720",
-      )
-    }),
+    ...probe("extensions.osc720-scroll-up", osc720ScrollProbe(), osc720ScrollUpApp),
     libAssertionType: "buffer_state",
+    termNeedsGeometry: true,
   },
 
   // OSC 776 — rxvt-unicode cell size report

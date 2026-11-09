@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
+import { createHash } from "node:crypto"
 import { parseRun } from "@terminfo/run-parser"
 import { isDeclaredUntestable, NO_SAME_PATH_CONTROL, recordExecutedProbe } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
@@ -646,13 +647,43 @@ function captureSource(
   fresh = true,
   kind: "pixels" | "text-cells" = "pixels",
   restoresPrimary = true,
+  cursorReplies?: ReadonlyArray<{ row: number; col: number } | null>,
 ): TermProbeSource {
+  let cursorRow = 1
+  let cursorCol = 1
+  let savedRow = 1
+  let savedCol = 1
+  let replyIndex = 0
+  const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
   const source: TermProbeSource = {
     kind: "live",
     rows,
     cols,
-    write: (bytes: string) => writes.push(bytes),
-    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    write: (bytes: string) => {
+      writes.push(bytes)
+      for (const token of bytes.matchAll(/\x1b\[(?:\?1049([hl])|(\d+);(\d+)H|H)/g)) {
+        if (token[1] === "h") {
+          savedRow = cursorRow
+          savedCol = cursorCol
+        } else if (token[1] === "l") {
+          cursorRow = savedRow
+          cursorCol = savedCol
+        } else if (token[2] !== undefined && token[3] !== undefined) {
+          cursorRow = Number(token[2])
+          cursorCol = Number(token[3])
+        } else {
+          cursorRow = 1
+          cursorCol = 1
+        }
+      }
+    },
+    queryCursorPosition: async () => {
+      if (cursorReplies !== undefined) {
+        const next = cursorReplies[replyIndex++]
+        return next === undefined ? { row: cursorRow, col: cursorCol } : next
+      }
+      return { row: cursorRow, col: cursorCol }
+    },
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
@@ -698,8 +729,8 @@ function captureSource(
         ...(cells &&
           pixelGeometry && {
             kind: "pixels" as const,
-            regionDigest: plane,
-            pixelsDigest: `whole:${plane}`,
+            regionDigest: digest(plane),
+            pixelsDigest: digest(`whole:${plane}`),
             regionRectangle: {
               x: (cells.left - 1) * pixelGeometry.cellWidth,
               y: (cells.top - 1) * pixelGeometry.cellHeight,
@@ -1995,7 +2026,7 @@ test.each([
   )
 })
 
-test("alt-screen exit capture frames the primary, alternate and restored buffers", async () => {
+test("alt-screen exit capture frames the primary, alternate and restored buffers and saved cursor", async () => {
   const definition = modesProbes.find((item) => item.id === "modes.alt-screen.exit")
   if (!definition?.term) throw new Error("Missing app alt-screen exit callback")
   const writes: string[] = []
@@ -2006,11 +2037,182 @@ test("alt-screen exit capture frames the primary, alternate and restored buffers
   expect(result.tests).toMatchObject([
     { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
     { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
-    { id: "remaining-facets", status: "probe-todo", reason: expect.stringMatching(/saved cursor.*scrollback/) },
+    { id: "saved-cursor-restored", status: "supported", assertionRefs: [2] },
   ])
-  expect(result.assertions).toHaveLength(2)
+  expect(result.assertions).toHaveLength(3)
   expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
 })
+
+test.each([
+  {
+    name: "supported",
+    restoresPrimary: true,
+    cursorReplies: [
+      { row: 2, col: 3 },
+      { row: 3, col: 2 },
+      { row: 2, col: 3 },
+    ],
+    expectedStatus: "supported" as const,
+    expectedOutcome: "supported" as const,
+    expectedAssertionType: "screenshot" as const,
+    expectedAssertions: 3,
+    expectedReason: /restores the primary buffer and the saved cursor/,
+  },
+  {
+    name: "cursor-fail",
+    restoresPrimary: true,
+    cursorReplies: [
+      { row: 2, col: 3 },
+      { row: 3, col: 2 },
+      { row: 3, col: 2 },
+    ],
+    expectedStatus: "unsupported" as const,
+    expectedOutcome: "unsupported" as const,
+    expectedAssertionType: "query_reply" as const,
+    expectedAssertions: 1,
+    expectedReason: /saved cursor was not restored/,
+  },
+  {
+    name: "marker-fail",
+    restoresPrimary: false,
+    cursorReplies: [
+      { row: 2, col: 3 },
+      { row: 3, col: 2 },
+      { row: 2, col: 3 },
+    ],
+    expectedStatus: "probe-todo" as const,
+    expectedOutcome: "inconclusive" as const,
+    expectedAssertionType: "screenshot" as const,
+    expectedAssertions: 0,
+    expectedReason: /switching to the alternate screen did not show/,
+  },
+  {
+    name: "missing-reply",
+    restoresPrimary: true,
+    cursorReplies: [{ row: 2, col: 3 }, { row: 3, col: 2 }, null],
+    expectedStatus: "probe-todo" as const,
+    expectedOutcome: "inconclusive" as const,
+    expectedAssertionType: "screenshot" as const,
+    expectedAssertions: 2,
+    expectedReason: /Missing cursor-position reply after \?1049l exit/,
+  },
+])(
+  "modes.alt-screen.exit round-trips through parseRun for $name",
+  async ({
+    name,
+    restoresPrimary,
+    cursorReplies,
+    expectedStatus,
+    expectedOutcome,
+    expectedAssertionType,
+    expectedAssertions,
+    expectedReason,
+  }) => {
+    const featureId = "modes.alt-screen.exit"
+    const definition = modesProbes.find((item) => item.id === featureId)
+    if (!definition?.term) throw new Error("Missing app alt-screen exit callback")
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    const result = await definition.term(
+      captureSource(24, 80, writes, frames, true, "pixels", restoresPrimary, cursorReplies),
+    )
+    expect(result.observation?.outcome).toBe(expectedOutcome)
+    expect(result.observation?.assertionType).toBe(expectedAssertionType)
+    const assertions = (result.assertions ?? []).map((entry) => ({
+      ...entry,
+      featureId,
+      rawReplyRef: featureId,
+    }))
+    expect(assertions).toHaveLength(expectedAssertions)
+    const recorded = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: "2026-11-09T10:00:00.000Z" },
+      rawReplyRef: featureId,
+      observation: result.observation ? { ...result.observation, featureId, rawReplyRef: featureId } : undefined,
+      assertions,
+      tests: result.tests,
+    })
+    expect(recorded.status).toBe(expectedStatus)
+    expect(recorded.reason).toMatch(expectedReason)
+    const suite = "a".repeat(64)
+    const manifest: ProbeSuiteManifest = {
+      schemaVersion: 4,
+      probeHash: suite,
+      adapterVersion: "3.3.1",
+      generatedAt: "2026-11-09T10:00:00.000Z",
+      catalogIds: [featureId],
+      probes: { term: [featureId], lib: [], mux: [] },
+    }
+    const queries = cursorReplies.flatMap((reply) =>
+      reply ? [{ query: "\x1b[6n", raw: `\x1b[${reply.row};${reply.col}R` }] : [],
+    )
+    const run = {
+      schemaVersion: 4,
+      source: { kind: "live" },
+      runId: `alt-screen-exit-${name}`,
+      suiteId: suite,
+      probeHash: suite,
+      sourceRevision: "4".repeat(40),
+      intendedSubject: { kind: "term", id: "kitty" },
+      subject: {
+        kind: "term",
+        id: "kitty",
+        version: "0.49.2",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-11-09T10:01:00.000Z",
+      origin: { kind: "collector" },
+      sealedAt: "2026-11-09T10:02:00.000Z",
+      rawReplies: {
+        [featureId]: JSON.stringify({ writes, queries, events: [] }),
+        ...(result.response ? { [`${featureId}.callbackResponse`]: result.response } : {}),
+      },
+      assertions,
+      screenshotRefs: [...new Set((recorded.frames ?? []).map((frame) => frame.ref))],
+      results: [recorded],
+    }
+    const parsed = parseRun(
+      `alt-screen-exit-${name}.json`,
+      JSON.stringify(run),
+      [featureId],
+      new Map([[suite, manifest]]),
+    )
+    expect(parsed.results?.[0]?.status).toBe(expectedStatus)
+    expect(parsed.results?.[0]?.reason).toMatch(expectedReason)
+    expect(parsed.results?.[0]?.assertionType).toBe(expectedAssertionType)
+    expect(parsed.assertions).toHaveLength(expectedAssertions)
+    if (name === "cursor-fail") {
+      expect(parsed.results?.[0]).not.toHaveProperty("frames")
+      expect(parsed.results?.[0]).not.toHaveProperty("screenshotRef")
+      expect(parsed.assertions?.[0]).toMatchObject({
+        assertionType: "query_reply",
+        kind: "negative",
+        observed: JSON.stringify({
+          before: { row: 2, col: 3 },
+          inside: { row: 3, col: 2 },
+          after: { row: 3, col: 2 },
+        }),
+      })
+      expect(parsed.assertions?.[0]?.observed).not.toMatch(/sha256:/)
+      const state = JSON.parse(result.response ?? "null") as {
+        frames?: Array<{ ref: string; label: string }>
+        cursor?: unknown
+      }
+      expect(state.frames?.length).toBeGreaterThan(0)
+      expect(state.cursor).toEqual({
+        before: { row: 2, col: 3 },
+        inside: { row: 3, col: 2 },
+        after: { row: 3, col: 2 },
+      })
+    }
+  },
+)
 
 // The old positive pinned only primary restoration. Exercise actual semantic buffer writes:
 // a clear-on-entry 1047 must not hide its broken exit, and 47 must qualify that independent access.
