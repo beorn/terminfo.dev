@@ -1631,7 +1631,13 @@ function viewportApplication(
   const cols = 80
   const lines = [""]
   const writes: string[] = []
-  const frames: { frame: ObservationFrame; grid: string[]; top: number; down: number }[] = []
+  const frames: {
+    frame: ObservationFrame
+    grid: string[]
+    top: number
+    down: number
+    cells?: { top: number; left: number; bottom: number; right: number }
+  }[] = []
   let row = 0
   let col = 0
   let top = 0
@@ -1775,7 +1781,8 @@ function viewportApplication(
       : undefined
     const frame: ObservationFrame = {
       kind: "pixels",
-      ...request,
+      role: request.role,
+      label: request.label,
       capturedAt: frames.length + 1,
       ref: `sha256:${createHash("sha256")
         .update(`viewport-frame:${frames.length + 1}`)
@@ -1785,7 +1792,7 @@ function viewportApplication(
     }
     if (options.digest === "missing") Reflect.deleteProperty(frame, "pixelsDigest")
     if (options.digest === "empty") frame.pixelsDigest = ""
-    frames.push({ frame, grid, top, down: downs })
+    frames.push({ frame, grid, top, down: downs, cells: request.cells })
     return frame
   }
   return {
@@ -1824,7 +1831,7 @@ test.each([
     // Calibration captures 3 + 5 = 8 cell-cropped control frames, then Bref + 8 ordinary + 8 synchronized = 25 frames.
     expect(app.frames).toHaveLength(25)
     for (let i = 0; i < 8; i++) {
-      expect(app.frames[i]?.frame.cells).toEqual({ top: 1, left: 1, bottom: 5, right: 9 })
+      expect(app.frames[i]?.cells).toEqual({ top: 1, left: 1, bottom: 5, right: 9 })
       expect(app.frames[i]?.frame.regionDigest).toMatch(/^sha256:/)
     }
     expect(app.frames.map(({ down }) => down)).toEqual([
