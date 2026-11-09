@@ -40,9 +40,10 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
     vi.stubEnv("TERMINFO_RUN_ID", runId)
     vi.stubEnv("TERMINFO_MUX_KIND", "")
     vi.stubEnv("TERMINFO_TARGET_ID", "xterm")
-    for (const disabled of ["none", "icon", "title", "inert"] as const) {
+    for (const disabled of ["none", "icon", "title", "inert", "late-title"] as const) {
       let title = "original title"
       let icon = "original icon"
+      let pending: string | undefined
       const writes: string[] = []
       const input = {
         featureId,
@@ -52,7 +53,16 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
         withIconNameFixture: async (
           _write: (s: string) => void,
           work: (read: () => Promise<string>) => Promise<AppSemanticReading>,
-        ) => work(async () => icon),
+        ) =>
+          work(async () => {
+            // A delayed App update must not manufacture an old-title/new-icon pair.
+            if (pending !== undefined) {
+              title = pending
+              icon = pending
+              pending = undefined
+            }
+            return icon
+          }),
         write(bytes: string) {
           writes.push(bytes)
           const m = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
@@ -61,13 +71,20 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
           const payload = m[2]
           if (!code || payload === undefined) throw Error("invalid OSC fixture")
           const target = payload.includes("-target-")
+          if (target && code === "1" && disabled === "late-title") {
+            pending = payload
+            return
+          }
           if (target && disabled === "inert") return
           if (code !== "1" && !(target && disabled === "title")) title = payload
           if (code !== "2" && !(target && disabled === "icon")) icon = payload
         },
       }
       const reading = await readAppSemanticState(input)
-      const expectedToWork = disabled === "none" || (featureId.includes("osc1") && disabled === "title")
+      const expectedToWork =
+        disabled === "none" ||
+        (featureId.includes("osc1") && disabled === "title") ||
+        (featureId.includes("osc0") && disabled === "late-title")
       const { gradeAppSemanticState } = await import("../../probe-defs/src/app-semantic-state.ts")
       const result = gradeAppSemanticState(reading)
       if (expectedToWork) expect(result).toMatchObject({ observation: { outcome: "supported" } })

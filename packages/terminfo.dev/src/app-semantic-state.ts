@@ -741,7 +741,12 @@ export async function readAppSemanticState(input: {
       }
       return await fixture(input.write, async (readIcon) => {
         const nonce = randomUUID().slice(0, 8)
-        const pair = async () => JSON.stringify([await readTitle(), await readIcon()])
+        const pair = async () => {
+          // Observe the icon effect before its independent title invariant;
+          // otherwise a delayed update can splice old title with new icon.
+          const icon = await readIcon()
+          return JSON.stringify([await readTitle(), icon])
+        }
         const osc = (body: string) => input.write(`\x1b]${body}\x07`)
         const before = await pair()
         osc(`7655;icon-inert-${nonce}`)
