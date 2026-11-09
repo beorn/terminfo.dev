@@ -837,6 +837,17 @@ test.each([
     expectedReason: /Main-grow post-resize captures did not stabilize; retained history unmeasured/,
   },
   {
+    name: "probe-todo-unanswered-ref-fence",
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "reflowed" as const,
+    dropRefFence: true,
+    expectedStatus: "probe-todo" as const,
+    expectedOutcome: undefined,
+    expectedAssertions: 0,
+    expectedFrames: 0,
+    expectedReason: /No cursor-position reply after painting main-grow ref reflowed; retained history unmeasured/,
+  },
+  {
     name: "probe-invalid-restore-failed",
     growBehavior: "reflowed" as const,
     shrinkBehavior: "reflowed" as const,
@@ -854,6 +865,7 @@ test.each([
     growBehavior,
     shrinkBehavior,
     disableCsi18t,
+    dropRefFence,
     failRestore,
     expectedStatus,
     expectedOutcome,
@@ -940,6 +952,7 @@ test.each([
           }
         },
         queryCursorPosition: async () => {
+          if (dropRefFence && screenPlane === "ref-paint") return null
           if (screenPlane === "seed-grow" && currentCols === narrowCols) return { row: 5, col: 1 }
           if (screenPlane === "seed-shrink" && currentCols === wideCols) return { row: 4, col: 1 }
           return { row: rows, col: currentCols }
@@ -1037,7 +1050,9 @@ test.each([
       }
       const result = await definition.term!(context)
       expect(resizeCalls[0]?.width).toBeLessThan(wideCols * 10)
-      if (growBehavior !== "unstable") {
+      if (dropRefFence) {
+        expect(frames).toHaveLength(3)
+      } else if (growBehavior !== "unstable") {
         expect(timeoutDelays.filter((ms) => ms >= 1000)).toHaveLength(2)
       }
       expect(result.observation?.outcome).toBe(expectedOutcome)

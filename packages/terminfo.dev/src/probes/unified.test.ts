@@ -1546,9 +1546,13 @@ function geometryOwner(
 
 // Direct viewport fixtures bypass this input adaptation. Static pixels deliberately fail in-run
 // wheel displacement calibration: the contract here is native batch input/capture wiring without external wheelPlacement.
-it.each([false, true])(
-  "calibrates viewport wheel placement in-run through the native batch (deliverKey: %s)",
-  async (deliverKey) => {
+it.each([
+  { deliverKey: false, replyCursor: true },
+  { deliverKey: true, replyCursor: true },
+  { deliverKey: true, replyCursor: false },
+])(
+  "calibrates viewport wheel placement in-run through the native batch (deliverKey: $deliverKey, replyCursor: $replyCursor)",
+  async ({ deliverKey, replyCursor }) => {
     verifiedBatchFixture()
     const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
     receiptDirectories.push(directory)
@@ -1558,6 +1562,9 @@ it.each([false, true])(
     const writes: string[] = []
     process.stdout.write = ((text: string) => {
       writes.push(text)
+      if (replyCursor && text.includes("\x1b[6n")) {
+        queueMicrotask(() => process.stdin.emit("data", Buffer.from("\x1b[1;1R")))
+      }
       return true
     }) as typeof process.stdout.write
     const injectKey = vi.fn(async () => {
@@ -1579,15 +1586,19 @@ it.each([false, true])(
     const row = batch.results.find((result) => result.featureId === id)!
     expect(row).toMatchObject({
       status: "probe-todo",
-      reason: deliverKey ? "wheel placement bound not established" : "viewport input delivery not observed",
+      reason: !replyCursor
+        ? "no cursor-position reply after painting calibration seed"
+        : deliverKey
+          ? "wheel placement bound not established"
+          : "viewport input delivery not observed",
     })
     expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({
-      calibration: deliverKey ? { matchedDisplacements: [] } : { delivery: null },
+      calibration: !replyCursor ? {} : deliverKey ? { matchedDisplacements: [] } : { delivery: null },
     })
-    expect(capture).toHaveBeenCalledTimes(deliverKey ? 11 : 1)
+    expect(capture).toHaveBeenCalledTimes(!replyCursor ? 0 : deliverKey ? 11 : 1)
     expect(writes.length > 0).toBe(true)
-    expect(injectKey).toHaveBeenCalledTimes(1)
-    expect(injectClick).toHaveBeenCalledTimes(deliverKey ? 35 : 0)
+    expect(injectKey).toHaveBeenCalledTimes(!replyCursor ? 0 : 1)
+    expect(injectClick).toHaveBeenCalledTimes(!replyCursor ? 0 : deliverKey ? 35 : 0)
     expect(batch.observations).toEqual([])
     expect(batch.assertions).toEqual([])
   },

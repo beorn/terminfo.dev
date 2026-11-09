@@ -1679,6 +1679,7 @@ function viewportApplication(
   }
   const { context } = silentAppSource(rows, cols)
   context.input = input
+  context.queryCursorPosition = async () => ({ row: row + 1, col: col + 1 })
   context.readInput = async (pattern, _timeout, inject) => {
     delivered = ""
     await inject?.()

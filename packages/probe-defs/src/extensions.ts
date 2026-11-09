@@ -6616,13 +6616,19 @@ const extensionDefinitions: ProbeDefinition[] = [
               } else {
                 const growAfter = await grab("target", "main-grow after", growCells, growPixelGeometry)
                 ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
-                await ctx.queryCursorPosition()
+                if (!(await ctx.queryCursorPosition())) {
+                  return todoResult("No cursor-position reply after painting main-grow ref reflowed")
+                }
                 const growReflowed = await grab("control", "main-grow ref reflowed", growCells, growPixelGeometry)
                 ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`)
-                await ctx.queryCursorPosition()
+                if (!(await ctx.queryCursorPosition())) {
+                  return todoResult("No cursor-position reply after painting main-grow ref preserved")
+                }
                 const growPreserved = await grab("control", "main-grow ref preserved", growCells, growPixelGeometry)
                 ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\nHARD-a\r\nHARD-b\r\n`)
-                await ctx.queryCursorPosition()
+                if (!(await ctx.queryCursorPosition())) {
+                  return todoResult("No cursor-position reply after painting main-grow ref clipped")
+                }
                 const growClipped = await grab("control", "main-grow ref clipped", growCells, growPixelGeometry)
                 const growRefs = {
                   reflowed: growReflowed,
@@ -6674,7 +6680,9 @@ const extensionDefinitions: ProbeDefinition[] = [
                       ctx.write(
                         `\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`,
                       )
-                      await ctx.queryCursorPosition()
+                      if (!(await ctx.queryCursorPosition())) {
+                        return todoResult("No cursor-position reply after painting main-shrink ref reflowed")
+                      }
                       const shrinkReflowed = await grab(
                         "control",
                         "main-shrink ref reflowed",
@@ -6682,7 +6690,9 @@ const extensionDefinitions: ProbeDefinition[] = [
                         shrinkPixelGeometry,
                       )
                       ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
-                      await ctx.queryCursorPosition()
+                      if (!(await ctx.queryCursorPosition())) {
+                        return todoResult("No cursor-position reply after painting main-shrink ref reflowed-history")
+                      }
                       const shrinkReflowedHistory = await grab(
                         "control",
                         "main-shrink ref reflowed-history",
@@ -6690,7 +6700,9 @@ const extensionDefinitions: ProbeDefinition[] = [
                         shrinkPixelGeometry,
                       )
                       ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
-                      await ctx.queryCursorPosition()
+                      if (!(await ctx.queryCursorPosition())) {
+                        return todoResult("No cursor-position reply after painting main-shrink ref clipped")
+                      }
                       const shrinkClipped = await grab(
                         "control",
                         "main-shrink ref clipped",

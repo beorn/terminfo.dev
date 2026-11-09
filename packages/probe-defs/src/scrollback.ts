@@ -476,7 +476,9 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   try {
     ctx.write("\x1b[?25l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[2J\x1b[3J\x1b[H")
     ctx.write(Array.from({ length: calLines }, (_, row) => `vh-cal-${row}`).join("\r\n"))
-    await ctx.queryCursorPosition()
+    if (!(await ctx.queryCursorPosition())) {
+      return todo("no cursor-position reply after painting calibration seed")
+    }
     const calBottom = await calFrame("Viewport calibration bottom")
     calibration.calBottom = calBottom
     const calDelivery = await readInput(/^a/, 1000, () => input.injectKey("a"))
@@ -495,7 +497,9 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     for (let d = 1; d <= maxCandidate; d++) {
       ctx.write("\x1b[2J\x1b[H")
       ctx.write(Array.from({ length: ctx.rows }, (_, row) => `vh-cal-${calLines - ctx.rows - d + row}`).join("\r\n"))
-      await ctx.queryCursorPosition()
+      if (!(await ctx.queryCursorPosition())) {
+        return todo(`no cursor-position reply after painting calibration candidate ${d}`)
+      }
       const refFrame = await calFrame(`Viewport calibration candidate ${d}`)
       calCandidates[d] = refFrame
       if (!calSame(calScrolled, calBottom) && calSame(calScrolled, refFrame)) {
@@ -516,7 +520,9 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
 
     ctx.write("\x1b[2J\x1b[3J\x1b[H")
     ctx.write(tail)
-    await ctx.queryCursorPosition()
+    if (!(await ctx.queryCursorPosition())) {
+      return todo("no cursor-position reply after painting constructed tail")
+    }
     const reference = await frame("Viewport constructed bottom reference")
     evidence.Bref = reference
     let screenshot = reference
