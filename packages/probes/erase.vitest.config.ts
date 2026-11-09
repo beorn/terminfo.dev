@@ -8,17 +8,19 @@ import { checkoutInlineDeps, terminfoCheckoutAliases } from "../../scripts/check
 import { ERASE_REPLAY_ROOT } from "./erase-store.ts"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..")
+export const eraseCheckoutAlias = terminfoCheckoutAliases(root)
+export const eraseCheckoutInline = checkoutInlineDeps(root)
 
 export default defineConfig(() => {
   mkdirSync(ERASE_REPLAY_ROOT, { recursive: true })
   const directory = mkdtempSync(join(ERASE_REPLAY_ROOT, "report-"))
   return {
-    resolve: { alias: terminfoCheckoutAliases(root) },
+    resolve: { alias: eraseCheckoutAlias },
     test: {
       attachmentsDir: join(directory, "vitest-attachments"),
       include: ["packages/probes/erase-replay.probe.ts"],
       reporters: ["default", new CensusReporter(directory)],
-      server: { deps: { inline: checkoutInlineDeps(root) } },
+      server: { deps: { inline: eraseCheckoutInline } },
     },
   }
 })

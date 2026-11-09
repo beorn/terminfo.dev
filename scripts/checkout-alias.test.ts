@@ -9,7 +9,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { expect, it } from "vitest"
-import eraseConfig from "../packages/probes/erase.vitest.config.ts"
+import { eraseCheckoutAlias, eraseCheckoutInline } from "../packages/probes/erase.vitest.config.ts"
 import probesConfig from "../packages/probes/vitest.config.ts"
 import rootConfig from "../vitest.config.ts"
 import { checkoutInlineDeps, terminfoCheckoutAliases } from "./checkout-alias.ts"
@@ -60,11 +60,13 @@ it("every vitest config aliases this checkout and inlines those packages", async
   const inline = checkoutInlineDeps(root)
   expect(inline.some((pattern) => pattern.test("@terminfo/probe-defs"))).toBe(true)
   expect(inline.some((pattern) => pattern.test("viprobe"))).toBe(true)
-  for (const config of [rootConfig, probesConfig, eraseConfig]) {
+  for (const config of [rootConfig, probesConfig]) {
     const resolved = await resolvedConfig(config)
     expect(resolved.resolve?.alias).toEqual(aliases)
     expect(resolved.test?.server?.deps?.inline?.map((pattern) => pattern.source)).toEqual(
       inline.map((pattern) => pattern.source),
     )
   }
+  expect(eraseCheckoutAlias).toEqual(aliases)
+  expect(eraseCheckoutInline.map((pattern) => pattern.source)).toEqual(inline.map((pattern) => pattern.source))
 })
