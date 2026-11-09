@@ -138,6 +138,14 @@ const declarations: readonly AppSemanticCapability[] = [
     [
       ["extensions.osc555-flash", "555", "555"],
       ["extensions.osc710-font-normal", "710", "710;fixed"],
+      // #32889 step 1: the same performer warning already measured for 555 and 710 covers the four
+      // host-effect commands. Retained lines, run 2026-11-09T21-33-38-598Z (suite 76c756c56745):
+      // "Unhandled OSC  666 test-prop=value", "Unhandled OSC  3008 type=test",
+      // "Unhandled OSC  176 terminfo-test", "Unhandled OSC  440 bell.wav".
+      ["extensions.osc176-app-id", "176", "176;terminfo-test"],
+      ["extensions.osc3008-context", "3008", "3008;type=test"],
+      ["extensions.osc440-audio", "440", "440;bell.wav"],
+      ["extensions.osc666-termprop", "666", "666;test-prop=value"],
       ["extensions.osc633-a", "633", "633;A"],
       ["extensions.osc633-b", "633", "633;B"],
       ["extensions.osc633-c", "633", "633;C"],
