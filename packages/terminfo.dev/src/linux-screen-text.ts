@@ -3,10 +3,6 @@ import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute } from "node:path"
 
-const HARDCOPY_POLL_DEADLINE_MS = 2000
-const HARDCOPY_POLL_INTERVAL_MS = 10
-const pollWaitBuffer = new Int32Array(new SharedArrayBuffer(4))
-
 interface ScreenScrollbackOptions {
   readonly executable: string
   /** The explicit owned session; absent, blank or padded never falls back to an ambient one. */
@@ -104,15 +100,15 @@ function resolveScrollbackCapacity(
 }
 
 /**
- * `hardcopy -h` writes the session's full scrollback capacity followed by the `rows` visible screen
- * lines, padding unused capacity at the top of the `capacity` history region with blank lines.
- * Because `screen -X hardcopy -h` only queues the dump on the running Screen server and exits 0
- * before the server finishes writing the file, poll until the file holds `capacity + rows` lines
- * (within a 2 s deadline). Count history only inside those first `capacity` lines starting from
- * that region's first non-blank line (`history = max(0, that count)`, `screenLines = rows`,
- * `totalLines = history + rows`).
- * Limit: a real blank line at the very top of retained history looks the same as capacity padding;
- * the probes seed non-blank rows. Screen exposes no viewport offset, so `viewportOffset` stays absent.
+ * `hardcopy -h` writes the session's retained (used) scrollback lines followed by the `rows`
+ * visible screen lines (`rows <= dumpLines <= capacity + rows`); it never pads unused capacity
+ * with blank lines. Because `screen -X hardcopy -h` queues the dump on the running Screen server
+ * and can exit 0 before the server finishes writing the file, follow it with synchronous
+ * `screen -S <session> -Q number` on the same owned `SCREENDIR`: Screen handles commands in order
+ * and writes the dump inside `hardcopy -h` before answering the query. Then read the file once and
+ * count `history = dumpLines - rows`, `screenLines = rows`, `totalLines = dumpLines` (with no
+ * first-non-blank rule), refusing if the query fails or `dumpLines` is outside
+ * `[rows, capacity + rows]`. Screen exposes no viewport offset, so `viewportOffset` stays absent.
  */
 export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenScrollbackReading {
   const session = options.session?.trim() ?? ""
@@ -138,16 +134,17 @@ export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenSc
     return { status: "refused", reason: resolvedCapacity.reason }
   }
   const { capacity } = resolvedCapacity
-  const expectedLines = capacity + rows
+  const maxLines = capacity + rows
   if (existsSync(options.hardcopyPath)) {
     return {
       status: "refused",
       reason: `screen hardcopy target at ${options.hardcopyPath} already exists before dump`,
     }
   }
+  const spawnEnv = { ...process.env, SCREENDIR: socketDirectory }
   const result = spawnSync(options.executable, ["-S", session, "-X", "hardcopy", "-h", options.hardcopyPath], {
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, SCREENDIR: socketDirectory },
+    env: spawnEnv,
     timeout: 3000,
     killSignal: "SIGKILL",
   })
@@ -159,58 +156,46 @@ export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenSc
       reason: `screen hardcopy exited ${String(result.status)} at SCREENDIR=${JSON.stringify(socketDirectory)}: stderr=${JSON.stringify(stderr)} stdout=${JSON.stringify(stdout)}`,
     }
   }
-  const startedAt = Date.now()
-  let hasFile = false
-  let lastError: unknown
-  let lastBytes = 0
-  let lastLines: string[] = []
-  while (true) {
-    try {
-      const text = readFileSync(options.hardcopyPath, "utf8")
-      hasFile = true
-      lastError = undefined
-      lastBytes = Buffer.byteLength(text)
-      lastLines = text === "" ? [] : text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n")
-      if (lastLines.length === expectedLines) break
-      if (lastLines.length > expectedLines) {
-        return {
-          status: "refused",
-          reason: `screen hardcopy at ${options.hardcopyPath} has ${lastLines.length} lines (${lastBytes} bytes), expected ${expectedLines} lines (${capacity} capacity + ${rows} screen rows)`,
-        }
-      }
-    } catch (error) {
-      hasFile = false
-      lastError = error
-      lastBytes = 0
-      lastLines = []
+  const query = spawnSync(options.executable, ["-S", session, "-Q", "number"], {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: spawnEnv,
+    timeout: 3000,
+    killSignal: "SIGKILL",
+  })
+  const queryStdout = query.stdout?.toString() ?? ""
+  const queryStderr = query.stderr?.toString() ?? ""
+  if (query.status !== 0) {
+    return {
+      status: "refused",
+      reason: `screen query (-Q number) exited ${String(query.status)} at SCREENDIR=${JSON.stringify(socketDirectory)} for ${options.hardcopyPath}: stderr=${JSON.stringify(queryStderr)} stdout=${JSON.stringify(queryStdout)}`,
     }
-    const elapsedMs = Date.now() - startedAt
-    if (elapsedMs >= HARDCOPY_POLL_DEADLINE_MS) {
-      const seen = !hasFile
-        ? `no readable file (${String((lastError as Error)?.message ?? lastError)})`
-        : lastBytes === 0
-          ? "empty file (0 bytes, 0 lines)"
-          : `${lastBytes} bytes, ${lastLines.length} lines`
-      return {
-        status: "refused",
-        reason: `screen hardcopy at ${options.hardcopyPath} incomplete after ${elapsedMs}ms (deadline ${HARDCOPY_POLL_DEADLINE_MS}ms): saw ${seen}, expected ${expectedLines} lines (${capacity} capacity + ${rows} screen rows)`,
-      }
-    }
-    const remainingMs = HARDCOPY_POLL_DEADLINE_MS - elapsedMs
-    Atomics.wait(pollWaitBuffer, 0, 0, Math.min(HARDCOPY_POLL_INTERVAL_MS, remainingMs))
   }
-  // Limit: a real blank line at the very top of retained history looks the same as capacity
-  // padding; the probes seed non-blank rows.
-  const historyRegion = lastLines.slice(0, capacity)
-  const firstNonBlank = historyRegion.findIndex((line) => line.trim().length > 0)
-  const history = firstNonBlank < 0 ? 0 : Math.max(0, historyRegion.length - firstNonBlank)
+  let text: string
+  try {
+    text = readFileSync(options.hardcopyPath, "utf8")
+  } catch (error) {
+    return {
+      status: "refused",
+      reason: `screen hardcopy at ${options.hardcopyPath} could not be read after -Q number: ${String((error as Error)?.message ?? error)}`,
+    }
+  }
+  const bytes = Buffer.byteLength(text)
+  const dumpLines = text === "" ? [] : text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n")
+  if (dumpLines.length < rows || dumpLines.length > maxLines) {
+    const detail = bytes === 0 ? "empty file (0 bytes, 0 lines)" : `${dumpLines.length} lines (${bytes} bytes)`
+    return {
+      status: "refused",
+      reason: `screen hardcopy at ${options.hardcopyPath} has ${detail}, expected ${rows}..${maxLines} lines (${rows} screen rows + up to ${capacity} history capacity)`,
+    }
+  }
+  const history = dumpLines.length - rows
   const screenLines = rows
-  const totalLines = history + rows
+  const totalLines = dumpLines.length
   return {
     status: "read",
     totalLines,
     screenLines,
     capacity,
-    receipt: `screen hardcopy -h bytes=${lastBytes} dumpLines=${lastLines.length} capacity=${capacity} history=${history} screenLines=${screenLines} totalLines=${totalLines}`,
+    receipt: `screen hardcopy -h bytes=${bytes} dumpLines=${dumpLines.length} capacity=${capacity} history=${history} screenLines=${screenLines} totalLines=${totalLines}`,
   }
 }

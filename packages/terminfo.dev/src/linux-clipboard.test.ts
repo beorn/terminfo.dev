@@ -101,8 +101,12 @@ mock.module("node:fs", () => ({...fs,
 mock.module("node:child_process", () => ({...cp,
   spawnSync(file,args,options) {
     assert.equal(file,exe("screen"))
-    assert.deepEqual(args.slice(0,5),["-S",muxTarget.session,"-X","hardcopy","-h"])
     assert.equal(options.env.SCREENDIR,root)
+    if (args[2] === "-Q") {
+      assert.deepEqual(args,["-S",muxTarget.session,"-Q","number"])
+      return {status:0,stdout:Buffer.from("0 (bash)\n"),stderr:Buffer.alloc(0)}
+    }
+    assert.deepEqual(args.slice(0,5),["-S",muxTarget.session,"-X","hardcopy","-h"])
     const path=args[5]
     assert.equal(path.slice(0,path.lastIndexOf("/")),join(root,"artifacts"))
     assert(path.includes(muxTarget.session))
@@ -110,7 +114,7 @@ mock.module("node:child_process", () => ({...cp,
     hardcopies.push(path)
     if(variant==="screen-refused")return {status:2,stdout:Buffer.alloc(0),stderr:Buffer.from("screen fixture refusal")}
     const used = variant === "screen-more" ? 21 : 20
-    real.writeFileSync(path, "\n".repeat(100 - used) + "row\n".repeat(used + 24))
+    real.writeFileSync(path, "row\n".repeat(used + 24))
     if(variant==="screen-owner-lost")variant="detached"
     return {status:0,stdout:Buffer.alloc(0),stderr:Buffer.alloc(0)}
   },
