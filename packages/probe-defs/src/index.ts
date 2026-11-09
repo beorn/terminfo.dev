@@ -119,6 +119,7 @@ export {
   type RegionRead,
   type RegionReadback,
 } from "./region-readback.ts"
+export { assertCalibratedCaptureGeometry, type CalibratedGeometrySource } from "./calibrated-capture-geometry.ts"
 
 // The kind tables, so a real-backend test (packages/probes) can run every kind row's parser arm
 // against a terminal that actually implements the sequences (@cto 28450 must-fix 1, 2026-10-12).

@@ -17,7 +17,7 @@ import type {
   ProbeCallbackResult,
   ProbeSuiteManifest,
 } from "./types.ts"
-import { assertCalibratedCaptureGeometry } from "./testing/calibrated-capture-geometry.ts"
+import { assertCalibratedCaptureGeometry } from "./calibrated-capture-geometry.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
@@ -1197,7 +1197,7 @@ function captureApp(rows: number, cols: number) {
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => null,
     capture: async (request) => {
-      assertCalibratedCaptureGeometry(context, request)
+      assertCalibratedCaptureGeometry(context.captureGeometry, request)
       const { role, label } = request
       const frame = {
         role,
@@ -1768,7 +1768,7 @@ function viewportApplication(
     if (options.captureError === true || (options.captureError === "after-up" && ups > 0)) {
       throw new Error("viewport capture failed")
     }
-    assertCalibratedCaptureGeometry(context, request)
+    assertCalibratedCaptureGeometry(context.captureGeometry, request)
     const inHoldPhase = lines.some((line) => line.startsWith("vh-tail-"))
     const grid = Array.from({ length: rows }, (_, index) =>
       (options.opaqueHistory && inHoldPhase && top < bottom()) ||

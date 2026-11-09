@@ -357,10 +357,18 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       assert.equal(typeof options.prepareCapture, "function", "Linux serve installation must prepare capture before probe callbacks")
       source = { kind: "live", rows: 24, cols: 80 }
       const retained = []
+      await assert.rejects(
+        () => options.capture(checkpoints[0]),
+        { name: "UndeclaredTerminalGeometry", message: "Linux capture calibration refused: no witnessed text-area origin is available" }
+      )
       await options.prepareCapture({ source, featureId: "collector.captureCalibration", recordCapture: result => retained.push(result) })
       assert.equal(calibrations, 1)
       assert.strictEqual(source.captureGeometry.geometry, pixelGeometry)
       assert.deepEqual(retained, [raw], "raw calibration evidence reaches batch retention")
+      await assert.rejects(
+        () => options.capture({ ...checkpoints[0], pixelGeometry: { ...pixelGeometry, textWidth: pixelGeometry.textWidth - pixelGeometry.cellWidth } }),
+        { name: "UndeclaredTerminalGeometry", message: "Linux capture calibration refused: terminal pixel geometry changed after origin calibration" }
+      )
       const visualFrames = []
       for (const checkpoint of checkpoints) visualFrames.push((await options.capture(checkpoint)).frame)
       assert.deepEqual(capturedCheckpoints, checkpoints)

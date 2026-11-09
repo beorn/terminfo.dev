@@ -10,7 +10,7 @@ import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
 import { extensionsProbes } from "./extensions.ts"
 import { DECLARED_UNTESTABLE_TEST, HEADLESS_OBSERVABLE_REVIEW, recordExecutedProbe } from "./helpers.ts"
 import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
-import { assertCalibratedCaptureGeometry } from "./testing/calibrated-capture-geometry.ts"
+import { assertCalibratedCaptureGeometry } from "./calibrated-capture-geometry.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ObservationFrame, ProbeSuiteManifest, TermProbeSource } from "./types.ts"
 
@@ -35,7 +35,7 @@ function captureApp(rows: number, cols: number) {
     },
     queryMode: async () => null,
     capture: async (request) => {
-      assertCalibratedCaptureGeometry(context, request)
+      assertCalibratedCaptureGeometry(context.captureGeometry, request)
       const { role, label } = request
       const frame = {
         role,
@@ -112,7 +112,7 @@ function calibratedIterm2Arm(
       cells?: { top: number; left: number; bottom: number; right: number }
       pixelGeometry?: { cellWidth: number; cellHeight: number; textWidth: number; textHeight: number }
     }) => {
-      assertCalibratedCaptureGeometry(context, request)
+      assertCalibratedCaptureGeometry(context.captureGeometry, request)
       const { role, label, cells } = request
       const frame: ObservationFrame = {
         kind: "pixels",
@@ -1057,7 +1057,7 @@ test.each([
                   },
                 }
               : rawRequest
-          assertCalibratedCaptureGeometry(context, request)
+          assertCalibratedCaptureGeometry(context.captureGeometry, request)
           const { role, label, cells } = request
           const cropTop = cells?.top ?? 1
           const cropLeft = cells?.left ?? 1

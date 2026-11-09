@@ -23,6 +23,7 @@ import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import {
+  assertCalibratedCaptureGeometry,
   type CaptureCells,
   type ObservationFrame,
   DEFAULT_TIMEOUT_MS,
@@ -639,11 +640,6 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       const platform = process.platform === "linux" ? "Linux" : "Darwin"
       let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
       let calibrationError: Error | undefined
-      const noGeometry = (message: string) => {
-        const error = new Error(`${platform} capture calibration refused: ${message}`)
-        error.name = "UndeclaredTerminalGeometry"
-        return error
-      }
       // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
       // already measured: the adapter never queries the terminal itself, so the geometry it tests a
       // frame request against and the geometry the origin was calibrated on can never diverge.
@@ -651,22 +647,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         textCapture = false
         capture = async (checkpoint) => {
           if (calibrationError) throw calibrationError
-          if (!checkpoint.cells && !checkpoint.pixelGeometry) {
+          const origin = assertCalibratedCaptureGeometry(textOrigin, checkpoint, platform)
+          if (!origin) {
             const result = await adapter.captureRaw(checkpoint)
             return result.result
           }
-          if (!textOrigin) throw noGeometry("no witnessed text-area origin is available")
-          const geometry = textOrigin.pixelGeometry
-          if (
-            checkpoint.pixelGeometry &&
-            (checkpoint.pixelGeometry.cellWidth !== geometry.cellWidth ||
-              checkpoint.pixelGeometry.cellHeight !== geometry.cellHeight ||
-              checkpoint.pixelGeometry.textWidth !== geometry.textWidth ||
-              checkpoint.pixelGeometry.textHeight !== geometry.textHeight)
-          ) {
-            throw noGeometry("terminal pixel geometry changed after origin calibration")
-          }
-          return adapter.capture(checkpoint, textOrigin)
+          return adapter.capture(checkpoint, origin)
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           // Text restoration remains fatal, outside the pixel calibration refusal handling.
