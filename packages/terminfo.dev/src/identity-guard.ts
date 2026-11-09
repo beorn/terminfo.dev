@@ -166,6 +166,16 @@ function measuredVersionPattern(rule: TerminalIdentityRule | undefined): RegExp 
   return rule?.xtversionPattern?.source.includes("(?<version>") ? rule.xtversionPattern : undefined
 }
 
+/**
+ * The apparatus may declare a version for a target that reports none at all (Alacritty answers no
+ * XTVERSION). Only that unknown case takes the declaration; a measured or detected version always
+ * wins, and the run's provenance check still holds the binary's own `--version` to it.
+ */
+export function declaredAppVersion(measured: string, declared: string | undefined): string {
+  const declaredVersion = (declared ?? "").trim()
+  return measured === "unknown" && declaredVersion ? declaredVersion : measured
+}
+
 /** Use only a complete measured reply; a detected version must agree with it. */
 export function resolveMeasuredAppVersion(
   terminal: string,

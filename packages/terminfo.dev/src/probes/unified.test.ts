@@ -88,6 +88,40 @@ it.each(["coverage", "explicit todo"] as const)(
   },
 )
 
+// @failure A real App callback that reports coverage without a notTested block drops the audited
+// declaration; the stubbed two-path case above cannot see it because both stub shapes carry one.
+// @level l1
+// @consumer current-child App declarations -> runProbeBatch canonical recorder -> OSC 710 callback.
+it("applies the audited Alacritty declaration to the real OSC 710 coverage result", async () => {
+  const id = "extensions.osc710-font-normal"
+  const subject = { kind: "term" as const, id: "alacritty", version: "0.17.0", os: "linux" as const }
+  const declarations = appSemanticDeclarations(subject, {
+    observedAt: new Date().toISOString(),
+    address: "absent" as const,
+    socket: { path: "/fixture/bus", outcome: "absent" as const, code: "ENOENT" },
+  })
+  expect(declarations[id]).toContain("Untestable (no way)")
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const declared = await runProbeBatch({
+    ids: [id],
+    subject,
+    appDeclarations: declarations,
+    ownedTerminal: geometryOwner(noGeometry),
+  })
+  expect(declared.results.find((result) => result.featureId === id)).toMatchObject({
+    status: "untestable",
+    reason: declarations[id],
+  })
+  const undeclared = await runProbeBatch({
+    ids: [id],
+    subject,
+    appDeclarations: {},
+    ownedTerminal: geometryOwner(noGeometry),
+  })
+  expect(undeclared.results.find((result) => result.featureId === id)).toMatchObject({ status: "probe-todo" })
+})
+
 // @failure Notification cells select no-setup without this run's missing bus, or remain TODO after observed absence.
 // Existing Ghostty cases cover prompt rows, not the fourteen notification positions.
 // @level l1
@@ -153,22 +187,22 @@ it.each([
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc7-cwd" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc7-cwd" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "modes.decsclm" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc7-cwd" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "modes.decsclm" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc633-e" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc133-a" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc133-b" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc3008-context" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 4, feature: "extensions.osc133-d" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 11, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 11, feature: "extensions.osc666-termprop" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc666-termprop" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 11, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 11, feature: "extensions.osc440-audio" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc176-app-id" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc440-audio" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 22, feature: "extensions.osc3008-context" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc176-app-id" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc3008-context" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc440-audio" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc3008-context" },
