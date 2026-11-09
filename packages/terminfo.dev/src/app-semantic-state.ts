@@ -417,15 +417,6 @@ const declarations: readonly AppSemanticCapability[] = [
     id: "ghostty",
     version: "1.4.0",
     os: "linux",
-    featureId: "extensions.osc3008-context",
-    reason:
-      "Untestable (no way): Ghostty 1.4.0 parses OSC 3008 but implements no context callback, so it stores no context and exposes no readback. In ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar (SHA256 d692bb9b, version 1.4.0), osc/parsers/hierarchical_context.zig:258 parses the start=/end= grammar and osc.zig:1170 dispatches it, but stream.zig:2964-2970 sends the parsed command to the unimplemented OSC group, which only logs it at debug level. A debug trace of a parsed command is not a context reading.",
-  },
-  {
-    kind: "term",
-    id: "ghostty",
-    version: "1.4.0",
-    os: "linux",
     featureId: "extensions.osc710-font-normal",
     reason:
       "Untestable (no way): Ghostty 1.4.0 has no OSC 710 font-selection command or public font readback. In ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar (SHA256 d692bb9b), osc.zig:989-995 sends the digit 1 after 7 to unknownOrInvalid at 748-753; unknown_max_bytes defaults to 0 at 496, so it marks the sequence invalid. end() at 1092-1103 returns no command and logs nothing. That silent parser rejection is not a command-specific refusal or font reading.",
