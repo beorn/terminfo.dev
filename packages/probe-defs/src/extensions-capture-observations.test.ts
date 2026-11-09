@@ -12,6 +12,7 @@ import { DECLARED_UNTESTABLE_TEST, HEADLESS_OBSERVABLE_REVIEW, recordExecutedPro
 import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
 import { assertCalibratedCaptureGeometry } from "./calibrated-capture-geometry.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+import { cellRectangle } from "../../terminfo.dev/src/capture-core.ts"
 import type { ObservationFrame, ProbeSuiteManifest, TermProbeSource } from "./types.ts"
 
 function captureApp(rows: number, cols: number) {
@@ -968,11 +969,15 @@ test.each([
             screenPlane = "seed-shrink"
             paintPayload(`${shrinkRow1Full}${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`, true)
           } else if (
+            bytes.startsWith("\x1b[?7h\x1b[0m\x1b[2J\x1b[3J\x1b[H") ||
+            bytes.startsWith("\x1b[?7l\x1b[0m\x1b[2J\x1b[3J\x1b[H") ||
             bytes.startsWith("\x1b[?7h\x1b[0m\x1b[2J\x1b[H") ||
             bytes.startsWith("\x1b[?7l\x1b[0m\x1b[2J\x1b[H")
           ) {
             const autowrap = bytes.startsWith("\x1b[?7h")
-            const body = bytes.replace(/^\x1b\[\?7[hl]\x1b\[0m\x1b\[2J\x1b\[H/, "").replace(/\x1b\[\?7h$/, "")
+            const body = bytes
+              .replace(/^\x1b\[\?7[hl]\x1b\[0m\x1b\[2J(?:\x1b\[3J)?\x1b\[H/, "")
+              .replace(/\x1b\[\?7h$/, "")
             screenPlane = "ref-paint"
             paintPayload(body, autowrap)
           }
@@ -1099,9 +1104,20 @@ test.each([
       }
       const result = await definition.term!(context)
       expect(resizeCalls[0]?.width).toBeLessThan(wideCols * 10)
+      const clearAndPaintWrites = writes.filter((entry) => entry.includes("\x1b[2J") && !entry.startsWith("\x1b[18t"))
+      expect(clearAndPaintWrites.length).toBeGreaterThan(0)
+      for (const entry of clearAndPaintWrites) {
+        expect(entry).toContain("\x1b[2J\x1b[3J\x1b[H")
+      }
       if (dropRefFence) {
         expect(frames).toHaveLength(3)
-      } else if (growBehavior !== "unstable") {
+        expect(resizeCalls).toHaveLength(3)
+      } else if (growBehavior === "unstable") {
+        expect(frames).toHaveLength(2)
+        expect(resizeCalls).toHaveLength(3)
+      } else {
+        expect(frames).toHaveLength(12)
+        expect(resizeCalls).toHaveLength(4)
         expect(timeoutDelays.filter((ms) => ms >= 1000)).toHaveLength(2)
       }
       expect(result.observation?.outcome).toBe(expectedOutcome)
@@ -1205,3 +1221,469 @@ test.each(["tmux", "screen"] as const)(
     expect(app.writes).toEqual([])
   },
 )
+
+test("extensions.reflow sizes narrow window from original 800px window width so capture-core cellRectangle fits 793px inset grid (#32797)", async () => {
+  const featureId = "extensions.reflow"
+  const definition = find(featureId)
+  const rows = 20
+  const wideCols = 61
+  const cellWidth = 13
+  const cellHeight = 29
+  const textOrigin = { x: 3, y: 10 }
+  const pixelGeometry = {
+    cellWidth,
+    cellHeight,
+    textWidth: wideCols * cellWidth, // 793px inside 800px window (7px spare centered at x=3)
+    textHeight: rows * cellHeight, // 580px inside 600px window (20px spare centered at y=10)
+  }
+  let liveWindow = { width: 800, height: 600 }
+  let currentCols = wideCols
+  let currentRows = rows
+  let screenPlane = "blank"
+  let gridLines: string[] = Array.from({ length: rows }, () => "")
+  let phaseState: "init" | "pre-shrunk" | "grown" | "shrunk" = "init"
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const resizeCalls: { width: number; height: number }[] = []
+  const capturedRectangles: { label: string; width: number; height: number; x: number; y: number }[] = []
+  const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
+  const realSetTimeout = globalThis.setTimeout
+  const realDateNow = Date.now
+  let fakeNow = realDateNow()
+  Date.now = () => fakeNow
+  globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+    fakeNow += ms ?? 0
+    fn()
+    return 0 as unknown as ReturnType<typeof setTimeout>
+  }) as typeof setTimeout
+  try {
+    const narrowCols = 40
+    const growRow1Full = "G1-alpha".padEnd(narrowCols, "x")
+    const growRow2 = "G2-Z"
+    const growSoft = growRow1Full + growRow2
+    const shrinkRow1Full = "S1-alpha".padEnd(narrowCols, "y")
+    const shrinkRow2 = "S2-Z"
+    const paintPayload = (payload: string, autowrap: boolean) => {
+      const next: string[] = []
+      for (const logical of payload.replace(/\r\n$/, "").split("\r\n")) {
+        if (!autowrap || logical.length <= currentCols) {
+          next.push(logical.slice(0, currentCols))
+        } else {
+          for (let offset = 0; offset < logical.length; offset += currentCols) {
+            next.push(logical.slice(offset, offset + currentCols))
+          }
+        }
+      }
+      gridLines = Array.from({ length: currentRows }, (_, idx) => next[idx] ?? "")
+    }
+    const context: TermProbeSource = {
+      kind: "live",
+      rows,
+      cols: wideCols,
+      captureKind: "pixels",
+      captureGeometry: {
+        geometry: pixelGeometry,
+        source: "measured by complete raster calibration",
+      },
+      write: (bytes) => {
+        writes.push(bytes)
+        if (bytes.includes("G1-alpha") && bytes.includes(growRow2) && currentCols === narrowCols) {
+          screenPlane = "seed-grow"
+          paintPayload(`${growSoft}\r\nHARD-a\r\nHARD-b\r\n`, true)
+        } else if (bytes.includes("S1-alpha") && bytes.includes(shrinkRow2) && currentCols === wideCols) {
+          screenPlane = "seed-shrink"
+          paintPayload(`${shrinkRow1Full}${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`, true)
+        } else if (bytes.startsWith("\x1b[?7h\x1b[0m\x1b[2J") || bytes.startsWith("\x1b[?7l\x1b[0m\x1b[2J")) {
+          const autowrap = bytes.startsWith("\x1b[?7h")
+          const body = bytes
+            .replace(/^\x1b\[\?7[hl]\x1b\[0m\x1b\[2J(?:\x1b\[3J)?\x1b\[H/, "")
+            .replace(/\x1b\[\?7h$/, "")
+          screenPlane = "ref-paint"
+          paintPayload(body, autowrap)
+        }
+      },
+      queryCursorPosition: async () => {
+        if (screenPlane === "seed-grow" && currentCols === narrowCols) return { row: 5, col: 1 }
+        if (screenPlane === "seed-shrink" && currentCols === wideCols) return { row: 4, col: 1 }
+        return { row: currentRows, col: currentCols }
+      },
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async (sequence) => {
+        writes.push(sequence)
+        if (sequence === "\x1b[18t") {
+          const raw = `\x1b[8;${currentRows};${currentCols}t`
+          return {
+            match: /\x1b\[8;(\d+);(\d+)t/.exec(raw),
+            reason: "reply",
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+          }
+        }
+        return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+      },
+      queryMode: async () => null,
+      input: {
+        injectKey: async () => {},
+        injectClick: async () => {},
+        resizeWindow: async (width, height) => {
+          const previous = { ...liveWindow }
+          resizeCalls.push({ width, height })
+          liveWindow = { width, height }
+          currentCols = Math.floor(width / cellWidth)
+          currentRows = Math.floor(height / cellHeight)
+          if (currentCols === narrowCols) {
+            if (phaseState === "init" || phaseState === "pre-shrunk") {
+              phaseState = "pre-shrunk"
+            } else {
+              phaseState = "shrunk"
+              gridLines = [shrinkRow1Full, shrinkRow2, "HARD-a", "HARD-b", ""]
+            }
+          } else if (currentCols === wideCols && phaseState === "pre-shrunk") {
+            phaseState = "grown"
+            gridLines = [growSoft, "HARD-a", "HARD-b", "", ""]
+          }
+          return previous
+        },
+      },
+      capture: async (request) => {
+        assertCalibratedCaptureGeometry(context.captureGeometry, request)
+        if (!request.cells || !request.pixelGeometry) {
+          throw new Error("Reflow capture must carry cells and calibrated pixelGeometry")
+        }
+        // Call the real capture-core cellRectangle against the simulated live X11 window.
+        const rectangle = cellRectangle({
+          cells: request.cells,
+          pixelGeometry: request.pixelGeometry,
+          textOrigin,
+          windowWidth: liveWindow.width,
+          windowHeight: liveWindow.height,
+        })
+        capturedRectangles.push({ label: request.label, ...rectangle })
+        const croppedRows: string[] = []
+        for (let r = request.cells.top - 1; r < request.cells.bottom; r++) {
+          const line = (gridLines[r] ?? "").padEnd(request.cells.right, " ")
+          croppedRows.push(line.slice(request.cells.left - 1, request.cells.right))
+        }
+        const regionKey = croppedRows.join("\n")
+        const frame: ObservationFrame = {
+          kind: "pixels",
+          role: request.role,
+          label: request.label,
+          capturedAt: frames.length + 1,
+          ref: digest(`kitty-frame-${frames.length + 1}-${regionKey}`),
+          sourceRef: digest(`kitty-source-${frames.length + 1}`),
+          regionDigest: digest(`kitty-cells-${regionKey}`),
+          pixelsDigest: digest(`kitty-pixels-${regionKey}`),
+          regionRectangle: rectangle,
+        }
+        frames.push(frame)
+        return frame
+      },
+    }
+
+    const result = await definition.term!(context)
+    expect(result.pass).toBe(true)
+    expect(resizeCalls).toEqual([
+      { width: 520, height: 580 },
+      { width: 527, height: 600 },
+      { width: 800, height: 600 },
+      { width: 527, height: 600 },
+      { width: 800, height: 600 },
+    ])
+    const parsedResponse = JSON.parse(result.response!) as {
+      provisionalNarrowWidthPx: number
+      narrowWidthPx: number
+      originalWindow: { width: number; height: number }
+    }
+    expect(parsedResponse.provisionalNarrowWidthPx).toBe(520)
+    expect(parsedResponse.narrowWidthPx).toBe(527)
+    expect(parsedResponse.originalWindow).toEqual({ width: 800, height: 600 })
+    expect(frames).toHaveLength(12)
+    expect(capturedRectangles.find((entry) => entry.label === "main-shrink after")).toEqual({
+      label: "main-shrink after",
+      x: 3,
+      y: 10,
+      width: 520,
+      height: 145,
+    })
+
+    const suite = "c".repeat(64)
+    const manifest: ProbeSuiteManifest = {
+      schemaVersion: 4,
+      probeHash: suite,
+      adapterVersion: "3.3.1",
+      generatedAt: "2026-11-09T10:00:00.000Z",
+      catalogIds: [featureId],
+      probes: { term: [featureId], lib: [], mux: [] },
+    }
+    const assertions = (result.assertions ?? []).map((entry) => ({
+      ...entry,
+      featureId,
+      rawReplyRef: featureId,
+    }))
+    const recorded = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: "2026-11-09T10:00:00.000Z" },
+      rawReplyRef: featureId,
+      observation: result.observation ? { ...result.observation, featureId, rawReplyRef: featureId } : undefined,
+      assertions,
+      tests: result.tests,
+    })
+    const parsed = parseRun(
+      "reflow-kitty-800x600.json",
+      JSON.stringify({
+        schemaVersion: 4,
+        source: { kind: "live" },
+        runId: "reflow-kitty-800x600",
+        suiteId: suite,
+        probeHash: suite,
+        sourceRevision: "4".repeat(40),
+        intendedSubject: { kind: "term", id: "kitty" },
+        subject: {
+          kind: "term",
+          id: "kitty",
+          version: "0.49.2",
+          os: "linux",
+          osVersion: null,
+          outerTerminal: null,
+          mux: null,
+          config: null,
+          permissions: null,
+        },
+        identity: "unverified",
+        measuredAt: "2026-11-09T10:01:00.000Z",
+        origin: { kind: "collector" },
+        sealedAt: "2026-11-09T10:02:00.000Z",
+        rawReplies: {
+          [featureId]: JSON.stringify({ writes, queries: [], events: [] }),
+          [`${featureId}.callbackResponse`]: result.response,
+        },
+        assertions,
+        screenshotRefs: [...new Set((recorded.frames ?? []).flatMap((frame) => [frame.ref, frame.sourceRef ?? []]))],
+        results: [recorded],
+      }),
+      [featureId],
+      new Map([[suite, manifest]]),
+    )
+    expect(parsed.results?.[0]?.status).toBe("supported")
+    expect(parsed.results?.[0]?.frames).toHaveLength(12)
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+    Date.now = realDateNow
+  }
+})
+
+test("extensions.reflow clears scrollback with 2J then 3J so prior ALINKZ scrollback cannot pull into row 1 on grow (#32797)", async () => {
+  const featureId = "extensions.reflow"
+  const definition = find(featureId)
+  const rows = 28
+  const wideCols = 88
+  const narrowCols = 58
+  const cellWidth = 9
+  const cellHeight = 21
+  const textOrigin = { x: 0, y: 0 }
+  const pixelGeometry = {
+    cellWidth,
+    cellHeight,
+    textWidth: wideCols * cellWidth, // 792px inside 800px window
+    textHeight: rows * cellHeight, // 588px inside 600px window
+  }
+  let liveWindow = { width: 800, height: 600 }
+  let currentCols = wideCols
+  let currentRows = rows
+  let screenPlane = "blank"
+  let scrollback: string[] = ["ALINKZ"]
+  let gridLines: string[] = Array.from({ length: rows }, () => "")
+  let phaseState: "init" | "pre-shrunk" | "grown" | "shrunk" = "init"
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const resizeCalls: { width: number; height: number }[] = []
+  const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
+  const realSetTimeout = globalThis.setTimeout
+  const realDateNow = Date.now
+  let fakeNow = realDateNow()
+  Date.now = () => fakeNow
+  globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+    fakeNow += ms ?? 0
+    fn()
+    return 0 as unknown as ReturnType<typeof setTimeout>
+  }) as typeof setTimeout
+  try {
+    const growRow1Full = "G1-alpha".padEnd(narrowCols, "x")
+    const growRow2 = "G2-Z"
+    const growSoft = growRow1Full + growRow2
+    const shrinkRow1Full = "S1-alpha".padEnd(narrowCols, "y")
+    const shrinkRow2 = "S2-Z"
+    const applyClear = (bytes: string) => {
+      const idx2J = bytes.indexOf("\x1b[2J")
+      const idx3J = bytes.indexOf("\x1b[3J")
+      // Simulate Kitty pushing non-blank screen lines into scrollback on 2J; 3J only clears
+      // those lines too when sent AFTER 2J (\x1b[2J\x1b[3J\x1b[H).
+      if (idx3J !== -1 && (idx2J === -1 || idx3J < idx2J)) {
+        scrollback = []
+      }
+      if (idx2J !== -1) {
+        const nonEmpty = gridLines.filter((line) => line.length > 0)
+        if (nonEmpty.length > 0) scrollback.push(...nonEmpty)
+        gridLines = Array.from({ length: currentRows }, () => "")
+      }
+      if (idx3J !== -1 && idx2J !== -1 && idx3J > idx2J) {
+        scrollback = []
+      }
+    }
+    const paintPayload = (payload: string, autowrap: boolean) => {
+      const next: string[] = []
+      for (const logical of payload.replace(/\r\n$/, "").split("\r\n")) {
+        if (!autowrap || logical.length <= currentCols) {
+          next.push(logical.slice(0, currentCols))
+        } else {
+          for (let offset = 0; offset < logical.length; offset += currentCols) {
+            next.push(logical.slice(offset, offset + currentCols))
+          }
+        }
+      }
+      gridLines = Array.from({ length: currentRows }, (_, idx) => next[idx] ?? "")
+    }
+    const context: TermProbeSource = {
+      kind: "live",
+      rows,
+      cols: wideCols,
+      captureKind: "pixels",
+      captureGeometry: {
+        geometry: pixelGeometry,
+        source: "measured by complete raster calibration",
+      },
+      write: (bytes) => {
+        writes.push(bytes)
+        if (bytes.includes("\x1b[2J") || bytes.includes("\x1b[3J")) {
+          applyClear(bytes)
+        }
+        if (bytes.includes("G1-alpha") && bytes.includes(growRow2) && currentCols === narrowCols) {
+          screenPlane = "seed-grow"
+          paintPayload(`${growSoft}\r\nHARD-a\r\nHARD-b\r\n`, true)
+        } else if (bytes.includes("S1-alpha") && bytes.includes(shrinkRow2) && currentCols === wideCols) {
+          screenPlane = "seed-shrink"
+          paintPayload(`${shrinkRow1Full}${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`, true)
+        } else if (bytes.startsWith("\x1b[?7h\x1b[0m\x1b[2J") || bytes.startsWith("\x1b[?7l\x1b[0m\x1b[2J")) {
+          const autowrap = bytes.startsWith("\x1b[?7h")
+          const body = bytes
+            .replace(/^\x1b\[\?7[hl]\x1b\[0m\x1b\[2J(?:\x1b\[3J)?\x1b\[H/, "")
+            .replace(/\x1b\[\?7h$/, "")
+          if (body.length > 0) {
+            screenPlane = "ref-paint"
+            paintPayload(body, autowrap)
+          }
+        }
+      },
+      queryCursorPosition: async () => {
+        if (screenPlane === "seed-grow" && currentCols === narrowCols) return { row: 5, col: 1 }
+        if (screenPlane === "seed-shrink" && currentCols === wideCols) return { row: 4, col: 1 }
+        return { row: currentRows, col: currentCols }
+      },
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async (sequence) => {
+        writes.push(sequence)
+        if (sequence === "\x1b[18t") {
+          const raw = `\x1b[8;${currentRows};${currentCols}t`
+          return {
+            match: /\x1b\[8;(\d+);(\d+)t/.exec(raw),
+            reason: "reply",
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+          }
+        }
+        return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+      },
+      queryMode: async () => null,
+      input: {
+        injectKey: async () => {},
+        injectClick: async () => {},
+        resizeWindow: async (width, height) => {
+          const previous = { ...liveWindow }
+          resizeCalls.push({ width, height })
+          liveWindow = { width, height }
+          currentCols = Math.floor(width / cellWidth)
+          currentRows = Math.floor(height / cellHeight)
+          if (currentCols === narrowCols) {
+            if (phaseState === "init" || phaseState === "pre-shrunk") {
+              phaseState = "pre-shrunk"
+            } else {
+              phaseState = "shrunk"
+              // Shrink pushes top wrapped physical row into scrollback (reflowed-history).
+              scrollback.push(shrinkRow1Full)
+              gridLines = [shrinkRow2, "HARD-a", "HARD-b", "", ""]
+            }
+          } else if (currentCols === wideCols && phaseState === "pre-shrunk") {
+            phaseState = "grown"
+            // Alacritty behavior: unwrapping 2 rows -> 1 row frees 1 viewport row and pulls
+            // the most recent scrollback line into Row 1 when scrollback is non-empty!
+            if (scrollback.length > 0) {
+              const pulled = scrollback.pop()!
+              gridLines = [pulled, growSoft, "HARD-a", "HARD-b", ""]
+            } else {
+              gridLines = [growSoft, "HARD-a", "HARD-b", "", ""]
+            }
+          }
+          return previous
+        },
+      },
+      capture: async (request) => {
+        assertCalibratedCaptureGeometry(context.captureGeometry, request)
+        const rectangle = cellRectangle({
+          cells: request.cells!,
+          pixelGeometry: request.pixelGeometry!,
+          textOrigin,
+          windowWidth: liveWindow.width,
+          windowHeight: liveWindow.height,
+        })
+        const croppedRows: string[] = []
+        for (let r = request.cells!.top - 1; r < request.cells!.bottom; r++) {
+          const line = (gridLines[r] ?? "").padEnd(request.cells!.right, " ")
+          croppedRows.push(line.slice(request.cells!.left - 1, request.cells!.right))
+        }
+        const regionKey = croppedRows.join("\n")
+        const frame: ObservationFrame = {
+          kind: "pixels",
+          role: request.role,
+          label: request.label,
+          capturedAt: frames.length + 1,
+          ref: digest(`alacritty-frame-${frames.length + 1}-${regionKey}`),
+          sourceRef: digest(`alacritty-source-${frames.length + 1}`),
+          regionDigest: digest(`alacritty-cells-${regionKey}`),
+          pixelsDigest: digest(`alacritty-pixels-${regionKey}`),
+          regionRectangle: rectangle,
+        }
+        frames.push(frame)
+        return frame
+      },
+    }
+
+    const result = await definition.term!(context)
+    expect(result.pass).toBe(true)
+    expect(result.tests).toEqual([
+      {
+        id: "criterion",
+        status: "supported",
+        reason:
+          "main-screen reflow measured across shrink (reflowed-history) and grow (reflowed); retained history unmeasured; wide characters, alternate screen and cursor on a wrapped line unmeasured",
+      },
+    ])
+    expect(resizeCalls).toEqual([
+      { width: 522, height: 588 },
+      { width: 530, height: 600 },
+      { width: 800, height: 600 },
+      { width: 530, height: 600 },
+      { width: 800, height: 600 },
+    ])
+    expect(frames).toHaveLength(12)
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+    Date.now = realDateNow
+  }
+})

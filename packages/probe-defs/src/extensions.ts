@@ -6510,16 +6510,19 @@ const extensionDefinitions: ProbeDefinition[] = [
         }
       }
       const targetNarrowCols = Math.max(10, Math.min(initial.cols - 6, Math.floor((initial.cols * 2) / 3)))
-      const narrowWidthPx = Math.max(
+      const colsDelta = initial.cols - targetNarrowCols
+      const provisionalNarrowWidthPx = Math.max(
         baseGeometry.cellWidth * 10,
-        Math.round(baseGeometry.textWidth - (initial.cols - targetNarrowCols) * baseGeometry.cellWidth),
+        Math.round(baseGeometry.textWidth - colsDelta * baseGeometry.cellWidth),
       )
+      let narrowWidthPx = provisionalNarrowWidthPx
       let original: { width: number; height: number } | undefined
       let restored = false
       const frames: ObservationFrame[] = []
       const observed: Record<string, unknown> = {
         initial,
         targetNarrowCols,
+        provisionalNarrowWidthPx,
         narrowWidthPx,
         retainedHistory: "unmeasured",
       }
@@ -6534,7 +6537,7 @@ const extensionDefinitions: ProbeDefinition[] = [
       }
       const restoreWindow = async () => {
         if (!original || restored) return true
-        ctx.write("\x1b[?7h\x1b[?25h\x1b[0m\x1b[2J\x1b[H")
+        ctx.write("\x1b[?7h\x1b[?25h\x1b[0m\x1b[2J\x1b[3J\x1b[H")
         await resizeWindow(original.width, original.height)
         const afterRestore = await pollSize((reading) => reading.rows === initial.rows && reading.cols === initial.cols)
         observed.afterRestore = afterRestore
@@ -6542,10 +6545,16 @@ const extensionDefinitions: ProbeDefinition[] = [
         return afterRestore.matched
       }
       const measure = async (): Promise<ProbeCallbackResult> => {
-        ctx.write("\x1b[?7h\x1b[?25l\x1b[0m\x1b[2J\x1b[H")
-        original = await resizeWindow(narrowWidthPx, baseGeometry.textHeight)
+        ctx.write("\x1b[?7h\x1b[?25l\x1b[0m\x1b[2J\x1b[3J\x1b[H")
+        original = await resizeWindow(provisionalNarrowWidthPx, baseGeometry.textHeight)
+        const horizontalExtraPx = Math.max(0, original.width - baseGeometry.textWidth)
+        narrowWidthPx = Math.max(
+          baseGeometry.cellWidth * 10 + horizontalExtraPx,
+          Math.round(original.width - colsDelta * baseGeometry.cellWidth),
+        )
         observed.originalWindow = original
-        if (original.height !== baseGeometry.textHeight) {
+        observed.narrowWidthPx = narrowWidthPx
+        if (narrowWidthPx !== provisionalNarrowWidthPx || original.height !== baseGeometry.textHeight) {
           await resizeWindow(narrowWidthPx, original.height)
         }
         const preShrunk = await pollSize(
@@ -6577,7 +6586,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         const growRow1 = "G1-alpha".padEnd(narrowCols, "x")
         const growRow2 = "G2-Z"
         const growSoft = growRow1 + growRow2
-        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[3J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
         const growSeedCpr = await ctx.queryCursorPosition()
         observed.growSeedCpr = growSeedCpr
         if (growSeedCpr?.row !== 5 || growSeedCpr?.col !== 1) {
@@ -6601,17 +6610,17 @@ const extensionDefinitions: ProbeDefinition[] = [
           return todoResult("Main-grow post-resize captures did not stabilize")
         }
         const growAfter = await grab("target", "main-grow after", growCells)
-        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[3J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-grow ref reflowed")
         }
         const growReflowed = await grab("control", "main-grow ref reflowed", growCells)
-        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`)
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[3J\x1b[H${growRow1}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-grow ref preserved")
         }
         const growPreserved = await grab("control", "main-grow ref preserved", growCells)
-        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\nHARD-a\r\nHARD-b\r\n`)
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[3J\x1b[H${growRow1}\r\nHARD-a\r\nHARD-b\r\n`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-grow ref clipped")
         }
@@ -6625,7 +6634,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         const shrinkRow1 = "S1-alpha".padEnd(narrowCols, "y")
         const shrinkRow2 = "S2-Z"
         const shrinkSoft = shrinkRow1 + shrinkRow2
-        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkSoft}\r\nHARD-a\r\nHARD-b\r\n`)
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[3J\x1b[H${shrinkSoft}\r\nHARD-a\r\nHARD-b\r\n`)
         const shrinkSeedCpr = await ctx.queryCursorPosition()
         observed.shrinkSeedCpr = shrinkSeedCpr
         if (shrinkSeedCpr?.row !== 4 || shrinkSeedCpr?.col !== 1) {
@@ -6649,17 +6658,20 @@ const extensionDefinitions: ProbeDefinition[] = [
           return todoResult("Main-shrink post-resize captures did not stabilize")
         }
         const shrinkAfter = await grab("target", "main-shrink after", shrinkCells)
-        ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+        ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[3J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-shrink ref reflowed")
         }
         const shrinkReflowed = await grab("control", "main-shrink ref reflowed", shrinkCells)
-        ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+        // Known miss-only limit: reflowed-history is painted with empty scrollback, while a
+        // shrink target that pushed shrinkRow1 has 1 scrollback line; a terminal that draws a
+        // history-only scrollbar/overlay inside shrinkCells (e.g. Ghostty at ~527px) stays TODO.
+        ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[3J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-shrink ref reflowed-history")
         }
         const shrinkReflowedHistory = await grab("control", "main-shrink ref reflowed-history", shrinkCells)
-        ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+        ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[3J\x1b[H${shrinkRow1}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-shrink ref clipped")
         }
