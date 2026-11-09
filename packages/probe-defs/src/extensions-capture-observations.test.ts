@@ -929,11 +929,12 @@ test.each([
           } else if (bytes.includes("S1-alpha") && bytes.includes(shrinkRow2) && currentCols === wideCols) {
             screenPlane = "seed-shrink"
             paintPayload(`${shrinkRow1Full}${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`, true)
-          } else if (bytes.startsWith("\x1b[?7h\x1b[0m\x1b[2J\x1b[H") || bytes.startsWith("\x1b[?7l\x1b[0m\x1b[2J\x1b[H")) {
+          } else if (
+            bytes.startsWith("\x1b[?7h\x1b[0m\x1b[2J\x1b[H") ||
+            bytes.startsWith("\x1b[?7l\x1b[0m\x1b[2J\x1b[H")
+          ) {
             const autowrap = bytes.startsWith("\x1b[?7h")
-            const body = bytes
-              .replace(/^\x1b\[\?7[hl]\x1b\[0m\x1b\[2J\x1b\[H/, "")
-              .replace(/\x1b\[\?7h$/, "")
+            const body = bytes.replace(/^\x1b\[\?7[hl]\x1b\[0m\x1b\[2J\x1b\[H/, "").replace(/\x1b\[\?7h$/, "")
             screenPlane = "ref-paint"
             paintPayload(body, autowrap)
           }

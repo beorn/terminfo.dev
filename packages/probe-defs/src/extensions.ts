@@ -6652,16 +6652,28 @@ const extensionDefinitions: ProbeDefinition[] = [
                     await new Promise<void>((resolve) => {
                       setTimeout(resolve, 1000)
                     })
-                    const shrinkSettle1 = await grab("control", "main-shrink settle 1", shrinkCells, shrinkPixelGeometry)
+                    const shrinkSettle1 = await grab(
+                      "control",
+                      "main-shrink settle 1",
+                      shrinkCells,
+                      shrinkPixelGeometry,
+                    )
                     await new Promise<void>((resolve) => {
                       setTimeout(resolve, 100)
                     })
-                    const shrinkSettle2 = await grab("control", "main-shrink settle 2", shrinkCells, shrinkPixelGeometry)
+                    const shrinkSettle2 = await grab(
+                      "control",
+                      "main-shrink settle 2",
+                      shrinkCells,
+                      shrinkPixelGeometry,
+                    )
                     if (frameDigests(shrinkSettle1).cells !== frameDigests(shrinkSettle2).cells) {
                       result = todoResult("Main-shrink post-resize captures did not stabilize")
                     } else {
                       const shrinkAfter = await grab("target", "main-shrink after", shrinkCells, shrinkPixelGeometry)
-                      ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+                      ctx.write(
+                        `\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`,
+                      )
                       await ctx.queryCursorPosition()
                       const shrinkReflowed = await grab(
                         "control",
