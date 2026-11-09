@@ -189,7 +189,7 @@ export function resolveProbeIds(
 }
 
 export { collectorIds } from "./helpers.ts"
-export { finalizeVisualResult } from "./sgr.ts"
+export { finalizeVisualResult, fontLigatureMuxCoverage, MUX_FONT_LIGATURE_NO_OBSERVABLE } from "./sgr.ts"
 
 export {
   sgrProbes,

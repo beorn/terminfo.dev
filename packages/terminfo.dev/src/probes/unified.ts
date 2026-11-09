@@ -12,6 +12,7 @@ import {
   recordExecutedProbe,
   finalizeProbeResult,
   finalizeVisualResult,
+  fontLigatureMuxCoverage,
   withReplyFailureEvidence,
   declaredUntestableResult,
   type ProbeResult,
@@ -1107,7 +1108,31 @@ export async function runProbeBatch(
           ),
         })
       }
-      batch.results[index] = finalized
+      const ligatureCoverage =
+        probe.id === "extensions.font-ligatures" && subject
+          ? fontLigatureMuxCoverage(subject, { raw: batch.rawReplies[probe.id] ?? "" })
+          : undefined
+      if (ligatureCoverage) {
+        // The coverage list is what the run document reads (902-921); replace this feature's entry
+        // rather than adding a second one, because the pixel arm may already have recorded a refusal.
+        const coverage = { featureId: probe.id, ...ligatureCoverage.notTested, rawReplyRef: probe.id }
+        const existing = batch.notTested.findIndex((entry) => entry.featureId === probe.id)
+        if (existing < 0) batch.notTested.push(coverage)
+        else batch.notTested[existing] = coverage
+      }
+      batch.results[index] = ligatureCoverage
+        ? {
+            ...finalized,
+            ...recordExecutedProbe({
+              featureId: probe.id,
+              attempt,
+              coverage: { featureId: probe.id, ...ligatureCoverage.notTested, rawReplyRef: probe.id },
+              tests: ligatureCoverage.tests,
+              assertions: [],
+              rawReplyRef: probe.id,
+            }),
+          }
+        : finalized
       options.onCheckpoint?.(batch)
     }
   }

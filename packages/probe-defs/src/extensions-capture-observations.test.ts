@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
 import { recordExecutedProbe } from "./helpers.ts"
-import { finalizeVisualResult } from "./sgr.ts"
+import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
@@ -496,4 +496,21 @@ test.each([
   const { context } = calibratedIterm2Arm({ colour: {}, effect, blind: true })
   const result = await find(id).term!(context)
   expect(result.tests?.some((entry) => entry.status === "untestable")).not.toBe(true)
+})
+
+test("extensions.font-ligatures records mux coverage and leaves a native subject on its own path", () => {
+  // D160: the multiplexer only emits text cells, so ligature shaping is the host terminal's
+  // observable. The record is coverage (no-semantic-observable) with the subject's raw state kept,
+  // never an observation, and a native subject must not be diverted through it.
+  const state = { ligatureSample: "-> => ==" }
+  const coverage = fontLigatureMuxCoverage({ kind: "mux" }, state)
+  expect(coverage?.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/host terminal|multiplexer/i),
+  })
+  expect(coverage?.note).toMatch(/host terminal|multiplexer/i)
+  expect(coverage?.response).toBe(JSON.stringify(state))
+  expect(coverage?.observation).toBeUndefined()
+  expect(coverage?.assertions).toBeUndefined()
+  expect(fontLigatureMuxCoverage({ kind: "term" }, state)).toBeUndefined()
 })

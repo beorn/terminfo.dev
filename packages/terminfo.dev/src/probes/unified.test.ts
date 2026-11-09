@@ -4477,3 +4477,33 @@ it.each([
     vi.useRealTimers()
   }
 })
+
+// @failure D160: a multiplexer subject runs the font-ligature pixel arm, or a native subject is diverted into coverage.
+// @level l1
+// @consumer runProbeBatch -> recordExecutedProbe coverage (the sgr-attribute precedent at unified.ts:1085-1098).
+it("records mux coverage for extensions.font-ligatures and leaves a native subject on its own path", async () => {
+  const id = "extensions.font-ligatures"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = definition.term
+  try {
+    definition.term = async () => notTestedResult("Font ligatures need rendered pixels in this fixture", {})
+    const mux = await runProbeBatch({
+      ids: [id],
+      subject: { kind: "mux", id: "screen", version: "5.0.2" },
+    })
+    expect(mux.notTested?.find((item) => item.featureId === id)).toMatchObject({
+      reason: "no-semantic-observable",
+      noObservable: expect.stringMatching(/host terminal|multiplexer/i),
+      rawReplyRef: id,
+    })
+    expect(mux.results.find((result) => result.featureId === id)?.status).toBe("probe-todo")
+    const native = await runProbeBatch({
+      ids: [id],
+      subject: { kind: "term", id: "kitty", version: "0.49.2" },
+    })
+    // The native subject is NOT diverted: it keeps the callback's own refusal, not the mux sentence.
+    expect(native.notTested?.find((item) => item.featureId === id)?.noObservable).toMatch(/rendered pixels/i)
+  } finally {
+    definition.term = original
+  }
+})
