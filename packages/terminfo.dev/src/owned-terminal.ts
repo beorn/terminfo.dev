@@ -243,6 +243,7 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
 
 export interface OwnedTerminal {
   readonly getScrollback?: TermProbeSource["getScrollback"]
+  readonly resetScrollback?: TermProbeSource["resetScrollback"]
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
   readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
@@ -1225,6 +1226,7 @@ export async function createOwnedTerminal(options: {
       !muxAttachmentProof && (ownedAppId === "kitty" || ownedAppId === "wezterm") ? clipboard : undefined
     const kittySocket = process.env.KITTY_LISTEN_ON
     const kittyWindow = process.env.KITTY_WINDOW_ID
+    const resetScrollback = clipboard?.resetScrollback?.bind(clipboard)
     const readScrollback =
       clipboard?.getScrollback?.bind(clipboard) ??
       (linux && appClipboard
@@ -1350,6 +1352,12 @@ export async function createOwnedTerminal(options: {
         async getScrollback() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned history read has no live bound capture")
           return readScrollback()
+        },
+      }),
+      ...(resetScrollback && {
+        async resetScrollback() {
+          if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned history reset has no live bound capture")
+          return resetScrollback()
         },
       }),
       ...(muxAttachmentProof && { muxAttachmentProof }),

@@ -1075,6 +1075,8 @@ export interface TermProbeSource {
   mux?: "tmux" | "screen"
   /** Same-session owned history. Absent when the terminal exposes no complete reading. */
   getScrollback?: () => Promise<TerminalScrollbackReading>
+  /** Reset owned window history to empty at the run's configured capacity before baseline read (#32801). */
+  resetScrollback?: () => Promise<void>
   /** This run's owned public title surface; empty is a title, and a failed read throws its cause. */
   readTitle?: () => Promise<string>
   /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */

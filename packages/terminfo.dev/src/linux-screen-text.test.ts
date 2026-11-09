@@ -12,7 +12,7 @@ const exists = vi.hoisted(() => vi.fn(() => false))
 const readFile = vi.hoisted(() => vi.fn())
 vi.mock("node:child_process", () => ({ spawnSync: run }))
 vi.mock("node:fs", () => ({ existsSync: exists, readFileSync: readFile }))
-import { readScreenScrollback } from "./linux-screen-text.ts"
+import { readScreenScrollback, resetScreenScrollback } from "./linux-screen-text.ts"
 
 const options = {
   executable: "screen",
@@ -299,4 +299,78 @@ test("a failing -Q number completion query refuses without trusting the dump (#3
   expect(result.reason).toContain("-Q number")
   expect(result.reason).toContain("query socket failed")
   expect(readFile).not.toHaveBeenCalled()
+})
+
+test("resetScreenScrollback reads defscrollback from owned config and runs scrollback 0 then scrollback <N> on SCREENDIR (#32801)", () => {
+  exit(0)
+  const configPath = "/run/owned/screenrc"
+  readFile.mockImplementation((path: string) => {
+    if (path === configPath) return "# owned screenrc\ndefscrollback 1000\n"
+    throw new Error(`unexpected readFile(${path})`)
+  })
+  expect(
+    resetScreenScrollback({
+      executable: options.executable,
+      session: options.session,
+      socketDirectory: options.socketDirectory,
+      configPath,
+    }),
+  ).toEqual({ status: "reset", capacity: 1000 })
+  expect(
+    run.mock.calls.map((call) => [call[0], call[1], call[2]?.env?.SCREENDIR, call[2]?.timeout, call[2]?.killSignal]),
+  ).toEqual([
+    [options.executable, ["-S", options.session, "-X", "scrollback", "0"], options.socketDirectory, 3000, "SIGKILL"],
+    [options.executable, ["-S", options.session, "-X", "scrollback", "1000"], options.socketDirectory, 3000, "SIGKILL"],
+  ])
+})
+
+test("resetScreenScrollback refuses missing session, relative socketDirectory, bad config, and non-zero command exits (#32801)", () => {
+  const configPath = "/run/owned/screenrc"
+  const resetOpts = {
+    executable: options.executable,
+    session: options.session,
+    socketDirectory: options.socketDirectory,
+    configPath,
+  }
+
+  for (const session of [undefined, "", "   ", "bad session"]) {
+    expect(resetScreenScrollback({ ...resetOpts, session })).toMatchObject({ status: "refused" })
+  }
+  for (const socketDirectory of ["", "   ", "relative/screen"]) {
+    expect(resetScreenScrollback({ ...resetOpts, socketDirectory })).toMatchObject({ status: "refused" })
+  }
+  expect(run).not.toHaveBeenCalled()
+
+  for (const configBody of [
+    "# missing defscrollback\n",
+    "defscrollback nope\n",
+    "defscrollback 100\ndefscrollback 200\n",
+  ]) {
+    readFile.mockReturnValue(configBody)
+    const badConfig = resetScreenScrollback(resetOpts)
+    expect(badConfig.status).toBe("refused")
+    if (badConfig.status !== "refused") throw new Error("Expected a refusal")
+    expect(badConfig.reason).toContain(configPath)
+  }
+  expect(run).not.toHaveBeenCalled()
+
+  readFile.mockReturnValue("defscrollback 1000\n")
+  run.mockReturnValueOnce({ status: 2, signal: null, stdout: Buffer.from(""), stderr: Buffer.from("zero failed") })
+  const failZero = resetScreenScrollback(resetOpts)
+  expect(failZero.status).toBe("refused")
+  if (failZero.status !== "refused") throw new Error("Expected a refusal")
+  expect(failZero.reason).toContain("scrollback 0")
+  expect(failZero.reason).toContain("zero failed")
+  expect(run).toHaveBeenCalledTimes(1)
+
+  run.mockReset()
+  run
+    .mockReturnValueOnce({ status: 0, signal: null, stdout: Buffer.from(""), stderr: Buffer.from("") })
+    .mockReturnValueOnce({ status: 3, signal: null, stdout: Buffer.from(""), stderr: Buffer.from("restore failed") })
+  const failRestore = resetScreenScrollback(resetOpts)
+  expect(failRestore.status).toBe("refused")
+  if (failRestore.status !== "refused") throw new Error("Expected a refusal")
+  expect(failRestore.reason).toContain("scrollback 1000")
+  expect(failRestore.reason).toContain("restore failed")
+  expect(run).toHaveBeenCalledTimes(2)
 })

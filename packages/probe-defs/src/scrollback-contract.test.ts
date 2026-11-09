@@ -8,7 +8,10 @@
  */
 import { expect, test } from "vitest"
 import { join } from "node:path"
+import { decodeCollectorDraft, parseRun } from "@terminfo/run-parser"
+import { initializeRunDraft, recordExecutedProbe } from "./helpers.ts"
 import { scrollbackProbes } from "./scrollback.ts"
+import type { ProbeSuiteManifest } from "./types.ts"
 import {
   contractGaps,
   replayTermProbeSource,
@@ -389,5 +392,190 @@ test("App history enforces capacity precondition for full, room, and unknown cap
     expect(result.pass, `${id} unknown capacity`).toBe(true)
     expect(result.observation?.outcome, `${id} unknown capacity`).toBe("supported")
     expect(stage, `${id} unknown capacity reads all 3 stages`).toBe(3)
+  }
+})
+
+// @failure App history resets before the clear+CPR fence (so ED2 re-populates history), fabricates a
+//   verdict when resetScrollback leaves history full, changes behavior when resetScrollback is absent,
+//   or produces evidence that parseRun rejects (#32801, CTO 85113817 / c901817a).
+// @level l1
+// @consumer Screen mux owned-window history reset in appHistory (32801).
+test("App history resets owned history after clear+CPR fence before baseline read, preserves full-history refusal, and round-trips through parseRun (#32801)", async () => {
+  const rows = 24
+  const capacity = 1000
+  const featureIds = ["scrollback.accumulate", "scrollback.total-lines"] as const
+
+  const runScenario = async (
+    id: (typeof featureIds)[number],
+    mode: "empties" | "absent" | "still-full" | "cpr-timeout",
+  ) => {
+    let history = 1000
+    let cprCount = 0
+    let readStage = 0
+    const order: string[] = []
+    const writes: string[] = []
+    const ctx = replayTermProbeSource(new Map(), {
+      rows,
+      cols: 80,
+      mux: "screen",
+      write: (bytes) => {
+        writes.push(bytes)
+        order.push(`write:${JSON.stringify(bytes)}`)
+      },
+      queryCursorPosition: async () => {
+        cprCount += 1
+        order.push(`queryCursorPosition:${cprCount}`)
+        if (mode === "cpr-timeout" && cprCount === 1) return null
+        return { row: 1, col: 1 }
+      },
+      ...(mode !== "absent" && {
+        resetScrollback: async () => {
+          order.push("resetScrollback")
+          if (mode === "empties") history = 0
+        },
+      }),
+      getScrollback: async () => {
+        readStage += 1
+        order.push(`getScrollback:${readStage}`)
+        const current = readStage < 3 ? history : Math.min(capacity, history + 11)
+        return {
+          totalLines: current + rows,
+          screenLines: rows,
+          capacity,
+        }
+      },
+    })
+    const definition = scrollbackProbes.find((probe) => probe.id === id)!
+    const result = await definition.term!(ctx)
+    return { result, readStage, order, writes }
+  }
+
+  const sourceRevision = "b".repeat(40)
+  const measuredAt = "2026-11-09T19:20:00.000Z"
+
+  for (const id of featureIds) {
+    const required = id === "scrollback.total-lines" ? 10 : 1
+
+    // (a) Hook present & emptying -> decided supported, exact call order clear -> fence -> reset -> baseline, and parseRun round-trip.
+    const decided = await runScenario(id, "empties")
+    expect(decided.result.pass, `${id} empties`).toBe(true)
+    expect(decided.result.observation?.outcome, `${id} empties`).toBe("supported")
+    expect(decided.readStage, `${id} empties reads 3 stages`).toBe(3)
+    expect(decided.order.slice(0, 4), `${id} call order before baseline`).toEqual([
+      'write:"\\u001b[0m\\u001b[2J\\u001b[H"',
+      "queryCursorPosition:1",
+      "resetScrollback",
+      "getScrollback:1",
+    ])
+    expect(
+      decided.order.filter((step) => step === "resetScrollback"),
+      `${id} resets once per probe`,
+    ).toHaveLength(1)
+
+    const manifest: ProbeSuiteManifest & { schemaVersion: 4 } = {
+      schemaVersion: 4,
+      probeHash: "32801abcdef0",
+      sourceRevision,
+      generatedAt: measuredAt,
+      adapterVersion: "test",
+      catalogIds: [id],
+      probes: { term: [], lib: [], mux: [id] },
+    }
+    const assertions = (decided.result.assertions ?? []).map((entry) => ({
+      featureId: id,
+      rawReplyRef: id,
+      ...entry,
+    }))
+    const observation = decided.result.observation
+      ? { featureId: id, rawReplyRef: id, ...decided.result.observation }
+      : undefined
+    const recorded = recordExecutedProbe({
+      featureId: id,
+      attempt: { scope: "probe", startedAt: measuredAt },
+      rawReplyRef: id,
+      observation,
+      assertions,
+    })
+    const initialized = initializeRunDraft({
+      source: { kind: "live" },
+      runId: "fedcba0987654321fedcba0987654321",
+      sourceRevision,
+      manifest,
+      intendedSubject: { kind: "mux", id: "screen", version: "5.0.2" },
+    })
+    const draft = {
+      ...initialized,
+      subject: {
+        kind: "mux" as const,
+        id: "screen",
+        version: "5.0.2",
+        os: "linux" as const,
+        osVersion: null,
+        outerTerminal: "kitty",
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified" as const,
+      measuredAt,
+      origin: { kind: "collector" as const },
+      rawReplies: {
+        [id]: JSON.stringify({ writes: decided.writes, queries: [], events: [] }),
+        ...(decided.result.response !== undefined ? { [`${id}.callbackResponse`]: decided.result.response } : {}),
+      },
+      assertions,
+      results: initialized.results.map((entry) => (entry.featureId === id ? recorded : entry)),
+      screenshotRefs: [],
+    }
+    const decoded = decodeCollectorDraft(`${id}-reset.json`, JSON.stringify(draft), manifest, sourceRevision)
+    const parsed = parseRun(
+      `${id}-reset.json`,
+      JSON.stringify({ ...draft, sealedAt: "2026-11-09T19:21:00.000Z" }),
+      [id],
+      new Map([[manifest.probeHash, manifest]]),
+    )
+    expect(decoded.run.results?.[0]?.status, `${id} decodeCollectorDraft`).toBe("supported")
+    expect(parsed.results?.[0]?.status, `${id} parseRun`).toBe("supported")
+    expect(JSON.parse(parsed.assertions?.[0]?.observed ?? "null"), `${id} parsed evidence`).toMatchObject({
+      baseline: { totalLines: 24, screenLines: 24, capacity: 1000 },
+      control: { totalLines: 24, screenLines: 24, capacity: 1000 },
+      scroll: { totalLines: 35, screenLines: 24, capacity: 1000 },
+      rows: 24,
+      geometrySource: "rows from run geometry",
+    })
+
+    // (b) Hook absent with full history -> exact existing refusal.
+    const absent = await runScenario(id, "absent")
+    expect(absent.result.pass, `${id} absent`).toBe(false)
+    expect(absent.result.observation, `${id} absent`).toBeUndefined()
+    expect(absent.result.notTested, `${id} absent`).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: `history at 1000 of capacity 1000 before the test; growth of ${required} cannot be observed`,
+    })
+    expect(absent.readStage, `${id} absent stops after baseline`).toBe(1)
+
+    // (c) Hook present but history still full -> exact same refusal (no fabricated verdict).
+    const stillFull = await runScenario(id, "still-full")
+    expect(stillFull.result.pass, `${id} still-full`).toBe(false)
+    expect(stillFull.result.observation, `${id} still-full`).toBeUndefined()
+    expect(stillFull.result.notTested, `${id} still-full`).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: `history at 1000 of capacity 1000 before the test; growth of ${required} cannot be observed`,
+    })
+    expect(stillFull.readStage, `${id} still-full stops after baseline`).toBe(1)
+    expect(stillFull.order, `${id} still-full order`).toEqual([
+      'write:"\\u001b[0m\\u001b[2J\\u001b[H"',
+      "queryCursorPosition:1",
+      "resetScrollback",
+      "getScrollback:1",
+    ])
+
+    // (d) Baseline CPR fence failure stops before resetScrollback and before baseline read.
+    const cprTimeout = await runScenario(id, "cpr-timeout")
+    expect(cprTimeout.result.pass, `${id} cpr-timeout`).toBe(false)
+    expect(cprTimeout.order, `${id} cpr-timeout order`).toEqual([
+      'write:"\\u001b[0m\\u001b[2J\\u001b[H"',
+      "queryCursorPosition:1",
+    ])
   }
 })

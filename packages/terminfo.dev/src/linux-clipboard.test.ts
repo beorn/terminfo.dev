@@ -33,6 +33,7 @@ import { mock } from "bun:test"
 const root = fs.mkdtempSync(join(os.tmpdir(), "terminfo-mux-owner-"))
 fs.mkdirSync(join(root, "artifacts"))
 const hardcopies = []
+const screenSpawns = []
 const hash = x => createHash("sha256").update(x).digest("hex")
 const launch = "a".repeat(32), capture = "b".repeat(32)
 const baseline = "terminfo-owned-clipboard-" + launch
@@ -102,6 +103,16 @@ mock.module("node:child_process", () => ({...cp,
   spawnSync(file,args,options) {
     assert.equal(file,exe("screen"))
     assert.equal(options.env.SCREENDIR,root)
+    screenSpawns.push({file,session:args[1],screenDir:options.env.SCREENDIR,args:[...args]})
+    if (args[2] === "-X" && args[3] === "scrollback") {
+      assert.equal(args[0],"-S")
+      assert.equal(args[1],muxTarget.session)
+      assert(args[4] === "0" || args[4] === "100")
+      if(variant==="screen-refused")return {status:2,stdout:Buffer.alloc(0),stderr:Buffer.from("screen fixture refusal")}
+      if(variant==="screen-refused-restore" && args[4]==="100")return {status:2,stdout:Buffer.alloc(0),stderr:Buffer.from("screen restore refusal")}
+      if(variant==="screen-owner-lost" && args[4]==="100")variant="detached"
+      return {status:0,stdout:Buffer.alloc(0),stderr:Buffer.alloc(0)}
+    }
     if (args[2] === "-Q") {
       assert.deepEqual(args,["-S",muxTarget.session,"-Q","number"])
       return {status:0,stdout:Buffer.from("0 (bash)\n"),stderr:Buffer.alloc(0)}
@@ -184,6 +195,7 @@ try {
     assert.equal(adapter.muxAttachmentProof.attachedClient.ttyRdev,34816)
     assert.equal(adapter.muxAttachmentProof.receiptSha256,hash(real.readFileSync(receiptPath)))
     if (kind === "tmux") {
+      assert.equal(adapter.resetScrollback,undefined,"tmux must not expose Screen history reset")
       assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:17})
       variant="scrollback-bottom"
       assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:20})
@@ -196,18 +208,43 @@ try {
       variant="valid"
     } else {
       assert.equal(typeof adapter.getScrollback,"function","owned Screen history reader must be reachable")
+      assert.equal(typeof adapter.resetScrollback,"function","owned Screen history reset must be reachable")
+      screenSpawns.length=0
+      await adapter.resetScrollback()
       assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,capacity:100})
+      assert.deepEqual(screenSpawns.slice(0,2).map(s=>s.args),[
+        ["-S",muxTarget.session,"-X","scrollback","0"],
+        ["-S",muxTarget.session,"-X","scrollback","100"],
+      ])
+      // @cto c901817a: reset and read must spawn with the exact same executable, session, and SCREENDIR.
+      const [resetZero, resetRestore, readHardcopy, readQuery] = screenSpawns
+      assert.deepEqual(
+        [resetZero.file, resetZero.session, resetZero.screenDir],
+        [readHardcopy.file, readHardcopy.session, readHardcopy.screenDir],
+      )
+      assert.deepEqual(
+        [resetRestore.file, resetRestore.session, resetRestore.screenDir],
+        [readQuery.file, readQuery.session, readQuery.screenDir],
+      )
       variant="screen-more"
       assert.deepEqual(await adapter.getScrollback(),{totalLines:45,screenLines:24,capacity:100})
       for(const path of hardcopies)assert(real.existsSync(path),"hardcopy evidence must remain retained")
       variant="screen-refused"
       await assert.rejects(()=>adapter.getScrollback(),{message:'screen hardcopy exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})
+      await assert.rejects(()=>adapter.resetScrollback(),{message:'screen scrollback 0 exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})
+      variant="screen-refused-restore"
+      await assert.rejects(()=>adapter.resetScrollback(),{message:'screen scrollback 100 exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen restore refusal" stdout=""'})
       variant="detached"
       const before=hardcopies.length
+      const spawnsBefore=screenSpawns.length
       await assert.rejects(()=>adapter.getScrollback(),/attached|display/i)
+      await assert.rejects(()=>adapter.resetScrollback(),/attached|display/i)
       assert.equal(hardcopies.length,before,"ownership refusal must precede the Screen command")
+      assert.equal(screenSpawns.length,spawnsBefore,"ownership refusal must precede Screen reset")
       variant="screen-owner-lost"
       await assert.rejects(()=>adapter.getScrollback(),/attached|display/i)
+      variant="screen-owner-lost"
+      await assert.rejects(()=>adapter.resetScrollback(),/attached|display/i)
       variant="valid"
     }
     // The batch's verifier must own every existing transaction check, not only its outer boundary.
@@ -489,10 +526,16 @@ try {
   const clipboardModule = await import(base + "linux-clipboard.ts")
   const createClipboardAdapter = clipboardModule.createLinuxClipboardAdapter
   let forwardMuxHistory = false
+  let screenResetCount = 0
   mock.module(base + "linux-clipboard.ts", () => ({ ...clipboardModule,
     async createLinuxClipboardAdapter(...args) {
       const adapter = await createClipboardAdapter(...args)
       if (!forwardMuxHistory) return adapter
+      if (forwardMuxHistory === "screen") {
+        return { ...adapter, muxAttachmentProof: { mux: "screen" },
+          getScrollback: async () => ({ totalLines: 24, screenLines: 24, capacity: 1000 }),
+          resetScrollback: async () => { await adapter.assertOwned(); screenResetCount++ } }
+      }
       return { ...adapter, muxAttachmentProof: { mux: "tmux" },
         getScrollback: async () => ({ totalLines: 55, screenLines: 24, viewportOffset: 17 }) }
     },
@@ -576,6 +619,7 @@ try {
     assert.match(brokenCleanup.reason,/cleanup failed/)
     failIconCleanup=false
     assert.equal(typeof adapter.getScrollback, "function", "owned Linux Kitty history callback is missing")
+    assert.equal(adapter.resetScrollback, undefined, "App target must not expose Screen history reset")
     const history = await adapter.getScrollback()
     assert.deepEqual(history, { totalLines: 44, screenLines: 24 })
     assert.equal("viewportOffset" in history, false)
@@ -598,12 +642,36 @@ try {
     const readsBefore = kittyReads
     forwardMuxHistory = true
     const muxOwner = await factory(process.stdout, "e".repeat(32))
+    assert.equal(muxOwner.resetScrollback, undefined, "tmux OwnedTerminal must not expose resetScrollback")
     assert.deepEqual(await muxOwner.getScrollback(), { totalLines: 55, screenLines: 24, viewportOffset: 17 })
     await muxOwner.dispose()
+    forwardMuxHistory = "screen"
+    const screenMuxOwner = await factory(process.stdout, "2".repeat(32))
+    assert.equal(typeof screenMuxOwner.resetScrollback, "function", "Screen OwnedTerminal must expose resetScrollback")
+    await screenMuxOwner.resetScrollback()
+    assert.equal(screenResetCount, 1)
+    const { ALL_PROBES: probeDefsForScreen } = await import("@terminfo/probe-defs")
+    const risDef = probeDefsForScreen.find(probe => probe.id === "reset.ris")
+    const savedRisTerm = risDef.term
+    try {
+      risDef.term = async context => {
+        assert.equal(typeof context.resetScrollback, "function", "runProbeBatch must wire resetScrollback onto TermProbeSource")
+        await context.resetScrollback()
+        return { observation: { outcome: "supported", assertionType: "query_reply" } }
+      }
+      await withRawMode(() => runProbeBatch({ ids: ["reset.ris"], captureRunId: "2".repeat(32),
+        ownedTerminal: screenMuxOwner, out: process.stdout }))
+      assert.equal(screenResetCount, 2)
+    } finally {
+      risDef.term = savedRisTerm
+    }
+    await screenMuxOwner.dispose()
+    await assert.rejects(screenMuxOwner.resetScrollback(), /no live bound capture/)
     forwardMuxHistory = false
     process.env.TERMINFO_TARGET_ID = "xterm"
     const otherApp = await factory(process.stdout, "f".repeat(32))
     assert.equal(otherApp.getScrollback, undefined, "foreign Kitty child variables cannot select the App reader")
+    assert.equal(otherApp.resetScrollback, undefined)
     await otherApp.dispose()
     process.env.TERMINFO_TARGET_ID = "kitty"
     assert.equal(kittyReads, readsBefore, "a mux or other App must never query the outer Kitty")
@@ -614,6 +682,7 @@ try {
     process.env.WEZTERM_PANE = "17"
     const weztermOwner = await factory(process.stdout, "1".repeat(32))
     assert.equal(typeof weztermOwner.getScrollback, "function", "owned Linux WezTerm history callback is missing")
+    assert.equal(weztermOwner.resetScrollback, undefined)
     assert.deepEqual(await weztermOwner.getScrollback(), { totalLines: 27, screenLines: 24 })
     assert.equal(kittyReads, readsBefore, "owned WezTerm must not query foreign Kitty")
     weztermRefused = true

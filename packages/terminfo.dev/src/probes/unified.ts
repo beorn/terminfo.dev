@@ -657,6 +657,8 @@ export async function runProbeBatch(
       probeSource.readAppSemanticState = options.ownedTerminal?.readAppSemanticState
       const read = options.ownedTerminal?.getScrollback
       if (read) probeSource.getScrollback = () => withTTYOperation(read, out, verify)
+      const reset = options.ownedTerminal?.resetScrollback
+      if (reset) probeSource.resetScrollback = () => withTTYOperation(reset, out, verify)
     }
     if (ownsTerminal && (options.subject?.kind === "term" || options.subject?.kind === "mux")) {
       // 32569: a mux child reads the same marker path; the reading names the mux, since a present value there may

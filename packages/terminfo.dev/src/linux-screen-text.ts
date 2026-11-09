@@ -29,8 +29,16 @@ export type ScreenScrollbackReading =
     }
   | { readonly status: "refused"; readonly reason: string }
 
+export type ScreenScrollbackResetOptions = Omit<ScreenScrollbackOptions, "hardcopyPath" | "rows">
+
+export type ScreenScrollbackResetResult =
+  | { readonly status: "reset"; readonly capacity: number }
+  | { readonly status: "refused"; readonly reason: string }
+
 function resolveScrollbackCapacity(
-  options: ScreenScrollbackOptions,
+  options: Pick<ScreenScrollbackOptions, "configPath" | "capacity">,
+  contextTarget: string,
+  subjectTarget: string,
 ): { readonly ok: true; readonly capacity: number } | { readonly ok: false; readonly reason: string } {
   let fromConfig: number | undefined
   if (options.configPath !== undefined) {
@@ -38,7 +46,7 @@ function resolveScrollbackCapacity(
     if (configPath === "") {
       return {
         ok: false,
-        reason: `screen reader needs a non-empty configPath for ${options.hardcopyPath}`,
+        reason: `screen reader needs a non-empty configPath for ${contextTarget}`,
       }
     }
     let configText: string
@@ -47,7 +55,7 @@ function resolveScrollbackCapacity(
     } catch (error) {
       return {
         ok: false,
-        reason: `screen reader cannot read owned config at ${configPath} for ${options.hardcopyPath}: ${String((error as Error).message)}`,
+        reason: `screen reader cannot read owned config at ${configPath} for ${contextTarget}: ${String((error as Error).message)}`,
       }
     }
     for (const rawLine of configText.split(/\r?\n/u)) {
@@ -59,13 +67,13 @@ function resolveScrollbackCapacity(
       if (!/^\d+$/u.test(match[1] ?? "") || !Number.isSafeInteger(parsed) || parsed < 0) {
         return {
           ok: false,
-          reason: `screen config at ${configPath} has invalid defscrollback ${JSON.stringify(match[1])} for ${options.hardcopyPath}`,
+          reason: `screen config at ${configPath} has invalid defscrollback ${JSON.stringify(match[1])} for ${contextTarget}`,
         }
       }
       if (fromConfig !== undefined && fromConfig !== parsed) {
         return {
           ok: false,
-          reason: `screen config at ${configPath} declares conflicting defscrollback values (${fromConfig} vs ${parsed}) for ${options.hardcopyPath}`,
+          reason: `screen config at ${configPath} declares conflicting defscrollback values (${fromConfig} vs ${parsed}) for ${contextTarget}`,
         }
       }
       fromConfig = parsed
@@ -73,7 +81,7 @@ function resolveScrollbackCapacity(
     if (fromConfig === undefined) {
       return {
         ok: false,
-        reason: `screen config at ${configPath} does not declare defscrollback for ${options.hardcopyPath}`,
+        reason: `screen config at ${configPath} does not declare defscrollback for ${contextTarget}`,
       }
     }
   }
@@ -81,13 +89,13 @@ function resolveScrollbackCapacity(
     if (typeof options.capacity !== "number" || !Number.isSafeInteger(options.capacity) || options.capacity < 0) {
       return {
         ok: false,
-        reason: `screen hardcopy at ${options.hardcopyPath} has invalid scrollback capacity (${String(options.capacity)})`,
+        reason: `${subjectTarget} has invalid scrollback capacity (${String(options.capacity)})`,
       }
     }
     if (fromConfig !== undefined && fromConfig !== options.capacity) {
       return {
         ok: false,
-        reason: `screen hardcopy at ${options.hardcopyPath} has conflicting capacity (${options.capacity}) vs config defscrollback (${fromConfig})`,
+        reason: `${subjectTarget} has conflicting capacity (${options.capacity}) vs config defscrollback (${fromConfig})`,
       }
     }
     return { ok: true, capacity: options.capacity }
@@ -95,8 +103,56 @@ function resolveScrollbackCapacity(
   if (fromConfig !== undefined) return { ok: true, capacity: fromConfig }
   return {
     ok: false,
-    reason: `screen hardcopy at ${options.hardcopyPath} has no scrollback capacity or configPath`,
+    reason: `${subjectTarget} has no scrollback capacity or configPath`,
   }
+}
+
+/**
+ * Empty the owned Screen window's retained history while keeping its configured `defscrollback`
+ * capacity (#32801): `screen -S <session> -X scrollback 0` followed by
+ * `screen -S <session> -X scrollback <N>` on the same owned `SCREENDIR`, where `N` comes from the
+ * run's own `screenrc` through `resolveScrollbackCapacity`. Screen processes socket commands in
+ * order, so the baseline `readScreenScrollback`'s `-Q number` query fences both commands.
+ */
+export function resetScreenScrollback(options: ScreenScrollbackResetOptions): ScreenScrollbackResetResult {
+  const session = options.session?.trim() ?? ""
+  if (session === "" || /\s/u.test(session)) {
+    return { status: "refused", reason: "screen reset has no explicit owned session name" }
+  }
+  const socketDirectory = options.socketDirectory?.trim() ?? ""
+  if (socketDirectory === "" || !isAbsolute(socketDirectory)) {
+    return {
+      status: "refused",
+      reason: `screen reset needs an absolute owned socket directory, got ${JSON.stringify(options.socketDirectory)}`,
+    }
+  }
+  const resolvedCapacity = resolveScrollbackCapacity(
+    options,
+    `session ${JSON.stringify(session)}`,
+    `screen scrollback reset for ${JSON.stringify(session)}`,
+  )
+  if (!resolvedCapacity.ok) {
+    return { status: "refused", reason: resolvedCapacity.reason }
+  }
+  const { capacity } = resolvedCapacity
+  const spawnEnv = { ...process.env, SCREENDIR: socketDirectory }
+  for (const target of ["0", String(capacity)]) {
+    const result = spawnSync(options.executable, ["-S", session, "-X", "scrollback", target], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: spawnEnv,
+      timeout: 3000,
+      killSignal: "SIGKILL",
+    })
+    const stdout = result.stdout?.toString() ?? ""
+    const stderr = result.stderr?.toString() ?? ""
+    if (result.status !== 0) {
+      return {
+        status: "refused",
+        reason: `screen scrollback ${target} exited ${String(result.status)} at SCREENDIR=${JSON.stringify(socketDirectory)}: stderr=${JSON.stringify(stderr)} stdout=${JSON.stringify(stdout)}`,
+      }
+    }
+  }
+  return { status: "reset", capacity }
 }
 
 /**
@@ -129,7 +185,11 @@ export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenSc
       reason: `screen hardcopy at ${options.hardcopyPath} has invalid run geometry rows (${String(rows)})`,
     }
   }
-  const resolvedCapacity = resolveScrollbackCapacity(options)
+  const resolvedCapacity = resolveScrollbackCapacity(
+    options,
+    options.hardcopyPath,
+    `screen hardcopy at ${options.hardcopyPath}`,
+  )
   if (!resolvedCapacity.ok) {
     return { status: "refused", reason: resolvedCapacity.reason }
   }
