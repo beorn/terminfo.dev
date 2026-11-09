@@ -4501,7 +4501,7 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     definition.term = async () => notTestedResult("Font ligatures need rendered pixels in this fixture", {})
     const mux = await runProbeBatch({
       ids: [id],
-      subject: { kind: "mux", id: "screen", version: "5.0.2" },
+      subject: { kind: "mux", id: "screen", version: "5.0.2", os: "linux" },
     })
     expect(mux.notTested?.find((item) => item.featureId === id)).toMatchObject({
       reason: "no-semantic-observable",
@@ -4532,7 +4532,7 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     })
     const pixel = await runProbeBatch({
       ids: [id],
-      subject: { kind: "mux", id: "screen", version: "5.0.2" },
+      subject: { kind: "mux", id: "screen", version: "5.0.2", os: "linux" },
     })
     expect(pixel.notTested?.find((item) => item.featureId === id)?.reason).toBe("no-semantic-observable")
     expect(pixel.observations.filter((entry) => entry.featureId === id)).toEqual([])
@@ -4547,7 +4547,7 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     definition.term = async () => notTestedResult("Font ligatures need rendered pixels in this fixture", {})
     const native = await runProbeBatch({
       ids: [id],
-      subject: { kind: "term", id: "kitty", version: "0.49.2" },
+      subject: { kind: "term", id: "kitty", version: "0.49.2", os: "linux" },
     })
     // The native subject is NOT diverted: it keeps the callback's own refusal, not the mux sentence.
     expect(native.notTested?.find((item) => item.featureId === id)?.noObservable).toMatch(/rendered pixels/i)
