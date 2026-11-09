@@ -7,13 +7,14 @@
  */
 import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
+import { decodeCollectorDraft, parseRun } from "@terminfo/run-parser"
 import { eraseProbes, eraseReadbackRows } from "./erase.ts"
-import { recordExecutedProbe } from "./helpers.ts"
+import { initializeRunDraft, recordExecutedProbe } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { libProbeSource, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
+import type { ProbeCallbackResult, ProbeSuiteManifest, TermProbeSource, LibProbeSource } from "./types.ts"
 
 /**
  * The kind table's own rows, one per CONVERTED Erase probe, listed BY NAME so a row that loses its
@@ -567,9 +568,9 @@ test("scrollback erase requires existing history and measured removal", () => {
 })
 
 const BOTTOM_REF = `sha256:${"b".repeat(64)}`
-const HISTORY_REF = `sha256:${"h".repeat(64)}`
+const HISTORY_REF = `sha256:${"c".repeat(64)}`
 const ERASED_REF = `sha256:${"e".repeat(64)}`
-const OTHER_REF = `sha256:${"o".repeat(64)}`
+const OTHER_REF = `sha256:${"d".repeat(64)}`
 const BOTTOM_PIX = "sha256:pixels-bottom"
 const HISTORY_PIX = "sha256:pixels-history"
 const ERASED_PIX = "sha256:pixels-erased"
@@ -811,6 +812,18 @@ test("erase.screen.scrollback surfaces a finally wheel-down failure", async () =
 })
 
 test("multiplexer erase.screen.scrollback decides from tmux and screen history counts before and after ED3 (#32774, #32784, @cto e078c568, addfd7b2)", async () => {
+  const featureId = "erase.screen.scrollback"
+  const sourceRevision = "a".repeat(40)
+  const measuredAt = "2026-11-09T09:00:00.000Z"
+  const manifest: ProbeSuiteManifest & { schemaVersion: 4 } = {
+    schemaVersion: 4,
+    probeHash: "abcdef123456",
+    sourceRevision,
+    generatedAt: measuredAt,
+    adapterVersion: "test",
+    catalogIds: [featureId],
+    probes: { term: [], lib: [], mux: [featureId] },
+  }
   const runMux = async (
     mux: "tmux" | "screen",
     readings: Array<{ totalLines: number; screenLines: number } | Error>,
@@ -827,30 +840,98 @@ test("multiplexer erase.screen.scrollback decides from tmux and screen history c
         return next
       },
     }
-    const callbackResult = await byId("erase.screen.scrollback").term(ctx)
+    const callbackResult = await byId(featureId).term(ctx)
+    const assertions = (callbackResult.assertions ?? []).map((entry) => ({
+      featureId,
+      rawReplyRef: featureId,
+      ...entry,
+    }))
+    const observation = callbackResult.observation
+      ? { featureId, rawReplyRef: featureId, ...callbackResult.observation }
+      : undefined
     const recorded = recordExecutedProbe({
-      featureId: "erase.screen.scrollback",
-      attempt: { scope: "probe", startedAt: "2026-11-09T09:00:00.000Z" },
-      observation: callbackResult.observation
-        ? { featureId: "erase.screen.scrollback", ...callbackResult.observation }
-        : undefined,
-      assertions: (callbackResult.assertions ?? []).map((entry) => ({
-        featureId: "erase.screen.scrollback",
-        ...entry,
-      })),
+      featureId,
+      attempt: { scope: "probe", startedAt: measuredAt },
+      rawReplyRef: featureId,
+      observation,
+      assertions,
     })
-    return { callbackResult, recorded, reads }
+    const rawReplies: Record<string, string> = {
+      [featureId]: JSON.stringify({
+        writes: base.writes,
+        queries: [],
+        events: [],
+        captures: [],
+      }),
+      ...(callbackResult.response !== undefined ? { [`${featureId}.callbackResponse`]: callbackResult.response } : {}),
+    }
+    const screenshotRefs = [BOTTOM_REF, HISTORY_REF, ERASED_REF, OTHER_REF]
+    const initialized = initializeRunDraft({
+      source: { kind: "live" },
+      runId: "1234567890abcdef1234567890abcdef",
+      sourceRevision,
+      manifest,
+      intendedSubject: { kind: "mux", id: mux, version: "3.5a" },
+    })
+    const draft = {
+      ...initialized,
+      subject: {
+        kind: "mux" as const,
+        id: mux,
+        version: "3.5a",
+        os: "linux" as const,
+        osVersion: null,
+        outerTerminal: "kitty",
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified" as const,
+      measuredAt,
+      origin: { kind: "collector" as const },
+      rawReplies,
+      assertions,
+      results: initialized.results.map((entry) => (entry.featureId === featureId ? recorded : entry)),
+      screenshotRefs,
+    }
+    const decoded = decodeCollectorDraft(`${mux}-ed3.json`, JSON.stringify(draft), manifest, sourceRevision)
+    const parsed = parseRun(
+      `${mux}-ed3.json`,
+      JSON.stringify({ ...draft, sealedAt: "2026-11-09T09:01:00.000Z" }),
+      [featureId],
+      new Map([[manifest.probeHash, manifest]]),
+    )
+    expect(callbackResult.observation).not.toHaveProperty("frames")
+    expect(decoded.run.results?.[0]?.status).toBe(recorded.status)
+    expect(parsed.results?.[0]?.status).toBe(recorded.status)
+    expect(parsed.results?.[0]).not.toHaveProperty("frames")
+    const state = JSON.parse(callbackResult.response ?? "null") as {
+      frames?: Array<Record<string, unknown>>
+      muxHistory?: { mux: string }
+    }
+    expect(state.frames).toHaveLength(5)
+    for (const entry of state.frames ?? []) {
+      expect(Object.keys(entry).sort()).toEqual(["label", "ref"])
+    }
+    expect(state.muxHistory?.mux).toBe(mux)
+    return { callbackResult, recorded, parsed, draft, reads }
   }
   const history = (lines: number, screenLines = 24) => ({ totalLines: lines + screenLines, screenLines })
 
   const tmuxErased = await runMux("tmux", [history(709), history(0)])
   expect(tmuxErased.recorded.status).toBe("supported")
   expect(tmuxErased.recorded.reason).toMatch(/tmux history_size 709 -> 0/)
+  expect(JSON.parse(tmuxErased.parsed.assertions?.[0]?.observed ?? "null")).toMatchObject({
+    muxHistory: { mux: "tmux", before: 709, after: 0 },
+  })
   expect(tmuxErased.reads, "one read before ED3 and one after").toEqual([])
 
   const tmuxKept = await runMux("tmux", [history(709), history(709)])
   expect(tmuxKept.callbackResult).toMatchObject({ pass: false, observation: { outcome: "unsupported" } })
   expect(tmuxKept.recorded.reason).toMatch(/tmux history_size 709 -> 709/)
+  expect(JSON.parse(tmuxKept.parsed.assertions?.[0]?.observed ?? "null")).toMatchObject({
+    muxHistory: { mux: "tmux", before: 709, after: 709 },
+  })
 
   const tmuxUnseeded = await runMux("tmux", [history(0), history(0)])
   expect(tmuxUnseeded.recorded.status).toBe("probe-invalid")
@@ -865,12 +946,18 @@ test("multiplexer erase.screen.scrollback decides from tmux and screen history c
   const screenErased = await runMux("screen", [history(22, 20), history(0, 20)])
   expect(screenErased.recorded.status).toBe("supported")
   expect(screenErased.recorded.reason).toMatch(/screen history 22 -> 0/)
+  expect(JSON.parse(screenErased.parsed.assertions?.[0]?.observed ?? "null")).toMatchObject({
+    muxHistory: { mux: "screen", before: 22, after: 0 },
+  })
   expect(screenErased.reads, "one read before ED3 and one after").toEqual([])
 
   const screenKept = await runMux("screen", [history(22, 20), history(22, 20)])
   expect(screenKept.callbackResult).toMatchObject({ pass: false, observation: { outcome: "unsupported" } })
   expect(screenKept.recorded.status).toBe("unsupported")
   expect(screenKept.recorded.reason).toMatch(/screen history 22 -> 22.*ED3 left the history in place/)
+  expect(JSON.parse(screenKept.parsed.assertions?.[0]?.observed ?? "null")).toMatchObject({
+    muxHistory: { mux: "screen", before: 22, after: 22 },
+  })
 })
 
 /**

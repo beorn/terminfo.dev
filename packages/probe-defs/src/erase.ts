@@ -382,12 +382,16 @@ function muxScrollbackResult(
 ): ProbeCallbackResult {
   const query = MUX_HISTORY_QUERY[mux]
   const countLabel = mux === "tmux" ? "history_size" : "history"
-  const response = JSON.stringify({ ...observed, muxHistory: { mux, before, after } })
+  const state = {
+    ...observed,
+    frames: frames.map(({ ref, label }) => ({ ref, label })),
+    muxHistory: { mux, before, after },
+  }
   const invalid = (reason: ObservationReason, note: string): ProbeCallbackResult => ({
     pass: false,
-    response,
+    response: JSON.stringify(state),
     note,
-    observation: { outcome: "inconclusive", reason, assertionType: "buffer_state", frames, note },
+    observation: { outcome: "inconclusive", reason, assertionType: "buffer_state", note },
   })
   if (typeof before !== "number") return invalid(before.reason, before.note)
   if (before === 0) {
@@ -399,21 +403,7 @@ function muxScrollbackResult(
   if (typeof after !== "number") return invalid(after.reason, after.note)
   const erased = after === 0
   const note = `${mux} ${countLabel} ${before} -> ${after} for the probe's own pane${erased ? "" : ": ED3 left the history in place"}`
-  return {
-    pass: erased,
-    response,
-    note,
-    observation: { outcome: erased ? "supported" : "unsupported", assertionType: "buffer_state", frames, note },
-    assertions: [
-      {
-        assertionType: "buffer_state" as const,
-        kind: erased ? "positive" : "negative",
-        expected: `ED3 removes ${mux} history: ${countLabel} drops from above 0 to 0`,
-        observed: note,
-        action: "erase.screen.scrollback:ed3",
-      },
-    ],
-  }
+  return parserStateResult(erased, `ED3 removes ${mux} history: ${countLabel} drops from above 0 to 0`, state, note)
 }
 
 /**
