@@ -1,3 +1,9 @@
+/**
+ * @failure A component worktree resolves @terminfo/* to the shared checkout, so a green run proves nothing about the change.
+ * @level l1
+ * @consumer terminfo component-worktree test runs
+ * @testonly none
+ */
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { expect, it } from "vitest"
