@@ -6434,9 +6434,17 @@ const extensionDefinitions: ProbeDefinition[] = [
 
   {
     ...probe("extensions.reflow", mainScreenReflow, async (ctx): Promise<ProbeCallbackResult> => {
+      if (ctx.mux === "tmux" || ctx.mux === "screen") {
+        const note = "tmux and GNU Screen remain PROBE TODO on this arm"
+        return {
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+        }
+      }
       const resizeWindow = ctx.input?.resizeWindow
       const capture = ctx.capture
-      if (!resizeWindow || !capture || ctx.captureKind === "text-cells" || ctx.mux === "tmux" || ctx.mux === "screen") {
+      if (!resizeWindow || !capture || ctx.captureKind === "text-cells") {
         const note = "No controlled resize and cell-content readback to measure reflow"
         return {
           pass: false,
@@ -6550,16 +6558,28 @@ const extensionDefinitions: ProbeDefinition[] = [
         } else {
           const narrowCols = preShrunk.reading.cols
           const wideCols = initial.cols
-          const regionCols = Math.min(narrowCols, 10)
+          const growCols = narrowCols + 4
           const regionRows = 5
-          const cells = { top: 1, left: 1, bottom: regionRows, right: regionCols }
-          const pixelGeometry = {
+          const growCells = { top: 1, left: 1, bottom: regionRows, right: growCols }
+          const growPixelGeometry = {
             cellWidth: baseGeometry.cellWidth,
             cellHeight: baseGeometry.cellHeight,
-            textWidth: regionCols * baseGeometry.cellWidth,
+            textWidth: growCols * baseGeometry.cellWidth,
             textHeight: regionRows * baseGeometry.cellHeight,
           }
-          const grab = async (role: "control" | "target", label: string): Promise<ObservationFrame> => {
+          const shrinkCells = { top: 1, left: 1, bottom: regionRows, right: narrowCols }
+          const shrinkPixelGeometry = {
+            cellWidth: baseGeometry.cellWidth,
+            cellHeight: baseGeometry.cellHeight,
+            textWidth: narrowCols * baseGeometry.cellWidth,
+            textHeight: regionRows * baseGeometry.cellHeight,
+          }
+          const grab = async (
+            role: "control" | "target",
+            label: string,
+            cells: typeof growCells,
+            pixelGeometry: typeof growPixelGeometry,
+          ): Promise<ObservationFrame> => {
             const captured = await capture({ role, label, cells, pixelGeometry })
             const digest = frameDigests(captured).cells
             if (!digest?.trim()) {
@@ -6586,19 +6606,24 @@ const extensionDefinitions: ProbeDefinition[] = [
               await new Promise<void>((resolve) => {
                 setTimeout(resolve, 1000)
               })
-              const growSettle1 = await grab("control", "main-grow settle 1")
-              const growSettle2 = await grab("control", "main-grow settle 2")
+              const growSettle1 = await grab("control", "main-grow settle 1", growCells, growPixelGeometry)
+              await new Promise<void>((resolve) => {
+                setTimeout(resolve, 100)
+              })
+              const growSettle2 = await grab("control", "main-grow settle 2", growCells, growPixelGeometry)
               if (frameDigests(growSettle1).cells !== frameDigests(growSettle2).cells) {
                 result = todoResult("Main-grow post-resize captures did not stabilize")
               } else {
-                const growAfter = await grab("target", "main-grow after")
-                const growPrefix = growRow1.slice(0, regionCols)
-                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growPrefix}\r\nHARD-a\r\nHARD-b\r\n`)
-                const growReflowed = await grab("control", "main-grow ref reflowed")
-                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growPrefix}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`)
-                const growPreserved = await grab("control", "main-grow ref preserved")
-                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growPrefix}\r\n\r\nHARD-a\r\nHARD-b\r\n`)
-                const growClipped = await grab("control", "main-grow ref clipped")
+                const growAfter = await grab("target", "main-grow after", growCells, growPixelGeometry)
+                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
+                await ctx.queryCursorPosition()
+                const growReflowed = await grab("control", "main-grow ref reflowed", growCells, growPixelGeometry)
+                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`)
+                await ctx.queryCursorPosition()
+                const growPreserved = await grab("control", "main-grow ref preserved", growCells, growPixelGeometry)
+                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\nHARD-a\r\nHARD-b\r\n`)
+                await ctx.queryCursorPosition()
+                const growClipped = await grab("control", "main-grow ref clipped", growCells, growPixelGeometry)
                 const growRefs = {
                   reflowed: growReflowed,
                   preserved: growPreserved,
@@ -6627,19 +6652,39 @@ const extensionDefinitions: ProbeDefinition[] = [
                     await new Promise<void>((resolve) => {
                       setTimeout(resolve, 1000)
                     })
-                    const shrinkSettle1 = await grab("control", "main-shrink settle 1")
-                    const shrinkSettle2 = await grab("control", "main-shrink settle 2")
+                    const shrinkSettle1 = await grab("control", "main-shrink settle 1", shrinkCells, shrinkPixelGeometry)
+                    await new Promise<void>((resolve) => {
+                      setTimeout(resolve, 100)
+                    })
+                    const shrinkSettle2 = await grab("control", "main-shrink settle 2", shrinkCells, shrinkPixelGeometry)
                     if (frameDigests(shrinkSettle1).cells !== frameDigests(shrinkSettle2).cells) {
                       result = todoResult("Main-shrink post-resize captures did not stabilize")
                     } else {
-                      const shrinkAfter = await grab("target", "main-shrink after")
-                      const shrinkPrefix = shrinkRow1.slice(0, regionCols)
-                      ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkPrefix}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`)
-                      const shrinkReflowed = await grab("control", "main-shrink ref reflowed")
-                      ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`)
-                      const shrinkReflowedHistory = await grab("control", "main-shrink ref reflowed-history")
-                      ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkPrefix}\r\nHARD-a\r\nHARD-b\r\n`)
-                      const shrinkClipped = await grab("control", "main-shrink ref clipped")
+                      const shrinkAfter = await grab("target", "main-shrink after", shrinkCells, shrinkPixelGeometry)
+                      ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+                      await ctx.queryCursorPosition()
+                      const shrinkReflowed = await grab(
+                        "control",
+                        "main-shrink ref reflowed",
+                        shrinkCells,
+                        shrinkPixelGeometry,
+                      )
+                      ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+                      await ctx.queryCursorPosition()
+                      const shrinkReflowedHistory = await grab(
+                        "control",
+                        "main-shrink ref reflowed-history",
+                        shrinkCells,
+                        shrinkPixelGeometry,
+                      )
+                      ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+                      await ctx.queryCursorPosition()
+                      const shrinkClipped = await grab(
+                        "control",
+                        "main-shrink ref clipped",
+                        shrinkCells,
+                        shrinkPixelGeometry,
+                      )
                       const shrinkRefs = {
                         reflowed: shrinkReflowed,
                         "reflowed-history": shrinkReflowedHistory,
@@ -6685,8 +6730,8 @@ const extensionDefinitions: ProbeDefinition[] = [
                           growOutcome === "reflowed" &&
                           (shrinkOutcome === "reflowed" || shrinkOutcome === "reflowed-history")
                         const reason = supported
-                          ? `main-screen reflow measured across shrink (${shrinkOutcome}) and grow (${growOutcome}); retained history unmeasured`
-                          : `main-screen did not reflow across shrink (${shrinkOutcome}) and grow (${growOutcome}); retained history unmeasured`
+                          ? `main-screen reflow measured across shrink (${shrinkOutcome}) and grow (${growOutcome}); retained history unmeasured; wide characters, alternate screen and cursor on a wrapped line unmeasured`
+                          : `main-screen did not reflow across shrink (${shrinkOutcome}) and grow (${growOutcome}); retained history unmeasured; wide characters, alternate screen and cursor on a wrapped line unmeasured`
                         const response = JSON.stringify(observed)
                         result = {
                           pass: supported,

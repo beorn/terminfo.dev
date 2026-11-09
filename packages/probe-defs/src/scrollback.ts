@@ -438,6 +438,33 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     frames.push(result)
     return result
   }
+  const calWidth = `vh-cal-${calLines - 1}`.length
+  const calCells = { top: 1, left: 1, bottom: ctx.rows, right: calWidth }
+  const calPixelGeometry = ctx.captureGeometry?.geometry
+    ? {
+        cellWidth: ctx.captureGeometry.geometry.cellWidth,
+        cellHeight: ctx.captureGeometry.geometry.cellHeight,
+        textWidth: calWidth * ctx.captureGeometry.geometry.cellWidth,
+        textHeight: ctx.rows * ctx.captureGeometry.geometry.cellHeight,
+      }
+    : undefined
+  const calFrame = async (label: string) => {
+    const result = await capture({
+      role: "control",
+      label,
+      ...(calPixelGeometry ? { cells: calCells, pixelGeometry: calPixelGeometry } : {}),
+    })
+    if (result.kind === "text-cells" || !result.pixelsDigest?.trim()) {
+      throw new Error(`Viewport capture ${label} has no complete pixel digest`)
+    }
+    frames.push(result)
+    return result
+  }
+  const calSame = (a: ObservationFrame, b: ObservationFrame) => {
+    const da = frameDigests(a).cells ?? frameDigests(a).whole
+    const db = frameDigests(b).cells ?? frameDigests(b).whole
+    return Boolean(da && db && da === db)
+  }
   let failed = false
   let primary: unknown
   let scrolled = false
@@ -449,24 +476,29 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   try {
     ctx.write("\x1b[?25l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[2J\x1b[3J\x1b[H")
     ctx.write(Array.from({ length: calLines }, (_, row) => `vh-cal-${row}`).join("\r\n"))
-    const calBottom = await frame("Viewport calibration bottom")
+    await ctx.queryCursorPosition()
+    const calBottom = await calFrame("Viewport calibration bottom")
     calibration.calBottom = calBottom
     const calDelivery = await readInput(/^a/, 1000, () => input.injectKey("a"))
     calibration.delivery = calDelivery
     if (!calDelivery) return todo("viewport input delivery not observed")
     scrolled = true
     await input.injectClick(4)
-    const calScrolled = await frame("Viewport calibration scrolled")
+    const calScrolled = await calFrame("Viewport calibration scrolled")
     calibration.calScrolled = calScrolled
     await moveDown()
+    const calRestored = await calFrame("Viewport calibration restored")
+    calibration.calRestored = calRestored
+    if (!calSame(calRestored, calBottom)) return todo("restoration to bottom not proven")
     const calCandidates: Record<number, ObservationFrame> = {}
     const matchedDisplacements: number[] = []
     for (let d = 1; d <= maxCandidate; d++) {
       ctx.write("\x1b[2J\x1b[H")
       ctx.write(Array.from({ length: ctx.rows }, (_, row) => `vh-cal-${calLines - ctx.rows - d + row}`).join("\r\n"))
-      const refFrame = await frame(`Viewport calibration candidate ${d}`)
+      await ctx.queryCursorPosition()
+      const refFrame = await calFrame(`Viewport calibration candidate ${d}`)
       calCandidates[d] = refFrame
-      if (!sameFrame(calScrolled, calBottom) && sameFrame(calScrolled, refFrame)) {
+      if (!calSame(calScrolled, calBottom) && calSame(calScrolled, refFrame)) {
         matchedDisplacements.push(d)
       }
     }
@@ -484,6 +516,7 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
 
     ctx.write("\x1b[2J\x1b[3J\x1b[H")
     ctx.write(tail)
+    await ctx.queryCursorPosition()
     const reference = await frame("Viewport constructed bottom reference")
     evidence.Bref = reference
     let screenshot = reference

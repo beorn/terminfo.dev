@@ -1756,7 +1756,8 @@ function viewportApplication(
     }
     const inHoldPhase = lines.some((line) => line.startsWith("vh-tail-"))
     const grid = Array.from({ length: rows }, (_, index) =>
-      (options.opaqueHistory && inHoldPhase && top < bottom()) || (options.calAmbiguous && !inHoldPhase && ups === 1)
+      (options.opaqueHistory && inHoldPhase && top < bottom()) ||
+      (options.calAmbiguous && !inHoldPhase && ups === 1 && frames.length !== 2)
         ? "Opaque history overlay".padEnd(cols, " ")
         : (lines[top + index] ?? "").padEnd(cols, " ").slice(0, cols),
     )
@@ -1764,6 +1765,14 @@ function viewportApplication(
     const pixelsDigest = `sha256:${createHash("sha256")
       .update(JSON.stringify({ grid, chrome: options.changingChrome && targetWrites > 0 ? frames.length : 0 }))
       .digest("hex")}`
+    const regionCells = request.cells
+      ? grid
+          .slice(request.cells.top - 1, request.cells.bottom)
+          .map((line) => line.slice(request.cells!.left - 1, request.cells!.right))
+      : undefined
+    const regionDigest = regionCells
+      ? `sha256:${createHash("sha256").update(JSON.stringify(regionCells)).digest("hex")}`
+      : undefined
     const frame: ObservationFrame = {
       kind: "pixels",
       ...request,
@@ -1772,6 +1781,7 @@ function viewportApplication(
         .update(`viewport-frame:${frames.length + 1}`)
         .digest("hex")}`,
       pixelsDigest,
+      ...(regionDigest ? { regionDigest } : {}),
     }
     if (options.digest === "missing") Reflect.deleteProperty(frame, "pixelsDigest")
     if (options.digest === "empty") frame.pixelsDigest = ""
@@ -1799,6 +1809,10 @@ test.each([
   async (_name, policies, outcome, upRows) => {
     const featureId = "scrollback.viewport-hold-output"
     const app = viewportApplication(policies, { upRows })
+    app.context.captureGeometry = {
+      geometry: { cellWidth: 8, cellHeight: 16, textWidth: 20 * 8, textHeight: 5 * 16 },
+      source: "measured by complete raster calibration",
+    }
     // Even if getScrollback exists without viewportOffset, the Linux App wheel+capture path runs.
     app.context.getScrollback = async () => ({ totalLines: 50, screenLines: 5 })
     const result = await findScrollback(featureId).term!(app.context)
@@ -1807,13 +1821,17 @@ test.each([
     expect(result.assertions).toContainEqual(
       expect.objectContaining({ assertionType: "screenshot", kind: outcome === "supported" ? "positive" : "negative" }),
     )
-    // Calibration captures 2 + 5 = 7 control frames, then Bref + 8 ordinary + 8 synchronized = 24 frames.
-    expect(app.frames).toHaveLength(24)
+    // Calibration captures 3 + 5 = 8 cell-cropped control frames, then Bref + 8 ordinary + 8 synchronized = 25 frames.
+    expect(app.frames).toHaveLength(25)
+    for (let i = 0; i < 8; i++) {
+      expect(app.frames[i]?.frame.cells).toEqual({ top: 1, left: 1, bottom: 5, right: 9 })
+      expect(app.frames[i]?.frame.regionDigest).toMatch(/^sha256:/)
+    }
     expect(app.frames.map(({ down }) => down)).toEqual([
-      0, 0, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 44, 44, 66, 66, 66, 66, 66, 66, 88, 88, 110,
+      0, 0, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 44, 44, 66, 66, 66, 66, 66, 66, 88, 88, 110,
     ])
-    const reference = app.frames[7]!.frame.pixelsDigest
-    for (const index of [13, 15, 21, 23]) expect(app.frames[index]!.frame.pixelsDigest).toBe(reference)
+    const reference = app.frames[8]!.frame.pixelsDigest
+    for (const index of [14, 16, 22, 24]) expect(app.frames[index]!.frame.pixelsDigest).toBe(reference)
     const evidence = JSON.parse(result.response!) as {
       calibration: { rowsPerNotch: number; matchedDisplacements: number[] }
     }
@@ -1894,7 +1912,7 @@ test.each([
         parsed.results?.[0]?.screenshotRef,
         parsed.results?.[0]?.assertionType,
       ),
-    ).toHaveLength(24)
+    ).toHaveLength(25)
   },
 )
 
@@ -1965,15 +1983,18 @@ test.each([
 })
 
 // Accepted calibration bound limitation: a wheel jump beyond maxCandidate matches none of 1..maxCandidate.
-test("app viewport refuses an uncalibrated wheel jump that exceeds the candidate window", async () => {
-  const app = viewportApplication(undefined, { upRows: 1000 })
-  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
-  expectViewportTodo(result)
-  expect(result.notTested?.noObservable).toBe("wheel placement bound not established")
-  expect(app.activity().top).toBe(app.activity().bottom)
-  expect(app.frames).toHaveLength(7)
-  expect(app.activity().targetWrites).toBe(0)
-})
+test.each([15, 1000])(
+  "app viewport refuses an uncalibrated wheel jump (%i rows) that exceeds the candidate window",
+  async (upRows) => {
+    const app = viewportApplication(undefined, { upRows })
+    const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+    expectViewportTodo(result)
+    expect(result.notTested?.noObservable).toBe("wheel placement bound not established")
+    expect(app.activity().top).toBe(app.activity().bottom)
+    expect(app.frames).toHaveLength(8)
+    expect(app.activity().targetWrites).toBe(0)
+  },
+)
 
 // Accepted lifecycle: R leaves the verified bottom; a failed second restore forbids phase-two setup.
 // A single restoration test would pass if production reused B1 after R had scrolled away.
@@ -1982,7 +2003,7 @@ test("app viewport restores again after R before any synchronized setup", async 
   const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
   expectViewportTodo(result)
   expect(result.notTested?.noObservable).toContain("restoration to bottom not proven")
-  expect(app.frames).toHaveLength(16)
+  expect(app.frames).toHaveLength(17)
   expect(app.activity().synchronizedWrites).toBe(0)
   expect(app.writes.join("")).not.toContain("\x1b[?2026h")
 })

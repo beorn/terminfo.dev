@@ -771,6 +771,18 @@ test.each([
       /main-screen reflow measured across shrink \(reflowed\) and grow \(reflowed\); retained history unmeasured/,
   },
   {
+    name: "supported-in-place-reflow-via-cpr-clamp",
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "reflowed" as const,
+    disableCsi18t: true,
+    expectedStatus: "supported" as const,
+    expectedOutcome: "supported" as const,
+    expectedAssertions: 1,
+    expectedFrames: 12,
+    expectedReason:
+      /main-screen reflow measured across shrink \(reflowed\) and grow \(reflowed\); retained history unmeasured; wide characters, alternate screen and cursor on a wrapped line unmeasured/,
+  },
+  {
     name: "supported-reflowed-history-on-shrink",
     growBehavior: "reflowed" as const,
     shrinkBehavior: "reflowed-history" as const,
@@ -791,6 +803,17 @@ test.each([
     expectedFrames: 12,
     expectedReason:
       /main-screen did not reflow across shrink \(clipped\) and grow \(preserved\); retained history unmeasured/,
+  },
+  {
+    name: "unsupported-dropped-continuation-on-grow",
+    growBehavior: "dropped-continuation" as const,
+    shrinkBehavior: "reflowed" as const,
+    expectedStatus: "unsupported" as const,
+    expectedOutcome: "unsupported" as const,
+    expectedAssertions: 1,
+    expectedFrames: 12,
+    expectedReason:
+      /main-screen did not reflow across shrink \(reflowed\) and grow \(clipped\); retained history unmeasured/,
   },
   {
     name: "probe-todo-ambiguous-layout",
@@ -830,6 +853,7 @@ test.each([
     name,
     growBehavior,
     shrinkBehavior,
+    disableCsi18t,
     failRestore,
     expectedStatus,
     expectedOutcome,
@@ -847,6 +871,7 @@ test.each([
     const narrowCols = 16
     let currentCols = wideCols
     let screenPlane = "blank"
+    let gridLines: string[] = Array.from({ length: rows }, () => "")
     let phaseState: "init" | "pre-shrunk" | "grown" | "shrunk" = "init"
     let settleCaptures = 0
     const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
@@ -863,10 +888,25 @@ test.each([
       return 0 as unknown as ReturnType<typeof setTimeout>
     }) as typeof setTimeout
     try {
-      const growRow1 = "G1-alpha".padEnd(narrowCols, "x").slice(0, 10)
+      const growRow1Full = "G1-alpha".padEnd(narrowCols, "x")
       const growRow2 = "G2-Z"
-      const shrinkRow1 = "S1-alpha".padEnd(narrowCols, "y").slice(0, 10)
+      const growSoft = growRow1Full + growRow2
+      const shrinkRow1Full = "S1-alpha".padEnd(narrowCols, "y")
       const shrinkRow2 = "S2-Z"
+      const paintPayload = (payload: string, autowrap: boolean) => {
+        const next: string[] = []
+        const logicalLines = payload.replace(/\r\n$/, "").split("\r\n")
+        for (const logical of logicalLines) {
+          if (!autowrap || logical.length <= currentCols) {
+            next.push(logical.slice(0, currentCols))
+          } else {
+            for (let offset = 0; offset < logical.length; offset += currentCols) {
+              next.push(logical.slice(offset, offset + currentCols))
+            }
+          }
+        }
+        gridLines = Array.from({ length: rows }, (_, idx) => next[idx] ?? "")
+      }
       const context: TermProbeSource = {
         kind: "live",
         rows,
@@ -885,20 +925,17 @@ test.each([
           writes.push(bytes)
           if (bytes.includes("G1-alpha") && bytes.includes(growRow2) && currentCols === narrowCols) {
             screenPlane = "seed-grow"
+            paintPayload(`${growSoft}\r\nHARD-a\r\nHARD-b\r\n`, true)
           } else if (bytes.includes("S1-alpha") && bytes.includes(shrinkRow2) && currentCols === wideCols) {
             screenPlane = "seed-shrink"
-          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\nHARD-a\r\nHARD-b\r\n`) {
-            screenPlane = "grow:reflowed"
-          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`) {
-            screenPlane = "grow:preserved"
-          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n\r\nHARD-a\r\nHARD-b\r\n`) {
-            screenPlane = "grow:clipped"
-          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`) {
-            screenPlane = "shrink:reflowed"
-          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`) {
-            screenPlane = "shrink:reflowed-history"
-          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\nHARD-a\r\nHARD-b\r\n`) {
-            screenPlane = "shrink:clipped"
+            paintPayload(`${shrinkRow1Full}${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`, true)
+          } else if (bytes.startsWith("\x1b[?7h\x1b[0m\x1b[2J\x1b[H") || bytes.startsWith("\x1b[?7l\x1b[0m\x1b[2J\x1b[H")) {
+            const autowrap = bytes.startsWith("\x1b[?7h")
+            const body = bytes
+              .replace(/^\x1b\[\?7[hl]\x1b\[0m\x1b\[2J\x1b\[H/, "")
+              .replace(/\x1b\[\?7h$/, "")
+            screenPlane = "ref-paint"
+            paintPayload(body, autowrap)
           }
         },
         queryCursorPosition: async () => {
@@ -912,7 +949,7 @@ test.each([
         queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
         queryWithSentinelOutcome: async (sequence) => {
           writes.push(sequence)
-          if (sequence === "\x1b[18t") {
+          if (sequence === "\x1b[18t" && !disableCsi18t) {
             const raw = `\x1b[8;${rows};${currentCols}t`
             return {
               match: /\x1b\[8;(\d+);(\d+)t/.exec(raw),
@@ -936,6 +973,15 @@ test.each([
               } else {
                 phaseState = "shrunk"
                 screenPlane = `shrink:${shrinkBehavior}`
+                if (shrinkBehavior === "reflowed") {
+                  gridLines = [shrinkRow1Full, shrinkRow2, "HARD-a", "HARD-b", ""]
+                } else if (shrinkBehavior === "reflowed-history") {
+                  gridLines = [shrinkRow2, "HARD-a", "HARD-b", "", ""]
+                } else if (shrinkBehavior === "clipped") {
+                  gridLines = [shrinkRow1Full, "HARD-a", "HARD-b", "", ""]
+                } else {
+                  gridLines = ["UNKNOWN", "", "", "", ""]
+                }
               }
             } else {
               if (failRestore && phaseState === "shrunk") {
@@ -947,26 +993,42 @@ test.each([
                 phaseState = "grown"
                 screenPlane = `grow:${growBehavior}`
                 settleCaptures = 0
+                if (growBehavior === "reflowed") {
+                  gridLines = [growSoft, "HARD-a", "HARD-b", "", ""]
+                } else if (growBehavior === "preserved") {
+                  gridLines = [growRow1Full, growRow2, "HARD-a", "HARD-b", ""]
+                } else if (growBehavior === "dropped-continuation") {
+                  gridLines = [growRow1Full, "HARD-a", "HARD-b", "", ""]
+                }
               }
             }
             return { width: wideCols * 10, height: rows * 20 }
           },
         },
-        capture: async ({ role, label }) => {
-          let effectivePlane = screenPlane
+        capture: async ({ role, label, cells }) => {
+          const cropTop = cells?.top ?? 1
+          const cropLeft = cells?.left ?? 1
+          const cropBottom = cells?.bottom ?? rows
+          const cropRight = cells?.right ?? currentCols
+          const croppedRows: string[] = []
+          for (let r = cropTop - 1; r < cropBottom; r++) {
+            const line = (gridLines[r] ?? "").padEnd(cropRight, " ")
+            croppedRows.push(line.slice(cropLeft - 1, cropRight))
+          }
+          let regionKey = croppedRows.join("\n")
           if (screenPlane === "grow:unstable") {
             settleCaptures++
-            effectivePlane = `grow:unstable-${settleCaptures}`
+            regionKey = `grow:unstable-${settleCaptures}`
           }
           const frame: ObservationFrame = {
             kind: "pixels",
             role,
             label,
             capturedAt: frames.length + 1,
-            ref: digest(`frame-${frames.length + 1}-${effectivePlane}`),
+            ref: digest(`frame-${frames.length + 1}-${regionKey}`),
             sourceRef: digest(`source-${frames.length + 1}`),
-            regionDigest: digest(`cells-${effectivePlane}`),
-            pixelsDigest: digest(`pixels-${effectivePlane}`),
+            regionDigest: digest(`cells-${regionKey}`),
+            pixelsDigest: digest(`pixels-${regionKey}`),
           }
           frames.push(frame)
           return frame
@@ -1061,5 +1123,20 @@ test.each([
       globalThis.setTimeout = realSetTimeout
       Date.now = realDateNow
     }
+  },
+)
+
+test.each(["tmux", "screen"] as const)(
+  "extensions.reflow keeps %s as PROBE TODO on the terminal-app arm",
+  async (mux) => {
+    const app = captureApp(24, 80)
+    app.context.mux = mux
+    const result = await find("extensions.reflow").term!(app.context)
+    expect(result).toEqual({
+      pass: false,
+      note: "tmux and GNU Screen remain PROBE TODO on this arm",
+      tests: [{ id: "criterion", status: "probe-todo", reason: "tmux and GNU Screen remain PROBE TODO on this arm" }],
+    })
+    expect(app.writes).toEqual([])
   },
 )

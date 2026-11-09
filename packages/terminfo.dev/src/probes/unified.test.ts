@@ -1584,7 +1584,7 @@ it.each([false, true])(
     expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({
       calibration: deliverKey ? { matchedDisplacements: [] } : { delivery: null },
     })
-    expect(capture).toHaveBeenCalledTimes(deliverKey ? 10 : 1)
+    expect(capture).toHaveBeenCalledTimes(deliverKey ? 11 : 1)
     expect(writes.length > 0).toBe(true)
     expect(injectKey).toHaveBeenCalledTimes(1)
     expect(injectClick).toHaveBeenCalledTimes(deliverKey ? 35 : 0)
