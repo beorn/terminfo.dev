@@ -559,7 +559,7 @@ if [[ "${1:-}" == "--inside" ]]; then
 
   case "$TERMINFO_CLIPBOARD_PROFILE" in
     default)
-      clipboard_permissions='clipboard: read=ask,write=allow; OSC52=not-run'
+      clipboard_permissions='clipboard: read=ask,write=allow; OSC52: write=run,read=not-run'
       ;;
     allow|deny-read)
       if [[ "$target_id" != kitty ]]; then

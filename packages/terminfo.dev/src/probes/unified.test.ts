@@ -2729,20 +2729,52 @@ const defaultClipboardCases: Array<{
   mismatched?: boolean
   unowned?: boolean
   attached?: boolean
+  refuseWrite?: boolean
   eligible: boolean
 }> = [
   { name: "direct Kitty default paste", eligible: true },
-  { name: "default OSC52 write", featureId: "extensions.osc52-write", eligible: false },
+  { name: "default OSC52 write", featureId: "extensions.osc52-write", eligible: true },
+  {
+    name: "default OSC52 write on other Linux app",
+    featureId: "extensions.osc52-write",
+    subject: { kind: "term", id: "ghostty", os: "linux" },
+    eligible: true,
+  },
+  {
+    name: "default OSC52 write on xterm refusing write",
+    featureId: "extensions.osc52-write",
+    subject: { kind: "term", id: "xterm", os: "linux" },
+    refuseWrite: true,
+    eligible: true,
+  },
   { name: "default OSC52 read", featureId: "extensions.osc52-read", eligible: false },
   { name: "default OSC52 roundtrip", featureId: "extensions.osc52-clipboard", eligible: false },
   { name: "other app", subject: { kind: "term", id: "ghostty", os: "linux" }, eligible: false },
   { name: "mux subject", subject: { kind: "mux", id: "tmux", os: "linux" }, eligible: false },
+  {
+    name: "default OSC52 write on mux subject",
+    featureId: "extensions.osc52-write",
+    subject: { kind: "mux", id: "tmux", os: "linux" },
+    eligible: false,
+  },
   { name: "library subject", subject: { kind: "lib", id: "kitty", os: "linux" }, eligible: false },
   { name: "other OS", subject: { kind: "term", id: "kitty", os: "darwin" }, eligible: false },
   { name: "targetless receipt", targetless: true, eligible: false },
+  {
+    name: "default OSC52 write on targetless receipt",
+    featureId: "extensions.osc52-write",
+    targetless: true,
+    eligible: false,
+  },
   { name: "mismatched declaration", mismatched: true, eligible: false },
   { name: "unowned output", unowned: true, eligible: false },
   { name: "attached outer Kitty", attached: true, eligible: false },
+  {
+    name: "default OSC52 write with attached outer Kitty",
+    featureId: "extensions.osc52-write",
+    attached: true,
+    eligible: false,
+  },
   { name: "existing allow profile without target", profile: "allow", targetless: true, eligible: true },
   { name: "existing deny-read profile without target", profile: "deny-read", targetless: true, eligible: true },
 ]
@@ -2765,6 +2797,8 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
   process.env.TERMINFO_DISPOSABLE_RECEIPT = receiptPath
   const writes: string[] = []
   let bracketedPaste = false
+  const baseline = "owned clipboard baseline"
+  let clipboardText = baseline
   process.stdout.write = ((text: string) => {
     writes.push(text)
     if (text === "\x1b[?2004h") bracketedPaste = true
@@ -2772,10 +2806,14 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     if (text.includes("\x1b[?2004$p")) {
       queueMicrotask(() => process.stdin.emit("data", Buffer.from(`\x1b[?2004;${bracketedPaste ? 1 : 2}$y\x1b[?1;2c`)))
     }
+    if (text.startsWith("\x1b]52;c;") && !scenario.refuseWrite) {
+      clipboardText = atob(/\x1b\]52;c;([^\x07]+)\x07/.exec(text)?.[1] ?? "")
+    }
+    if (text === "\x1b[6n") {
+      queueMicrotask(() => process.stdin.emit("data", Buffer.from("\x1b[1;1R")))
+    }
     return true
   }) as typeof process.stdout.write
-  const baseline = "owned clipboard baseline"
-  let clipboardText = baseline
   const withClipboardFixture = vi.fn(
     createClipboardTransaction(baseline, {
       async readText(trace, kind, verify) {
@@ -2794,7 +2832,7 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
   const clipboard: LinuxClipboardAdapter = {
     profile: scenario.profile ?? "default",
     config: "fixture",
-    permissions: "clipboard: read=ask,write=allow; OSC52=not-run",
+    permissions: "clipboard: read=ask,write=allow; OSC52: write=run,read=not-run",
     summary: "{}",
     assertOwned: async () => {},
     readTitle: async () => {
@@ -2828,6 +2866,7 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     process.stdin.emit("data", Buffer.from(text))
   })
   const featureId = scenario.featureId ?? "extensions.clipboard-paste"
+  const isOsc52Write = featureId === "extensions.osc52-write"
   const collected = runProbeBatch({
     ids: [featureId],
     subject,
@@ -2839,30 +2878,38 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     await expect(collected).rejects.toThrow(/disagree/)
   } else {
     const batch = await collected
+    const expectedOutcome = scenario.refuseWrite ? "unsupported" : "supported"
     expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(
-      scenario.eligible ? "supported" : "probe-todo",
+      scenario.eligible ? expectedOutcome : "probe-todo",
     )
     if (scenario.eligible) {
       expect(batch.observations).toContainEqual(
-        expect.objectContaining({ featureId, outcome: "supported", assertionType: "input_bytes" }),
+        expect.objectContaining({
+          featureId,
+          outcome: expectedOutcome,
+          assertionType: isOsc52Write ? "clipboard" : "input_bytes",
+        }),
       )
       const trace = JSON.parse(batch.rawReplies[featureId]!) as { clipboard: Array<{ kind: string }> }
-      expect(trace.clipboard.map((event) => event.kind)).toEqual([
-        "clipboard-read",
-        "clipboard-write",
-        "clipboard-restore",
-        "clipboard-verify",
-      ])
+      expect(trace.clipboard.map((event) => event.kind)).toEqual(
+        isOsc52Write
+          ? ["clipboard-read", "clipboard-read", "clipboard-restore", "clipboard-verify"]
+          : ["clipboard-read", "clipboard-write", "clipboard-restore", "clipboard-verify"],
+      )
     } else {
       expect(batch.assertions).toEqual([])
     }
   }
   expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible ? 1 : 0)
   expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(
-    scenario.eligible ? ["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"] : [],
+    scenario.eligible && !isOsc52Write ? ["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"] : [],
   )
   expect(clipboardText).toBe(baseline)
-  expect(writes.join("")).not.toContain("\x1b]52;")
+  if (scenario.eligible && isOsc52Write) {
+    expect(writes.join("")).toContain("\x1b]52;c;")
+  } else {
+    expect(writes.join("")).not.toContain("\x1b]52;")
+  }
 })
 
 it("runs owned OSC 52 after pixels and retains timestamped independent clipboard operations", async () => {

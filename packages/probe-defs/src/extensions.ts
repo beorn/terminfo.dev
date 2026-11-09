@@ -4277,7 +4277,8 @@ function headlessClipboardResult(response: string, nonce: string): ProbeCallback
 }
 
 function liveClipboardNotTested(): ProbeCallbackResult {
-  const note = "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent"
+  const note =
+    "No owned clipboard fixture for this probe (under the default clipboard profile, Linux app runs attach one only to OSC 52 write because clipboard read blocks on ask-first confirmation prompts); OSC 52 was not sent"
   return {
     pass: false,
     note,
@@ -4355,6 +4356,25 @@ async function liveClipboardProbe(
         )
       }
       const measured = await fixture.readText()
+      if (kind === "write") {
+        const pass = measured === nonce
+        return {
+          pass,
+          observation: {
+            outcome: pass ? "supported" : "unsupported",
+            assertionType: "clipboard",
+            ...(!pass && { note: "Independent clipboard read did not equal the OSC 52 write nonce" }),
+          },
+          assertions: [
+            {
+              assertionType: "clipboard" as const,
+              kind: pass ? "positive" : "negative",
+              expected: "Independent clipboard text equals OSC 52 write nonce",
+              observed: measured || "(empty)",
+            },
+          ],
+        }
+      }
       if (measured !== nonce) {
         return {
           pass: false,
@@ -4364,20 +4384,6 @@ async function liveClipboardProbe(
             assertionType: "clipboard",
             note: "Independent clipboard read did not equal the OSC 52 write nonce",
           },
-        }
-      }
-      if (kind === "write") {
-        return {
-          pass: true,
-          observation: { outcome: "supported", assertionType: "clipboard" },
-          assertions: [
-            {
-              assertionType: "clipboard" as const,
-              kind: "positive",
-              expected: "Independent clipboard text equals OSC 52 write nonce",
-              observed: measured,
-            },
-          ],
         }
       }
     }

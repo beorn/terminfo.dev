@@ -511,7 +511,7 @@ export async function createLinuxClipboardAdapter(
     throw new Error("Owned clipboard receipt does not match this collector run, display, or terminal")
   }
   const expectedPermissions = {
-    default: "clipboard: read=ask,write=allow; OSC52=not-run",
+    default: "clipboard: read=ask,write=allow; OSC52: write=run,read=not-run",
     allow: "clipboard: read=allow,write=allow",
     "deny-read": "clipboard: read=deny,write=allow",
   }[receipt.profile]
