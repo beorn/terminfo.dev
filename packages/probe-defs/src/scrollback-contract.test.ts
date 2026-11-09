@@ -407,9 +407,9 @@ test("App history resets owned history after clear+CPR fence before baseline rea
 
   const runScenario = async (
     id: (typeof featureIds)[number],
-    mode: "empties" | "absent" | "still-full" | "cpr-timeout",
+    mode: "empties" | "absent" | "noop-partial" | "still-full" | "cpr-timeout",
   ) => {
-    let history = 1000
+    let history = mode === "noop-partial" ? 7 : 1000
     let cprCount = 0
     let readStage = 0
     const order: string[] = []
@@ -432,6 +432,7 @@ test("App history resets owned history after clear+CPR fence before baseline rea
         resetScrollback: async () => {
           order.push("resetScrollback")
           if (mode === "empties") history = 0
+          return { status: "reset" as const, capacity }
         },
       }),
       getScrollback: async () => {
@@ -537,6 +538,7 @@ test("App history resets owned history after clear+CPR fence before baseline rea
     expect(decoded.run.results?.[0]?.status, `${id} decodeCollectorDraft`).toBe("supported")
     expect(parsed.results?.[0]?.status, `${id} parseRun`).toBe("supported")
     expect(JSON.parse(parsed.assertions?.[0]?.observed ?? "null"), `${id} parsed evidence`).toMatchObject({
+      historyReset: { status: "reset", capacity: 1000 },
       baseline: { totalLines: 24, screenLines: 24, capacity: 1000 },
       control: { totalLines: 24, screenLines: 24, capacity: 1000 },
       scroll: { totalLines: 35, screenLines: 24, capacity: 1000 },
@@ -554,21 +556,32 @@ test("App history resets owned history after clear+CPR fence before baseline rea
     })
     expect(absent.readStage, `${id} absent stops after baseline`).toBe(1)
 
-    // (c) Hook present but history still full -> exact same refusal (no fabricated verdict).
-    const stillFull = await runScenario(id, "still-full")
-    expect(stillFull.result.pass, `${id} still-full`).toBe(false)
-    expect(stillFull.result.observation, `${id} still-full`).toBeUndefined()
-    expect(stillFull.result.notTested, `${id} still-full`).toEqual({
-      reason: "no-semantic-observable",
-      noObservable: `history at 1000 of capacity 1000 before the test; growth of ${required} cannot be observed`,
-    })
-    expect(stillFull.readStage, `${id} still-full stops after baseline`).toBe(1)
-    expect(stillFull.order, `${id} still-full order`).toEqual([
-      'write:"\\u001b[0m\\u001b[2J\\u001b[H"',
-      "queryCursorPosition:1",
-      "resetScrollback",
-      "getScrollback:1",
-    ])
+    // (c) Hook present but reset is a no-op (partial 7 lines or full 1000 lines) -> fails loudly with "owned history reset left N lines" and records historyReset.
+    for (const [noopMode, leftover] of [
+      ["noop-partial", 7],
+      ["still-full", 1000],
+    ] as const) {
+      const noop = await runScenario(id, noopMode)
+      expect(noop.result.pass, `${id} ${noopMode}`).toBe(false)
+      expect(noop.result.observation, `${id} ${noopMode}`).toBeUndefined()
+      expect(noop.result.notTested, `${id} ${noopMode}`).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: `owned history reset left ${leftover} lines`,
+      })
+      expect(JSON.parse(noop.result.response ?? "null"), `${id} ${noopMode} evidence`).toMatchObject({
+        historyReset: { status: "reset", capacity: 1000 },
+        baseline: { totalLines: 24 + leftover, screenLines: 24, capacity: 1000 },
+        history: leftover,
+        rows: 24,
+      })
+      expect(noop.readStage, `${id} ${noopMode} stops after baseline`).toBe(1)
+      expect(noop.order, `${id} ${noopMode} order`).toEqual([
+        'write:"\\u001b[0m\\u001b[2J\\u001b[H"',
+        "queryCursorPosition:1",
+        "resetScrollback",
+        "getScrollback:1",
+      ])
+    }
 
     // (d) Baseline CPR fence failure stops before resetScrollback and before baseline read.
     const cprTimeout = await runScenario(id, "cpr-timeout")

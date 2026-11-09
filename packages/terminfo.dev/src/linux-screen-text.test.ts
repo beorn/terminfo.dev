@@ -234,21 +234,40 @@ test("an empty hardcopy is refused rather than measured as zero lines", () => {
   expect(result.reason).toContain(options.hardcopyPath)
 })
 
-test("a timed-out hardcopy is killed within the reader bound and no partial file is read", () => {
-  run.mockReturnValue({
+test("a timed-out hardcopy or reset is killed within the bound, surfaces signal and error, and reads no partial file (#32874)", () => {
+  const timedOut = {
     status: null,
-    signal: "SIGKILL",
+    signal: "SIGKILL" as const,
     error: Object.assign(new Error("spawnSync timed out"), { code: "ETIMEDOUT" }),
     stdout: Buffer.from(""),
     stderr: Buffer.from(""),
-  })
-  expect(readScreenScrollback(options).status).toBe("refused")
+  }
+  run.mockReturnValue(timedOut)
+  const hardcopyResult = readScreenScrollback(options)
+  expect(hardcopyResult.status).toBe("refused")
+  if (hardcopyResult.status !== "refused") throw new Error("Expected a refusal")
+  expect(hardcopyResult.reason).toContain("signal=SIGKILL")
+  expect(hardcopyResult.reason).toContain("spawnSync timed out")
   const spawnOptions = run.mock.calls[0]?.[2]
   expect({ timeout: spawnOptions?.timeout, killSignal: spawnOptions?.killSignal }).toEqual({
     timeout: 3000,
     killSignal: "SIGKILL",
   })
   expect(readFile).not.toHaveBeenCalled()
+
+  run.mockReset()
+  readFile.mockReturnValue("defscrollback 1000\n")
+  run.mockReturnValue(timedOut)
+  const resetResult = resetScreenScrollback({
+    executable: options.executable,
+    session: options.session,
+    socketDirectory: options.socketDirectory,
+    configPath: "/run/owned/screenrc",
+  })
+  expect(resetResult.status).toBe("refused")
+  if (resetResult.status !== "refused") throw new Error("Expected a refusal")
+  expect(resetResult.reason).toContain("signal=SIGKILL")
+  expect(resetResult.reason).toContain("spawnSync timed out")
 })
 
 test("a failed hardcopy retains its exit and stderr", () => {

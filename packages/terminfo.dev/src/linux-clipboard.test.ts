@@ -210,7 +210,7 @@ try {
       assert.equal(typeof adapter.getScrollback,"function","owned Screen history reader must be reachable")
       assert.equal(typeof adapter.resetScrollback,"function","owned Screen history reset must be reachable")
       screenSpawns.length=0
-      await adapter.resetScrollback()
+      assert.deepEqual(await adapter.resetScrollback(),{status:"reset",capacity:100})
       assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,capacity:100})
       assert.deepEqual(screenSpawns.slice(0,2).map(s=>s.args),[
         ["-S",muxTarget.session,"-X","scrollback","0"],
@@ -534,7 +534,7 @@ try {
       if (forwardMuxHistory === "screen") {
         return { ...adapter, muxAttachmentProof: { mux: "screen" },
           getScrollback: async () => ({ totalLines: 24, screenLines: 24, capacity: 1000 }),
-          resetScrollback: async () => { await adapter.assertOwned(); screenResetCount++ } }
+          resetScrollback: async () => { await adapter.assertOwned(); screenResetCount++; return { status: "reset", capacity: 1000 } } }
       }
       return { ...adapter, muxAttachmentProof: { mux: "tmux" },
         getScrollback: async () => ({ totalLines: 55, screenLines: 24, viewportOffset: 17 }) }
@@ -648,7 +648,7 @@ try {
     forwardMuxHistory = "screen"
     const screenMuxOwner = await factory(process.stdout, "2".repeat(32))
     assert.equal(typeof screenMuxOwner.resetScrollback, "function", "Screen OwnedTerminal must expose resetScrollback")
-    await screenMuxOwner.resetScrollback()
+    assert.deepEqual(await screenMuxOwner.resetScrollback(), { status: "reset", capacity: 1000 })
     assert.equal(screenResetCount, 1)
     const { ALL_PROBES: probeDefsForScreen } = await import("@terminfo/probe-defs")
     const risDef = probeDefsForScreen.find(probe => probe.id === "reset.ris")
@@ -656,7 +656,7 @@ try {
     try {
       risDef.term = async context => {
         assert.equal(typeof context.resetScrollback, "function", "runProbeBatch must wire resetScrollback onto TermProbeSource")
-        await context.resetScrollback()
+        assert.deepEqual(await context.resetScrollback(), { status: "reset", capacity: 1000 })
         return { observation: { outcome: "supported", assertionType: "query_reply" } }
       }
       await withRawMode(() => runProbeBatch({ ids: ["reset.ris"], captureRunId: "2".repeat(32),

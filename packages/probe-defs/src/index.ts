@@ -19,6 +19,7 @@ export type {
   ModeState,
   TermProbeSource,
   TerminalScrollbackReading,
+  TerminalScrollbackReset,
   TermFeaturesReading,
   AppSemanticReading,
   RenderedWidthResult,
