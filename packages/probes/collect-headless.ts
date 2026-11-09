@@ -33,6 +33,7 @@ import {
 import { canonicalJson, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
+import { unauditedAdapterSourceDiagnostic } from "../probe-defs/src/helpers.ts"
 import { collectBatch, errorMessage, finalizeHeadlessAttempt } from "./headless-batch.ts"
 import { HEADLESS_TERMINAL, declaredHostInputs } from "./headless-terminal.ts"
 import { owningCheckout } from "./termless-root.ts"
@@ -210,6 +211,8 @@ async function collectOne(name: string, directory: string): Promise<string> {
       adapterPackage: entry.package,
       adapterType: entry.type,
     })
+    const unaudited = unauditedAdapterSourceDiagnostic(name, runtimeIdentity)
+    if (unaudited) process.stderr.write(`${unaudited}\n`)
     draft.runtimeIdentity = runtimeIdentity
     checkpoint()
     backend = undefined
@@ -523,6 +526,8 @@ export async function collectHeadlessRuns(
         throw new Error(`Worker wrote a run for ${parsed.subject.id} instead of ${name}: ${path}`)
       }
       if (parsed.runId !== delegated.runId) throw new Error(`Worker ${name} changed runId during capture handoff`)
+      const unaudited = unauditedAdapterSourceDiagnostic(name, parsed.runtimeIdentity)
+      if (unaudited) process.stderr.write(`${unaudited}\n`)
       const captured = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
       recordCollectorSelection(captured, ids)
       const capturedAttempt = readCollectorAttempt(captured.rawReplies)
