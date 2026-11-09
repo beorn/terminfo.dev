@@ -180,7 +180,17 @@ function fixture() {
     if [ "${"$"}TEST_CAPTURE_FAIL" = owner ]; then printf 'owner lookup failed\\n' >&2; exit 17; fi
     printf '%s\\n' "$TEST_CAPTURE_OWNER_PID"
     ;;
-  getwindowgeometry) printf 'X=0\\nY=0\\nWIDTH=%s\\nHEIGHT=%s\\n' "\${TEST_CAPTURE_WIDTH:-640}" "\${TEST_CAPTURE_HEIGHT:-480}" ;;
+  getwindowgeometry)
+    if [ "\${TEST_CAPTURE_GEOMETRY_SHELL:-0}" = 1 ]; then
+      printf 'WINDOW=%s\\nX=%s\\nY=%s\\nWIDTH=%s\\nHEIGHT=%s\\nSCREEN=%s\\n' \\
+        "\${TEST_CAPTURE_GEOMETRY_WINDOW:-42}" "\${TEST_CAPTURE_X:-0}" "\${TEST_CAPTURE_Y:-0}" \\
+        "\${TEST_CAPTURE_WIDTH:-640}" "\${TEST_CAPTURE_HEIGHT:-480}" "\${TEST_CAPTURE_SCREEN:-0}"
+    else
+      printf 'X=%s\\nY=%s\\nWIDTH=%s\\nHEIGHT=%s\\n' \\
+        "\${TEST_CAPTURE_X:-0}" "\${TEST_CAPTURE_Y:-0}" \\
+        "\${TEST_CAPTURE_WIDTH:-640}" "\${TEST_CAPTURE_HEIGHT:-480}"
+    fi
+    ;;
   *) exit 18 ;;
 esac`,
   )
@@ -314,6 +324,11 @@ afterEach(() => {
     "TEST_CAPTURE_FAIL",
     "TEST_CAPTURE_WIDTH",
     "TEST_CAPTURE_HEIGHT",
+    "TEST_CAPTURE_X",
+    "TEST_CAPTURE_Y",
+    "TEST_CAPTURE_SCREEN",
+    "TEST_CAPTURE_GEOMETRY_SHELL",
+    "TEST_CAPTURE_GEOMETRY_WINDOW",
     "TEST_CAPTURE_SCREEN_WIDTH",
     "TEST_CAPTURE_SCREEN_HEIGHT",
     "TEST_CAPTURE_FORCE_CAPTURE",
@@ -957,5 +972,199 @@ test.each(["xwd", "png"] as const)(
     )
     expect(result.frame.regionDigest).toBeUndefined()
     expect(result.frame.regionRectangle).toBeUndefined()
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "declared window resize updates expected geometry, crops inside visible startup-clipped origin, refuses past narrowed edge, and restores startup bytes (#32791)",
+  async () => {
+    const { directory, release } = fixture()
+    process.env.TEST_CAPTURE_GEOMETRY_SHELL = "1"
+    process.env.TEST_CAPTURE_WIDTH = "800"
+    process.env.TEST_CAPTURE_HEIGHT = "600"
+    process.env.TEST_CAPTURE_CHROME_ROWS = "56"
+    writeFileSync(release, "continue")
+    const frames = join(directory, "frames")
+    const { capture, captureRaw, declareWindowSize } = await createLinuxCapture(frames, liveExecutable(), () => {})
+    expect(declareWindowSize).toBeTypeOf("function")
+
+    // Standalone closure call (C3: needs no `this` receiver) updates expected geometry for extensions.reflow.
+    declareWindowSize(520, 600, "extensions.reflow")
+    process.env.TEST_CAPTURE_WIDTH = "520"
+
+    const narrowedRaw = await captureRaw({
+      featureId: "extensions.reflow",
+      role: "control",
+      label: "main-shrink raw",
+    })
+    expect(narrowedRaw.decoded.width).toBe(520)
+    expect(narrowedRaw.decoded.height).toBe(600)
+    expect(narrowedRaw.decoded.rgba.byteLength).toBe(520 * 600 * 4)
+    expect(narrowedRaw.result.trace.geometry).toBe("WINDOW=42\nX=0\nY=0\nWIDTH=520\nHEIGHT=600\nSCREEN=0\n")
+
+    // C2: startup-clipped origin (`visible` set from 800x600 calibration) crops inside 520x600 and refuses past right edge.
+    const clippedStartupOrigin = {
+      origin: { x: 10, y: 56 },
+      visible: { width: 778, height: 528 },
+      basis: "collector complete witnessed raster",
+    }
+    const insideNarrowed = await capture(
+      {
+        featureId: "extensions.reflow",
+        role: "target",
+        label: "main-shrink settle 1",
+        cells: { top: 1, left: 1, bottom: 1, right: 39 },
+        pixelGeometry: GHOSTTY_GEOMETRY,
+      },
+      clippedStartupOrigin,
+    )
+    expect(insideNarrowed.frame.regionRectangle).toEqual({ x: 10, y: 56, width: 507, height: 24 })
+    expect(insideNarrowed.frame.regionDigest).toBe(
+      `sha256:${createHash("sha256")
+        .update(Buffer.alloc(507 * 24 * 4))
+        .digest("hex")}`,
+    )
+    expect(insideNarrowed.trace.geometry).toBe("WINDOW=42\nX=0\nY=0\nWIDTH=520\nHEIGHT=600\nSCREEN=0\n")
+
+    await expect(
+      capture(
+        {
+          featureId: "extensions.reflow",
+          role: "target",
+          label: "past narrowed right edge",
+          cells: { top: 1, left: 1, bottom: 1, right: 40 },
+          pixelGeometry: GHOSTTY_GEOMETRY,
+        },
+        clippedStartupOrigin,
+      ),
+    ).rejects.toThrow(/leaves the measured 520x600 window/)
+
+    // Restoring startup dimensions reproduces the exact startup geometry string and clears probe ownership.
+    declareWindowSize(800, 600, "extensions.reflow")
+    process.env.TEST_CAPTURE_WIDTH = "800"
+    const restoredRaw = await captureRaw({
+      featureId: "scrollback.viewport-hold-output",
+      role: "control",
+      label: "post-restore next probe",
+    })
+    expect(restoredRaw.decoded.width).toBe(800)
+    expect(restoredRaw.decoded.height).toBe(600)
+    expect(restoredRaw.result.trace.geometry).toBe("WINDOW=42\nX=0\nY=0\nWIDTH=800\nHEIGHT=600\nSCREEN=0\n")
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "undeclared window resize, client size snap, or position move is refused naming declared and observed geometry without retaining artifacts (#32791)",
+  async () => {
+    const { directory, release } = fixture()
+    process.env.TEST_CAPTURE_GEOMETRY_SHELL = "1"
+    process.env.TEST_CAPTURE_WIDTH = "800"
+    process.env.TEST_CAPTURE_HEIGHT = "600"
+    writeFileSync(release, "continue")
+    const frames = join(directory, "frames")
+    const { captureRaw, declareWindowSize } = await createLinuxCapture(frames, liveExecutable(), () => {})
+
+    // Unresized run: undeclared external shrink refuses against frozen startup geometry.
+    process.env.TEST_CAPTURE_WIDTH = "520"
+    await expect(
+      captureRaw({ featureId: "extensions.reflow", role: "target", label: "undeclared shrink" }),
+    ).rejects.toThrow(
+      "Capture window 42 geometry changed during extensions.reflow: declared 800x600 at 0,0, observed 520x600 at 0,0",
+    )
+    expect(readdirSync(frames)).toEqual([])
+
+    // Declared resize where client snaps its own width after windowsize (520 -> 518) names both sizes.
+    declareWindowSize(520, 600, "extensions.reflow")
+    process.env.TEST_CAPTURE_WIDTH = "518"
+    await expect(captureRaw({ featureId: "extensions.reflow", role: "target", label: "snapped size" })).rejects.toThrow(
+      "Capture window 42 geometry changed during extensions.reflow: declared 520x600 at 0,0, observed 518x600 at 0,0",
+    )
+    expect(readdirSync(frames)).toEqual([])
+
+    // Declared resize where X,Y moves despite matching WIDTHxHEIGHT is also refused with coordinates.
+    process.env.TEST_CAPTURE_WIDTH = "520"
+    process.env.TEST_CAPTURE_X = "4"
+    process.env.TEST_CAPTURE_Y = "2"
+    await expect(captureRaw({ featureId: "extensions.reflow", role: "target", label: "moved window" })).rejects.toThrow(
+      "Capture window 42 geometry changed during extensions.reflow: declared 520x600 at 0,0, observed 520x600 at 4,2",
+    )
+    expect(readdirSync(frames)).toEqual([])
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "window geometry change during capture after a declared resize is refused without retaining image artifacts (#32791)",
+  async () => {
+    const { directory, started, release } = fixture()
+    process.env.TEST_CAPTURE_GEOMETRY_SHELL = "1"
+    process.env.TEST_CAPTURE_WIDTH = "800"
+    process.env.TEST_CAPTURE_HEIGHT = "600"
+    const frames = join(directory, "frames")
+    const { captureRaw, declareWindowSize } = await createLinuxCapture(frames, liveExecutable(), () => {})
+
+    declareWindowSize(520, 600, "extensions.reflow")
+    process.env.TEST_CAPTURE_WIDTH = "520"
+    const pending = captureRaw({ featureId: "extensions.reflow", role: "target", label: "mid-capture resize" })
+    const rejected = expect(pending).rejects.toThrow(
+      "Capture window 42 geometry changed during extensions.reflow: declared 520x600 at 0,0, observed 500x600 at 0,0",
+    )
+    for (let n = 0; n < 500 && !existsSync(started); n++) await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(existsSync(started)).toBe(true)
+    process.env.TEST_CAPTURE_WIDTH = "500"
+    writeFileSync(release, "continue")
+    await rejected
+    expect(readdirSync(frames)).toEqual([])
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "declared resize is scoped to its owning probe: an unrestored resize by probe A refuses probe B (#32791)",
+  async () => {
+    const { directory, release } = fixture()
+    process.env.TEST_CAPTURE_GEOMETRY_SHELL = "1"
+    process.env.TEST_CAPTURE_WIDTH = "800"
+    process.env.TEST_CAPTURE_HEIGHT = "600"
+    writeFileSync(release, "continue")
+    const frames = join(directory, "frames")
+    const { captureRaw, declareWindowSize } = await createLinuxCapture(frames, liveExecutable(), () => {})
+
+    declareWindowSize(520, 600, "extensions.reflow")
+    process.env.TEST_CAPTURE_WIDTH = "520"
+    await expect(
+      captureRaw({ featureId: "scrollback.viewport-hold-output", role: "target", label: "leaked narrow window" }),
+    ).rejects.toThrow("Capture window 42 left resized by extensions.reflow")
+    expect(() => declareWindowSize(600, 600, "input.utf8-mouse-1005")).toThrow(
+      "Capture window 42 left resized by extensions.reflow",
+    )
+    expect(readdirSync(frames)).toEqual([])
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "declareWindowSize enforces DISPLAY screen bounds without mutating declared geometry (#32791)",
+  async () => {
+    const { directory, release } = fixture()
+    process.env.TEST_CAPTURE_GEOMETRY_SHELL = "1"
+    process.env.TEST_CAPTURE_WIDTH = "800"
+    process.env.TEST_CAPTURE_HEIGHT = "600"
+    process.env.TEST_CAPTURE_SCREEN_WIDTH = "1920"
+    process.env.TEST_CAPTURE_SCREEN_HEIGHT = "1080"
+    writeFileSync(release, "continue")
+    const { captureRaw, declareWindowSize } = await createLinuxCapture(
+      join(directory, "frames"),
+      liveExecutable(),
+      () => {},
+    )
+
+    expect(() => declareWindowSize(1921, 600, "extensions.reflow")).toThrow(
+      "window 1921x600 exceeds the 1920x1080 screen",
+    )
+    const unchanged = await captureRaw({
+      featureId: "scrollback.viewport-hold-output",
+      role: "control",
+      label: "unchanged after rejected declaration",
+    })
+    expect(unchanged.decoded.width).toBe(800)
+    expect(unchanged.decoded.height).toBe(600)
   },
 )

@@ -289,7 +289,9 @@ export async function runProbeBatch(
      * undersized terminal) — one name per concept (@cto, 28785 REVISE round 2, must 4).
      */
     captureGeometryRefusal?: string
-    input?: InputFixture
+    input?: InputFixture & {
+      resizeWindow?(width: number, height: number, featureId?: string): Promise<{ width: number; height: number }>
+    }
     ownedTerminal?: OwnedTerminal
     /** Sees every probe write before it is sent: an owned reader that must know what was drawn. */
     onWrite?: (text: string) => void
@@ -727,7 +729,7 @@ export async function runProbeBatch(
         ...(focusRoundTrip && { focusRoundTrip: () => withTTYOperation(focusRoundTrip, out, verify) }),
         ...(resizeWindow && {
           resizeWindow: (width: number, height: number) =>
-            withTTYOperation(() => resizeWindow(width, height), out, verify),
+            withTTYOperation(() => resizeWindow(width, height, probe.id), out, verify),
         }),
       }
     }

@@ -324,11 +324,17 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: "reply" }
       }
     }))
-    mock.module("./packages/terminfo.dev/src/linux-input.ts", () => ({ createLinuxInput: async () => undefined }))
+    let declaredResizeHook
+    const declareWindowSize = () => {}
+    mock.module("./packages/terminfo.dev/src/linux-input.ts", () => ({ createLinuxInput: async (_executable, options) => {
+      declaredResizeHook = options?.onResizeWindow
+      return undefined
+    } }))
     mock.module("./packages/terminfo.dev/src/linux-capture.ts", () => ({ ...linux, createLinuxCapture: async (directory, executable) => {
       assert.equal(directory, process.env.TERMINFO_CAPTURE_DIRECTORY)
       assert.deepEqual(executable, { path: provenance.executable.path, sha256: provenance.executable.sha256 })
       return {
+        declareWindowSize,
         captureRaw: async (checkpoint) => {
           rawCaptures++
           assert.equal(checkpoint.featureId, "collector.captureCalibration")
@@ -390,6 +396,7 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
     } }))
     const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
     const run = await collectProbeRun({ ids: [visualId] })
+    assert.strictEqual(declaredResizeHook, declareWindowSize, "serve.ts wires Linux capture resize declaration into createLinuxInput")
     assert.equal(calibrations, 1)
     assert.equal(rawCaptures, 1)
     assert.deepEqual(run.screenshotRefs, [raw.frame.ref])

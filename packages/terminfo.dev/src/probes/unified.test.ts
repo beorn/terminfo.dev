@@ -942,6 +942,41 @@ it("forwards owned buttonless motion with its fixture binding", async () => {
   }
 })
 
+// @failure A probe-scoped window resize loses its declaring featureId or receiver binding when wrapped per probe.
+// @level l1
+// @consumer App native batch -> resizeWindow probe callback -> Linux collector declared-resize guard (#32791).
+it("forwards owned resizeWindow with the declaring probe id and fixture binding", async () => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const definition = ALL_PROBES.find((probe) => probe.id === "device.primary-da")!
+  const original = definition.term
+  const resizes: Array<[number, number, string | undefined]> = []
+  const input = {
+    injectClick: async () => {},
+    injectKey: async () => {},
+    async resizeWindow(width: number, height: number, featureId?: string) {
+      expect(this).toBe(input)
+      resizes.push([width, height, featureId])
+      return { width: 800, height: 600 }
+    },
+  }
+  try {
+    definition.term = async (ctx) => {
+      if (!ctx.input?.resizeWindow) throw new Error("Missing owned resize fixture")
+      expect(await ctx.input.resizeWindow(520, 600)).toEqual({ width: 800, height: 600 })
+      return notTestedResult("Resize forwarding exercised", {})
+    }
+    await runProbeBatch({
+      ids: [definition.id],
+      ownedTerminal: geometryOwner(noGeometry),
+      input,
+    })
+    expect(resizes).toEqual([[520, 600, definition.id]])
+  } finally {
+    definition.term = original
+  }
+})
+
 it.each(
   ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
     ["controls", "query"].map((failure) => ({ id, failure })),

@@ -56,7 +56,10 @@ case "$1" in
     fi
     ;;
   getwindowgeometry) printf 'WIDTH=800\\nHEIGHT=600\\n' ;;
-  key|click|mousedown|mouseup|windowsize) ;;
+  windowsize)
+    if [ "\${TEST_INPUT_FAIL_WINDOWSIZE:-0}" = 1 ]; then printf 'windowsize failed\\n' >&2; exit 29; fi
+    ;;
+  key|click|mousedown|mouseup) ;;
   *) exit 18 ;;
 esac`,
   )
@@ -117,10 +120,36 @@ afterEach(() => {
     "TEST_INPUT_ROOT_FOCUS",
     "TEST_INPUT_XTEST",
     "TEST_INPUT_FOCUS_HANG",
+    "TEST_INPUT_FAIL_WINDOWSIZE",
   ]) {
     delete process.env[key]
   }
 })
+
+test.runIf(process.platform === "linux")(
+  "resizeWindow declares the new size with its owning featureId only after xdotool windowsize succeeds (#32791)",
+  async () => {
+    const { log } = fixture()
+    const declared: Array<{ width: number; height: number; featureId: string | undefined; afterLogLine: string }> = []
+    const input = await createLinuxInput(liveExecutable(), {
+      onResizeWindow: (width, height, featureId) => {
+        declared.push({ width, height, featureId, afterLogLine: argvLines(log).at(-1) ?? "" })
+      },
+    })
+    expect(await input.resizeWindow(520, 600, "extensions.reflow")).toEqual({ width: 800, height: 600 })
+    expect(declared).toEqual([
+      {
+        width: 520,
+        height: 600,
+        featureId: "extensions.reflow",
+        afterLogLine: "windowsize 42 520 600",
+      },
+    ])
+    process.env.TEST_INPUT_FAIL_WINDOWSIZE = "1"
+    await expect(input.resizeWindow(640, 600, "extensions.reflow")).rejects.toThrow(/windowsize failed/)
+    expect(declared).toHaveLength(1)
+  },
+)
 
 test.runIf(process.platform === "linux")("createLinuxInput refuses when xdpyinfo does not list XTEST", async () => {
   fixture()

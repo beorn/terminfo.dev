@@ -2,7 +2,11 @@ import type { InputFixture } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
 import { kittyAncestor, windowPixels, type LiveExecutable } from "./linux-capture.ts"
 
-export type LinuxInputAdapter = InputFixture
+export interface CollectorInputAdapter extends InputFixture {
+  resizeWindow(width: number, height: number, featureId?: string): Promise<{ width: number; height: number }>
+}
+
+export type LinuxInputAdapter = CollectorInputAdapter
 
 function requireLinuxDisplay(): void {
   if (process.platform !== "linux" || !process.env.DISPLAY) {
@@ -11,7 +15,10 @@ function requireLinuxDisplay(): void {
 }
 
 /** Bind OS-level XTEST key/click/wheel injection to the owned Kitty window. */
-export async function createLinuxInput(executable: LiveExecutable): Promise<LinuxInputAdapter> {
+export async function createLinuxInput(
+  executable: LiveExecutable,
+  options?: { onResizeWindow?: (width: number, height: number, featureId: string) => void },
+): Promise<LinuxInputAdapter> {
   requireLinuxDisplay()
   const display = (await command("xdpyinfo", [])).toString()
   if (!/\bXTEST\b/.test(display)) {
@@ -79,11 +86,18 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
 
   return {
     focusRoundTrip,
-    async resizeWindow(width: number, height: number) {
+    async resizeWindow(width: number, height: number, featureId?: string) {
+      if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
+        throw new Error(`Owned window resize requires positive integer pixels; got ${width}x${height}`)
+      }
+      if (options?.onResizeWindow && (!featureId || featureId.trim().length === 0)) {
+        throw new Error("Declared window resize requires the owning featureId")
+      }
       const original = windowPixels(
         (await command("xdotool", ["getwindowgeometry", "--shell", ownedWindowId])).toString(),
       )
       await command("xdotool", ["windowsize", ownedWindowId, String(width), String(height)])
+      if (options?.onResizeWindow && featureId) options.onResizeWindow(width, height, featureId)
       return original
     },
     async injectKey(keys: string) {

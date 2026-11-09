@@ -769,8 +769,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     }
     if (captureDirectory && process.platform === "linux") {
       if (!executable) throw new Error("Configured Linux capture lacks measured executable")
-      installPixelCapture(await createLinuxCapture(captureDirectory, executable, onRetained))
-      input = await createLinuxInput(executable)
+      const linuxCapture = await createLinuxCapture(captureDirectory, executable, onRetained)
+      installPixelCapture(linuxCapture)
+      input = await createLinuxInput(executable, { onResizeWindow: linuxCapture.declareWindowSize })
     } else if (provenancePath) {
       // A controlled Linux run with no capture directory cannot make a frame, so a probe that needs
       // one must fail BY NAME in its own result instead of reaching an absent callback (27875).

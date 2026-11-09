@@ -66,6 +66,35 @@ export function windowPixels(geometry: string): { width: number; height: number 
   return parsed
 }
 
+function withWindowPixels(geometry: string, width: number, height: number): string {
+  windowPixels(geometry)
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
+    throw new Error(`Declared window resize requires positive integer pixels; got ${width}x${height}`)
+  }
+  return geometry.replace(/^WIDTH=\d+$/m, `WIDTH=${width}`).replace(/^HEIGHT=\d+$/m, `HEIGHT=${height}`)
+}
+
+function describeWindowGeometry(geometry: string): string {
+  const width = /^WIDTH=(\d+)$/m.exec(geometry)?.[1]
+  const height = /^HEIGHT=(\d+)$/m.exec(geometry)?.[1]
+  const x = /^X=(-?\d+)$/m.exec(geometry)?.[1]
+  const y = /^Y=(-?\d+)$/m.exec(geometry)?.[1]
+  if (width !== undefined && height !== undefined && x !== undefined && y !== undefined) {
+    return `${width}x${height} at ${x},${y}`
+  }
+  return JSON.stringify(geometry)
+}
+
+function geometryChangedError(windowId: string, featureId: string, declared: string, observed: string): Error {
+  const declaredSummary = describeWindowGeometry(declared)
+  const observedSummary = describeWindowGeometry(observed)
+  const detail =
+    declaredSummary === observedSummary
+      ? `declared ${JSON.stringify(declared)}, observed ${JSON.stringify(observed)}`
+      : `declared ${declaredSummary}, observed ${observedSummary}`
+  return new Error(`Capture window ${windowId} geometry changed during ${featureId}: ${detail}`)
+}
+
 /** The DISPLAY screen's pixel size, parsed from xdpyinfo. */
 export function screenPixels(display: string): { width: number; height: number } {
   const match = /dimensions:\s+(\d+)x(\d+)\s+pixels/.exec(display)
@@ -152,13 +181,40 @@ export async function createLinuxCapture(
   await assertOwned()
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const converter = (await command("magick", ["-version"])).toString().trim()
-  const geometry = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
-  const window = windowPixels(geometry)
+  const startupGeometry = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
+  const startupWindow = windowPixels(startupGeometry)
   const screen = screenPixels(display)
-  if (window.width > screen.width || window.height > screen.height) {
-    throw new Error(`window ${window.width}x${window.height} exceeds the ${screen.width}x${screen.height} screen`)
+  if (startupWindow.width > screen.width || startupWindow.height > screen.height) {
+    throw new Error(
+      `window ${startupWindow.width}x${startupWindow.height} exceeds the ${screen.width}x${screen.height} screen`,
+    )
+  }
+  let declaredGeometry = startupGeometry
+  let declaredByFeatureId: string | undefined
+  const declareWindowSize = (width: number, height: number, featureId: string): void => {
+    if (typeof featureId !== "string" || featureId.trim().length === 0) {
+      throw new Error("Declared window resize requires the owning featureId")
+    }
+    if (declaredByFeatureId !== undefined && declaredByFeatureId !== featureId) {
+      throw new Error(
+        `Capture window ${windowId} left resized by ${declaredByFeatureId} (${describeWindowGeometry(declaredGeometry)}, startup ${describeWindowGeometry(startupGeometry)}) during ${featureId}`,
+      )
+    }
+    const nextGeometry = withWindowPixels(startupGeometry, width, height)
+    if (width > screen.width || height > screen.height) {
+      throw new Error(`window ${width}x${height} exceeds the ${screen.width}x${screen.height} screen`)
+    }
+    declaredGeometry = nextGeometry
+    declaredByFeatureId = nextGeometry === startupGeometry ? undefined : featureId
   }
   const acquire = async (featureId: string, deadline?: number) => {
+    const expectedGeometry = declaredGeometry
+    const expectedFeatureId = declaredByFeatureId
+    if (expectedGeometry !== startupGeometry && featureId !== expectedFeatureId) {
+      throw new Error(
+        `Capture window ${windowId} left resized by ${String(expectedFeatureId)} (${describeWindowGeometry(expectedGeometry)}, startup ${describeWindowGeometry(startupGeometry)}) during ${featureId}`,
+      )
+    }
     // Static-frame settling is recorded; callbacks own any temporal schedule.
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 150)
@@ -167,7 +223,13 @@ export async function createLinuxCapture(
     const before = (
       await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)
     ).toString()
-    if (before !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
+    if (before !== expectedGeometry) throw geometryChangedError(windowId, featureId, expectedGeometry, before)
+    const observedWindow = windowPixels(before)
+    if (observedWindow.width > screen.width || observedWindow.height > screen.height) {
+      throw new Error(
+        `window ${observedWindow.width}x${observedWindow.height} exceeds the ${screen.width}x${screen.height} screen`,
+      )
+    }
     const pointerImage = featureId === "extensions.osc22-pointer"
     let original: Buffer
     if (pointerImage) {
@@ -200,13 +262,16 @@ export async function createLinuxCapture(
     }
     await assertOwned(deadline)
     const after = (await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)).toString()
-    if (after !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
+    if (after !== expectedGeometry) throw geometryChangedError(windowId, featureId, expectedGeometry, after)
+    if (declaredGeometry !== expectedGeometry) {
+      throw geometryChangedError(windowId, featureId, expectedGeometry, declaredGeometry)
+    }
     return {
       source: {
         bytes: original,
         format: pointerImage ? ("png" as const) : ("xwd" as const),
-        width: window.width,
-        height: window.height,
+        width: observedWindow.width,
+        height: observedWindow.height,
         capturedAt,
       },
       png,
@@ -216,7 +281,7 @@ export async function createLinuxCapture(
         kittyPid,
         executable,
         windowId,
-        geometry,
+        geometry: before,
         converter,
         settleMs: 150,
       },
@@ -242,5 +307,5 @@ export async function createLinuxCapture(
     })
     return { decoded, result }
   }
-  return { capture, captureRaw }
+  return { capture, captureRaw, declareWindowSize }
 }
