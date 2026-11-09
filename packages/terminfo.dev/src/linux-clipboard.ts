@@ -830,7 +830,7 @@ export async function createLinuxClipboardAdapter(
         })
         await assertOwned()
         if (read.status === "refused") throw new Error(read.reason)
-        return { totalLines: read.totalLines, screenLines: read.screenLines }
+        return { totalLines: read.totalLines, screenLines: read.screenLines, capacity: read.capacity }
       },
     }),
     ...(receipt.target?.kind === "mux" &&

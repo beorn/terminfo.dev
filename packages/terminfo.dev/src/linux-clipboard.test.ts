@@ -192,9 +192,9 @@ try {
       variant="valid"
     } else {
       assert.equal(typeof adapter.getScrollback,"function","owned Screen history reader must be reachable")
-      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24})
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,capacity:100})
       variant="screen-more"
-      assert.deepEqual(await adapter.getScrollback(),{totalLines:45,screenLines:24})
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:45,screenLines:24,capacity:100})
       for(const path of hardcopies)assert(real.existsSync(path),"hardcopy evidence must remain retained")
       variant="screen-refused"
       await assert.rejects(()=>adapter.getScrollback(),{message:'screen hardcopy exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})

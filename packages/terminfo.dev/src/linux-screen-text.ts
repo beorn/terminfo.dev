@@ -24,7 +24,13 @@ interface ScreenScrollbackOptions {
 }
 
 export type ScreenScrollbackReading =
-  | { readonly status: "read"; readonly totalLines: number; readonly screenLines: number; readonly receipt: string }
+  | {
+      readonly status: "read"
+      readonly totalLines: number
+      readonly screenLines: number
+      readonly capacity: number
+      readonly receipt: string
+    }
   | { readonly status: "refused"; readonly reason: string }
 
 function resolveScrollbackCapacity(
@@ -204,6 +210,7 @@ export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenSc
     status: "read",
     totalLines,
     screenLines,
+    capacity,
     receipt: `screen hardcopy -h bytes=${lastBytes} dumpLines=${lastLines.length} capacity=${capacity} history=${history} screenLines=${screenLines} totalLines=${totalLines}`,
   }
 }

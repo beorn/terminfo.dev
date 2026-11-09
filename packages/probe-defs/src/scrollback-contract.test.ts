@@ -312,3 +312,82 @@ test.each(["smaller-screen", "visible-content"] as const)("App history refuses %
     expect(result.assertions).toBeUndefined()
   }
 })
+
+// @failure A full fixed-capacity scrollback buffer (e.g. Screen at capacity before total-lines runs)
+//   fails the overflow growth check as a generic 'no same-path control' instead of naming the capacity
+//   precondition, or an unknown-capacity reader changes behavior (#32787, CTO 266c9b62).
+// @level l1
+// @consumer App history capacity precondition in appHistory (32787).
+test("App history enforces capacity precondition for full, room, and unknown capacity (#32787)", async () => {
+  const rows = 20
+  const capacity = 100
+  const runProbe = async (
+    id: "scrollback.accumulate" | "scrollback.total-lines",
+    baselineHistory: number,
+    reportedCapacity: number | undefined,
+  ) => {
+    let stage = 0
+    const writes: string[] = []
+    const ctx = replayTermProbeSource(new Map(), {
+      rows,
+      cols: 80,
+      write: (bytes) => {
+        writes.push(bytes)
+      },
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
+      getScrollback: async () => {
+        stage += 1
+        const requiredGrowth = id === "scrollback.total-lines" ? 10 : 1
+        const grownHistory =
+          reportedCapacity !== undefined
+            ? Math.min(reportedCapacity, baselineHistory + requiredGrowth)
+            : baselineHistory + requiredGrowth
+        const history = stage < 3 ? baselineHistory : grownHistory
+        return {
+          totalLines: history + rows,
+          screenLines: rows,
+          ...(reportedCapacity !== undefined && { capacity: reportedCapacity }),
+        }
+      },
+    })
+    const definition = scrollbackProbes.find((probe) => probe.id === id)!
+    const result = await definition.term!(ctx)
+    return { result, stage, writes }
+  }
+
+  // (1) full: baseline history + required growth > capacity -> named not-tested before control/overflow writes.
+  for (const [id, baselineHistory, required] of [
+    ["scrollback.total-lines", 100, 10],
+    ["scrollback.total-lines", 91, 10],
+    ["scrollback.accumulate", 100, 1],
+  ] as const) {
+    const { result, stage, writes } = await runProbe(id, baselineHistory, capacity)
+    expect(result.pass, `${id} history=${baselineHistory}`).toBe(false)
+    expect(result.observation, `${id} history=${baselineHistory}`).toBeUndefined()
+    expect(result.notTested, `${id} history=${baselineHistory}`).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: `history at ${baselineHistory} of capacity ${capacity} before the test; growth of ${required} cannot be observed`,
+    })
+    expect(stage, `${id} stops after baseline read`).toBe(1)
+    expect(writes, `${id} writes only baseline clear`).toEqual(["\x1b[0m\x1b[2J\x1b[H"])
+  }
+
+  // (2) room: baseline history + required growth <= capacity -> proceeds and decides supported.
+  for (const [id, baselineHistory] of [
+    ["scrollback.total-lines", 90],
+    ["scrollback.accumulate", 99],
+  ] as const) {
+    const { result, stage } = await runProbe(id, baselineHistory, capacity)
+    expect(result.pass, `${id} history=${baselineHistory}`).toBe(true)
+    expect(result.observation?.outcome, `${id} history=${baselineHistory}`).toBe("supported")
+    expect(stage, `${id} reads baseline, control, and overflow`).toBe(3)
+  }
+
+  // (3) unknown capacity: behavior unchanged even when baseline history is 100.
+  for (const id of ["scrollback.total-lines", "scrollback.accumulate"] as const) {
+    const { result, stage } = await runProbe(id, 100, undefined)
+    expect(result.pass, `${id} unknown capacity`).toBe(true)
+    expect(result.observation?.outcome, `${id} unknown capacity`).toBe("supported")
+    expect(stage, `${id} unknown capacity reads all 3 stages`).toBe(3)
+  }
+})

@@ -1067,6 +1067,8 @@ export type TerminalScrollbackReading = Readonly<{
   screenLines?: number
   /** Top-relative, as in the library reading. */
   viewportOffset?: number
+  /** Maximum retained scrollback history lines, when known by the reader. */
+  capacity?: number
 }>
 
 export interface TermProbeSource {

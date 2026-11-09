@@ -78,13 +78,14 @@ test("120-line capacity-padded dump with no history reports 0 history lines, see
     screenLines: 20,
   })
 
-  // (3) Full 100-line history capacity -> 100 history lines (totalLines = 120, screenLines = 20).
+  // (3) Full 100-line history capacity -> 100 history lines (totalLines = 120, screenLines = 20, capacity = 100).
   const full100 = Array.from({ length: 100 }, (_, i) => `hist-${i}`).join("\n") + "\n"
   mockDump(full100 + screen20)
   expect(readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })).toMatchObject({
     status: "read",
     totalLines: 120,
     screenLines: 20,
+    capacity: 100,
   })
 
   // (4) Dump shorter than capacity + rows -> refused loudly naming the file and both counts; unknown/invalid rows -> refused loudly.

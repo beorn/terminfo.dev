@@ -574,6 +574,20 @@ async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCa
   if (!validSize(baseline.totalLines, 0)) {
     return notTestedResult("scrollback reader geometry differs from measured screen", { baseline, rows: ctx.rows })
   }
+  const requiredGrowth = total ? 10 : 1
+  if (baseline.capacity !== undefined) {
+    const screenRows = baseline.screenLines ?? ctx.rows
+    const history = baseline.totalLines - screenRows
+    if (!validSize(baseline.capacity, 0) || history < 0) {
+      return notTestedResult("scrollback reader geometry differs from measured screen", { baseline, rows: ctx.rows })
+    }
+    if (history + requiredGrowth > baseline.capacity) {
+      return notTestedResult(
+        `history at ${history} of capacity ${baseline.capacity} before the test; growth of ${requiredGrowth} cannot be observed`,
+        { baseline, history, capacity: baseline.capacity, requiredGrowth, rows: ctx.rows },
+      )
+    }
+  }
   for (let i = 0; i < ctx.rows - 1; i++) ctx.write("c\r\n")
   if (!(await ctx.queryCursorPosition())) return replyFailure("No cursor reply to fence no-overflow control")
   const control = await read()
