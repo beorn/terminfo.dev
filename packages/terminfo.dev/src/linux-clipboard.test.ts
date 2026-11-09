@@ -385,6 +385,12 @@ const mode = process.env.TERMINFO_OWNED_TTY_CHILD
 // The existing PTY owner fixture exercises the collector callback, unlike the direct CLI-reader tests.
 let kittyRefused = false, kittyReads = 0
 let weztermRefused = false, weztermReads = 0
+let xpropReads = 0, iconFault = null, failIconCleanup = false
+let nativeTitle = "native original title"
+let iconProperties = {
+  WM_ICON_NAME: { type: "STRING", bytes: [108, 101, 103, 97, 99, 121] },
+  _NET_WM_ICON_NAME: { type: "UTF8_STRING", bytes: [] },
+}
 const spawnSyncBeforeMock = realChildProcess.spawnSync
 const foreignFd = Number(process.env.TERMINFO_FOREIGN_TTY_FD)
 const root = process.env.TERMINFO_TEST_SOURCE_ROOT
@@ -457,6 +463,17 @@ try {
       return { status: 0, stdout: Buffer.from("row\r\n".repeat(count)), stderr: Buffer.alloc(0) }
     },
     execFile(_file, args, _options, callback) {
+      if (_file === "xprop") {
+        xpropReads++
+        const name = args.at(-1)
+        assert.deepEqual(args, ["-id", "42", "-f", name, "8c", name])
+        const property = iconProperties[name]
+        const output = name === "_NET_WM_ICON_NAME" && iconFault !== null ? iconFault :
+          property ? name + "(" + property.type + ") = " + property.bytes.join(", ") + "\n" : name + ":  not found.\n"
+        callback(null, output)
+        return {}
+      }
+      if (args[0] === "getwindowname") {callback(null, nativeTitle + "\n");return {}}
       callback(null, args[0] === "getwindowpid" ? String(process.pid) : baseline)
       return {}
     },
@@ -492,6 +509,66 @@ try {
     const foreign = new WriteStream(foreignFd)
     await assert.rejects(factory(foreign), /Owned output device/)
     const adapter = await factory(process.stdout)
+    const writeIcon = bytes => {
+      const m = /^\x1b\](1|2);([^\x07]*)\x07$/.exec(bytes)
+      assert(m, "fixture cleanup must use only recorded OSC1/OSC2")
+      if (failIconCleanup) return
+      if (m[1] === "2") nativeTitle = m[2]
+      else iconProperties._NET_WM_ICON_NAME = {type:"UTF8_STRING",bytes:[...Buffer.from(m[2],"utf8")]}
+    }
+    const originalTitle = nativeTitle
+    const transaction = await adapter.clipboard.withIconNameFixture(writeIcon, async read => {
+      assert.equal(await read(), "", "present empty UTF8 must win over the legacy label")
+      nativeTitle = "mutated title"
+      iconProperties._NET_WM_ICON_NAME.bytes = [120]
+      return {status:"unavailable",reason:"transaction boundary fixture"}
+    })
+    assert.equal(transaction.status,"unavailable")
+    assert.equal(nativeTitle,originalTitle)
+    assert.deepEqual(iconProperties._NET_WM_ICON_NAME.bytes,[])
+    assert.equal(transaction.detail.iconFixture.cleanup.propertiesExact,true)
+    for (const bad of [
+      '_NET_WM_ICON_NAME(UTF8_STRING) = "quoted"\n',
+      '_NET_WM_ICON_NAME(UTF8_STRING) = 256\n',
+      '_NET_WM_ICON_NAME(UTF8_STRING) = 255\n',
+      '_NET_WM_ICON_NAME(COMPOUND_TEXT) = 97\n',
+      '_NET_WM_ICON_NAME(UTF8_STRING) = 97\nforged extra line\n',
+    ]) {
+      iconFault=bad
+      let ran=false
+      const reading=await adapter.clipboard.withIconNameFixture(()=>{throw Error("stimulus before valid setup")},async()=>{ran=true;return {status:"unavailable",reason:"must not run"}})
+      assert.equal(reading.status,"unavailable")
+      assert.equal(ran,false,"malformed property must stop before stimulus")
+    }
+    iconFault=null
+    delete iconProperties._NET_WM_ICON_NAME
+    iconProperties.WM_ICON_NAME={type:"STRING",bytes:[233]}
+    const legacy=await adapter.clipboard.withIconNameFixture(writeIcon,async read=>{
+      assert.equal(await read(),"é","legacy STRING is latin-1, not UTF8")
+      return {status:"unavailable",reason:"legacy fixture"}
+    })
+    assert.equal(legacy.status,"unavailable")
+    assert.equal(legacy.detail.iconFixture.cleanup.propertiesExact,false,"OSC can create the formerly absent modern property")
+    assert.match(legacy.detail.iconFixture.cleanup.note,/OSC-only/)
+    delete iconProperties._NET_WM_ICON_NAME
+    for(const missing of [null,{type:"COMPOUND_TEXT",bytes:[97]}]) {
+      if(missing)iconProperties.WM_ICON_NAME=missing;else delete iconProperties.WM_ICON_NAME
+      let ran=false
+      const reading=await adapter.clipboard.withIconNameFixture(()=>{throw Error("missing icon wrote stimulus")},async()=>{ran=true;return {status:"unavailable",reason:"must not run"}})
+      assert.equal(reading.status,"unavailable");assert.equal(ran,false)
+    }
+    iconProperties={WM_ICON_NAME:{type:"STRING",bytes:[97]},_NET_WM_ICON_NAME:{type:"UTF8_STRING",bytes:[98]}}
+    const beforeForeign=xpropReads
+    const revokedIcon=await adapter.clipboard.withIconNameFixture(writeIcon,async()=>{throw Error("foreign callback")},async()=>{throw Error("fixture owner revoked")})
+    assert.equal(revokedIcon.status,"unavailable")
+    assert.equal(xpropReads,beforeForeign,"owner check must precede every property read")
+    const brokenCleanup=await adapter.clipboard.withIconNameFixture(writeIcon,async()=>{
+      iconProperties._NET_WM_ICON_NAME.bytes=[99];failIconCleanup=true
+      return {status:"unavailable",reason:"cleanup fixture"}
+    })
+    assert.equal(brokenCleanup.status,"invalid")
+    assert.match(brokenCleanup.reason,/cleanup failed/)
+    failIconCleanup=false
     assert.equal(typeof adapter.getScrollback, "function", "owned Linux Kitty history callback is missing")
     const history = await adapter.getScrollback()
     assert.deepEqual(history, { totalLines: 44, screenLines: 24 })

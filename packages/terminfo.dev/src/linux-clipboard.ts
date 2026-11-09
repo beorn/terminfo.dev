@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from 
 import { homedir } from "node:os"
 import { basename, dirname, join, sep } from "node:path"
 import type {
+  AppSemanticReading,
   ClipboardFixture,
   LinuxMuxAttachmentProof,
   ProbeCallbackResult,
@@ -62,6 +63,11 @@ export interface LinuxClipboardAdapter {
   assertOwned(): Promise<void>
   /** The same receipt owns the App window or the mux's own title, never the outer window for a mux. */
   readTitle(): Promise<string>
+  withIconNameFixture?(
+    write: (text: string) => void,
+    work: (read: () => Promise<string>) => Promise<AppSemanticReading>,
+    verify?: () => Promise<void>,
+  ): Promise<AppSemanticReading>
   withClipboardFixture(
     work: Parameters<NonNullable<TermProbeSource["withClipboardFixture"]>>[0],
     trace: (event: ClipboardTraceEvent) => void,
@@ -682,6 +688,112 @@ export async function createLinuxClipboardAdapter(
     config: receipt.config,
     permissions: receipt.permissions,
     assertOwned,
+    async withIconNameFixture(write, work, verify = () => adapter.assertOwned()) {
+      if (receipt.target?.kind === "mux") {
+        return { status: "unavailable", reason: "A mux cannot read its outer App icon" }
+      }
+      const samples: object[] = []
+      const read = async () => {
+        const properties = []
+        for (const name of ["WM_ICON_NAME", "_NET_WM_ICON_NAME"]) {
+          await verify()
+          // Explicit 8c preserves every byte, including empty, without quoted-string unescaping.
+          const stdout = await command("xprop", ["-id", receipt.terminal.windowId, "-f", name, "8c", name], env)
+          await verify()
+          if (stdout.trim() === `${name}:  not found.` || stdout.trim() === `${name}:  no such atom on any window.`) {
+            properties.push({ name, present: false, type: null, format: null, bytes: [], stdout })
+            continue
+          }
+          const match = new RegExp(`^${name}\\(([A-Z0-9_]+)\\) = ?([0-9, ]*)\\n?$`).exec(stdout)
+          const values = match?.[2]
+          const type = match?.[1]
+          if (!type || values === undefined || (values !== "" && !/^\d+(?:, \d+)*$/.test(values))) {
+            throw new Error(`Malformed owned icon property ${name}: ${JSON.stringify(stdout)}`)
+          }
+          const bytes = values === "" ? [] : values.split(", ").map(Number)
+          if (bytes.some((byte) => !Number.isInteger(byte) || byte < 0 || byte > 255)) {
+            throw new Error(`Malformed owned icon property byte in ${name}: ${JSON.stringify(stdout)}`)
+          }
+          properties.push({ name, present: true, type, format: 8, bytes, stdout })
+        }
+        const snapshot = { properties }
+        samples.push(snapshot)
+        const [legacy, modern] = properties
+        if (!modern || !legacy) throw new Error("Owned icon property pair incomplete")
+        const property = modern.present ? modern : legacy
+        if (!property.present || (modern.present ? property.type !== "UTF8_STRING" : property.type !== "STRING")) {
+          throw new Error(
+            "Owned icon property unavailable: expected UTF8_STRING _NET_WM_ICON_NAME or STRING WM_ICON_NAME",
+          )
+        }
+        const value = modern.present
+          ? new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(property.bytes))
+          : Buffer.from(property.bytes).toString("latin1")
+        if (/[\x00-\x1f\x7f]/.test(value)) throw new Error("Owned icon label cannot be restored through OSC")
+        return { value, snapshot, legacy: !modern.present }
+      }
+      const title = async () => {
+        await verify()
+        const value = await adapter.readTitle()
+        await verify()
+        return value
+      }
+      let before: Awaited<ReturnType<typeof read>>
+      let originalTitle: string
+      try {
+        before = await read()
+        originalTitle = await title()
+        if (/[\x00-\x1f\x7f]/.test(originalTitle)) throw new Error("Owned title cannot be restored through OSC")
+      } catch (error) {
+        return {
+          status: "unavailable",
+          reason: `Owned icon fixture setup: ${error instanceof Error ? error.message : String(error)}`,
+          detail: { samples },
+        }
+      }
+      let result: AppSemanticReading | undefined
+      const cleanup: { title?: string; icon?: string; propertiesExact?: boolean; note?: string } = {}
+      try {
+        result = await work(async () => (await read()).value)
+      } catch (error) {
+        result = {
+          status: "invalid",
+          reason: `Owned icon read failed: ${error instanceof Error ? error.message : String(error)}`,
+        }
+      } finally {
+        try {
+          await verify()
+          write(`\x1b]1;${before.value}\x07`)
+          await verify()
+          write(`\x1b]2;${originalTitle}\x07`)
+          cleanup.title = await title()
+          const restored = await read()
+          cleanup.icon = restored.value
+          cleanup.propertiesExact =
+            JSON.stringify(before.snapshot.properties) === JSON.stringify(restored.snapshot.properties)
+          if (!cleanup.propertiesExact) {
+            cleanup.note =
+              "OSC-only cleanup cannot reproduce original property presence/type/bytes; exact before/after snapshots retained"
+          }
+          if (cleanup.title !== originalTitle || (!before.legacy && cleanup.icon !== before.value)) {
+            throw new Error("Owned icon/title restoration readback differs from baseline")
+          }
+          if (before.legacy && cleanup.icon !== before.value) {
+            cleanup.note = "OSC-only cleanup cannot reproduce original legacy icon value/type; snapshots retained"
+          }
+        } catch (error) {
+          result = {
+            status: "invalid",
+            reason: `Owned icon cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+          }
+        }
+      }
+      if (!result) throw new Error("Owned icon callback returned no result")
+      return {
+        ...result,
+        detail: { ...result.detail, iconFixture: { before: before.snapshot, originalTitle, samples, cleanup } },
+      }
+    },
     async readTitle() {
       await assertOwned()
       const target = receipt.target

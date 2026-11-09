@@ -25,6 +25,12 @@ a failed control is PROBE INVALID. Qualified state transitions can decide suppor
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
+The owned X11 icon fixture uses read-only numeric `xprop` observations of both client icon-name properties
+and the independent owned title reader for OSC0/OSC1. A present UTF8 label, including empty, wins over
+legacy latin-1 STRING; missing or malformed setup stays unresolved before stimulus. Both-label OSC0 and
+title-invariant OSC1 targets require their inert and independently handled controls. An unchanged or partial
+target supplies no negative without completion proof. Recorded OSC1/OSC2 cleanup and guarded label readback
+retain property snapshots, including presence/type differences OSC cannot restore; there are no X property writes.
 WezTerm 0-unstable-2026-10-10 Linux OSC 555/710 use exact unknown-OSC warnings behind
 a nonce-bearing made-up command and a handled OSC 2 title change/restoration. The launcher
 records its logging flag in argv and measures the GUI executable before launch; absent

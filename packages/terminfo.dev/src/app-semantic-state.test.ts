@@ -11,7 +11,7 @@ import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSyn
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import nativeScreen from "./fixtures/screen-sgr-backspace.json"
-import { extensionsProbes } from "@terminfo/probe-defs"
+import { extensionsProbes, type AppSemanticReading } from "@terminfo/probe-defs"
 import { replayTermProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
 import {
   appSemanticDeclarations,
@@ -30,6 +30,55 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
 })
+
+// Native callback binding tests cannot see the collector's independent controls.
+// Model only the three OSC effects and native reads; production builds the result.
+test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
+  "%s qualifies the actual native pair and never infers a negative from an unobserved target",
+  async (featureId) => {
+    const runId = "a".repeat(32)
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", "")
+    vi.stubEnv("TERMINFO_TARGET_ID", "xterm")
+    for (const disabled of ["none", "icon", "title", "inert"] as const) {
+      let title = "original title"
+      let icon = "original icon"
+      const writes: string[] = []
+      const input = {
+        featureId,
+        runId,
+        executable: { path: "/unused", sha256: "b".repeat(64) },
+        readTitle: async () => title,
+        withIconNameFixture: async (
+          _write: (s: string) => void,
+          work: (read: () => Promise<string>) => Promise<AppSemanticReading>,
+        ) => work(async () => icon),
+        write(bytes: string) {
+          writes.push(bytes)
+          const m = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
+          if (!m) return
+          const code = m[1]
+          const payload = m[2]
+          if (!code || payload === undefined) throw Error("invalid OSC fixture")
+          const target = payload.includes("-target-")
+          if (target && disabled === "inert") return
+          if (code !== "1" && !(target && disabled === "title")) title = payload
+          if (code !== "2" && !(target && disabled === "icon")) icon = payload
+        },
+      }
+      const reading = await readAppSemanticState(input)
+      const expectedToWork = disabled === "none" || (featureId.includes("osc1") && disabled === "title")
+      const { gradeAppSemanticState } = await import("../../probe-defs/src/app-semantic-state.ts")
+      const result = gradeAppSemanticState(reading)
+      if (expectedToWork) expect(result).toMatchObject({ observation: { outcome: "supported" } })
+      else {
+        expect(result.observation?.outcome).not.toBe("supported")
+        expect(result.observation?.outcome).not.toBe("unsupported")
+      }
+      expect(writes.some((s) => s.includes("-control-"))).toBe(true)
+    }
+  },
+)
 
 test("Screen never borrows the outer Kitty reader and mismatched attachments are invalid", async () => {
   const runId = "a".repeat(32)

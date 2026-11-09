@@ -10,6 +10,7 @@ import {
   type ProbeSubject,
 } from "@terminfo/probe-defs"
 import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
+import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
 
 // Reviewed declarations match the exact App/mux version.
 // This is also the collector-side home for the owned semantic reader's App selection.
@@ -717,6 +718,8 @@ export async function readAppSemanticState(input: {
   runId: string
   executable: LiveExecutable
   mux?: "tmux" | "screen"
+  readTitle?: LinuxClipboardAdapter["readTitle"]
+  withIconNameFixture?: LinuxClipboardAdapter["withIconNameFixture"]
 }): Promise<AppSemanticReading> {
   const detail: { commands: Array<{ argv: string[]; stdout: string }>; phases: object[]; identity?: object } = {
     commands: [],
@@ -729,6 +732,54 @@ export async function readAppSemanticState(input: {
     }
     if (input.mux !== (env.TERMINFO_MUX_KIND || undefined)) {
       throw new Error("App semantic reader mux identity differs from its owned attachment")
+    }
+    if (input.featureId === "extensions.osc0-icon-title" || input.featureId === "extensions.osc1-icon") {
+      const fixture = input.withIconNameFixture
+      const readTitle = input.readTitle
+      if (input.mux || !fixture || !readTitle) {
+        return { status: "unavailable", reason: "No owned native App icon fixture" }
+      }
+      return await fixture(input.write, async (readIcon) => {
+        const nonce = randomUUID().slice(0, 8)
+        const pair = async () => JSON.stringify([await readTitle(), await readIcon()])
+        const osc = (body: string) => input.write(`\x1b]${body}\x07`)
+        const before = await pair()
+        osc(`7655;icon-inert-${nonce}`)
+        const unknown = { before, after: await pair() }
+        const controlTitle = `icon-title-control-${nonce}`
+        const controlIcon = `icon-control-${nonce}`
+        // OSC0 uses independent OSC1/OSC2 controls; OSC1 uses OSC0 plus OSC2.
+        osc(`${input.featureId.includes("osc0") ? "1" : "0"};${controlIcon}`)
+        osc(`2;${controlTitle}`)
+        const controlled = await pair()
+        const expectedControl = JSON.stringify([controlTitle, controlIcon])
+        const state = { unknown, handled: { before: unknown.after, after: controlled, expected: expectedControl } }
+        if (unknown.before !== unknown.after || controlled !== expectedControl || unknown.after === expectedControl) {
+          return { status: "invalid", reason: "Owned icon/title independent controls failed", detail: state }
+        }
+        const target = `icon-target-${nonce}`
+        osc(`${input.featureId.includes("osc0") ? "0" : "1"};${target}`)
+        const expected = JSON.stringify([input.featureId.includes("osc0") ? target : controlTitle, target])
+        const after = await pair()
+        if (after !== expected) {
+          return {
+            status: "unavailable",
+            reason:
+              after === controlled
+                ? "Owned icon target unchanged: missing completion proof"
+                : "Owned icon target pair is partial or unexpected",
+            detail: { ...state, target: { before: controlled, after, expected } },
+          }
+        }
+        return {
+          status: "measured",
+          reader: "state",
+          runId: input.runId,
+          ...state,
+          target: { before: controlled, after, expected },
+          detail: {},
+        }
+      })
     }
     const appId = env.TERMINFO_TARGET_ID
     if (input.mux === "screen" || (!input.mux && appId !== "kitty" && appId !== "ghostty" && appId !== "wezterm")) {

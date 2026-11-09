@@ -1213,6 +1213,8 @@ export async function createOwnedTerminal(options: {
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
     const readTitle = clipboard?.readTitle.bind(clipboard)
+    const withIconNameFixture = clipboard?.withIconNameFixture?.bind(clipboard)
+    const assertIconOwner = clipboard?.assertOwned.bind(clipboard)
     // A mux's own reader wins; foreign terminal variables never select an App reader.
     const ownedAppId = process.env.TERMINFO_TARGET_ID
     const appClipboard =
@@ -1372,6 +1374,17 @@ export async function createOwnedTerminal(options: {
             write,
             runId: expectedLaunchRunId,
             executable: linux.executable,
+            ...(withIconNameFixture &&
+              !muxAttachmentProof && {
+                readTitle: owner.readTitle,
+                withIconNameFixture: (write, work) =>
+                  withIconNameFixture(write, work, async () => {
+                    if (!assertIconOwner || !verifiedTerminalOwners.has(owner)) {
+                      throw new Error("Owned icon read has no live terminal owner")
+                    }
+                    await assertIconOwner()
+                  }),
+              }),
             ...(muxAttachmentProof && { mux: muxAttachmentProof.mux }),
           })
         },
