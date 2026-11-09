@@ -11,7 +11,7 @@ import type {
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
-import { readScreenScrollback } from "./linux-screen-text.ts"
+import { readScreenScrollback, resetScreenScrollback } from "./linux-screen-text.ts"
 
 type MuxReceiptTarget = Pick<
   LinuxMuxAttachmentProof,
@@ -55,6 +55,7 @@ export interface ClipboardTraceEvent {
 
 export interface LinuxClipboardAdapter {
   readonly getScrollback?: TermProbeSource["getScrollback"]
+  readonly resetScrollback?: TermProbeSource["resetScrollback"]
   readonly profile: ClipboardReceipt["profile"]
   readonly config: string
   readonly permissions: string
@@ -835,6 +836,17 @@ export async function createLinuxClipboardAdapter(
         await assertOwned()
         if (read.status === "refused") throw new Error(read.reason)
         return { totalLines: read.totalLines, screenLines: read.screenLines, capacity: read.capacity }
+      },
+      async resetScrollback() {
+        await assertOwned()
+        const reset = resetScreenScrollback({
+          executable: screenTarget.executable.path,
+          session: screenTarget.session,
+          socketDirectory: dirname(screenTarget.socketPath),
+          configPath: screenTarget.config.path,
+        })
+        await assertOwned()
+        if (reset.status === "refused") throw new Error(reset.reason)
       },
     }),
     ...(receipt.target?.kind === "mux" &&

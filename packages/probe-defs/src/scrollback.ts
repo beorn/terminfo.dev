@@ -644,6 +644,7 @@ async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCa
   if (refusal) return refusal
   ctx.write("\x1b[0m\x1b[2J\x1b[H")
   if (!(await ctx.queryCursorPosition())) return replyFailure("No cursor reply to fence scrollback baseline output")
+  if (ctx.resetScrollback) await ctx.resetScrollback()
   const baseline = await read()
   if (!validSize(baseline.totalLines, 0)) {
     return notTestedResult("scrollback reader geometry differs from measured screen", { baseline, rows: ctx.rows })
