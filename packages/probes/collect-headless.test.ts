@@ -5,7 +5,7 @@
  * @reach fs-walk <fixture-only: coordinator enumerates its owned temporary worker output>
  * @testonly none
  */
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -86,7 +86,9 @@ it.each([true, false])(
         result.reason = "Context review pending"
       }
       capturePath = join(dir, `xtermjs-${run.runId}.capture.json`)
-      captureBytes = JSON.stringify(run)
+      // The real worker writes the pretty-printed envelope (collect-headless.ts worker writer), so the
+      // fixture matches it: the coordinator's hardlink can only share bytes that are actually equal.
+      captureBytes = `${JSON.stringify(run, null, 2)}\n`
       writeFileSync(capturePath, captureBytes)
       return { stdout: new Blob([]).stream(), stderr: new Blob([]).stream(), exited: Promise.resolve(0), kill: vi.fn() }
     }) as never)
@@ -124,6 +126,66 @@ it.each([true, false])(
     }
   },
 )
+// AC2: a delegated run used to keep the engine's finalized record twice — the canonical versioned draft
+// the collection lists, and the worker's byte-identical capture — plus the initialized draft. One record.
+it("stores one copy of the engine's record: the capture hardlinks the canonical draft and the initialized draft is gone", async () => {
+  const dir = directory()
+  let capturePath = ""
+  let initializedPath = ""
+  vi.spyOn(Bun, "spawn").mockImplementation(((_argv: unknown, options: { env: Record<string, string> }) => {
+    const draft = JSON.parse(readFileSync(options.env.TERMINFO_DRAFT_PATH!, "utf8")) as RunDraft
+    initializedPath = options.env.TERMINFO_DRAFT_PATH!
+    // A completed handoff: the coordinator finalizes nothing, so the writer stores the worker's bytes
+    // verbatim and the duplicate can be collapsed. The finalizing path is covered by the retention test.
+    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+      ids: ["device.primary-da"],
+      result: "completed",
+      startedAt: "2026-10-21T11:59:00.000Z",
+    })
+    const run: CapturedRunDraft = {
+      ...draft,
+      subject: {
+        kind: "lib",
+        id: "xtermjs",
+        version: "6.0.0",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      runtimeIdentity: {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: "6.0.0",
+        adapterVersion: "0.1.0",
+        termlessRevision: "a".repeat(40),
+        resolvedPath: "/fixture/xterm.js",
+        integrity: { kind: "registry", lockIntegrity: "sha512-fixture" },
+      },
+      measuredAt: "2026-10-21T12:00:00.000Z",
+      origin: { kind: "collector" },
+      screenshotRefs: [],
+    }
+    capturePath = join(dir, `xtermjs-${run.runId}.capture.json`)
+    writeFileSync(capturePath, `${JSON.stringify(run, null, 2)}\n`)
+    return { stdout: new Blob([]).stream(), stderr: new Blob([]).stream(), exited: Promise.resolve(0), kill: vi.fn() }
+  }) as never)
+  const collection = await collectHeadlessRuns(["xtermjs"], dir, undefined, ["device.primary-da"])
+  expect(collection.failures).toEqual([])
+  const canonical = collection.runs[0]!
+  expect(canonical).toMatch(/\.draft\.json$/)
+  expect(canonical).not.toBe(capturePath)
+  const capture = statSync(capturePath)
+  const record = statSync(canonical)
+  expect(capture.ino).toBe(record.ino)
+  expect(capture.dev).toBe(record.dev)
+  expect(readFileSync(capturePath, "utf8")).toBe(readFileSync(canonical, "utf8"))
+  expect(existsSync(initializedPath)).toBe(false)
+  expect(readdirSync(dir).filter((entry) => entry.endsWith(".draft.json"))).toEqual([canonical.split("/").pop()!])
+})
 // The real worker loads headless-identity.ts, which requires the owned vterm checkout beside this one;
 // standalone component CI tests out terminfo.dev alone, so this runs wherever that layout exists.
 // AC1: mocked coordinator tests cannot detect a worker still passing ALL_PROBES to the batch.

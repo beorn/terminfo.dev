@@ -3,7 +3,17 @@
 
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs"
+import {
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { release, tmpdir } from "node:os"
 import { basename, dirname, join, resolve } from "node:path"
 import { pathToFileURL, fileURLToPath } from "node:url"
@@ -529,7 +539,19 @@ export async function collectHeadlessRuns(
         )
       }
       const finalPath = saveDaemonProbeRun(captured, directory)
-      parseRun(finalPath, readFileSync(finalPath, "utf8"), suite.catalogIds ?? [], new Map([[suite.probeHash, suite]]))
+      const finalizedBytes = readFileSync(finalPath, "utf8")
+      parseRun(finalPath, finalizedBytes, suite.catalogIds ?? [], new Map([[suite.probeHash, suite]]))
+      // One record per engine (32783): when the writer kept the worker's bytes unchanged the capture is a
+      // duplicate, so it becomes a hardlink to the canonical draft and the bytes are stored once. When
+      // finalization DID change them, the capture is the worker's only evidence of what it produced and
+      // stays a separate file. The initialized draft is dead once the worker exited, unless a caller
+      // handed us its path.
+      if (finalizedBytes === readFileSync(path, "utf8")) {
+        const linked = `${path}.linked`
+        linkSync(finalPath, linked)
+        renameSync(linked, path)
+      }
+      if (!handed) rmSync(draftPath, { force: true })
       runs.push(finalPath)
     } catch (error) {
       retainFailure(errorMessage(error))
