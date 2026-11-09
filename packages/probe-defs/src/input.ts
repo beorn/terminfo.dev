@@ -578,6 +578,10 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
     } else {
       result = await withMouseModes(ctx, async () => {
         ctx.write("\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1015l\x1b[?1016l")
+        // A terminal may leave SGR (1006) when a sibling mouse-encoding mode is reset:
+        // WezTerm answered this control in legacy X10 form after 1016l although the same
+        // run's x10 control read SGR from it. Re-assert the encoding the control is judged in.
+        ctx.write("\x1b[?1006h")
         const sgrClick = async (position: { x: number; y: number }) => {
           const pending = ctx.queryOutcome("", /^\x1b\[<0;\d+;\d+M\x1b\[<0;\d+;\d+m$/, 2000)
           await input.injectClick(1, position)
