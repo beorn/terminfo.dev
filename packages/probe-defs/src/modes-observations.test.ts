@@ -789,9 +789,11 @@ test(
       "missing-key",
       "unchanged",
       "missing-size",
+      "dropped-first-click",
     ] as const) {
       const modes = new Set<number>()
       let cols = 61
+      let droppedFirstClick = false
       let pending = Buffer.alloc(0)
       let finish: (() => void) | undefined
       let responsePattern: RegExp | undefined
@@ -825,6 +827,14 @@ test(
           },
           injectClick: async (_button, position) => {
             actions.push(`click:${position?.x},${position?.y}`)
+            // A click injected straight after a resize can be dropped before the App applies
+            // the mode write; the probe must retry the same control click, not call it invalid.
+            if (mutation === "dropped-first-click" && position?.x === 400 && !droppedFirstClick) {
+              droppedFirstClick = true
+              pending = Buffer.alloc(0)
+              finish?.()
+              return
+            }
             if (!modes.has(1000) && mutation !== "reset-report") return
             if (modes.has(1006)) {
               const x =
@@ -851,9 +861,18 @@ test(
         },
       })
       const result = await definition.term!(source)
-      if (mutation === "working" || mutation === "intermediate" || mutation === "legacy") {
+      if (
+        mutation === "working" ||
+        mutation === "intermediate" ||
+        mutation === "legacy" ||
+        mutation === "dropped-first-click"
+      ) {
         expect(result.observation?.outcome, mutation).toBe(mutation === "legacy" ? "unsupported" : "supported")
-        expect(actions.slice(0, 2), mutation).toEqual(["click:400,300", "click:1300,120"])
+        if (mutation === "dropped-first-click") {
+          expect(actions.slice(0, 3), mutation).toEqual(["click:400,300", "click:400,300", "click:1300,120"])
+        } else {
+          expect(actions.slice(0, 2), mutation).toEqual(["click:400,300", "click:1300,120"])
+        }
       } else {
         expect(result.tests, mutation).toEqual(
           expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]),
