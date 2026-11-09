@@ -168,11 +168,6 @@ async function primaryRestoreCapture(
     // measured criterion before adding this callback's explicitly unmeasured facets.
     result.tests ??= [{ id: "primary-marker-restored", status: result.observation.outcome, assertionRefs: [0] }]
   }
-  const remainingFacets = {
-    id: "remaining-facets",
-    status: "probe-todo" as const,
-    reason: "Primary-marker capture does not measure saved cursor or retained scrollback restoration",
-  }
   const failedRestoration = result.tests?.find(
     (test) => test.id === "primary-marker-restored" && test.status === "unsupported",
   )
@@ -197,7 +192,6 @@ async function primaryRestoreCapture(
           reason:
             "Open: switching to the alternate screen did not show, so we cannot tell whether switching back worked.",
         },
-        remainingFacets,
       ],
     }
   }
@@ -218,8 +212,6 @@ async function primaryRestoreCapture(
       const reason = `After a ?${mode} round trip the primary marker was not restored`
       failedRestoration.reason = reason
       if (result.observation) result.observation.note = reason
-    } else if (!gradesEntry && mode === 1049) {
-      result.tests.push(remainingFacets)
     }
   }
   if (mode === 1049 || result.observation?.outcome !== "supported") return result
@@ -296,6 +288,122 @@ async function primaryRestoreCapture(
     assertions: parts.flatMap((part) => part.assertions ?? []),
     response,
     observation: { ...last.observation, frames: parts.flatMap((part) => part.observation?.frames ?? []) },
+  }
+}
+
+const ALT_SCREEN_EXIT_EXPECTED = "CSI ? 1049 l restores the primary buffer and the saved cursor"
+
+/**
+ * App modes.alt-screen.exit grades the same two-part criterion as the lib arm (#32785, @cto a4c6f79d, 85d819da):
+ * primary marker restored AND saved cursor restored in the same run.
+ *
+ * Run-parser contract:
+ * - Supported stays a capture result (screenshot or buffer_state): the marker frames decide it and
+ *   the cursor adds a positive query_reply assertion (validated by observations.ts:714-749).
+ * - A cursor-only failure (!cursorRestored after primary marker passed) is published as a query_reply
+ *   observation with no frames or screenshotRef on the observation (observations.ts:216 refuses frames
+ *   on query_reply), keeping the marker frame refs in response JSON while the bound negative query_reply
+ *   assertion's observed is the cursor JSON ({ before, inside, after }).
+ */
+async function altScreenExitCapture(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const result = await primaryRestoreCapture(ctx, "modes.alt-screen.exit", 1049, "PRIMARY", "ALTONLY")
+  if (result.notTested !== undefined) return result
+  const observation = result.observation
+  if (observation?.outcome !== "supported") return result
+
+  ctx.write("\x1b[?1049l\x1b[2;3H")
+  const before = await ctx.queryCursorPosition()
+  let inside: { row: number; col: number } | null = null
+  ctx.write("\x1b[?1049h")
+  try {
+    ctx.write("\x1b[3;2H")
+    inside = await ctx.queryCursorPosition()
+  } finally {
+    ctx.write("\x1b[?1049l")
+  }
+  const after = await ctx.queryCursorPosition()
+  const cursor = { before, inside, after }
+  const response = JSON.stringify({
+    primaryRestore: result.response,
+    frames: (observation.frames ?? []).map(({ ref, label }) => ({ ref, label })),
+    cursor,
+  })
+  const inconclusive = (reason: string): ProbeCallbackResult => ({
+    ...result,
+    pass: false,
+    note: reason,
+    response,
+    observation: {
+      ...observation,
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      note: reason,
+    },
+    tests: [...(result.tests ?? []), { id: "saved-cursor-restored", status: "probe-todo", reason }],
+  })
+  if (!before) return inconclusive("Missing cursor-position reply before ?1049h entry")
+  if (!inside) return inconclusive("Missing cursor-position reply inside ?1049h alternate screen")
+  if (!after) return inconclusive("Missing cursor-position reply after ?1049l exit")
+  if (before.row !== 2 || before.col !== 3) {
+    return inconclusive(
+      `Cursor-position control before ?1049h entry read ${before.row};${before.col} instead of placed 2;3`,
+    )
+  }
+  if (inside.row !== 3 || inside.col !== 2) {
+    return inconclusive(
+      `Cursor-position control inside ?1049h alternate screen read ${inside.row};${inside.col} instead of moved 3;2`,
+    )
+  }
+  const cursorRestored = after.row === before.row && after.col === before.col
+  if (!cursorRestored) {
+    const reason = `Primary marker was restored, but saved cursor was not restored after CSI ? 1049 l (expected ${before.row};${before.col}, measured ${after.row};${after.col} after moving to ${inside.row};${inside.col} in alternate screen)`
+    return {
+      ...result,
+      pass: false,
+      note: reason,
+      response,
+      observation: {
+        outcome: "unsupported",
+        assertionType: "query_reply",
+        note: reason,
+      },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: "negative",
+          expected: ALT_SCREEN_EXIT_EXPECTED,
+          observed: JSON.stringify(cursor),
+        },
+      ],
+      tests: [
+        ...(result.tests ?? []).map((test) => ({ ...test, assertionRefs: [] })),
+        { id: "saved-cursor-restored", status: "unsupported", assertionRefs: [0], reason },
+      ],
+    }
+  }
+  const assertions = [...(result.assertions ?? [])]
+  const assertionIndex = assertions.length
+  assertions.push({
+    assertionType: "query_reply",
+    kind: "positive",
+    expected: ALT_SCREEN_EXIT_EXPECTED,
+    observed: JSON.stringify(cursor),
+  })
+  return {
+    ...result,
+    pass: true,
+    note: ALT_SCREEN_EXIT_EXPECTED,
+    response,
+    observation: {
+      ...observation,
+      outcome: "supported",
+      note: ALT_SCREEN_EXIT_EXPECTED,
+    },
+    assertions,
+    tests: [
+      ...(result.tests ?? []),
+      { id: "saved-cursor-restored", status: "supported", assertionRefs: [assertionIndex] },
+    ],
   }
 }
 
@@ -2084,7 +2192,7 @@ const modeDefinitions: ProbeDefinition[] = [
         const refusal = captureRefusal(ctx, 3, 8, "Alt-screen exit")
         if (refusal) return refusal
         if (ctx.capture || ctx.cells) {
-          return primaryRestoreCapture(ctx, "modes.alt-screen.exit", 1049, "PRIMARY", "ALTONLY")
+          return altScreenExitCapture(ctx)
         }
         ctx.write("\x1b[?1049h") // enter
         try {

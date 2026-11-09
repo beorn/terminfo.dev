@@ -4289,9 +4289,15 @@ it.each([
         trace: {},
       }
     }
+  let cursorReply = "\x1b[2;3R"
   process.stdout.write = ((chunk: string | Uint8Array) => {
     const bytes = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
-    if (id === "cursor.shape" && bytes === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[2;3R"))
+    if (bytes.includes("\x1b[2;3H")) cursorReply = "\x1b[2;3R"
+    else if (bytes.includes("\x1b[3;2H")) cursorReply = "\x1b[3;2R"
+    else if (id === "modes.alt-screen.exit" && bytes === "\x1b[?1049l") cursorReply = "\x1b[2;3R"
+    if ((id === "cursor.shape" || id === "modes.alt-screen.exit") && bytes === "\x1b[6n") {
+      process.stdin.emit("data", Buffer.from(cursorReply))
+    }
     if (/^\x1b\[\d+;\d+H.$/.test(bytes)) witness = bytes.slice(-1)
     return true
   }) as typeof process.stdout.write
@@ -4334,10 +4340,10 @@ it.each([
         expect(result.tests).toMatchObject([
           { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
           { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
-          { id: "remaining-facets", status: "probe-todo" },
+          { id: "saved-cursor-restored", status: "supported", assertionRefs: [2] },
         ])
       }
-      expect(batch.assertions).toHaveLength(2)
+      expect(batch.assertions).toHaveLength(id === "cursor.shape" ? 2 : 3)
       Object.assign(draft.rawReplies, batch.rawReplies)
       draft.results = batch.results
       draft.assertions = batch.assertions
@@ -4349,13 +4355,13 @@ it.each([
         new Map([[probeHash, ownManifest]]),
       )
       expect(read.results?.[0]).toMatchObject({
-        status: id === "cursor.shape" ? "supported" : "probe-todo",
+        status: "supported",
         frames: result.frames,
       })
       if (id !== "cursor.shape") {
         expect(read.results?.[0]?.frames?.filter((frame) => frame.label.includes("capture stability"))).toHaveLength(2)
       }
-      expect(read.assertions).toHaveLength(2)
+      expect(read.assertions).toHaveLength(id === "cursor.shape" ? 2 : 3)
       return
     }
     if (batch.assertions.length === 0) {

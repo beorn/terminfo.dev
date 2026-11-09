@@ -5,11 +5,13 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { createHash } from "node:crypto"
+import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
 import { extensionsProbes } from "./extensions.ts"
 import { DECLARED_UNTESTABLE_TEST, HEADLESS_OBSERVABLE_REVIEW, recordExecutedProbe } from "./helpers.ts"
 import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { ObservationFrame, TermProbeSource } from "./types.ts"
+import type { ObservationFrame, ProbeSuiteManifest, TermProbeSource } from "./types.ts"
 
 function captureApp(rows: number, cols: number) {
   const writes: string[] = []
@@ -542,4 +544,216 @@ test("extensions.font-ligatures records mux declared-untestable coverage and lea
     }),
   ])
   expect(fontLigatureMuxCoverage({ kind: "term" }, state)).toBeUndefined()
+})
+
+test.each([
+  {
+    name: "supported",
+    behavior: "scrolls-and-restores" as const,
+    expectedStatus: "supported" as const,
+    expectedOutcome: "supported" as const,
+    expectedAssertions: 1,
+    expectedFrames: 5,
+    expectedReason: /wheel\+capture route: frame after OSC 720 differed from bottom and wheel-down returned to bottom/,
+  },
+  {
+    name: "unsupported",
+    behavior: "ignores-osc720" as const,
+    expectedStatus: "unsupported" as const,
+    expectedOutcome: "unsupported" as const,
+    expectedAssertions: 1,
+    expectedFrames: 4,
+    expectedReason: /wheel\+capture route: frame after OSC 720 equals bottom with wheel controls held/,
+  },
+  {
+    name: "inconclusive-changed-not-restored",
+    behavior: "osc720-sticks" as const,
+    expectedStatus: "probe-todo" as const,
+    expectedOutcome: "inconclusive" as const,
+    expectedAssertions: 0,
+    expectedFrames: 5,
+    expectedReason:
+      /wheel\+capture route: frame after OSC 720 changed from bottom, but wheel-down did not restore the bottom frame/,
+  },
+  {
+    name: "inconclusive-wheel-up-control-failed",
+    behavior: "wheel-up-noop" as const,
+    expectedStatus: "probe-todo" as const,
+    expectedOutcome: "inconclusive" as const,
+    expectedAssertions: 0,
+    expectedFrames: 2,
+    expectedReason: /wheel\+capture route: wheel-up control did not change the captured frame/,
+  },
+  {
+    name: "inconclusive-wheel-down-control-failed",
+    behavior: "wheel-down-noop" as const,
+    expectedStatus: "probe-todo" as const,
+    expectedOutcome: "inconclusive" as const,
+    expectedAssertions: 0,
+    expectedFrames: 3,
+    expectedReason: /wheel\+capture route: wheel-down control did not return to the bottom frame/,
+  },
+])(
+  "extensions.osc720-scroll-up wheel+capture round-trips through parseRun for $name",
+  async ({ name, behavior, expectedStatus, expectedOutcome, expectedAssertions, expectedFrames, expectedReason }) => {
+    const featureId = "extensions.osc720-scroll-up"
+    const definition = find(featureId)
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    let offset = 0
+    let afterOsc720 = false
+    const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
+    const context: TermProbeSource = {
+      kind: "live",
+      rows: 24,
+      cols: 80,
+      captureKind: "pixels",
+      // Even when an App scrollback reader exists without viewportOffset (e.g. Kitty/WezTerm),
+      // route 2 (wheel+capture) runs instead of stopping at not-tested.
+      getScrollback: async () => ({ totalLines: 50, screenLines: 24 }),
+      write: (bytes) => {
+        writes.push(bytes)
+        if (bytes.includes("\x1b]720\x07")) {
+          afterOsc720 = true
+          if (behavior === "scrolls-and-restores" || behavior === "osc720-sticks") {
+            offset = 1
+          }
+        }
+      },
+      queryCursorPosition: async () => ({ row: 24, col: 40 }),
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async () => null,
+      readInput: async (pattern, _timeoutMs, inject) => {
+        await inject?.()
+        return pattern.test("a") ? ["a"] : null
+      },
+      input: {
+        injectKey: async () => {},
+        injectClick: async (button) => {
+          if (button === 4) {
+            if (behavior !== "wheel-up-noop") offset = 1
+          } else if (button === 5) {
+            if (behavior === "wheel-down-noop") return
+            if (behavior === "osc720-sticks" && afterOsc720) return
+            offset = 0
+          }
+        },
+      },
+      capture: async ({ role, label }) => {
+        const plane = offset > 0 ? "history-plane" : "bottom-plane"
+        const frame: ObservationFrame = {
+          kind: "pixels",
+          role,
+          label,
+          capturedAt: frames.length + 1,
+          ref: digest(`frame-${frames.length + 1}-${plane}`),
+          pixelsDigest: digest(`pixels-${plane}`),
+        }
+        frames.push(frame)
+        return frame
+      },
+    }
+    const result = await definition.term!(context)
+    expect(result.observation?.outcome).toBe(expectedOutcome)
+    expect(result.observation?.assertionType).toBe("screenshot")
+    expect(result.observation?.frames).toHaveLength(expectedFrames)
+    const assertions = (result.assertions ?? []).map((entry) => ({
+      ...entry,
+      featureId,
+      rawReplyRef: featureId,
+    }))
+    expect(assertions).toHaveLength(expectedAssertions)
+    const recorded = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: "2026-11-09T10:00:00.000Z" },
+      rawReplyRef: featureId,
+      observation: result.observation ? { ...result.observation, featureId, rawReplyRef: featureId } : undefined,
+      assertions,
+      tests: result.tests,
+    })
+    expect(recorded.status).toBe(expectedStatus)
+    expect(recorded.reason).toMatch(expectedReason)
+    const suite = "b".repeat(64)
+    const manifest: ProbeSuiteManifest = {
+      schemaVersion: 4,
+      probeHash: suite,
+      adapterVersion: "3.3.1",
+      generatedAt: "2026-11-09T10:00:00.000Z",
+      catalogIds: [featureId],
+      probes: { term: [featureId], lib: [], mux: [] },
+    }
+    const run = {
+      schemaVersion: 4,
+      source: { kind: "live" },
+      runId: `osc720-${name}`,
+      suiteId: suite,
+      probeHash: suite,
+      sourceRevision: "4".repeat(40),
+      intendedSubject: { kind: "term", id: "kitty" },
+      subject: {
+        kind: "term",
+        id: "kitty",
+        version: "0.49.2",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-11-09T10:01:00.000Z",
+      origin: { kind: "collector" },
+      sealedAt: "2026-11-09T10:02:00.000Z",
+      rawReplies: {
+        [featureId]: JSON.stringify({ writes, queries: [{ query: "\x1b[6n", raw: "\x1b[24;40R" }], events: [] }),
+        ...(result.response ? { [`${featureId}.callbackResponse`]: result.response } : {}),
+      },
+      assertions,
+      screenshotRefs: [...new Set((recorded.frames ?? []).map((frame) => frame.ref))],
+      results: [recorded],
+    }
+    const parsed = parseRun(`osc720-${name}.json`, JSON.stringify(run), [featureId], new Map([[suite, manifest]]))
+    expect(parsed.results?.[0]?.status).toBe(expectedStatus)
+    expect(parsed.results?.[0]?.reason).toMatch(expectedReason)
+    expect(parsed.results?.[0]?.frames).toHaveLength(expectedFrames)
+    expect(
+      parseObservationFrames(
+        parsed.results?.[0]?.frames,
+        `osc720-${name}.json`,
+        featureId,
+        parsed.screenshotRefs,
+        parsed.textSnapshotRefs,
+        parsed.results?.[0]?.screenshotRef,
+        parsed.results?.[0]?.assertionType,
+      ),
+    ).toHaveLength(expectedFrames)
+    expect(parsed.assertions).toHaveLength(expectedAssertions)
+  },
+)
+
+test("extensions.osc720-scroll-up excludes tmux and screen so their cells keep today's result", async () => {
+  const definition = find("extensions.osc720-scroll-up")
+  const tmuxApp = captureApp(24, 80)
+  tmuxApp.context.mux = "tmux"
+  tmuxApp.context.getScrollback = async () => ({ totalLines: 44, screenLines: 24, viewportOffset: 20 })
+  tmuxApp.context.queryCursorPosition = async () => ({ row: 1, col: 1 })
+  const tmuxResult = await definition.term!(tmuxApp.context)
+  expect(tmuxResult.observation).toBeUndefined()
+  expect(tmuxResult.tests).toEqual([
+    { id: "criterion", status: "probe-todo", reason: "Cursor answered; scrollback viewport was not measured" },
+  ])
+
+  const screenApp = captureApp(24, 80)
+  screenApp.context.mux = "screen"
+  screenApp.context.getScrollback = async () => ({ totalLines: 44, screenLines: 24 })
+  const screenResult = await definition.term!(screenApp.context)
+  expect(screenResult.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "terminal reports no viewport offset",
+  })
 })

@@ -124,7 +124,7 @@ test.each(["erase.character", "modes.alt-screen.exit", "modes.altscreen-1047", "
             : { status: "read" as const, app: "iterm2" as const, cells: mapped }
         return textCellsFrame(checkpoint, read, Date.now()).frame
       },
-      queryCursorPosition: async () => null,
+      queryCursorPosition: async () => ({ row: backend.getCursor().y + 1, col: backend.getCursor().x + 1 }),
       measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
       query: async () => null,
       queryWithSentinel: async () => null,
@@ -159,19 +159,21 @@ test.each(["erase.character", "modes.alt-screen.exit", "modes.altscreen-1047", "
         assertionType: "buffer_state",
       })
       expect(result.assertions?.length).toBeGreaterThan(0)
-      expect(result.assertions?.every((assertion) => assertion.assertionType === "buffer_state")).toBe(true)
       expect(result.observation?.screenshotRef).toBeUndefined()
       expect(result.observation?.frames?.every((frame) => frame.kind === "text-cells")).toBe(true)
       if (id === "modes.alt-screen.exit") {
-        expect(result.tests).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              id: "remaining-facets",
-              status: "probe-todo",
-              reason: expect.stringMatching(/saved cursor.*scrollback/),
-            }),
-          ]),
-        )
+        expect(result.assertions?.map((assertion) => assertion.assertionType)).toEqual([
+          "buffer_state",
+          "buffer_state",
+          "query_reply",
+        ])
+        expect(result.tests).toEqual([
+          { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
+          { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
+          { id: "saved-cursor-restored", status: "supported", assertionRefs: [2] },
+        ])
+      } else {
+        expect(result.assertions?.every((assertion) => assertion.assertionType === "buffer_state")).toBe(true)
       }
     } finally {
       backend.destroy()
