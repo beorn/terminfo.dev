@@ -1,7 +1,20 @@
-import type { ObservationFrame, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type {
+  CaptureRequest,
+  ObservationFrame,
+  ProbeDefinition,
+  ProbeCallbackResult,
+  TermProbeSource,
+} from "./types.ts"
 import { regionReadbackProbe, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { beginCaptureLifecycle, endCaptureLifecycle } from "./region-readback.ts"
-import { probe, parserStateResult, notTestedResult, libvtermHistoryReview, sameFrame } from "./helpers.ts"
+import {
+  probe,
+  parserStateResult,
+  notTestedResult,
+  libvtermHistoryReview,
+  sameFrame,
+  multiplexerPaneArea,
+} from "./helpers.ts"
 
 /**
  * The nine measured Erase rows, as one region-readback kind table (28450; @cto 218ec7fe's rule
@@ -327,7 +340,12 @@ const SCROLLBACK_ED3_EXPECTED =
 /** Why two frames disagree, in the terms the next run needs to tell the causes apart. Both frames
  * carrying equal digests would have read as the same frame, so only two causes reach here. */
 function frameDivergence(settled: ObservationFrame, bottom: ObservationFrame): string {
-  if (settled.pixelsDigest !== undefined && bottom.pixelsDigest !== undefined) return "the captured pixels differ"
+  if (
+    (settled.regionDigest !== undefined && bottom.regionDigest !== undefined) ||
+    (settled.pixelsDigest !== undefined && bottom.pixelsDigest !== undefined)
+  ) {
+    return "the captured pixels differ"
+  }
   return "the frame refs differ and no pixel digest was carried"
 }
 
@@ -367,11 +385,13 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     // The visible cursor is a cell like any other: without DECTCEM off the wheel-down restore
     // differs from the seeded bottom frame by one cell and the arm grades its own cursor.
     beginCaptureLifecycle(ctx)
+    const paneArea = multiplexerPaneArea(ctx)
+    const captureRestoreFrame = (request: CaptureRequest) => capture(paneArea ? paneArea.request(request) : request)
     const mark = Math.min(ctx.cols, 40)
     ctx.write("\x1b[2J\x1b[H")
     ctx.write(`${"H".repeat(mark)}\r\n`.repeat(ctx.rows + 2))
     ctx.write("B".repeat(mark))
-    const bottom = await capture({ role: "control", label: "Bottom of seeded buffer" })
+    const bottom = await captureRestoreFrame({ role: "control", label: "Bottom of seeded buffer" })
     await input.injectClick(4)
     const history = await capture({ role: "control", label: "After wheel-up before ED3" })
     if (sameFrame(history, bottom)) {
@@ -382,8 +402,11 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
       })
     }
     await input.injectClick(5)
-    const restored = await capture({ role: "control", label: "After wheel-down before ED3" })
-    if (!sameFrame(restored, bottom)) {
+    const restored = await captureRestoreFrame({ role: "control", label: "After wheel-down before ED3" })
+    const restoreCheck = paneArea
+      ? paneArea.compare(restored, bottom, "restore comparison")
+      : { matches: sameFrame(restored, bottom) }
+    if (!restoreCheck.matches) {
       return {
         pass: false,
         response: JSON.stringify({
@@ -414,15 +437,18 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
       after: after.ref,
     }
     const frames = [bottom, history, restored, erased, after]
+    const restoreNote = restoreCheck.excludedReason
     if (sameFrame(after, history)) {
       return {
         pass: false,
         response: JSON.stringify(observed),
+        ...(restoreNote && { note: restoreNote }),
         observation: {
           outcome: "unsupported",
           assertionType: "screenshot",
           screenshotRef: after.ref,
           frames,
+          ...(restoreNote && { note: restoreNote }),
         },
         assertions: [
           {
@@ -439,11 +465,13 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
       return {
         pass: true,
         response: JSON.stringify(observed),
+        ...(restoreNote && { note: restoreNote }),
         observation: {
           outcome: "supported",
           assertionType: "screenshot",
           screenshotRef: after.ref,
           frames,
+          ...(restoreNote && { note: restoreNote }),
         },
         assertions: [
           {
@@ -456,6 +484,9 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
         ],
       }
     }
+    const inconclusiveNote = restoreNote
+      ? `Post-ED3 wheel-up matched neither the history frame nor the post-ED3 bottom; ${restoreNote}`
+      : "Post-ED3 wheel-up matched neither the history frame nor the post-ED3 bottom"
     return {
       pass: false,
       response: JSON.stringify(observed),
@@ -465,7 +496,7 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
         assertionType: "screenshot",
         screenshotRef: after.ref,
         frames,
-        note: "Post-ED3 wheel-up matched neither the history frame nor the post-ED3 bottom",
+        note: inconclusiveNote,
       },
     }
   } finally {

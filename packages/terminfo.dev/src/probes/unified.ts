@@ -669,6 +669,12 @@ export async function runProbeBatch(
             }
           : read
     }
+    const subjectMux =
+      options.ownedTerminal?.muxAttachmentProof?.mux ??
+      (options.subject?.kind === "mux" && (options.subject.id === "tmux" || options.subject.id === "screen")
+        ? options.subject.id
+        : undefined)
+    if (subjectMux) probeSource.mux = subjectMux
     const readTitle = ownsTerminal ? options.ownedTerminal?.readTitle : undefined
     if (
       readTitle &&
@@ -1132,6 +1138,7 @@ export async function runProbeBatch(
             featureId: probe.id,
             attempt,
             coverage: { featureId: probe.id, ...ligatureCoverage.notTested, rawReplyRef: probe.id },
+            criterionBranch: ligatureCoverage.criterionBranch,
             tests: ligatureCoverage.tests,
             assertions: [],
             rawReplyRef: probe.id,

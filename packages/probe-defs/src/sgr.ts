@@ -1457,10 +1457,12 @@ const muxVisualTests = new Map<string, { featureId: string | null; testId: strin
 ])
 
 /**
- * D160: a multiplexer emits text cells and shapes no glyphs, so ligature shaping is decided by the
- * host terminal and this subject exposes no applicable observable. The record is coverage
- * (NotTestedCoverage, reason no-semantic-observable), never a fifth measurement outcome, and the
- * subject's raw state is kept in the response. Non-mux subjects keep their existing path.
+ * D160 (operator delegation recorded on #32762, @cto bf695ddc): a multiplexer emits text cells and
+ * shapes no glyphs, so ligature shaping is decided by the host terminal and this subject exposes no
+ * applicable observable. The record uses declaredUntestableResult (NotTestedCoverage with reason
+ * no-semantic-observable plus the declared-untestable test on HEADLESS_OBSERVABLE_REVIEW, rolling up
+ * as Untestable), and the subject's raw state is kept in the response. Non-mux subjects keep their
+ * existing path.
  */
 export const MUX_FONT_LIGATURE_NO_OBSERVABLE =
   "ligature shaping is done by the host terminal; the multiplexer only emits text cells"
@@ -1470,7 +1472,7 @@ export function fontLigatureMuxCoverage(
   state: object,
 ): NotTestedCoverageResult | undefined {
   if (target.kind !== "mux") return undefined
-  return notTestedResult(MUX_FONT_LIGATURE_NO_OBSERVABLE, state)
+  return declaredUntestableResult(MUX_FONT_LIGATURE_NO_OBSERVABLE, state)
 }
 
 function finalizeMuxVisualNegative(

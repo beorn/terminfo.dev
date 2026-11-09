@@ -4505,10 +4505,20 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     })
     expect(mux.notTested?.find((item) => item.featureId === id)).toMatchObject({
       reason: "no-semantic-observable",
-      noObservable: expect.stringMatching(/host terminal|multiplexer/i),
+      noObservable: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
       rawReplyRef: id,
     })
-    expect(mux.results.find((result) => result.featureId === id)?.status).toBe("probe-todo")
+    expect(mux.results.find((result) => result.featureId === id)).toMatchObject({
+      status: "untestable",
+      criterionBranch: "headless-observable-review",
+      tests: [
+        expect.objectContaining({
+          id: "declared-untestable",
+          status: "untestable",
+          reason: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+        }),
+      ],
+    })
 
     // A pixel-capable mux run leaves a screenshot observation and assertion behind BEFORE coverage is
     // decided; coverage is the only claim kept, so neither list may still name this feature and the
@@ -4538,10 +4548,12 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     expect(pixel.observations.filter((entry) => entry.featureId === id)).toEqual([])
     expect(pixel.assertions.filter((entry) => entry.featureId === id)).toEqual([])
     const covered = pixel.results.find((result) => result.featureId === id)!
-    expect(covered).toMatchObject({ status: "probe-todo" })
+    expect(covered).toMatchObject({
+      status: "untestable",
+      criterionBranch: "headless-observable-review",
+    })
     expect(covered.frames).toBeUndefined()
     expect(covered.screenshotRef).toBeUndefined()
-    expect(covered.criterionBranch).toBeUndefined()
     expect(covered.assertionType).toBeUndefined()
 
     definition.term = async () => notTestedResult("Font ligatures need rendered pixels in this fixture", {})

@@ -6,7 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
-import { recordExecutedProbe } from "./helpers.ts"
+import { DECLARED_UNTESTABLE_TEST, HEADLESS_OBSERVABLE_REVIEW, recordExecutedProbe } from "./helpers.ts"
 import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ObservationFrame, TermProbeSource } from "./types.ts"
@@ -498,19 +498,48 @@ test.each([
   expect(result.tests?.some((entry) => entry.status === "untestable")).not.toBe(true)
 })
 
-test("extensions.font-ligatures records mux coverage and leaves a native subject on its own path", () => {
-  // D160: the multiplexer only emits text cells, so ligature shaping is the host terminal's
-  // observable. The record is coverage (no-semantic-observable) with the subject's raw state kept,
-  // never an observation, and a native subject must not be diverted through it.
+test("extensions.font-ligatures records mux declared-untestable coverage and leaves a native subject on its own path", () => {
+  // D160 (#32762, @cto bf695ddc): the multiplexer only emits text cells, so ligature shaping is the
+  // host terminal's observable. A mux subject emits the declared-untestable test and rolls up as
+  // Untestable (not probe-todo), keeping the raw state and leaving a native subject on its own path.
   const state = { ligatureSample: "-> => ==" }
   const coverage = fontLigatureMuxCoverage({ kind: "mux" }, state)
   expect(coverage?.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/host terminal|multiplexer/i),
+    noObservable: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
   })
-  expect(coverage?.note).toMatch(/host terminal|multiplexer/i)
+  expect(coverage?.note).toBe("ligature shaping is done by the host terminal; the multiplexer only emits text cells")
+  expect(coverage?.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+  expect(coverage?.tests).toEqual([
+    {
+      id: DECLARED_UNTESTABLE_TEST,
+      status: "untestable",
+      reason: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+    },
+  ])
   expect(coverage?.response).toBe(JSON.stringify(state))
   expect(coverage?.observation).toBeUndefined()
   expect(coverage?.assertions).toBeUndefined()
+  const recorded = recordExecutedProbe({
+    featureId: "extensions.font-ligatures",
+    attempt: { scope: "probe", startedAt: "2026-11-09T07:00:00.000Z" },
+    coverage: {
+      featureId: "extensions.font-ligatures",
+      ...coverage!.notTested,
+      rawReplyRef: "extensions.font-ligatures",
+    },
+    criterionBranch: coverage!.criterionBranch,
+    tests: coverage!.tests,
+    assertions: [],
+    rawReplyRef: "extensions.font-ligatures",
+  })
+  expect(recorded.status).toBe("untestable")
+  expect(recorded.tests).toEqual([
+    expect.objectContaining({
+      id: DECLARED_UNTESTABLE_TEST,
+      status: "untestable",
+      reason: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+    }),
+  ])
   expect(fontLigatureMuxCoverage({ kind: "term" }, state)).toBeUndefined()
 })

@@ -15,6 +15,9 @@ import type {
 } from "./types.ts"
 import type {
   AssertionType,
+  CaptureCells,
+  CapturePixelGeometry,
+  CaptureRequest,
   ObservationFrame,
   ProbeDefinition,
   ProbeCallbackResult,
@@ -597,6 +600,85 @@ export function sameFrame(left: ObservationFrame, right: ObservationFrame): bool
     return left.pixelsDigest === right.pixelsDigest
   }
   return left.ref === right.ref
+}
+
+export interface MultiplexerPaneArea {
+  readonly mux: "tmux" | "screen"
+  readonly cells: CaptureCells
+  readonly pixelGeometry: CapturePixelGeometry
+  /** Attach the cell-aligned multiplexer pane crop (`1..rows` by `1..cols`) to a capture request. */
+  request(request: CaptureRequest): CaptureRequest
+  /**
+   * Compare `settled` against `reference` on the multiplexer pane area (`regionDigest` over
+   * `1..rows` by `1..cols`). When `regionDigest` matches while the whole-window `pixelsDigest`
+   * differs, the status row outside the calibrated pane area was excluded and `excludedReason`
+   * names that exclusion for the result's reason.
+   */
+  compare(
+    settled: ObservationFrame,
+    reference: ObservationFrame,
+    comparisonLabel: string,
+  ): { matches: boolean; excludedReason?: string }
+}
+
+/**
+ * Derive the multiplexer pane area (`1..rows` by `1..cols`) from the run's calibrated multiplexer
+ * geometry (#32774, @cto 392cee2a), never from a fixed "last row" subtraction. Screen's default
+ * has no status line and reports the full window grid as `rows`, keeping its full pane; tmux
+ * reports its pane rows as `rows` (`textHeight = rows * cellHeight`), leaving its status row
+ * outside the pane crop (`regionDigest`) while `pixelsDigest` still records the whole window.
+ */
+export function multiplexerPaneArea(
+  ctx: Pick<TermProbeSource, "mux" | "rows" | "cols" | "captureGeometry">,
+): MultiplexerPaneArea | undefined {
+  const mux = ctx.mux
+  const pixelGeometry = ctx.captureGeometry?.geometry
+  if (!mux || !pixelGeometry) return undefined
+  if (
+    !Number.isSafeInteger(ctx.rows) ||
+    !Number.isSafeInteger(ctx.cols) ||
+    ctx.rows < 1 ||
+    ctx.cols < 1 ||
+    pixelGeometry.cellHeight < 1 ||
+    pixelGeometry.cellWidth < 1 ||
+    pixelGeometry.textHeight !== ctx.rows * pixelGeometry.cellHeight ||
+    pixelGeometry.textWidth !== ctx.cols * pixelGeometry.cellWidth
+  ) {
+    return undefined
+  }
+  const cells: CaptureCells = { top: 1, left: 1, bottom: ctx.rows, right: ctx.cols }
+  return {
+    mux,
+    cells,
+    pixelGeometry,
+    request(request) {
+      return { ...request, cells, pixelGeometry }
+    },
+    compare(settled, reference, comparisonLabel) {
+      if (settled.regionDigest === undefined || reference.regionDigest === undefined) {
+        return { matches: sameFrame(settled, reference) }
+      }
+      if (
+        settled.regionRectangle &&
+        reference.regionRectangle &&
+        (settled.regionRectangle.x !== reference.regionRectangle.x ||
+          settled.regionRectangle.y !== reference.regionRectangle.y ||
+          settled.regionRectangle.width !== reference.regionRectangle.width ||
+          settled.regionRectangle.height !== reference.regionRectangle.height)
+      ) {
+        return { matches: false }
+      }
+      const matches = settled.regionDigest === reference.regionDigest
+      if (!matches) return { matches: false }
+      if (!sameFrame(settled, reference)) {
+        return {
+          matches: true,
+          excludedReason: `${mux} status row outside the ${ctx.rows}x${ctx.cols} multiplexer pane area was left out of the ${comparisonLabel}`,
+        }
+      }
+      return { matches: true }
+    },
+  }
 }
 
 /** Channel-exact equality of two reported cell colors. */
@@ -2402,12 +2484,16 @@ export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
 export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
 export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([HEADLESS_OBSERVABLE_REVIEW])
 
-/** The one test id the Untestable route admits: the operator's Nov 4 16:55 declaration (@cto ruling 2026-11-04). */
+/**
+ * The one test id the Untestable route admits: the operator's Nov 4 16:55 declaration (@cto ruling 2026-11-04) and D160
+ * (operator delegation recorded on #32762, @cto ruling bf695ddc) for multiplexer font ligatures.
+ */
 export const DECLARED_UNTESTABLE_TEST = "declared-untestable"
 
 /**
- * A library result the operator declared Untestable (Nov 4 16:55 PST: no library can show it). The calling probe writes
- * its reason once, in its own definition, and names any library exception there; this carries no source reference.
+ * A library or multiplexer result the operator declared Untestable (Nov 4 16:55 PST: no library can show it; D160 on
+ * #32762: a multiplexer only emits text cells and shapes no glyphs). The calling probe writes its reason once, in its
+ * own definition, and names any exception there; this carries no source reference.
  */
 export function declaredUntestableResult(reason: string, state: object): NotTestedCoverageResult {
   if (!reason.trim()) throw new Error("A declared Untestable result needs its reason")

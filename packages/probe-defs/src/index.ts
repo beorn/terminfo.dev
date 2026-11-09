@@ -77,6 +77,8 @@ export {
   DECLARED_UNTESTABLE_TEST,
   declaredUntestableResult,
   isDeclaredUntestable,
+  multiplexerPaneArea,
+  type MultiplexerPaneArea,
   SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES,
   sgrProbe,
   cursorProbe,

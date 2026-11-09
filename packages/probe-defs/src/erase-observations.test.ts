@@ -8,6 +8,7 @@
 import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { eraseProbes, eraseReadbackRows } from "./erase.ts"
+import { recordExecutedProbe } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { libProbeSource, regradeRow } from "./testing/group-harness.ts"
@@ -807,6 +808,135 @@ test("erase.screen.scrollback surfaces a finally wheel-down failure", async () =
   }
   await expect(byId("erase.screen.scrollback").term(ctx)).rejects.toThrow(/finally wheel-down failed/)
   expect(clicks).toEqual([4, 5, 4, 5])
+})
+
+test("erase.screen.scrollback compares only the calibrated multiplexer pane area in the restore check", async () => {
+  const runRestoreCase = async (options: {
+    mux?: "tmux" | "screen"
+    rows?: number
+    cols?: number
+    statusRowDiffersOnRestore: boolean
+    paneDiffersOnRestore: boolean
+  }) => {
+    const rows = options.rows ?? 19
+    const cols = options.cols ?? 61
+    const base = scrollbackApp({ clears: true })
+    const requestedCells: Array<{ top: number; left: number; bottom: number; right: number } | undefined> = []
+    let count = 0
+    const ctx: TermProbeSource = {
+      ...base.ctx,
+      rows,
+      cols,
+      ...(options.mux && { mux: options.mux }),
+      captureGeometry: {
+        geometry: {
+          cellWidth: 13,
+          cellHeight: 29,
+          textWidth: cols * 13,
+          textHeight: rows * 29,
+        },
+        source: "measured by complete raster calibration",
+      },
+      capture: async (request) => {
+        count += 1
+        requestedCells.push(request.cells)
+        const baseFrame = await base.ctx.capture!(request)
+        const isRestore = count === 3
+        const pixelsDigest =
+          isRestore && (options.statusRowDiffersOnRestore || options.paneDiffersOnRestore)
+            ? "sha256:pixels-status-ticked"
+            : baseFrame.pixelsDigest
+        const regionDigest = request.cells
+          ? isRestore && options.paneDiffersOnRestore
+            ? "sha256:pane-diverged"
+            : `sha256:pane-${baseFrame.pixelsDigest}`
+          : undefined
+        return {
+          role: baseFrame.role,
+          label: baseFrame.label,
+          capturedAt: baseFrame.capturedAt,
+          ref: baseFrame.ref,
+          pixelsDigest,
+          ...(regionDigest && {
+            regionDigest,
+            regionRectangle: { x: 3, y: 10, width: cols * 13, height: rows * 29 },
+          }),
+        }
+      },
+    }
+    const callbackResult = await byId("erase.screen.scrollback").term(ctx)
+    const recorded = recordExecutedProbe({
+      featureId: "erase.screen.scrollback",
+      attempt: { scope: "probe", startedAt: "2026-11-09T07:00:00.000Z" },
+      observation: callbackResult.observation
+        ? { featureId: "erase.screen.scrollback", ...callbackResult.observation }
+        : undefined,
+      assertions: (callbackResult.assertions ?? []).map((entry) => ({
+        featureId: "erase.screen.scrollback",
+        ...entry,
+      })),
+    })
+    return { callbackResult, recorded, requestedCells }
+  }
+
+  // (1) Multiplexer frame that differs only in the status row passes the restore check and makes the exclusion visible.
+  const statusOnly = await runRestoreCase({
+    mux: "tmux",
+    rows: 19,
+    cols: 61,
+    statusRowDiffersOnRestore: true,
+    paneDiffersOnRestore: false,
+  })
+  expect(statusOnly.requestedCells[0]).toEqual({ top: 1, left: 1, bottom: 19, right: 61 })
+  expect(statusOnly.requestedCells[2]).toEqual({ top: 1, left: 1, bottom: 19, right: 61 })
+  expect(statusOnly.recorded.status).toBe("supported")
+  expect(statusOnly.recorded.reason).toMatch(
+    /tmux status row outside the 19x61 multiplexer pane area.*restore comparison/i,
+  )
+  expect(statusOnly.recorded.tests[0]?.reason).toMatch(
+    /tmux status row outside the 19x61 multiplexer pane area.*restore comparison/i,
+  )
+
+  // Screen's default has no status line (20 rows in the 20-row window), so its pane crop keeps all 20 rows.
+  const screenFullPane = await runRestoreCase({
+    mux: "screen",
+    rows: 20,
+    cols: 61,
+    statusRowDiffersOnRestore: false,
+    paneDiffersOnRestore: false,
+  })
+  expect(screenFullPane.requestedCells[0]).toEqual({ top: 1, left: 1, bottom: 20, right: 61 })
+  expect(screenFullPane.recorded.status).toBe("supported")
+
+  // (2) A difference inside the multiplexer pane still fails the restore check.
+  const paneDiff = await runRestoreCase({
+    mux: "tmux",
+    rows: 19,
+    cols: 61,
+    statusRowDiffersOnRestore: false,
+    paneDiffersOnRestore: true,
+  })
+  expect(paneDiff.callbackResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+  })
+  expect(paneDiff.recorded.status).toBe("probe-invalid")
+  expect(paneDiff.recorded.reason).toMatch(/wheel-down did not return to the bottom frame: the captured pixels differ/i)
+
+  // (3) A subject that is not a multiplexer still compares the full frame.
+  const nonMux = await runRestoreCase({
+    mux: undefined,
+    rows: 19,
+    cols: 61,
+    statusRowDiffersOnRestore: true,
+    paneDiffersOnRestore: false,
+  })
+  expect(nonMux.requestedCells[0]).toBeUndefined()
+  expect(nonMux.callbackResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+  })
+  expect(nonMux.recorded.status).toBe("probe-invalid")
 })
 
 /**
