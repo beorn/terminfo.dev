@@ -519,9 +519,39 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
         return todo("viewport anchor placement not established")
       }
       state.anchorParse = await ctx.queryWithSentinelOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 1000)
-      const unchanged = await frame(`${phase} U prime`)
+      const unchanged = await frame(`${phase} U prime`, "target")
       state.UPrime = unchanged
-      if (!sameCells(unchanged, anchor)) return todo("parse witness moved the viewport")
+      if (!sameCells(unchanged, anchor)) {
+        if (sameCells(unchanged, bottom)) {
+          state.outcome = "witness-snapped"
+          state.targetDigest = measuredDigest(unchanged)
+          state.matchedReferenceDigest = measuredDigest(bottom)
+          const reason = "a non-printing parse-witness query returned the scrolled viewport to the bottom"
+          const response = JSON.stringify(evidence)
+          return {
+            pass: false,
+            note: reason,
+            response,
+            observation: {
+              outcome: "unsupported",
+              assertionType: "screenshot",
+              note: reason,
+              frames,
+              screenshotRef: unchanged.ref,
+            },
+            assertions: [
+              {
+                assertionType: "screenshot",
+                kind: "negative",
+                expected: "Both qualified viewport phases retain their earlier history anchor after output",
+                observed: response,
+                action: "scrollback.viewport-hold-output",
+              },
+            ],
+          }
+        }
+        return todo("parse witness moved the viewport")
+      }
       const output = `\r\nvh-${prefix}-out\r\n${tail}`
       ctx.write(phase === "ordinary" ? output : `\x1b[?2026h${output}\x1b[?2026l`)
       const parsed = await ctx.queryWithSentinelOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 1000)

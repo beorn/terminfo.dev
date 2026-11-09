@@ -1618,7 +1618,9 @@ function viewportApplication(
     dropOutput?: boolean
     deferOutput?: boolean
     parseReply?: boolean
+    snapOnAnyWrite?: boolean
     snapOnDa1?: "ordinary" | "synchronized"
+    driftOnDa1?: "ordinary" | "synchronized"
     changingChrome?: boolean
     changingCells?: boolean
     scrolledRenderShift?: boolean
@@ -1724,11 +1726,17 @@ function viewportApplication(
     writes.push(bytes)
     const oldBottom = bottom()
     const wasBottom = top === oldBottom
+    if (options.snapOnAnyWrite && !wasBottom) {
+      top = oldBottom
+    }
     const outputSynchronized = synchronized || bytes.includes("\x1b[?2026h")
     const text = bytes.replace(/\x1b\[([?\d;:]*)([A-Za-z])/g, (_sequence, parameters: string, command: string) => {
       if (parameters === "?2026") synchronized = command === "h"
       if (command === "c" && parameters === "" && options.snapOnDa1 === (holdUps < 3 ? "ordinary" : "synchronized")) {
         top = bottom()
+      }
+      if (command === "c" && parameters === "" && options.driftOnDa1 === (holdUps < 3 ? "ordinary" : "synchronized")) {
+        top = Math.min(bottom() - 1, top + 1)
       }
       if (command === "J" && parameters === "2") {
         lines.splice(0, lines.length, "")
@@ -2162,16 +2170,141 @@ test.each([true, false])("app viewport witnesses deferred output before its pixe
   expect(app.activity().top).toBe(app.activity().bottom)
 })
 
-// Printable-output policies cannot expose a DA1 query that itself moves the viewport.
-// The same-run inertness control must qualify independently in both phases.
-test.each(["ordinary", "synchronized"] as const)("app viewport withholds a DA1-induced %s snap", async (phase) => {
-  const app = viewportApplication(undefined, { snapOnDa1: phase })
-  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
-  expectViewportTodo(result)
-  expect(result.notTested?.noObservable).toBe("parse witness moved the viewport")
-  expect(app.activity().targetWrites).toBe(phase === "ordinary" ? 0 : 1)
-  expect(app.activity().top).toBe(app.activity().bottom)
-})
+// xterm's default scrollTtyOutput=true snaps to bottom on any pty write while scrolled, including
+// the non-printing DA1 parse-witness query before target output: U-prime == B0 decides Unsupported
+// with U-prime as the target frame (#32799), while witness movement to any other frame stays TODO.
+test.each([
+  ["xterm-like snap on any write while scrolled", { snapOnAnyWrite: true }, 8, 0],
+  ["DA1-induced ordinary snap to B0", { snapOnDa1: "ordinary" as const }, 8, 0],
+  ["DA1-induced synchronized snap to B0 after held ordinary phase", { snapOnDa1: "synchronized" as const }, 16, 1],
+] as const)(
+  "app viewport decides Unsupported and round-trips through parseRun on %s (#32799)",
+  async (_name, extraOptions, expectedFrames, expectedTargetWrites) => {
+    const featureId = "scrollback.viewport-hold-output"
+    const expectedReason = "a non-printing parse-witness query returned the scrolled viewport to the bottom"
+    const app = viewportApplication(["hold", "hold"], { upRows: 3, ...extraOptions })
+    const result = await findScrollback(featureId).term!(app.context)
+    expect(result.notTested).toBeUndefined()
+    expect(result.pass).toBe(false)
+    expect(result.note).toBe(expectedReason)
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(result.observation?.assertionType).toBe("screenshot")
+    expect(result.observation?.note).toBe(expectedReason)
+    expect(app.frames).toHaveLength(expectedFrames)
+    const uPrimeFrame = app.frames.at(-1)!.frame
+    expect(uPrimeFrame.label).toMatch(/^(ordinary|synchronized) U prime$/)
+    expect(uPrimeFrame.role).toBe("target")
+    expect(result.observation?.screenshotRef).toBe(uPrimeFrame.ref)
+    expect(result.assertions).toEqual([
+      expect.objectContaining({
+        assertionType: "screenshot",
+        kind: "negative",
+        action: featureId,
+      }),
+    ])
+    expect(app.activity().targetWrites).toBe(expectedTargetWrites)
+    expect(app.activity().top).toBe(app.activity().bottom)
+
+    const assertions = (result.assertions ?? []).map((entry) => ({
+      ...entry,
+      featureId,
+      rawReplyRef: featureId,
+    }))
+    const recorded = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: "2026-11-09T10:00:00.000Z" },
+      rawReplyRef: featureId,
+      observation: result.observation ? { ...result.observation, featureId, rawReplyRef: featureId } : undefined,
+      assertions,
+      tests: result.tests,
+    })
+    expect(recorded.status).toBe("unsupported")
+    expect(recorded.reason).toBe(expectedReason)
+    expect(recorded.tests).toEqual([
+      expect.objectContaining({
+        id: "criterion",
+        status: "unsupported",
+        reason: expectedReason,
+      }),
+    ])
+    const suite = "c".repeat(64)
+    const manifest: ProbeSuiteManifest = {
+      schemaVersion: 4,
+      probeHash: suite,
+      adapterVersion: "4.0.0",
+      generatedAt: "2026-11-09T10:00:00.000Z",
+      catalogIds: [featureId],
+      probes: { term: [featureId], lib: [], mux: [] },
+    }
+    const run = {
+      schemaVersion: 4,
+      source: { kind: "live" },
+      runId: `vh-witness-snap-${expectedFrames}`,
+      suiteId: suite,
+      probeHash: suite,
+      sourceRevision: "5".repeat(40),
+      intendedSubject: { kind: "term", id: "xterm" },
+      subject: {
+        kind: "term",
+        id: "xterm",
+        version: "411",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-11-09T10:01:00.000Z",
+      origin: { kind: "collector" },
+      sealedAt: "2026-11-09T10:02:00.000Z",
+      rawReplies: {
+        [featureId]: JSON.stringify({
+          writes: app.writes,
+          queries: [{ query: "\x1b[c", raw: "\x1b[?62;22c" }],
+          events: [],
+        }),
+        ...(result.response ? { [`${featureId}.callbackResponse`]: result.response } : {}),
+      },
+      assertions,
+      screenshotRefs: [...new Set((recorded.frames ?? []).map((frame) => frame.ref))],
+      results: [recorded],
+    }
+    const parsed = parseRun(
+      `vh-witness-snap-${expectedFrames}.json`,
+      JSON.stringify(run),
+      [featureId],
+      new Map([[suite, manifest]]),
+    )
+    expect(parsed.results?.[0]?.status).toBe("unsupported")
+    expect(parsed.results?.[0]?.reason).toBe(expectedReason)
+    expect(parsed.results?.[0]?.screenshotRef).toBe(uPrimeFrame.ref)
+    expect(
+      parseObservationFrames(
+        parsed.results?.[0]?.frames,
+        `vh-witness-snap-${expectedFrames}.json`,
+        featureId,
+        parsed.screenshotRefs,
+        parsed.textSnapshotRefs,
+        parsed.results?.[0]?.screenshotRef,
+        parsed.results?.[0]?.assertionType,
+      ),
+    ).toHaveLength(expectedFrames)
+  },
+)
+
+test.each(["ordinary", "synchronized"] as const)(
+  "app viewport withholds a DA1-induced %s drift to a non-bottom frame as TODO (#32799)",
+  async (phase) => {
+    const app = viewportApplication(undefined, { upRows: 2, driftOnDa1: phase })
+    const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+    expectViewportTodo(result)
+    expect(result.notTested?.noObservable).toBe("parse witness moved the viewport")
+    expect(app.activity().targetWrites).toBe(phase === "ordinary" ? 0 : 1)
+    expect(app.activity().top).toBe(app.activity().bottom)
+  },
+)
 
 // Capture/cursor failure coverage misses a failed wheel return. A cleanup failure
 // must preserve the primary error and override a pending TODO result.
