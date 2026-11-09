@@ -430,6 +430,15 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): GNU Screen 5.0.2 has no private-mode 2031 handler. Read the complete private SetMode dispatch in ansi.c:1071-1191 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): CSI ?2031h has no dispatch case, so this version exposes no color-scheme-reporting test path. A silent query is not an observed negative.",
   },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.2",
+    os: "linux",
+    featureId: "extensions.osc710-font-normal",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.2 drops OSC 710 without storing, forwarding or reporting a font selection. Read the complete StringEnd OSC dispatch in ansi.c:1223-1312 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 710 parses typ 710 and misses the accepted title/colour list (0, 1, 2, 11, 20, 39, 49, and 83 for commands) at 1267, so it reaches the non-title break at 1288. Screen has no font state, log or readback, and the outer terminal cannot supply Screen's missing own font reading.",
+  },
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */
