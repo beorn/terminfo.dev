@@ -789,9 +789,13 @@ test(
       "missing-key",
       "unchanged",
       "missing-size",
+      "dropped-first-click",
+      "clears-sgr-on-1016-reset",
     ] as const) {
       const modes = new Set<number>()
       let cols = 61
+      let droppedFirstClick = false
+      let sgrDropped = false
       let pending = Buffer.alloc(0)
       let finish: (() => void) | undefined
       let responsePattern: RegExp | undefined
@@ -802,6 +806,10 @@ test(
             if (match[2] === "h") modes.add(Number(match[1]))
             else modes.delete(Number(match[1]))
           }
+          // WezTerm 2026-11-09: resetting a sibling encoding mode left SGR off and the
+          // control click arrived in legacy X10 form even though 1006 had been set.
+          if (mutation === "clears-sgr-on-1016-reset" && bytes.includes("\x1b[?1016l")) sgrDropped = true
+          if (mutation === "clears-sgr-on-1016-reset" && bytes.includes("\x1b[?1006h")) sgrDropped = false
         },
         query: async (_sequence, pattern) => {
           const measured = cols
@@ -825,8 +833,20 @@ test(
           },
           injectClick: async (_button, position) => {
             actions.push(`click:${position?.x},${position?.y}`)
+            // A click injected straight after a resize can be dropped before the App applies
+            // the mode write; the probe must retry the same control click, not call it invalid.
+            if (mutation === "dropped-first-click" && position?.x === 400 && !droppedFirstClick) {
+              droppedFirstClick = true
+              pending = Buffer.alloc(0)
+              finish?.()
+              return
+            }
             if (!modes.has(1000) && mutation !== "reset-report") return
-            if (modes.has(1006)) {
+            if (modes.has(1006) && sgrDropped) {
+              // Legacy X10 form WezTerm actually emitted once a sibling encoding reset
+              // left SGR off; the probe must re-assert 1006 before judging this control.
+              pending = Buffer.from([27, 91, 77, 32, 72, 44, 27, 91, 77, 35, 72, 44])
+            } else if (modes.has(1006)) {
               const x =
                 position?.x === 400
                   ? mutation === "ordinary-sensitive"
@@ -841,6 +861,7 @@ test(
               const coordinate = utf8 ? [0xc2, 0x85] : [0x85]
               pending = Buffer.from([27, 91, 77, 32, ...coordinate, 42, 27, 91, 77, 35, ...coordinate, 42])
             }
+
             if (responsePattern?.test(pending.toString())) finish?.()
           },
           injectKey: async () => {
@@ -851,9 +872,19 @@ test(
         },
       })
       const result = await definition.term!(source)
-      if (mutation === "working" || mutation === "intermediate" || mutation === "legacy") {
+      if (
+        mutation === "working" ||
+        mutation === "intermediate" ||
+        mutation === "legacy" ||
+        mutation === "dropped-first-click" ||
+        mutation === "clears-sgr-on-1016-reset"
+      ) {
         expect(result.observation?.outcome, mutation).toBe(mutation === "legacy" ? "unsupported" : "supported")
-        expect(actions.slice(0, 2), mutation).toEqual(["click:400,300", "click:1300,120"])
+        if (mutation === "dropped-first-click") {
+          expect(actions.slice(0, 3), mutation).toEqual(["click:400,300", "click:400,300", "click:1300,120"])
+        } else {
+          expect(actions.slice(0, 2), mutation).toEqual(["click:400,300", "click:1300,120"])
+        }
       } else {
         expect(result.tests, mutation).toEqual(
           expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]),

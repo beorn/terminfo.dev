@@ -578,11 +578,31 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
     } else {
       result = await withMouseModes(ctx, async () => {
         ctx.write("\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1015l\x1b[?1016l")
+        // A terminal may leave SGR (1006) when a sibling mouse-encoding mode is reset:
+        // WezTerm answered this control in legacy X10 form after 1016l although the same
+        // run's x10 control read SGR from it. Re-assert the encoding the control is judged in.
+        ctx.write("\x1b[?1006h")
         const sgrClick = async (position: { x: number; y: number }) => {
-          const pending = ctx.queryOutcome("", /^\x1b\[<0;\d+;\d+M\x1b\[<0;\d+;\d+m$/, 1000)
+          const pending = ctx.queryOutcome("", /^\x1b\[<0;\d+;\d+M\x1b\[<0;\d+;\d+m$/, 2000)
           await input.injectClick(1, position)
           const read = await pending
           return { text: read.raw, bytes: Array.from(atob(read.rawBase64), (byte) => byte.charCodeAt(0)) }
+        }
+        // A click injected right after a resize can be dropped before the App applies the
+        // mode write, and a loaded host can answer past the first read window. Retry the
+        // SAME control click a bounded number of times and keep every read as evidence, so a
+        // dropped click reads as harness noise instead of a terminal that cannot report it.
+        const sgrPair = /^\x1b\[<0;(\d+);(\d+)M\x1b\[<0;\1;\2m$/
+        const sgrClickControl = async (position: { x: number; y: number }) => {
+          const attempts: string[] = []
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            const read = await sgrClick(position)
+            attempts.push(read.text)
+            const matched = sgrPair.exec(read.text)
+            if (matched) return { read, matched, attempts }
+            if (attempt < 3) await new Promise<void>((resolve) => setTimeout(resolve, 150))
+          }
+          return { read: { text: "", bytes: [] as number[] }, matched: null, attempts }
         }
         const click = async () => {
           // Reuse the existing reader/recorder; rawBase64 preserves legacy bytes
@@ -593,21 +613,22 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
           const read = await pending
           return { text: read.raw, bytes: Array.from(atob(read.rawBase64), (byte) => byte.charCodeAt(0)) }
         }
-        const pair = /^\x1b\[<0;(\d+);(\d+)M\x1b\[<0;\1;\2m$/
-        const ordinaryControl = await sgrClick({ x: 400, y: 300 })
-        observed.ordinaryControl = ordinaryControl
-        const ordinary = pair.exec(ordinaryControl.text)
-        const ordinaryX = Number(ordinary?.[1])
-        const ordinaryY = Number(ordinary?.[2])
-        if (!ordinary || ordinaryX < 1 || ordinaryX > 95 || ordinaryY < 1 || ordinaryY > 223) {
+        const ordinary = await sgrClickControl({ x: 400, y: 300 })
+        observed.ordinaryControl = ordinary.read
+        observed.ordinaryAttempts = ordinary.attempts
+        const ordinaryX = Number(ordinary.matched?.[1])
+        const ordinaryY = Number(ordinary.matched?.[2])
+        if (!ordinary.matched || ordinaryX < 1 || ordinaryX > 95 || ordinaryY < 1 || ordinaryY > 223) {
           return invalidInteraction(
             "UTF8 mouse ordinary-position SGR press/release control did not prove coordinates within columns 1 through 95",
             observed,
           )
         }
-        const control = await sgrClick({ x: 1300, y: 120 })
+        const sensitive = await sgrClickControl({ x: 1300, y: 120 })
+        const control = sensitive.read
         observed.control = control
-        const sgr = pair.exec(control.text)
+        observed.controlAttempts = sensitive.attempts
+        const sgr = sensitive.matched
         const x = Number(sgr?.[1])
         const y = Number(sgr?.[2])
         if (!sgr || x <= 95 || x > 223 || y < 1 || y > 223) {
