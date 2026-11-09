@@ -613,6 +613,21 @@ describe("H-4 exact host-effect declarations", () => {
       },
     ],
   } satisfies HeadlessRuntimeIdentity
+  const kittyF8c227b9Identity = {
+    ...kittyIdentity,
+    termlessRevision: "343c2e5df74d918fc625943203ba521c48a3d1d6",
+    adapterSources: [
+      { path: "packages/kitty/src/index.ts", blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077" },
+      { path: "packages/kitty/src/backend.ts", blobOid: "f8c227b927b805a3415efcc64968577848115033" },
+      { path: "packages/kitty/build/bridge.py", blobOid: "473d25a335c4e739f915a254625607f617ed9d1e" },
+      { path: "packages/kitty/build/layout.c", blobOid: "f58c0e943ad60daf20d54360184e039e16ff3826" },
+      { path: "packages/kitty/build/native-mode-layout.json", blobOid: "20b976ba87de032248a787fcb8b5adc64c640f07" },
+      {
+        path: "packages/kitty/build/native-mode-layout.receipt.json",
+        blobOid: "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
+      },
+    ],
+  } satisfies HeadlessRuntimeIdentity
   const ids = [
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
@@ -630,6 +645,12 @@ describe("H-4 exact host-effect declarations", () => {
     ["ghostty-native", ghosttyR3Identity, ids, /Ghostty.*no.*(state|report|route)/i],
     ["ghostty-native", ghosttyR372efIdentity, ids, /Ghostty.*no.*(state|report|route)/i],
     ["kitty", kittyIdentity, ["extensions.osc3008-context"], /hands.*(text|payload).*bridge.*(not keep|drops)/i],
+    [
+      "kitty",
+      kittyF8c227b9Identity,
+      ["extensions.osc3008-context"],
+      /hands.*(text|payload).*bridge.*(not keep|drops)/i,
+    ],
   ] as const)("%s retains only its exact declaration", (backendName, runtimeIdentity, targets, reason) => {
     for (const id of targets) {
       const definition = ALL_PROBES.find((entry) => entry.id === id)!
@@ -693,6 +714,9 @@ describe("H-4 exact host-effect declarations", () => {
   } as unknown as HeadlessRuntimeIdentity
   test.each([
     ["kitty", kittyIdentity, "input.kitty-click-events", /Window/],
+    ["kitty", kittyF8c227b9Identity, "input.kitty-click-events", /Window/],
+    ["kitty", kittyIdentity, "modes.application-keypad", /DECKPAM\/DECKPNM only in the GUI/],
+    ["kitty", kittyF8c227b9Identity, "modes.application-keypad", /DECKPAM\/DECKPNM only in the GUI/],
     ["ghostty-native", ghosttyIdentity, "input.kitty-click-events", /Surface/],
     ["ghostty-native", ghosttyR3Identity, "input.kitty-click-events", /Surface/],
     ["ghostty-native", ghosttyR372efIdentity, "input.kitty-click-events", /Surface/],
@@ -700,12 +724,23 @@ describe("H-4 exact host-effect declarations", () => {
     ["ghostty", ghosttyWebIdentity, "extensions.clipboard-paste", /paste encoder/],
   ] as const)("slice C: %s %s declares only at its exact identity", (backendName, runtimeIdentity, id, reason) => {
     const definition = ALL_PROBES.find((entry) => entry.id === id)!
-    const source = { ...library(backendName), runtimeIdentity }
+    const source = { ...library(backendName), runtimeIdentity, getMode: () => null }
     const result = definition.lib!(source)
     expect(isDeclaredUntestable(result)).toBe(true)
     expect(fold(id, result)).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
     const changed = { ...runtimeIdentity, engineVersion: "0.0.0" } as HeadlessRuntimeIdentity
     expect(isDeclaredUntestable(definition.lib!({ ...source, runtimeIdentity: changed }))).toBe(false)
+    if (backendName === "kitty") {
+      const changedBlob = {
+        ...runtimeIdentity,
+        adapterSources: runtimeIdentity.adapterSources.map((entry, index) =>
+          index === 1 ? { ...entry, blobOid: "0".repeat(40) } : entry,
+        ),
+      } as HeadlessRuntimeIdentity
+      const fallback = definition.lib!({ ...source, runtimeIdentity: changedBlob })
+      expect(isDeclaredUntestable(fallback)).toBe(false)
+      expect(fold(id, fallback).status).toBe("probe-todo")
+    }
   })
 })
 

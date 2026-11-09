@@ -180,7 +180,9 @@ export function hasAuditedOscInterfaceAbsence(
       identity.engineVersion === "0.49.2" &&
       identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886" &&
       identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
-      (auditedAdapterSources(identity, "kittyH4") || auditedAdapterSources(identity, "kittyPixel"))
+      (auditedAdapterSources(identity, "kittyH4") ||
+        auditedAdapterSources(identity, "kittyPixel") ||
+        auditedAdapterSources(identity, "kittyF8c227b9"))
     )
   }
   if (cohort === "wezterm-d2") {
