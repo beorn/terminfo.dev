@@ -494,6 +494,7 @@ export async function createLinuxClipboardAdapter(
   expectedLaunchRunId: string,
   executable: LiveExecutable,
   captureRunId?: string,
+  rows?: number | (() => Promise<number | undefined>),
 ): Promise<LinuxClipboardAdapter> {
   if (process.platform !== "linux") throw new Error("Owned clipboard fixture requires Linux")
   const receiptBytes = readFileSync(ownedReceipt(receiptPath))
@@ -817,15 +818,18 @@ export async function createLinuxClipboardAdapter(
     ...(screenTarget && {
       async getScrollback() {
         await assertOwned()
+        const screenRows = typeof rows === "function" ? await rows() : rows
+        await assertOwned()
         const read = readScreenScrollback({
           executable: screenTarget.executable.path,
           session: screenTarget.session,
           socketDirectory: dirname(screenTarget.socketPath),
           hardcopyPath: join(captureDirectory, `${screenTarget.session}-history-${++screenRead}.txt`),
+          rows: screenRows,
         })
         await assertOwned()
         if (read.status === "refused") throw new Error(read.reason)
-        return { totalLines: read.totalLines }
+        return { totalLines: read.totalLines, screenLines: read.screenLines }
       },
     }),
     ...(receipt.target?.kind === "mux" &&

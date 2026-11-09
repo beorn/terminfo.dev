@@ -168,7 +168,7 @@ try {
       selection:{helperPid:419423,helperExecutable:{path:exe("xclip"),sha256:hash("xclip-bytes")},baselinePath:exe("baseline"),baselineSha256:hash(baseline),initialReadSha256:hash(baseline)},
       config:"--config NONE",permissions:"clipboard: read=ask,write=allow; OSC52=not-run"}),{mode:0o600})
   }
-  const factory=()=>createLinuxClipboardAdapter(receiptPath,launch,{path:exe("kitty"),sha256:hash("kitty-bytes")},capture)
+  const factory=()=>createLinuxClipboardAdapter(receiptPath,launch,{path:exe("kitty"),sha256:hash("kitty-bytes")},capture,24)
   for(const kind of ["tmux","screen"]) {
     initialize(kind,"valid")
     const adapter=await factory()
@@ -190,9 +190,9 @@ try {
       variant="valid"
     } else {
       assert.equal(typeof adapter.getScrollback,"function","owned Screen history reader must be reachable")
-      assert.deepEqual(await adapter.getScrollback(),{totalLines:44})
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24})
       variant="screen-more"
-      assert.deepEqual(await adapter.getScrollback(),{totalLines:45})
+      assert.deepEqual(await adapter.getScrollback(),{totalLines:45,screenLines:24})
       for(const path of hardcopies)assert(real.existsSync(path),"hardcopy evidence must remain retained")
       variant="screen-refused"
       await assert.rejects(()=>adapter.getScrollback(),{message:'screen hardcopy exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})

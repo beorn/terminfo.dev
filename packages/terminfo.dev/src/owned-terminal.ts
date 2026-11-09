@@ -1209,6 +1209,10 @@ export async function createOwnedTerminal(options: {
         expectedLaunchRunId,
         linux.executable,
         captureRunId,
+        async () => {
+          const geometry = await readBoundGeometry(binding, windowsKernel)
+          return geometry.status === "measured" ? geometry.rows : undefined
+        },
       )
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof

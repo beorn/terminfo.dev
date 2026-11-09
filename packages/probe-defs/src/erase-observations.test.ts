@@ -810,143 +810,16 @@ test("erase.screen.scrollback surfaces a finally wheel-down failure", async () =
   expect(clicks).toEqual([4, 5, 4, 5])
 })
 
-test("erase.screen.scrollback compares only the calibrated multiplexer pane area in the restore check", async () => {
-  const runRestoreCase = async (options: {
-    mux?: "tmux" | "screen"
-    rows?: number
-    cols?: number
-    statusRowDiffersOnRestore: boolean
-    paneDiffersOnRestore: boolean
-  }) => {
-    const rows = options.rows ?? 19
-    const cols = options.cols ?? 61
-    const base = scrollbackApp({ clears: true })
-    const requestedCells: Array<{ top: number; left: number; bottom: number; right: number } | undefined> = []
-    let count = 0
-    const ctx: TermProbeSource = {
-      ...base.ctx,
-      rows,
-      cols,
-      ...(options.mux && { mux: options.mux }),
-      captureGeometry: {
-        geometry: {
-          cellWidth: 13,
-          cellHeight: 29,
-          textWidth: cols * 13,
-          textHeight: rows * 29,
-        },
-        source: "measured by complete raster calibration",
-      },
-      capture: async (request) => {
-        count += 1
-        requestedCells.push(request.cells)
-        const baseFrame = await base.ctx.capture!(request)
-        const isRestore = count === 3
-        const pixelsDigest =
-          isRestore && (options.statusRowDiffersOnRestore || options.paneDiffersOnRestore)
-            ? "sha256:pixels-status-ticked"
-            : baseFrame.pixelsDigest
-        const regionDigest = request.cells
-          ? isRestore && options.paneDiffersOnRestore
-            ? "sha256:pane-diverged"
-            : `sha256:pane-${baseFrame.pixelsDigest}`
-          : undefined
-        return {
-          role: baseFrame.role,
-          label: baseFrame.label,
-          capturedAt: baseFrame.capturedAt,
-          ref: baseFrame.ref,
-          pixelsDigest,
-          ...(regionDigest && {
-            regionDigest,
-            regionRectangle: { x: 3, y: 10, width: cols * 13, height: rows * 29 },
-          }),
-        }
-      },
-    }
-    const callbackResult = await byId("erase.screen.scrollback").term(ctx)
-    const recorded = recordExecutedProbe({
-      featureId: "erase.screen.scrollback",
-      attempt: { scope: "probe", startedAt: "2026-11-09T07:00:00.000Z" },
-      observation: callbackResult.observation
-        ? { featureId: "erase.screen.scrollback", ...callbackResult.observation }
-        : undefined,
-      assertions: (callbackResult.assertions ?? []).map((entry) => ({
-        featureId: "erase.screen.scrollback",
-        ...entry,
-      })),
-    })
-    return { callbackResult, recorded, requestedCells }
-  }
-
-  // (1) Multiplexer frame that differs only in the status row passes the restore check and makes the exclusion visible.
-  // Screen with a status line (19 pane rows in a 20-row window): tmux now decides from history_size (test below).
-  const statusOnly = await runRestoreCase({
-    mux: "screen",
-    rows: 19,
-    cols: 61,
-    statusRowDiffersOnRestore: true,
-    paneDiffersOnRestore: false,
-  })
-  expect(statusOnly.requestedCells[0]).toEqual({ top: 1, left: 1, bottom: 19, right: 61 })
-  expect(statusOnly.requestedCells[2]).toEqual({ top: 1, left: 1, bottom: 19, right: 61 })
-  expect(statusOnly.recorded.status).toBe("supported")
-  expect(statusOnly.recorded.reason).toMatch(
-    /screen status row outside the 19x61 multiplexer pane area.*restore comparison/i,
-  )
-  expect(statusOnly.recorded.tests[0]?.reason).toMatch(
-    /screen status row outside the 19x61 multiplexer pane area.*restore comparison/i,
-  )
-
-  // Screen's default has no status line (20 rows in the 20-row window), so its pane crop keeps all 20 rows.
-  const screenFullPane = await runRestoreCase({
-    mux: "screen",
-    rows: 20,
-    cols: 61,
-    statusRowDiffersOnRestore: false,
-    paneDiffersOnRestore: false,
-  })
-  expect(screenFullPane.requestedCells[0]).toEqual({ top: 1, left: 1, bottom: 20, right: 61 })
-  expect(screenFullPane.recorded.status).toBe("supported")
-
-  // (2) A difference inside the multiplexer pane still fails the restore check.
-  const paneDiff = await runRestoreCase({
-    mux: "screen",
-    rows: 19,
-    cols: 61,
-    statusRowDiffersOnRestore: false,
-    paneDiffersOnRestore: true,
-  })
-  expect(paneDiff.callbackResult.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-  })
-  expect(paneDiff.recorded.status).toBe("probe-invalid")
-  expect(paneDiff.recorded.reason).toMatch(/wheel-down did not return to the bottom frame: the captured pixels differ/i)
-
-  // (3) A subject that is not a multiplexer still compares the full frame.
-  const nonMux = await runRestoreCase({
-    mux: undefined,
-    rows: 19,
-    cols: 61,
-    statusRowDiffersOnRestore: true,
-    paneDiffersOnRestore: false,
-  })
-  expect(nonMux.requestedCells[0]).toBeUndefined()
-  expect(nonMux.callbackResult.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-  })
-  expect(nonMux.recorded.status).toBe("probe-invalid")
-})
-
-test("tmux erase.screen.scrollback decides from tmux history_size before and after ED3 (#32774, @cto e078c568 B)", async () => {
-  const runTmux = async (readings: Array<{ totalLines: number; screenLines: number } | Error>) => {
-    const base = scrollbackApp({ clears: true })
+test("multiplexer erase.screen.scrollback decides from tmux and screen history counts before and after ED3 (#32774, #32784, @cto e078c568, addfd7b2)", async () => {
+  const runMux = async (
+    mux: "tmux" | "screen",
+    readings: Array<{ totalLines: number; screenLines: number } | Error>,
+  ) => {
+    const base = scrollbackApp({ wheelMoves: false, clears: true })
     const reads = [...readings]
     const ctx: TermProbeSource = {
       ...base.ctx,
-      mux: "tmux",
+      mux,
       getScrollback: async () => {
         const next = reads.shift()
         if (next === undefined) throw new Error("unexpected extra history read")
@@ -968,26 +841,36 @@ test("tmux erase.screen.scrollback decides from tmux history_size before and aft
     })
     return { callbackResult, recorded, reads }
   }
-  const history = (lines: number) => ({ totalLines: lines + 24, screenLines: 24 })
+  const history = (lines: number, screenLines = 24) => ({ totalLines: lines + screenLines, screenLines })
 
-  const erased = await runTmux([history(709), history(0)])
-  expect(erased.recorded.status).toBe("supported")
-  expect(erased.recorded.reason).toMatch(/tmux history_size 709 -> 0/)
-  expect(erased.reads, "one read before ED3 and one after").toEqual([])
+  const tmuxErased = await runMux("tmux", [history(709), history(0)])
+  expect(tmuxErased.recorded.status).toBe("supported")
+  expect(tmuxErased.recorded.reason).toMatch(/tmux history_size 709 -> 0/)
+  expect(tmuxErased.reads, "one read before ED3 and one after").toEqual([])
 
-  const kept = await runTmux([history(709), history(709)])
-  expect(kept.callbackResult).toMatchObject({ pass: false, observation: { outcome: "unsupported" } })
-  expect(kept.recorded.reason).toMatch(/tmux history_size 709 -> 709/)
+  const tmuxKept = await runMux("tmux", [history(709), history(709)])
+  expect(tmuxKept.callbackResult).toMatchObject({ pass: false, observation: { outcome: "unsupported" } })
+  expect(tmuxKept.recorded.reason).toMatch(/tmux history_size 709 -> 709/)
 
-  const unseeded = await runTmux([history(0), history(0)])
-  expect(unseeded.recorded.status).toBe("probe-invalid")
-  expect(unseeded.recorded.reason).toMatch(/seeding never reached tmux history/)
+  const tmuxUnseeded = await runMux("tmux", [history(0), history(0)])
+  expect(tmuxUnseeded.recorded.status).toBe("probe-invalid")
+  expect(tmuxUnseeded.recorded.reason).toMatch(/seeding never reached tmux history/)
 
-  const failed = await runTmux([new Error('Owned tmux scrollback reading malformed: "garbage"'), history(0)])
-  expect(failed.recorded.status).toBe("probe-invalid")
-  expect(failed.recorded.reason).toMatch(
+  const tmuxFailed = await runMux("tmux", [new Error('Owned tmux scrollback reading malformed: "garbage"'), history(0)])
+  expect(tmuxFailed.recorded.status).toBe("probe-invalid")
+  expect(tmuxFailed.recorded.reason).toMatch(
     /display-message -p "#\{history_size\}.* failed: Owned tmux scrollback reading malformed: "garbage"/,
   )
+
+  const screenErased = await runMux("screen", [history(22, 20), history(0, 20)])
+  expect(screenErased.recorded.status).toBe("supported")
+  expect(screenErased.recorded.reason).toMatch(/screen history 22 -> 0/)
+  expect(screenErased.reads, "one read before ED3 and one after").toEqual([])
+
+  const screenKept = await runMux("screen", [history(22, 20), history(22, 20)])
+  expect(screenKept.callbackResult).toMatchObject({ pass: false, observation: { outcome: "unsupported" } })
+  expect(screenKept.recorded.status).toBe("unsupported")
+  expect(screenKept.recorded.reason).toMatch(/screen history 22 -> 22.*ED3 left the history in place/)
 })
 
 /**

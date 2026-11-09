@@ -18,6 +18,7 @@ const options = {
   session: "31744.pts-0.host",
   socketDirectory: "/run/owned/screen",
   hardcopyPath: "/run/owned/hardcopy.txt",
+  rows: 2,
 }
 beforeEach(() => {
   run.mockReset()
@@ -27,10 +28,10 @@ function exit(status: number, stdout = "", stderr = "") {
   run.mockReturnValue({ status, signal: null, stdout: Buffer.from(stdout), stderr: Buffer.from(stderr) })
 }
 
-test("reads the owned session hardcopy and counts every retained line", () => {
+test("reads the owned session hardcopy and counts retained history plus screen rows", () => {
   exit(0)
   readFile.mockReturnValue("one\ntwo\nthree\n")
-  expect(readScreenScrollback(options)).toMatchObject({ status: "read", totalLines: 3 })
+  expect(readScreenScrollback(options)).toMatchObject({ status: "read", totalLines: 3, screenLines: 2 })
   expect(run).toHaveBeenCalledWith(
     options.executable,
     ["-S", options.session, "-X", "hardcopy", "-h", options.hardcopyPath],
@@ -45,7 +46,54 @@ test("reads the owned session hardcopy and counts every retained line", () => {
 test("an unterminated last line is still a retained line", () => {
   exit(0)
   readFile.mockReturnValue("one\ntwo\nthree")
-  expect(readScreenScrollback(options)).toMatchObject({ status: "read", totalLines: 3 })
+  expect(readScreenScrollback(options)).toMatchObject({ status: "read", totalLines: 3, screenLines: 2 })
+})
+
+test("120-line capacity-padded dump with no history reports 0 history lines, seeded rows report their count, full capacity reports 100, and dumps shorter than rows or without rows refuse (#32784)", () => {
+  exit(0)
+  // (1) 120-line padded dump (defscrollback 100 + 20 screen rows) with no history -> 0 history lines (totalLines = 20, screenLines = 20).
+  const screen20 = Array.from({ length: 20 }, (_, i) => `screen-${i}`).join("\n") + "\n"
+  readFile.mockReturnValue("\n".repeat(100) + screen20)
+  expect(readScreenScrollback({ ...options, rows: 20 })).toMatchObject({
+    status: "read",
+    totalLines: 20,
+    screenLines: 20,
+  })
+
+  // (2) Seeded rows inside the 100-line history region (after 88 blank capacity-padding lines, including an interior blank line) -> their count (12).
+  const seeded12 = ["seed-0", "seed-1", "", ...Array.from({ length: 9 }, (_, i) => `seed-${i + 3}`)].join("\n") + "\n"
+  readFile.mockReturnValue("\n".repeat(88) + seeded12 + screen20)
+  expect(readScreenScrollback({ ...options, rows: 20 })).toMatchObject({
+    status: "read",
+    totalLines: 32,
+    screenLines: 20,
+  })
+
+  // (3) Full 100-line history capacity -> 100 history lines (totalLines = 120, screenLines = 20).
+  const full100 = Array.from({ length: 100 }, (_, i) => `hist-${i}`).join("\n") + "\n"
+  readFile.mockReturnValue(full100 + screen20)
+  expect(readScreenScrollback({ ...options, rows: 20 })).toMatchObject({
+    status: "read",
+    totalLines: 120,
+    screenLines: 20,
+  })
+
+  // (4) Dump shorter than rows -> refused loudly naming the file and both counts; unknown/invalid rows -> refused loudly.
+  readFile.mockReturnValue(Array.from({ length: 19 }, (_, i) => `row-${i}`).join("\n") + "\n")
+  const tooShort = readScreenScrollback({ ...options, rows: 20 })
+  expect(tooShort.status).toBe("refused")
+  if (tooShort.status !== "refused") throw new Error("Expected a refusal")
+  expect(tooShort.reason).toContain(options.hardcopyPath)
+  expect(tooShort.reason).toContain("19")
+  expect(tooShort.reason).toContain("20")
+
+  for (const invalidRows of [undefined, 0, -5, Number.NaN]) {
+    const unknownRows = readScreenScrollback({ ...options, rows: invalidRows })
+    expect(unknownRows.status).toBe("refused")
+    if (unknownRows.status !== "refused") throw new Error("Expected a refusal")
+    expect(unknownRows.reason).toContain(options.hardcopyPath)
+    expect(unknownRows.reason).toContain("19")
+  }
 })
 
 test("no explicit session never reaches an ambient one", () => {
@@ -58,9 +106,10 @@ test("no explicit session never reaches an ambient one", () => {
 test("the owned socket directory is the one the child is told to read", () => {
   exit(0)
   readFile.mockReturnValue("one\n")
-  expect(readScreenScrollback({ ...options, socketDirectory: "/run/owned/other" })).toMatchObject({
+  expect(readScreenScrollback({ ...options, rows: 1, socketDirectory: "/run/owned/other" })).toMatchObject({
     status: "read",
     totalLines: 1,
+    screenLines: 1,
   })
   expect(run.mock.calls[0]?.[2]?.env?.SCREENDIR).toBe("/run/owned/other")
 })
