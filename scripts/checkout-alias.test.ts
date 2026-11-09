@@ -4,7 +4,7 @@
  * @consumer terminfo component-worktree test runs
  * @testonly none
  */
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -17,12 +17,20 @@ import { checkoutInlineDeps, terminfoCheckoutAliases } from "./checkout-alias.ts
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const shared = "/hh/dev/vendor/terminfo.dev/"
 
-async function resolvedConfig(config: unknown): Promise<{
+interface ResolvedConfig {
   resolve?: { alias?: { find: string; replacement: string }[] }
   test?: { server?: { deps?: { inline?: RegExp[] } } }
-}> {
-  const value = await Promise.resolve(config)
-  return typeof value === "function" ? await value() : value
+}
+
+function isResolvedConfig(value: unknown): value is ResolvedConfig {
+  return typeof value === "object" && value !== null
+}
+
+async function resolvedConfig(config: unknown): Promise<ResolvedConfig> {
+  const value: unknown = await Promise.resolve(config)
+  const resolved: unknown = typeof value === "function" ? await value() : value
+  if (!isResolvedConfig(resolved)) throw new Error("vitest config did not resolve to an object")
+  return resolved
 }
 
 it("points every workspace export at this checkout", () => {
@@ -46,13 +54,17 @@ it("points every workspace export at this checkout", () => {
 
 it("throws when an export target is not a string", () => {
   const dir = mkdtempSync(join(tmpdir(), "checkout-alias-"))
-  const manifest = join(dir, "packages", "example")
-  mkdirSync(manifest, { recursive: true })
-  writeFileSync(
-    join(manifest, "package.json"),
-    JSON.stringify({ name: "example", exports: { ".": { import: "./x.ts" } } }),
-  )
-  expect(() => terminfoCheckoutAliases(dir)).toThrow(/export \. is not a string/)
+  try {
+    const manifest = join(dir, "packages", "example")
+    mkdirSync(manifest, { recursive: true })
+    writeFileSync(
+      join(manifest, "package.json"),
+      JSON.stringify({ name: "example", exports: { ".": { import: "./x.ts" } } }),
+    )
+    expect(() => terminfoCheckoutAliases(dir)).toThrow(/export \. is not a string/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 it("every vitest config aliases this checkout and inlines those packages", async () => {
