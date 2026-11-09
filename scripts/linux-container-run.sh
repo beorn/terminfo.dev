@@ -411,6 +411,7 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       wait "$mux_server"
       ;;
     screen)
+      printf 'defscrollback 100\n' > "$mux_config"
       export SCREENDIR="$HOME/.screen"
       mkdir -m 700 "$SCREENDIR"
       screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner

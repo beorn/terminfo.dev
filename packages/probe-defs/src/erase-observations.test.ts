@@ -958,6 +958,65 @@ test("multiplexer erase.screen.scrollback decides from tmux and screen history c
   expect(JSON.parse(screenKept.parsed.assertions?.[0]?.observed ?? "null")).toMatchObject({
     muxHistory: { mux: "screen", before: 22, after: 22 },
   })
+
+  // #32786 / @cto 57c9ba53: mux socket history reads (`tmux display-message` and `screen -X hardcopy -h`)
+  // run out-of-band from the inner PTY, so each read requires a DSR 6 cursor-position reply fence after
+  // the PTY write (`seed` and `\x1b[3J`) before `getScrollback()` inspects the multiplexer.
+  for (const mux of ["tmux", "screen"] as const) {
+    const base = scrollbackApp({ wheelMoves: false, clears: true })
+    const events: string[] = []
+    let stagedHistory = 0
+    let committedHistory = 0
+    const fencedCtx: TermProbeSource = {
+      ...base.ctx,
+      mux,
+      write(text) {
+        base.ctx.write(text)
+        if (text.includes("\r\n")) {
+          events.push("write:seed")
+          stagedHistory = 22
+        } else if (text.includes("\x1b[3J")) {
+          events.push("write:ed3")
+          stagedHistory = 0
+        }
+      },
+      queryCursorPosition: async () => {
+        events.push("fence:dsr6")
+        committedHistory = stagedHistory
+        return { row: 20, col: 1 }
+      },
+      getScrollback: async () => {
+        events.push(`read:${committedHistory}`)
+        return history(committedHistory, 20)
+      },
+    }
+    const fencedResult = await byId(featureId).term(fencedCtx)
+    expect(fencedResult).toMatchObject({ pass: true, observation: { outcome: "supported" } })
+    expect(events).toEqual(["write:seed", "fence:dsr6", "read:22", "write:ed3", "fence:dsr6", "read:0"])
+
+    let cursorQueries = 0
+    let scrollbackReads = 0
+    const unfencedCtx: TermProbeSource = {
+      ...base.ctx,
+      mux,
+      queryCursorPosition: async () => {
+        cursorQueries += 1
+        return cursorQueries === 1 ? { row: 20, col: 1 } : null
+      },
+      getScrollback: async () => {
+        scrollbackReads += 1
+        return history(22, 20)
+      },
+    }
+    const unfencedResult = await byId(featureId).term(unfencedCtx)
+    expect(scrollbackReads, `${mux} after-read must not run when the post-ED3 DSR 6 fence fails`).toBe(1)
+    expect(unfencedResult.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+      assertionType: "buffer_state",
+    })
+    expect(unfencedResult.observation?.note).toMatch(/cursor-position reply.*ED3/i)
+  }
 })
 
 /**

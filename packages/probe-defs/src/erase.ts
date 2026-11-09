@@ -350,10 +350,22 @@ const MUX_HISTORY_QUERY: Record<"tmux" | "screen", string> = {
 }
 type MuxHistory = number | { reason: ObservationReason; note: string }
 
-/** A multiplexer's history line count through its owned reader, or why it could not be read, named loudly (never a silent notTested). */
-async function muxHistoryLines(ctx: TermProbeSource, mux: "tmux" | "screen"): Promise<MuxHistory> {
+/**
+ * A multiplexer's history line count through its owned reader, or why it could not be read, named loudly
+ * (never a silent notTested). Because `tmux display-message` and `screen -X hardcopy -h` inspect the
+ * multiplexer over its socket out-of-band from the pane's inner PTY, fence each read with a DSR 6
+ * cursor-position round-trip so the multiplexer has consumed the preceding PTY write (`seed` or `ED3`).
+ */
+async function muxHistoryLines(
+  ctx: TermProbeSource,
+  mux: "tmux" | "screen",
+  stage: "seed" | "ED3",
+): Promise<MuxHistory> {
   const query = MUX_HISTORY_QUERY[mux]
   if (!ctx.getScrollback) return { reason: "collector-error", note: `this run has no reader for ${query}` }
+  if (!(await ctx.queryCursorPosition())) {
+    return { reason: "no-response", note: `no cursor-position reply to fence ${stage} before ${query}` }
+  }
   let reading: TerminalScrollbackReading
   try {
     reading = await ctx.getScrollback()
@@ -449,7 +461,7 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     ctx.write(`${"H".repeat(mark)}\r\n`.repeat(ctx.rows + 2))
     ctx.write("B".repeat(mark))
     const bottom = await capture({ role: "control", label: "Bottom of seeded buffer" })
-    const historyBefore = mux ? await muxHistoryLines(ctx, mux) : undefined
+    const historyBefore = mux ? await muxHistoryLines(ctx, mux, "seed") : undefined
     await input.injectClick(4)
     const history = await capture({ role: "control", label: "After wheel-up before ED3" })
     if (!mux && sameFrame(history, bottom)) {
@@ -481,7 +493,7 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     }
     ctx.write("\x1b[3J")
     const erased = await capture({ role: "control", label: "After ED3 at bottom" })
-    const historyAfter = mux ? await muxHistoryLines(ctx, mux) : undefined
+    const historyAfter = mux ? await muxHistoryLines(ctx, mux, "ED3") : undefined
     await input.injectClick(4)
     const after = await capture({ role: "target", label: "After ED3 then wheel-up" })
     const observed = {

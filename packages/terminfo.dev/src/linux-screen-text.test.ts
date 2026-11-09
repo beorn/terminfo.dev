@@ -8,9 +8,10 @@
 import { beforeEach, expect, test, vi } from "vitest"
 
 const run = vi.hoisted(() => vi.fn())
+const exists = vi.hoisted(() => vi.fn(() => false))
 const readFile = vi.hoisted(() => vi.fn())
 vi.mock("node:child_process", () => ({ spawnSync: run }))
-vi.mock("node:fs", () => ({ readFileSync: readFile }))
+vi.mock("node:fs", () => ({ existsSync: exists, readFileSync: readFile }))
 import { readScreenScrollback } from "./linux-screen-text.ts"
 
 const options = {
@@ -19,10 +20,14 @@ const options = {
   socketDirectory: "/run/owned/screen",
   hardcopyPath: "/run/owned/hardcopy.txt",
   rows: 2,
+  capacity: 1,
 }
 beforeEach(() => {
   run.mockReset()
+  exists.mockReset()
+  exists.mockReturnValue(false)
   readFile.mockReset()
+  vi.restoreAllMocks()
 })
 function exit(status: number, stdout = "", stderr = "") {
   run.mockReturnValue({ status, signal: null, stdout: Buffer.from(stdout), stderr: Buffer.from(stderr) })
@@ -49,12 +54,16 @@ test("an unterminated last line is still a retained line", () => {
   expect(readScreenScrollback(options)).toMatchObject({ status: "read", totalLines: 3, screenLines: 2 })
 })
 
-test("120-line capacity-padded dump with no history reports 0 history lines, seeded rows report their count, full capacity reports 100, and dumps shorter than rows or without rows refuse (#32784)", () => {
+test("120-line capacity-padded dump with no history reports 0 history lines, seeded rows report their count, full capacity reports 100, and dumps shorter than rows or without rows refuse (#32784, #32786)", () => {
   exit(0)
+  const configPath = "/run/owned/screenrc"
+  const mockDump = (dump: string) => {
+    readFile.mockImplementation((path: string) => (path === configPath ? "defscrollback 100\n" : dump))
+  }
   // (1) 120-line padded dump (defscrollback 100 + 20 screen rows) with no history -> 0 history lines (totalLines = 20, screenLines = 20).
   const screen20 = Array.from({ length: 20 }, (_, i) => `screen-${i}`).join("\n") + "\n"
-  readFile.mockReturnValue("\n".repeat(100) + screen20)
-  expect(readScreenScrollback({ ...options, rows: 20 })).toMatchObject({
+  mockDump("\n".repeat(100) + screen20)
+  expect(readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })).toMatchObject({
     status: "read",
     totalLines: 20,
     screenLines: 20,
@@ -62,8 +71,8 @@ test("120-line capacity-padded dump with no history reports 0 history lines, see
 
   // (2) Seeded rows inside the 100-line history region (after 88 blank capacity-padding lines, including an interior blank line) -> their count (12).
   const seeded12 = ["seed-0", "seed-1", "", ...Array.from({ length: 9 }, (_, i) => `seed-${i + 3}`)].join("\n") + "\n"
-  readFile.mockReturnValue("\n".repeat(88) + seeded12 + screen20)
-  expect(readScreenScrollback({ ...options, rows: 20 })).toMatchObject({
+  mockDump("\n".repeat(88) + seeded12 + screen20)
+  expect(readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })).toMatchObject({
     status: "read",
     totalLines: 32,
     screenLines: 20,
@@ -71,20 +80,23 @@ test("120-line capacity-padded dump with no history reports 0 history lines, see
 
   // (3) Full 100-line history capacity -> 100 history lines (totalLines = 120, screenLines = 20).
   const full100 = Array.from({ length: 100 }, (_, i) => `hist-${i}`).join("\n") + "\n"
-  readFile.mockReturnValue(full100 + screen20)
-  expect(readScreenScrollback({ ...options, rows: 20 })).toMatchObject({
+  mockDump(full100 + screen20)
+  expect(readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })).toMatchObject({
     status: "read",
     totalLines: 120,
     screenLines: 20,
   })
 
-  // (4) Dump shorter than rows -> refused loudly naming the file and both counts; unknown/invalid rows -> refused loudly.
-  readFile.mockReturnValue(Array.from({ length: 19 }, (_, i) => `row-${i}`).join("\n") + "\n")
-  const tooShort = readScreenScrollback({ ...options, rows: 20 })
+  // (4) Dump shorter than capacity + rows -> refused loudly naming the file and both counts; unknown/invalid rows -> refused loudly.
+  let now = 1000
+  vi.spyOn(Date, "now").mockImplementation(() => (now += 1000))
+  mockDump(Array.from({ length: 19 }, (_, i) => `row-${i}`).join("\n") + "\n")
+  const tooShort = readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })
   expect(tooShort.status).toBe("refused")
   if (tooShort.status !== "refused") throw new Error("Expected a refusal")
   expect(tooShort.reason).toContain(options.hardcopyPath)
   expect(tooShort.reason).toContain("19")
+  expect(tooShort.reason).toContain("120")
   expect(tooShort.reason).toContain("20")
 
   for (const invalidRows of [undefined, 0, -5, Number.NaN]) {
@@ -92,8 +104,91 @@ test("120-line capacity-padded dump with no history reports 0 history lines, see
     expect(unknownRows.status).toBe("refused")
     if (unknownRows.status !== "refused") throw new Error("Expected a refusal")
     expect(unknownRows.reason).toContain(options.hardcopyPath)
-    expect(unknownRows.reason).toContain("19")
   }
+})
+
+test("content-proven completion: late write, partial write across stable-size reads, deadline refusal, pre-existing path, and wrong line count (#32786)", () => {
+  const configPath = "/run/owned/screenrc"
+  const screen20 = Array.from({ length: 20 }, (_, i) => `screen-${i}`).join("\n") + "\n"
+  const seeded12 = Array.from({ length: 12 }, (_, i) => `seed-${i}`).join("\n") + "\n"
+  const complete120 = "\n".repeat(88) + seeded12 + screen20
+  const partial81 = "\n".repeat(81)
+
+  // (1) Late write: ENOENT first, empty second, then complete 120 lines.
+  exit(0)
+  let lateCalls = 0
+  readFile.mockImplementation((path: string) => {
+    if (path === configPath) return "defscrollback 100\n"
+    lateCalls += 1
+    if (lateCalls === 1) throw Object.assign(new Error("no such file"), { code: "ENOENT" })
+    if (lateCalls === 2) return ""
+    return complete120
+  })
+  expect(readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })).toMatchObject({
+    status: "read",
+    totalLines: 32,
+    screenLines: 20,
+  })
+  expect(lateCalls).toBe(3)
+
+  // (2) Partial write: 81 lines across two consecutive reads (proving size stability alone is rejected), then complete 120 lines.
+  let partialCalls = 0
+  readFile.mockImplementation((path: string) => {
+    if (path === configPath) return "defscrollback 100\n"
+    partialCalls += 1
+    return partialCalls < 3 ? partial81 : complete120
+  })
+  expect(readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })).toMatchObject({
+    status: "read",
+    totalLines: 32,
+    screenLines: 20,
+  })
+  expect(partialCalls).toBe(3)
+
+  // (3) Never completes within the 2 s deadline: refusal names path, bytes and lines seen vs expected, and wait.
+  let now = 5000
+  vi.spyOn(Date, "now").mockImplementation(() => (now += 500))
+  readFile.mockImplementation((path: string) => (path === configPath ? "defscrollback 100\n" : partial81))
+  const incomplete = readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })
+  expect(incomplete.status).toBe("refused")
+  if (incomplete.status !== "refused") throw new Error("Expected a refusal")
+  expect(incomplete.reason).toContain(options.hardcopyPath)
+  expect(incomplete.reason).toContain("81 bytes")
+  expect(incomplete.reason).toContain("81 lines")
+  expect(incomplete.reason).toContain("expected 120 lines (100 capacity + 20 screen rows)")
+  expect(incomplete.reason).toContain("2000ms")
+
+  // (4) Path already exists before hardcopy: refused before spawning screen.
+  run.mockReset()
+  exists.mockReturnValue(true)
+  const stale = readScreenScrollback({ ...options, rows: 20, capacity: 100 })
+  expect(stale.status).toBe("refused")
+  if (stale.status !== "refused") throw new Error("Expected a refusal")
+  expect(stale.reason).toContain(options.hardcopyPath)
+  expect(stale.reason).toMatch(/already exists/i)
+  expect(run).not.toHaveBeenCalled()
+  exists.mockReturnValue(false)
+
+  // (5) Wrong line count (> capacity + rows) and missing defscrollback in config.
+  exit(0)
+  readFile.mockImplementation((path: string) =>
+    path === configPath ? "defscrollback 100\n" : "\n".repeat(101) + screen20,
+  )
+  const tooMany = readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })
+  expect(tooMany.status).toBe("refused")
+  if (tooMany.status !== "refused") throw new Error("Expected a refusal")
+  expect(tooMany.reason).toContain(options.hardcopyPath)
+  expect(tooMany.reason).toContain("121")
+  expect(tooMany.reason).toContain("120")
+
+  run.mockReset()
+  readFile.mockImplementation((path: string) => (path === configPath ? "# no scrollback\n" : complete120))
+  const missingConfig = readScreenScrollback({ ...options, rows: 20, capacity: undefined, configPath })
+  expect(missingConfig.status).toBe("refused")
+  if (missingConfig.status !== "refused") throw new Error("Expected a refusal")
+  expect(missingConfig.reason).toContain(configPath)
+  expect(missingConfig.reason).toContain("defscrollback")
+  expect(run).not.toHaveBeenCalled()
 })
 
 test("no explicit session never reaches an ambient one", () => {
@@ -106,11 +201,13 @@ test("no explicit session never reaches an ambient one", () => {
 test("the owned socket directory is the one the child is told to read", () => {
   exit(0)
   readFile.mockReturnValue("one\n")
-  expect(readScreenScrollback({ ...options, rows: 1, socketDirectory: "/run/owned/other" })).toMatchObject({
-    status: "read",
-    totalLines: 1,
-    screenLines: 1,
-  })
+  expect(readScreenScrollback({ ...options, rows: 1, capacity: 0, socketDirectory: "/run/owned/other" })).toMatchObject(
+    {
+      status: "read",
+      totalLines: 1,
+      screenLines: 1,
+    },
+  )
   expect(run.mock.calls[0]?.[2]?.env?.SCREENDIR).toBe("/run/owned/other")
 })
 
@@ -134,6 +231,8 @@ test("a blank or relative socket directory is refused before any spawn", () => {
 
 test("a hardcopy that was never written is a refusal naming the path, not zero lines", () => {
   exit(0)
+  let now = 1000
+  vi.spyOn(Date, "now").mockImplementation(() => (now += 1000))
   readFile.mockImplementation(() => {
     throw Object.assign(new Error("no such file"), { code: "ENOENT" })
   })
@@ -145,6 +244,8 @@ test("a hardcopy that was never written is a refusal naming the path, not zero l
 
 test("an empty hardcopy is refused rather than measured as zero lines", () => {
   exit(0)
+  let now = 1000
+  vi.spyOn(Date, "now").mockImplementation(() => (now += 1000))
   readFile.mockReturnValue("")
   const result = readScreenScrollback(options)
   expect(result.status).toBe("refused")

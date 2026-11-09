@@ -826,6 +826,7 @@ export async function createLinuxClipboardAdapter(
           socketDirectory: dirname(screenTarget.socketPath),
           hardcopyPath: join(captureDirectory, `${screenTarget.session}-history-${++screenRead}.txt`),
           rows: screenRows,
+          configPath: screenTarget.config.path,
         })
         await assertOwned()
         if (read.status === "refused") throw new Error(read.reason)

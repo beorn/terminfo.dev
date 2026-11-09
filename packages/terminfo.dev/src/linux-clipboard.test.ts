@@ -39,7 +39,8 @@ const baseline = "terminfo-owned-clipboard-" + launch
 const bootId = "730f0ec0-707d-47f4-bf82-1a1e28ec4f10"
 const receiptPath = join(root, "clipboard-fixture.json")
 const exe = name => join(root, name)
-for (const [name, bytes] of Object.entries({kitty:"kitty-bytes",tmux:"tmux-bytes",screen:"screen-bytes",xclip:"xclip-bytes",config:"",baseline,display:"22"})) {
+const screenConfig = "defscrollback 100\n"
+for (const [name, bytes] of Object.entries({kitty:"kitty-bytes",tmux:"tmux-bytes",screen:"screen-bytes",xclip:"xclip-bytes",config:screenConfig,baseline,display:"22"})) {
   fs.writeFileSync(exe(name), bytes, {mode:0o600})
 }
 const real = {...fs}
@@ -108,7 +109,8 @@ mock.module("node:child_process", () => ({...cp,
     assert(!hardcopies.includes(path),"each Screen read needs its own retained hardcopy")
     hardcopies.push(path)
     if(variant==="screen-refused")return {status:2,stdout:Buffer.alloc(0),stderr:Buffer.from("screen fixture refusal")}
-    real.writeFileSync(path,"row\n".repeat(variant==="screen-more"?45:44))
+    const used = variant === "screen-more" ? 21 : 20
+    real.writeFileSync(path, "\n".repeat(100 - used) + "row\n".repeat(used + 24))
     if(variant==="screen-owner-lost")variant="detached"
     return {status:0,stdout:Buffer.alloc(0),stderr:Buffer.alloc(0)}
   },
@@ -152,7 +154,7 @@ try {
     muxTarget={kind:"mux",mux:kind,bootId,
       preflightCollector:{pid:95,startTicks:"115"},outerShell:{pid:92,startTicks:"110",ttyRdev:34816},
       outerTerminal:{pid:76,startTicks:"100"},collector:{pid:process.pid,startTicks:"130"},
-      executable:{path:exe(kind),sha256:hash(kind+"-bytes"),version:kind==="tmux"?"3.7c":"5.0.2"},config:{path:exe("config"),sha256:hash("")},
+      executable:{path:exe(kind),sha256:hash(kind+"-bytes"),version:kind==="tmux"?"3.7c":"5.0.2"},config:{path:exe("config"),sha256:hash(screenConfig)},
       socketPath:socket,session:"terminfo-"+launch}
     if (bad==="wrong-client-tty") table.get(kind==="tmux"?148:146).tty=34818
     if (bad==="outer-collector-tty") table.get(process.pid).tty=34816
