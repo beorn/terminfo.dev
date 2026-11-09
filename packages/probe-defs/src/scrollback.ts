@@ -16,7 +16,6 @@ import {
   validSize,
   HEADLESS_OBSERVABLE_REVIEW,
   libvtermHistoryReview,
-  sameFrame,
 } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -412,12 +411,13 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   if (!Number.isSafeInteger(maxAnchors) || !Number.isSafeInteger(down) || !Number.isSafeInteger(calLines)) {
     return notTestedResult("wheel placement bound not established", { rows: ctx.rows })
   }
-  const width = tooSmall(
-    ctx,
-    5,
-    Math.max(`vh-cal-${calLines - 1}`.length, `vh-tail-${ctx.rows - 1}`.length, `vh-s-${maxAnchors - 1}`.length),
-    "Viewport hold fixture",
+  const labelWidth = Math.max(
+    `vh-cal-${calLines - 1}`.length,
+    `vh-tail-${ctx.rows - 1}`.length,
+    `vh-s-${maxAnchors - 1}`.length,
+    "vh-s-out".length,
   )
+  const width = tooSmall(ctx, 5, labelWidth, "Viewport hold fixture")
   if (width) return width
   const frames: ObservationFrame[] = []
   const calibration = {} as Record<string, unknown>
@@ -430,32 +430,26 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     synchronized: {} as Record<string, unknown>,
   }
   const todo = (reason: string) => notTestedResult(reason, evidence)
-  const frame = async (label: string, role: "control" | "target" = "control") => {
-    const result = await capture({ role, label })
-    if (result.kind === "text-cells" || !result.pixelsDigest?.trim()) {
-      throw new Error(`Viewport capture ${label} has no complete pixel digest`)
-    }
-    frames.push(result)
-    return result
-  }
-  const calWidth = `vh-cal-${calLines - 1}`.length
-  const calCells = { top: 1, left: 1, bottom: ctx.rows, right: calWidth }
+  const labelCells = { top: 1, left: 1, bottom: ctx.rows, right: labelWidth }
   const calGeometry = ctx.captureGeometry?.geometry
-  const calFrame = async (label: string) => {
+  const frame = async (label: string, role: "control" | "target" = "control") => {
     const result = await capture({
-      role: "control",
+      role,
       label,
-      ...(calGeometry ? { cells: calCells, pixelGeometry: calGeometry } : {}),
+      ...(calGeometry ? { cells: labelCells, pixelGeometry: calGeometry } : {}),
     })
-    if (result.kind === "text-cells" || !result.pixelsDigest?.trim()) {
+    const cellDigest = frameDigests(result).cells
+    if (result.kind === "text-cells" || !result.pixelsDigest?.trim() || (calGeometry && !cellDigest?.trim())) {
       throw new Error(`Viewport capture ${label} has no complete pixel digest`)
     }
     frames.push(result)
     return result
   }
-  const calSame = (a: ObservationFrame, b: ObservationFrame) => {
-    const da = frameDigests(a).cells ?? frameDigests(a).whole
-    const db = frameDigests(b).cells ?? frameDigests(b).whole
+  const measuredDigest = (captured: ObservationFrame) =>
+    calGeometry ? frameDigests(captured).cells : frameDigests(captured).whole
+  const sameCells = (a: ObservationFrame, b: ObservationFrame) => {
+    const da = measuredDigest(a)
+    const db = measuredDigest(b)
     return Boolean(da && db && da === db)
   }
   let failed = false
@@ -472,44 +466,31 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     if (!(await ctx.queryCursorPosition())) {
       return todo("no cursor-position reply after painting calibration seed")
     }
-    const calBottom = await calFrame("Viewport calibration bottom")
+    calibration.maxCandidate = maxCandidate
+    const calBottom = await frame("Viewport calibration bottom")
     calibration.calBottom = calBottom
     const calDelivery = await readInput(/^a/, 1000, () => input.injectKey("a"))
     calibration.delivery = calDelivery
     if (!calDelivery) return todo("viewport input delivery not observed")
     scrolled = true
     await input.injectClick(4)
-    const calScrolled = await calFrame("Viewport calibration scrolled")
+    const calScrolled = await frame("Viewport calibration scrolled")
     calibration.calScrolled = calScrolled
+    for (let notch = 0; notch < maxCandidate; notch++) await input.injectClick(4)
+    const calTop = await frame("Viewport calibration top")
+    calibration.calTop = calTop
     await moveDown()
-    const calRestored = await calFrame("Viewport calibration restored")
+    const calRestored = await frame("Viewport calibration restored")
     calibration.calRestored = calRestored
-    if (!calSame(calRestored, calBottom)) return todo("restoration to bottom not proven")
-    const calCandidates: Record<number, ObservationFrame> = {}
-    const matchedDisplacements: number[] = []
-    for (let d = 1; d <= maxCandidate; d++) {
-      ctx.write("\x1b[2J\x1b[H")
-      ctx.write(Array.from({ length: ctx.rows }, (_, row) => `vh-cal-${calLines - ctx.rows - d + row}`).join("\r\n"))
-      if (!(await ctx.queryCursorPosition())) {
-        return todo(`no cursor-position reply after painting calibration candidate ${d}`)
-      }
-      const refFrame = await calFrame(`Viewport calibration candidate ${d}`)
-      calCandidates[d] = refFrame
-      if (!calSame(calScrolled, calBottom) && calSame(calScrolled, refFrame)) {
-        matchedDisplacements.push(d)
-      }
-    }
-    calibration.candidates = calCandidates
-    calibration.matchedDisplacements = matchedDisplacements
-    const rowsPerNotch = matchedDisplacements[0]
-    const matchedCalRef = rowsPerNotch === undefined ? undefined : calCandidates[rowsPerNotch]
-    if (matchedDisplacements.length !== 1 || rowsPerNotch === undefined || !matchedCalRef) {
+    if (!sameCells(calRestored, calBottom)) return todo("restoration to bottom not proven")
+    const boundEstablished = !sameCells(calScrolled, calBottom) && !sameCells(calScrolled, calTop)
+    calibration.boundEstablished = boundEstablished
+    calibration.scrolledDigest = measuredDigest(calScrolled)
+    calibration.topDigest = measuredDigest(calTop)
+    if (!boundEstablished) {
       return todo("wheel placement bound not established")
     }
-    calibration.rowsPerNotch = rowsPerNotch
-    calibration.scrolledDigest = frameDigests(calScrolled).cells ?? frameDigests(calScrolled).whole
-    calibration.matchedReferenceDigest = frameDigests(matchedCalRef).cells ?? frameDigests(matchedCalRef).whole
-    const anchors = Math.max(3 * ctx.rows, rowsPerNotch + ctx.rows)
+    const anchors = maxAnchors
 
     ctx.write("\x1b[2J\x1b[3J\x1b[H")
     ctx.write(tail)
@@ -526,7 +507,7 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       ctx.write("\r\n" + Array.from({ length: anchors }, (_, row) => `vh-${prefix}-${row}`).join("\r\n"))
       const bottom = await frame(`${phase} B0`)
       state.B0 = bottom
-      if (sameFrame(bottom, reference)) return todo("viewport seed not observed")
+      if (sameCells(bottom, reference)) return todo("viewport seed not observed")
       const control = await readInput(/^a/, 1000, () => input.injectKey("a"))
       state.delivery = control
       if (!control) return todo("viewport input delivery not observed")
@@ -534,13 +515,13 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       await input.injectClick(4)
       const anchor = await frame(`${phase} U`)
       state.U = anchor
-      if (sameFrame(anchor, bottom) || sameFrame(anchor, reference)) {
+      if (sameCells(anchor, bottom) || sameCells(anchor, reference)) {
         return todo("viewport anchor placement not established")
       }
       state.anchorParse = await ctx.queryWithSentinelOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 1000)
       const unchanged = await frame(`${phase} U prime`)
       state.UPrime = unchanged
-      if (!sameFrame(unchanged, anchor)) return todo("parse witness moved the viewport")
+      if (!sameCells(unchanged, anchor)) return todo("parse witness moved the viewport")
       const output = `\r\nvh-${prefix}-out\r\n${tail}`
       ctx.write(phase === "ordinary" ? output : `\x1b[?2026h${output}\x1b[?2026l`)
       const parsed = await ctx.queryWithSentinelOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 1000)
@@ -550,31 +531,31 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       state.A = after
       const confirmed = await frame(`${phase} A confirmation`, "target")
       state.AConfirmed = confirmed
-      if (!sameFrame(after, confirmed)) return todo("output frame still changing")
+      if (!sameCells(after, confirmed)) return todo("output frame still changing")
       await moveDown()
       const arrived = await frame(`${phase} B1`)
       state.B1 = arrived
-      if (!sameFrame(arrived, reference)) return todo("restoration to bottom not proven")
+      if (!sameCells(arrived, reference)) return todo("restoration to bottom not proven")
       scrolled = true
       await input.injectClick(4)
       const relative = await frame(`${phase} R`)
       state.R = relative
       const candidates = { held: anchor, snapped: arrived, "bottom-relative": relative }
       const matches = Object.entries(candidates)
-        .filter(([, candidate]) => sameFrame(after, candidate))
+        .filter(([, candidate]) => sameCells(after, candidate))
         .map(([name]) => name)
       state.matches = matches
       // R moved away from bottom: a second witnessed restore precedes every subsequent seed.
       await moveDown()
       const restored = await frame(`${phase} final restoration`)
       state.restored = restored
-      if (!sameFrame(restored, reference)) return todo("restoration to bottom not proven")
+      if (!sameCells(restored, reference)) return todo("restoration to bottom not proven")
       const matchedOutcome = matches[0] as keyof typeof candidates | undefined
       if (matches.length !== 1 || !matchedOutcome) return todo("ambiguous frame")
       const matchedCandidate = candidates[matchedOutcome]
       state.outcome = matchedOutcome
-      state.targetDigest = frameDigests(after).cells ?? frameDigests(after).whole
-      state.matchedReferenceDigest = frameDigests(matchedCandidate).cells ?? frameDigests(matchedCandidate).whole
+      state.targetDigest = measuredDigest(after)
+      state.matchedReferenceDigest = measuredDigest(matchedCandidate)
       if (held || matchedOutcome !== "held") screenshot = after
       held &&= matchedOutcome === "held"
     }

@@ -1593,12 +1593,12 @@ it.each([
           : "viewport input delivery not observed",
     })
     expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({
-      calibration: !replyCursor ? {} : deliverKey ? { matchedDisplacements: [] } : { delivery: null },
+      calibration: !replyCursor ? {} : deliverKey ? { boundEstablished: false } : { delivery: null },
     })
-    expect(capture).toHaveBeenCalledTimes(!replyCursor ? 0 : deliverKey ? 11 : 1)
+    expect(capture).toHaveBeenCalledTimes(!replyCursor ? 0 : deliverKey ? 4 : 1)
     expect(writes.length > 0).toBe(true)
     expect(injectKey).toHaveBeenCalledTimes(!replyCursor ? 0 : 1)
-    expect(injectClick).toHaveBeenCalledTimes(!replyCursor ? 0 : deliverKey ? 35 : 0)
+    expect(injectClick).toHaveBeenCalledTimes(!replyCursor ? 0 : deliverKey ? 43 : 0)
     expect(batch.observations).toEqual([])
     expect(batch.assertions).toEqual([])
   },
