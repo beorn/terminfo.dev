@@ -114,6 +114,15 @@ function resolveScrollbackCapacity(
  * run's own `screenrc` through `resolveScrollbackCapacity`. Screen processes socket commands in
  * order, so the baseline `readScreenScrollback`'s `-Q number` query fences both commands.
  */
+function formatSpawnExit(result: { status: number | null; signal: NodeJS.Signals | null; error?: Error }): string {
+  if (result.status !== null) return `exited ${result.status}`
+  const details = [
+    result.signal ? `signal=${result.signal}` : null,
+    result.error ? `error=${result.error.message || String(result.error)}` : null,
+  ].filter((part): part is string => part !== null)
+  return details.length > 0 ? `exited null (${details.join(", ")})` : "exited null"
+}
+
 export function resetScreenScrollback(options: ScreenScrollbackResetOptions): ScreenScrollbackResetResult {
   const session = options.session?.trim() ?? ""
   if (session === "" || /\s/u.test(session)) {
@@ -148,7 +157,7 @@ export function resetScreenScrollback(options: ScreenScrollbackResetOptions): Sc
     if (result.status !== 0) {
       return {
         status: "refused",
-        reason: `screen scrollback ${target} exited ${String(result.status)} at SCREENDIR=${JSON.stringify(socketDirectory)}: stderr=${JSON.stringify(stderr)} stdout=${JSON.stringify(stdout)}`,
+        reason: `screen scrollback ${target} ${formatSpawnExit(result)} at SCREENDIR=${JSON.stringify(socketDirectory)}: stderr=${JSON.stringify(stderr)} stdout=${JSON.stringify(stdout)}`,
       }
     }
   }
@@ -213,7 +222,7 @@ export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenSc
   if (result.status !== 0) {
     return {
       status: "refused",
-      reason: `screen hardcopy exited ${String(result.status)} at SCREENDIR=${JSON.stringify(socketDirectory)}: stderr=${JSON.stringify(stderr)} stdout=${JSON.stringify(stdout)}`,
+      reason: `screen hardcopy ${formatSpawnExit(result)} at SCREENDIR=${JSON.stringify(socketDirectory)}: stderr=${JSON.stringify(stderr)} stdout=${JSON.stringify(stdout)}`,
     }
   }
   const query = spawnSync(options.executable, ["-S", session, "-Q", "number"], {
@@ -227,7 +236,7 @@ export function readScreenScrollback(options: ScreenScrollbackOptions): ScreenSc
   if (query.status !== 0) {
     return {
       status: "refused",
-      reason: `screen query (-Q number) exited ${String(query.status)} at SCREENDIR=${JSON.stringify(socketDirectory)} for ${options.hardcopyPath}: stderr=${JSON.stringify(queryStderr)} stdout=${JSON.stringify(queryStdout)}`,
+      reason: `screen query (-Q number) ${formatSpawnExit(query)} at SCREENDIR=${JSON.stringify(socketDirectory)} for ${options.hardcopyPath}: stderr=${JSON.stringify(queryStderr)} stdout=${JSON.stringify(queryStdout)}`,
     }
   }
   let text: string

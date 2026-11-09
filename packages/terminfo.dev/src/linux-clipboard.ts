@@ -847,6 +847,7 @@ export async function createLinuxClipboardAdapter(
         })
         await assertOwned()
         if (reset.status === "refused") throw new Error(reset.reason)
+        return { status: "reset" as const, capacity: reset.capacity }
       },
     }),
     ...(receipt.target?.kind === "mux" &&

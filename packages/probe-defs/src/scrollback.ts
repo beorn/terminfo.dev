@@ -644,22 +644,50 @@ async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCa
   if (refusal) return refusal
   ctx.write("\x1b[0m\x1b[2J\x1b[H")
   if (!(await ctx.queryCursorPosition())) return replyFailure("No cursor reply to fence scrollback baseline output")
-  if (ctx.resetScrollback) await ctx.resetScrollback()
+  const historyReset = ctx.resetScrollback ? await ctx.resetScrollback() : undefined
+  const resetEvidence = historyReset !== undefined ? { historyReset } : {}
   const baseline = await read()
   if (!validSize(baseline.totalLines, 0)) {
-    return notTestedResult("scrollback reader geometry differs from measured screen", { baseline, rows: ctx.rows })
+    return notTestedResult("scrollback reader geometry differs from measured screen", {
+      ...resetEvidence,
+      baseline,
+      rows: ctx.rows,
+    })
+  }
+  if (historyReset !== undefined) {
+    const screenRows = baseline.screenLines ?? ctx.rows
+    const postResetHistory = baseline.totalLines - screenRows
+    if (postResetHistory < 0) {
+      return notTestedResult("scrollback reader geometry differs from measured screen", {
+        ...resetEvidence,
+        baseline,
+        rows: ctx.rows,
+      })
+    }
+    if (postResetHistory !== 0) {
+      return notTestedResult(`owned history reset left ${postResetHistory} lines`, {
+        ...resetEvidence,
+        baseline,
+        history: postResetHistory,
+        rows: ctx.rows,
+      })
+    }
   }
   const requiredGrowth = total ? 10 : 1
   if (baseline.capacity !== undefined) {
     const screenRows = baseline.screenLines ?? ctx.rows
     const history = baseline.totalLines - screenRows
     if (!validSize(baseline.capacity, 0) || history < 0) {
-      return notTestedResult("scrollback reader geometry differs from measured screen", { baseline, rows: ctx.rows })
+      return notTestedResult("scrollback reader geometry differs from measured screen", {
+        ...resetEvidence,
+        baseline,
+        rows: ctx.rows,
+      })
     }
     if (history + requiredGrowth > baseline.capacity) {
       return notTestedResult(
         `history at ${history} of capacity ${baseline.capacity} before the test; growth of ${requiredGrowth} cannot be observed`,
-        { baseline, history, capacity: baseline.capacity, requiredGrowth, rows: ctx.rows },
+        { ...resetEvidence, baseline, history, capacity: baseline.capacity, requiredGrowth, rows: ctx.rows },
       )
     }
   }
@@ -667,7 +695,11 @@ async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCa
   if (!(await ctx.queryCursorPosition())) return replyFailure("No cursor reply to fence no-overflow control")
   const control = await read()
   if (control.totalLines !== baseline.totalLines) {
-    return notTestedResult("no-overflow output changed the retained history count", { baseline, control })
+    return notTestedResult("no-overflow output changed the retained history count", {
+      ...resetEvidence,
+      baseline,
+      control,
+    })
   }
   ctx.write("\x1b[H")
   const lineCount = ctx.rows + 10
@@ -675,12 +707,25 @@ async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCa
   if (!(await ctx.queryCursorPosition())) return replyFailure("No cursor reply to fence scrollback overflow output")
   const scroll = await read()
   if (!validSize(scroll.totalLines, 0)) {
-    return notTestedResult("scrollback reader geometry changed after overflow", { baseline, control, scroll })
+    return notTestedResult("scrollback reader geometry changed after overflow", {
+      ...resetEvidence,
+      baseline,
+      control,
+      scroll,
+    })
   }
   if (scroll.totalLines === baseline.totalLines) {
     return notTestedResult(
       "retained history count did not change after the overflow lines; no same-path control shows this reader counts history",
-      { baseline, control, lineCount, scroll, rows: ctx.rows, geometrySource: "rows from run geometry" },
+      {
+        ...resetEvidence,
+        baseline,
+        control,
+        lineCount,
+        scroll,
+        rows: ctx.rows,
+        geometrySource: "rows from run geometry",
+      },
     )
   }
   return parserStateResult(
@@ -688,7 +733,15 @@ async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCa
     total
       ? "Measured history grows by at least the overflow beyond the screen"
       : "Written lines increase measured scrollback history",
-    { baseline, control, lineCount, scroll, rows: ctx.rows, geometrySource: "rows from run geometry" },
+    {
+      ...resetEvidence,
+      baseline,
+      control,
+      lineCount,
+      scroll,
+      rows: ctx.rows,
+      geometrySource: "rows from run geometry",
+    },
   )
 }
 
