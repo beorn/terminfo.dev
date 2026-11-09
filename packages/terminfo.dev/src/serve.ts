@@ -49,6 +49,7 @@ import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts
 import {
   COMPLETE_DA2,
   COMPLETE_XTVERSION,
+  declaredAppVersion,
   resolveMeasuredAppVersion,
   verifyTerminalIdentity,
 } from "./identity-guard.ts"
@@ -943,10 +944,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 if (measuredTerminal.name === "screen") {
                   da2Query = await queryWithSentinelOutcome("\x1b[>c", COMPLETE_DA2, 700)
                 }
-                declarationVersion = resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
-                  "collector.xtversion": identity.raw,
-                  ...(da2Query && { "collector.da2": da2Query.raw }),
-                })
+                declarationVersion = declaredAppVersion(
+                  resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
+                    "collector.xtversion": identity.raw,
+                    ...(da2Query && { "collector.da2": da2Query.raw }),
+                  }),
+                  process.env.TERMINFO_TARGET_VERSION,
+                )
               }
               // Before the batch, because the answer decides whether this run HAS a capture adapter at all:
               // a terminal whose OWN cell size cannot be mapped is refused here and installs nothing, so no
@@ -1026,7 +1030,6 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       (terminal.name === "windows-terminal" || terminal.name === "alacritty") && batch.appLaunch?.platform === "win32"
         ? batch.appLaunch.productVersion
         : resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, batch.rawReplies)
-    const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()
     const subject: ProbeSubject = muxSubject
       ? { ...muxSubject, version: measuredVersion }
       : {
@@ -1041,7 +1044,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           // instead. The value is NOT a version the terminal reported - the raw replies show it reported
           // none - and the provenance check still does its work: the binary's own `--version` must agree
           // with the declaration. A non-apparatus run has no declaration, so "unknown" stays as before.
-          version: measuredVersion === "unknown" && declaredVersion ? declaredVersion : measuredVersion,
+          version: declaredAppVersion(measuredVersion, process.env.TERMINFO_TARGET_VERSION),
           os: terminal.os,
           osVersion: terminal.osVersion,
           outerTerminal: null,

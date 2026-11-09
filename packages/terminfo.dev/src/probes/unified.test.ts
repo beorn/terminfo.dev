@@ -88,6 +88,40 @@ it.each(["coverage", "explicit todo"] as const)(
   },
 )
 
+// @failure A real App callback that reports coverage without a notTested block drops the audited
+// declaration; the stubbed two-path case above cannot see it because both stub shapes carry one.
+// @level l1
+// @consumer current-child App declarations -> runProbeBatch canonical recorder -> OSC 710 callback.
+it("applies the audited Alacritty declaration to the real OSC 710 coverage result", async () => {
+  const id = "extensions.osc710-font-normal"
+  const subject = { kind: "term" as const, id: "alacritty", version: "0.17.0", os: "linux" as const }
+  const declarations = appSemanticDeclarations(subject, {
+    observedAt: new Date().toISOString(),
+    address: "absent" as const,
+    socket: { path: "/fixture/bus", outcome: "absent" as const, code: "ENOENT" },
+  })
+  expect(declarations[id]).toContain("Untestable (no way)")
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const declared = await runProbeBatch({
+    ids: [id],
+    subject,
+    appDeclarations: declarations,
+    ownedTerminal: geometryOwner(noGeometry),
+  })
+  expect(declared.results.find((result) => result.featureId === id)).toMatchObject({
+    status: "untestable",
+    reason: declarations[id],
+  })
+  const undeclared = await runProbeBatch({
+    ids: [id],
+    subject,
+    appDeclarations: {},
+    ownedTerminal: geometryOwner(noGeometry),
+  })
+  expect(undeclared.results.find((result) => result.featureId === id)).toMatchObject({ status: "probe-todo" })
+})
+
 // @failure Notification cells select no-setup without this run's missing bus, or remain TODO after observed absence.
 // Existing Ghostty cases cover prompt rows, not the fourteen notification positions.
 // @level l1

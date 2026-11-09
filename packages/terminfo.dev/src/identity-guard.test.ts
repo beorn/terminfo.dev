@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { describe, it, expect } from "vitest"
-import { deriveIdentity, resolveMeasuredAppVersion, verifyTerminalIdentity } from "./identity-guard.ts"
+import { declaredAppVersion, deriveIdentity, resolveMeasuredAppVersion, verifyTerminalIdentity } from "./identity-guard.ts"
 import muxIdentity from "./fixtures/mux-identity.json"
 
 describe("measured multiplexer identity", () => {
@@ -402,6 +402,20 @@ describe("verifyTerminalIdentity", () => {
     // wezterm and alacritty have no identity rule at all: named-unavailable, never guessed.
     expect(resolveMeasuredAppVersion("wezterm", "", {})).toBe("unknown")
     expect(resolveMeasuredAppVersion("alacritty", "", {})).toBe("unknown")
+  })
+
+  it("takes the apparatus-declared version only where the app reports none", () => {
+    // Alacritty answers no XTVERSION and sets no TERM_PROGRAM, so its measured version is unknown
+    // and every exact-version App declaration was dropped before the batch (#32889).
+    const measured = resolveMeasuredAppVersion("alacritty", "", {})
+    expect(declaredAppVersion(measured, "0.17.0")).toBe("0.17.0")
+    expect(declaredAppVersion(measured, "  0.17.0  ")).toBe("0.17.0")
+    // A detected or measured version always wins over the apparatus declaration.
+    expect(declaredAppVersion("0.17.0", "0.17.0")).toBe("0.17.0")
+    expect(declaredAppVersion("0.16.1", "0.17.0")).toBe("0.16.1")
+    // Silence declares nothing, so a non-apparatus run keeps the measured unknown.
+    expect(declaredAppVersion(measured, undefined)).toBe("unknown")
+    expect(declaredAppVersion(measured, "   ")).toBe("unknown")
   })
 
   it("accepts the ConPTY reply order, where the console's DA1 arrives before the XTVERSION DCS", () => {
