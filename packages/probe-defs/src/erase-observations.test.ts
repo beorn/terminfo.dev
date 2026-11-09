@@ -880,8 +880,9 @@ test("erase.screen.scrollback compares only the calibrated multiplexer pane area
   }
 
   // (1) Multiplexer frame that differs only in the status row passes the restore check and makes the exclusion visible.
+  // Screen with a status line (19 pane rows in a 20-row window): tmux now decides from history_size (test below).
   const statusOnly = await runRestoreCase({
-    mux: "tmux",
+    mux: "screen",
     rows: 19,
     cols: 61,
     statusRowDiffersOnRestore: true,
@@ -891,10 +892,10 @@ test("erase.screen.scrollback compares only the calibrated multiplexer pane area
   expect(statusOnly.requestedCells[2]).toEqual({ top: 1, left: 1, bottom: 19, right: 61 })
   expect(statusOnly.recorded.status).toBe("supported")
   expect(statusOnly.recorded.reason).toMatch(
-    /tmux status row outside the 19x61 multiplexer pane area.*restore comparison/i,
+    /screen status row outside the 19x61 multiplexer pane area.*restore comparison/i,
   )
   expect(statusOnly.recorded.tests[0]?.reason).toMatch(
-    /tmux status row outside the 19x61 multiplexer pane area.*restore comparison/i,
+    /screen status row outside the 19x61 multiplexer pane area.*restore comparison/i,
   )
 
   // Screen's default has no status line (20 rows in the 20-row window), so its pane crop keeps all 20 rows.
@@ -910,7 +911,7 @@ test("erase.screen.scrollback compares only the calibrated multiplexer pane area
 
   // (2) A difference inside the multiplexer pane still fails the restore check.
   const paneDiff = await runRestoreCase({
-    mux: "tmux",
+    mux: "screen",
     rows: 19,
     cols: 61,
     statusRowDiffersOnRestore: false,
@@ -937,6 +938,56 @@ test("erase.screen.scrollback compares only the calibrated multiplexer pane area
     reason: "insufficient-evidence",
   })
   expect(nonMux.recorded.status).toBe("probe-invalid")
+})
+
+test("tmux erase.screen.scrollback decides from tmux history_size before and after ED3 (#32774, @cto e078c568 B)", async () => {
+  const runTmux = async (readings: Array<{ totalLines: number; screenLines: number } | Error>) => {
+    const base = scrollbackApp({ clears: true })
+    const reads = [...readings]
+    const ctx: TermProbeSource = {
+      ...base.ctx,
+      mux: "tmux",
+      getScrollback: async () => {
+        const next = reads.shift()
+        if (next === undefined) throw new Error("unexpected extra history read")
+        if (next instanceof Error) throw next
+        return next
+      },
+    }
+    const callbackResult = await byId("erase.screen.scrollback").term(ctx)
+    const recorded = recordExecutedProbe({
+      featureId: "erase.screen.scrollback",
+      attempt: { scope: "probe", startedAt: "2026-11-09T09:00:00.000Z" },
+      observation: callbackResult.observation
+        ? { featureId: "erase.screen.scrollback", ...callbackResult.observation }
+        : undefined,
+      assertions: (callbackResult.assertions ?? []).map((entry) => ({
+        featureId: "erase.screen.scrollback",
+        ...entry,
+      })),
+    })
+    return { callbackResult, recorded, reads }
+  }
+  const history = (lines: number) => ({ totalLines: lines + 24, screenLines: 24 })
+
+  const erased = await runTmux([history(709), history(0)])
+  expect(erased.recorded.status).toBe("supported")
+  expect(erased.recorded.reason).toMatch(/tmux history_size 709 -> 0/)
+  expect(erased.reads, "one read before ED3 and one after").toEqual([])
+
+  const kept = await runTmux([history(709), history(709)])
+  expect(kept.callbackResult).toMatchObject({ pass: false, observation: { outcome: "unsupported" } })
+  expect(kept.recorded.reason).toMatch(/tmux history_size 709 -> 709/)
+
+  const unseeded = await runTmux([history(0), history(0)])
+  expect(unseeded.recorded.status).toBe("probe-invalid")
+  expect(unseeded.recorded.reason).toMatch(/seeding never reached tmux history/)
+
+  const failed = await runTmux([new Error('Owned tmux scrollback reading malformed: "garbage"'), history(0)])
+  expect(failed.recorded.status).toBe("probe-invalid")
+  expect(failed.recorded.reason).toMatch(
+    /display-message -p "#\{history_size\}.* failed: Owned tmux scrollback reading malformed: "garbage"/,
+  )
 })
 
 /**

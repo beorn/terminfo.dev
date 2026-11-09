@@ -1,8 +1,10 @@
 import type {
   CaptureRequest,
   ObservationFrame,
+  ObservationReason,
   ProbeDefinition,
   ProbeCallbackResult,
+  TerminalScrollbackReading,
   TermProbeSource,
 } from "./types.ts"
 import { regionReadbackProbe, type RegionReadbackRow } from "./region-readback-kind.ts"
@@ -349,10 +351,77 @@ function frameDivergence(settled: ObservationFrame, bottom: ObservationFrame): s
   return "the frame refs differ and no pixel digest was carried"
 }
 
+/** tmux's one history reader: the owned terminal's getScrollback runs it on the probe's own session (linux-clipboard.ts). */
+const TMUX_HISTORY_QUERY = 'tmux display-message -p "#{history_size} #{pane_height} #{scroll_position} #{pane_in_mode}"'
+const SCROLLBACK_ED3_EXPECTED_TMUX = "ED3 removes tmux history: history_size drops from above 0 to 0"
+type TmuxHistory = number | { reason: ObservationReason; note: string }
+
+/** tmux's history line count through that reader, or why it could not be read, named loudly (never a silent notTested). */
+async function tmuxHistoryLines(ctx: TermProbeSource): Promise<TmuxHistory> {
+  if (!ctx.getScrollback) return { reason: "collector-error", note: `this run has no reader for ${TMUX_HISTORY_QUERY}` }
+  let reading: TerminalScrollbackReading
+  try {
+    reading = await ctx.getScrollback()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { reason: "collector-error", note: `${TMUX_HISTORY_QUERY} failed: ${message}` }
+  }
+  const lines = reading.screenLines === undefined ? Number.NaN : reading.totalLines - reading.screenLines
+  if (!Number.isSafeInteger(lines) || lines < 0) {
+    return { reason: "invalid-reply", note: `${TMUX_HISTORY_QUERY} gave no history count: ${JSON.stringify(reading)}` }
+  }
+  return lines
+}
+
+/**
+ * tmux decides ED3 from its own history count before and after (#32774, @cto e078c568 option B): its first wheel-up
+ * only enters copy mode, so its history frame shows the bottom text. The frames stay in the result and decide nothing.
+ */
+function tmuxScrollbackResult(
+  before: TmuxHistory,
+  after: TmuxHistory,
+  observed: object,
+  frames: ObservationFrame[],
+): ProbeCallbackResult {
+  const response = JSON.stringify({ ...observed, tmuxHistory: { before, after } })
+  const invalid = (reason: ObservationReason, note: string): ProbeCallbackResult => ({
+    pass: false,
+    response,
+    note,
+    observation: { outcome: "inconclusive", reason, assertionType: "buffer_state", frames, note },
+  })
+  if (typeof before !== "number") return invalid(before.reason, before.note)
+  if (before === 0) {
+    return invalid(
+      "insufficient-evidence",
+      `the seeding never reached tmux history: ${TMUX_HISTORY_QUERY} read history_size 0 before ED3`,
+    )
+  }
+  if (typeof after !== "number") return invalid(after.reason, after.note)
+  const erased = after === 0
+  const note = `tmux history_size ${before} -> ${after} for the probe's own pane${erased ? "" : ": ED3 left the history in place"}`
+  return {
+    pass: erased,
+    response,
+    note,
+    observation: { outcome: erased ? "supported" : "unsupported", assertionType: "buffer_state", frames, note },
+    assertions: [
+      {
+        assertionType: "buffer_state" as const,
+        kind: erased ? "positive" : "negative",
+        expected: SCROLLBACK_ED3_EXPECTED_TMUX,
+        observed: note,
+        action: "erase.screen.scrollback:ed3",
+      },
+    ],
+  }
+}
+
 /**
  * App ED3 cannot read history as cells. Compose existing XTEST wheel + capture:
  * prove history is observable, then grade whether ED3 removes it.
  * Never enable mouse tracking — that would steal the wheel into stdin.
+ * tmux decides from its own history count instead (tmuxScrollbackResult); its frames only corroborate.
  */
 async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
@@ -392,9 +461,11 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     ctx.write(`${"H".repeat(mark)}\r\n`.repeat(ctx.rows + 2))
     ctx.write("B".repeat(mark))
     const bottom = await captureRestoreFrame({ role: "control", label: "Bottom of seeded buffer" })
+    const tmux = ctx.mux === "tmux"
+    const historyBefore = tmux ? await tmuxHistoryLines(ctx) : undefined
     await input.injectClick(4)
     const history = await capture({ role: "control", label: "After wheel-up before ED3" })
-    if (sameFrame(history, bottom)) {
+    if (!tmux && sameFrame(history, bottom)) {
       return notTestedResult("wheel-up did not change captured pixels; cannot observe history", {
         control,
         bottom,
@@ -406,7 +477,7 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     const restoreCheck = paneArea
       ? paneArea.compare(restored, bottom, "restore comparison")
       : { matches: sameFrame(restored, bottom) }
-    if (!restoreCheck.matches) {
+    if (!tmux && !restoreCheck.matches) {
       return {
         pass: false,
         response: JSON.stringify({
@@ -426,6 +497,7 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     }
     ctx.write("\x1b[3J")
     const erased = await capture({ role: "control", label: "After ED3 at bottom" })
+    const historyAfter = tmux ? await tmuxHistoryLines(ctx) : undefined
     await input.injectClick(4)
     const after = await capture({ role: "target", label: "After ED3 then wheel-up" })
     const observed = {
@@ -437,6 +509,9 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
       after: after.ref,
     }
     const frames = [bottom, history, restored, erased, after]
+    if (historyBefore !== undefined && historyAfter !== undefined) {
+      return tmuxScrollbackResult(historyBefore, historyAfter, observed, frames)
+    }
     const restoreNote = restoreCheck.excludedReason
     if (sameFrame(after, history)) {
       return {
