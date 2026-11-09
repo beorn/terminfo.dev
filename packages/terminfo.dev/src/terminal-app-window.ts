@@ -106,7 +106,21 @@ function ownedWindowScript(window: TerminalAppWindow, close: boolean): string {
   set w to item 1 of matchingWindows
   if (count of tabs of w) is not 1 then error "owned Terminal window has other tabs"
   if (tty of tab 1 of w) is not ${JSON.stringify(tabTty)} then error "owned Terminal tab TTY changed"
-  ${close ? `close w\n  return count of (every window whose id is ${window.windowId})` : "return true"}
+  ${
+    close
+      ? `close w
+  set remaining to count of (every window whose id is ${window.windowId})
+  -- A close is a request: run 42560226484 answered 1, still present, and the login shell was alive
+  -- afterwards. Re-read for up to 5s before refusing, and keep the zero-match absence requirement.
+  set waited to 0
+  repeat while remaining is not 0 and waited < 50
+    delay 0.1
+    set remaining to count of (every window whose id is ${window.windowId})
+    set waited to waited + 1
+  end repeat
+  return remaining`
+      : "return true"
+  }
 end tell`
 }
 

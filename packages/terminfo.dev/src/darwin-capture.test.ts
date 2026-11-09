@@ -7,10 +7,15 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { expect, test, vi } from "vitest"
 import * as captureCore from "./capture-core.ts"
-import { censusDarwinWindows, createDarwinCapture, requireDarwinScale } from "./darwin-capture.ts"
+import {
+  censusDarwinWindows,
+  createDarwinCapture,
+  readTerminalLaunchWindowId,
+  requireDarwinScale,
+} from "./darwin-capture.ts"
 
 const PNG_STUB = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0])
 /** The capture target alone, as the selection tests read it. */
@@ -338,5 +343,115 @@ test("Darwin raw calibration decodes once and within the caller's deadline (3009
     decoder.mockRestore()
     runner.mockRestore()
     rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// Approved Terminal.app repair 2026-11-08 (run 42560226484): a cold start's own startup window shares the
+// launched window's area, so size alone refuses a run that is fine. The launch receipt names the exact
+// window it created; the census selects that window and still refuses a tie when no id is known.
+test("Darwin census selects the launch receipt's exact window id and refuses a tie without one", () => {
+  const bounds = { x: 40, y: 51, width: 877, height: 499 }
+  const launched = { id: 34, ownerPid: 41, layer: 0, bounds, alpha: 1, onscreen: true }
+  const startup = { ...launched, id: 29 }
+  expect(() => censusDarwinWindows([startup, launched], 41)).toThrow(/sharing the largest area/i)
+  const census = censusDarwinWindows([startup, launched], 41, 34)
+  expect(census.selected.window).toEqual({ id: 34, ownerPid: 41, layer: 0, bounds })
+  expect(census.ownedWindows.map((row) => [row.window.id, row.disposition])).toEqual([
+    [29, "rival"],
+    [34, "selected"],
+  ])
+})
+
+// The named id is a claim to check, never a bypass: a window that is offscreen, fully transparent, not
+// layer 0 or owned by another process still refuses by name.
+test("Darwin census refuses a named window it cannot prove owned, visible and layer 0", () => {
+  const bounds = { x: 40, y: 51, width: 877, height: 499 }
+  const launched = { id: 34, ownerPid: 41, layer: 0, bounds, alpha: 1, onscreen: true }
+  const startup = { ...launched, id: 29 }
+  expect(() => censusDarwinWindows([startup, { ...launched, onscreen: false }], 41, 34)).toThrow(/34/)
+  expect(() => censusDarwinWindows([startup, { ...launched, alpha: 0 }], 41, 34)).toThrow(/34/)
+  expect(() => censusDarwinWindows([startup, { ...launched, layer: 25 }], 41, 34)).toThrow(/34/)
+  expect(() => censusDarwinWindows([startup, { ...launched, ownerPid: 99 }], 41, 34)).toThrow(/34/)
+  expect(() => censusDarwinWindows([startup, launched], 41, 30)).toThrow(/30/)
+})
+
+// Run 42560226484: the workflow's launch receipt names the window it created (34). The receipt is the
+// only honest source of that id on a hosted runner, so an absent or foreign record refuses by name
+// instead of letting the census fall back to a window this run never launched.
+test("Terminal.app launch receipt names the owned window id or refuses by name", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminal-launch-"))
+  const record = join(directory, "terminal-launch.json")
+  expect(() => readTerminalLaunchWindowId(directory)).toThrow(/launch receipt .*terminal-launch\.json/)
+  writeFileSync(
+    record,
+    JSON.stringify({
+      appId: "terminal-app",
+      terminalWindow: { provider: "terminal-app", windowId: 34, tty: "/dev/ttys001" },
+    }),
+  )
+  expect(readTerminalLaunchWindowId(directory)).toBe(34)
+  for (const body of [
+    JSON.stringify({ appId: "iterm2", terminalWindow: { provider: "terminal-app", windowId: 34 } }),
+    JSON.stringify({ appId: "terminal-app", terminalWindow: { provider: "kitty", windowId: 34 } }),
+    JSON.stringify({ appId: "terminal-app", terminalWindow: { provider: "terminal-app", windowId: 0 } }),
+    JSON.stringify({ appId: "terminal-app" }),
+  ]) {
+    writeFileSync(record, body)
+    expect(() => readTerminalLaunchWindowId(directory)).toThrow(/names no owned window id/)
+  }
+  writeFileSync(record, "not json")
+  expect(() => readTerminalLaunchWindowId(directory)).toThrow(/is not JSON/)
+})
+
+// The wiring, not just the census: a hosted Terminal.app capture resolves its window from the launch
+// receipt beside the artifacts directory, refuses by name when that receipt is absent, and leaves
+// every other app on the size-based selection.
+test("hosted Terminal.app capture resolves the window tie through the launch receipt", async () => {
+  const artifacts = mkdtempSync(join(tmpdir(), "darwin-launch-receipt-"))
+  const captureDirectory = join(artifacts, "artifacts")
+  const bounds = { x: 40, y: 51, width: 877, height: 499 }
+  const launched = { id: 34, ownerPid: 41, layer: 0, bounds, alpha: 1, onscreen: true }
+  const startup = { ...launched, id: 29 }
+  const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file) => {
+    if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([startup, launched]))
+    if (file === "magick") return Buffer.from("test converter")
+    throw new Error(`Unexpected command ${file}`)
+  })
+  try {
+    await expect(
+      createDarwinCapture(captureDirectory, { appPid: 41, hostedAppId: "terminal-app", onRetained: () => {} }),
+    ).rejects.toThrow(/launch receipt .*terminal-launch\.json/)
+    writeFileSync(
+      join(artifacts, "terminal-launch.json"),
+      JSON.stringify({
+        appId: "terminal-app",
+        terminalWindow: { provider: "terminal-app", windowId: 34, tty: "/dev/ttys001" },
+      }),
+    )
+    const adapter = await createDarwinCapture(captureDirectory, {
+      appPid: 41,
+      hostedAppId: "terminal-app",
+      onRetained: () => {},
+    })
+    expect(adapter.installCensus.window).toEqual({ id: 34, ownerPid: 41, layer: 0, bounds })
+    expect(adapter.installCensus.ownedWindows.map((row) => [row.window.id, row.disposition])).toEqual([
+      [29, "rival"],
+      [34, "selected"],
+    ])
+    // Every other app arm keeps selecting by size and needs no receipt at all.
+    const sized = { ...launched, alpha: 1, onscreen: true, bounds: { x: 0, y: 0, width: 1000, height: 677 } }
+    runner.mockImplementation(async (file) => {
+      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([startup, sized]))
+      if (file === "magick") return Buffer.from("test converter")
+      throw new Error(`Unexpected command ${file}`)
+    })
+    const otherAdapter = await createDarwinCapture(captureDirectory, {
+      appPid: 41,
+      hostedAppId: "ghostty",
+      onRetained: () => {},
+    })
+    expect(otherAdapter.installCensus.window.id).toBe(34)
+  } finally {
+    rmSync(artifacts, { recursive: true, force: true })
   }
 })

@@ -774,7 +774,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
       if (!textFirst && kind === "darwinHosted") installTextCapture(terminal)
-      const darwinCapture = await createDarwinCapture(captureDirectory, { appPid, onRetained })
+      const darwinCapture = await createDarwinCapture(captureDirectory, {
+        appPid,
+        hostedAppId: terminal.hostedAppId,
+        onRetained,
+      })
       installPixelCapture(darwinCapture, darwinCapture.installCensus)
     }
     if (captureDirectory && process.platform === "linux") {

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto"
-import { mkdirSync, readFileSync, unlinkSync } from "node:fs"
-import { join } from "node:path"
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { capturePixels, command, decodeCapture, finishCapture, type NamedTextOrigin } from "./capture-core.ts"
 import type { ProbeCapture } from "./probes/unified.ts"
 
@@ -20,7 +20,7 @@ export interface DarwinOwnedWindow {
   sharingState: number | null
   memoryUsage: number | null
   /** Exactly one owned window is `selected`; every other names the rule that passed it over. */
-  disposition: "selected" | "offscreen" | "transparent" | "smaller"
+  disposition: "selected" | "offscreen" | "transparent" | "smaller" | "rival"
 }
 
 /** The selection and the census it was made from: the proof that no other owned window was the terminal (30685). */
@@ -58,7 +58,12 @@ const WINDOW_IMAGE_REFUSAL = "could not create image from window"
  * sharing the largest area are indistinguishable and refuse. The census of every owned layer-0 window
  * is returned beside the selection, so a run shows which windows were passed over and why (30685).
  */
-export function censusDarwinWindows(rows: unknown, appPid: number): DarwinWindowCensus {
+export function censusDarwinWindows(
+  rows: unknown,
+  appPid: number,
+  /** The window id the launch receipt recorded for THIS run, when the arm has one. */
+  expectedWindowId?: number,
+): DarwinWindowCensus {
   if (!Number.isSafeInteger(appPid) || appPid < 2 || !Array.isArray(rows)) {
     throw new Error("Darwin owned window census requires a measured app PID and window list")
   }
@@ -103,8 +108,44 @@ export function censusDarwinWindows(rows: unknown, appPid: number): DarwinWindow
   const passedOver = (row: DarwinCensusRow): "offscreen" | "transparent" | null =>
     row.onscreen === false ? "offscreen" : row.alpha !== null && row.alpha <= 0 ? "transparent" : null
   const visible = owned.filter((row) => passedOver(row) === null)
-  const best = visible[0]
-  const tied = best !== undefined && visible.some((row) => row !== best && area(row) === area(best))
+  /**
+   * A launch receipt's window id is the strongest identity this census can get, and it is a claim to
+   * CHECK, never a shortcut past ownership: a named window that is absent, other-owned, layered,
+   * offscreen or fully transparent refuses by name instead of falling back to the largest window.
+   */
+  const named = (id: number): DarwinCensusRow => {
+    if (!Number.isSafeInteger(id) || id < 1) {
+      throw new Error(`Darwin capture expected window id is not a positive integer: ${JSON.stringify(id)}`)
+    }
+    const row = census.find((candidate) => candidate.window.id === id)
+    if (!row) {
+      throw new Error(
+        `Darwin capture expected owned window ${id}, but the window server census names no window with that id for app PID ${appPid}; owned layer-0 windows: ${JSON.stringify(owned)}`,
+      )
+    }
+    const exclusion = passedOver(row)
+    const refusal =
+      row.window.ownerPid !== appPid
+        ? `is owned by PID ${row.window.ownerPid}, not the launched app PID ${appPid}`
+        : row.window.layer !== 0
+          ? `is layer ${row.window.layer}, not layer 0`
+          : exclusion === "offscreen"
+            ? "is offscreen"
+            : exclusion === "transparent"
+              ? "is fully transparent"
+              : null
+    if (refusal) {
+      throw new Error(
+        `Darwin capture expected window ${id} ${refusal}; owned layer-0 windows for app PID ${appPid}: ${JSON.stringify(owned)}`,
+      )
+    }
+    return row
+  }
+  const expected = expectedWindowId === undefined ? undefined : named(expectedWindowId)
+  const best = expected ?? visible[0]
+  // Two equal windows are indistinguishable only when nothing named one of them.
+  const tied =
+    expected === undefined && best !== undefined && visible.some((row) => row !== best && area(row) === area(best))
   if (!best || tied) {
     // The macOS workflow greps collector.log for this wording (30624; scripts/measurement-workflows.test.ts pins it).
     throw new Error(
@@ -126,7 +167,9 @@ export function censusDarwinWindows(rows: unknown, appPid: number): DarwinWindow
   }
   const selected: DarwinOwnedWindow = { ...best, disposition: "selected" }
   const ownedWindows: DarwinOwnedWindow[] = owned.map((row) =>
-    row === best ? selected : { ...row, disposition: passedOver(row) ?? "smaller" },
+    row === best
+      ? selected
+      : { ...row, disposition: passedOver(row) ?? (expected === undefined ? "smaller" : "rival") },
   )
   return { selected, ownedWindows }
 }
@@ -174,13 +217,27 @@ interface ScreencaptureAttempt {
 /** One screenshot per request. Paint currency belongs to the collector's witness, not this adapter. */
 export async function createDarwinCapture(
   directory: string,
-  { appPid, onRetained }: { appPid: number; onRetained: Parameters<typeof finishCapture>[0]["onRetained"] },
+  {
+    appPid,
+    hostedAppId,
+    expectedWindowId,
+    onRetained,
+  }: {
+    appPid: number
+    /** The app identity the arm detected, so an arm that can have a rival window can name its own. */
+    hostedAppId?: string
+    /** The launch receipt window id this run owns, when the caller already resolved it. */
+    expectedWindowId?: number
+    onRetained: Parameters<typeof finishCapture>[0]["onRetained"]
+  },
 ) {
+  const targetWindowId =
+    expectedWindowId ?? (hostedAppId === "terminal-app" ? readTerminalLaunchWindowId(dirname(directory)) : undefined)
   const census = async (deadline?: number) => {
     const rows: unknown = JSON.parse(
       (await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", CENSUS], undefined, deadline)).toString(),
     )
-    const { selected, ownedWindows } = censusDarwinWindows(rows, appPid)
+    const { selected, ownedWindows } = censusDarwinWindows(rows, appPid, targetWindowId)
     const { window, alpha, onscreen, sharingState, memoryUsage } = selected
     return {
       window,
@@ -328,4 +385,41 @@ export async function createDarwinCapture(
     return { decoded, result }
   }
   return { capture, captureRaw, installCensus }
+}
+
+/**
+ * The exact Terminal.app window this run launched, from the launch receipt the workflow writes beside
+ * the artifacts directory. Run 42560226484 is why size is not identity: the cold start opens its own
+ * startup window at the same place, so a size-based census either ties and refuses or photographs a
+ * window this run never created. An absent or foreign record refuses by name rather than falling back.
+ */
+export function readTerminalLaunchWindowId(artifactDirectory: string): number {
+  const record = join(artifactDirectory, "terminal-launch.json")
+  if (!existsSync(record)) {
+    throw new Error(
+      `Terminal.app capture requires the launch receipt ${record} that names the owned window id; that record is absent`,
+    )
+  }
+  const raw = readFileSync(record, "utf8")
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch (cause) {
+    // A malformed receipt is the operator's evidence to read, never a bare parser error.
+    throw new Error(
+      `Terminal.app launch receipt ${record} is not JSON: ${cause instanceof Error ? cause.message : String(cause)}: ${raw}`,
+    )
+  }
+  const row = parsed as { appId?: unknown; terminalWindow?: { provider?: unknown; windowId?: unknown } }
+  const windowId = row.terminalWindow?.windowId
+  if (
+    row.appId !== "terminal-app" ||
+    row.terminalWindow?.provider !== "terminal-app" ||
+    typeof windowId !== "number" ||
+    !Number.isSafeInteger(windowId) ||
+    windowId < 1
+  ) {
+    throw new Error(`Terminal.app launch receipt ${record} names no owned window id: ${raw}`)
+  }
+  return windowId
 }

@@ -47,6 +47,16 @@ export function launchTerminalWindow(scriptPath: string): TerminalAppWindow {
       set tabCount to count of tabs of w
       set onlyTTY to ""
       if tabCount is 1 then set onlyTTY to (tty of tab 1 of w) as string
+      -- The cold start opens a startup window beside this one and never activates the app (run
+      -- 42560226484: every Terminal window stayed onscreen:false, Finder frontmost). Activate, front
+      -- THIS window and refuse a window the app did not actually put on screen.
+      if onlyTTY is launchedTTY then
+        activate
+        set index of w to 1
+        set wVisible to (visible of w)
+        set wMiniaturized to (miniaturized of w)
+        if (not wVisible) or wMiniaturized then error "owned Terminal window " & (windowId as string) & " is not visible after launch (visible=" & (wVisible as string) & ", miniaturized=" & (wMiniaturized as string) & ")"
+      end if
       set inventory to inventory & linefeed & (windowId as string) & "|" & (tabCount as string) & "|" & onlyTTY
     end if
   end repeat

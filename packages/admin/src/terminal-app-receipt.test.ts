@@ -168,7 +168,10 @@ describe("owned Terminal.app receipt", () => {
     expect(script).toContain("every window whose id is 14")
     expect(script).toContain("count of tabs of w) is not 1")
     expect(script).toContain('tty of tab 1 of w) is not "/dev/ttys003"')
-    expect(script).toContain("close w\n  return count of (every window whose id is 14)")
+    expect(script).toContain("close w")
+    expect(script).toContain("repeat while remaining is not 0 and waited < 50")
+    expect(script).toContain("delay 0.1")
+    expect(script).toContain("return remaining")
   })
 
   test.each([
@@ -375,4 +378,37 @@ test.each([
     expect(JSON.parse(String(result.trace.argvRedactedIndexes))).toEqual([1, 2])
     expect(JSON.stringify(result)).not.toContain("public-run-marker")
   }
+})
+
+// Approved Terminal.app repair 2026-11-08 (run 42560226484, D152 operator yes): the cold start made two
+// windows and every Terminal window stayed onscreen:false with Finder frontmost, because the launch
+// script never ran `activate`. The launch must activate the app, front the window it created, and refuse
+// a window it cannot prove visible instead of handing a hidden window to the census.
+test("launch activates Terminal, fronts its new window and refuses one it cannot prove visible", () => {
+  vi.mocked(spawnSync).mockReturnValueOnce({
+    status: 0,
+    stdout: "12\n/dev/ttys003\n34|1|/dev/ttys003\n",
+    stderr: "",
+  } as ReturnType<typeof spawnSync>)
+  expect(launchTerminalWindow("/private/run/serve.sh")).toEqual({
+    provider: "terminal-app",
+    windowId: 34,
+    tty: "/dev/ttys003",
+  })
+  const script = String(vi.mocked(spawnSync).mock.calls[0]?.[1]?.[1])
+  expect(script).toContain("activate")
+  expect(script).toContain("set index of w to 1")
+  expect(script).toContain("visible of w")
+  expect(script).toContain("miniaturized of w")
+  expect(script).toContain("is not visible after launch")
+})
+
+test("launch refuses a window the app kept offscreen instead of continuing with it", () => {
+  vi.mocked(spawnSync).mockReturnValueOnce({
+    status: 1,
+    stdout: "",
+    stderr:
+      "execution error: owned Terminal window 34 is not visible after launch (visible=false, miniaturized=true) (-2700)",
+  } as ReturnType<typeof spawnSync>)
+  expect(() => launchTerminalWindow("/private/run/serve.sh")).toThrow(/window 34 is not visible after launch/)
 })
