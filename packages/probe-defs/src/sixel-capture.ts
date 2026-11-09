@@ -11,7 +11,14 @@
  *   block's interior cell is compared, so edge scaling, band rounding and small geometry error fall
  *   outside the compared pixels; the sentinel sits outside the tile's worst-case extent.
  */
-import { SENTINEL, type PixelGeometry, type RegionReadback } from "./region-readback.ts"
+import {
+  captureRegionReadbackDecision,
+  SENTINEL,
+  type PixelGeometry,
+  type RegionRead,
+  type RegionReadback,
+} from "./region-readback.ts"
+import { frameDigests, type ProbeCallbackResult, type TermProbeSource } from "./types.ts"
 
 /** The tile spans this many cells from its CUP origin. */
 const BLOCK_ROWS = 3
@@ -104,4 +111,40 @@ export function sixelReadback(geometry: PixelGeometry, background = SGR_RED): Om
     minRows: SIXEL_BOUNDS.minRows,
     minCols: SIXEL_BOUNDS.minCols,
   }
+}
+
+/** The 256-colour palette red: the reference for a terminal whose truecolor SGR paints nothing (Screen). */
+const PALETTE_RED = "\x1b[48;5;196m"
+
+/** The cell digest of one plane of `id`'s decision, or undefined when that plane was not captured. */
+export function readbackPlaneDigest(
+  decided: ProbeCallbackResult | null,
+  id: string,
+  plane: string,
+): string | undefined {
+  const frame = decided?.observation?.frames?.find((entry) => entry.label === `${id}: ${plane}`)
+  return frame === undefined ? undefined : frameDigests(frame).cells
+}
+
+/**
+ * Decide an image row against its SGR truecolor reference, and once more against the palette red
+ * when THIS run witnessed that reference collapse onto the seed: an inconclusive decision, no
+ * probe-invalid test, and an expected frame whose cells equal the seed's. Never a third attempt,
+ * and never on a failed capture. extensions.sixel and extensions.iterm2-images share this one
+ * condition (@cto 9af9ad0f, 32802); `spec` builds the readback for a given background.
+ */
+export async function decideWithPaletteRedRetry(
+  ctx: TermProbeSource,
+  id: string,
+  spec: (background?: string) => RegionReadback,
+  read: RegionRead,
+): Promise<ProbeCallbackResult | null> {
+  const decided = await captureRegionReadbackDecision(ctx, id, spec(), read)
+  const seed = readbackPlaneDigest(decided, id, "pre-edit seed")
+  const collapsed =
+    decided?.observation?.outcome === "inconclusive" &&
+    !decided.tests?.some((test) => test.status === "probe-invalid") &&
+    seed !== undefined &&
+    seed === readbackPlaneDigest(decided, id, "expected frame")
+  return collapsed ? captureRegionReadbackDecision(ctx, id, spec(PALETTE_RED), read) : decided
 }
