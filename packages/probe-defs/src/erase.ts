@@ -1,5 +1,6 @@
 import type { ObservationFrame, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { regionReadbackProbe, type RegionReadbackRow } from "./region-readback-kind.ts"
+import { beginCaptureLifecycle, endCaptureLifecycle } from "./region-readback.ts"
 import { probe, parserStateResult, notTestedResult, libvtermHistoryReview, sameFrame } from "./helpers.ts"
 
 /**
@@ -363,6 +364,9 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
   if (!control) throw new Error("XTEST delivery control failed: plain a did not reach the app")
 
   try {
+    // The visible cursor is a cell like any other: without DECTCEM off the wheel-down restore
+    // differs from the seeded bottom frame by one cell and the arm grades its own cursor.
+    beginCaptureLifecycle(ctx)
     const mark = Math.min(ctx.cols, 40)
     ctx.write("\x1b[2J\x1b[H")
     ctx.write(`${"H".repeat(mark)}\r\n`.repeat(ctx.rows + 2))
@@ -466,7 +470,7 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     }
   } finally {
     await input.injectClick(5)
-    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+    endCaptureLifecycle(ctx)
   }
 }
 
