@@ -2082,21 +2082,31 @@ it.each([
     if (imageNumber) process.stdin.emit("data", Buffer.from(`\x1b_Gi=41,I=${imageNumber};OK\x1b\\`))
     return true
   }) as typeof process.stdout.write
-  const collect = () =>
-    runProbeBatch({
-      ids: [id],
-      ownedTerminal: geometryOwner(measured(1, 1)),
-      capture: async () => {
-        throw new Error("Undersized geometry must decline before capture")
-      },
-      input: {
-        injectKey: async () => {},
-        injectClick: async () => {
-          // A genuine delivery-control report outside the measured 1x1 cell reaches the size read.
-          process.stdin.emit("data", Buffer.from("\x1b[<0;2;2M"))
-        },
-      },
-    })
+  const collect = async () => {
+    vi.useFakeTimers()
+    try {
+      const [batch] = await Promise.all([
+        runProbeBatch({
+          ids: [id],
+          ownedTerminal: geometryOwner(measured(1, 1)),
+          capture: async () => {
+            throw new Error("Undersized geometry must decline before capture")
+          },
+          input: {
+            injectKey: async () => {},
+            injectClick: async () => {
+              // A genuine delivery-control report outside the measured 1x1 cell reaches the size read.
+              process.stdin.emit("data", Buffer.from("\x1b[<0;2;2M"))
+            },
+          },
+        }),
+        vi.runAllTimersAsync(),
+      ])
+      return batch
+    } finally {
+      vi.useRealTimers()
+    }
+  }
   try {
     const batch = await collect()
     expect(batch.ungradedDiagnostics[id], id).toBeUndefined()
@@ -3133,12 +3143,23 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
   const capture = vi.fn(async () => {
     throw new Error("Missing pixel geometry must not invoke capture")
   })
-  const batch = await runProbeBatch({
-    ids: ["sgr.reset"],
-    subject: { kind: "term", id: "kitty", os: "linux" },
-    ownedTerminal: geometryOwner(measured(24, 80)),
-    capture,
-  })
+  vi.useFakeTimers()
+  const batch = await (async () => {
+    try {
+      const [collected] = await Promise.all([
+        runProbeBatch({
+          ids: ["sgr.reset"],
+          subject: { kind: "term", id: "kitty", os: "linux" },
+          ownedTerminal: geometryOwner(measured(24, 80)),
+          capture,
+        }),
+        vi.runAllTimersAsync(),
+      ])
+      return collected
+    } finally {
+      vi.useRealTimers()
+    }
+  })()
   expect(batch.results.find(({ featureId }) => featureId === "sgr.reset")).toMatchObject({
     status: "probe-invalid",
     reason: expect.stringContaining("no cell size can be mapped"),
@@ -3200,6 +3221,8 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
     const record = await runEraseReplay(context, { directory, source, expected, featureId: "sgr.reset" })
     expect(record.assertions).toHaveLength(2)
     expect(new Set(record.assertions.map(({ runId }) => runId)).size).toBe(2)
+    const executingManifest = derivedSuiteManifest()
+    const executingSourceRevision = sourceSuiteEnvironment().TERMINFO_SOURCE_REVISION
     for (const assertion of record.assertions) {
       expect(assertion.runId).not.toBe(draft.runId)
       expect(assertion.source).toEqual(source)
@@ -3215,9 +3238,8 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
       expect(replayed?.tests.map(({ rawReplyRef }) => rawReplyRef)).toEqual([undefined])
       const assertionPath = record.files.find((file) => file.endsWith(assertion.runId + ".assertion.draft.json"))
       if (!assertionPath) throw new Error("Missing persisted assertion")
-      const executingManifest = derivedSuiteManifest()
       expect(assertion.suiteId).toBe(executingManifest.probeHash)
-      expect(assertion.sourceRevision).toBe(sourceSuiteEnvironment().TERMINFO_SOURCE_REVISION)
+      expect(assertion.sourceRevision).toBe(executingSourceRevision)
       expect(assertion.sourceRevision).not.toBe(draft.sourceRevision)
       expect(
         parseRun(
