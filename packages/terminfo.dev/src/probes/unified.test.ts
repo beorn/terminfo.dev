@@ -4484,8 +4484,20 @@ it.each([
 it("records mux coverage for extensions.font-ligatures and leaves a native subject on its own path", async () => {
   const id = "extensions.font-ligatures"
   const definition = ALL_PROBES.find((probe) => probe.id === id)!
-  const original = definition.term
+  const original = {
+    term: definition.term,
+    termWrites: definition.termWrites,
+    termNeedsDisposable: definition.termNeedsDisposable,
+    termNeedsGeometry: definition.termNeedsGeometry,
+  }
+  const frame = { role: "control" as const, ref: `sha256:${"b".repeat(64)}`, capturedAt: 1, label: "ligature sample" }
+  const response = "fixture pixel arm"
   try {
+    // The grant stubs are what a real run presents. Without them runProbeBatch refuses before the
+    // callback (unified.ts:578-602), and every expectation below would hold over an empty batch.
+    definition.termWrites = "query"
+    definition.termNeedsDisposable = undefined
+    definition.termNeedsGeometry = undefined
     definition.term = async () => notTestedResult("Font ligatures need rendered pixels in this fixture", {})
     const mux = await runProbeBatch({
       ids: [id],
@@ -4497,6 +4509,42 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
       rawReplyRef: id,
     })
     expect(mux.results.find((result) => result.featureId === id)?.status).toBe("probe-todo")
+
+    // A pixel-capable mux run leaves a screenshot observation and assertion behind BEFORE coverage is
+    // decided; coverage is the only claim kept, so neither list may still name this feature and the
+    // result may not carry the arm's frames or branch.
+    definition.term = async () => ({
+      pass: true,
+      note: "fixture pixel arm matched",
+      response,
+      criterionBranch: "font-ligatures-same-cell",
+      tests: [{ id: "ligatures", status: "supported" as const, assertionRefs: [0] }],
+      observation: {
+        outcome: "supported" as const,
+        assertionType: "screenshot" as const,
+        frames: [frame],
+        screenshotRef: frame.ref,
+        note: "fixture pixel arm matched",
+      },
+      assertions: [
+        { assertionType: "screenshot" as const, kind: "positive" as const, expected: "same cell", observed: response },
+      ],
+    })
+    const pixel = await runProbeBatch({
+      ids: [id],
+      subject: { kind: "mux", id: "screen", version: "5.0.2" },
+    })
+    expect(pixel.notTested?.find((item) => item.featureId === id)?.reason).toBe("no-semantic-observable")
+    expect(pixel.observations.filter((entry) => entry.featureId === id)).toEqual([])
+    expect(pixel.assertions.filter((entry) => entry.featureId === id)).toEqual([])
+    const covered = pixel.results.find((result) => result.featureId === id)!
+    expect(covered).toMatchObject({ status: "probe-todo" })
+    expect(covered.frames).toBeUndefined()
+    expect(covered.screenshotRef).toBeUndefined()
+    expect(covered.criterionBranch).toBeUndefined()
+    expect(covered.assertionType).toBeUndefined()
+
+    definition.term = async () => notTestedResult("Font ligatures need rendered pixels in this fixture", {})
     const native = await runProbeBatch({
       ids: [id],
       subject: { kind: "term", id: "kitty", version: "0.49.2" },
@@ -4504,6 +4552,6 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     // The native subject is NOT diverted: it keeps the callback's own refusal, not the mux sentence.
     expect(native.notTested?.find((item) => item.featureId === id)?.noObservable).toMatch(/rendered pixels/i)
   } finally {
-    definition.term = original
+    Object.assign(definition, original)
   }
 })
