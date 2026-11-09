@@ -236,6 +236,28 @@ export function auditedAdapterSources(
   )
 }
 
+export function unauditedAdapterSourceDiagnostic(
+  backend: string,
+  identity: LibProbeSource["runtimeIdentity"],
+): string | undefined {
+  const sources = evidenceRuntimeIdentity(identity)?.adapterSources
+  if (!sources?.length) return undefined
+  const cohorts = Object.keys(ADAPTER_SOURCE_AUDITS) as (keyof typeof ADAPTER_SOURCE_AUDITS)[]
+  if (cohorts.some((cohort) => auditedAdapterSources(identity, cohort))) return undefined
+  const unmatched = sources.filter(
+    (source) =>
+      !cohorts.some((cohort) => {
+        const expected = ADAPTER_SOURCE_AUDITS[cohort] as Record<string, string>
+        return expected[source.path] === source.blobOid
+      }),
+  )
+  const detail =
+    unmatched.length > 0
+      ? `unmatched blob(s): ${unmatched.map((source) => `${source.path}@${source.blobOid}`).join(", ")}`
+      : `declared blob(s): ${sources.map((source) => `${source.path}@${source.blobOid}`).join(", ")}`
+  return `[unaudited-adapter-sources] ${backend}: adapterSources matches no ADAPTER_SOURCE_AUDITS cohort (${detail})`
+}
+
 /** What one push/pop stack fixture's final read shows (#31904). */
 export type StackReading = "restored" | "earlier" | "persisted" | "other"
 

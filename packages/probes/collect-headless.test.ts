@@ -19,6 +19,7 @@ import {
 } from "@terminfo/probe-defs"
 import { canonicalJson, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { collectHeadlessRuns } from "./collect-headless.ts"
+import { ADAPTER_SOURCE_AUDITS } from "../probe-defs/src/helpers.ts"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 const dirs: string[] = []
@@ -193,6 +194,7 @@ it("stores one copy of the engine's record: the capture hardlinks the canonical 
 it.runIf(OWNED_LAYOUT)(
   "executes only selected callbacks in the real headless worker",
   async () => {
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
     const collection = await collectHeadlessRuns(["xtermjs"], directory(), undefined, ["sgr.bold"])
     expect(collection.failures).toEqual([])
     expect(collection.runs).toHaveLength(1)
@@ -474,4 +476,111 @@ it.each([
       .filter((row) => !ids.includes(row.featureId))
       .every((row) => row.status === "probe-todo" && row.attempt.scope === "none"),
   ).toBe(true)
+})
+
+it("prints a loud non-blocking run-output line only when adapterSources matches no audit cohort", async () => {
+  const toSources = (cohort: Record<string, string>) =>
+    Object.entries(cohort).map(([path, blobOid]) => ({ path, blobOid }))
+  const unmatchedBlob = "b".repeat(40)
+  const cases = [
+    {
+      label: "matched cohort",
+      backend: "kitty",
+      adapterSources: toSources(ADAPTER_SOURCE_AUDITS.kittyF8c227b9),
+      expectedLine: null,
+    },
+    {
+      label: "unmatched blob",
+      backend: "kitty",
+      adapterSources: toSources(ADAPTER_SOURCE_AUDITS.kittyF8c227b9).map((entry) =>
+        entry.path === "packages/kitty/src/backend.ts" ? { ...entry, blobOid: unmatchedBlob } : entry,
+      ),
+      expectedLine: `packages/kitty/src/backend.ts@${unmatchedBlob}`,
+    },
+    {
+      label: "cross-cohort combination",
+      backend: "kitty",
+      adapterSources: toSources(ADAPTER_SOURCE_AUDITS.kittyPixel).map((entry) =>
+        entry.path === "packages/kitty/src/backend.ts"
+          ? { ...entry, blobOid: ADAPTER_SOURCE_AUDITS.kittyH4["packages/kitty/src/backend.ts"] }
+          : entry,
+      ),
+      expectedLine: "matches no ADAPTER_SOURCE_AUDITS cohort",
+    },
+  ] as const
+
+  for (const scenario of cases) {
+    const dir = directory()
+    const stderrLines: string[] = []
+    const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(((chunk: string | Uint8Array) => {
+      stderrLines.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"))
+      return true
+    }) as never)
+    const spawnSpy = vi.spyOn(Bun, "spawn").mockImplementation(((
+      _argv: unknown,
+      options: { env: Record<string, string> },
+    ) => {
+      const draft = JSON.parse(readFileSync(options.env.TERMINFO_DRAFT_PATH!, "utf8")) as RunDraft
+      const run: CapturedRunDraft = {
+        ...draft,
+        subject: {
+          kind: "lib",
+          id: scenario.backend,
+          version: "0.40.0",
+          os: "linux",
+          osVersion: null,
+          outerTerminal: null,
+          mux: null,
+          config: null,
+          permissions: null,
+        },
+        identity: "unverified",
+        runtimeIdentity: {
+          kind: "native",
+          engineVersion: "0.40.0",
+          adapterVersion: "0.11.0",
+          termlessRevision: "a".repeat(40),
+          loadedBinary: { path: "/nix/store/fixture-kitty/bin/kitty", sha256: "c".repeat(64) },
+          provenance: {
+            sha256: "c".repeat(64),
+            sourceCommit: "d".repeat(40),
+            buildHash: "e".repeat(64),
+            toolchain: "Nix fixture",
+            lockSha256: "f".repeat(64),
+          },
+          adapterSources: scenario.adapterSources,
+        },
+        measuredAt: "2026-11-09T20:00:00.000Z",
+        origin: { kind: "collector" },
+        screenshotRefs: [],
+      }
+      writeFileSync(join(dir, `${scenario.backend}-${run.runId}.capture.json`), `${JSON.stringify(run, null, 2)}\n`)
+      return {
+        stdout: new Blob([]).stream(),
+        stderr: new Blob([]).stream(),
+        exited: Promise.resolve(0),
+        kill: vi.fn(),
+      }
+    }) as never)
+
+    try {
+      const collection = await collectHeadlessRuns([scenario.backend], dir, undefined, ["device.primary-da"])
+      expect(collection.failures, scenario.label).toEqual([])
+      expect(collection.runs, scenario.label).toHaveLength(1)
+      const diagnostic = stderrLines.join("")
+      if (scenario.expectedLine === null) {
+        expect(diagnostic, scenario.label).not.toContain("[unaudited-adapter-sources]")
+      } else {
+        expect(diagnostic, scenario.label).toContain("[unaudited-adapter-sources]")
+        expect(diagnostic, scenario.label).toContain(scenario.backend)
+        expect(diagnostic, scenario.label).toContain(scenario.expectedLine)
+        if (scenario.label === "unmatched blob") {
+          expect(diagnostic).not.toContain("packages/kitty/src/index.ts@")
+        }
+      }
+    } finally {
+      writeSpy.mockRestore()
+      spawnSpy.mockRestore()
+    }
+  }
 })
