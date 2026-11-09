@@ -544,7 +544,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       target_xtversion_mode=record
       ;;
     alacritty)
-      target_launch_args=(--option 'font.normal.family="JetBrains Mono"')
+      target_launch_args=(--option 'font.normal.family="JetBrains Mono"' --option 'debug.log_level="Debug"')
       target_command_lead=(-e)
       # Measured 2026-10-07: alacritty resolves the run user from USER/HOME/SHELL before its passwd
       # fallback, and refuses with `pw not found` only when that lookup fails. No passwd entry for
@@ -1268,6 +1268,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_CAPTURE_RUN_ID=${TERMINFO_CAPTURE_RUN_ID:-}" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
   --env "TERMINFO_MUX_KIND=$mux_kind" \
+  --env "ALACRITTY_EXTRA_LOG_TARGETS=vte" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
   --env "TERMINFO_TARGET_BINARY=$target_binary" --env "TERMINFO_TARGET_VERSION=$target_version" \
   --env "TERMINFO_TARGET_SOURCE_URL=$source_url" --env "TERMINFO_TARGET_SOURCE_SRI=$source_sri" \

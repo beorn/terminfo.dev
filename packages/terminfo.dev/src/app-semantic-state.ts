@@ -383,7 +383,7 @@ const declarations: readonly AppSemanticCapability[] = [
     os: "linux",
     featureId: "extensions.osc710-font-normal",
     reason:
-      "Untestable (no way): Alacritty 0.17.0's locked VTE 0.15.0 OSC parser has no OSC 710 font-selection handler. Read the complete OSC dispatch in vte-0.15.0/src/ansi.rs:1329-1525 (crate SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd, pinned by Alacritty's Cargo.lock:2119-2125): 710 reaches only the unhandled Debug path at 1341/1523, not Alacritty's Term handler. The existing Warn launch has no qualified same-run report reader; silence is not Unsupported.",
+      "Untestable (no way): Alacritty 0.17.0's locked VTE 0.15.0 OSC parser has no OSC 710 font-selection handler. Read the complete OSC dispatch in vte-0.15.0/src/ansi.rs:1329-1525 (crate SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd, pinned by Alacritty's Cargo.lock:2119-2125): 710 is dropped by vte's own `impl Perform for Performer`, which forwards a fixed OSC list (0, 2, 4, 8, 10, 11, 12, 22, 50, 52, 104, 110-112) and sends everything else to its unhandled-OSC `debug!` at 1341, which prints the parameters. Alacritty's terminal never sees it: `vte::ansi::Handler for Term` (alacritty_terminal/src/term/mod.rs:1059) has no OSC 710 branch. The existing Warn launch has no qualified same-run report reader; silence is not Unsupported.",
   },
   {
     kind: "mux",
