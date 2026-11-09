@@ -1620,9 +1620,12 @@ function viewportApplication(
     parseReply?: boolean
     snapOnDa1?: "ordinary" | "synchronized"
     changingChrome?: boolean
+    changingCells?: boolean
+    scrolledRenderShift?: boolean
+    historyScrollbarOverlay?: boolean
     opaqueHistory?: boolean
     calAmbiguous?: boolean
-    digest?: "missing" | "empty"
+    digest?: "missing" | "empty" | "missing-region"
     captureError?: boolean | "after-up"
     inputError?: boolean
     upError?: boolean
@@ -1648,6 +1651,7 @@ function viewportApplication(
   let delivered = ""
   let downs = 0
   let ups = 0
+  let holdUps = 0
   let downsSinceUp = 0
   let targetWrites = 0
   let synchronizedWrites = 0
@@ -1655,6 +1659,7 @@ function viewportApplication(
   let pendingOutput: string | undefined
   let flushing = false
   const bottom = () => Math.max(0, lines.length - rows)
+  const hasTailSeed = () => lines.some((line) => line.startsWith("vh-tail-"))
   const input = {
     injectKey: async (key: string) => {
       if (options.inputError) throw new Error("viewport input failed")
@@ -1664,6 +1669,7 @@ function viewportApplication(
       if (button === 4) {
         top = Math.max(0, top - (options.upRows ?? 1))
         ups++
+        if (hasTailSeed()) holdUps++
         downsSinceUp = 0
         if (options.upError) throw new Error("viewport up click failed")
       }
@@ -1673,7 +1679,7 @@ function viewportApplication(
         const blocked =
           options.down === "ignored" ||
           (options.down === "early" && downsSinceUp >= 1) ||
-          (options.down === "second-restore" && ups === 3)
+          (options.down === "second-restore" && holdUps === 2)
         if (!blocked) top = Math.min(bottom(), top + 1)
         downs++
         downsSinceUp++
@@ -1721,7 +1727,7 @@ function viewportApplication(
     const outputSynchronized = synchronized || bytes.includes("\x1b[?2026h")
     const text = bytes.replace(/\x1b\[([?\d;:]*)([A-Za-z])/g, (_sequence, parameters: string, command: string) => {
       if (parameters === "?2026") synchronized = command === "h"
-      if (command === "c" && parameters === "" && options.snapOnDa1 === (ups < 4 ? "ordinary" : "synchronized")) {
+      if (command === "c" && parameters === "" && options.snapOnDa1 === (holdUps < 3 ? "ordinary" : "synchronized")) {
         top = bottom()
       }
       if (command === "J" && parameters === "2") {
@@ -1769,16 +1775,28 @@ function viewportApplication(
       throw new Error("viewport capture failed")
     }
     assertCalibratedCaptureGeometry(context.captureGeometry, request)
-    const inHoldPhase = lines.some((line) => line.startsWith("vh-tail-"))
-    const grid = Array.from({ length: rows }, (_, index) =>
-      (options.opaqueHistory && inHoldPhase && top < bottom()) ||
-      (options.calAmbiguous && !inHoldPhase && ups === 1 && frames.length !== 2)
-        ? "Opaque history overlay".padEnd(cols, " ")
-        : (lines[top + index] ?? "").padEnd(cols, " ").slice(0, cols),
-    )
+    const inHoldPhase = hasTailSeed()
+    const scrolledNow = top < bottom()
+    const hasHistory = bottom() > 0
+    const grid = Array.from({ length: rows }, (_, index) => {
+      const base =
+        (options.opaqueHistory && inHoldPhase && scrolledNow) || (options.calAmbiguous && !inHoldPhase && scrolledNow)
+          ? "Opaque history overlay".padEnd(cols, " ")
+          : (lines[top + index] ?? "").padEnd(cols, " ").slice(0, cols)
+      return options.historyScrollbarOverlay && hasHistory ? `${base.slice(0, cols - 1)}|` : base
+    })
+    const scrolledShift = options.scrolledRenderShift && scrolledNow ? 1 : 0
+    const cellJitter = options.changingCells && targetWrites > 0 && request.role === "target" ? frames.length : 0
     // Only rendered pixels decide equality: offsets and capture labels do not enter the digest.
     const pixelsDigest = `sha256:${createHash("sha256")
-      .update(JSON.stringify({ grid, chrome: options.changingChrome && targetWrites > 0 ? frames.length : 0 }))
+      .update(
+        JSON.stringify({
+          grid,
+          scrolledShift,
+          cellJitter,
+          chrome: options.changingChrome && targetWrites > 0 ? frames.length : 0,
+        }),
+      )
       .digest("hex")}`
     const regionCells = request.cells
       ? grid
@@ -1786,7 +1804,9 @@ function viewportApplication(
           .map((line) => line.slice(request.cells!.left - 1, request.cells!.right))
       : undefined
     const regionDigest = regionCells
-      ? `sha256:${createHash("sha256").update(JSON.stringify(regionCells)).digest("hex")}`
+      ? `sha256:${createHash("sha256")
+          .update(JSON.stringify({ regionCells, scrolledShift, cellJitter }))
+          .digest("hex")}`
       : undefined
     const frame: ObservationFrame = {
       kind: "pixels",
@@ -1797,7 +1817,7 @@ function viewportApplication(
         .update(`viewport-frame:${frames.length + 1}`)
         .digest("hex")}`,
       pixelsDigest,
-      ...(regionDigest ? { regionDigest } : {}),
+      ...(regionDigest && options.digest !== "missing-region" ? { regionDigest } : {}),
     }
     if (options.digest === "missing") Reflect.deleteProperty(frame, "pixelsDigest")
     if (options.digest === "empty") frame.pixelsDigest = ""
@@ -1814,17 +1834,53 @@ function viewportApplication(
 }
 
 // Accepted requirement: only two qualified holds pass; either qualified motion is a negative.
-// Prior app coverage never exercises wheel/UI state, so its unconditional TODO misses all three.
+// Includes Kitty's scrolled-only pixel shift, Ghostty's history-only right-edge scrollbar overlay,
+// and changing chrome outside the label-column crop.
 test.each([
-  ["both phases hold (1 row/notch)", ["hold", "hold"], "supported", 1],
-  ["both phases hold (calibrated 3 rows/notch)", ["hold", "hold"], "supported", 3],
-  ["ordinary snap and synchronized hold", ["snap", "hold"], "unsupported", 1],
-  ["ordinary hold and synchronized bottom-relative motion", ["hold", "relative"], "unsupported", 1],
+  ["both phases hold (1 row/notch)", ["hold", "hold"], "supported", 1, {}],
+  ["both phases hold (calibrated 3 rows/notch)", ["hold", "hold"], "supported", 3, {}],
+  ["ordinary snap and synchronized hold", ["snap", "hold"], "unsupported", 1, {}],
+  ["ordinary hold and synchronized bottom-relative motion", ["hold", "relative"], "unsupported", 1, {}],
+  [
+    "scrolled-only pixel shift (Kitty 5 rows/notch, hold)",
+    ["hold", "hold"],
+    "supported",
+    5,
+    { scrolledRenderShift: true },
+  ],
+  [
+    "scrolled-only pixel shift (Kitty 5 rows/notch, snap)",
+    ["snap", "hold"],
+    "unsupported",
+    5,
+    { scrolledRenderShift: true },
+  ],
+  [
+    "right-edge history scrollbar overlay (Ghostty, hold)",
+    ["hold", "hold"],
+    "supported",
+    3,
+    { historyScrollbarOverlay: true },
+  ],
+  [
+    "right-edge history scrollbar overlay (Ghostty, snap)",
+    ["snap", "hold"],
+    "unsupported",
+    3,
+    { historyScrollbarOverlay: true },
+  ],
+  [
+    "changing chrome outside label-column crop still decides",
+    ["hold", "hold"],
+    "supported",
+    1,
+    { changingChrome: true },
+  ],
 ] as const)(
   "app viewport decides %s from actual rendered frames and round-trips through parseRun",
-  async (_name, policies, outcome, upRows) => {
+  async (_name, policies, outcome, upRows, extraOptions) => {
     const featureId = "scrollback.viewport-hold-output"
-    const app = viewportApplication(policies, { upRows })
+    const app = viewportApplication(policies, { upRows, ...extraOptions })
     app.context.captureGeometry = {
       geometry: { cellWidth: 8, cellHeight: 16, textWidth: 20 * 8, textHeight: 5 * 16 },
       source: "measured by complete raster calibration",
@@ -1837,22 +1893,28 @@ test.each([
     expect(result.assertions).toContainEqual(
       expect.objectContaining({ assertionType: "screenshot", kind: outcome === "supported" ? "positive" : "negative" }),
     )
-    // Calibration captures 3 + 5 = 8 cell-cropped control frames, then Bref + 8 ordinary + 8 synchronized = 25 frames.
-    expect(app.frames).toHaveLength(25)
-    for (let i = 0; i < 8; i++) {
+    // Calibration captures 4 cell-cropped control frames (bottom, scrolled, top, restored),
+    // then Bref + 8 ordinary + 8 synchronized = 21 cell-cropped frames.
+    expect(app.frames).toHaveLength(21)
+    for (let i = 0; i < 21; i++) {
       expect(app.frames[i]?.cells).toEqual({ top: 1, left: 1, bottom: 5, right: 9 })
       expect(app.frames[i]?.frame.regionDigest).toMatch(/^sha256:/)
     }
     expect(app.frames.map(({ down }) => down)).toEqual([
-      0, 0, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 44, 44, 66, 66, 66, 66, 66, 66, 88, 88, 110,
+      0, 0, 0, 22, 22, 22, 22, 22, 22, 22, 44, 44, 66, 66, 66, 66, 66, 66, 88, 88, 110,
     ])
-    const reference = app.frames[8]!.frame.pixelsDigest
-    for (const index of [14, 16, 22, 24]) expect(app.frames[index]!.frame.pixelsDigest).toBe(reference)
-    const evidence = JSON.parse(result.response!) as {
-      calibration: { rowsPerNotch: number; matchedDisplacements: number[] }
+    const reference = app.frames[4]!.frame.regionDigest
+    for (const index of [10, 12, 18, 20]) expect(app.frames[index]!.frame.regionDigest).toBe(reference)
+    if ("historyScrollbarOverlay" in extraOptions) {
+      // Control: without the label-column crop, whole-frame B1 vs Bref differs due to the history scrollbar.
+      expect(app.frames[10]!.frame.pixelsDigest).not.toBe(app.frames[4]!.frame.pixelsDigest)
     }
-    expect(evidence.calibration.rowsPerNotch).toBe(upRows)
-    expect(evidence.calibration.matchedDisplacements).toEqual([upRows])
+    const evidence = JSON.parse(result.response!) as {
+      calibration: { maxCandidate: number; boundEstablished: boolean; scrolledDigest: string; topDigest: string }
+    }
+    expect(evidence.calibration.maxCandidate).toBe(5)
+    expect(evidence.calibration.boundEstablished).toBe(true)
+    expect(evidence.calibration.scrolledDigest).not.toBe(evidence.calibration.topDigest)
 
     const assertions = (result.assertions ?? []).map((entry) => ({
       ...entry,
@@ -1928,7 +1990,7 @@ test.each([
         parsed.results?.[0]?.screenshotRef,
         parsed.results?.[0]?.assertionType,
       ),
-    ).toHaveLength(25)
+    ).toHaveLength(21)
   },
 )
 
@@ -2022,8 +2084,8 @@ test.each([
   expect(result.notTested?.noObservable).toContain("restoration to bottom not proven")
 })
 
-// Accepted calibration bound limitation: a wheel jump beyond maxCandidate matches none of 1..maxCandidate.
-test.each([15, 1000])(
+// Accepted calibration bound limitation: a wheel jump beyond maxCandidate clamps on the first notch, matching calTop.
+test.each([6, 15, 1000])(
   "app viewport refuses an uncalibrated wheel jump (%i rows) that exceeds the candidate window",
   async (upRows) => {
     const app = viewportApplication(undefined, { upRows })
@@ -2031,7 +2093,7 @@ test.each([15, 1000])(
     expectViewportTodo(result)
     expect(result.notTested?.noObservable).toBe("wheel placement bound not established")
     expect(app.activity().top).toBe(app.activity().bottom)
-    expect(app.frames).toHaveLength(8)
+    expect(app.frames).toHaveLength(4)
     expect(app.activity().targetWrites).toBe(0)
   },
 )
@@ -2043,7 +2105,7 @@ test("app viewport restores again after R before any synchronized setup", async 
   const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
   expectViewportTodo(result)
   expect(result.notTested?.noObservable).toContain("restoration to bottom not proven")
-  expect(app.frames).toHaveLength(17)
+  expect(app.frames).toHaveLength(13)
   expect(app.activity().synchronizedWrites).toBe(0)
   expect(app.writes.join("")).not.toContain("\x1b[?2026h")
 })
@@ -2053,6 +2115,7 @@ test("app viewport restores again after R before any synchronized setup", async 
 test.each([
   ["missing pixels", { digest: "missing" }],
   ["empty pixels", { digest: "empty" }],
+  ["missing region digest when cropped", { digest: "missing-region" }],
   ["capture failure", { captureError: true }],
   ["input failure", { inputError: true }],
   ["cleanup failure", { cleanupError: true }],
@@ -2075,10 +2138,9 @@ test("app viewport restores history and preserves capture and cleanup failures t
   expect(app.activity().top).toBe(app.activity().bottom)
 })
 
-// Accepted full-pixel comparison: changing window decorations withholds a verdict, without a pixel mask.
-// This risk is absent from existing cell-cropped region and headless fixtures.
-test("app viewport keeps changing whole-window chrome as TODO", async () => {
-  const app = viewportApplication(undefined, { changingChrome: true })
+// Accepted label-column stability: unsettled pixels inside the compared label columns withhold a verdict.
+test("app viewport keeps changing label-column pixels as TODO", async () => {
+  const app = viewportApplication(undefined, { changingCells: true })
   const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
   expectViewportTodo(result)
   expect(result.notTested?.noObservable).toBe("output frame still changing")
