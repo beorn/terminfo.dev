@@ -697,12 +697,14 @@ export async function runProbeBatch(
       clipboard &&
       verify &&
       (clipboard.profile !== "default" ||
-        (probe.id === "extensions.clipboard-paste" &&
+        ((probe.id === "extensions.osc52-write" ||
+          (probe.id === "extensions.clipboard-paste" &&
+            options.subject?.id === "kitty" &&
+            disposable?.declaredTarget?.id === "kitty")) &&
           options.subject?.kind === "term" &&
-          options.subject.id === "kitty" &&
           options.subject.os === "linux" &&
           disposable?.declaredTarget?.kind === "app" &&
-          disposable.declaredTarget.id === "kitty" &&
+          disposable.declaredTarget.id === options.subject.id &&
           disposable.declaredTarget.os === "linux" &&
           !clipboard.muxAttachmentProof))
     ) {

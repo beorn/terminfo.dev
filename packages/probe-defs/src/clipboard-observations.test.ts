@@ -156,7 +156,7 @@ describe("live OSC 52 write ordering", () => {
     expect(clipboard).toBe("baseline")
   })
 
-  test("a terminal that answers CPR but ignores OSC 52 remains inconclusive", async () => {
+  test("a terminal that answers CPR but ignores OSC 52 decides write unsupported while roundtrip remains inconclusive", async () => {
     const events: string[] = []
     const result = await writeProbe()(
       termSource({
@@ -179,8 +179,46 @@ describe("live OSC 52 write ordering", () => {
       }),
     )
     expect(events).toEqual(["osc-write", "cpr", "independent-read"])
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-    expect(result.assertions).toBeUndefined()
+    expect(result.observation).toMatchObject({
+      outcome: "unsupported",
+      assertionType: "clipboard",
+      note: "Independent clipboard read did not equal the OSC 52 write nonce",
+    })
+    expect(result.assertions).toEqual([
+      {
+        assertionType: "clipboard",
+        kind: "negative",
+        expected: "Independent clipboard text equals OSC 52 write nonce",
+        observed: "baseline",
+      },
+    ])
+
+    const roundtripEvents: string[] = []
+    const roundtripCallback = ALL_PROBES.find((item) => item.id === "extensions.osc52-clipboard")?.term
+    if (!roundtripCallback) throw new Error("OSC 52 roundtrip callback is missing")
+    const roundtripResult = await roundtripCallback(
+      termSource({
+        write(sequence) {
+          writtenNonce(sequence)
+          roundtripEvents.push("osc-write")
+        },
+        queryCursorPosition: async () => {
+          roundtripEvents.push("cpr")
+          return { row: 1, col: 1 }
+        },
+        withClipboardFixture: async (work) =>
+          work({
+            readText: async () => {
+              roundtripEvents.push("independent-read")
+              return "baseline"
+            },
+            writeText: async () => {},
+          }),
+      }),
+    )
+    expect(roundtripEvents).toEqual(["osc-write", "cpr", "independent-read"])
+    expect(roundtripResult.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(roundtripResult.assertions).toBeUndefined()
   })
 
   test.each(["extensions.osc52-write", "extensions.osc52-clipboard"])(

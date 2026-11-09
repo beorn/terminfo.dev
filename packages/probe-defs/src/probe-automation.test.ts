@@ -2848,7 +2848,8 @@ describe("Kitty protocol detection", () => {
       expect(live.tests).toMatchObject([
         expect.objectContaining({
           status: "probe-todo",
-          reason: "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent",
+          reason:
+            "No owned clipboard fixture for this probe (under the default clipboard profile, Linux app runs attach one only to OSC 52 write because clipboard read blocks on ask-first confirmation prompts); OSC 52 was not sent",
         }),
       ])
       expect(live.note).toMatch(/collector|owned clipboard/i)

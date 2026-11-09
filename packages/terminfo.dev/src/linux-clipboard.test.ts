@@ -168,7 +168,7 @@ try {
       display:{name:":22",number:22,displayFdPath:exe("display"),xvfbPid:419422},
       terminal:{pid:76,collectorPid:process.pid,windowId:"42",windowPid:76},
       selection:{helperPid:419423,helperExecutable:{path:exe("xclip"),sha256:hash("xclip-bytes")},baselinePath:exe("baseline"),baselineSha256:hash(baseline),initialReadSha256:hash(baseline)},
-      config:"--config NONE",permissions:"clipboard: read=ask,write=allow; OSC52=not-run"}),{mode:0o600})
+      config:"--config NONE",permissions:"clipboard: read=ask,write=allow; OSC52: write=run,read=not-run"}),{mode:0o600})
   }
   const factory=()=>createLinuxClipboardAdapter(receiptPath,launch,{path:exe("kitty"),sha256:hash("kitty-bytes")},capture,24)
   for(const kind of ["tmux","screen"]) {
@@ -418,7 +418,7 @@ try {
     terminal: { pid: process.pid, collectorPid: process.pid, windowId: "42", windowPid: process.pid },
     selection: { helperPid: 419423, helperExecutable: { path: helperExecutable, sha256: digest("owned-xclip-binary") },
       baselinePath, baselineSha256: digest(baseline), initialReadSha256: digest(baseline) },
-    config: "--config NONE", permissions: "clipboard: read=ask,write=allow; OSC52=not-run",
+    config: "--config NONE", permissions: "clipboard: read=ask,write=allow; OSC52: write=run,read=not-run",
   }), { mode: 0o600 })
   process.env.TERMINFO_CAPTURE_DIRECTORY = join(dir, "artifacts")
   process.env.DISPLAY = ":22"
@@ -749,7 +749,7 @@ try {
       ["\x1b[5;5R", "\x1b[1;1R"])
     assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write"), undefined)
     assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").status, "probe-todo")
-    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent")
+    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "No owned clipboard fixture for this probe (under the default clipboard profile, Linux app runs attach one only to OSC 52 write because clipboard read blocks on ask-first confirmation prompts); OSC 52 was not sent")
     assert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
     for (const [run, out] of [["c".repeat(32), process.stdout], [capture, foreign], [capture, fake]]) {
       const refused = await runProbeBatch({ ids: ["reset.ris"], captureRunId: run, ownedTerminal: adapter, out })
