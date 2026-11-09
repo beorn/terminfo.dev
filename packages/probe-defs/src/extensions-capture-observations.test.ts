@@ -848,6 +848,18 @@ test.each([
     expectedReason: /No cursor-position reply after painting main-grow ref reflowed; retained history unmeasured/,
   },
   {
+    name: "probe-invalid-unanswered-ref-fence-and-restore-failed",
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "reflowed" as const,
+    dropRefFence: true,
+    failRestore: true,
+    expectedStatus: "probe-invalid" as const,
+    expectedOutcome: undefined,
+    expectedAssertions: 0,
+    expectedFrames: 0,
+    expectedReason: /Reflow probe could not restore original terminal size/,
+  },
+  {
     name: "probe-invalid-restore-failed",
     growBehavior: "reflowed" as const,
     shrinkBehavior: "reflowed" as const,
@@ -998,7 +1010,7 @@ test.each([
                 }
               }
             } else {
-              if (failRestore && phaseState === "shrunk") {
+              if (failRestore && (phaseState === "shrunk" || (dropRefFence && phaseState === "grown"))) {
                 currentCols = narrowCols
               } else {
                 currentCols = wideCols

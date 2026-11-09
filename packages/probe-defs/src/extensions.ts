@@ -6541,8 +6541,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         restored = afterRestore.matched
         return afterRestore.matched
       }
-      let result: ProbeCallbackResult
-      try {
+      const measure = async (): Promise<ProbeCallbackResult> => {
         ctx.write("\x1b[?7h\x1b[?25l\x1b[0m\x1b[2J\x1b[H")
         original = await resizeWindow(narrowWidthPx, baseGeometry.textHeight)
         observed.originalWindow = original
@@ -6554,239 +6553,206 @@ const extensionDefinitions: ProbeDefinition[] = [
         )
         observed.preShrunk = preShrunk
         if (!preShrunk.matched || !preShrunk.reading) {
-          result = todoResult("Pre-shrink resize did not settle to a verified narrower width with unchanged rows")
-        } else {
-          const narrowCols = preShrunk.reading.cols
-          const wideCols = initial.cols
-          const growCols = narrowCols + 4
-          const regionRows = 5
-          const growCells = { top: 1, left: 1, bottom: regionRows, right: growCols }
-          const growPixelGeometry = {
-            cellWidth: baseGeometry.cellWidth,
-            cellHeight: baseGeometry.cellHeight,
-            textWidth: growCols * baseGeometry.cellWidth,
-            textHeight: regionRows * baseGeometry.cellHeight,
-          }
-          const shrinkCells = { top: 1, left: 1, bottom: regionRows, right: narrowCols }
-          const shrinkPixelGeometry = {
-            cellWidth: baseGeometry.cellWidth,
-            cellHeight: baseGeometry.cellHeight,
-            textWidth: narrowCols * baseGeometry.cellWidth,
-            textHeight: regionRows * baseGeometry.cellHeight,
-          }
-          const grab = async (
-            role: "control" | "target",
-            label: string,
-            cells: typeof growCells,
-            pixelGeometry: typeof growPixelGeometry,
-          ): Promise<ObservationFrame> => {
-            const captured = await capture({ role, label, cells, pixelGeometry })
-            const digest = frameDigests(captured).cells
-            if (!digest?.trim()) {
-              throw new Error(`Reflow capture ${label} is missing cell-region digest`)
-            }
-            frames.push(captured)
-            return captured
-          }
-          const growRow1 = "G1-alpha".padEnd(narrowCols, "x")
-          const growRow2 = "G2-Z"
-          const growSoft = growRow1 + growRow2
-          ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
-          const growSeedCpr = await ctx.queryCursorPosition()
-          observed.growSeedCpr = growSeedCpr
-          if (growSeedCpr?.row !== 5 || growSeedCpr?.col !== 1) {
-            result = todoResult("Main-grow seed did not wrap onto the expected rows before resize")
-          } else {
-            await resizeWindow(original.width, original.height)
-            const grown = await pollSize((reading) => reading.rows === initial.rows && reading.cols === wideCols)
-            observed.grown = grown
-            if (!grown.matched) {
-              result = todoResult("Main-grow resize did not settle to the verified original width with unchanged rows")
-            } else {
-              await new Promise<void>((resolve) => {
-                setTimeout(resolve, 1000)
-              })
-              const growSettle1 = await grab("control", "main-grow settle 1", growCells, growPixelGeometry)
-              await new Promise<void>((resolve) => {
-                setTimeout(resolve, 100)
-              })
-              const growSettle2 = await grab("control", "main-grow settle 2", growCells, growPixelGeometry)
-              if (frameDigests(growSettle1).cells !== frameDigests(growSettle2).cells) {
-                result = todoResult("Main-grow post-resize captures did not stabilize")
-              } else {
-                const growAfter = await grab("target", "main-grow after", growCells, growPixelGeometry)
-                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
-                if (!(await ctx.queryCursorPosition())) {
-                  return todoResult("No cursor-position reply after painting main-grow ref reflowed")
-                }
-                const growReflowed = await grab("control", "main-grow ref reflowed", growCells, growPixelGeometry)
-                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`)
-                if (!(await ctx.queryCursorPosition())) {
-                  return todoResult("No cursor-position reply after painting main-grow ref preserved")
-                }
-                const growPreserved = await grab("control", "main-grow ref preserved", growCells, growPixelGeometry)
-                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\nHARD-a\r\nHARD-b\r\n`)
-                if (!(await ctx.queryCursorPosition())) {
-                  return todoResult("No cursor-position reply after painting main-grow ref clipped")
-                }
-                const growClipped = await grab("control", "main-grow ref clipped", growCells, growPixelGeometry)
-                const growRefs = {
-                  reflowed: growReflowed,
-                  preserved: growPreserved,
-                  clipped: growClipped,
-                }
-
-                const shrinkRow1 = "S1-alpha".padEnd(narrowCols, "y")
-                const shrinkRow2 = "S2-Z"
-                const shrinkSoft = shrinkRow1 + shrinkRow2
-                ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkSoft}\r\nHARD-a\r\nHARD-b\r\n`)
-                const shrinkSeedCpr = await ctx.queryCursorPosition()
-                observed.shrinkSeedCpr = shrinkSeedCpr
-                if (shrinkSeedCpr?.row !== 4 || shrinkSeedCpr?.col !== 1) {
-                  result = todoResult("Main-shrink seed did not stay on a single row before resize")
-                } else {
-                  await resizeWindow(narrowWidthPx, original.height)
-                  const shrunk = await pollSize(
-                    (reading) => reading.rows === initial.rows && reading.cols === narrowCols,
-                  )
-                  observed.shrunk = shrunk
-                  if (!shrunk.matched) {
-                    result = todoResult(
-                      "Main-shrink resize did not settle to the verified narrow width with unchanged rows",
-                    )
-                  } else {
-                    await new Promise<void>((resolve) => {
-                      setTimeout(resolve, 1000)
-                    })
-                    const shrinkSettle1 = await grab(
-                      "control",
-                      "main-shrink settle 1",
-                      shrinkCells,
-                      shrinkPixelGeometry,
-                    )
-                    await new Promise<void>((resolve) => {
-                      setTimeout(resolve, 100)
-                    })
-                    const shrinkSettle2 = await grab(
-                      "control",
-                      "main-shrink settle 2",
-                      shrinkCells,
-                      shrinkPixelGeometry,
-                    )
-                    if (frameDigests(shrinkSettle1).cells !== frameDigests(shrinkSettle2).cells) {
-                      result = todoResult("Main-shrink post-resize captures did not stabilize")
-                    } else {
-                      const shrinkAfter = await grab("target", "main-shrink after", shrinkCells, shrinkPixelGeometry)
-                      ctx.write(
-                        `\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`,
-                      )
-                      if (!(await ctx.queryCursorPosition())) {
-                        return todoResult("No cursor-position reply after painting main-shrink ref reflowed")
-                      }
-                      const shrinkReflowed = await grab(
-                        "control",
-                        "main-shrink ref reflowed",
-                        shrinkCells,
-                        shrinkPixelGeometry,
-                      )
-                      ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
-                      if (!(await ctx.queryCursorPosition())) {
-                        return todoResult("No cursor-position reply after painting main-shrink ref reflowed-history")
-                      }
-                      const shrinkReflowedHistory = await grab(
-                        "control",
-                        "main-shrink ref reflowed-history",
-                        shrinkCells,
-                        shrinkPixelGeometry,
-                      )
-                      ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
-                      if (!(await ctx.queryCursorPosition())) {
-                        return todoResult("No cursor-position reply after painting main-shrink ref clipped")
-                      }
-                      const shrinkClipped = await grab(
-                        "control",
-                        "main-shrink ref clipped",
-                        shrinkCells,
-                        shrinkPixelGeometry,
-                      )
-                      const shrinkRefs = {
-                        reflowed: shrinkReflowed,
-                        "reflowed-history": shrinkReflowedHistory,
-                        clipped: shrinkClipped,
-                      }
-
-                      const growTargetDigest = frameDigests(growAfter).cells ?? ""
-                      const shrinkTargetDigest = frameDigests(shrinkAfter).cells ?? ""
-                      const growMatches = (Object.keys(growRefs) as (keyof typeof growRefs)[]).filter(
-                        (key) => frameDigests(growRefs[key]).cells === growTargetDigest,
-                      )
-                      const shrinkMatches = (Object.keys(shrinkRefs) as (keyof typeof shrinkRefs)[]).filter(
-                        (key) => frameDigests(shrinkRefs[key]).cells === shrinkTargetDigest,
-                      )
-                      const growOutcome = growMatches[0]
-                      const shrinkOutcome = shrinkMatches[0]
-                      if (growMatches.length !== 1 || shrinkMatches.length !== 1 || !growOutcome || !shrinkOutcome) {
-                        observed.mainGrow = { matches: growMatches, targetCellsDigest: growTargetDigest }
-                        observed.mainShrink = { matches: shrinkMatches, targetCellsDigest: shrinkTargetDigest }
-                        result = todoResult(
-                          "Main-screen reflow captures did not uniquely match a candidate reference layout",
-                        )
-                      } else {
-                        const matchedGrowRef = growRefs[growOutcome]
-                        const matchedShrinkRef = shrinkRefs[shrinkOutcome]
-                        observed.mainGrow = {
-                          outcome: growOutcome,
-                          matches: growMatches,
-                          targetFrameRef: growAfter.ref,
-                          targetCellsDigest: growTargetDigest,
-                          matchedReferenceFrameRef: matchedGrowRef.ref,
-                          matchedReferenceDigest: frameDigests(matchedGrowRef).cells,
-                        }
-                        observed.mainShrink = {
-                          outcome: shrinkOutcome,
-                          matches: shrinkMatches,
-                          targetFrameRef: shrinkAfter.ref,
-                          targetCellsDigest: shrinkTargetDigest,
-                          matchedReferenceFrameRef: matchedShrinkRef.ref,
-                          matchedReferenceDigest: frameDigests(matchedShrinkRef).cells,
-                        }
-                        const supported =
-                          growOutcome === "reflowed" &&
-                          (shrinkOutcome === "reflowed" || shrinkOutcome === "reflowed-history")
-                        const reason = supported
-                          ? `main-screen reflow measured across shrink (${shrinkOutcome}) and grow (${growOutcome}); retained history unmeasured; wide characters, alternate screen and cursor on a wrapped line unmeasured`
-                          : `main-screen did not reflow across shrink (${shrinkOutcome}) and grow (${growOutcome}); retained history unmeasured; wide characters, alternate screen and cursor on a wrapped line unmeasured`
-                        const response = JSON.stringify(observed)
-                        result = {
-                          pass: supported,
-                          note: reason,
-                          response,
-                          tests: [{ id: "criterion", status: supported ? "supported" : "unsupported", reason }],
-                          observation: {
-                            outcome: supported ? "supported" : "unsupported",
-                            assertionType: "screenshot",
-                            frames,
-                            screenshotRef: shrinkAfter.ref,
-                            note: reason,
-                          },
-                          assertions: [
-                            {
-                              assertionType: "screenshot",
-                              kind: supported ? "positive" : "negative",
-                              expected: "Main screen rewraps soft-wrapped lines across verified window shrink and grow",
-                              observed: response,
-                              action: "extensions.reflow",
-                            },
-                          ],
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
+          return todoResult("Pre-shrink resize did not settle to a verified narrower width with unchanged rows")
         }
+        const narrowCols = preShrunk.reading.cols
+        const wideCols = initial.cols
+        const growCols = narrowCols + 4
+        const regionRows = 5
+        const growCells = { top: 1, left: 1, bottom: regionRows, right: growCols }
+        const growPixelGeometry = {
+          cellWidth: baseGeometry.cellWidth,
+          cellHeight: baseGeometry.cellHeight,
+          textWidth: growCols * baseGeometry.cellWidth,
+          textHeight: regionRows * baseGeometry.cellHeight,
+        }
+        const shrinkCells = { top: 1, left: 1, bottom: regionRows, right: narrowCols }
+        const shrinkPixelGeometry = {
+          cellWidth: baseGeometry.cellWidth,
+          cellHeight: baseGeometry.cellHeight,
+          textWidth: narrowCols * baseGeometry.cellWidth,
+          textHeight: regionRows * baseGeometry.cellHeight,
+        }
+        const grab = async (
+          role: "control" | "target",
+          label: string,
+          cells: typeof growCells,
+          pixelGeometry: typeof growPixelGeometry,
+        ): Promise<ObservationFrame> => {
+          const captured = await capture({ role, label, cells, pixelGeometry })
+          const digest = frameDigests(captured).cells
+          if (!digest?.trim()) {
+            throw new Error(`Reflow capture ${label} is missing cell-region digest`)
+          }
+          frames.push(captured)
+          return captured
+        }
+        const growRow1 = "G1-alpha".padEnd(narrowCols, "x")
+        const growRow2 = "G2-Z"
+        const growSoft = growRow1 + growRow2
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
+        const growSeedCpr = await ctx.queryCursorPosition()
+        observed.growSeedCpr = growSeedCpr
+        if (growSeedCpr?.row !== 5 || growSeedCpr?.col !== 1) {
+          return todoResult("Main-grow seed did not wrap onto the expected rows before resize")
+        }
+        await resizeWindow(original.width, original.height)
+        const grown = await pollSize((reading) => reading.rows === initial.rows && reading.cols === wideCols)
+        observed.grown = grown
+        if (!grown.matched) {
+          return todoResult("Main-grow resize did not settle to the verified original width with unchanged rows")
+        }
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 1000)
+        })
+        const growSettle1 = await grab("control", "main-grow settle 1", growCells, growPixelGeometry)
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 100)
+        })
+        const growSettle2 = await grab("control", "main-grow settle 2", growCells, growPixelGeometry)
+        if (frameDigests(growSettle1).cells !== frameDigests(growSettle2).cells) {
+          return todoResult("Main-grow post-resize captures did not stabilize")
+        }
+        const growAfter = await grab("target", "main-grow after", growCells, growPixelGeometry)
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
+        if (!(await ctx.queryCursorPosition())) {
+          return todoResult("No cursor-position reply after painting main-grow ref reflowed")
+        }
+        const growReflowed = await grab("control", "main-grow ref reflowed", growCells, growPixelGeometry)
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`)
+        if (!(await ctx.queryCursorPosition())) {
+          return todoResult("No cursor-position reply after painting main-grow ref preserved")
+        }
+        const growPreserved = await grab("control", "main-grow ref preserved", growCells, growPixelGeometry)
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\nHARD-a\r\nHARD-b\r\n`)
+        if (!(await ctx.queryCursorPosition())) {
+          return todoResult("No cursor-position reply after painting main-grow ref clipped")
+        }
+        const growClipped = await grab("control", "main-grow ref clipped", growCells, growPixelGeometry)
+        const growRefs = {
+          reflowed: growReflowed,
+          preserved: growPreserved,
+          clipped: growClipped,
+        }
+
+        const shrinkRow1 = "S1-alpha".padEnd(narrowCols, "y")
+        const shrinkRow2 = "S2-Z"
+        const shrinkSoft = shrinkRow1 + shrinkRow2
+        ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkSoft}\r\nHARD-a\r\nHARD-b\r\n`)
+        const shrinkSeedCpr = await ctx.queryCursorPosition()
+        observed.shrinkSeedCpr = shrinkSeedCpr
+        if (shrinkSeedCpr?.row !== 4 || shrinkSeedCpr?.col !== 1) {
+          return todoResult("Main-shrink seed did not stay on a single row before resize")
+        }
+        await resizeWindow(narrowWidthPx, original.height)
+        const shrunk = await pollSize((reading) => reading.rows === initial.rows && reading.cols === narrowCols)
+        observed.shrunk = shrunk
+        if (!shrunk.matched) {
+          return todoResult("Main-shrink resize did not settle to the verified narrow width with unchanged rows")
+        }
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 1000)
+        })
+        const shrinkSettle1 = await grab("control", "main-shrink settle 1", shrinkCells, shrinkPixelGeometry)
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 100)
+        })
+        const shrinkSettle2 = await grab("control", "main-shrink settle 2", shrinkCells, shrinkPixelGeometry)
+        if (frameDigests(shrinkSettle1).cells !== frameDigests(shrinkSettle2).cells) {
+          return todoResult("Main-shrink post-resize captures did not stabilize")
+        }
+        const shrinkAfter = await grab("target", "main-shrink after", shrinkCells, shrinkPixelGeometry)
+        ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+        if (!(await ctx.queryCursorPosition())) {
+          return todoResult("No cursor-position reply after painting main-shrink ref reflowed")
+        }
+        const shrinkReflowed = await grab("control", "main-shrink ref reflowed", shrinkCells, shrinkPixelGeometry)
+        ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+        if (!(await ctx.queryCursorPosition())) {
+          return todoResult("No cursor-position reply after painting main-shrink ref reflowed-history")
+        }
+        const shrinkReflowedHistory = await grab(
+          "control",
+          "main-shrink ref reflowed-history",
+          shrinkCells,
+          shrinkPixelGeometry,
+        )
+        ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
+        if (!(await ctx.queryCursorPosition())) {
+          return todoResult("No cursor-position reply after painting main-shrink ref clipped")
+        }
+        const shrinkClipped = await grab("control", "main-shrink ref clipped", shrinkCells, shrinkPixelGeometry)
+        const shrinkRefs = {
+          reflowed: shrinkReflowed,
+          "reflowed-history": shrinkReflowedHistory,
+          clipped: shrinkClipped,
+        }
+
+        const growTargetDigest = frameDigests(growAfter).cells ?? ""
+        const shrinkTargetDigest = frameDigests(shrinkAfter).cells ?? ""
+        const growMatches = (Object.keys(growRefs) as (keyof typeof growRefs)[]).filter(
+          (key) => frameDigests(growRefs[key]).cells === growTargetDigest,
+        )
+        const shrinkMatches = (Object.keys(shrinkRefs) as (keyof typeof shrinkRefs)[]).filter(
+          (key) => frameDigests(shrinkRefs[key]).cells === shrinkTargetDigest,
+        )
+        const growOutcome = growMatches[0]
+        const shrinkOutcome = shrinkMatches[0]
+        if (growMatches.length !== 1 || shrinkMatches.length !== 1 || !growOutcome || !shrinkOutcome) {
+          observed.mainGrow = { matches: growMatches, targetCellsDigest: growTargetDigest }
+          observed.mainShrink = { matches: shrinkMatches, targetCellsDigest: shrinkTargetDigest }
+          return todoResult("Main-screen reflow captures did not uniquely match a candidate reference layout")
+        }
+        const matchedGrowRef = growRefs[growOutcome]
+        const matchedShrinkRef = shrinkRefs[shrinkOutcome]
+        observed.mainGrow = {
+          outcome: growOutcome,
+          matches: growMatches,
+          targetFrameRef: growAfter.ref,
+          targetCellsDigest: growTargetDigest,
+          matchedReferenceFrameRef: matchedGrowRef.ref,
+          matchedReferenceDigest: frameDigests(matchedGrowRef).cells,
+        }
+        observed.mainShrink = {
+          outcome: shrinkOutcome,
+          matches: shrinkMatches,
+          targetFrameRef: shrinkAfter.ref,
+          targetCellsDigest: shrinkTargetDigest,
+          matchedReferenceFrameRef: matchedShrinkRef.ref,
+          matchedReferenceDigest: frameDigests(matchedShrinkRef).cells,
+        }
+        const supported =
+          growOutcome === "reflowed" && (shrinkOutcome === "reflowed" || shrinkOutcome === "reflowed-history")
+        const reason = supported
+          ? `main-screen reflow measured across shrink (${shrinkOutcome}) and grow (${growOutcome}); retained history unmeasured; wide characters, alternate screen and cursor on a wrapped line unmeasured`
+          : `main-screen did not reflow across shrink (${shrinkOutcome}) and grow (${growOutcome}); retained history unmeasured; wide characters, alternate screen and cursor on a wrapped line unmeasured`
+        const response = JSON.stringify(observed)
+        return {
+          pass: supported,
+          note: reason,
+          response,
+          tests: [{ id: "criterion", status: supported ? "supported" : "unsupported", reason }],
+          observation: {
+            outcome: supported ? "supported" : "unsupported",
+            assertionType: "screenshot",
+            frames,
+            screenshotRef: shrinkAfter.ref,
+            note: reason,
+          },
+          assertions: [
+            {
+              assertionType: "screenshot",
+              kind: supported ? "positive" : "negative",
+              expected: "Main screen rewraps soft-wrapped lines across verified window shrink and grow",
+              observed: response,
+              action: "extensions.reflow",
+            },
+          ],
+        }
+      }
+      let result: ProbeCallbackResult
+      try {
+        result = await measure()
       } finally {
         if (original) {
           await restoreWindow()
