@@ -85,6 +85,7 @@ export function createClipboardTransaction(
     readText(trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<string>
     writeText(text: string, trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<void>
   },
+  options?: { readonly writeDeadlineMs?: number; readonly writePollMs?: number },
 ): LinuxClipboardAdapter["withClipboardFixture"] {
   let busy = false
   return async (work, trace, verify) => {
@@ -98,6 +99,9 @@ export function createClipboardTransaction(
         throw new Error("Owned clipboard baseline changed before callback")
       }
       const fixture: ClipboardFixture = {
+        baseline,
+        ...(options?.writeDeadlineMs !== undefined && { writeDeadlineMs: options.writeDeadlineMs }),
+        ...(options?.writePollMs !== undefined && { writePollMs: options.writePollMs }),
         readText: () => io.readText(trace, "clipboard-read", verify),
         writeText: (text) => io.writeText(text, trace, "clipboard-write", verify),
       }

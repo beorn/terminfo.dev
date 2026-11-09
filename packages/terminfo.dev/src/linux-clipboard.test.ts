@@ -749,7 +749,7 @@ try {
       ["\x1b[5;5R", "\x1b[1;1R"])
     assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write"), undefined)
     assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").status, "probe-todo")
-    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "No owned clipboard fixture for this probe (under the default clipboard profile, Linux app runs attach one only to OSC 52 write because clipboard read blocks on ask-first confirmation prompts); OSC 52 was not sent")
+    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "No owned clipboard fixture on this run for this probe; OSC 52 was not sent")
     assert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
     for (const [run, out] of [["c".repeat(32), process.stdout], [capture, foreign], [capture, fake]]) {
       const refused = await runProbeBatch({ ids: ["reset.ris"], captureRunId: run, ownedTerminal: adapter, out })

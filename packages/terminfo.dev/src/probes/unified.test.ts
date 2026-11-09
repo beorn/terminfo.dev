@@ -2815,18 +2815,22 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     return true
   }) as typeof process.stdout.write
   const withClipboardFixture = vi.fn(
-    createClipboardTransaction(baseline, {
-      async readText(trace, kind, verify) {
-        await verify()
-        trace({ kind, at: new Date().toISOString(), length: clipboardText.length })
-        return clipboardText
+    createClipboardTransaction(
+      baseline,
+      {
+        async readText(trace, kind, verify) {
+          await verify()
+          trace({ kind, at: new Date().toISOString(), length: clipboardText.length })
+          return clipboardText
+        },
+        async writeText(text, trace, kind, verify) {
+          await verify()
+          clipboardText = text
+          trace({ kind, at: new Date().toISOString(), length: text.length })
+        },
       },
-      async writeText(text, trace, kind, verify) {
-        await verify()
-        clipboardText = text
-        trace({ kind, at: new Date().toISOString(), length: text.length })
-      },
-    }),
+      { writeDeadlineMs: 25, writePollMs: 5 },
+    ),
   )
   const processIdentity = { pid: 42, startTicks: "1", ttyRdev: 34816 }
   const clipboard: LinuxClipboardAdapter = {
@@ -2891,11 +2895,56 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
         }),
       )
       const trace = JSON.parse(batch.rawReplies[featureId]!) as { clipboard: Array<{ kind: string }> }
-      expect(trace.clipboard.map((event) => event.kind)).toEqual(
-        isOsc52Write
-          ? ["clipboard-read", "clipboard-read", "clipboard-restore", "clipboard-verify"]
-          : ["clipboard-read", "clipboard-write", "clipboard-restore", "clipboard-verify"],
-      )
+      if (isOsc52Write && scenario.refuseWrite) {
+        const kinds = trace.clipboard.map((event) => event.kind)
+        expect(kinds.slice(0, 3)).toEqual(["clipboard-read", "clipboard-read", "clipboard-read"])
+        expect(kinds.slice(-2)).toEqual(["clipboard-restore", "clipboard-verify"])
+        expect(kinds.slice(0, -2).every((kind) => kind === "clipboard-read")).toBe(true)
+      } else {
+        expect(trace.clipboard.map((event) => event.kind)).toEqual(
+          isOsc52Write
+            ? ["clipboard-read", "clipboard-read", "clipboard-restore", "clipboard-verify"]
+            : ["clipboard-read", "clipboard-write", "clipboard-restore", "clipboard-verify"],
+        )
+      }
+      if (isOsc52Write) {
+        const draft = asRun(batch)
+        const decoded = decodeCollectorDraft(
+          "owned-clipboard.json",
+          JSON.stringify(draft),
+          manifest,
+          sourceRevision,
+        ).run
+        expect(decoded.results.find((row) => row.featureId === featureId)?.status).toBe(expectedOutcome)
+        expect(decoded.assertions).toContainEqual(
+          expect.objectContaining({
+            featureId,
+            assertionType: "clipboard",
+            kind: scenario.refuseWrite ? "negative" : "positive",
+            rawReplyRef: featureId,
+          }),
+        )
+        const parsed = parseRun(
+          "owned-clipboard.json",
+          JSON.stringify(draft),
+          [featureId],
+          new Map([[manifest.probeHash, manifest]]),
+        )
+        expect(parsed.results?.find((row) => row.featureId === featureId)).toMatchObject({
+          featureId,
+          status: expectedOutcome,
+          assertionType: "clipboard",
+          rawReplyRef: featureId,
+        })
+        expect(parsed.assertions).toContainEqual(
+          expect.objectContaining({
+            featureId,
+            assertionType: "clipboard",
+            kind: scenario.refuseWrite ? "negative" : "positive",
+            rawReplyRef: featureId,
+          }),
+        )
+      }
     } else {
       expect(batch.assertions).toEqual([])
     }

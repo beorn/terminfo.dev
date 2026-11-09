@@ -121,6 +121,7 @@ describe("live OSC 52 write ordering", () => {
     let clipboard = "baseline"
     let queued = ""
     const fixture: ClipboardFixture = {
+      baseline: "baseline",
       readText: async () => {
         events.push("independent-read")
         return clipboard
@@ -156,8 +157,43 @@ describe("live OSC 52 write ordering", () => {
     expect(clipboard).toBe("baseline")
   })
 
-  test("a terminal that answers CPR but ignores OSC 52 decides write unsupported while roundtrip remains inconclusive", async () => {
+  test("a fixture that returns baseline twice after CPR and then the nonce decides supported", async () => {
+    let queued = ""
+    let reads = 0
+    const result = await writeProbe()(
+      termSource({
+        write(sequence) {
+          queued = writtenNonce(sequence)
+        },
+        queryCursorPosition: async () => ({ row: 1, col: 1 }),
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            writeDeadlineMs: 100,
+            writePollMs: 5,
+            readText: async () => {
+              reads += 1
+              return reads <= 2 ? "baseline" : queued
+            },
+            writeText: async () => {},
+          }),
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "clipboard" })
+    expect(reads).toBe(3)
+    expect(result.assertions).toEqual([
+      {
+        assertionType: "clipboard",
+        kind: "positive",
+        expected: "Independent clipboard text equals OSC 52 write nonce",
+        observed: queued,
+      },
+    ])
+  })
+
+  test("a terminal that answers CPR and leaves the owned baseline unchanged through the deadline decides write unsupported while roundtrip remains inconclusive", async () => {
     const events: string[] = []
+    let reads = 0
     const result = await writeProbe()(
       termSource({
         write(sequence) {
@@ -170,7 +206,11 @@ describe("live OSC 52 write ordering", () => {
         },
         withClipboardFixture: async (work) =>
           work({
+            baseline: "baseline",
+            writeDeadlineMs: 25,
+            writePollMs: 5,
             readText: async () => {
+              reads += 1
               events.push("independent-read")
               return "baseline"
             },
@@ -178,11 +218,13 @@ describe("live OSC 52 write ordering", () => {
           }),
       }),
     )
-    expect(events).toEqual(["osc-write", "cpr", "independent-read"])
+    expect(reads).toBeGreaterThanOrEqual(2)
+    expect(events.slice(0, 2)).toEqual(["osc-write", "cpr"])
+    expect(events.slice(2).every((event) => event === "independent-read")).toBe(true)
     expect(result.observation).toMatchObject({
       outcome: "unsupported",
       assertionType: "clipboard",
-      note: "Independent clipboard read did not equal the OSC 52 write nonce",
+      note: "Independent clipboard selection remained at the owned baseline through the post-CPR deadline",
     })
     expect(result.assertions).toEqual([
       {
@@ -208,6 +250,9 @@ describe("live OSC 52 write ordering", () => {
         },
         withClipboardFixture: async (work) =>
           work({
+            baseline: "baseline",
+            writeDeadlineMs: 25,
+            writePollMs: 5,
             readText: async () => {
               roundtripEvents.push("independent-read")
               return "baseline"
@@ -216,10 +261,57 @@ describe("live OSC 52 write ordering", () => {
           }),
       }),
     )
-    expect(roundtripEvents).toEqual(["osc-write", "cpr", "independent-read"])
+    expect(roundtripEvents.slice(0, 2)).toEqual(["osc-write", "cpr"])
     expect(roundtripResult.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     expect(roundtripResult.assertions).toBeUndefined()
   })
+
+  test.each([
+    {
+      label: "empty",
+      value: "",
+      expectedLength: 0,
+      expectedSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    },
+    {
+      label: "foreign text",
+      value: "foreign-selection",
+      expectedLength: 17,
+      expectedSha256: "f09cfdf97ba152527dcb4eb9dc5341e60a589b00a40f8ab41c6d4bc39961775c",
+    },
+  ])(
+    "$label clipboard value after CPR decides inconclusive with length and sha256",
+    async ({ value, expectedLength, expectedSha256 }) => {
+      let reads = 0
+      const result = await writeProbe()(
+        termSource({
+          write(sequence) {
+            writtenNonce(sequence)
+          },
+          queryCursorPosition: async () => ({ row: 1, col: 1 }),
+          withClipboardFixture: async (work) =>
+            work({
+              baseline: "baseline",
+              writeDeadlineMs: 100,
+              writePollMs: 5,
+              readText: async () => {
+                reads += 1
+                return value
+              },
+              writeText: async () => {},
+            }),
+        }),
+      )
+      expect(reads).toBe(1)
+      expect(result.observation).toEqual({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        assertionType: "clipboard",
+        note: `Independent clipboard read returned neither the OSC 52 write nonce nor the owned baseline (length=${expectedLength}, sha256=${expectedSha256})`,
+      })
+      expect(result.assertions).toBeUndefined()
+    },
+  )
 
   test.each(["extensions.osc52-write", "extensions.osc52-clipboard"])(
     "%s retains missing CPR evidence without reading clipboard and restores the fixture",

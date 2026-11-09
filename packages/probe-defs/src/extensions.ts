@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
 import type {
@@ -4277,8 +4277,7 @@ function headlessClipboardResult(response: string, nonce: string): ProbeCallback
 }
 
 function liveClipboardNotTested(): ProbeCallbackResult {
-  const note =
-    "No owned clipboard fixture for this probe (under the default clipboard profile, Linux app runs attach one only to OSC 52 write because clipboard read blocks on ask-first confirmation prompts); OSC 52 was not sent"
+  const note = "No owned clipboard fixture on this run for this probe; OSC 52 was not sent"
   return {
     pass: false,
     note,
@@ -4355,34 +4354,79 @@ async function liveClipboardProbe(
           "no parsable cursor position reply; the public projection returned null and retained no bytes",
         )
       }
-      const measured = await fixture.readText()
-      if (kind === "write") {
-        const pass = measured === nonce
-        return {
-          pass,
-          observation: {
-            outcome: pass ? "supported" : "unsupported",
-            assertionType: "clipboard",
-            ...(!pass && { note: "Independent clipboard read did not equal the OSC 52 write nonce" }),
-          },
-          assertions: [
-            {
-              assertionType: "clipboard" as const,
-              kind: pass ? "positive" : "negative",
-              expected: "Independent clipboard text equals OSC 52 write nonce",
-              observed: measured || "(empty)",
-            },
-          ],
+      const baseline = fixture.baseline
+      const deadlineMs = Math.min(Math.max(fixture.writeDeadlineMs ?? 1000, 0), 2000)
+      const pollMs = Math.max(fixture.writePollMs ?? 25, 1)
+      const startedAt = Date.now()
+      let measured = await fixture.readText()
+      let allBaseline = typeof baseline === "string" && baseline.length > 0 && measured === baseline
+      while (measured !== nonce && allBaseline && Date.now() - startedAt < deadlineMs) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, pollMs)
+        })
+        measured = await fixture.readText()
+        if (measured !== nonce && measured !== baseline) {
+          allBaseline = false
         }
       }
-      if (measured !== nonce) {
+      if (kind === "write") {
+        if (measured === nonce) {
+          return {
+            pass: true,
+            observation: {
+              outcome: "supported",
+              assertionType: "clipboard",
+            },
+            assertions: [
+              {
+                assertionType: "clipboard" as const,
+                kind: "positive",
+                expected: "Independent clipboard text equals OSC 52 write nonce",
+                observed: measured,
+              },
+            ],
+          }
+        }
+        if (allBaseline && typeof baseline === "string") {
+          return {
+            pass: false,
+            observation: {
+              outcome: "unsupported",
+              assertionType: "clipboard",
+              note: "Independent clipboard selection remained at the owned baseline through the post-CPR deadline",
+            },
+            assertions: [
+              {
+                assertionType: "clipboard" as const,
+                kind: "negative",
+                expected: "Independent clipboard text equals OSC 52 write nonce",
+                observed: baseline,
+              },
+            ],
+          }
+        }
+        const byteLength = Buffer.byteLength(measured)
+        const sha256 = createHash("sha256").update(measured).digest("hex")
         return {
           pass: false,
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
             assertionType: "clipboard",
-            note: "Independent clipboard read did not equal the OSC 52 write nonce",
+            note: `Independent clipboard read returned neither the OSC 52 write nonce nor the owned baseline (length=${byteLength}, sha256=${sha256})`,
+          },
+        }
+      }
+      if (measured !== nonce) {
+        const byteLength = Buffer.byteLength(measured)
+        const sha256 = createHash("sha256").update(measured).digest("hex")
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            assertionType: "clipboard",
+            note: `Independent clipboard read did not equal the OSC 52 write nonce (length=${byteLength}, sha256=${sha256})`,
           },
         }
       }

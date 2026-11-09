@@ -994,6 +994,12 @@ export interface LibMouseEvent {
 
 /** Independently observed text selection in an owned disposable display. */
 export interface ClipboardFixture {
+  /** Owned transaction baseline verified before the callback starts. */
+  readonly baseline?: string
+  /** Bounded post-CPR wait window in ms for OSC 52 write selection settlement (default 1000, max 2000). */
+  readonly writeDeadlineMs?: number
+  /** Polling interval in ms for post-CPR OSC 52 write selection settlement (default 25). */
+  readonly writePollMs?: number
   readText(): Promise<string>
   writeText(text: string): Promise<void>
 }
