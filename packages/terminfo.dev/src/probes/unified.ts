@@ -12,6 +12,7 @@ import {
   recordExecutedProbe,
   finalizeProbeResult,
   finalizeVisualResult,
+  fontLigatureMuxCoverage,
   withReplyFailureEvidence,
   declaredUntestableResult,
   type ProbeResult,
@@ -1107,7 +1108,35 @@ export async function runProbeBatch(
           ),
         })
       }
-      batch.results[index] = finalized
+      const ligatureCoverage =
+        probe.id === "extensions.font-ligatures" && subject
+          ? fontLigatureMuxCoverage(subject, { raw: batch.rawReplies[probe.id] ?? "" })
+          : undefined
+      if (ligatureCoverage) {
+        // The coverage list is what the run document reads (902-921); replace this feature's entry
+        // rather than adding a second one, because the pixel arm may already have recorded a refusal.
+        const coverage = { featureId: probe.id, ...ligatureCoverage.notTested, rawReplyRef: probe.id }
+        const existing = batch.notTested.findIndex((entry) => entry.featureId === probe.id)
+        if (existing < 0) batch.notTested.push(coverage)
+        else batch.notTested[existing] = coverage
+        // D160 exception to the refuse-coverage-with-measurement rule (908-913): the mux pixel arm may
+        // already have recorded this feature's screenshot observation and assertion, and the coverage
+        // record is the only claim this run keeps, so both lists drop the feature as well.
+        batch.observations = batch.observations.filter((entry) => entry.featureId !== probe.id)
+        batch.assertions = batch.assertions.filter((entry) => entry.featureId !== probe.id)
+      }
+      // The coverage result stands alone: spreading `finalized` would carry the pixel arm's frames,
+      // screenshotRef, assertionType and criterionBranch onto a record that measured nothing.
+      batch.results[index] = ligatureCoverage
+        ? recordExecutedProbe({
+            featureId: probe.id,
+            attempt,
+            coverage: { featureId: probe.id, ...ligatureCoverage.notTested, rawReplyRef: probe.id },
+            tests: ligatureCoverage.tests,
+            assertions: [],
+            rawReplyRef: probe.id,
+          })
+        : finalized
       options.onCheckpoint?.(batch)
     }
   }

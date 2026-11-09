@@ -582,6 +582,7 @@ function scrollbackApp(script: {
   afterRef?: string
   encodingOnly?: boolean
   divergentPixels?: boolean
+  cursorOneCell?: boolean
 }): {
   ctx: TermProbeSource
   keys: string[]
@@ -598,6 +599,7 @@ function scrollbackApp(script: {
   let listening = false
   let viewport: "bottom" | "history" = "bottom"
   let historyExists = true
+  let cursorHidden = false
   let ed3 = false
   let captureCount = 0
   let sawHistory = false
@@ -605,6 +607,7 @@ function scrollbackApp(script: {
     ...app({ row: 5, col: 5 }),
     write(text) {
       writes.push(text)
+      if (text.includes("\x1b[?25l")) cursorHidden = true
       if (text.includes("\x1b[3J")) {
         ed3 = true
         if (clears) historyExists = false
@@ -645,7 +648,11 @@ function scrollbackApp(script: {
         ref = ERASED_REF
         pixelsDigest = ERASED_PIX
       } else {
-        if (script.divergentPixels) {
+        if (script.cursorOneCell && !cursorHidden && captureCount > 1) {
+          // The visible cursor occupies a cell the first frame did not carry: one cell of drift.
+          ref = OTHER_REF
+          pixelsDigest = OTHER_PIX
+        } else if (script.divergentPixels) {
           ref = OTHER_REF
           pixelsDigest = OTHER_PIX
         } else if (script.encodingOnly && sawHistory) {
@@ -1170,4 +1177,14 @@ test("an empty paint string refuses at load by row id, not in the painter", () =
 test("a relative background claim refuses to load without a baseline fixture", () => {
   const row = rowById("erase.el-with-attrs")
   expect(() => regionReadbackProbe({ ...row, baseline: undefined })).toThrow(/needs a baseline fixture/)
+})
+
+test("erase.screen.scrollback hides the cursor so a one-cell cursor is not graded as a failed restore", async () => {
+  // Requirement (32774): every capture in this arm observes the same cursor state, so the bottom
+  // frame and the wheel-down restore compare equal when the cursor cell is the only difference.
+  // Gap this closes: no existing test drove frames that differ by ONE cell purely because DECTCEM
+  // was never turned off. The harness below reports exactly that unless "\x1b[?25l" was written.
+  const { ctx } = scrollbackApp({ clears: true, cursorOneCell: true })
+  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeCallbackResult
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
 })
