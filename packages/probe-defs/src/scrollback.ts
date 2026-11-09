@@ -1,9 +1,10 @@
-import type {
-  ProbeDefinition,
-  ProbeCallbackResult,
-  LibProbeSource,
-  TermProbeSource,
-  ObservationFrame,
+import {
+  frameDigests,
+  type ProbeDefinition,
+  type ProbeCallbackResult,
+  type LibProbeSource,
+  type TermProbeSource,
+  type ObservationFrame,
 } from "./types.ts"
 import {
   probe,
@@ -387,13 +388,10 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
   }
 }
 
-/** One reviewed app context; the existing job omits its bound until pinned-code evidence justifies it. */
+/** Linux App viewport-hold-output: in-run wheel displacement calibration and constructed-tail restoration. */
 async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
-  if (ctx.getScrollback) {
-    const reading = await ctx.getScrollback()
-    if (reading.viewportOffset === undefined || reading.screenLines === undefined) {
-      return notTestedResult("terminal reports no viewport offset", reading)
-    }
+  if (ctx.mux === "tmux" || ctx.mux === "screen") {
+    return notTestedResult("multiplexer viewport hold retains the manual recipe", { mux: ctx.mux })
   }
   const capture = ctx.capture
   const input = ctx.input
@@ -405,34 +403,26 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       readInput: Boolean(readInput),
     })
   }
-  const bound = input.wheelPlacement
-  if (
-    !bound ||
-    !Number.isSafeInteger(bound.maxRowsPerNotch) ||
-    bound.maxRowsPerNotch <= 0 ||
-    !bound.configurationHash ||
-    !bound.applicationVersion ||
-    !bound.applicationHash
-  ) {
-    return notTestedResult("wheel placement bound not established", { wheelPlacement: bound ?? null })
-  }
   const geometry = tooSmall(ctx, 5, 8, "Viewport hold fixture")
   if (geometry) return geometry
-  const anchors = Math.max(3 * ctx.rows, bound.maxRowsPerNotch + ctx.rows)
+  const maxCandidate = Math.min(ctx.rows, 12)
+  const calLines = ctx.rows + maxCandidate + 1
+  const maxAnchors = 3 * ctx.rows
   const down = 4 * ctx.rows + 2
-  if (!Number.isSafeInteger(anchors) || !Number.isSafeInteger(down)) {
-    return notTestedResult("wheel placement bound not established", { wheelPlacement: bound, rows: ctx.rows })
+  if (!Number.isSafeInteger(maxAnchors) || !Number.isSafeInteger(down) || !Number.isSafeInteger(calLines)) {
+    return notTestedResult("wheel placement bound not established", { rows: ctx.rows })
   }
   const width = tooSmall(
     ctx,
     5,
-    Math.max(`vh-tail-${ctx.rows - 1}`.length, `vh-s-${anchors - 1}`.length),
+    Math.max(`vh-cal-${calLines - 1}`.length, `vh-tail-${ctx.rows - 1}`.length, `vh-s-${maxAnchors - 1}`.length),
     "Viewport hold fixture",
   )
   if (width) return width
   const frames: ObservationFrame[] = []
+  const calibration = {} as Record<string, unknown>
   const evidence = {
-    wheelPlacement: bound,
+    calibration,
     notches: { up: 1, down },
     frames,
     Bref: undefined as ObservationFrame | undefined,
@@ -448,15 +438,51 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     frames.push(result)
     return result
   }
-  const moveDown = async () => {
-    for (let notch = 0; notch < down; notch++) await input.injectClick(5)
-  }
-  const tail = Array.from({ length: ctx.rows }, (_, row) => `vh-tail-${row}`).join("\r\n")
   let failed = false
   let primary: unknown
   let scrolled = false
+  const moveDown = async () => {
+    scrolled = false
+    for (let notch = 0; notch < down; notch++) await input.injectClick(5)
+  }
+  const tail = Array.from({ length: ctx.rows }, (_, row) => `vh-tail-${row}`).join("\r\n")
   try {
-    ctx.write("\x1b[?25l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[2J\x1b[H")
+    ctx.write("\x1b[?25l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[2J\x1b[3J\x1b[H")
+    ctx.write(Array.from({ length: calLines }, (_, row) => `vh-cal-${row}`).join("\r\n"))
+    const calBottom = await frame("Viewport calibration bottom")
+    calibration.calBottom = calBottom
+    const calDelivery = await readInput(/^a/, 1000, () => input.injectKey("a"))
+    calibration.delivery = calDelivery
+    if (!calDelivery) return todo("viewport input delivery not observed")
+    scrolled = true
+    await input.injectClick(4)
+    const calScrolled = await frame("Viewport calibration scrolled")
+    calibration.calScrolled = calScrolled
+    await moveDown()
+    const calCandidates: Record<number, ObservationFrame> = {}
+    const matchedDisplacements: number[] = []
+    for (let d = 1; d <= maxCandidate; d++) {
+      ctx.write("\x1b[2J\x1b[H")
+      ctx.write(Array.from({ length: ctx.rows }, (_, row) => `vh-cal-${calLines - ctx.rows - d + row}`).join("\r\n"))
+      const refFrame = await frame(`Viewport calibration candidate ${d}`)
+      calCandidates[d] = refFrame
+      if (!sameFrame(calScrolled, calBottom) && sameFrame(calScrolled, refFrame)) {
+        matchedDisplacements.push(d)
+      }
+    }
+    calibration.candidates = calCandidates
+    calibration.matchedDisplacements = matchedDisplacements
+    const rowsPerNotch = matchedDisplacements[0]
+    const matchedCalRef = rowsPerNotch === undefined ? undefined : calCandidates[rowsPerNotch]
+    if (matchedDisplacements.length !== 1 || rowsPerNotch === undefined || !matchedCalRef) {
+      return todo("wheel placement bound not established")
+    }
+    calibration.rowsPerNotch = rowsPerNotch
+    calibration.scrolledDigest = frameDigests(calScrolled).cells ?? frameDigests(calScrolled).whole
+    calibration.matchedReferenceDigest = frameDigests(matchedCalRef).cells ?? frameDigests(matchedCalRef).whole
+    const anchors = Math.max(3 * ctx.rows, rowsPerNotch + ctx.rows)
+
+    ctx.write("\x1b[2J\x1b[3J\x1b[H")
     ctx.write(tail)
     const reference = await frame("Viewport constructed bottom reference")
     evidence.Bref = reference
@@ -497,6 +523,7 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       const arrived = await frame(`${phase} B1`)
       state.B1 = arrived
       if (!sameFrame(arrived, reference)) return todo("restoration to bottom not proven")
+      scrolled = true
       await input.injectClick(4)
       const relative = await frame(`${phase} R`)
       state.R = relative
@@ -510,10 +537,14 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       const restored = await frame(`${phase} final restoration`)
       state.restored = restored
       if (!sameFrame(restored, reference)) return todo("restoration to bottom not proven")
-      if (matches.length !== 1) return todo("ambiguous frame")
-      state.outcome = matches[0]
-      if (held || matches[0] !== "held") screenshot = after
-      held &&= matches[0] === "held"
+      const matchedOutcome = matches[0] as keyof typeof candidates | undefined
+      if (matches.length !== 1 || !matchedOutcome) return todo("ambiguous frame")
+      const matchedCandidate = candidates[matchedOutcome]
+      state.outcome = matchedOutcome
+      state.targetDigest = frameDigests(after).cells ?? frameDigests(after).whole
+      state.matchedReferenceDigest = frameDigests(matchedCandidate).cells ?? frameDigests(matchedCandidate).whole
+      if (held || matchedOutcome !== "held") screenshot = after
+      held &&= matchedOutcome === "held"
     }
     const response = JSON.stringify(evidence)
     return {

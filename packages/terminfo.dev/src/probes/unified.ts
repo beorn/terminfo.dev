@@ -718,7 +718,6 @@ export async function runProbeBatch(
       const focusRoundTrip = input.focusRoundTrip?.bind(input)
       const resizeWindow = input.resizeWindow?.bind(input)
       probeSource.input = {
-        ...(input.wheelPlacement && { wheelPlacement: input.wheelPlacement }),
         injectKey: (keys) => withTTYOperation(() => input.injectKey(keys), out, verify),
         injectClick: (button, position) => withTTYOperation(() => input.injectClick(button, position), out, verify),
         ...(injectMove && {

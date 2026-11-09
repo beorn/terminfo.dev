@@ -757,3 +757,309 @@ test("extensions.osc720-scroll-up excludes tmux and screen so their cells keep t
     noObservable: "terminal reports no viewport offset",
   })
 })
+
+test.each([
+  {
+    name: "supported-in-place-reflow",
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "reflowed" as const,
+    expectedStatus: "supported" as const,
+    expectedOutcome: "supported" as const,
+    expectedAssertions: 1,
+    expectedFrames: 12,
+    expectedReason:
+      /main-screen reflow measured across shrink \(reflowed\) and grow \(reflowed\); retained history unmeasured/,
+  },
+  {
+    name: "supported-reflowed-history-on-shrink",
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "reflowed-history" as const,
+    expectedStatus: "supported" as const,
+    expectedOutcome: "supported" as const,
+    expectedAssertions: 1,
+    expectedFrames: 12,
+    expectedReason:
+      /main-screen reflow measured across shrink \(reflowed-history\) and grow \(reflowed\); retained history unmeasured/,
+  },
+  {
+    name: "unsupported-preserved-grow-clipped-shrink",
+    growBehavior: "preserved" as const,
+    shrinkBehavior: "clipped" as const,
+    expectedStatus: "unsupported" as const,
+    expectedOutcome: "unsupported" as const,
+    expectedAssertions: 1,
+    expectedFrames: 12,
+    expectedReason:
+      /main-screen did not reflow across shrink \(clipped\) and grow \(preserved\); retained history unmeasured/,
+  },
+  {
+    name: "probe-todo-ambiguous-layout",
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "unknown" as const,
+    expectedStatus: "probe-todo" as const,
+    expectedOutcome: undefined,
+    expectedAssertions: 0,
+    expectedFrames: 0,
+    expectedReason:
+      /Main-screen reflow captures did not uniquely match a candidate reference layout; retained history unmeasured/,
+  },
+  {
+    name: "probe-todo-unstable-settle",
+    growBehavior: "unstable" as const,
+    shrinkBehavior: "reflowed" as const,
+    expectedStatus: "probe-todo" as const,
+    expectedOutcome: undefined,
+    expectedAssertions: 0,
+    expectedFrames: 0,
+    expectedReason: /Main-grow post-resize captures did not stabilize; retained history unmeasured/,
+  },
+  {
+    name: "probe-invalid-restore-failed",
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "reflowed" as const,
+    failRestore: true,
+    expectedStatus: "probe-invalid" as const,
+    expectedOutcome: undefined,
+    expectedAssertions: 0,
+    expectedFrames: 0,
+    expectedReason: /Reflow probe could not restore original terminal size/,
+  },
+])(
+  "extensions.reflow App resize+capture round-trips through parseRun for $name",
+  async ({
+    name,
+    growBehavior,
+    shrinkBehavior,
+    failRestore,
+    expectedStatus,
+    expectedOutcome,
+    expectedAssertions,
+    expectedFrames,
+    expectedReason,
+  }) => {
+    const featureId = "extensions.reflow"
+    const definition = find(featureId)
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    const resizeCalls: { width: number; height: number }[] = []
+    const rows = 10
+    const wideCols = 24
+    const narrowCols = 16
+    let currentCols = wideCols
+    let screenPlane = "blank"
+    let phaseState: "init" | "pre-shrunk" | "grown" | "shrunk" = "init"
+    let settleCaptures = 0
+    const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
+    const realSetTimeout = globalThis.setTimeout
+    const realDateNow = Date.now
+    let fakeNow = realDateNow()
+    const timeoutDelays: number[] = []
+    Date.now = () => fakeNow
+    globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+      const delay = ms ?? 0
+      timeoutDelays.push(delay)
+      fakeNow += delay
+      fn()
+      return 0 as unknown as ReturnType<typeof setTimeout>
+    }) as typeof setTimeout
+    try {
+      const growRow1 = "G1-alpha".padEnd(narrowCols, "x").slice(0, 10)
+      const growRow2 = "G2-Z"
+      const shrinkRow1 = "S1-alpha".padEnd(narrowCols, "y").slice(0, 10)
+      const shrinkRow2 = "S2-Z"
+      const context: TermProbeSource = {
+        kind: "live",
+        rows,
+        cols: wideCols,
+        captureKind: "pixels",
+        captureGeometry: {
+          geometry: {
+            cellWidth: 10,
+            cellHeight: 20,
+            textWidth: wideCols * 10,
+            textHeight: rows * 20,
+          },
+          source: "measured by complete raster calibration",
+        },
+        write: (bytes) => {
+          writes.push(bytes)
+          if (bytes.includes("G1-alpha") && bytes.includes(growRow2) && currentCols === narrowCols) {
+            screenPlane = "seed-grow"
+          } else if (bytes.includes("S1-alpha") && bytes.includes(shrinkRow2) && currentCols === wideCols) {
+            screenPlane = "seed-shrink"
+          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\nHARD-a\r\nHARD-b\r\n`) {
+            screenPlane = "grow:reflowed"
+          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`) {
+            screenPlane = "grow:preserved"
+          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n\r\nHARD-a\r\nHARD-b\r\n`) {
+            screenPlane = "grow:clipped"
+          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`) {
+            screenPlane = "shrink:reflowed"
+          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n`) {
+            screenPlane = "shrink:reflowed-history"
+          } else if (bytes === `\x1b[?7h\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\nHARD-a\r\nHARD-b\r\n`) {
+            screenPlane = "shrink:clipped"
+          }
+        },
+        queryCursorPosition: async () => {
+          if (screenPlane === "seed-grow" && currentCols === narrowCols) return { row: 5, col: 1 }
+          if (screenPlane === "seed-shrink" && currentCols === wideCols) return { row: 4, col: 1 }
+          return { row: rows, col: currentCols }
+        },
+        measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+        query: async () => null,
+        queryWithSentinel: async () => null,
+        queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+        queryWithSentinelOutcome: async (sequence) => {
+          writes.push(sequence)
+          if (sequence === "\x1b[18t") {
+            const raw = `\x1b[8;${rows};${currentCols}t`
+            return {
+              match: /\x1b\[8;(\d+);(\d+)t/.exec(raw),
+              reason: "reply",
+              raw,
+              rawBase64: Buffer.from(raw).toString("base64"),
+            }
+          }
+          return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+        },
+        queryMode: async () => null,
+        input: {
+          injectKey: async () => {},
+          injectClick: async () => {},
+          resizeWindow: async (width, height) => {
+            resizeCalls.push({ width, height })
+            if (width < wideCols * 10) {
+              currentCols = narrowCols
+              if (phaseState === "init") {
+                phaseState = "pre-shrunk"
+              } else {
+                phaseState = "shrunk"
+                screenPlane = `shrink:${shrinkBehavior}`
+              }
+            } else {
+              if (failRestore && phaseState === "shrunk") {
+                currentCols = narrowCols
+              } else {
+                currentCols = wideCols
+              }
+              if (phaseState === "pre-shrunk") {
+                phaseState = "grown"
+                screenPlane = `grow:${growBehavior}`
+                settleCaptures = 0
+              }
+            }
+            return { width: wideCols * 10, height: rows * 20 }
+          },
+        },
+        capture: async ({ role, label }) => {
+          let effectivePlane = screenPlane
+          if (screenPlane === "grow:unstable") {
+            settleCaptures++
+            effectivePlane = `grow:unstable-${settleCaptures}`
+          }
+          const frame: ObservationFrame = {
+            kind: "pixels",
+            role,
+            label,
+            capturedAt: frames.length + 1,
+            ref: digest(`frame-${frames.length + 1}-${effectivePlane}`),
+            sourceRef: digest(`source-${frames.length + 1}`),
+            regionDigest: digest(`cells-${effectivePlane}`),
+            pixelsDigest: digest(`pixels-${effectivePlane}`),
+          }
+          frames.push(frame)
+          return frame
+        },
+      }
+      const result = await definition.term!(context)
+      expect(resizeCalls[0]?.width).toBeLessThan(wideCols * 10)
+      if (growBehavior !== "unstable") {
+        expect(timeoutDelays.filter((ms) => ms >= 1000)).toHaveLength(2)
+      }
+      expect(result.observation?.outcome).toBe(expectedOutcome)
+      expect(result.observation?.frames ?? []).toHaveLength(expectedFrames)
+      const assertions = (result.assertions ?? []).map((entry) => ({
+        ...entry,
+        featureId,
+        rawReplyRef: featureId,
+      }))
+      expect(assertions).toHaveLength(expectedAssertions)
+      const recorded = recordExecutedProbe({
+        featureId,
+        attempt: { scope: "probe", startedAt: "2026-11-09T10:00:00.000Z" },
+        rawReplyRef: featureId,
+        observation: result.observation ? { ...result.observation, featureId, rawReplyRef: featureId } : undefined,
+        assertions,
+        tests: result.tests,
+      })
+      expect(recorded.status).toBe(expectedStatus)
+      expect(recorded.reason).toMatch(expectedReason)
+      const suite = "b".repeat(64)
+      const manifest: ProbeSuiteManifest = {
+        schemaVersion: 4,
+        probeHash: suite,
+        adapterVersion: "3.3.1",
+        generatedAt: "2026-11-09T10:00:00.000Z",
+        catalogIds: [featureId],
+        probes: { term: [featureId], lib: [], mux: [] },
+      }
+      const run = {
+        schemaVersion: 4,
+        source: { kind: "live" },
+        runId: `reflow-${name}`,
+        suiteId: suite,
+        probeHash: suite,
+        sourceRevision: "4".repeat(40),
+        intendedSubject: { kind: "term", id: "kitty" },
+        subject: {
+          kind: "term",
+          id: "kitty",
+          version: "0.49.2",
+          os: "linux",
+          osVersion: null,
+          outerTerminal: null,
+          mux: null,
+          config: null,
+          permissions: null,
+        },
+        identity: "unverified",
+        measuredAt: "2026-11-09T10:01:00.000Z",
+        origin: { kind: "collector" },
+        sealedAt: "2026-11-09T10:02:00.000Z",
+        rawReplies: {
+          [featureId]: JSON.stringify({
+            writes,
+            queries: [{ query: "\x1b[18t", raw: `\x1b[8;${rows};${wideCols}t` }],
+            events: [],
+          }),
+          ...(result.response ? { [`${featureId}.callbackResponse`]: result.response } : {}),
+        },
+        assertions,
+        screenshotRefs: [...new Set((recorded.frames ?? []).flatMap((frame) => [frame.ref, frame.sourceRef ?? []]))],
+        results: [recorded],
+      }
+      const parsed = parseRun(`reflow-${name}.json`, JSON.stringify(run), [featureId], new Map([[suite, manifest]]))
+      expect(parsed.results?.[0]?.status).toBe(expectedStatus)
+      expect(parsed.results?.[0]?.reason).toMatch(expectedReason)
+      expect(parsed.results?.[0]?.frames ?? []).toHaveLength(expectedFrames)
+      if (expectedFrames > 0) {
+        expect(
+          parseObservationFrames(
+            parsed.results?.[0]?.frames,
+            `reflow-${name}.json`,
+            featureId,
+            parsed.screenshotRefs,
+            parsed.textSnapshotRefs,
+            parsed.results?.[0]?.screenshotRef,
+            parsed.results?.[0]?.assertionType,
+          ),
+        ).toHaveLength(expectedFrames)
+      }
+      expect(parsed.assertions).toHaveLength(expectedAssertions)
+    } finally {
+      globalThis.setTimeout = realSetTimeout
+      Date.now = realDateNow
+    }
+  },
+)

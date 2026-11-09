@@ -39,7 +39,7 @@ describe("environment-group partition (D132 B)", () => {
   it("keeps partially measured viewport hold out of the environment group", () => {
     expect(features["scrollback.viewport-hold-output"]?.probeStatus).toBe("partial")
     expect(features["scrollback.viewport-hold-output"]?.probeStatusReason).toBe(
-      "partial: library arm measured by scrollback.viewport-hold-output on ordinary and synchronized output; one owned Linux Ghostty app pilot requires a justified pinned wheel-placement bound and constructed-tail restoration; every other app context keeps the manual UI recipe and named PROBE TODO",
+      "partial: library arm measured by scrollback.viewport-hold-output on ordinary and synchronized output; Linux App arm calibrates wheel displacement in-run from captured history frames and verifies constructed-tail restoration; multiplexer and non-capturable app contexts keep the manual UI recipe and named PROBE TODO",
     )
     expect(isEnvironmentGroup("scrollback.viewport-hold-output")).toBe(false)
   })

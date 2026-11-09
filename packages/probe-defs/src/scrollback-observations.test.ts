@@ -6,9 +6,17 @@
  */
 import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
+import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
 import { scrollbackProbes, scrollbackReadbackRows } from "./scrollback.ts"
 import { eraseProbes } from "./erase.ts"
-import type { ObservationFrame, TermProbeSource, LibProbeSource, ProbeCallbackResult } from "./types.ts"
+import { recordExecutedProbe } from "./helpers.ts"
+import type {
+  ObservationFrame,
+  TermProbeSource,
+  LibProbeSource,
+  ProbeCallbackResult,
+  ProbeSuiteManifest,
+} from "./types.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
@@ -1610,6 +1618,7 @@ function viewportApplication(
     snapOnDa1?: "ordinary" | "synchronized"
     changingChrome?: boolean
     opaqueHistory?: boolean
+    calAmbiguous?: boolean
     digest?: "missing" | "empty"
     captureError?: boolean | "after-up"
     inputError?: boolean
@@ -1638,12 +1647,6 @@ function viewportApplication(
   let flushing = false
   const bottom = () => Math.max(0, lines.length - rows)
   const input = {
-    wheelPlacement: {
-      maxRowsPerNotch: 1,
-      configurationHash: "a".repeat(64),
-      applicationVersion: "fixture-1",
-      applicationHash: "b".repeat(64),
-    },
     injectKey: async (key: string) => {
       if (options.inputError) throw new Error("viewport input failed")
       if (options.delivery !== false) delivered += key
@@ -1661,7 +1664,7 @@ function viewportApplication(
         const blocked =
           options.down === "ignored" ||
           (options.down === "early" && downsSinceUp >= 1) ||
-          (options.down === "second-restore" && ups === 2)
+          (options.down === "second-restore" && ups === 3)
         if (!blocked) top = Math.min(bottom(), top + 1)
         downs++
         downsSinceUp++
@@ -1704,7 +1707,7 @@ function viewportApplication(
     const outputSynchronized = synchronized || bytes.includes("\x1b[?2026h")
     const text = bytes.replace(/\x1b\[([?\d;:]*)([A-Za-z])/g, (_sequence, parameters: string, command: string) => {
       if (parameters === "?2026") synchronized = command === "h"
-      if (command === "c" && parameters === "" && options.snapOnDa1 === (ups < 3 ? "ordinary" : "synchronized")) {
+      if (command === "c" && parameters === "" && options.snapOnDa1 === (ups < 4 ? "ordinary" : "synchronized")) {
         top = bottom()
       }
       if (command === "J" && parameters === "2") {
@@ -1751,19 +1754,23 @@ function viewportApplication(
     if (options.captureError === true || (options.captureError === "after-up" && ups > 0)) {
       throw new Error("viewport capture failed")
     }
+    const inHoldPhase = lines.some((line) => line.startsWith("vh-tail-"))
     const grid = Array.from({ length: rows }, (_, index) =>
-      options.opaqueHistory && top < bottom()
+      (options.opaqueHistory && inHoldPhase && top < bottom()) || (options.calAmbiguous && !inHoldPhase && ups === 1)
         ? "Opaque history overlay".padEnd(cols, " ")
         : (lines[top + index] ?? "").padEnd(cols, " ").slice(0, cols),
     )
     // Only rendered pixels decide equality: offsets and capture labels do not enter the digest.
-    const pixelsDigest = createHash("sha256")
+    const pixelsDigest = `sha256:${createHash("sha256")
       .update(JSON.stringify({ grid, chrome: options.changingChrome && targetWrites > 0 ? frames.length : 0 }))
-      .digest("hex")
+      .digest("hex")}`
     const frame: ObservationFrame = {
+      kind: "pixels",
       ...request,
       capturedAt: frames.length + 1,
-      ref: `viewport-frame:${frames.length + 1}`,
+      ref: `sha256:${createHash("sha256")
+        .update(`viewport-frame:${frames.length + 1}`)
+        .digest("hex")}`,
       pixelsDigest,
     }
     if (options.digest === "missing") Reflect.deleteProperty(frame, "pixelsDigest")
@@ -1783,23 +1790,113 @@ function viewportApplication(
 // Accepted requirement: only two qualified holds pass; either qualified motion is a negative.
 // Prior app coverage never exercises wheel/UI state, so its unconditional TODO misses all three.
 test.each([
-  ["both phases hold", ["hold", "hold"], "supported"],
-  ["ordinary snap and synchronized hold", ["snap", "hold"], "unsupported"],
-  ["ordinary hold and synchronized bottom-relative motion", ["hold", "relative"], "unsupported"],
-] as const)("app viewport decides %s from actual rendered frames", async (_name, policies, outcome) => {
-  const app = viewportApplication(policies)
-  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
-  expect(result.observation?.outcome).toBe(outcome)
-  expect(result.pass).toBe(outcome === "supported")
-  expect(result.assertions).toContainEqual(
-    expect.objectContaining({ assertionType: "screenshot", kind: outcome === "supported" ? "positive" : "negative" }),
-  )
-  // Each phase checks DA1 inertness at U, then confirms A before any downward input.
-  expect(app.frames).toHaveLength(17)
-  expect(app.frames.map(({ down }) => down)).toEqual([0, 0, 0, 0, 0, 0, 22, 22, 44, 44, 44, 44, 44, 44, 66, 66, 88])
-  const reference = app.frames[0]!.frame.pixelsDigest
-  for (const index of [6, 8, 14, 16]) expect(app.frames[index]!.frame.pixelsDigest).toBe(reference)
-})
+  ["both phases hold (1 row/notch)", ["hold", "hold"], "supported", 1],
+  ["both phases hold (calibrated 3 rows/notch)", ["hold", "hold"], "supported", 3],
+  ["ordinary snap and synchronized hold", ["snap", "hold"], "unsupported", 1],
+  ["ordinary hold and synchronized bottom-relative motion", ["hold", "relative"], "unsupported", 1],
+] as const)(
+  "app viewport decides %s from actual rendered frames and round-trips through parseRun",
+  async (_name, policies, outcome, upRows) => {
+    const featureId = "scrollback.viewport-hold-output"
+    const app = viewportApplication(policies, { upRows })
+    // Even if getScrollback exists without viewportOffset, the Linux App wheel+capture path runs.
+    app.context.getScrollback = async () => ({ totalLines: 50, screenLines: 5 })
+    const result = await findScrollback(featureId).term!(app.context)
+    expect(result.observation?.outcome).toBe(outcome)
+    expect(result.pass).toBe(outcome === "supported")
+    expect(result.assertions).toContainEqual(
+      expect.objectContaining({ assertionType: "screenshot", kind: outcome === "supported" ? "positive" : "negative" }),
+    )
+    // Calibration captures 2 + 5 = 7 control frames, then Bref + 8 ordinary + 8 synchronized = 24 frames.
+    expect(app.frames).toHaveLength(24)
+    expect(app.frames.map(({ down }) => down)).toEqual([
+      0, 0, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 44, 44, 66, 66, 66, 66, 66, 66, 88, 88, 110,
+    ])
+    const reference = app.frames[7]!.frame.pixelsDigest
+    for (const index of [13, 15, 21, 23]) expect(app.frames[index]!.frame.pixelsDigest).toBe(reference)
+    const evidence = JSON.parse(result.response!) as {
+      calibration: { rowsPerNotch: number; matchedDisplacements: number[] }
+    }
+    expect(evidence.calibration.rowsPerNotch).toBe(upRows)
+    expect(evidence.calibration.matchedDisplacements).toEqual([upRows])
+
+    const assertions = (result.assertions ?? []).map((entry) => ({
+      ...entry,
+      featureId,
+      rawReplyRef: featureId,
+    }))
+    const recorded = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: "2026-11-09T10:00:00.000Z" },
+      rawReplyRef: featureId,
+      observation: result.observation ? { ...result.observation, featureId, rawReplyRef: featureId } : undefined,
+      assertions,
+      tests: result.tests,
+    })
+    const suite = "b".repeat(64)
+    const manifest: ProbeSuiteManifest = {
+      schemaVersion: 4,
+      probeHash: suite,
+      adapterVersion: "3.3.1",
+      generatedAt: "2026-11-09T10:00:00.000Z",
+      catalogIds: [featureId],
+      probes: { term: [featureId], lib: [], mux: [] },
+    }
+    const run = {
+      schemaVersion: 4,
+      source: { kind: "live" },
+      runId: `vh-${upRows}-${outcome}`,
+      suiteId: suite,
+      probeHash: suite,
+      sourceRevision: "4".repeat(40),
+      intendedSubject: { kind: "term", id: "kitty" },
+      subject: {
+        kind: "term",
+        id: "kitty",
+        version: "0.49.2",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-11-09T10:01:00.000Z",
+      origin: { kind: "collector" },
+      sealedAt: "2026-11-09T10:02:00.000Z",
+      rawReplies: {
+        [featureId]: JSON.stringify({
+          writes: app.writes,
+          queries: [{ query: "\x1b[c", raw: "\x1b[?62;22c" }],
+          events: [],
+        }),
+        ...(result.response ? { [`${featureId}.callbackResponse`]: result.response } : {}),
+      },
+      assertions,
+      screenshotRefs: [...new Set((recorded.frames ?? []).map((frame) => frame.ref))],
+      results: [recorded],
+    }
+    const parsed = parseRun(
+      `vh-${upRows}-${outcome}.json`,
+      JSON.stringify(run),
+      [featureId],
+      new Map([[suite, manifest]]),
+    )
+    expect(parsed.results?.[0]?.status).toBe(outcome)
+    expect(
+      parseObservationFrames(
+        parsed.results?.[0]?.frames,
+        `vh-${upRows}-${outcome}.json`,
+        featureId,
+        parsed.screenshotRefs,
+        parsed.textSnapshotRefs,
+        parsed.results?.[0]?.screenshotRef,
+        parsed.results?.[0]?.assertionType,
+      ),
+    ).toHaveLength(24)
+  },
+)
 
 function expectViewportTodo(result: ProbeCallbackResult) {
   expect(result).toMatchObject({ pass: false })
@@ -1823,26 +1920,36 @@ test.each([
   expect(result.notTested?.noObservable).toContain("ambiguous frame")
 })
 
-// Accepted prerequisite contract: no generic wheel emission proves the required trusted bound or delivery.
-// The old zero-I/O app callback never inspected these actual caller resources or named their causes.
-test.each(["no input", "no capture", "no delivery", "no bound", "empty provenance", "invalid bound"] as const)(
-  "app viewport refuses %s without writing target output",
-  async (cause) => {
-    const app = viewportApplication(undefined, { delivery: cause !== "no delivery" })
-    if (cause === "no input") app.context.input = undefined
-    if (cause === "no capture") app.context.capture = undefined
-    if (cause === "no bound") Reflect.deleteProperty(app.input, "wheelPlacement")
-    if (cause === "empty provenance") app.input.wheelPlacement.configurationHash = ""
-    if (cause === "invalid bound") app.input.wheelPlacement.maxRowsPerNotch = 0
-    const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
-    expectViewportTodo(result)
-    expect(app.activity().targetWrites).toBe(0)
-    if (["no bound", "empty provenance", "invalid bound"].includes(cause)) {
-      expect(result.notTested?.noObservable).toBe("wheel placement bound not established")
-      expect(app.writes).toEqual([])
-    }
-  },
-)
+// Accepted prerequisite and calibration contract: mux contexts, missing I/O, or uncalibrated wheel motion withhold before target output.
+test.each([
+  "no input",
+  "no capture",
+  "no delivery",
+  "tmux mux",
+  "screen mux",
+  "wheel up unmoved",
+  "ambiguous calibration",
+] as const)("app viewport refuses %s without writing target output", async (cause) => {
+  const app = viewportApplication(undefined, {
+    delivery: cause !== "no delivery",
+    ...(cause === "wheel up unmoved" ? { upRows: 0 } : {}),
+    ...(cause === "ambiguous calibration" ? { calAmbiguous: true } : {}),
+  })
+  if (cause === "no input") app.context.input = undefined
+  if (cause === "no capture") app.context.capture = undefined
+  if (cause === "tmux mux") app.context.mux = "tmux"
+  if (cause === "screen mux") app.context.mux = "screen"
+  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  expectViewportTodo(result)
+  expect(app.activity().targetWrites).toBe(0)
+  if (cause === "tmux mux" || cause === "screen mux") {
+    expect(result.notTested?.noObservable).toBe("multiplexer viewport hold retains the manual recipe")
+    expect(app.writes).toEqual([])
+  }
+  if (cause === "wheel up unmoved" || cause === "ambiguous calibration") {
+    expect(result.notTested?.noObservable).toBe("wheel placement bound not established")
+  }
+})
 
 // Accepted bottom construction: ignored/short movement and absent output must never make an old tail a fresh bottom.
 // Existing ED3 fixtures lack distinct anchors and cannot expose these hold-specific false-restoration paths.
@@ -1857,15 +1964,14 @@ test.each([
   expect(result.notTested?.noObservable).toContain("restoration to bottom not proven")
 })
 
-// Accepted bound limitation: this observable contradiction reaches the old T (U == Bref).
-// This does not assert that whole frames detect every lying producer's unobservable bound violation.
-test("app viewport refuses an advertised one-row notch that jumps back to the old tail", async () => {
+// Accepted calibration bound limitation: a wheel jump beyond maxCandidate matches none of 1..maxCandidate.
+test("app viewport refuses an uncalibrated wheel jump that exceeds the candidate window", async () => {
   const app = viewportApplication(undefined, { upRows: 1000 })
   const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
   expectViewportTodo(result)
+  expect(result.notTested?.noObservable).toBe("wheel placement bound not established")
   expect(app.activity().top).toBe(app.activity().bottom)
-  expect(app.frames).toHaveLength(3)
-  expect(app.frames[2]!.frame.pixelsDigest).toBe(app.frames[0]!.frame.pixelsDigest)
+  expect(app.frames).toHaveLength(7)
   expect(app.activity().targetWrites).toBe(0)
 })
 
@@ -1876,7 +1982,7 @@ test("app viewport restores again after R before any synchronized setup", async 
   const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
   expectViewportTodo(result)
   expect(result.notTested?.noObservable).toContain("restoration to bottom not proven")
-  expect(app.frames).toHaveLength(9)
+  expect(app.frames).toHaveLength(16)
   expect(app.activity().synchronizedWrites).toBe(0)
   expect(app.writes.join("")).not.toContain("\x1b[?2026h")
 })

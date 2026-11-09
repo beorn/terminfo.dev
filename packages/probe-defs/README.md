@@ -779,9 +779,13 @@ do not decide the probe result: full-screen apps redraw on resize, and intention
 there does not negate main-screen or history reflow. The reason reports alternate results as excluded from the support decision.
 Invalid alternate evidence stays visible without vetoing the required phases; cleanup failures still error.
 
-Supported reasons state: "ASCII reflow measured on main screen and retained history; wide characters,
-cursor on a wrapped line and terminal-app resize unmeasured". No broader coverage is inferred, and
-the separate terminal-app arm remains PROBE TODO. Private apparatus results grant no exact-run decision,
+Supported library reasons state: "ASCII reflow measured on main screen and retained history; wide characters,
+cursor on a wrapped line and terminal-app resize unmeasured". On the Linux App arm with owned window resize
+(`input.resizeWindow`), verified geometry readback (`CSI 18 t` or clamped CPR) and pixel capture, the probe
+shrinks to a narrower width first, measures `main-grow` (narrow -> wide) and `main-shrink` (wide -> narrow)
+after resize stabilization against candidate reference layouts painted at the post-resize width (including
+scrollback-push reflow on shrink), and states `retained history unmeasured` in its note; non-resizable
+App contexts remain PROBE TODO. Private apparatus results grant no exact-run decision,
 corpus placement; the native absolute-row consumer hold remains with independent batch review.
 
 The libvterm adapter retains native history, enables `vterm_screen_enable_reflow` and records that

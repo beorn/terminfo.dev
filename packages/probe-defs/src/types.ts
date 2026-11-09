@@ -1006,14 +1006,6 @@ export interface ClipboardFixture {
 
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
 export interface InputFixture {
-  /** Reviewed wheel bound for this fresh owned job, justified from its pinned application/configuration.
-   * Omit until established; this carries provenance, not an application identity gate. */
-  wheelPlacement?: {
-    maxRowsPerNotch: number
-    configurationHash: string
-    applicationVersion: string
-    applicationHash: string
-  }
   injectKey(keys: string): Promise<void>
   /** Move focus to the display root and back, verifying both owned X focus reads. */
   focusRoundTrip?(): Promise<{
