@@ -17,6 +17,7 @@ import type {
   ProbeCallbackResult,
   ProbeSuiteManifest,
 } from "./types.ts"
+import { assertCalibratedCaptureGeometry } from "./testing/calibrated-capture-geometry.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
@@ -1195,7 +1196,9 @@ function captureApp(rows: number, cols: number) {
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => null,
-    capture: async ({ role, label }) => {
+    capture: async (request) => {
+      assertCalibratedCaptureGeometry(context, request)
+      const { role, label } = request
       const frame = {
         role,
         label,
@@ -1678,6 +1681,10 @@ function viewportApplication(
     },
   }
   const { context } = silentAppSource(rows, cols)
+  context.captureGeometry = {
+    geometry: { cellWidth: 8, cellHeight: 16, textWidth: cols * 8, textHeight: rows * 16 },
+    source: "measured by complete raster calibration",
+  }
   context.input = input
   context.queryCursorPosition = async () => ({ row: row + 1, col: col + 1 })
   context.readInput = async (pattern, _timeout, inject) => {
@@ -1761,6 +1768,7 @@ function viewportApplication(
     if (options.captureError === true || (options.captureError === "after-up" && ups > 0)) {
       throw new Error("viewport capture failed")
     }
+    assertCalibratedCaptureGeometry(context, request)
     const inHoldPhase = lines.some((line) => line.startsWith("vh-tail-"))
     const grid = Array.from({ length: rows }, (_, index) =>
       (options.opaqueHistory && inHoldPhase && top < bottom()) ||
@@ -1923,6 +1931,30 @@ test.each([
     ).toHaveLength(25)
   },
 )
+
+test("app viewport fake refuses a cropped capture whose pixelGeometry shrinks to the cell region", async () => {
+  const app = viewportApplication(["hold", "hold"])
+  const installed = app.context.capture!
+  app.context.capture = (request) =>
+    installed(
+      request.cells && request.pixelGeometry
+        ? {
+            ...request,
+            pixelGeometry: {
+              ...request.pixelGeometry,
+              textWidth: request.cells.right * request.pixelGeometry.cellWidth,
+              textHeight: request.cells.bottom * request.pixelGeometry.cellHeight,
+            },
+          }
+        : request,
+    )
+  await expect(findScrollback("scrollback.viewport-hold-output").term!(app.context)).rejects.toMatchObject({
+    name: "UndeclaredTerminalGeometry",
+    message: "Linux capture calibration refused: terminal pixel geometry changed after origin calibration",
+  })
+  expect(app.frames).toHaveLength(0)
+  expect(app.writes.at(-1)).toBe("\x1b[?2026l\x1b[?25h")
+})
 
 function expectViewportTodo(result: ProbeCallbackResult) {
   expect(result).toMatchObject({ pass: false })

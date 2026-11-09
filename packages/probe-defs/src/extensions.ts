@@ -6560,26 +6560,13 @@ const extensionDefinitions: ProbeDefinition[] = [
         const growCols = narrowCols + 4
         const regionRows = 5
         const growCells = { top: 1, left: 1, bottom: regionRows, right: growCols }
-        const growPixelGeometry = {
-          cellWidth: baseGeometry.cellWidth,
-          cellHeight: baseGeometry.cellHeight,
-          textWidth: growCols * baseGeometry.cellWidth,
-          textHeight: regionRows * baseGeometry.cellHeight,
-        }
         const shrinkCells = { top: 1, left: 1, bottom: regionRows, right: narrowCols }
-        const shrinkPixelGeometry = {
-          cellWidth: baseGeometry.cellWidth,
-          cellHeight: baseGeometry.cellHeight,
-          textWidth: narrowCols * baseGeometry.cellWidth,
-          textHeight: regionRows * baseGeometry.cellHeight,
-        }
         const grab = async (
           role: "control" | "target",
           label: string,
           cells: typeof growCells,
-          pixelGeometry: typeof growPixelGeometry,
         ): Promise<ObservationFrame> => {
-          const captured = await capture({ role, label, cells, pixelGeometry })
+          const captured = await capture({ role, label, cells, pixelGeometry: baseGeometry })
           const digest = frameDigests(captured).cells
           if (!digest?.trim()) {
             throw new Error(`Reflow capture ${label} is missing cell-region digest`)
@@ -6605,30 +6592,30 @@ const extensionDefinitions: ProbeDefinition[] = [
         await new Promise<void>((resolve) => {
           setTimeout(resolve, 1000)
         })
-        const growSettle1 = await grab("control", "main-grow settle 1", growCells, growPixelGeometry)
+        const growSettle1 = await grab("control", "main-grow settle 1", growCells)
         await new Promise<void>((resolve) => {
           setTimeout(resolve, 100)
         })
-        const growSettle2 = await grab("control", "main-grow settle 2", growCells, growPixelGeometry)
+        const growSettle2 = await grab("control", "main-grow settle 2", growCells)
         if (frameDigests(growSettle1).cells !== frameDigests(growSettle2).cells) {
           return todoResult("Main-grow post-resize captures did not stabilize")
         }
-        const growAfter = await grab("target", "main-grow after", growCells, growPixelGeometry)
+        const growAfter = await grab("target", "main-grow after", growCells)
         ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growSoft}\r\nHARD-a\r\nHARD-b\r\n`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-grow ref reflowed")
         }
-        const growReflowed = await grab("control", "main-grow ref reflowed", growCells, growPixelGeometry)
+        const growReflowed = await grab("control", "main-grow ref reflowed", growCells)
         ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\n${growRow2}\r\nHARD-a\r\nHARD-b\r\n`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-grow ref preserved")
         }
-        const growPreserved = await grab("control", "main-grow ref preserved", growCells, growPixelGeometry)
+        const growPreserved = await grab("control", "main-grow ref preserved", growCells)
         ctx.write(`\x1b[?7h\x1b[0m\x1b[2J\x1b[H${growRow1}\r\nHARD-a\r\nHARD-b\r\n`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-grow ref clipped")
         }
-        const growClipped = await grab("control", "main-grow ref clipped", growCells, growPixelGeometry)
+        const growClipped = await grab("control", "main-grow ref clipped", growCells)
         const growRefs = {
           reflowed: growReflowed,
           preserved: growPreserved,
@@ -6653,35 +6640,30 @@ const extensionDefinitions: ProbeDefinition[] = [
         await new Promise<void>((resolve) => {
           setTimeout(resolve, 1000)
         })
-        const shrinkSettle1 = await grab("control", "main-shrink settle 1", shrinkCells, shrinkPixelGeometry)
+        const shrinkSettle1 = await grab("control", "main-shrink settle 1", shrinkCells)
         await new Promise<void>((resolve) => {
           setTimeout(resolve, 100)
         })
-        const shrinkSettle2 = await grab("control", "main-shrink settle 2", shrinkCells, shrinkPixelGeometry)
+        const shrinkSettle2 = await grab("control", "main-shrink settle 2", shrinkCells)
         if (frameDigests(shrinkSettle1).cells !== frameDigests(shrinkSettle2).cells) {
           return todoResult("Main-shrink post-resize captures did not stabilize")
         }
-        const shrinkAfter = await grab("target", "main-shrink after", shrinkCells, shrinkPixelGeometry)
+        const shrinkAfter = await grab("target", "main-shrink after", shrinkCells)
         ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\n${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-shrink ref reflowed")
         }
-        const shrinkReflowed = await grab("control", "main-shrink ref reflowed", shrinkCells, shrinkPixelGeometry)
+        const shrinkReflowed = await grab("control", "main-shrink ref reflowed", shrinkCells)
         ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow2}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-shrink ref reflowed-history")
         }
-        const shrinkReflowedHistory = await grab(
-          "control",
-          "main-shrink ref reflowed-history",
-          shrinkCells,
-          shrinkPixelGeometry,
-        )
+        const shrinkReflowedHistory = await grab("control", "main-shrink ref reflowed-history", shrinkCells)
         ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[H${shrinkRow1}\r\nHARD-a\r\nHARD-b\r\n\x1b[?7h`)
         if (!(await ctx.queryCursorPosition())) {
           return todoResult("No cursor-position reply after painting main-shrink ref clipped")
         }
-        const shrinkClipped = await grab("control", "main-shrink ref clipped", shrinkCells, shrinkPixelGeometry)
+        const shrinkClipped = await grab("control", "main-shrink ref clipped", shrinkCells)
         const shrinkRefs = {
           reflowed: shrinkReflowed,
           "reflowed-history": shrinkReflowedHistory,

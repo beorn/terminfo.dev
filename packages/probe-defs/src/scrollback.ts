@@ -440,19 +440,12 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   }
   const calWidth = `vh-cal-${calLines - 1}`.length
   const calCells = { top: 1, left: 1, bottom: ctx.rows, right: calWidth }
-  const calPixelGeometry = ctx.captureGeometry?.geometry
-    ? {
-        cellWidth: ctx.captureGeometry.geometry.cellWidth,
-        cellHeight: ctx.captureGeometry.geometry.cellHeight,
-        textWidth: calWidth * ctx.captureGeometry.geometry.cellWidth,
-        textHeight: ctx.rows * ctx.captureGeometry.geometry.cellHeight,
-      }
-    : undefined
+  const calGeometry = ctx.captureGeometry?.geometry
   const calFrame = async (label: string) => {
     const result = await capture({
       role: "control",
       label,
-      ...(calPixelGeometry ? { cells: calCells, pixelGeometry: calPixelGeometry } : {}),
+      ...(calGeometry ? { cells: calCells, pixelGeometry: calGeometry } : {}),
     })
     if (result.kind === "text-cells" || !result.pixelsDigest?.trim()) {
       throw new Error(`Viewport capture ${label} has no complete pixel digest`)

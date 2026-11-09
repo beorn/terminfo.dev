@@ -10,6 +10,7 @@ import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
 import { extensionsProbes } from "./extensions.ts"
 import { DECLARED_UNTESTABLE_TEST, HEADLESS_OBSERVABLE_REVIEW, recordExecutedProbe } from "./helpers.ts"
 import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
+import { assertCalibratedCaptureGeometry } from "./testing/calibrated-capture-geometry.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ObservationFrame, ProbeSuiteManifest, TermProbeSource } from "./types.ts"
 
@@ -33,7 +34,9 @@ function captureApp(rows: number, cols: number) {
       return { match: null, reason: "timeout", raw: "", rawBase64: "" }
     },
     queryMode: async () => null,
-    capture: async ({ role, label }) => {
+    capture: async (request) => {
+      assertCalibratedCaptureGeometry(context, request)
+      const { role, label } = request
       const frame = {
         role,
         label,
@@ -103,15 +106,14 @@ function calibratedIterm2Arm(
       }
       if (/^\x1b\[1;1H.$/.test(bytes)) glyph = bytes.slice(-1)
     },
-    capture: async ({
-      role,
-      label,
-      cells,
-    }: {
+    capture: async (request: {
       role: "control" | "target"
       label: string
       cells?: { top: number; left: number; bottom: number; right: number }
+      pixelGeometry?: { cellWidth: number; cellHeight: number; textWidth: number; textHeight: number }
     }) => {
+      assertCalibratedCaptureGeometry(context, request)
+      const { role, label, cells } = request
       const frame: ObservationFrame = {
         kind: "pixels",
         role,
@@ -870,6 +872,17 @@ test.each([
     expectedFrames: 0,
     expectedReason: /Reflow probe could not restore original terminal size/,
   },
+  {
+    name: "refuses-shrunken-cropped-capture-geometry",
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "reflowed" as const,
+    shrunkenCaptureGeometry: true,
+    expectedStatus: "probe-invalid" as const,
+    expectedOutcome: undefined,
+    expectedAssertions: 0,
+    expectedFrames: 0,
+    expectedReason: /Linux capture calibration refused: terminal pixel geometry changed after origin calibration/,
+  },
 ])(
   "extensions.reflow App resize+capture round-trips through parseRun for $name",
   async ({
@@ -879,6 +892,7 @@ test.each([
     disableCsi18t,
     dropRefFence,
     failRestore,
+    shrunkenCaptureGeometry,
     expectedStatus,
     expectedOutcome,
     expectedAssertions,
@@ -1031,7 +1045,20 @@ test.each([
             return { width: wideCols * 10, height: rows * 20 }
           },
         },
-        capture: async ({ role, label, cells }) => {
+        capture: async (rawRequest) => {
+          const request =
+            shrunkenCaptureGeometry && rawRequest.cells && rawRequest.pixelGeometry
+              ? {
+                  ...rawRequest,
+                  pixelGeometry: {
+                    ...rawRequest.pixelGeometry,
+                    textWidth: rawRequest.cells.right * rawRequest.pixelGeometry.cellWidth,
+                    textHeight: rawRequest.cells.bottom * rawRequest.pixelGeometry.cellHeight,
+                  },
+                }
+              : rawRequest
+          assertCalibratedCaptureGeometry(context, request)
+          const { role, label, cells } = request
           const cropTop = cells?.top ?? 1
           const cropLeft = cells?.left ?? 1
           const cropBottom = cells?.bottom ?? rows
@@ -1059,6 +1086,16 @@ test.each([
           frames.push(frame)
           return frame
         },
+      }
+      if (shrunkenCaptureGeometry) {
+        await expect(definition.term!(context)).rejects.toMatchObject({
+          name: "UndeclaredTerminalGeometry",
+          message: "Linux capture calibration refused: terminal pixel geometry changed after origin calibration",
+        })
+        expect(frames).toHaveLength(0)
+        expect(resizeCalls.at(-1)).toEqual({ width: wideCols * 10, height: rows * 20 })
+        expect(currentCols).toBe(wideCols)
+        return
       }
       const result = await definition.term!(context)
       expect(resizeCalls[0]?.width).toBeLessThan(wideCols * 10)
