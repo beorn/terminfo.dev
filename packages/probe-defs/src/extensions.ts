@@ -1412,7 +1412,7 @@ async function colorSetupAppCapture(
   if (!ctx.capture || ctx.captureKind === "text-cells") return fallback
   const index = setCode === 4 ? "0;" : ""
   const paint = `\x1b[0m\x1b[3;2H${setCode === 4 ? "\x1b[38;5;0m" : ""}XX\x1b[0m`
-  const expected = "\x1b[0m\x1b[3;2H\x1b[38;2;18;52;86mXX\x1b[0m"
+  const expected = "\x1b[0m\x1b[3;2H\x1b[38;5;12mXX\x1b[0m"
   const spec = {
     region: { top: 3, left: 2, bottom: 3, right: 3 },
     sentinel: { row: 1, col: 1 },
