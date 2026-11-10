@@ -332,7 +332,12 @@ export type HostedDarwinAppId =
   | "com.microsoft.VSCode"
   | "warp"
   | "cmux"
-export type HostedDarwinApp = { id: HostedDarwinAppId; comm: string }
+export type HostedDarwinApp = {
+  id: HostedDarwinAppId
+  comm: string
+  /** Window-title method for this subject. The Darwin reader follows this and names no app. */
+  titleRead: "system-events" | "none"
+}
 export type AncestryRow = {
   pid: number
   ppid: number
@@ -352,17 +357,18 @@ export type AncestryRow = {
 }
 
 const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
-  Terminal: { id: "terminal-app", comm: "Terminal" },
-  iTerm2: { id: "iterm2", comm: "iTerm2" },
-  ghostty: { id: "ghostty", comm: "ghostty" },
-  alacritty: { id: "alacritty", comm: "alacritty" },
-  Alacritty: { id: "alacritty", comm: "alacritty" },
+  Terminal: { id: "terminal-app", comm: "Terminal", titleRead: "system-events" },
+  // The System Events permission dialog hangs a hosted iTerm2 collector (#33017).
+  iTerm2: { id: "iterm2", comm: "iTerm2", titleRead: "none" },
+  ghostty: { id: "ghostty", comm: "ghostty", titleRead: "system-events" },
+  alacritty: { id: "alacritty", comm: "alacritty", titleRead: "system-events" },
+  Alacritty: { id: "alacritty", comm: "alacritty", titleRead: "system-events" },
   // WezTerm.app's CFBundleExecutable is wezterm-gui; the `wezterm` CLI only starts it.
-  "wezterm-gui": { id: "wezterm", comm: "wezterm-gui" },
-  Cursor: { id: "cursor", comm: "Cursor" },
-  Code: { id: "com.microsoft.VSCode", comm: "Code" },
-  stable: { id: "warp", comm: "stable" },
-  cmux: { id: "cmux", comm: "cmux" },
+  "wezterm-gui": { id: "wezterm", comm: "wezterm-gui", titleRead: "system-events" },
+  Cursor: { id: "cursor", comm: "Cursor", titleRead: "system-events" },
+  Code: { id: "com.microsoft.VSCode", comm: "Code", titleRead: "system-events" },
+  stable: { id: "warp", comm: "stable", titleRead: "system-events" },
+  cmux: { id: "cmux", comm: "cmux", titleRead: "system-events" },
 }
 const CMUX_GUI_EXECUTABLE_PATH = "/Applications/cmux.app/Contents/MacOS/cmux"
 const HOSTED_DARWIN_COMMS = new Set([
@@ -1219,6 +1225,7 @@ export async function createOwnedTerminal(options: {
     } else if (darwinHosted && hostedApp) {
       clipboard = await createDarwinClipboardAdapter({
         appComm: hostedApp.comm,
+        titleRead: hostedApp.titleRead,
         assertOwned: async () => {
           if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
         },

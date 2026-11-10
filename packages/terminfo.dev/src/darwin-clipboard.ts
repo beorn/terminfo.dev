@@ -3,6 +3,9 @@ import { createClipboardTransaction, type LinuxClipboardAdapter } from "./linux-
 
 export type DarwinCommand = (file: string, args: string[], stdin?: string) => Promise<string>
 
+/** Declared beside the hosted subject. The reader branches on this value only. */
+export type DarwinTitleRead = "system-events" | "none"
+
 /** pbcopy reads stdin. execFile does not open stdin, so this uses spawn. */
 export function runDarwinCommand(file: string, args: string[], stdin?: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -41,6 +44,7 @@ function pasteboardText(raw: string): string {
  */
 export async function createDarwinClipboardAdapter(input: {
   appComm: string
+  titleRead: DarwinTitleRead
   assertOwned: () => Promise<void>
   run?: DarwinCommand
 }): Promise<LinuxClipboardAdapter> {
@@ -69,10 +73,13 @@ export async function createDarwinClipboardAdapter(input: {
     summary: `darwin hosted pasteboard for ${input.appComm}`,
     assertOwned: input.assertOwned,
     async readTitle() {
-      // System Events raises an AppleScript permission dialog inside hosted iTerm2 and the
-      // collector waits on it until the 900s job limit (#33017). Do not spawn osascript.
       await input.assertOwned()
-      throw new Error("Hosted Darwin title read does not use System Events")
+      // `none` never spawns osascript. The subject row records why that subject declares it.
+      if (input.titleRead === "none") {
+        throw new Error("Hosted Darwin title read does not use System Events")
+      }
+      const script = `tell application "System Events" to get name of window 1 of process ${JSON.stringify(input.appComm)}`
+      return (await run("/usr/bin/osascript", ["-e", script])).replace(/\n$/u, "")
     },
     withClipboardFixture,
     async dispose() {},
