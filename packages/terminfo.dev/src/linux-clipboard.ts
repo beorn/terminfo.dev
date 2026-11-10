@@ -840,13 +840,24 @@ export async function createLinuxClipboardAdapter(
       } finally {
         try {
           await verify()
+          const readSettledTitle = async () => {
+            const deadline = Date.now() + 2000
+            let seen = await title()
+            while (seen !== originalTitle && Date.now() < deadline) {
+              await new Promise((resolve) => setTimeout(resolve, 25))
+              seen = await title()
+            }
+            return seen
+          }
           const restoreTitle = async () => {
             write(`\x1b]2;${originalTitle}\x07`)
             await verify()
-            if ((await title()) === originalTitle) return "osc2" as const
-            // WezTerm keeps the window title on the OSC 1 payload and ignores a later OSC 2 (#32998).
+            if ((await readSettledTitle()) === originalTitle) return "osc2" as const
+            // WezTerm keeps the window title on the OSC 1 payload and ignores a later OSC 2.
+            // OSC 0 clears that pin (#32998).
             write(`\x1b]0;${originalTitle}\x07`)
             await verify()
+            await readSettledTitle()
             return "osc0" as const
           }
           if (before.value !== null) {
@@ -869,6 +880,9 @@ export async function createLinuxClipboardAdapter(
           }
           if (cleanup.title !== originalTitle) {
             throw new Error("Owned icon/title restoration readback differs from baseline")
+          }
+          if (restoredBy === "osc0" && cleanup.note === undefined) {
+            cleanup.note = "OSC 1 held the icon name as the window title; OSC 0 cleared it"
           }
           if (before.value === null) {
             cleanup.note = "Baseline icon property was absent; OSC cleanup does not delete a property the probe created"
