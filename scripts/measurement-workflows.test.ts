@@ -18,6 +18,16 @@ import { prepareCliLaunch } from "../packages/admin/src/app.ts"
 import { censusDarwinWindows } from "../packages/terminfo.dev/src/darwin-capture.ts"
 import { expect, test } from "vitest"
 
+// The workflow snippets this file executes call Bun.* APIs, so every child and shim must be Bun. Under
+// `bun --bun vitest` (validate.yml) the worker IS Bun; under a Node worker (`bun x vitest`) resolve the bun
+// binary once, by absolute path for the shebang, and fail loudly here if there is none (33144).
+const BUN = process.versions.bun
+  ? process.execPath
+  : spawnSync("bun", ["-e", "process.stdout.write(process.execPath)"], { encoding: "utf8" }).stdout ||
+    (() => {
+      throw new Error("measurement-workflows.test.ts needs the bun binary on PATH to run workflow snippets")
+    })()
+
 const root = join(import.meta.dirname, "..")
 
 test("hosted collector build runs at background priority", () => {
@@ -317,7 +327,7 @@ process.exit(7);
         COMMAND_PATH: command,
         BUN_DIR: "/bin",
         NODE_DIR: "/usr/bin",
-        COLLECTOR_BUN: process.execPath,
+        COLLECTOR_BUN: BUN,
         COLLECTOR: collector,
         TARGET_VERSION_EXPORT: "",
         PROBE_IDS: scenario === "selected" ? '["device.primary-da"]' : "null",
@@ -589,7 +599,7 @@ test.each([
       return originalSpawn(["/bin/bash", "-c", "printf '%s' \\\"$1\\\"", "fixture", output], options);
     };\n`
     try {
-      const result = spawnSync(process.execPath, ["--eval", prelude + source], {
+      const result = spawnSync(BUN, ["--eval", prelude + source], {
         encoding: "utf8",
         env: {
           ...process.env,
@@ -952,7 +962,7 @@ test.each([
   }
   // Fixed absolute production commands are redirected to PATH shims only in this
   // subprocess's platform boundary. The journal retains the original absolute argv.
-  const shim = `#!${process.execPath}
+  const shim = `#!${BUN}
 const fs = require("node:fs");
 const name = require("node:path").basename(process.argv[1]);
 const args = process.argv.slice(2);
@@ -1002,7 +1012,7 @@ childBoundary.spawn = (file, args, options) => {
         WARP_SETUP_SCENARIO: scenario,
         WARP_SETUP_HOME: home,
         WARP_SETUP_JOURNAL: journal,
-        WARP_SETUP_BUN: process.execPath,
+        WARP_SETUP_BUN: BUN,
         WARP_SETUP_SOURCE: prelude + source,
       },
     })
