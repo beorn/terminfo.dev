@@ -37,18 +37,19 @@ const screenSpawns = []
 const hash = x => createHash("sha256").update(x).digest("hex")
 const launch = "a".repeat(32), capture = "b".repeat(32)
 const baseline = "terminfo-owned-clipboard-" + launch
+const primaryBaseline = "terminfo-owned-primary-" + launch
 const bootId = "730f0ec0-707d-47f4-bf82-1a1e28ec4f10"
 const receiptPath = join(root, "clipboard-fixture.json")
 const exe = name => join(root, name)
 const screenConfig = "defscrollback 100\n"
-for (const [name, bytes] of Object.entries({kitty:"kitty-bytes",tmux:"tmux-bytes",screen:"screen-bytes",xclip:"xclip-bytes",config:screenConfig,baseline,display:"22"})) {
+for (const [name, bytes] of Object.entries({kitty:"kitty-bytes",tmux:"tmux-bytes",screen:"screen-bytes",xclip:"xclip-bytes",config:screenConfig,baseline,primary:primaryBaseline,display:"22"})) {
   fs.writeFileSync(exe(name), bytes, {mode:0o600})
 }
 const real = {...fs}
 const fsFault = new Error("fixture filesystem link unavailable")
 let spawns=0
 let mux, variant, table, socket, muxTarget, reads = 0
-let baselineValue = baseline, tmuxBuffers = [], tmuxSetClipboard = "external", tmuxDeleteCalls = []
+let baselineValue = baseline, primaryValue = primaryBaseline, tmuxBuffers = [], tmuxSetClipboard = "external", tmuxDeleteCalls = []
 const statText = pid => {
   const p = table.get(pid)
   if (!p) throw Error("fixture missing process " + pid)
@@ -133,7 +134,8 @@ mock.module("node:child_process", () => ({...cp,
   spawn(file,args){
     if(file===exe("xclip") && Array.isArray(args) && args.includes("-i")){
       const handlers={}
-      const child={pid:500001+spawns++,exitCode:0,signalCode:null,stdin:{once(){},end(text){baselineValue=text}},once(ev,cb){handlers[ev]=cb;if(ev==="exit")queueMicrotask(()=>cb(0,null))},kill(){}}
+      const primary=args.includes("primary")
+      const child={pid:500001+spawns++,exitCode:0,signalCode:null,stdin:{once(){},end(text){if(primary)primaryValue=text;else baselineValue=text}},once(ev,cb){handlers[ev]=cb;if(ev==="exit")queueMicrotask(()=>cb(0,null))},kill(){}}
       return child
     }
     spawns++;throw new Error("unowned clipboard writer spawned")
@@ -167,7 +169,7 @@ mock.module("node:child_process", () => ({...cp,
       const server = args.at(-1).includes("#{pid}") ? (variant === "foreign-server" ? "149" : "145") + "\t" : ""
       if (variant === "detached") callback(null,"")
       else callback(null, server + (variant === "client-changed" ? "150" : "148") + "\t/dev/pts/0\tterminfo-" + launch + "\t" + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n" + (variant === "second-client" ? server+"150\t/dev/pts/2\tterminfo-"+launch+"\t"+socket+"\n" : ""))
-    } else {reads++;callback(null,baselineValue)}
+    } else {reads++;callback(null,args.includes("primary")?primaryValue:baselineValue)}
     return {}
   },
 }))
@@ -176,8 +178,8 @@ process.env.DISPLAY=":22"
 process.env.TERMINFO_CLIPBOARD_PROFILE="default"
 try {
   const {createLinuxClipboardAdapter}=await import(pathToFileURL(process.env.TERMINFO_TEST_SOURCE_ROOT+"/linux-clipboard.ts").href)
-    const initialize = (kind, bad) => {
-      mux=kind;variant=bad;reads=0;baselineValue=baseline;tmuxBuffers=[];tmuxSetClipboard="external";tmuxDeleteCalls=[]
+    const initialize = (kind, bad, withPrimary) => {
+      mux=kind;variant=bad;reads=0;baselineValue=baseline;primaryValue=primaryBaseline;tmuxBuffers=[];tmuxSetClipboard="external";tmuxDeleteCalls=[]
     const p=(ppid,start,tty,exe)=>({ppid,start,tty,exe})
     // Faithful projection of measured-relations.json: tmux server keeps outer ctty;
     // Screen server has none and is a child of its attached client.
@@ -188,7 +190,7 @@ try {
       [149,p(92,"122",34816,exe("tmux"))],[150,p(92,"123",34816,exe("tmux"))],
       [146,p(92,"120",34816,exe("screen"))],[147,p(146,"121",0,exe("screen"))],
       [process.pid,p(kind==="tmux"?145:147,"130",34817,process.execPath)],
-      [419422,p(1,"80",0,"/usr/bin/Xvfb")],[419423,p(1,"90",0,exe("xclip"))]
+      [419422,p(1,"80",0,"/usr/bin/Xvfb")],[419423,p(1,"90",0,exe("xclip"))],[419424,p(1,"91",0,exe("xclip"))]
     ])
     socket=join(root,kind==="tmux"?"terminfo-"+launch+".sock":"147.terminfo-"+launch)
     muxTarget={kind:"mux",mux:kind,bootId,
@@ -207,10 +209,31 @@ try {
     real.writeFileSync(receiptPath,JSON.stringify({schemaVersion:1,runId:launch,profile:"default",target:muxTarget,
       display:{name:":22",number:22,displayFdPath:exe("display"),xvfbPid:419422},
       terminal:{pid:76,collectorPid:process.pid,windowId:"42",windowPid:76},
-      selection:{helperPid:419423,helperExecutable:{path:exe("xclip"),sha256:hash("xclip-bytes")},baselinePath:exe("baseline"),baselineSha256:hash(baseline),initialReadSha256:hash(baseline)},
+      selection:{helperPid:419423,helperExecutable:{path:exe("xclip"),sha256:hash("xclip-bytes")},baselinePath:exe("baseline"),baselineSha256:hash(baseline),initialReadSha256:hash(baseline),
+        ...(withPrimary&&{primary:{helperPid:419424,baselinePath:exe("primary"),baselineSha256:hash(primaryBaseline),initialReadSha256:hash(primaryBaseline)}})},
       config:"--config NONE",permissions:"clipboard: read=ask,write=allow; OSC52: write=run,read=not-run"}),{mode:0o600})
   }
   const factory=()=>createLinuxClipboardAdapter(receiptPath,launch,{path:exe("kitty"),sha256:hash("kitty-bytes")},capture,24)
+  // #32164: an xterm paste route reads X11 PRIMARY. Its own baseline is owned, written, restored and verified on
+  // PRIMARY alone, and CLIPBOARD stays untouched; a receipt without it exposes no PRIMARY transaction at all.
+  initialize("tmux","valid",true)
+  const primaryAdapter=await factory()
+  assert.equal(typeof primaryAdapter.withPrimaryFixture,"function","a PRIMARY receipt must expose its transaction")
+  let seen
+  await primaryAdapter.withPrimaryFixture(async fixture=>{
+    seen=await fixture.readText()
+    await fixture.writeText("pasted nonce")
+    assert.equal(primaryValue,"pasted nonce","the write must land on PRIMARY")
+    assert.equal(baselineValue,baseline,"a PRIMARY write must leave CLIPBOARD untouched")
+    return {pass:true}
+  },()=>{},primaryAdapter.assertOwned)
+  assert.equal(seen,primaryBaseline,"the read must come from PRIMARY")
+  assert.equal(primaryValue,primaryBaseline,"PRIMARY must be restored to its own baseline")
+  await primaryAdapter.dispose()
+  initialize("tmux","valid",false)
+  const clipboardOnly=await factory()
+  assert.equal(clipboardOnly.withPrimaryFixture,undefined,"no PRIMARY receipt means no PRIMARY transaction")
+  await clipboardOnly.dispose()
   for(const kind of ["tmux","screen"]) {
     initialize(kind,"valid")
     const adapter=await factory()

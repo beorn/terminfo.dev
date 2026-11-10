@@ -31,7 +31,7 @@ for verified owned Linux runs matching one of these routes:
 
 - **Direct Linux apps (`term/<id>/linux` with matching `app/<id>/linux` disposable target and no `muxAttachmentProof`)**:
   - `extensions.osc52-write` on all five apps (`kitty`, `ghostty`, `alacritty`, `wezterm`, `xterm`).
-  - `extensions.clipboard-paste` on apps whose default keymap binds `Ctrl+Shift+V` to `CLIPBOARD` (`kitty`, `ghostty`, `alacritty`, `wezterm`). Default `xterm` 411 binds `Shift+Insert` / `Button2` to `PRIMARY` (`SELECT`) rather than `Ctrl+Shift+V` / `CLIPBOARD` (`charproc.c:15021-15061`) and is declared Untestable naming that unbuilt route.
+  - `extensions.clipboard-paste` through each app's default paste action, from the selection that action reads (`LINUX_PASTE_ROUTES` in `unified.ts`, each entry citing its source binding at the pinned version): `Ctrl+Shift+V` from `CLIPBOARD` on `kitty`, `ghostty`, `alacritty` and `wezterm`; `Shift+Insert` from `PRIMARY` on `xterm` 411 (`charproc.c:15024`), whose run alone also owns, restores and verifies a `PRIMARY` baseline. The launch refuses any resource that could rebind it.
   - All ten desktop `extensions.osc52-read` and `extensions.osc52-clipboard` cells remain gated outside the default profile so unattended runs never trigger ask-first read prompts.
 - **Verified Linux multiplexers (`mux/{tmux,screen}/linux` with matching `mux/<id>/linux` disposable target and matching `muxAttachmentProof`)**:
   - `extensions.clipboard-paste`, `extensions.osc52-write`, `extensions.osc52-read`, and `extensions.osc52-clipboard`.

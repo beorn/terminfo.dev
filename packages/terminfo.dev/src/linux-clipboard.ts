@@ -38,6 +38,8 @@ interface ClipboardReceipt {
     baselinePath: string
     baselineSha256: string
     initialReadSha256: string
+    /** X11 PRIMARY, owned by a second helper only when a paste route reads it (xterm Shift+Insert, #32164). */
+    primary?: { helperPid: number; baselinePath: string; baselineSha256: string; initialReadSha256: string }
   }
   config: string
   permissions: string
@@ -76,6 +78,8 @@ export interface LinuxClipboardAdapter {
     trace: (event: ClipboardTraceEvent) => void,
     verify: () => Promise<void>,
   ): Promise<ProbeCallbackResult>
+  /** The same transaction over X11 PRIMARY; present only when the receipt owns a PRIMARY baseline. */
+  withPrimaryFixture?: LinuxClipboardAdapter["withClipboardFixture"]
   dispose(): Promise<void>
 }
 
@@ -273,6 +277,21 @@ export function parseLinuxClipboardReceipt(value: unknown): ClipboardReceipt {
     r.selection.initialReadSha256 !== r.selection.baselineSha256
   ) {
     throw new Error("Owned clipboard receipt has invalid display, window, or digest")
+  }
+  const primary = r.selection.primary
+  if (
+    primary !== undefined &&
+    (!primary ||
+      typeof primary !== "object" ||
+      !Number.isSafeInteger(primary.helperPid) ||
+      primary.helperPid < 2 ||
+      primary.helperPid === r.selection.helperPid ||
+      typeof primary.baselinePath !== "string" ||
+      !primary.baselinePath.startsWith("/") ||
+      !/^[0-9a-f]{64}$/.test(primary.baselineSha256 ?? "") ||
+      primary.initialReadSha256 !== primary.baselineSha256)
+  ) {
+    throw new Error("Owned clipboard receipt has an invalid PRIMARY selection")
   }
   // Absent target is the existing direct-app receipt. A supplied discriminant is exhaustive.
   if (r.target !== undefined) {
@@ -599,6 +618,15 @@ export async function createLinuxClipboardAdapter(
   ) {
     throw new Error("Owned clipboard baseline is not this collector's generated nonce")
   }
+  const primaryReceipt = receipt.selection.primary
+  const primaryBaseline = primaryReceipt && readFileSync(ownedFile(primaryReceipt.baselinePath), "utf8")
+  if (
+    primaryReceipt &&
+    (primaryBaseline !== `terminfo-owned-primary-${receipt.runId}` ||
+      digest(primaryBaseline) !== primaryReceipt.baselineSha256)
+  ) {
+    throw new Error("Owned PRIMARY baseline is not this collector's generated nonce")
+  }
   const helperExe = realpathSync(receipt.selection.helperExecutable.path)
   if (digest(readFileSync(helperExe)) !== receipt.selection.helperExecutable.sha256) {
     throw new Error("Owned xclip executable digest mismatch")
@@ -681,6 +709,9 @@ export async function createLinuxClipboardAdapter(
   if (processExecutable(receipt.selection.helperPid) !== helperExe) {
     throw new Error("Owned clipboard selection helper executable differs from receipt")
   }
+  if (primaryReceipt && processExecutable(primaryReceipt.helperPid) !== helperExe) {
+    throw new Error("Owned PRIMARY selection helper executable differs from receipt")
+  }
   const children = new Set<ChildProcess>()
   const log = (trace: Trace, kind: ClipboardTraceEvent["kind"], text: string, helperPid?: number) =>
     trace({
@@ -690,15 +721,17 @@ export async function createLinuxClipboardAdapter(
       length: Buffer.byteLength(text),
       ...(helperPid && { helperPid }),
     })
+  type Selection = "clipboard" | "primary"
   async function readText(
     trace: Trace,
     kind: ClipboardTraceEvent["kind"],
     verify: () => Promise<void>,
+    selection: Selection = "clipboard",
   ): Promise<string> {
     const at = new Date().toISOString()
     try {
       await verify()
-      const text = await command(helperExe, ["-quiet", "-selection", "clipboard", "-o"], env)
+      const text = await command(helperExe, ["-quiet", "-selection", selection, "-o"], env)
       trace({ kind, at, sha256: digest(text), length: Buffer.byteLength(text) })
       return text
     } catch (error) {
@@ -711,6 +744,7 @@ export async function createLinuxClipboardAdapter(
     trace: Trace,
     kind: ClipboardTraceEvent["kind"],
     verify: () => Promise<void>,
+    selection: Selection = "clipboard",
   ): Promise<void> {
     const at = new Date().toISOString()
     try {
@@ -719,7 +753,7 @@ export async function createLinuxClipboardAdapter(
       trace({ kind, at, status: "error" })
       throw error
     }
-    const child = spawn(helperExe, ["-quiet", "-selection", "clipboard", "-i"], {
+    const child = spawn(helperExe, ["-quiet", "-selection", selection, "-i"], {
       env,
       stdio: ["pipe", "ignore", "ignore"],
     })
@@ -741,7 +775,7 @@ export async function createLinuxClipboardAdapter(
     for (let attempt = 0; attempt < 30; attempt++) {
       if (childError) throw childError
       try {
-        if ((await readText(trace, "clipboard-read", verify)) === text) return
+        if ((await readText(trace, "clipboard-read", verify, selection)) === text) return
       } catch (error) {
         if (attempt === 29) throw error
       }
@@ -749,11 +783,20 @@ export async function createLinuxClipboardAdapter(
         setTimeout(resolve, 20)
       })
     }
-    throw new Error("Owned xclip writer did not acquire the clipboard selection")
+    throw new Error(`Owned xclip writer did not acquire the ${selection} selection`)
   }
   if ((await readText(() => {}, "clipboard-read", assertOwned)) !== baseline) {
     throw new Error("Initial owned clipboard readback differs from generated baseline")
   }
+  if (primaryBaseline && (await readText(() => {}, "clipboard-read", assertOwned, "primary")) !== primaryBaseline) {
+    throw new Error("Initial owned PRIMARY readback differs from generated baseline")
+  }
+  const withPrimaryFixture =
+    primaryBaseline &&
+    createClipboardTransaction(primaryBaseline, {
+      readText: (trace, kind, verify) => readText(trace, kind, verify, "primary"),
+      writeText: (text, trace, kind, verify) => writeText(text, trace, kind, verify, "primary"),
+    })
   const tmuxTarget = receipt.target?.kind === "mux" && receipt.target.mux === "tmux" ? receipt.target : undefined
   const listTmuxBuffers = async (target: MuxReceiptTarget): Promise<string[]> => {
     await assertOwned()
@@ -1065,9 +1108,11 @@ export async function createLinuxClipboardAdapter(
         helperExecutableSha256: receipt.selection.helperExecutable.sha256,
         baselineSha256: receipt.selection.baselineSha256,
         initialReadSha256: receipt.selection.initialReadSha256,
+        ...(primaryReceipt && { primary: primaryReceipt }),
       },
     }),
     withClipboardFixture,
+    ...(withPrimaryFixture && { withPrimaryFixture }),
     async dispose() {
       await Promise.all(
         [...children].map(
