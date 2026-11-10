@@ -660,7 +660,12 @@ describe("probe method classification", () => {
       for (const result of run.results ?? []) {
         if (!scoredFeatureIds([result.featureId]).length) continue
         const classified = classifyResultMethod(result, run.subject, run.assertions)
-        expect(classified.kind).not.toBe("mixed")
+        // Alt-screen exit is a query and a screenshot. That pair stays mixed; any other mix fails here.
+        if (classified.kind === "mixed") {
+          expect(result.featureId).toBe("modes.alt-screen.exit")
+          expect(classified.assertionTypes).toEqual(["query_reply", "screenshot"])
+          continue
+        }
         expect(classified.kind).not.toBe("unmapped")
         if (classified.kind === "method" && classified.method === "source") sourceMethods++
       }

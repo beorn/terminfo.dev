@@ -10,7 +10,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test } from "vitest"
 
-test("validates retained runs through the canonical decoder and names rejected input", () => {
+// Copying the live content tree plus the validator runs is past the 5s default.
+// Measured 6.7s on 2026-11-10; 30s leaves room when the host is busy.
+test("validates retained runs through the canonical decoder and names rejected input", { timeout: 30_000 }, () => {
   const source = join(import.meta.dirname, "..")
   const root = mkdtempSync(join(tmpdir(), "terminfo-validate-"))
   try {
