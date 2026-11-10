@@ -324,6 +324,7 @@ export function projectResults(
     textSnapshots?: ReadonlyMap<string, Uint8Array>
     workingRuns?: readonly LoadedRun[]
     workingAttempts?: readonly SelectedAttemptInput[]
+    log?: (line: string) => void
   },
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
@@ -536,7 +537,7 @@ function composeContextSummaries(
         prior.run.probeHash === run.probeHash
       if (!prior || !sameProbe || priorStatus === undefined || !decided.has(priorStatus)) {
         if (prior && !sameProbe) {
-          console.log(
+          policy.log?.(
             `placed ${run.subject.id} ${result.featureId} harness ${result.harnessOutcome} because the probe changed`,
           )
         }
@@ -546,7 +547,7 @@ function composeContextSummaries(
       const streak = (keptStreak.get(result.featureId) ?? 0) + 1
       keptStreak.set(result.featureId, streak)
       keptCount += 1
-      console.log(
+      policy.log?.(
         `kept ${run.subject.id} ${result.featureId} ${priorStatus} refused ${result.harnessOutcome} from ${run.runId} streak ${streak}${streak >= 3 ? " needs its own issue" : ""}`,
       )
       return true
@@ -639,7 +640,7 @@ function composeContextSummaries(
     )
     const sourceOrder = [...baselines, ...selected.map((entry) => entry.run), ...candidates]
     const contributingRunIds = [...new Set(sourceOrder.map((run) => run.runId))].filter((id) => contributing.has(id))
-    if (keptCount > 0) console.log(`kept ${keptCount} row(s) for ${contextKey}`)
+    if (keptCount > 0) policy.log?.(`kept ${keptCount} row(s) for ${contextKey}`)
     const missingIds = viewIds.filter((id) => !cells[id])
     const aggregate = aggregateCurrentResults(
       // Environment groups have retained run metadata but no computed feature result.
@@ -787,6 +788,7 @@ export function loadSelectedResults(
       textSnapshots,
       workingRuns: options.workingRuns,
       workingAttempts: options.workingAttempts,
+      log: (line) => console.log(line),
     },
     loadArchivedExclusions(contentDir),
   )
