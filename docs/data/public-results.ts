@@ -11,6 +11,7 @@ import type {
 } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentResult } from "./current-results.ts"
 import type { FeatureResult } from "./release-scope.ts"
+import { publicReopenedReason } from "./reopened-cells.ts"
 import {
   type SelectedCell,
   type SelectedContextCell,
@@ -186,6 +187,8 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
       suiteRelation: CurrentSelectedVersion["suiteRelation"]
       /** Present only when a context supplement read this cell; the qualifier and declared default show beside it. */
       supplement?: SelectedContextCell["supplement"]
+      /** Present only when a reopened-cells row withdrew this cell's grade (#33164); `reason` says so in words. */
+      reopened?: SelectedContextCell["reopened"]
     }
   >
   sources: Record<string, PublicRunMetadata>
@@ -338,6 +341,10 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
               suiteId: original.suiteId,
               suiteRelation: original.suiteRelation,
               ...(cell.supplement && { supplement: cell.supplement }),
+              ...(cell.reopened && {
+                reopened: cell.reopened,
+                reason: publicReopenedReason(cell.reopened),
+              }),
             },
           ]
         }),
