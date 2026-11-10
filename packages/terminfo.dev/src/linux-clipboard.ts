@@ -538,6 +538,8 @@ function clipboardApp(id: string | undefined): ClipboardApp {
 
 /** Compare the terminal's actual argv, not a shell-escaped display string in the receipt. */
 export function assertClipboardProfile(app: ClipboardApp, profile: ClipboardReceipt["profile"], argv: string[]): void {
+  // The collector-command boundary: the launcher runs the collector as `bun …` after the terminal's own options, so
+  // the first `bun` token ends them. Collector arguments after it are never read as terminal controls.
   const commandIndex = argv.findIndex((part) => part === "bun")
   const options = commandIndex < 0 ? argv : argv.slice(0, commandIndex)
   if (profile === "deny-read" && app !== "kitty") {

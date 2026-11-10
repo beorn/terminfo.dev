@@ -789,7 +789,9 @@ function applySupplements(
       ...(declaredDefault && { declaredDefault }),
     }
     if (result.status !== "supported" && supplement.silentIgnore.includes(run.subject.id)) {
-      // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open.
+      // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open. A
+      // schema-4 default run records every catalog id, so a prior cell is present; were one absent, there is no cell
+      // to mark and the id stays absent, which every reader already reads as probe-todo (statesFor).
       if (prior) cells[id] = { ...prior, supplement: { ...marker, filled: false, open: supplement.notInForce } }
       continue
     }

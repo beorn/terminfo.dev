@@ -1108,6 +1108,8 @@ it.each([
         })
         expect(row?.supplements?.[0]?.runId).toMatch(/^[0-9a-f]{32}$/)
         expect(row?.supplements?.[0]?.error).toContain(`${id}/linux read-allowed supplement`)
+        // A declared launch that died is a pass error, so the cohort never reads complete over it (@cto 33119 A).
+        expect(pass.errors).toContain(row?.supplements?.[0]?.error)
       }
       for (const row of pass.contexts.filter(
         (entry) => entry.context.kind !== "term" || entry.context.os !== "linux",

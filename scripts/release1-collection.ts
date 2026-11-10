@@ -907,6 +907,9 @@ export async function collectPass(
         probeIds,
       }),
     )
+    // A declared launch that died is a pass error; the default row keeps its own status. A selection that excludes
+    // every declared id is a reason, never an error.
+    for (const supplement of row.supplements) if (supplement.error) pass.errors.push(supplement.error)
   }
   const eligible = pass.contexts
   for (const [path, hash] of Object.entries(inputSha256)) {
