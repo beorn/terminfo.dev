@@ -881,14 +881,17 @@ test(
       ) {
         expect(result.observation?.outcome, mutation).toBe(mutation === "legacy" ? "unsupported" : "supported")
         if (mutation === "dropped-first-click") {
-          expect(actions.slice(0, 3), mutation).toEqual(["click:400,300", "click:400,300", "click:1300,120"])
+          expect(actions.slice(0, 4), mutation).toEqual(["key", "click:400,300", "click:400,300", "click:1300,120"])
         } else {
-          expect(actions.slice(0, 2), mutation).toEqual(["click:400,300", "click:1300,120"])
+          expect(actions.slice(0, 3), mutation).toEqual(["key", "click:400,300", "click:1300,120"])
         }
       } else {
         expect(result.tests, mutation).toEqual(
           expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]),
         )
+        if (mutation === "missing-key") {
+          expect(result.note, mutation).toContain("post-resize key did not echo")
+        }
       }
       expect(modes.has(1000)).toBe(false)
       expect(modes.has(1005)).toBe(false)

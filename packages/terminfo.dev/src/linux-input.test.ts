@@ -55,9 +55,16 @@ case "$1" in
       done
     fi
     ;;
-  getwindowgeometry) printf 'WIDTH=800\\nHEIGHT=600\\n' ;;
+  getwindowgeometry)
+    if [ -f "$TEST_INPUT_LOG.size" ]; then
+      read -r width height < "$TEST_INPUT_LOG.size"
+      printf 'WIDTH=%s\\nHEIGHT=%s\\n' "$width" "$height"
+    else printf 'WIDTH=800\\nHEIGHT=600\\n'; fi
+    ;;
+  getmouselocation) printf 'X=400\\nY=300\\nSCREEN=0\\nWINDOW=%s\\n' "\${TEST_INPUT_POINTER_WINDOW:-42}" ;;
   windowsize)
     if [ "\${TEST_INPUT_FAIL_WINDOWSIZE:-0}" = 1 ]; then printf 'windowsize failed\\n' >&2; exit 29; fi
+    if [ "\${TEST_INPUT_STALE_GEOMETRY:-0}" != 1 ]; then printf '%s %s\\n' "$3" "$4" > "$TEST_INPUT_LOG.size"; fi
     ;;
   key|click|mousedown|mouseup) ;;
   *) exit 18 ;;
@@ -121,6 +128,8 @@ afterEach(() => {
     "TEST_INPUT_XTEST",
     "TEST_INPUT_FOCUS_HANG",
     "TEST_INPUT_FAIL_WINDOWSIZE",
+    "TEST_INPUT_POINTER_WINDOW",
+    "TEST_INPUT_STALE_GEOMETRY",
   ]) {
     delete process.env[key]
   }
@@ -142,7 +151,7 @@ test.runIf(process.platform === "linux")(
         width: 520,
         height: 600,
         featureId: "extensions.reflow",
-        afterLogLine: "windowsize 42 520 600",
+        afterLogLine: "getwindowgeometry --shell 42",
       },
     ])
     process.env.TEST_INPUT_FAIL_WINDOWSIZE = "1"
@@ -239,7 +248,22 @@ test.runIf(process.platform === "linux")(
     expect(lines).toContain("mousemove --window 42 400 300")
     expect(lines).toContain("click --window 0 --clearmodifiers 1")
     expect(lines).toContain("click --window 0 --clearmodifiers 4")
+    expect(lines).toContain("getmouselocation --shell")
     expect(lines.some((line) => /^click /.test(line) && /--window 42/.test(line))).toBe(false)
+    process.env.TEST_INPUT_POINTER_WINDOW = "1"
+    const before = argvLines(log).length
+    await expect(input.injectClick(1)).rejects.toThrow(/pointer is not on the owned window/)
+    expect(argvLines(log).slice(before).some((line) => line.startsWith("click "))).toBe(false)
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "resize refuses when the window does not land on the asked pixels",
+  async () => {
+    fixture()
+    const input = await createLinuxInput(liveExecutable())
+    process.env.TEST_INPUT_STALE_GEOMETRY = "1"
+    await expect(input.resizeWindow?.(1400, 600)).rejects.toThrow(/getwindowgeometry is 800x600/)
   },
 )
 

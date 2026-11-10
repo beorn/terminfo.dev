@@ -79,9 +79,26 @@ export async function createLinuxInput(
     }
   }
 
+  async function ownedGeometry(): Promise<{ width: number; height: number }> {
+    return windowPixels((await command("xdotool", ["getwindowgeometry", "--shell", ownedWindowId])).toString())
+  }
+
   async function preparePointer(position = { x: 400, y: 300 }): Promise<void> {
     await focusOwnedWindow()
+    const geometry = await ownedGeometry()
+    if (position.x < 1 || position.y < 1 || position.x >= geometry.width || position.y >= geometry.height) {
+      throw new Error(
+        `requested pointer ${position.x},${position.y} is outside the owned window ${geometry.width}x${geometry.height}; refusing the click`,
+      )
+    }
     await command("xdotool", ["mousemove", "--window", ownedWindowId, String(position.x), String(position.y)])
+    const location = (await command("xdotool", ["getmouselocation", "--shell"])).toString()
+    const pointerWindow = /^WINDOW=(\d+)$/m.exec(location)?.[1]
+    if (pointerWindow !== ownedWindowId) {
+      throw new Error(
+        `pointer is not on the owned window ${ownedWindowId}; getmouselocation WINDOW is ${pointerWindow ?? "missing"}; refusing the click`,
+      )
+    }
   }
 
   return {
@@ -97,6 +114,12 @@ export async function createLinuxInput(
         (await command("xdotool", ["getwindowgeometry", "--shell", ownedWindowId])).toString(),
       )
       await command("xdotool", ["windowsize", ownedWindowId, String(width), String(height)])
+      const landed = await ownedGeometry()
+      if (landed.width !== width || landed.height !== height) {
+        throw new Error(
+          `owned window resize asked ${width}x${height}; getwindowgeometry is ${landed.width}x${landed.height}`,
+        )
+      }
       if (options?.onResizeWindow && featureId) options.onResizeWindow(width, height, featureId)
       return original
     },

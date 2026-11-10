@@ -576,6 +576,13 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
         observed,
       )
     } else {
+      const postResize = ctx.queryOutcome("", /^a$/, 1000)
+      await input.injectKey("a")
+      const echoed = await postResize
+      observed.postResizeKey = echoed.raw
+      if (echoed.raw !== "a") {
+        result = invalidInteraction("post-resize key did not echo; refusing to judge mouse controls", observed)
+      } else {
       result = await withMouseModes(ctx, async () => {
         ctx.write("\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1015l\x1b[?1016l")
         // A terminal may leave SGR (1006) when a sibling mouse-encoding mode is reset:
@@ -662,6 +669,7 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
           observed,
         )
       })
+      }
     }
   } finally {
     ctx.write("\x1b[?1000l\x1b[?1005l\x1b[?1006l")
