@@ -3001,6 +3001,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
+    wallMs: 60_000,
   },
 
   // XTPOPSGR — pop SGR stack (CSI # })
@@ -3033,6 +3035,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
+    wallMs: 60_000,
   },
 
   // XTSAVE — save DEC private modes (CSI ? Pm s). Use DECAWM (mode 7) — universally supported.
@@ -3067,6 +3071,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
+    wallMs: 60_000,
   },
 
   // XTRESTORE — restore DEC private modes (CSI ? Pm r). Pair with a save first.
@@ -3134,6 +3140,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
+    wallMs: 60_000,
   },
 
   // XTPOPCOLORS — pop color palette (CSI # Q). Push first so the pop is meaningful.
@@ -3165,6 +3173,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
+    wallMs: 60_000,
   },
 
   // DECSSCLS — presentation speed with no query; measured by a settled jump control and a timed
