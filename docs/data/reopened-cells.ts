@@ -18,7 +18,9 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ProbeResult } from "@terminfo/probe-defs"
 
-export type ReopenedExit = { kind: "criterion-text"; criterionSha256: string } | { kind: "remeasured"; suiteIds: string[] }
+export type ReopenedExit =
+  | { kind: "criterion-text"; criterionSha256: string }
+  | { kind: "remeasured"; suiteIds: string[] }
 
 export interface ReopenedCell {
   kind: "term" | "mux"
@@ -57,7 +59,10 @@ const sha256 = (text: string): string => createHash("sha256").update(text).diges
  * Read and check content/reopened-cells.json. A missing file is no rows. A malformed row, a duplicate cell, or a
  * criterion-text row whose criterion has changed throws, naming the rows.
  */
-export function loadReopenedCells(contentDir: string, features: Readonly<Record<string, { probe?: string }>>): ReopenedCell[] {
+export function loadReopenedCells(
+  contentDir: string,
+  features: Readonly<Record<string, { probe?: string }>>,
+): ReopenedCell[] {
   const path = join(contentDir, REOPENED_CELLS_FILE)
   if (!existsSync(path)) return []
   const parsed = JSON.parse(readFileSync(path, "utf8")) as { rows?: unknown }
@@ -93,15 +98,23 @@ function checkRow(value: unknown, where: string): ReopenedCell {
   if (row.kind !== "term" && row.kind !== "mux") throw new Error(`${where}: kind must be term or mux`)
   const exit = row.exit
   if (exit?.kind === "criterion-text") {
-    if (!/^[0-9a-f]{64}$/.test(exit.criterionSha256 ?? "")) throw new Error(`${where}: criterionSha256 must be a sha256`)
+    if (!/^[0-9a-f]{64}$/.test(exit.criterionSha256 ?? "")) {
+      throw new Error(`${where}: criterionSha256 must be a sha256`)
+    }
   } else if (exit?.kind === "remeasured") {
-    if (!Array.isArray(exit.suiteIds) || exit.suiteIds.length === 0 || !exit.suiteIds.every((id) => typeof id === "string" && id)) {
+    if (
+      !Array.isArray(exit.suiteIds) ||
+      exit.suiteIds.length === 0 ||
+      !exit.suiteIds.every((id) => typeof id === "string" && id)
+    ) {
       throw new Error(`${where}: a remeasured exit names its suite ids`)
     }
   } else {
     throw new Error(`${where}: exit.kind must be criterion-text or remeasured`)
   }
-  if (!Array.isArray(row.witnesses) || row.witnesses.length === 0) throw new Error(`${where}: witnesses must be non-empty`)
+  if (!Array.isArray(row.witnesses) || row.witnesses.length === 0) {
+    throw new Error(`${where}: witnesses must be non-empty`)
+  }
   for (const witness of row.witnesses) {
     if (typeof witness?.runId !== "string" || !Number.isInteger(witness.assertionIndex) || witness.assertionIndex < 0) {
       throw new Error(`${where}: each witness names a runId and an assertion index`)

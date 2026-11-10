@@ -121,7 +121,11 @@ const blinkRow = (suiteIds: string[]): ReopenedCell => ({
 const project = (runs: ReturnType<typeof run>[], reopened: ReopenedCell[]) =>
   projectResults(runs, ids, { currentProbeHash: NEW.probeHash, reopened }, [])
 
-const first = run("first", { [VERSION]: "unsupported", [BLINK]: "unsupported", "sgr.bold": "supported" }, "2026-11-10T05:00:00.000Z")
+const first = run(
+  "first",
+  { [VERSION]: "unsupported", [BLINK]: "unsupported", "sgr.bold": "supported" },
+  "2026-11-10T05:00:00.000Z",
+)
 
 describe("reopened cells (33164)", () => {
   it("reopens a criterion-text cell: the feature result reads probe-todo, the witnessed original and every other cell stay", () => {
@@ -138,7 +142,9 @@ describe("reopened cells (33164)", () => {
       ruling: "@cto 2026-11-10 12:21 PST (0a45cb8b), issue 33164",
       exit: "criterion-text",
     })
-    for (const id of [BLINK, "sgr.bold"]) expect(JSON.stringify(after.cells[id]), id).toBe(JSON.stringify(before.cells[id]))
+    for (const id of [BLINK, "sgr.bold"]) {
+      expect(JSON.stringify(after.cells[id]), id).toBe(JSON.stringify(before.cells[id]))
+    }
     // The published total moves by exactly the reopened cells: one unsupported becomes one open.
     expect(after.counts.unsupported).toBe(before.counts.unsupported - 1)
     expect(after.counts["probe-todo"]).toBe(before.counts["probe-todo"] + 1)
@@ -204,9 +210,9 @@ describe("loadReopenedCells", () => {
 
   it("refuses a duplicate cell, an exit without its fence, and an empty witness list", () => {
     expect(() => loadReopenedCells(write([blinkRow(["s"]), blinkRow(["s"])]), features)).toThrow(/reopened twice/)
-    expect(() => loadReopenedCells(write([{ ...blinkRow(["s"]), exit: { kind: "remeasured", suiteIds: [] } }]), features)).toThrow(
-      /a remeasured exit names its suite ids/,
-    )
+    expect(() =>
+      loadReopenedCells(write([{ ...blinkRow(["s"]), exit: { kind: "remeasured", suiteIds: [] } }]), features),
+    ).toThrow(/a remeasured exit names its suite ids/)
     expect(() => loadReopenedCells(write([{ ...blinkRow(["s"]), witnesses: [] }]), features)).toThrow(
       /witnesses must be non-empty/,
     )
