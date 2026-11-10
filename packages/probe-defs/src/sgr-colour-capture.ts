@@ -298,7 +298,10 @@ export type ColourSiblingDecision =
     }
   | { kind: "open"; reason: string }
 
-type RegionFrame = ObservationFrame & { regionDigest: string; regionRectangle: { x: number; y: number; width: number; height: number } }
+type RegionFrame = ObservationFrame & {
+  regionDigest: string
+  regionRectangle: { x: number; y: number; width: number; height: number }
+}
 
 function regionFrame(observation: Observation | undefined, id: string, step: string): RegionFrame | undefined {
   const frame = observation?.frames?.find((candidate) => candidate.label === `${id}: ${step}`)
@@ -365,11 +368,16 @@ export function colourSiblingSeparation(input: {
   ) {
     return open(`sibling ${siblingId} was captured by a different method`)
   }
-  if (!sameRectangle(siblingSeed.regionRectangle, rectangle) || !sameRectangle(siblingTarget.regionRectangle, rectangle)) {
+  if (
+    !sameRectangle(siblingSeed.regionRectangle, rectangle) ||
+    !sameRectangle(siblingTarget.regionRectangle, rectangle)
+  ) {
     return open(`sibling ${siblingId} was cropped from a different rectangle`)
   }
   if (siblingSeed.regionDigest === siblingTarget.regionDigest) {
-    return open(`sibling ${siblingId}'s seed and target hashes are equal, so this capture showed no colour in the rectangle`)
+    return open(
+      `sibling ${siblingId}'s seed and target hashes are equal, so this capture showed no colour in the rectangle`,
+    )
   }
   if ("missing" in input.outer) return open(`no outer-terminal control: ${input.outer.missing}`)
   const { record, outerApp } = input.outer

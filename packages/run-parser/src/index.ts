@@ -159,10 +159,11 @@ function requireWitnessDigest(value: unknown, path: string, featureId: string, n
   if (typeof value !== "string" || !WITNESS_DIGEST.test(value)) fail(path, `${featureId} witness missing ${name}`)
 }
 
+/** The digests a witness may cite: a frame's ref or the digest of the cells it compared, as the citation gate allows. */
 function frameDigestSet(frames: readonly Record<string, unknown>[]): Set<string> {
   const digests = new Set<string>()
   for (const frame of frames) {
-    for (const key of ["ref", "sourceRef", "regionDigest", "pixelsDigest", "cellDigest", "frameDigest"]) {
+    for (const key of ["ref", "regionDigest", "cellDigest"]) {
       const value = frame[key]
       if (typeof value === "string") digests.add(value)
     }
@@ -282,7 +283,7 @@ function validateAssertionWitnesses(
     const witness = assertion.witness
     if (!object(witness) || typeof witness.kind !== "string") fail(path, `${assertion.featureId} witness missing kind`)
     if (witness.kind !== "colour-sibling-separation") {
-      fail(path, `${assertion.featureId} unknown witness kind ${witness.kind}`)
+      fail(path, `${assertion.featureId} unknown witness kind ${String(witness.kind)}`)
     }
     const result = results.find((row) => row.featureId === assertion.featureId)
     if (result?.criterionBranch !== witness.kind) {

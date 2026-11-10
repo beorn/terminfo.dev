@@ -1,3 +1,11 @@
+/**
+ * @failure A colour-sibling-separation witness that is incomplete, cites digests that are not this run's
+ *   compared cells, disagrees with its row, or names a sibling absent from the run reaches content/ as
+ *   proof of a Screen truecolour negative (#33041).
+ * @level l1
+ * @consumer run-parser's witness validator for colour-sibling-separation assertions.
+ * @testonly none
+ */
 import { createHash } from "node:crypto"
 import { expect, it } from "vitest"
 import { initializeRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
@@ -125,8 +133,7 @@ const run = (overrides: Record<string, unknown> = {}) => {
   }
 }
 
-const parse = (value: Record<string, unknown>) =>
-  parseRun("screen.json", JSON.stringify(value), [ROW, SIBLING], suites)
+const parse = (value: Record<string, unknown>) => parseRun("screen.json", JSON.stringify(value), [ROW, SIBLING], suites)
 
 it("a complete witness round-trips and an unknown assertion field still fails", () => {
   const loaded = parse(run())
@@ -161,6 +168,12 @@ it("refuses a witness digest that is not a frame of its row, and a proof that is
   const sibling = run()
   ;(sibling.assertions[0] as { witness: { sibling: { target: string } } }).witness.sibling.target = digest("missing")
   expect(() => parse(sibling)).toThrow(/sibling.target is not a frame digest/)
+  // A whole-window digest is not the cells compared: citing it would skip the rectangle check (F5).
+  const whole = run()
+  ;(whole.assertions[0] as { witness: { sibling: { target: string } } }).witness.sibling.target = digest(
+    `whole-${digest("target")}`,
+  )
+  expect(() => parse(whole)).toThrow(/sibling.target is not a frame digest/)
   const uneven = run()
   ;(uneven.assertions[0] as { witness: { requested: { target: string } } }).witness.requested.target = digest("flat")
   ;(uneven.results[0] as { frames: { regionDigest: string }[] }).frames.push(frame(digest("other")))

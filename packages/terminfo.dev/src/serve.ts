@@ -228,7 +228,9 @@ export function readOuterColourControl(
   outerApp: Pick<ProbeSubject, "id" | "version" | "os">,
 ): OuterColourControl {
   if (!path) return { missing: "the launcher named no outer-terminal record (TERMINFO_OUTER_COLOUR_RECORD unset)" }
-  if (!existsSync(path)) throw new Error(`Outer-terminal record ${path} is named but absent: the launcher writes it for every mux run`)
+  if (!existsSync(path)) {
+    throw new Error(`Outer-terminal record ${path} is named but absent: the launcher writes it for every mux run`)
+  }
   const value: unknown = JSON.parse(readFileSync(path, "utf8"))
   const record = value as Record<string, unknown>
   if (record && typeof record === "object" && typeof record.missing === "string" && Object.keys(record).length === 1) {
@@ -244,7 +246,9 @@ export function readOuterColourControl(
     typeof statuses !== "object" ||
     Object.values(statuses).some((status) => typeof status !== "string")
   ) {
-    throw new Error(`Outer-terminal record ${path} is malformed: expected {id, version, os, recordPath, recordRunId, statuses} or {missing}`)
+    throw new Error(
+      `Outer-terminal record ${path} is malformed: expected {id, version, os, recordPath, recordRunId, statuses} or {missing}`,
+    )
   }
   return {
     record: {
@@ -563,7 +567,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       muxSubject && outerApp?.provenance
         ? {
             outer: readOuterColourControl(process.env.TERMINFO_OUTER_COLOUR_RECORD, outerApp.subject),
-            harnessProfile: outerApp.provenance.fixture.config,
+            harnessProfile: outerApp.provenance.fixture.config || "no outer harness config declared",
             muxConfig: muxSubject.config ?? "no mux config declared",
           }
         : undefined
