@@ -36,6 +36,8 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/admin/corpus-placement.ts",
   "packages/terminfo.dev/src/probes/unified.ts",
   "packages/terminfo.dev/src/tty.ts",
+  "packages/terminfo.dev/src/clipboard-config.ts",
+  "packages/terminfo.dev/src/darwin-clipboard.ts",
   "packages/terminfo.dev/src/linux-clipboard.ts",
   "packages/terminfo.dev/src/linux-screen-text.ts",
   "packages/terminfo.dev/src/linux-kitty-text.ts",

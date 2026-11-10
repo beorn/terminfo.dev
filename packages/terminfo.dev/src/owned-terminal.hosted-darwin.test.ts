@@ -36,6 +36,7 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
   const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const app = ${JSON.stringify(app)}
@@ -54,7 +55,17 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
         return pid === process.pid ? process.pid + " 4242 /bin/zsh"
           : pid === 4242 ? "4242 1 " + executable : "1 0 /sbin/launchd"
       },
-      spawn: () => { throw new Error("geometry unavailable in this adapter-selection fixture") }
+      spawn: (file) => {
+        if (String(file).endsWith("pbpaste") || String(file).endsWith("pbcopy") || String(file).endsWith("osascript")) {
+          const child = new EventEmitter()
+          child.stdout = new EventEmitter()
+          child.stderr = new EventEmitter()
+          child.kill = () => true
+          child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+          return child
+        }
+        throw new Error("geometry unavailable in this adapter-selection fixture")
+      }
     }))
     mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({
       ...receipt,
@@ -119,7 +130,15 @@ test("retains native iTerm protocol frames with their checkpoint and unchanged r
       spawnSync: (command, args) => {
         throw new Error("The physical iTerm arm must not use logical JXA contents")
       },
-      spawn: () => {
+      spawn: (file) => {
+        if (String(file).endsWith("pbpaste") || String(file).endsWith("pbcopy") || String(file).endsWith("osascript")) {
+          const child = new EventEmitter()
+          child.stdout = new EventEmitter()
+          child.stderr = new EventEmitter()
+          child.kill = () => true
+          child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+          return child
+        }
         const child = new EventEmitter()
         child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => true
         queueMicrotask(() => { child.stdout.emit("data", Buffer.from("25 80\\n")); child.emit("close", 0) })
