@@ -395,6 +395,17 @@ type ProbeCollectionOptions = {
   intendedSubject?: Partial<ProbeSubject>
 }
 
+/** Hosted Mac runs have no runtime provenance. Missing provenance is not a config mismatch. */
+export function clipboardConfigAgrees(
+  provenance: { fixture: { config: string | null } } | undefined,
+  clipboard: { config: string | null },
+): void {
+  if (!provenance) return
+  if (provenance.fixture.config !== clipboard.config) {
+    throw new Error("Owned clipboard profile config differs from runtime provenance")
+  }
+}
+
 /** The same source-tree collector powers daemon and inline CLI entry points. */
 export function collectProbeRun(
   options?: Omit<ProbeCollectionOptions, "ids"> & { ids?: undefined },
@@ -1061,9 +1072,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     }
     if (provenance) subject.config = provenance.fixture.config
     if (clipboard) {
-      if ((outerApp?.provenance ?? provenance)?.fixture.config !== clipboard.config) {
-        throw new Error("Owned clipboard profile config differs from runtime provenance")
-      }
+      clipboardConfigAgrees(outerApp?.provenance ?? provenance, clipboard)
       if (clipboard.profile !== "default") subject.permissions = clipboard.permissions
     }
     // Retain owned binary proof for placement; collector drafts never claim verified identity.
