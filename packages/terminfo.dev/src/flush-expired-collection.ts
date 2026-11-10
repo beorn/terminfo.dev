@@ -60,7 +60,7 @@ export function expiredCollectionRun(args: {
   existing?: unknown
   startedId?: string
   collectorDurationMs: number
-}): { suiteComplete: false; collectorDurationMs: number; results: unknown[] } {
+}): { collectorDurationMs: number; results: unknown[] } {
   const existing = isRecord(args.existing) ? args.existing : {}
   const prior = Array.isArray(existing.results) ? existing.results : []
   const finished = new Set(
@@ -69,9 +69,10 @@ export function expiredCollectionRun(args: {
   const added = args.ids
     .filter((featureId) => !finished.has(featureId))
     .map((featureId) => unfinishedRow(featureId, featureId === args.startedId ? "killed-mid-probe" : "never-started"))
+  // No suiteComplete: a schema 4 run cannot carry it, and the probe-todo rows below already say what is missing.
+  const { suiteComplete: _derived, ...run } = existing
   return {
-    ...existing,
-    suiteComplete: false,
+    ...run,
     collectorDurationMs: args.collectorDurationMs,
     results: [...prior, ...added],
   }
