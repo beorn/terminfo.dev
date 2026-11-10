@@ -139,10 +139,16 @@ test("reader capability rows do not become declarations or lend their identity t
     ["extensions.osc710-font-normal", "710"],
   ] as const) {
     expect(tmuxDeclared[featureId]).toMatch(
-      new RegExp(`^Untestable \\(no way\\): tmux 3\\.8 has no OSC ${code} handler.*Read from source, not measured\\..*input\\.c:2775-2777`),
+      new RegExp(
+        `^Untestable \\(no way\\): tmux 3\\.8 has no OSC ${code} handler.*Read from source, not measured\\..*input\\.c:2775-2777`,
+      ),
     )
   }
-  for (const subject of [{ ...tmux, version: "3.7c" }, { ...tmux, os: "darwin" }, { ...tmux, kind: "term" as const }]) {
+  for (const subject of [
+    { ...tmux, version: "3.7c" },
+    { ...tmux, os: "darwin" },
+    { ...tmux, kind: "term" as const },
+  ]) {
     expect(appSemanticDeclarations(subject)).toEqual({})
   }
   const alacritty = { kind: "term" as const, id: "alacritty", version: "0.17.0", os: "linux" }
@@ -627,3 +633,16 @@ test.each([
   },
   20_000,
 )
+
+test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audited source-and-binary reason", async () => {
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc3008-context")!
+  const fallback = await definition.term!(
+    replayTermProbeSource(new Map(), { queryCursorPosition: async () => ({ row: 0, col: 0 }) }),
+  )
+  expect(fallback.note).toBe("Cursor response does not measure OSC 3008 systemd context")
+
+  const declared = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
+  expect(declared["extensions.osc3008-context"]).toBe(
+    "Untestable (no way): Ghostty 1.4.0 parses OSC 3008 but keeps no context state and exposes no readback. In ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar (SHA256 d692bb9b), osc.zig:1170 sends 3008 to parsers.hierarchical_context.parse, which validates the uapi start=<id>/end=<id> form and warns at hierarchical_context.zig:274; the parsed command then reaches stream.zig:2968, which lists .hierarchical_context among unimplemented OSC callbacks and only runs log.debug at :2970 (absent from the shipped binary: strings finds 0), a level main_ghostty.zig:203-211 pins off in every non-debug build. No context stack, environment, reply or public readback exists in src. A spec-valid payload leaves no observable trace, and the parser warning a malformed payload produces is payload validation, not a command-specific refusal.",
+  )
+})
