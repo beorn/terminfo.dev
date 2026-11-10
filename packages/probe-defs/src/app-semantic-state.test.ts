@@ -169,6 +169,7 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
 test("log rows preserve decided measurements and override only unresolved or no-setup results", async () => {
   for (const id of [
     "extensions.osc176-app-id",
+    "extensions.osc3008-context",
     "extensions.osc440-audio",
     "extensions.osc666-termprop",
     "extensions.osc555-flash",

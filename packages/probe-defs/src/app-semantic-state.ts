@@ -3,6 +3,7 @@ import { parserStateResult, reportsDecidedOutcome } from "./helpers.ts"
 
 const reportFeatures = new Set([
   "extensions.osc176-app-id",
+  "extensions.osc3008-context",
   "extensions.osc440-audio",
   "extensions.osc666-termprop",
   "extensions.osc555-flash",
