@@ -196,7 +196,9 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     return { dir, rawPath, original }
   }
 
-  it("retains app pass contexts and named store gaps without changing the newest-only view", () => {
+  // Walking the live content tree passed the 5s default on CI (run 42830234597).
+  // A local run was 3.5s; 30s leaves room when the host is busy.
+  it("retains app pass contexts and named store gaps without changing the newest-only view", { timeout: 30_000 }, () => {
     const instrument = runsDir()
     const libraries = join(instrument, "runs")
     mkdirSync(libraries)
