@@ -716,6 +716,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
     [[ "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
     case "$TERMINFO_MUX_KIND" in tmux|screen) ;; *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;; esac
+    export TERMINFO_OUTER_COLOUR_RECORD=/out/outer-colour-record.json
     collector_command=(bash "$runner_dir/linux-container-run.sh" --mux-shell /out)
   fi
   # The declared invocation: what the descriptor table launches, exactly and uniformly.
@@ -1227,6 +1228,26 @@ write_host_receipt "$raw/host-measured.json"
 # The collector reads its ownership receipt from a read-only copy: the container being measured
 # must not be able to rewrite the receipt that authorizes writing to the terminal it drives.
 cp "$raw/host-measured.json" "$prep/receipt/host-measured.json"
+
+# A mux colour negative needs the outer terminal's own placed record at this exact version (#33041).
+# The container cannot read content/, so the newest matching record's facts are copied into the run;
+# with none placed, the file says so and the colour rows stay open with that reason.
+if [[ -n "$mux_kind" ]]; then
+  outer_records=()
+  for record in "$vendor_root/content/probes-apps/$target_id-$target_version-linux-"*.json; do
+    [[ -e "$record" ]] && outer_records+=("$record")
+  done
+  if (( ${#outer_records[@]} )); then
+    jq -n --arg root "$vendor_root/" '[inputs | . + {recordPath: (input_filename | ltrimstr($root))}]
+      | max_by(.measuredAt)
+      | {id: .subject.id, version: .subject.version, os: .subject.os, recordPath, recordRunId: .runId,
+         statuses: ([.results[] | {key: .featureId, value: .status}] | from_entries)}' \
+      "${outer_records[@]}" > "$raw/outer-colour-record.json"
+  else
+    jq -n --arg glob "content/probes-apps/$target_id-$target_version-linux-*.json" \
+      '{missing: "no placed outer-terminal record matches \($glob)"}' > "$raw/outer-colour-record.json"
+  fi
+fi
 
 # The run user is the INVOKING user, never the image's declared User: docker create overrides it with
 # --user (below) so the bind-mounted /out is writable by this process, and a program that then
