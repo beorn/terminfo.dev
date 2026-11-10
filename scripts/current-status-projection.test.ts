@@ -970,6 +970,41 @@ it("a harness outcome is placed when the subject version changed", () => {
   expect(cell?.result.harnessOutcome).toBe("probe-exceeded")
 })
 
+it("a harness outcome is placed when the probe hash changed", () => {
+  const prior = supportedBaseline()
+  const featureId = ids[0]!
+  const results = todos()
+  const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T07:00:00.000Z" }
+  results[0] = {
+    featureId,
+    status: "probe-todo",
+    attempt: emittedAttempt,
+    tests: [{ id: "criterion", status: "probe-todo", attempt: { scope: "none" }, reason: "Probe exceeded 30000ms" }],
+    reason: "Probe exceeded 30000ms",
+    harnessOutcome: "probe-exceeded",
+  }
+  const next = raw(results)
+  const latest = parse({
+    ...next,
+    runId: "hash-run",
+    measuredAt: "2026-10-21T07:00:00.000Z",
+    rawReplies: {
+      ...next.rawReplies,
+      "collector.selection": JSON.stringify({ ids: [featureId] }),
+      "collector.collectionAttempt": JSON.stringify({
+        ids: [featureId],
+        startedAt: "2026-10-21T07:00:00.000Z",
+        result: "completed",
+      }),
+    },
+  })
+  latest.probeHash = "other-probe-hash"
+  const cell = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, []).contexts["term:kitty"]
+    ?.cells[featureId]
+  expect(cell?.origin.runId).toBe(latest.runId)
+  expect(cell?.result.harnessOutcome).toBe("probe-exceeded")
+})
+
 it("an open cell takes a newer harness outcome", () => {
   const featureId = ids[0]!
   const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
