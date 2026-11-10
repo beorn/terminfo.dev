@@ -1702,8 +1702,9 @@ export async function captureRegionReadbackDecision(
     // `ignored` is the sequence running while dropping the attribute the row claims. Both are
     // measured negatives of a change claim. A declared no-change instead requires seed == expected;
     // only its distinct ignored control can establish the measured negative.
-    const unsupported =
-      (discriminator?.expected !== "no-change" && after === seed) || (ignored !== undefined && after === ignored)
+    const untouched = discriminator?.expected !== "no-change" && after === seed
+    const matchedIgnored = ignored !== undefined && after === ignored
+    const unsupported = untouched || matchedIgnored
     if (!supported && !unsupported && rowGroups && rowGroupsNegative(groupReads)) {
       return rowGroupsUnsupported(id, spec.edit, rowGroups, groupReads, observed, {
         assertionType,
@@ -1759,9 +1760,15 @@ export async function captureRegionReadbackDecision(
         outcome: supported ? "supported" : "unsupported",
         assertionType,
         ...cite(targetScreenshotRef, frames),
-        ...(spec.setupReference !== undefined && after === ignored
-          ? { note: `${id}: the reset also cleared the preserved attribute` }
-          : {}),
+        ...(supported
+          ? {}
+          : {
+              note: untouched
+                ? `${id}: the sequence left the screen untouched; the frame equals the seed and differs from the expected frame`
+                : spec.setupReference !== undefined && after === ignored
+                  ? `${id}: the reset also cleared the preserved attribute`
+                  : `${id}: the frame equals the ignored-attribute frame, not the expected frame`,
+            }),
       },
       assertions: [
         {
