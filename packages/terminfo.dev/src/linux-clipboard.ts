@@ -56,6 +56,8 @@ export interface ClipboardTraceEvent {
 export interface LinuxClipboardAdapter {
   readonly getScrollback?: TermProbeSource["getScrollback"]
   readonly resetScrollback?: TermProbeSource["resetScrollback"]
+  /** Set only by the hosted Darwin pasteboard. Linux receipts leave it absent. */
+  readonly pasteboard?: "darwin"
   readonly profile: ClipboardReceipt["profile"]
   readonly config: string
   readonly permissions: string

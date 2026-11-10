@@ -728,6 +728,14 @@ export async function runProbeBatch(
       disposable.declaredTarget.os === "linux" &&
       clipboard?.muxAttachmentProof?.platform === "linux" &&
       clipboard.muxAttachmentProof.mux === options.subject.id
+    const isDirectDarwinApp =
+      clipboard?.pasteboard === "darwin" &&
+      options.subject?.kind === "term" &&
+      options.subject.os === "darwin" &&
+      disposable?.declaredTarget?.kind === "app" &&
+      disposable.declaredTarget.id === options.subject.id &&
+      disposable.declaredTarget.os === "darwin" &&
+      !clipboard.muxAttachmentProof
     if (
       clipboard &&
       verify &&
@@ -735,6 +743,10 @@ export async function runProbeBatch(
         (isDirectLinuxApp &&
           (probe.id === "extensions.osc52-write" ||
             (probe.id === "extensions.clipboard-paste" && options.subject?.id !== "xterm"))) ||
+        (isDirectDarwinApp &&
+          (probe.id === "extensions.osc52-write" ||
+            probe.id === "extensions.osc52-read" ||
+            probe.id === "extensions.osc52-clipboard")) ||
         (isVerifiedLinuxMux &&
           (probe.id === "extensions.clipboard-paste" ||
             probe.id === "extensions.osc52-write" ||

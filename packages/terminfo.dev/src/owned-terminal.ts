@@ -21,6 +21,7 @@ import {
   HOSTED_IDENTITY_SOURCES,
 } from "./disposable-receipt.ts"
 import type { LiveExecutable } from "./linux-capture.ts"
+import { createDarwinClipboardAdapter } from "./darwin-clipboard.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
@@ -1215,6 +1216,13 @@ export async function createOwnedTerminal(options: {
           return geometry.status === "measured" ? geometry.rows : undefined
         },
       )
+    } else if (darwinHosted && hostedApp) {
+      clipboard = await createDarwinClipboardAdapter({
+        appComm: hostedApp.comm,
+        assertOwned: async () => {
+          if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
+        },
+      })
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
     const readTitle = clipboard?.readTitle.bind(clipboard)

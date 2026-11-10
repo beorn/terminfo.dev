@@ -3012,6 +3012,13 @@ const defaultClipboardCases: Array<{
   },
   { name: "library subject", subject: { kind: "lib", id: "kitty", os: "linux" }, eligible: false },
   { name: "other OS", subject: { kind: "term", id: "kitty", os: "darwin" }, eligible: false },
+  {
+    name: "hosted darwin OSC52 write",
+    featureId: "extensions.osc52-write",
+    subject: { kind: "term", id: "iterm2", os: "darwin" },
+    pasteboard: "darwin" as const,
+    eligible: true,
+  },
   { name: "targetless receipt", targetless: true, eligible: false },
   {
     name: "default OSC52 write on targetless receipt",
@@ -3123,6 +3130,7 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     config: "fixture",
     permissions: "clipboard: read=ask,write=allow; OSC52: write=run,read=not-run",
     summary: "{}",
+    ...(scenario.pasteboard && { pasteboard: scenario.pasteboard }),
     assertOwned: async () => {},
     readTitle: async () => {
       throw new Error("This clipboard fixture has no title reader")
