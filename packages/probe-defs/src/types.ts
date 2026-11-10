@@ -338,6 +338,13 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * `regionDigest`. Present exactly when `controlRegionDigest` is.
    */
   controlRegionRectangle?: CaptureRectangle
+  /**
+   * Where the request's `locate` colour sits in this decoded frame: the bounding box of every pixel
+   * of exactly that colour, in the captured window's own pixels, and how many pixels matched.
+   * `null` means the colour is absent from the whole frame. Absent (undefined) when the request
+   * named no colour, or when the arm could not decode its frame; undefined is never read as null.
+   */
+  located?: CaptureLocated | null
 }
 
 /**
@@ -353,6 +360,7 @@ export interface TextCellsObservationFrame extends ObservationFrameBase {
   regionRectangle?: never
   controlRegionDigest?: never
   controlRegionRectangle?: never
+  located?: never
   /** Digest over the named cells' characters, and their attributes where the arm reports them. */
   cellDigest: string
   /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
@@ -459,6 +467,23 @@ export interface CaptureRequest {
   controlCells?: CaptureCells
   /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
+  /**
+   * An exact RGB colour to find in the whole decoded frame; the frame answers `located`. Optional:
+   * a request without it is byte for byte the previous path. Needs no `cells`.
+   */
+  locate?: { rgb: readonly [number, number, number] }
+}
+
+/** Calibration's witnessed solid paint: which SGR form painted it and the exact colour it measured. */
+export interface CalibrationSentinel {
+  form: "basic" | "reverse"
+  rgb: readonly [number, number, number]
+}
+
+/** One colour's footprint in a decoded frame: its bounding box and its matching-pixel count. */
+export interface CaptureLocated {
+  box: CaptureRectangle
+  pixels: number
 }
 
 export interface ProbeSubject {
@@ -1172,6 +1197,12 @@ export interface TermProbeSource {
   captureGeometry?: {
     geometry: CapturePixelGeometry
     source: "measured by complete raster calibration"
+    /**
+     * The solid paint calibration witnessed, and the exact colour it measured for it. A later
+     * layout check repaints with this form and looks for this colour; absent on a run calibrated
+     * before the check existed.
+     */
+    sentinel?: CalibrationSentinel
   }
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>

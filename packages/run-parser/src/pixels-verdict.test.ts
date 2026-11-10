@@ -614,6 +614,30 @@ describe("in-run pixel probe results", () => {
     expect(() => parse(broken)).toThrow(/invalid frame regionRectangle/)
   })
 
+  it("carries a frame's located answer through the parse, null included, and refuses a malformed one (33000)", () => {
+    const run = kittyRun()
+    const frames = (run.results as Array<Record<string, unknown>>)[0]!.frames as Array<Record<string, unknown>>
+    frames[2]!.located = { box: { x: 17, y: 126, width: 8, height: 16 }, pixels: 128 }
+    frames[3]!.located = null
+    const loaded = parse(run)
+    expect(loaded.results![0]?.frames?.[2]?.located).toEqual({ box: { x: 17, y: 126, width: 8, height: 16 }, pixels: 128 })
+    // null is an answer (the colour is absent), kept distinct from a frame that carries no answer.
+    expect(loaded.results![0]?.frames?.[3]?.located).toBeNull()
+    expect(loaded.results![0]?.frames?.[1]).not.toHaveProperty("located")
+
+    for (const located of [
+      { box: { x: 17, y: 126, width: 8, height: 16 }, pixels: 129 },
+      { box: { x: 17, y: 126, width: 8, height: 16 }, pixels: 0 },
+      { pixels: 4 },
+      "here",
+    ]) {
+      const broken = kittyRun()
+      const brokenFrames = (broken.results as Array<Record<string, unknown>>)[0]!.frames as Array<Record<string, unknown>>
+      brokenFrames[2]!.located = located
+      expect(() => parse(broken)).toThrow(/invalid frame located/)
+    }
+  })
+
   it("carries a blink run's same-shot control crops through the parse, beside its older-shape plain entries (#33117)", () => {
     const loaded = parseBlink(blinkRun())
     const frames = loaded.results![0]!.frames!
