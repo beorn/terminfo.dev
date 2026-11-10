@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
 
@@ -108,11 +108,8 @@ export function rowsFromDraft(draft: unknown): { finished: unknown[]; startedId?
 }
 
 export function readExistingRun(path: string): unknown {
-  try {
-    return JSON.parse(readFileSync(path, "utf8"))
-  } catch {
-    return undefined
-  }
+  if (!existsSync(path)) return undefined
+  return JSON.parse(readFileSync(path, "utf8"))
 }
 
 if (import.meta.main) {
