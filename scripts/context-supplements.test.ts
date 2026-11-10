@@ -111,7 +111,7 @@ function run(
 const project = (runs: ReturnType<typeof run>[]) => projectResults(runs, ids, { currentProbeHash: suite.probeHash }, [])
 
 describe("read-allowed supplement (33119)", () => {
-  const allowed = READ_ALLOWED.permissions.kitty!
+  const allowed = READ_ALLOWED.permissions!.kitty!
   const base = run("kitty", "default-run", { "sgr.bold": "supported" }, null)
   const supplement = run("kitty", "supplement-run", { [READ]: "supported", [ROUND_TRIP]: "unsupported" }, allowed)
 
