@@ -120,7 +120,15 @@ test("Screen never borrows the outer Kitty reader and mismatched attachments are
 
 test("reader capability rows do not become declarations or lend their identity to another version", () => {
   const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
-  expect(Object.keys(appSemanticDeclarations(kitty))).toEqual(["extensions.osc133-b", "extensions.osc3008-context"])
+  expect(Object.keys(appSemanticDeclarations(kitty)).sort()).toEqual([
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.osc3008-context",
+    "extensions.semantic-prompts",
+  ])
   expect(appSemanticDeclarations({ ...kitty, version: "unreviewed" })).toEqual({})
   const tmux = { kind: "mux" as const, id: "tmux", version: "3.8", os: "linux" }
   const tmuxDeclared = appSemanticDeclarations(tmux)
@@ -128,6 +136,7 @@ test("reader capability rows do not become declarations or lend their identity t
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
     "extensions.osc440-audio",
+    "extensions.osc633-e",
     "extensions.osc666-termprop",
     "extensions.osc710-font-normal",
   ])
@@ -653,4 +662,63 @@ test("xterm 411 declares extensions.clipboard-paste untestable naming the unbuil
     /^Untestable \(unbuilt Shift\+Insert\/PRIMARY route\): default xterm 411 has no Ctrl\+Shift\+V or CLIPBOARD paste binding, and its own default paste route \(Shift\+Insert or Button2 from X11 PRIMARY\) is not built in this probe\..*charproc\.c:15021-15061.*xterm\.man:5452,5481/,
   )
   expect(appSemanticDeclarations({ kind: "term", id: "xterm", version: "412", os: "linux" })).toEqual({})
+})
+
+test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestable with source citations and routes not taken (#32947)", () => {
+  const ghostty = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
+  for (const id of [
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc-633-vscode",
+  ] as const) {
+    expect(ghostty[id]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 has no OSC 633 parser/)
+    expect(ghostty[id]).toContain("osc.zig:455-505")
+  }
+  for (const id of [
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-p",
+  ] as const) {
+    expect(ghostty[id]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 parses OSC 133/)
+    expect(ghostty[id]).toContain("semantic_prompt.zig:23-32")
+    expect(ghostty[id]).toContain("jump_to_prompt")
+  }
+
+  const kitty = appSemanticDeclarations({ kind: "term", id: "kitty", version: "0.49.2", os: "linux" })
+  expect(kitty["extensions.osc133-p"]).toMatch(/^Untestable \(no way\): Kitty 0\.49\.2 has no OSC 133 P arm/)
+  expect(kitty["extensions.osc133-p"]).toContain("screen.c:3589-3612")
+  for (const id of [
+    "extensions.osc133-a",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.semantic-prompts",
+  ] as const) {
+    expect(kitty[id]).toMatch(/^Untestable \(no setup\): Kitty 0\.49\.2 parses OSC 133/)
+    expect(kitty[id]).toContain("kitten @")
+    expect(kitty[id]).toContain("#32955")
+  }
+
+  const wezterm = appSemanticDeclarations({
+    kind: "term",
+    id: "wezterm",
+    version: "0-unstable-2026-10-10",
+    os: "linux",
+  })
+  for (const id of [
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-p",
+  ] as const) {
+    expect(wezterm[id]).toMatch(/^Untestable \(no way\): WezTerm 0-unstable-2026-10-10 parses OSC 133/)
+    expect(wezterm[id]).toContain("get_semantic_zones")
+    expect(wezterm[id]).toContain("user-var-changed")
+  }
+
+  const tmux = appSemanticDeclarations({ kind: "mux", id: "tmux", version: "3.8", os: "linux" })
+  expect(tmux["extensions.osc633-e"]).toMatch(/^Untestable \(no way\): tmux 3\.8 has no OSC 633 handler/)
+  expect(tmux["extensions.osc633-e"]).toContain("input.c:2699-2777")
 })

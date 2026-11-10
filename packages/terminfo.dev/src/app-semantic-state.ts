@@ -517,6 +517,69 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (unbuilt Shift+Insert/PRIMARY route): default xterm 411 has no Ctrl+Shift+V or CLIPBOARD paste binding, and its own default paste route (Shift+Insert or Button2 from X11 PRIMARY) is not built in this probe. In xterm-411.tgz (SHA256 969be283), VTInitTranslations in charproc.c:15021-15061 and xterm.man:5452,5481 bind Shift<KeyPress>Insert and <Btn2Up> to insert-selection(SELECT, CUT_BUFFER0) under default selectToClipboard=false, while Ctrl+Shift+V falls through ~Meta<KeyPress>:insert-seven-bit() and emits 0x16 instead of pasting.",
   },
+  // #32947 (@cto 8ca3f1d9): remaining 19 Linux App semantic-prompt rows at their exact pinned versions.
+  ...[
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc-633-vscode",
+  ].map((featureId) => ({
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "linux",
+    featureId,
+    reason:
+      'Untestable (no way): Ghostty 1.4.0 has no OSC 633 parser and drops the sequence silently without a target-state reading or log. In ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar (SHA256 d692bb9b), src/terminal/osc.zig:455-505 lists 133 and no 633; state .@"6" at :972-975 sends 3 to unknownOrInvalid at :748-753 (unknown_max_bytes=0 at :496), so end() at :1092-1103 returns null and logs nothing.',
+  })),
+  ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "linux",
+    featureId,
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 parses OSC 133 A/B/C/P into internal row state and an embedder callback with no public CLI, IPC, escape-query or non-debug log readback. Read tag v1.4.0 (ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar, SHA256 d692bb9b) src/terminal/osc.zig:1180, src/terminal/osc/parsers/semantic_prompt.zig:23-32 and src/terminal/stream_terminal.zig:397,918-961 (page_row.semantic_prompt at src/terminal/Terminal.zig:1849,2259,3743). Scraping UI state via synthetic jump_to_prompt keys or triple-click X11 primary selection is not a non-intrusive prompt-mark reader.",
+  })),
+  {
+    kind: "term",
+    id: "kitty",
+    version: "0.49.2",
+    os: "linux",
+    featureId: "extensions.osc133-p",
+    reason:
+      "Untestable (no way): Kitty 0.49.2 has no OSC 133 P arm in its prompt-mark parser and logs no command-specific refusal for an unknown letter on handled OSC 133. Read tag v0.49.2 kitty/vt-parser.c:630-638, kitty/screen.c:3589-3612 (switches on A, C, D only) and docs/shell-integration.rst:438-440 (Kitty uses 133;A;k=s for secondary prompts).",
+  },
+  ...["extensions.osc133-a", "extensions.osc133-c", "extensions.osc133-d", "extensions.semantic-prompts"].map(
+    (featureId) => ({
+      kind: "term" as const,
+      id: "kitty",
+      version: "0.49.2",
+      os: "linux",
+      featureId,
+      reason:
+        "Untestable (no setup): Kitty 0.49.2 parses OSC 133 A/C/D into prompt marks and exit status, which are readable via kitten @ ls (at_prompt, last_cmd_exit_status) and kitten @ get-text --extent=last_cmd_output when remote control is enabled, but default launch sets allow_remote_control=no and daemon.log emits no line for handled OSC 133. Read tag v0.49.2 kitty/screen.c:3591-3613, kitty/window.py:2351,2356 and kitty/rc/get_text.py:105; enabling -o allow_remote_control=socket-only --listen-on unix:<path> with before/after App qualification is tracked in #32955.",
+    }),
+  ),
+  ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
+    kind: "term" as const,
+    id: "wezterm",
+    version: "0-unstable-2026-10-10",
+    os: "linux",
+    featureId,
+    reason:
+      "Untestable (no way): WezTerm 0-unstable-2026-10-10 parses OSC 133 A/B/C/P into Rust SemanticZone state with no wezterm cli semantic-zone readback and no unknown-OSC log line. Read e2a98e1b8af1 wezterm-escape-parser/src/osc.rs:500,750-830, term/src/terminalstate/performer.rs:867-908, term/src/terminalstate/mod.rs:2831 (get_semantic_zones) and wezterm/src/cli/ (get-text outputs text/escapes without zones). Injecting a custom Lua user-var-changed script into target launch configuration to dump pane:get_semantic_zones() is not a default-launch reader.",
+  })),
+  {
+    kind: "mux",
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    featureId: "extensions.osc633-e",
+    reason:
+      "Untestable (no way): tmux 3.8 has no OSC 633 handler, drops OSC 633 E in the debug-only unknown-OSC default of its input parser, and exposes no stored command-line string in capture-pane -R or formats. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699-2777 dispatches 133 and not 633, cmd-capture-pane.c:132-160 reports row flags without an explicit E command-line field, and the run image keeps no -v server log.",
+  },
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */
