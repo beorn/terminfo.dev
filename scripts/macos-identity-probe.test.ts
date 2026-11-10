@@ -220,8 +220,10 @@ test("nine fresh Mac jobs bootstrap the shared producer before checkout and coll
     "cmux",
   ])
   expect(job["runs-on"]).toBe("macos-latest")
-  const first = job.steps[0]
-  expect(job.steps[1].uses).toBe("actions/checkout@v4")
+  // The sha-shape check runs before anything is fetched (33124), then the bootstrap, then the checkout.
+  expect(job.steps[0].name).toBe("Validate the requested sha before anything is fetched")
+  const first = job.steps[1]
+  expect(job.steps[2].uses).toBe("actions/checkout@v4")
   const collectIndex = job.steps.findIndex((step: { id?: string }) => step.id === "collect")
   const failureIndex = job.steps.findIndex(
     (step: { name?: string }) => step.name === "Preserve terminal launch failure evidence",
@@ -249,7 +251,7 @@ test("nine fresh Mac jobs bootstrap the shared producer before checkout and coll
   try {
     const root = fileURLToPath(new URL("../", import.meta.url))
     const sha = "a".repeat(40)
-    const fakeCurl = `#!${process.execPath}\nconst fs=require('node:fs'); const args=process.argv.slice(2); const url=new URL(args.find(a=>a.startsWith('http'))); if(url.searchParams.get('ref')!==process.env.GITHUB_SHA) process.exit(7); const path=url.pathname.split('/contents/')[1]; fs.copyFileSync(process.env.FIXTURE_ROOT+'/'+path,args[args.indexOf('--output')+1]); fs.appendFileSync(process.env.RUNNER_TEMP+'/requests.jsonl',JSON.stringify({path,sha:url.searchParams.get('ref')})+'\\n');\n`
+    const fakeCurl = `#!${process.execPath}\nconst fs=require('node:fs'); const args=process.argv.slice(2); const url=new URL(args.find(a=>a.startsWith('http'))); if(url.searchParams.get('ref')!==process.env.MEASURED_SHA) process.exit(7); const path=url.pathname.split('/contents/')[1]; fs.copyFileSync(process.env.FIXTURE_ROOT+'/'+path,args[args.indexOf('--output')+1]); fs.appendFileSync(process.env.RUNNER_TEMP+'/requests.jsonl',JSON.stringify({path,sha:url.searchParams.get('ref')})+'\\n');\n`
     await writeFile(join(dir, "curl"), fakeCurl, { mode: 0o755 })
     const sample = `#!${process.execPath}\nconst n=process.argv[1]; console.log(n.endsWith('ifconfig')?'ether 02:00:00:00:00:01':n.endsWith('ioreg')?'"IOPlatformUUID" = "fixture-platform"':'fixture-boot');\n`
     for (const name of ["ifconfig", "ioreg", "sysctl"]) await writeFile(join(dir, name), sample, { mode: 0o755 })
@@ -262,7 +264,10 @@ test("nine fresh Mac jobs bootstrap the shared producer before checkout and coll
         PATH: `${dir}:${process.env.PATH}`,
         FIXTURE_ROOT: root,
         RUNNER_TEMP: dir,
-        GITHUB_SHA: sha,
+        // The job pins the measured tree in MEASURED_SHA (inputs.sha || github.sha); a different GITHUB_SHA
+        // proves the bootstrap fetches by the pin, never by the dispatched ref (33124).
+        MEASURED_SHA: sha,
+        GITHUB_SHA: "b".repeat(40),
         GH_TOKEN: "fixture-token",
         GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
         GITHUB_REPOSITORY: "fixture/repo",
