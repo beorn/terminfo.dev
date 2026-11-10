@@ -685,6 +685,10 @@ test("hosted Terminal launch owns its window and closes only it before upload", 
   expect(close?.if).toContain("matrix.id == 'terminal-app'")
   expect(close?.run).toContain("closeOwnedTerminalWindow")
   expect(close?.run).toContain("terminal-window-disposal.json")
+  // #33152 (@cto 088a3204): the close's own returned proof is kept, and a failed close leaves its reason by name.
+  expect(close?.run).toContain("const closeProof = JSON.parse(closeOwnedTerminalWindow(terminalWindow))")
+  expect(close?.run).toContain("remaining, closeProof")
+  expect(close?.run).toContain("terminal-window-close-failure.json")
   // A launch that ran and recorded nothing must fail loudly, never read as "no launch happened".
   expect(close?.run).toContain("launcher.log")
   expect(close?.run).toContain("recorded no owned window")
