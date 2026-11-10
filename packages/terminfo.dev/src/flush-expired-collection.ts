@@ -108,7 +108,6 @@ export function rowsFromDraft(draft: unknown): { finished: unknown[]; startedId?
 }
 
 export function readExistingRun(path: string): unknown {
-  if (!existsSync(path)) return undefined
   return JSON.parse(readFileSync(path, "utf8"))
 }
 
@@ -120,10 +119,11 @@ if (import.meta.main) {
     )
   }
   const ids = collectionIds(rawIds, join(process.cwd(), "content"))
-  const draft = draftPath === undefined || draftPath === "" ? undefined : readExistingRun(draftPath)
+  const draft =
+    draftPath !== undefined && draftPath !== "" && existsSync(draftPath) ? readExistingRun(draftPath) : undefined
   const fromDraft = rowsFromDraft(draft)
   const log = logPath === undefined || logPath === "" ? "" : readFileSync(logPath, "utf8")
-  const prior = readExistingRun(path)
+  const prior = existsSync(path) ? readExistingRun(path) : undefined
   const base = isRecord(prior) ? prior : {}
   const run = expiredCollectionRun({
     ids,
