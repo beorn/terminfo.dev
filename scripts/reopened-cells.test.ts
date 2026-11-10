@@ -229,14 +229,21 @@ describe("loadReopenedCells", () => {
     )
   })
 
-  // #33165 fixed the six criterion texts and deleted their 39 criterion-text rows in the same commit; the three
+  // #33165 fixed the six criterion texts. Each terminal cell's stored result shows the DA1 fence answered, so its row
+  // was deleted and the cell returns to Unsupported (@cto 767c9bcd). A multiplexer cell's silence may have stopped at
+  // the hop and no run holds an outer command record, so its row is re-keyed to the new text (@cto 04bc641a). The three
   // remeasured sgr.blink rows wait for a measurement under a new suite.
-  it("the committed file holds the 3 remeasured rows, all current, after the criterion texts were fixed", async () => {
+  it("the committed file holds the 12 re-keyed multiplexer rows and the 3 remeasured rows, all current", async () => {
     const content = join(import.meta.dirname, "..", "content")
     const { loadFeatures } = await import("@terminfo/catalog")
     const rows = loadReopenedCells(content, loadFeatures(content))
-    expect(rows).toHaveLength(3)
-    expect(rows.filter((row) => row.exit.kind === "criterion-text")).toHaveLength(0)
+    expect(rows).toHaveLength(15)
+    const criterion = rows.filter((row) => row.exit.kind === "criterion-text")
+    expect(criterion).toHaveLength(12)
+    expect(new Set(criterion.map((row) => row.kind))).toEqual(new Set(["mux"]))
+    expect(new Set(criterion.map((row) => row.reason))).toEqual(
+      new Set(["multiplexer: silence may have stopped at the hop"]),
+    )
     expect(rows.filter((row) => row.exit.kind === "remeasured").map((row) => `${row.id}/${row.featureId}`)).toEqual([
       "alacritty/sgr.blink",
       "ghostty/sgr.blink",

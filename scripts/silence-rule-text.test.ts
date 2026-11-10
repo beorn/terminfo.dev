@@ -24,8 +24,11 @@ import { inertLibProbeSource } from "../packages/probe-defs/src/testing/group-ha
 
 const features = loadFeatures(join(dirname(fileURLToPath(import.meta.url)), "..", "content"))
 
-/** @cpo/term's default-rule wording (#33165 calls, 2026-11-10 13:50 PST). */
-const DEFAULT_RULE = /device attributes answer with no (?:[\w-]+ )*reply before it is Unsupported/i
+/**
+ * @cpo/term's default-rule wording (#33165 calls, 2026-11-10 13:50 PST): "a device attributes answer with no ... reply
+ * before it is Unsupported"; the Kitty keyboard rows say "reply" for the device attributes answer.
+ */
+const DEFAULT_RULE = /device attributes (?:answer|reply) with no (?:[\w-]+ )*reply before it is Unsupported/i
 
 /**
  * query_reply rows that do not mark a fenced silence on every query_reply arm, so the default sentence would be false
