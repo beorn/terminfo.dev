@@ -495,18 +495,72 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
   return client
 }
 
-/** Compare the actual Kitty argv, not a shell-escaped display string in the receipt. */
-function assertKittyClipboardProfile(profile: ClipboardReceipt["profile"], argv: string[]): void {
+export type ClipboardApp = "kitty" | "ghostty" | "alacritty" | "xterm" | "wezterm"
+
+/**
+ * Each terminal's own clipboard-read-allowed setting, read from its pinned version (issue 33119, @cto 53ee5175).
+ * scripts/linux-container-run.sh passes exactly these args under the allow profile; clipboard-allow-args.test.ts
+ * keeps the two equal. WezTerm has no read setting: it runs as it is and its result is measured, never declared.
+ */
+export const CLIPBOARD_ALLOW_ARGS: Readonly<Record<ClipboardApp, readonly string[]>> = {
+  kitty: ["-o", "clipboard_control=write-clipboard read-clipboard"],
+  ghostty: ["--clipboard-read=allow"],
+  alacritty: ["-o", 'terminal.osc52="CopyPaste"'],
+  xterm: ["-xrm", "*disallowedWindowOps: GetChecksum,GetIconTitle,GetWinTitle,SetXprop"],
+  wezterm: [],
+}
+
+/** The argv tokens that set each terminal's clipboard read control, flag and value together. */
+function clipboardControls(app: ClipboardApp, options: string[]): string[] {
+  const valueOf = (flags: string[], value: (part: string) => boolean) =>
+    options.flatMap((part, index) => {
+      const flag = options[index - 1]
+      return flag !== undefined && flags.includes(flag) && value(part) ? [flag, part] : []
+    })
+  switch (app) {
+    case "kitty":
+      return valueOf(["-o", "--override"], (part) => part.startsWith("clipboard_control="))
+    case "ghostty":
+      return options.filter((part) => part.startsWith("--clipboard-read"))
+    case "alacritty":
+      return valueOf(["-o", "--option"], (part) => part.startsWith("terminal.osc52="))
+    case "xterm":
+      return valueOf(["-xrm"], (part) => /(^|[*.])(disallowedWindowOps|allowWindowOps)\s*:/.test(part))
+    case "wezterm":
+      return []
+  }
+}
+
+function clipboardApp(id: string | undefined): ClipboardApp {
+  if (id !== undefined && Object.hasOwn(CLIPBOARD_ALLOW_ARGS, id)) return id as ClipboardApp
+  throw new Error(`Owned clipboard target ${id ?? "(unset)"} has no declared clipboard control`)
+}
+
+/** Compare the terminal's actual argv, not a shell-escaped display string in the receipt. */
+export function assertClipboardProfile(app: ClipboardApp, profile: ClipboardReceipt["profile"], argv: string[]): void {
   const commandIndex = argv.findIndex((part) => part === "bun")
   const options = commandIndex < 0 ? argv : argv.slice(0, commandIndex)
-  const controls = options.filter((part, index) => options[index - 1] === "-o" && part.startsWith("clipboard_control="))
+  if (profile === "deny-read" && app !== "kitty") {
+    throw new Error(`Owned ${app} has no declared deny-read clipboard control`)
+  }
   const expected = {
     default: [],
-    allow: ["clipboard_control=write-clipboard read-clipboard"],
-    "deny-read": ["clipboard_control=write-clipboard"],
+    allow: CLIPBOARD_ALLOW_ARGS[app],
+    "deny-read": ["-o", "clipboard_control=write-clipboard"],
   }[profile]
-  if (JSON.stringify(controls) !== JSON.stringify(expected)) {
-    throw new Error(`Owned Kitty argv clipboard control differs from ${profile} receipt`)
+  if (JSON.stringify(clipboardControls(app, options)) !== JSON.stringify(expected)) {
+    throw new Error(`Owned ${app} argv clipboard control differs from ${profile} receipt`)
+  }
+}
+
+function expectedClipboardPermissions(app: ClipboardApp, profile: ClipboardReceipt["profile"]): string {
+  switch (profile) {
+    case "default":
+      return "clipboard: read=ask,write=allow; OSC52: write=run,read=not-run"
+    case "allow":
+      return app === "wezterm" ? "clipboard: read=no-setting,write=allow" : "clipboard: read=allow,write=allow"
+    case "deny-read":
+      return "clipboard: read=deny,write=allow"
   }
 }
 
@@ -532,13 +586,9 @@ export async function createLinuxClipboardAdapter(
   ) {
     throw new Error("Owned clipboard receipt does not match this collector run, display, or terminal")
   }
-  const expectedPermissions = {
-    default: "clipboard: read=ask,write=allow; OSC52: write=run,read=not-run",
-    allow: "clipboard: read=allow,write=allow",
-    "deny-read": "clipboard: read=deny,write=allow",
-  }[receipt.profile]
-  if (receipt.permissions !== expectedPermissions) {
-    throw new Error("Owned clipboard profile and Kitty configuration disagree")
+  const app = clipboardApp(process.env.TERMINFO_TARGET_ID)
+  if (receipt.permissions !== expectedClipboardPermissions(app, receipt.profile)) {
+    throw new Error(`Owned clipboard profile and ${app} configuration disagree`)
   }
   const displayNumber = readFileSync(ownedFile(receipt.display.displayFdPath), "utf8").trim()
   if (displayNumber !== String(receipt.display.number)) throw new Error("Owned Xvfb displayfd differs from receipt")
@@ -567,7 +617,8 @@ export async function createLinuxClipboardAdapter(
     }
     processExecutable(receipt.terminal.pid)
     assertLiveExecutable(receipt.terminal.pid, executable)
-    assertKittyClipboardProfile(
+    assertClipboardProfile(
+      app,
       receipt.profile,
       readFileSync(`/proc/${receipt.terminal.pid}/cmdline`, "utf8").split("\0").filter(Boolean),
     )

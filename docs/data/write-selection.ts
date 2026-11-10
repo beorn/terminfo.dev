@@ -8,7 +8,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { CONTENT_DIR } from "../../packages/admin/corpus-placement.ts"
 import { loadRawCapture } from "../../packages/admin/raw-capture.ts"
-import { loadSelectedResults, type SelectedProjection } from "./selected-results.ts"
+import { loadSelectedResults, type SelectedContextCell, type SelectedProjection } from "./selected-results.ts"
 
 export interface SelectionFileCell {
   featureId: string
@@ -24,6 +24,8 @@ export interface SelectionFileCell {
   source: "placed" | "working"
   /** Repository-relative run file for a placed row (`content/...`); null for a working run, which is not placed. */
   contentPath: string | null
+  /** Present only when a context supplement read this cell (selected-results.ts SelectedContextCell.supplement). */
+  supplement?: SelectedContextCell["supplement"]
 }
 
 function isUnder(path: string, dir: string): boolean {
@@ -59,6 +61,7 @@ export function selectionFile(
         runId,
         source: working ? "working" : "placed",
         contentPath: working ? null : relative(root, resolve(cell.run.path)).split(sep).join("/"),
+        ...(cell.supplement && { supplement: cell.supplement }),
       })
     }
   }

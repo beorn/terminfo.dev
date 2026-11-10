@@ -11,6 +11,7 @@ import {
 } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
+import { supplementOf, type ContextSupplement } from "./context-supplements.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -160,6 +161,14 @@ export interface SelectedContextCell {
   result: ProbeResult
   /** Environment groups are retained run metadata, outside the feature-result catalogue. */
   featureResult?: FeatureResult
+  /**
+   * Set only when a context supplement (context-supplements.ts) read this open cell. `filled`: the cell is the
+   * supplement's own result and run. `open`: the supplement gave no proof, so the default cell stays, with this reason.
+   */
+  supplement?: { name: string; qualifier: string; runId: string; declaredDefault?: string } & (
+    | { filled: true }
+    | { filled: false; open: string }
+  )
 }
 
 /** An initialized draft can retain intent even when no measured subject or result exists. */
@@ -311,6 +320,26 @@ export function workingSubjectKey(admitted: ReadonlyMap<string, string>, subject
 
 const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
+interface SupplementInput {
+  run: LoadedRun
+  supplement: ContextSupplement
+  /** The default context's projected key: the only context this supplement may read into. */
+  contextKey: string
+}
+
+/** A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions. */
+function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): boolean {
+  return (
+    candidate.permissions === null &&
+    candidate.kind === supplement.kind &&
+    candidate.id === supplement.id &&
+    candidate.os === supplement.os &&
+    candidate.osVersion === supplement.osVersion &&
+    candidate.outerTerminal === supplement.outerTerminal &&
+    candidate.mux === supplement.mux
+  )
+}
+
 /**
  * Read current execution results without applying later feature interpretations or grading.
  * `archivedExclusions` are the frozen refusals of legacy runs (#30759 AC3); they lead the published
@@ -331,8 +360,11 @@ export function projectResults(
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   // 30661: the context count is per target across every run the projection read, so a context key is
   // qualified exactly as the runs measured it rather than as whichever runs are current today.
-  const contexts = countContexts(runs)
-  const currentRuns = runs.filter((run) => run.schemaVersion === 3 || run.schemaVersion === 4)
+  // 33119: a context supplement is never a context, so it is set aside before any context is counted or keyed.
+  const supplementRuns = runs.filter((run) => supplementOf(run.subject) !== undefined)
+  const contextRuns = runs.filter((run) => supplementOf(run.subject) === undefined)
+  const contexts = countContexts(contextRuns)
+  const currentRuns = contextRuns.filter((run) => run.schemaVersion === 3 || run.schemaVersion === 4)
   const ids = new Set<string>()
   for (const run of runs) {
     if (ids.has(run.runId)) throw new Error(`duplicate runId ${run.runId}`)
@@ -349,7 +381,7 @@ export function projectResults(
   const table: Record<string, Record<string, ProbeStatus>> = {}
   const acceptedRuns: LoadedRun[] = []
   const baselineRunIds: string[] = []
-  for (const run of currentRuns) {
+  const historyVersion = (run: LoadedRun): CurrentSelectedVersion => {
     if (!run.results || !run.catalogIds || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
     }
@@ -385,11 +417,43 @@ export function projectResults(
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
     }
+    return version
+  }
+  for (const run of currentRuns) {
+    const version = historyVersion(run)
     const stem = `${run.subject.kind}:${run.subject.id}`
     const key = projectedContextKey(run.subject, contexts.get(stem)?.size ?? 0)
     ;(projection.history[key] ??= []).push(version)
     acceptedRuns.push(run)
     ;(projection.versions[key] ??= []).push(version)
+  }
+  // A supplement joins its default context's history (so its cell's origin resolves) and the per-run table, never
+  // `versions` or the context count. Without exactly one default context to supplement, it fills nothing.
+  const supplements: SupplementInput[] = []
+  for (const run of supplementRuns) {
+    const supplement = supplementOf(run.subject)
+    if (!supplement || run.schemaVersion !== 4) continue
+    const defaults = [
+      ...new Set(
+        acceptedRuns
+          .filter((candidate) => isDefaultOf(candidate.subject, run.subject))
+          .map((candidate) =>
+            projectedContextKey(
+              candidate.subject,
+              contexts.get(`${candidate.subject.kind}:${candidate.subject.id}`)?.size ?? 0,
+            ),
+          ),
+      ),
+    ]
+    const [key] = defaults
+    if (defaults.length !== 1 || !key) {
+      policy.log?.(
+        `supplement ${run.runId} (${supplement.name}) has ${defaults.length} default contexts; it fills nothing`,
+      )
+      continue
+    }
+    ;(projection.history[key] ??= []).push(historyVersion(run))
+    supplements.push({ run, supplement, contextKey: key })
   }
   const rank = (version: CurrentSelectedVersion): number => (version.suiteRelation === "tree" ? 1 : 0)
   for (const [key, versions] of Object.entries(projection.versions)) {
@@ -420,6 +484,7 @@ export function projectResults(
       catalogIds,
       admittedContextKeys(projection.versions),
       policy.log,
+      supplements,
     ),
   }
 }
@@ -456,6 +521,7 @@ function composeContextSummaries(
   catalogIds: readonly string[],
   contextKeys: ReadonlyMap<string, string>,
   log?: (line: string) => void,
+  supplements: readonly SupplementInput[] = [],
 ): Record<string, SelectedContextSummary> {
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
@@ -637,11 +703,19 @@ function composeContextSummaries(
       }
     }
     attempts.sort(compareContextAttempts)
+    const supplementFilled = applySupplements(
+      cells,
+      supplements.filter((input) => input.contextKey === contextKey),
+      decided,
+    )
     const contributing = new Set(
       [...currentMethods.values()].flatMap(({ probes }) => [...probes.values()].map(({ run }) => run.runId)),
     )
     const sourceOrder = [...baselines, ...selected.map((entry) => entry.run), ...candidates]
-    const contributingRunIds = [...new Set(sourceOrder.map((run) => run.runId))].filter((id) => contributing.has(id))
+    const contributingRunIds = [
+      ...[...new Set(sourceOrder.map((run) => run.runId))].filter((id) => contributing.has(id)),
+      ...supplementFilled,
+    ]
     if (keptCount > 0) log?.(`kept ${keptCount} row(s) for ${contextKey}`)
     const missingIds = viewIds.filter((id) => !cells[id])
     const aggregate = aggregateCurrentResults(
@@ -677,6 +751,65 @@ function composeContextSummaries(
     }
   }
   return summaries
+}
+
+/**
+ * Read a default context's supplements into its open cells, for their declared ids only (33119, @cto f7b7afb2). The
+ * newest supplement run that emitted an id answers it, and only when that run's subject version is the open cell's.
+ * A decided default cell is never touched. Returns the run ids that filled a cell, in fill order.
+ */
+function applySupplements(
+  cells: Record<string, SelectedContextCell>,
+  supplements: readonly SupplementInput[],
+  decided: ReadonlySet<string>,
+): string[] {
+  const filled: string[] = []
+  const newestFirst = [...supplements].sort(
+    (a, b) => Date.parse(b.run.measuredAt) - Date.parse(a.run.measuredAt) || b.run.runId.localeCompare(a.run.runId),
+  )
+  const ids = [...new Set(newestFirst.flatMap(({ supplement }) => supplement.featureIds))]
+  for (const id of ids) {
+    const prior = cells[id]
+    const priorStatus = prior?.featureResult?.status ?? prior?.result.status
+    if (priorStatus !== undefined && decided.has(priorStatus)) continue
+    const source = newestFirst.find(
+      ({ run, supplement }) =>
+        supplement.featureIds.includes(id) &&
+        (prior === undefined || run.subject.version === prior.run.subject.version) &&
+        run.results?.some((result) => result.featureId === id && result.attempt.scope !== "none"),
+    )
+    const result = source?.run.results?.find((entry) => entry.featureId === id)
+    if (!source || !result || !decided.has(result.status)) continue
+    const { run, supplement } = source
+    const declaredDefault = supplement.declaredDefaults[run.subject.id]
+    const marker = {
+      name: supplement.name,
+      qualifier: supplement.qualifier,
+      runId: run.runId,
+      ...(declaredDefault && { declaredDefault }),
+    }
+    if (result.status !== "supported" && supplement.silentIgnore.includes(run.subject.id)) {
+      // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open.
+      if (prior) cells[id] = { ...prior, supplement: { ...marker, filled: false, open: supplement.notInForce } }
+      continue
+    }
+    // The same one-probe fold remember() uses, so every consumer reads the filled cell as it reads any other.
+    const classification = classifyResultMethod(result, run.subject, run.assertions)
+    const method = classification.kind === "method" ? classification.method : null
+    const featureResult = computeFeatureResults(
+      [{ featureId: id, probeId: `${id}:${method ?? "unobserved"}`, method, status: result.status }],
+      [id],
+    )[id]
+    cells[id] = {
+      origin: { runId: run.runId, resultId: id },
+      run,
+      result,
+      ...(featureResult && { featureResult }),
+      supplement: { ...marker, filled: true },
+    }
+    if (!filled.includes(run.runId)) filled.push(run.runId)
+  }
+  return filled
 }
 
 export function statesFor(

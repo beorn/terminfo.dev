@@ -13,6 +13,7 @@ import type { CurrentResult } from "./current-results.ts"
 import type { FeatureResult } from "./release-scope.ts"
 import {
   type SelectedCell,
+  type SelectedContextCell,
   type SelectedContextSummary,
   type SelectedProjection,
   type CurrentSelectedVersion,
@@ -183,6 +184,8 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
       measuredAt: string
       suiteId: string
       suiteRelation: CurrentSelectedVersion["suiteRelation"]
+      /** Present only when a context supplement read this cell; the qualifier and declared default show beside it. */
+      supplement?: SelectedContextCell["supplement"]
     }
   >
   sources: Record<string, PublicRunMetadata>
@@ -334,6 +337,7 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
               measuredAt: original.measuredAt,
               suiteId: original.suiteId,
               suiteRelation: original.suiteRelation,
+              ...(cell.supplement && { supplement: cell.supplement }),
             },
           ]
         }),
