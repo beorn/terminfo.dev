@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { gradeAppSemanticState, withAppSemanticObservation } from "./app-semantic-state.ts"
+import { gradeAppSemanticState, gradeIconNameReading, withAppSemanticObservation } from "./app-semantic-state.ts"
 import type { AppSemanticReading } from "./types.ts"
 import { declaredUntestableResult, parserStateResult } from "./helpers.ts"
 import { extensionsProbes } from "./extensions.ts"
@@ -153,16 +153,62 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
     const definition = extensionsProbes.find((probe) => probe.id === id)!
     expect(await definition.term!(source)).toMatchObject({ observation: { outcome: "supported" } })
     expect(seen).toEqual([id])
-    for (const after of [before, pair("wrong-title", "target"), pair("target", "wrong-icon")]) {
-      source.readAppSemanticState = async () => ({ ...reading, target: { before, after, expected } })
-      expect((await definition.term!(source)).observation?.outcome).not.toBe("supported")
-    }
+    source.readAppSemanticState = async () => ({ ...reading, target: { before, after: before, expected } })
+    expect((await definition.term!(source)).observation).toMatchObject({ outcome: "unsupported" })
     const previous = parserStateResult(true, "existing qualified native observation", {})
-    source.readAppSemanticState = async () => ({ status: "unavailable", reason: "no owned icon property" })
-    const wrapped = withAppSemanticObservation({ id, lib: null, term: async () => previous })
-    expect(await wrapped.term!(source)).toBe(previous)
+    let termCalled = false
+    source.readAppSemanticState = async () => ({ status: "unavailable", reason: "no X11 window" })
+    const wrapped = withAppSemanticObservation({
+      id,
+      lib: null,
+      term: async () => {
+        termCalled = true
+        return previous
+      },
+    })
+    const gap = await wrapped.term!(source)
+    expect(termCalled).toBe(false)
+    expect(gap.observation).toBeUndefined()
+    expect(gap.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: "no X11 window" }])
     source.readAppSemanticState = async () => ({ status: "invalid", reason: "owner revoked" })
     expect(await wrapped.term!(source)).toMatchObject({ tests: [{ status: "probe-invalid" }] })
+  },
+)
+
+test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
+  "%s grades icon name B, OSC 0 C, and an OSC 1 title that became B",
+  (id) => {
+    const osc1 = id === "extensions.osc1-icon"
+    const reading = (
+      titleAfter: string,
+      iconAfter: string | null,
+      iconBefore: string | null = "before",
+    ): AppSemanticReading => ({
+      status: "measured",
+      reader: "state",
+      runId: "a".repeat(32),
+      unknown: { before: "[]", after: "[]" },
+      handled: { before: "[]", after: "[]", expected: "[]" },
+      target: {
+        before: JSON.stringify(["A", iconBefore]),
+        after: JSON.stringify([titleAfter, iconAfter]),
+        expected: JSON.stringify(["A", "B"]),
+      },
+      detail: {},
+    })
+    expect(gradeIconNameReading(id, reading("A", "B"))).toMatchObject({ observation: { outcome: "supported" } })
+    expect(gradeIconNameReading(id, reading("A", null)).observation).toMatchObject({ outcome: "unsupported" })
+    expect(gradeIconNameReading(id, reading("A", "A")).observation).toMatchObject({ outcome: "unsupported" })
+    expect(gradeIconNameReading(id, reading("A", "before")).observation).toMatchObject({ outcome: "unsupported" })
+    if (osc1) {
+      const aliased = gradeIconNameReading(id, reading("B", "B"))
+      expect(aliased.observation).toMatchObject({ outcome: "unsupported" })
+      expect(aliased.note).toContain("Seen title")
+      expect(gradeIconNameReading(id, reading("A", "C")).observation).toMatchObject({ outcome: "unsupported" })
+    } else {
+      expect(gradeIconNameReading(id, reading("B", "B")).observation).toMatchObject({ outcome: "supported" })
+      expect(gradeIconNameReading(id, reading("B", "C")).observation).toMatchObject({ outcome: "supported" })
+    }
   },
 )
 

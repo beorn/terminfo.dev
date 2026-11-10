@@ -66,7 +66,7 @@ export interface LinuxClipboardAdapter {
   readTitle(): Promise<string>
   withIconNameFixture?(
     write: (text: string) => void,
-    work: (read: () => Promise<string>) => Promise<AppSemanticReading>,
+    work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
     verify?: () => Promise<void>,
   ): Promise<AppSemanticReading>
   withClipboardFixture(
@@ -796,6 +796,7 @@ export async function createLinuxClipboardAdapter(
         samples.push(snapshot)
         const [legacy, modern] = properties
         if (!modern || !legacy) throw new Error("Owned icon property pair incomplete")
+        if (!modern.present && !legacy.present) return { value: null, snapshot, legacy: false }
         const property = modern.present ? modern : legacy
         if (!property.present || (modern.present ? property.type !== "UTF8_STRING" : property.type !== "STRING")) {
           throw new Error(
@@ -839,22 +840,28 @@ export async function createLinuxClipboardAdapter(
       } finally {
         try {
           await verify()
-          write(`\x1b]1;${before.value}\x07`)
-          await verify()
+          if (before.value !== null) {
+            write(`\x1b]1;${before.value}\x07`)
+            await verify()
+          }
           write(`\x1b]2;${originalTitle}\x07`)
           cleanup.title = await title()
           const restored = await read()
-          cleanup.icon = restored.value
+          cleanup.icon = restored.value ?? undefined
           cleanup.propertiesExact =
             JSON.stringify(before.snapshot.properties) === JSON.stringify(restored.snapshot.properties)
           if (!cleanup.propertiesExact) {
             cleanup.note =
               "OSC-only cleanup cannot reproduce original property presence/type/bytes; exact before/after snapshots retained"
           }
-          if (cleanup.title !== originalTitle || (!before.legacy && cleanup.icon !== before.value)) {
+          if (cleanup.title !== originalTitle) {
             throw new Error("Owned icon/title restoration readback differs from baseline")
           }
-          if (before.legacy && cleanup.icon !== before.value) {
+          if (before.value === null) {
+            cleanup.note = "Baseline icon property was absent; OSC cleanup does not delete a property the probe created"
+          } else if (!before.legacy && cleanup.icon !== before.value) {
+            throw new Error("Owned icon/title restoration readback differs from baseline")
+          } else if (before.legacy && cleanup.icon !== before.value) {
             cleanup.note = "OSC-only cleanup cannot reproduce original legacy icon value/type; snapshots retained"
           }
         } catch (error) {

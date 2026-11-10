@@ -14,6 +14,71 @@ const reportFeatures = new Set([
   "extensions.osc119-reset-highlight-fg",
 ])
 
+/** The owned icon read returned unavailable. No observation, so an exact-version declaration can still replace it. */
+function iconReaderGap(reason: string): ProbeCallbackResult {
+  return {
+    pass: false,
+    note: reason,
+    tests: [{ id: "criterion", status: "probe-todo", reason }],
+  }
+}
+
+function iconPair(value: string): [string, string | null] {
+  const parsed = JSON.parse(value) as unknown
+  if (!Array.isArray(parsed) || parsed.length !== 2 || typeof parsed[0] !== "string") {
+    throw new Error("Icon observation pair is not [title, icon]")
+  }
+  if (parsed[1] !== null && typeof parsed[1] !== "string") throw new Error("Icon observation pair is not [title, icon]")
+  return [parsed[0], parsed[1]]
+}
+
+/**
+ * OSC 2 sets title A, then the row sends B. Icon name B is supported. An OSC 0 icon name that
+ * reads as some other C is supported. Absent, still A, or unchanged is unsupported. OSC 1 whose
+ * title becomes B is unsupported. @cto 09e1912c.
+ */
+export function gradeIconNameReading(featureId: string, reading: AppSemanticReading): ProbeCallbackResult {
+  if (reading.status !== "measured" || reading.reader !== "state") return gradeAppSemanticState(reading)
+  let titleA: string
+  let iconBefore: string | null
+  let titleAfter: string
+  let iconAfter: string | null
+  let payloadB: string | null
+  try {
+    ;[titleA, iconBefore] = iconPair(reading.target.before)
+    ;[titleAfter, iconAfter] = iconPair(reading.target.after)
+    ;[, payloadB] = iconPair(reading.target.expected)
+  } catch (error) {
+    return gradeAppSemanticState({
+      status: "invalid",
+      reason: error instanceof Error ? error.message : String(error),
+    })
+  }
+  if (payloadB === null) {
+    return gradeAppSemanticState({ status: "invalid", reason: "Icon payload B is missing" })
+  }
+  const seen = { titleA, iconBefore, titleAfter, iconAfter, payloadB }
+  const note = `Seen title ${JSON.stringify(titleAfter)}, icon ${JSON.stringify(iconAfter)}`
+  const osc1 = featureId === "extensions.osc1-icon"
+  if (osc1 && titleAfter === payloadB) {
+    return parserStateResult(false, "OSC 1 must not change the window title to its icon payload", seen, note)
+  }
+  if (iconAfter === payloadB && (!osc1 || titleAfter === titleA)) {
+    return parserStateResult(
+      true,
+      osc1 ? "OSC 1 set the icon name to B and left title A" : "OSC 0 icon name reads B",
+      seen,
+    )
+  }
+  if (!osc1 && iconAfter !== null && iconAfter !== iconBefore && iconAfter !== titleA) {
+    return parserStateResult(true, "OSC 0 icon name reads C", seen, note)
+  }
+  if (iconAfter === null || iconAfter === titleA || iconAfter === iconBefore) {
+    return parserStateResult(false, "Icon name is absent, still A, or unchanged", seen, note)
+  }
+  return parserStateResult(false, "OSC 1 icon name was not B", seen, note)
+}
+
 /** App-only alternative. Existing effects win; a qualified report beats a no-setup fallback. */
 export function withAppSemanticObservation(definition: ProbeDefinition): ProbeDefinition {
   const term = definition.term
@@ -28,10 +93,18 @@ export function withAppSemanticObservation(definition: ProbeDefinition): ProbeDe
   return {
     ...definition,
     term: async (ctx) => {
+      if (icon) {
+        if (!ctx.readAppSemanticState) return term(ctx)
+        const reading = await ctx.readAppSemanticState(definition.id, ctx.write)
+        if (reading.status === "unavailable") return iconReaderGap(reading.reason)
+        if (reading.status === "measured" && reading.reader === "state")
+          return gradeIconNameReading(definition.id, reading)
+        return gradeAppSemanticState(reading)
+      }
       if (!ctx.readAppSemanticState) return term(ctx)
       if (semantic) {
         const reading = await ctx.readAppSemanticState(definition.id, ctx.write)
-        if ((icon || definition.id === "extensions.osc7-cwd") && reading.status === "unavailable") return term(ctx)
+        if (definition.id === "extensions.osc7-cwd" && reading.status === "unavailable") return term(ctx)
         return gradeAppSemanticState(reading)
       }
       const previous = await term(ctx)

@@ -34,16 +34,16 @@ afterEach(() => {
 // Native callback binding tests cannot see the collector's independent controls.
 // Model only the three OSC effects and native reads; production builds the result.
 test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
-  "%s qualifies the actual native pair and never infers a negative from an unobserved target",
+  "%s sets title A, sends payload B, and records the icon name that was read",
   async (featureId) => {
     const runId = "a".repeat(32)
     vi.stubEnv("TERMINFO_RUN_ID", runId)
     vi.stubEnv("TERMINFO_MUX_KIND", "")
     vi.stubEnv("TERMINFO_TARGET_ID", "xterm")
-    for (const disabled of ["none", "icon", "title", "inert", "late-title"] as const) {
+    const osc1 = featureId.includes("osc1")
+    for (const mode of ["applies-b", "absent", "unchanged", "mirrors-title", "title-becomes-b"] as const) {
       let title = "original title"
-      let icon = "original icon"
-      let pending: string | undefined
+      let icon: string | null = "original icon"
       const writes: string[] = []
       const input = {
         featureId,
@@ -52,47 +52,46 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
         readTitle: async () => title,
         withIconNameFixture: async (
           _write: (s: string) => void,
-          work: (read: () => Promise<string>) => Promise<AppSemanticReading>,
-        ) =>
-          work(async () => {
-            // A delayed App update must not manufacture an old-title/new-icon pair.
-            if (pending !== undefined) {
-              title = pending
-              icon = pending
-              pending = undefined
-            }
-            return icon
-          }),
+          work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
+        ) => work(async () => icon),
         write(bytes: string) {
           writes.push(bytes)
-          const m = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
-          if (!m) return
-          const code = m[1]
-          const payload = m[2]
+          const match = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
+          if (!match) return
+          const code = match[1]
+          const payload = match[2]
           if (!code || payload === undefined) throw Error("invalid OSC fixture")
-          const target = payload.includes("-target-")
-          if (target && code === "1" && disabled === "late-title") {
-            pending = payload
+          if (code === "2") {
+            title = payload
             return
           }
-          if (target && disabled === "inert") return
-          if (code !== "1" && !(target && disabled === "title")) title = payload
-          if (code !== "2" && !(target && disabled === "icon")) icon = payload
+          if (mode === "unchanged" || mode === "absent") {
+            if (mode === "absent") icon = null
+            return
+          }
+          if (mode === "title-becomes-b") {
+            title = payload
+            icon = payload
+            return
+          }
+          if (mode === "mirrors-title") {
+            title = payload
+            icon = `${payload}-mirrored`
+            return
+          }
+          icon = payload
         },
       }
       const reading = await readAppSemanticState(input)
-      const expectedToWork =
-        disabled === "none" ||
-        (featureId.includes("osc1") && disabled === "title") ||
-        (featureId.includes("osc0") && disabled === "late-title")
-      const { gradeAppSemanticState } = await import("../../probe-defs/src/app-semantic-state.ts")
-      const result = gradeAppSemanticState(reading)
-      if (expectedToWork) expect(result).toMatchObject({ observation: { outcome: "supported" } })
-      else {
-        expect(result.observation?.outcome).not.toBe("supported")
-        expect(result.observation?.outcome).not.toBe("unsupported")
-      }
-      expect(writes.some((s) => s.includes("-control-"))).toBe(true)
+      expect(reading.status).toBe("measured")
+      if (reading.status !== "measured" || reading.reader !== "state") throw Error("icon reading")
+      const { gradeIconNameReading } = await import("../../probe-defs/src/app-semantic-state.ts")
+      const result = gradeIconNameReading(featureId, reading)
+      const supported =
+        mode === "applies-b" || (mode === "mirrors-title" && !osc1) || (mode === "title-becomes-b" && !osc1)
+      expect(result.observation).toMatchObject({ outcome: supported ? "supported" : "unsupported" })
+      expect(writes.some((line) => line.startsWith("\x1b]2;icon-title-a-"))).toBe(true)
+      expect(writes.some((line) => line.startsWith(osc1 ? "\x1b]1;icon-name-b-" : "\x1b]0;icon-name-b-"))).toBe(true)
     }
   },
 )
@@ -133,6 +132,8 @@ test("reader capability rows do not become declarations or lend their identity t
   const tmux = { kind: "mux" as const, id: "tmux", version: "3.8", os: "linux" }
   const tmuxDeclared = appSemanticDeclarations(tmux)
   expect(Object.keys(tmuxDeclared).sort()).toEqual([
+    "extensions.osc0-icon-title",
+    "extensions.osc1-icon",
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
     "extensions.osc440-audio",
@@ -140,6 +141,8 @@ test("reader capability rows do not become declarations or lend their identity t
     "extensions.osc666-termprop",
     "extensions.osc710-font-normal",
   ])
+  expect(tmuxDeclared["extensions.osc0-icon-title"]).toMatch(/multiplexer has no icon name/)
+  expect(tmuxDeclared["extensions.osc1-icon"]).toMatch(/multiplexer has no icon name/)
   for (const [featureId, code] of [
     ["extensions.osc176-app-id", "176"],
     ["extensions.osc3008-context", "3008"],
@@ -185,7 +188,10 @@ test("reader capability rows do not become declarations or lend their identity t
     expect(appSemanticDeclarations(subject)).toEqual({})
   }
   const screen = { kind: "mux" as const, id: "screen", version: "5.0.2", os: "linux" }
-  expect(appSemanticDeclarations(screen)["modes.color-scheme-reporting"]).toMatch(/Untestable \(no way\):.*2031/)
+  const screenDeclared = appSemanticDeclarations(screen)
+  expect(screenDeclared["modes.color-scheme-reporting"]).toMatch(/Untestable \(no way\):.*2031/)
+  expect(screenDeclared["extensions.osc0-icon-title"]).toMatch(/multiplexer has no icon name/)
+  expect(screenDeclared["extensions.osc1-icon"]).toMatch(/multiplexer has no icon name/)
   for (const subject of [
     { ...screen, version: "5.0.3" },
     { ...screen, os: "darwin" },

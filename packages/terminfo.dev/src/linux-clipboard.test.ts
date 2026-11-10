@@ -651,12 +651,28 @@ try {
     assert.equal(legacy.detail.iconFixture.cleanup.propertiesExact,false,"OSC can create the formerly absent modern property")
     assert.match(legacy.detail.iconFixture.cleanup.note,/OSC-only/)
     delete iconProperties._NET_WM_ICON_NAME
-    for(const missing of [null,{type:"COMPOUND_TEXT",bytes:[97]}]) {
-      if(missing)iconProperties.WM_ICON_NAME=missing;else delete iconProperties.WM_ICON_NAME
-      let ran=false
-      const reading=await adapter.clipboard.withIconNameFixture(()=>{throw Error("missing icon wrote stimulus")},async()=>{ran=true;return {status:"unavailable",reason:"must not run"}})
-      assert.equal(reading.status,"unavailable");assert.equal(ran,false)
-    }
+    delete iconProperties.WM_ICON_NAME
+    let absentRan = false
+    const absent = await adapter.clipboard.withIconNameFixture(writeIcon, async (read) => {
+      absentRan = true
+      assert.equal(await read(), null, "a missing icon property is an observation")
+      return { status: "unavailable", reason: "absent icon is observable" }
+    })
+    assert.equal(absentRan, true)
+    assert.equal(absent.status, "unavailable")
+    iconProperties.WM_ICON_NAME = { type: "COMPOUND_TEXT", bytes: [97] }
+    let malformedRan = false
+    const malformed = await adapter.clipboard.withIconNameFixture(
+      () => {
+        throw Error("missing icon wrote stimulus")
+      },
+      async () => {
+        malformedRan = true
+        return { status: "unavailable", reason: "must not run" }
+      },
+    )
+    assert.equal(malformed.status, "unavailable")
+    assert.equal(malformedRan, false)
     iconProperties={WM_ICON_NAME:{type:"STRING",bytes:[97]},_NET_WM_ICON_NAME:{type:"UTF8_STRING",bytes:[98]}}
     const beforeForeign=xpropReads
     const revokedIcon=await adapter.clipboard.withIconNameFixture(writeIcon,async()=>{throw Error("foreign callback")},async()=>{throw Error("fixture owner revoked")})

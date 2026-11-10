@@ -483,6 +483,42 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): GNU Screen 5.0.2 drops OSC 710 without storing, forwarding or reporting a font selection. Read the complete StringEnd OSC dispatch in ansi.c:1223-1312 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 710 parses typ 710 and misses the accepted title/colour list (0, 1, 2, 11, 20, 39, 49, and 83 for commands) at 1267, so it reaches the non-title break at 1288. Screen has no font state, log or readback, and the outer terminal cannot supply Screen's missing own font reading.",
   },
+  {
+    kind: "mux",
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    featureId: "extensions.osc0-icon-title",
+    reason:
+      "Untestable (no way): a multiplexer has no icon name; the outer terminal's row applies. tmux 3.8. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699 dispatches OSC 0 and OSC 2, and OSC 1 reaches the unknown-OSC default at input.c:2775-2777. That dispatch is not an icon name.",
+  },
+  {
+    kind: "mux",
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    featureId: "extensions.osc1-icon",
+    reason:
+      "Untestable (no way): a multiplexer has no icon name; the outer terminal's row applies. tmux 3.8. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699 does not dispatch OSC 1, so it reaches the unknown-OSC default at input.c:2775-2777. That drop is not an icon name.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.2",
+    os: "linux",
+    featureId: "extensions.osc0-icon-title",
+    reason:
+      "Untestable (no way): a multiplexer has no icon name; the outer terminal's row applies. GNU Screen 5.0.2. Read the StringEnd OSC dispatch in ansi.c:1223-1312 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 0 is in the title/colour list at ansi.c:1267. That title is not an icon name.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.2",
+    os: "linux",
+    featureId: "extensions.osc1-icon",
+    reason:
+      "Untestable (no way): a multiplexer has no icon name; the outer terminal's row applies. GNU Screen 5.0.2. Read the StringEnd OSC dispatch in ansi.c:1223-1312 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 1 is in the title/colour list at ansi.c:1267. That title is not an icon name.",
+  },
   // #32889 step 1: tmux 3.8 carries no handler for any of these five codes, and the drop is the
   // unknown-OSC default in its own input parser. Read in tmux-3.8.tar.gz
   // (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e):
@@ -895,52 +931,37 @@ export async function readAppSemanticState(input: {
       const fixture = input.withIconNameFixture
       const readTitle = input.readTitle
       if (input.mux || !fixture || !readTitle) {
-        return { status: "unavailable", reason: "No owned native App icon fixture" }
+        return {
+          status: "unavailable",
+          reason: input.mux
+            ? "A multiplexer has no icon name; the outer terminal's row applies"
+            : "No owned native App icon fixture",
+        }
       }
+      const osc1 = input.featureId === "extensions.osc1-icon"
       return await fixture(input.write, async (readIcon) => {
         const nonce = randomUUID().slice(0, 8)
-        const pair = async () => {
-          // Observe the icon effect before its independent title invariant;
-          // otherwise a delayed update can splice old title with new icon.
-          const icon = await readIcon()
-          return JSON.stringify([await readTitle(), icon])
+        const titleA = `icon-title-a-${nonce}`
+        const payloadB = `icon-name-b-${nonce}`
+        const observe = async () => ({ title: await readTitle(), icon: await readIcon() })
+        input.write(`\x1b]2;${titleA}\x07`)
+        const set = await observe()
+        if (set.title !== titleA) {
+          return { status: "invalid", reason: "OSC 2 did not set title A", detail: { titleA, set } }
         }
-        const osc = (body: string) => input.write(`\x1b]${body}\x07`)
-        const before = await pair()
-        osc(`7655;icon-inert-${nonce}`)
-        const unknown = { before, after: await pair() }
-        const controlTitle = `icon-title-control-${nonce}`
-        const controlIcon = `icon-control-${nonce}`
-        // OSC0 uses independent OSC1/OSC2 controls; OSC1 uses OSC0 plus OSC2.
-        osc(`${input.featureId.includes("osc0") ? "1" : "0"};${controlIcon}`)
-        osc(`2;${controlTitle}`)
-        const controlled = await pair()
-        const expectedControl = JSON.stringify([controlTitle, controlIcon])
-        const state = { unknown, handled: { before: unknown.after, after: controlled, expected: expectedControl } }
-        if (unknown.before !== unknown.after || controlled !== expectedControl || unknown.after === expectedControl) {
-          return { status: "invalid", reason: "Owned icon/title independent controls failed", detail: state }
-        }
-        const target = `icon-target-${nonce}`
-        osc(`${input.featureId.includes("osc0") ? "0" : "1"};${target}`)
-        const expected = JSON.stringify([input.featureId.includes("osc0") ? target : controlTitle, target])
-        const after = await pair()
-        if (after !== expected) {
-          return {
-            status: "unavailable",
-            reason:
-              after === controlled
-                ? "Owned icon target unchanged: missing completion proof"
-                : "Owned icon target pair is partial or unexpected",
-            detail: { ...state, target: { before: controlled, after, expected } },
-          }
-        }
+        input.write(`\x1b]${osc1 ? "1" : "0"};${payloadB}\x07`)
+        const after = await observe()
+        const before = JSON.stringify([set.title, set.icon])
+        const seen = JSON.stringify([after.title, after.icon])
+        const expected = JSON.stringify([titleA, payloadB])
         return {
           status: "measured",
           reader: "state",
           runId: input.runId,
-          ...state,
-          target: { before: controlled, after, expected },
-          detail: {},
+          unknown: { before, after: before },
+          handled: { before, after: before, expected: before },
+          target: { before, after: seen, expected },
+          detail: { titleA, payloadB, title: after.title, icon: after.icon },
         }
       })
     }
