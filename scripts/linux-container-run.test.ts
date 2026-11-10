@@ -1077,6 +1077,41 @@ exit 0
   })
 })
 
+/** One target's clipboard-profile arguments, from the launcher's own profile case, parsed by bash. */
+function clipboardProfileArgs(profile: string, app: string): string[] {
+  const source = readFileSync(launcher, "utf8")
+  const arm = new RegExp(`\\n {4}${profile}\\)\\n([\\s\\S]*?)\\n {6};;\\n`).exec(source)?.[1]
+  const words = new RegExp(`^ {8}${app}\\) target_clipboard_args=\\((.*)\\) ;;$`, "m").exec(arm ?? "")?.[1]
+  if (words === undefined) throw new Error(`${profile} ${app} clipboard arguments are missing`)
+  const result = spawnSync("bash", ["-c", `args=(${words}); printf '%s\\0' "\${args[@]}"`], { encoding: "utf8" })
+  expect(result.status, result.stderr).toBe(0)
+  return result.stdout.split("\0").filter(Boolean)
+}
+
+/** Runs the launcher's own xterm paste-rebinding check on these arguments: the argument it refuses, or null. */
+function pasteRebinding(args: readonly string[]): string | null {
+  const result = spawnSync("bash", ["-c", 'source "$1"; shift; xterm_paste_rebinding_arg "$@"', "_", launcher, ...args], {
+    encoding: "utf8",
+  })
+  return result.status === 0 ? result.stdout.trim() : null
+}
+
+// #32164 (@cto 8b9eb7c0): an xterm run owns PRIMARY for Shift+Insert, so the launcher refuses any argument that
+// could rebind that paste. The default launch and 33119's read-allowed -xrm must pass the same check they run under.
+describe("xterm paste route launch arguments", () => {
+  it("passes xterm's default launch and its read-allowed profile, and refuses a rebinding resource", () => {
+    const launch = launchArgs("xterm")
+    const allow = clipboardProfileArgs("allow", "xterm")
+    expect(allow).toEqual(["-xrm", "*disallowedWindowOps: GetChecksum,GetIconTitle,GetWinTitle,SetXprop"])
+    expect(pasteRebinding(launch)).toBeNull()
+    expect(pasteRebinding([...launch, ...allow])).toBeNull()
+    expect(pasteRebinding([...launch, ...allow, "-xrm", "*VT100.translations: #override Shift<Key>Insert: string(x)"])).toBe(
+      "*VT100.translations: #override Shift<Key>Insert: string(x)",
+    )
+    expect(pasteRebinding(["-xrm", "*selectToClipboard: true"])).toBe("*selectToClipboard: true")
+  })
+})
+
 describe("private finite launch arguments", () => {
   it("refuses an unknown flag before preparing or building", () => {
     const result = spawnSync(

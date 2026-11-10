@@ -368,6 +368,20 @@ await_owned_daemon() {
   return 2
 }
 
+# xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,
+# selectToClipboard or insert-selection resource anywhere on its command line could rebind it, so the
+# launcher refuses one. Prints the first such argument and succeeds; fails when there is none.
+xterm_paste_rebinding_arg() {
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" =~ [Tt]ranslations|selectToClipboard|insert-selection ]]; then
+      printf '%s\n' "$arg"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -733,12 +747,11 @@ if [[ "${1:-}" == "--inside" ]]; then
   # the display, environment and private HOME no resource database. Refused, never recorded and continued.
   primary_receipt=null
   if [[ "$target_id" == xterm ]]; then
-    for arg in "${target_launch_args[@]}"; do
-      if [[ "$arg" =~ [Tt]ranslations|selectToClipboard|insert-selection ]]; then
-        echo "xterm launch argument rebinds paste: $arg" >&2
-        exit 2
-      fi
-    done
+    # Every argument xterm is launched with: its own and the clipboard profile's (33119's read-allowed -xrm).
+    if rebinding=$(xterm_paste_rebinding_arg "${target_launch_args[@]}" "${target_clipboard_args[@]}"); then
+      echo "xterm launch argument rebinds paste: $rebinding" >&2
+      exit 2
+    fi
     resource_manager=$(xprop -root RESOURCE_MANAGER 2>&1)
     [[ "$resource_manager" == "RESOURCE_MANAGER:  not found." ]] || {
       echo "Owned display carries a resource database: $resource_manager" >&2
