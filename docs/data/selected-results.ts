@@ -419,6 +419,7 @@ export function projectResults(
       policy.workingAttempts ?? [],
       catalogIds,
       admittedContextKeys(projection.versions),
+      policy.log,
     ),
   }
 }
@@ -454,6 +455,7 @@ function composeContextSummaries(
   workingAttempts: readonly SelectedAttemptInput[],
   catalogIds: readonly string[],
   contextKeys: ReadonlyMap<string, string>,
+  log?: (line: string) => void,
 ): Record<string, SelectedContextSummary> {
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
@@ -537,7 +539,7 @@ function composeContextSummaries(
         prior.run.probeHash === run.probeHash
       if (!prior || !sameProbe || priorStatus === undefined || !decided.has(priorStatus)) {
         if (prior && !sameProbe) {
-          policy.log?.(
+          log?.(
             `placed ${run.subject.id} ${result.featureId} harness ${result.harnessOutcome} because the probe changed`,
           )
         }
@@ -547,7 +549,7 @@ function composeContextSummaries(
       const streak = (keptStreak.get(result.featureId) ?? 0) + 1
       keptStreak.set(result.featureId, streak)
       keptCount += 1
-      policy.log?.(
+      log?.(
         `kept ${run.subject.id} ${result.featureId} ${priorStatus} refused ${result.harnessOutcome} from ${run.runId} streak ${streak}${streak >= 3 ? " needs its own issue" : ""}`,
       )
       return true
@@ -640,7 +642,7 @@ function composeContextSummaries(
     )
     const sourceOrder = [...baselines, ...selected.map((entry) => entry.run), ...candidates]
     const contributingRunIds = [...new Set(sourceOrder.map((run) => run.runId))].filter((id) => contributing.has(id))
-    if (keptCount > 0) policy.log?.(`kept ${keptCount} row(s) for ${contextKey}`)
+    if (keptCount > 0) log?.(`kept ${keptCount} row(s) for ${contextKey}`)
     const missingIds = viewIds.filter((id) => !cells[id])
     const aggregate = aggregateCurrentResults(
       // Environment groups have retained run metadata but no computed feature result.
