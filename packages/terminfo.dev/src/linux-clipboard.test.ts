@@ -10,8 +10,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import type { ProbeCallbackResult } from "@terminfo/probe-defs"
 import { afterEach, expect, test } from "vitest"
-import { createClipboardTransaction, createLinuxClipboardAdapter, type ClipboardTraceEvent } from "./linux-clipboard.ts"
+import {
+  createClipboardTransaction,
+  createLinuxClipboardAdapter,
+  pressRealKey,
+  type ClipboardTraceEvent,
+} from "./linux-clipboard.ts"
 
 const originalCapture = process.env.TERMINFO_CAPTURE_DIRECTORY
 const measuredExecutable = { path: process.execPath, sha256: "0".repeat(64) }
@@ -1089,4 +1095,92 @@ test("restoration failure overrides a supported callback result", async () => {
       async () => {},
     ),
   ).rejects.toThrow("Owned clipboard restoration failed: xclip exited")
+})
+
+// #33145 (@cto 70645b74): the press is recorded in the clipboard trace with its X time and the focused window,
+// and a focus or XTEST failure is a named error that the probe turns into a probe-invalid, never a skip.
+test("the real key event focuses the owned window, presses shift by XTEST and traces event, X time and window", async () => {
+  const calls: string[][] = []
+  const events: ClipboardTraceEvent[] = []
+  const clock = [3979146100, 3979146120]
+  await pressRealKey(
+    "2097164",
+    async (file, args) => {
+      calls.push([file, ...args])
+      return args[0] === "getwindowfocus" ? "2097164\n" : ""
+    },
+    () => clock.shift()!,
+    (event) => events.push(event),
+    async () => {},
+  )
+  expect(calls).toEqual([
+    ["xdotool", "windowfocus", "2097164"],
+    ["xdotool", "getwindowfocus"],
+    ["xdotool", "key", "--window", "0", "--clearmodifiers", "shift"],
+  ])
+  // /proc/uptime counts centiseconds, so the press lies in [first read, second read + 10 ms).
+  expect(events).toEqual([
+    {
+      kind: "clipboard-key",
+      at: expect.any(String),
+      key: "shift",
+      windowId: "2097164",
+      xTimeMs: [3979146100, 3979146130],
+    },
+  ])
+})
+
+test("a focus that lands on another window refuses the press by name and traces the error", async () => {
+  const calls: string[][] = []
+  const events: ClipboardTraceEvent[] = []
+  await expect(
+    pressRealKey(
+      "2097164",
+      async (file, args) => {
+        calls.push([file, ...args])
+        return args[0] === "getwindowfocus" ? "1\n" : ""
+      },
+      () => 0,
+      (event) => events.push(event),
+      async () => {},
+    ),
+  ).rejects.toThrow(
+    "Real key event before the OSC 52 write failed: owned window 2097164 is not focused; getwindowfocus is 1",
+  )
+  expect(calls.some((call) => call[1] === "key")).toBe(false)
+  expect(events).toEqual([{ kind: "clipboard-key", at: expect.any(String), status: "error" }])
+})
+
+test("the transaction offers the real key event only when its io has one, on the transaction's trace", async () => {
+  const io = {
+    readText: async () => "baseline-nonce",
+    writeText: async () => {},
+  }
+  const result = (): ProbeCallbackResult => ({
+    pass: true,
+    tests: [{ id: "criterion", status: "probe-todo", reason: "insufficient-evidence" }],
+  })
+  const plain = createClipboardTransaction("baseline-nonce", io)
+  await plain(
+    async (fixture) => {
+      expect(fixture.realKeyEvent).toBeUndefined()
+      return result()
+    },
+    () => {},
+    async () => {},
+  )
+  const events: ClipboardTraceEvent[] = []
+  const keyed = createClipboardTransaction("baseline-nonce", {
+    ...io,
+    realKeyEvent: async (trace) => trace({ kind: "clipboard-key", at: "t", key: "shift" }),
+  })
+  await keyed(
+    async (fixture) => {
+      await fixture.realKeyEvent?.()
+      return result()
+    },
+    (event) => events.push(event),
+    async () => {},
+  )
+  expect(events).toEqual([{ kind: "clipboard-key", at: "t", key: "shift" }])
 })

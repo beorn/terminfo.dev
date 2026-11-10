@@ -4295,7 +4295,67 @@ function liveClipboardNotTested(): ProbeCallbackResult {
 
 const osc52Reply = /\x1b\]52;c;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/
 
-function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult {
+/**
+ * The decoded text of a well-formed canonical OSC 52 c reply; undefined for anything else, which
+ * clipboardQueryResult then grades by name (no reply, invalid reply).
+ */
+function decodedOsc52Reply(outcome: TerminalQueryOutcome): string | undefined {
+  const encoded = outcome.reason === "reply" && outcome.match ? osc52Reply.exec(outcome.raw)?.[1] : undefined
+  // A base64 alphabet and length check first, so atob cannot throw and no catch hides a reply.
+  if (encoded === undefined || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) return undefined
+  const decoded = atob(encoded)
+  return btoa(decoded) === encoded ? decoded : undefined
+}
+
+interface SettledClipboardReply {
+  readonly outcome: TerminalQueryOutcome
+  readonly ownEarlierNonce?: string
+  readonly requeries: number
+  readonly elapsedMs: number
+  /** Each reply in order: ms since the first query and whether it carried the probe's own earlier nonce. */
+  readonly replies: readonly { atMs: number; own: boolean }[]
+}
+
+/**
+ * #33145 (@cto 7fd99ad2): a terminal may answer OSC 52 read from its own earlier write for a moment after another
+ * client takes the selection (Ghostty 1.4.0, under 0.5 s). Re-query only while the reply is well-formed and equals
+ * the probe's OWN earlier nonce, on the write leg's deadline and poll; any other reply decides at once.
+ */
+async function settledClipboardReply(
+  query: () => Promise<TerminalQueryOutcome>,
+  options: { readonly ownEarlierNonce?: string; readonly deadlineMs: number; readonly pollMs: number },
+): Promise<SettledClipboardReply> {
+  const own = options.ownEarlierNonce
+  const startedAt = Date.now()
+  const replies: { atMs: number; own: boolean }[] = []
+  let outcome = await query()
+  let isOwn = own !== undefined && decodedOsc52Reply(outcome) === own
+  replies.push({ atMs: 0, own: isOwn })
+  let requeries = 0
+  while (isOwn && Date.now() - startedAt < options.deadlineMs) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, options.pollMs)
+    })
+    const atMs = Date.now() - startedAt
+    outcome = await query()
+    requeries += 1
+    isOwn = decodedOsc52Reply(outcome) === own
+    replies.push({ atMs, own: isOwn })
+  }
+  return {
+    outcome,
+    ...(own !== undefined && { ownEarlierNonce: own }),
+    requeries,
+    elapsedMs: replies.at(-1)?.atMs ?? 0,
+    replies,
+  }
+}
+
+function clipboardQueryResult(
+  outcome: TerminalQueryOutcome,
+  expected: string,
+  settled?: SettledClipboardReply,
+): ProbeCallbackResult {
   const frame = osc52Reply.exec(outcome.raw)
   if (!frame || outcome.reason !== "reply" || !outcome.match) {
     const reason = outcome.raw ? "invalid-reply" : "no-response"
@@ -4324,25 +4384,78 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
     }
   }
   const pass = decoded === expected
+  if (!pass) {
+    const requeries = settled?.requeries ?? 0
+    const note =
+      settled?.ownEarlierNonce !== undefined && decoded === settled.ownEarlierNonce
+        ? `OSC 52 reply carried own earlier nonce for ${settled.elapsedMs} ms (${requeries} re-queries)`
+        : `OSC 52 reply carried a value other than the independently written nonce (length=${Buffer.byteLength(decoded)}, sha256=${createHash("sha256").update(decoded).digest("hex")})`
+    return {
+      pass: false,
+      response: frame[0],
+      note,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "query_reply", note },
+      tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
+    }
+  }
+  const settleNote =
+    settled && settled.requeries > 0
+      ? `OSC 52 read returned the probe's own earlier write nonce for ${settled.elapsedMs} ms before the independently written nonce (${settled.requeries} re-queries; replies at ${settled.replies.map((reply) => `+${reply.atMs}ms ${reply.own ? "own" : "written"}`).join(", ")})`
+      : undefined
   return {
-    pass,
+    pass: true,
     response: frame[0],
     observation: {
-      outcome: pass ? "supported" : "inconclusive",
-      ...(!pass && { reason: "insufficient-evidence" as const }),
+      outcome: "supported",
       assertionType: "query_reply",
+      ...(settleNote && { note: settleNote }),
     },
-    ...(pass && {
-      assertions: [
-        {
-          assertionType: "query_reply" as const,
-          kind: "positive" as const,
-          expected: "OSC 52 c returns the independently written nonce",
-          observed: frame[0],
-        },
-      ],
-    }),
+    assertions: [
+      {
+        assertionType: "query_reply" as const,
+        kind: "positive" as const,
+        expected: "OSC 52 c returns the independently written nonce",
+        observed: frame[0],
+      },
+    ],
   }
+}
+
+/** PTY bytes seen this long after the press refuse the sample; a bare shift sends none in any default key mode. */
+const REAL_KEY_SILENCE_MS = 200
+
+/**
+ * #33145 (@cto 70645b74): the owned X display gives the terminal one real key event before an OSC 52 write, as
+ * on any used terminal, because its selection claim carries its last input-event time. The press must reach the
+ * application as zero bytes (a report-all-keys keyboard mode would send one for shift), so it runs inside a PTY
+ * read and anything that arrives refuses the sample by name.
+ */
+async function realKeyEventBeforeWrite(
+  ctx: TermProbeSource,
+  press: () => Promise<void>,
+): Promise<ProbeCallbackResult | undefined> {
+  const invalid = (note: string): ProbeCallbackResult => ({
+    pass: false,
+    note,
+    tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
+  })
+  if (!ctx.readInjected) {
+    return invalid(
+      "Real key event before the OSC 52 write needs the PTY read that proves it sent the application no bytes; this source has none",
+    )
+  }
+  let outcome: TerminalQueryOutcome
+  try {
+    outcome = await ctx.readInjected(/[\s\S]/, REAL_KEY_SILENCE_MS, press)
+  } catch (error) {
+    return invalid(error instanceof Error ? error.message : String(error))
+  }
+  if (outcome.match || outcome.raw.length > 0) {
+    return invalid(
+      `Real key event before the OSC 52 write put ${Buffer.byteLength(outcome.raw)} bytes into the application (base64 ${outcome.rawBase64}); sample refused`,
+    )
+  }
+  return undefined
 }
 
 async function liveClipboardProbe(
@@ -4361,8 +4474,16 @@ async function liveClipboardProbe(
     const muxContextNote =
       mux === "tmux" ? `tmux set-clipboard=${fixture.tmuxSetClipboard}` : mux === "screen" ? "mux=screen" : undefined
     const muxDefaultNegativeEligible = mux === "screen" || (mux === "tmux" && fixture.tmuxSetClipboard === "external")
+    const deadlineMs = Math.min(Math.max(fixture.writeDeadlineMs ?? 1000, 0), 2000)
+    const pollMs = Math.max(fixture.writePollMs ?? 25, 1)
+    let ownWriteNonce: string | undefined
     if (kind !== "read") {
+      if (fixture.realKeyEvent) {
+        const refused = await realKeyEventBeforeWrite(ctx, fixture.realKeyEvent)
+        if (refused) return refused
+      }
       const nonce = `terminfo-osc52-${randomUUID()}`
+      ownWriteNonce = nonce
       ctx.write(`\x1b]52;c;${btoa(nonce)}\x07`)
       // A reply on the same TTY confirms the terminal processed the preceding write.
       // The independent clipboard read below is still the evidence of its effect.
@@ -4373,8 +4494,6 @@ async function liveClipboardProbe(
         )
       }
       const baseline = fixture.baseline
-      const deadlineMs = Math.min(Math.max(fixture.writeDeadlineMs ?? 1000, 0), 2000)
-      const pollMs = Math.max(fixture.writePollMs ?? 25, 1)
       const startedAt = Date.now()
       let measured = await fixture.readText()
       let allBaseline = typeof baseline === "string" && baseline.length > 0 && measured === baseline
@@ -4460,10 +4579,15 @@ async function liveClipboardProbe(
     }
     const nonce = `terminfo-osc52-${randomUUID()}`
     await fixture.writeText(nonce)
+    const settleOptions = { ownEarlierNonce: ownWriteNonce, deadlineMs, pollMs }
     if (mux) {
-      const outcome = await ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
+      const settled = await settledClipboardReply(
+        async () => ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply),
+        settleOptions,
+      )
+      const outcome = settled.outcome
       if (outcome.match && outcome.reason === "reply") {
-        const result = clipboardQueryResult(outcome, nonce)
+        const result = clipboardQueryResult(outcome, nonce, settled)
         if (result.observation && muxContextNote) {
           result.observation = {
             ...result.observation,
@@ -4507,10 +4631,11 @@ async function liveClipboardProbe(
           },
         }
       }
-      return clipboardQueryResult(outcome, nonce)
+      return clipboardQueryResult(outcome, nonce, settled)
     }
-    const outcome = await ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply)
-    const result = clipboardQueryResult(outcome, nonce)
+    const settled = await settledClipboardReply(() => ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply), settleOptions)
+    const outcome = settled.outcome
+    const result = clipboardQueryResult(outcome, nonce, settled)
     if (!outcome.raw && ctx.capture) {
       const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
       return {
