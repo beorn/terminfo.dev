@@ -286,6 +286,10 @@ jobs:
           COLLECTOR="$GITHUB_WORKSPACE/packages/terminfo.dev/bin/terminfo.mjs"
           COLLECTOR_BUN="$(command -v bun)"
           printf 'collect_started_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          COLLECT_EPOCH="$(date +%s)"
+          # 180s is enough to stop the collector and write run.json before timeout-minutes: 25 kills the job.
+          JOB_LIMIT_S=$((25 * 60))
+          FLUSH_MARGIN_S=180
           BUN_DIR="$(dirname "$COLLECTOR_BUN")"
           TARGET_VERSION_EXPORT=""
           if [ "$APP_ID" = alacritty ]; then
@@ -342,6 +346,7 @@ jobs:
           # one PTY. Redirecting stdout to the log made that binding impossible and failed every
           # hosted macOS job at collect (27917; cause b7580050 / 28533). Only stderr is logged.
           printf 'phase=collector-invoked\n' >&2
+          printf '%s\n' "$$" > "$OUT/collector.pid"
           nice -n 10 "$COLLECTOR_BUN" --no-env-file "$COLLECTOR" test --output "$OUT/run.json"$PROBE_IDS_ARGS 2>> "$OUT/collector.log"
           status=\$?
           printf 'phase=collector-exited status=%s\n' "\$status" >&2
@@ -601,8 +606,12 @@ jobs:
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
           # The receipt exists before strict parsing. Release collection ONLY after producer success.
           touch "$OUT/collector-ready"
-          # Full pixel-controlled selections can exceed ten minutes; retain a finite collector bound inside the job budget.
-          for attempt in {1..900}; do
+          # The poll is the 25 minute job limit minus the flush margin and the time already used.
+          elapsed=$(( $(date +%s) - COLLECT_EPOCH ))
+          poll_s=$(( JOB_LIMIT_S - FLUSH_MARGIN_S - elapsed ))
+          if [ "$poll_s" -lt 1 ]; then poll_s=1; fi
+          echo "$APP_ID collector poll ${poll_s}s (job ${JOB_LIMIT_S}s, flush margin ${FLUSH_MARGIN_S}s, elapsed ${elapsed}s)"
+          for ((attempt=1; attempt<=poll_s; attempt++)); do
             if [ -f "$OUT/collector-exit" ]; then
               status="$(cat "$OUT/collector-exit")"
               test "$status" = 0 || {
@@ -621,7 +630,15 @@ jobs:
             fi
             sleep 1
           done
-          echo "$APP_ID collector did not finish within 900 seconds; see launcher/collector artifacts" >&2
+          if [ -f "$OUT/collector.pid" ]; then
+            kill -TERM "$(cat "$OUT/collector.pid")" 2>/dev/null || true
+          fi
+          duration_ms=$(( ($(date +%s) - COLLECT_EPOCH) * 1000 ))
+          bun "$GITHUB_WORKSPACE/packages/terminfo.dev/src/flush-expired-collection.ts" "$OUT/run.json" "$PROBE_IDS" "$duration_ms" || {
+            echo "$APP_ID collector poll ended and run.json was not written" >&2
+            exit 1
+          }
+          echo "$APP_ID collector did not finish within ${poll_s}s; unfinished rows are in run.json" >&2
           if [ "$APP_ID" = iterm2 ]; then echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"; fi
           exit 1
 
