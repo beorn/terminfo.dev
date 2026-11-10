@@ -368,6 +368,25 @@ await_owned_daemon() {
   return 2
 }
 
+# A mux profile is a documented user option of the multiplexer, measured as a context supplement (#33151, @cto
+# 918fccd1 rule 2). Prints the subject.config the run records for MUX and PROFILE: the default is the empty-config
+# path every default mux run records; Screen truecolor names exactly what its config file says. Any other pair is
+# refused by name. docs/data/context-supplements.ts holds the same two values; the launcher test keeps them equal.
+mux_profile_config() {
+  local mux=$1 profile=$2
+  case "$profile" in
+    default) printf '%s\n' /out/mux-empty.conf ;;
+    truecolor)
+      if [[ "$mux" != screen ]]; then
+        echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
+        return 2
+      fi
+      printf '%s\n' 'screen: defscrollback 1000; truecolor on'
+      ;;
+    *) echo "Unknown mux profile $profile on mux ${mux:-(none)}" >&2; return 2 ;;
+  esac
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -413,6 +432,8 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       ;;
     screen)
       printf 'defscrollback 1000\n' > "$mux_config"
+      # The truecolor-on supplement (#33151): the documented option, after the unchanged default line.
+      if [[ "${TERMINFO_MUX_PROFILE:-default}" == truecolor ]]; then printf 'truecolor on\n' >> "$mux_config"; fi
       export SCREENDIR="$HOME/.screen"
       mkdir -m 700 "$SCREENDIR"
       screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner
@@ -892,7 +913,8 @@ if [[ "${1:-}" == "--inside" ]]; then
     jq -n --slurpfile provenance "$TERMINFO_RUNTIME_PROVENANCE" --slurpfile info /out/info.json \
       --slurpfile da1 /out/da1-observation.json --slurpfile xtversion /out/xtversion-observation.json \
       --slurpfile preflight /out/preflight-identity.json --arg app "$target_id" --arg appVersion "$target_version" \
-      --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" --arg muxConfig /out/mux-empty.conf \
+      --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" \
+      --arg muxConfig "$(mux_profile_config "$TERMINFO_MUX_KIND" "${TERMINFO_MUX_PROFILE:-default}")" \
       --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg permissions "$clipboard_permissions" '
       (if $profile == "default" then null else $permissions end) as $permissions |
       {subject:{kind:"mux",id:$mux,version:$muxVersion,os:$info[0].os,osVersion:$info[0].osVersion,
@@ -1013,7 +1035,7 @@ if [[ "${1:-}" == "--inside" ]]; then
 fi
 
 usage() {
-  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--mux-profile default|truecolor] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
@@ -1026,6 +1048,7 @@ preset=default
 clipboard_profile=
 probe_ids=null
 mux_kind=
+mux_profile=default
 output_parent=
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -1033,6 +1056,11 @@ while [[ "$#" -gt 0 ]]; do
       [[ "$#" -ge 2 && -z "$mux_kind" ]] || usage
       mux_kind=$2
       case "$mux_kind" in tmux|screen) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
+      shift 2
+      ;;
+    --mux-profile)
+      [[ "$#" -ge 2 && -n "${2:-}" && "${2:-}" != --* ]] || usage
+      mux_profile=$2
       shift 2
       ;;
     --target)
@@ -1069,6 +1097,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 [[ -n "$target_id" && -n "$clipboard_profile" && -n "$output_parent" ]] || usage
 [[ -z "$mux_kind" || "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
+mux_profile_config "$mux_kind" "$mux_profile" >/dev/null || exit 2
 case "$target_id" in
   kitty|xterm|ghostty|wezterm|alacritty) ;;
   *) echo "Unknown target: $target_id" >&2; exit 2 ;;
@@ -1306,7 +1335,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "LC_ALL=C.UTF-8" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_CAPTURE_RUN_ID=${TERMINFO_CAPTURE_RUN_ID:-}" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
-  --env "TERMINFO_MUX_KIND=$mux_kind" \
+  --env "TERMINFO_MUX_KIND=$mux_kind" --env "TERMINFO_MUX_PROFILE=$mux_profile" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
   --env "TERMINFO_TARGET_BINARY=$target_binary" --env "TERMINFO_TARGET_VERSION=$target_version" \
   --env "TERMINFO_TARGET_SOURCE_URL=$source_url" --env "TERMINFO_TARGET_SOURCE_SRI=$source_sri" \

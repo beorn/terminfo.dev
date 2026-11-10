@@ -894,7 +894,8 @@ export async function collectPass(
   }
   for (const row of pass.contexts) {
     const { context } = row
-    if (context.route !== "linux-container" || context.kind !== "term") continue
+    // Linux App rows and, since #33151, the Screen mux row (its truecolor-on supplement).
+    if (context.route !== "linux-container" || (context.kind !== "term" && context.kind !== "mux")) continue
     const declared = LINUX_SUPPLEMENTS[context.id] ?? []
     if (declared.length === 0) continue
     row.supplements = declared.map((supplement) =>

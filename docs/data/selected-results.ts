@@ -11,7 +11,7 @@ import {
 } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
-import { supplementOf, type ContextSupplement } from "./context-supplements.ts"
+import { MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement } from "./context-supplements.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -162,12 +162,15 @@ export interface SelectedContextCell {
   /** Environment groups are retained run metadata, outside the feature-result catalogue. */
   featureResult?: FeatureResult
   /**
-   * Set only when a context supplement (context-supplements.ts) read this open cell. `filled`: the cell is the
+   * Set only when a context supplement (context-supplements.ts) read this cell. `filled`: the cell is the
    * supplement's own result and run. `open`: the supplement gave no proof, so the default cell stays, with this reason.
+   * `noted`: a decided default cell keeps its status, reason and tests; the supplement's decided status is only a note
+   * (#33151, a supplement that declares notesDecided).
    */
   supplement?: { name: string; qualifier: string; runId: string; declaredDefault?: string } & (
     | { filled: true }
     | { filled: false; open: string }
+    | { filled: false; noted: ProbeResult["status"] }
   )
 }
 
@@ -327,10 +330,15 @@ interface SupplementInput {
   contextKey: string
 }
 
-/** A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions. */
+/**
+ * A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions, not a
+ * declared supplement, and for a mux the launcher's one default config (#33151, @cto 4a546051).
+ */
 function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): boolean {
   return (
     candidate.permissions === null &&
+    supplementOf(candidate) === undefined &&
+    (candidate.kind !== "mux" || candidate.config === MUX_DEFAULT_CONFIG) &&
     candidate.kind === supplement.kind &&
     candidate.id === supplement.id &&
     candidate.os === supplement.os &&
@@ -363,6 +371,16 @@ export function projectResults(
   // 33119: a context supplement is never a context, so it is set aside before any context is counted or keyed.
   const supplementRuns = runs.filter((run) => supplementOf(run.subject) !== undefined)
   const contextRuns = runs.filter((run) => supplementOf(run.subject) === undefined)
+  // #33151: a Linux mux run is the launcher's default config or a declared supplement; any third config would read as
+  // a default context, so it is refused by name.
+  for (const run of contextRuns) {
+    const { kind, id, os, config } = run.subject
+    if (kind === "mux" && os === "linux" && config !== MUX_DEFAULT_CONFIG) {
+      throw new Error(
+        `${run.runId}: mux ${id} records config ${JSON.stringify(config)}, which is neither the default ${MUX_DEFAULT_CONFIG} nor a declared context supplement`,
+      )
+    }
+  }
   const contexts = countContexts(contextRuns)
   const currentRuns = contextRuns.filter((run) => run.schemaVersion === 3 || run.schemaVersion === 4)
   const ids = new Set<string>()
@@ -771,7 +789,10 @@ function applySupplements(
   for (const id of ids) {
     const prior = cells[id]
     const priorStatus = prior?.featureResult?.status ?? prior?.result.status
-    if (priorStatus !== undefined && decided.has(priorStatus)) continue
+    const priorDecided = priorStatus !== undefined && decided.has(priorStatus)
+    if (priorDecided && !newestFirst.some(({ supplement }) => supplement.notesDecided && supplement.featureIds.includes(id))) {
+      continue
+    }
     const source = newestFirst.find(
       ({ run, supplement }) =>
         supplement.featureIds.includes(id) &&
@@ -787,6 +808,13 @@ function applySupplements(
       qualifier: supplement.qualifier,
       runId: run.runId,
       ...(declaredDefault && { declaredDefault }),
+    }
+    if (priorDecided) {
+      // A decided default cell keeps its status, reason and tests: the supplement's decided status is a note only.
+      if (prior && supplement.notesDecided) {
+        cells[id] = { ...prior, supplement: { ...marker, filled: false, noted: result.status } }
+      }
+      continue
     }
     if (result.status !== "supported" && supplement.silentIgnore.includes(run.subject.id)) {
       // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open. A
