@@ -2,6 +2,7 @@ import type { AppSemanticReading, ProbeCallbackResult, ProbeDefinition } from ".
 import { parserStateResult, reportsDecidedOutcome } from "./helpers.ts"
 
 const reportFeatures = new Set([
+  "extensions.osc3008-context",
   "extensions.osc176-app-id",
   "extensions.osc440-audio",
   "extensions.osc666-termprop",

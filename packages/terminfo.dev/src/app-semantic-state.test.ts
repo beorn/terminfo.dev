@@ -131,8 +131,14 @@ test("reader capability rows do not become declarations or lend their identity t
     "extensions.osc666-termprop",
     "extensions.osc710-font-normal",
   ])
-  expect(tmuxDeclared["extensions.osc710-font-normal"]).toMatch(/Untestable \(no way\):.*input\.c:2775-2777/)
-  for (const subject of [{ ...tmux, version: "3.7c" }, { ...tmux, os: "darwin" }, { ...tmux, kind: "term" as const }]) {
+  expect(tmuxDeclared["extensions.osc710-font-normal"]).toMatch(
+    /Untestable \(no way\): read from source, not measured\..*input\.c:2775-2777/,
+  )
+  for (const subject of [
+    { ...tmux, version: "3.7c" },
+    { ...tmux, os: "darwin" },
+    { ...tmux, kind: "term" as const },
+  ]) {
     expect(appSemanticDeclarations(subject)).toEqual({})
   }
   const screen = { kind: "mux" as const, id: "screen", version: "5.0.2", os: "linux" }

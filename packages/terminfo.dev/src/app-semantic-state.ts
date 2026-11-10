@@ -45,6 +45,7 @@ type AppSemanticCapability = {
     sentinel: { code: string; body: string; line: string }
     handled: { code: string; body: string; line: string }
     targetLine: string
+    refusalNeedle?: string
   }
 }
 
@@ -376,15 +377,51 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): xterm 411 has no OSC 710 font-selection handler or public font readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1018-1034 in xterm-411.tgz (SHA256 969be283); OSC 710 reaches the unnamed default trace at 4353-4355. That generic trace is not a command-specific rejection or font reading.",
   },
-  {
+  // #32889 step 2: Alacritty 0.17.0's locked VTE 0.15.0 refuses these five commands inside the
+  // parser, before `vte::ansi::Handler for Term` (alacritty_terminal/src/term/mod.rs:1059) can see
+  // them, and names each one with its parameters in a debug line. vte-0.15.0/src/ansi.rs:1329 is
+  // `impl Perform for Performer`, which forwards only OSC 0, 2, 4, 8, 10, 11, 12, 22, 50, 52, 104
+  // and 110-112; everything else reaches the unhandled-OSC `debug!` at 1341. The launch carries
+  // `--option 'debug.log_level="Debug"'` and `ALACRITTY_EXTRA_LOG_TARGETS=vte` so that line reaches
+  // the owned daemon.log, which this reader reads. Retained run: 2026-11-10T00-20-28-870Z (green).
+  ...(
+    [
+      [
+        "extensions.osc176-app-id",
+        "176",
+        "176;terminfo-test",
+        "[['1''7''6'],['t''e''r''m''i''n''f''o''-''t''e''s''t'],] at line 1341",
+      ],
+      [
+        "extensions.osc3008-context",
+        "3008",
+        "3008;type=test",
+        "[['3''0''0''8'],['t''y''p''e''=''t''e''s''t'],] at line 1341",
+      ],
+      ["extensions.osc440-audio", "440", "440;bell.wav", "[['4''4''0'],['b''e''l''l''.''w''a''v'],] at line 1341"],
+      [
+        "extensions.osc666-termprop",
+        "666",
+        "666;test-prop=value",
+        "[['6''6''6'],['t''e''s''t''-''p''r''o''p''=''v''a''l''u''e'],] at line 1341",
+      ],
+      ["extensions.osc710-font-normal", "710", "710;fixed", "[['7''1''0'],['f''i''x''e''d'],] at line 1341"],
+    ] as const
+  ).map(([featureId, code, body, targetLine]) => ({
     kind: "term",
     id: "alacritty",
     version: "0.17.0",
     os: "linux",
-    featureId: "extensions.osc710-font-normal",
-    reason:
-      "Untestable (no way): Alacritty 0.17.0's locked VTE 0.15.0 OSC parser has no OSC 710 font-selection handler. Read the complete OSC dispatch in vte-0.15.0/src/ansi.rs:1329-1525 (crate SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd, pinned by Alacritty's Cargo.lock:2119-2125): 710 is dropped by vte's own `impl Perform for Performer`, which forwards a fixed OSC list (0, 2, 4, 8, 10, 11, 12, 22, 50, 52, 104, 110-112) and sends everything else to its unhandled-OSC `debug!` at 1341, which prints the parameters. Alacritty's terminal never sees it: `vte::ansi::Handler for Term` (alacritty_terminal/src/term/mod.rs:1059) has no OSC 710 branch. The existing Warn launch has no qualified same-run report reader; silence is not Unsupported.",
-  },
+    featureId,
+    reader: "report" as const,
+    command: { code, body },
+    reportControls: {
+      sentinel: { code: "7655", body: "7655", line: "[['7''6''5''5'],] at line 1341" },
+      handled: { code: "2", body: "2;Q", line: "[['2'],['Q'],] at line 1341" },
+      targetLine,
+      refusalNeedle: "[unhandled osc_dispatch]",
+    },
+  })),
   {
     kind: "mux",
     id: "screen",
@@ -462,8 +499,7 @@ const declarations: readonly AppSemanticCapability[] = [
     version: "3.8",
     os: "linux",
     featureId,
-    reason:
-      `Untestable (no way): tmux 3.8 has no OSC ${code} handler and drops it in the unknown-OSC default of its input parser. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699 dispatches only 0, 2, 4, 7, 8, 9, 10, 11, 12, 52, 104, 110, 111, 112 and 133, and every other option reaches the default at input.c:2775-2777, which only logs at debug level and returns. The file's only pass-through is DCS (input_exit_dcs, the allow-passthrough option), which does not carry OSC. A debug-only drop with no state, reply or readback is not a command-specific refusal, and the run image's tmux 3.8 keeps no verbose log to read it from.`,
+    reason: `Untestable (no way): read from source, not measured. tmux 3.8 has no OSC ${code} handler and drops it in the unknown-OSC default of its input parser. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699 dispatches only 0, 2, 4, 7, 8, 9, 10, 11, 12, 52, 104, 110, 111, 112 and 133, and every other option reaches the default at input.c:2775-2777, which only logs at debug level and returns. The file's only pass-through is DCS (input_exit_dcs, the allow-passthrough option), which does not carry OSC. A debug-only drop with no state, reply or readback is not a command-specific refusal, and the run image's tmux 3.8 keeps no verbose log to read it from.`,
   })),
 ] as const
 
@@ -996,7 +1032,8 @@ export async function readAppSemanticState(input: {
             nonceControl
               ? value.includes(" > Unhandled OSC  ") && !value.endsWith(completionLine)
               : controls
-                ? value.includes("resetting dynamic color ") && !value.endsWith(controls.sentinel.line)
+                ? value.includes(controls.refusalNeedle ?? "resetting dynamic color ") &&
+                  !value.endsWith(controls.sentinel.line)
                 : value.includes("[PARSE ERROR]") && !value.endsWith(`Unknown OSC escape code: ${sentinel}`),
           )
           .map((value) => {
