@@ -94,9 +94,12 @@ export async function createLinuxInput(
     await command("xdotool", ["mousemove", "--window", ownedWindowId, String(position.x), String(position.y)])
     const location = (await command("xdotool", ["getmouselocation", "--shell"])).toString()
     const pointerWindow = /^WINDOW=(\d+)$/m.exec(location)?.[1]
-    if (pointerWindow !== ownedWindowId) {
+    // XQueryPointer names the deepest child. GTK under Xvfb reports WINDOW=0 for the owned
+    // toplevel even after mousemove --window onto it (ghostty run 29e1b284). Refuse only a
+    // different positive window, which is a pointer that landed somewhere else.
+    if (pointerWindow !== undefined && pointerWindow !== "0" && pointerWindow !== ownedWindowId) {
       throw new Error(
-        `pointer is not on the owned window ${ownedWindowId}; getmouselocation WINDOW is ${pointerWindow ?? "missing"}; refusing the click`,
+        `pointer is not on the owned window ${ownedWindowId}; getmouselocation WINDOW is ${pointerWindow}; refusing the click`,
       )
     }
   }

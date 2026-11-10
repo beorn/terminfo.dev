@@ -250,6 +250,8 @@ test.runIf(process.platform === "linux")(
     expect(lines).toContain("click --window 0 --clearmodifiers 4")
     expect(lines).toContain("getmouselocation --shell")
     expect(lines.some((line) => /^click /.test(line) && /--window 42/.test(line))).toBe(false)
+    process.env.TEST_INPUT_POINTER_WINDOW = "0"
+    await input.injectClick(1)
     process.env.TEST_INPUT_POINTER_WINDOW = "1"
     const before = argvLines(log).length
     await expect(input.injectClick(1)).rejects.toThrow(/pointer is not on the owned window/)
