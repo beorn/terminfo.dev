@@ -939,7 +939,11 @@ export async function runProbeBatch(
         } else throw error
       } finally {
         sourceSession?.finish()
-        if (sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(sourceLog)
+        // An abandoned log is not complete. Stringifying it throws
+        // "call log recording has not completed" and replaces the probe-todo (#33047).
+        if (sourceLog && !probeWallExceeded) {
+          batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(sourceLog)
+        }
         if (geometryCheck && !probeWallExceeded) geometryCheck.post = await readGeometry()
       }
       result = withReplyFailureEvidence(probe.id, result, {
