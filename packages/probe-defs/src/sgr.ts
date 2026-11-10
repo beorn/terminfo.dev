@@ -1677,6 +1677,21 @@ export function finalizeVisualResult(
     recorded.status === "unsupported" &&
     hasScreenshot
   ) {
+    // #33036 (@cto case 3): when the multiplexer's own DECRPM 0 accompanies the no-change
+    // pixels, attribution no longer needs the outer command trace. The probe records the
+    // DA1 parameters that answered beside the 0; tmux answers DA1 in the VT100 class
+    // (measured ?1;2;4c beside ?5;0$y, 2026-11-10 tmux 3.8 run), while an outer terminal's
+    // DA attributes the 0 to the outer terminal and the negative stays open below.
+    const muxId = "id" in target && typeof target.id === "string" ? target.id : undefined
+    const witness = recorded.tests.find((entry) => entry.id === "decrpm-zero-witness")
+    const da = witness?.reason?.match(/device attributes \?([0-9;]+)c beside it/)?.[1]
+    if (muxId === "tmux" && da !== undefined && da.split(";")[0] === "1") {
+      return finalizeProbeResult({
+        ...recorded,
+        reason:
+          "tmux reports DEC mode 5 not recognized (DECRPM 0, its own reply) and the frame did not change when it was set.",
+      })
+    }
     const reason =
       "Open: reverse-video pixels did not change through the mux and its outer terminal. Needed: the outer terminal command trace (the named Kitty --dump-commands reader)."
     return finalizeProbeResult({

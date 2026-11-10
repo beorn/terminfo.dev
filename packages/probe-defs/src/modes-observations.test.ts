@@ -163,6 +163,80 @@ test.each([null, 0] as const)("App reverse video reads controlled pixels after D
   expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
 })
 
+// #33036: the DA sentinel answers in the same raw reply as the DECRPM 0, so the probe records
+// whose 0 it was beside the no-change pixel read; without DA bytes beside it, no witness exists.
+test.each([
+  { name: "with DA beside the 0", raw: "\x1b[?5;0$y\x1b[?1;2;4c", da: "1;2;4" },
+  { name: "without DA beside the 0", raw: "\x1b[?5;0$y", da: undefined },
+])("App reverse video records the DECRPM 0 witness $name", async ({ raw, da }) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.reverse-video")
+  if (!definition?.term) throw new Error("Missing App reverse-video callback")
+  const stored = new Map<string, StoredQuery>()
+  stored.set("\x1b[?5$p", { sequence: "\x1b[?5$p", match: null, reason: "reply", raw })
+  const cols = 20
+  const rows = 5
+  const surface = createSemanticSurface({ cols, rows, mutations: ["decscnm-noop"] })
+  let sequence = 0
+  const plane = (rectangle: CaptureCells) => {
+    const cells: unknown[] = []
+    for (let row = rectangle.top; row <= rectangle.bottom; row++) {
+      for (let col = rectangle.left; col <= rectangle.right; col++) {
+        const cell = surface.getCell(row - 1, col - 1)
+        cells.push([cell.char, cell.inverse !== (surface.getMode("reverseVideo") === true)])
+      }
+    }
+    return JSON.stringify(cells)
+  }
+  const source = replayTermProbeSource(stored, {
+    cols,
+    rows,
+    captureKind: "pixels",
+    write: (text) => surface.feed(text),
+    queryCursorPosition: async () => {
+      const cursor = surface.getCursor()
+      return { row: cursor.y + 1, col: cursor.x + 1 }
+    },
+    captureGeometry: {
+      geometry: { cellWidth: 10, cellHeight: 20, textWidth: cols * 10, textHeight: rows * 20 },
+      source: "measured by complete raster calibration",
+    },
+    capture: async ({ role, label, cells, pixelGeometry }) => {
+      if (!cells || !pixelGeometry) throw new Error("Reverse pixel fixture needs its measured crop")
+      return {
+        kind: "pixels",
+        role,
+        label,
+        capturedAt: ++sequence,
+        ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
+        regionDigest: plane(cells),
+        pixelsDigest: plane({ top: 1, left: 1, bottom: rows, right: cols }),
+        regionRectangle: {
+          x: (cells.left - 1) * pixelGeometry.cellWidth,
+          y: (cells.top - 1) * pixelGeometry.cellHeight,
+          width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+          height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+        },
+      }
+    },
+  })
+  vi.useFakeTimers()
+  let result: ProbeCallbackResult
+  try {
+    const pending = definition.term(source)
+    await vi.runAllTimersAsync()
+    result = await pending
+  } finally {
+    vi.useRealTimers()
+  }
+  expect(result.observation?.outcome).toBe("unsupported")
+  const witness = result.tests?.find((entry) => entry.id === "decrpm-zero-witness")
+  if (da === undefined) {
+    expect(witness).toBeUndefined()
+  } else {
+    expect(witness).toMatchObject({ status: "unsupported", reason: expect.stringContaining(`?${da}c`) })
+  }
+})
+
 // Ask 3 permits a same-run mode effect when DECRPM is silent or Ps 0. The reply
 // contract does not exercise that path. Reuse the semantic terminal so removing
 // DECAWM alone loses the positive without breaking the cursor-delivery control.
@@ -959,6 +1033,10 @@ test.each([
       events.push(sequence)
       const ps = replies.shift()
       return ps == null ? null : pattern.exec(`\x1b[?${mode};${ps}$y`)
+    }
+    context.queryWithSentinelOutcome = async (sequence, pattern) => {
+      const match = await context.queryWithSentinel(sequence, pattern)
+      return { match, reason: match ? "reply" : "timeout", raw: match?.[0] ?? "", rawBase64: "" }
     }
     const missingReverseReader = id === "modes.reverse-video" && (snapshot === null || snapshot === 0)
     // This protocol-only context has no effect pixels; the state-derived App
