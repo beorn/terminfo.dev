@@ -382,6 +382,19 @@ Library `cell.hidden: null` means conceal is not reported; missing cell observab
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named PROBE TODO
 when no clipboard-state witness is wired; a read negative cannot measure the write.
+With an owned disposable clipboard witness on a verified Linux multiplexer (`tmux` or `screen`),
+where inner OSC52 drops cannot trigger an outer desktop prompt, an `OSC 52 ; c ; ?` query answered
+by its same-stream DA1 sentinel with zero OSC52 bytes and a roundtrip whose independent selection
+remains at the owned baseline through the post-CPR deadline decide Unsupported; for `tmux`, the
+collector reads `show-options -s -v set-clipboard`, records that value in the observation, snapshots
+and restores tmux paste buffers (`list-buffers` / `delete-buffer`), and grades Unsupported only at
+the default `set-clipboard=external`. Desktop apps without a mux retain their prompt-ambiguous
+inconclusive read and roundtrip behavior. For `extensions.clipboard-paste` alone on the verified
+disposable Linux Screen mux session, when `queryMode(2004)` returns `null` (absent DECRQM), the
+callback sets and restores `CSI ? 2004 l` blind in `finally` and records that blind setup in the
+observation, without regrading `modes.bracketed-paste`; default xterm 411 stays outside the
+`Ctrl+Shift+V` / `CLIPBOARD` paste gate and declares its unbuilt `Shift+Insert` / `PRIMARY` route
+Untestable.
 Reset and colour-stack effects use the approved no-setup declaration above only when their own
 setup query is silent, its control answers and no target report exists. Kitty transfer/display and
 other silent effect readings stay PROBE TODO even if DA1 answers. Effect absence needs an answered same-probe state

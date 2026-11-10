@@ -697,23 +697,43 @@ export async function runProbeBatch(
       }
     }
     if (captureGeometry) probeSource.captureGeometry = captureGeometry
+    const isDirectLinuxApp =
+      options.subject?.kind === "term" &&
+      options.subject.os === "linux" &&
+      disposable?.declaredTarget?.kind === "app" &&
+      disposable.declaredTarget.id === options.subject.id &&
+      disposable.declaredTarget.os === "linux" &&
+      !clipboard?.muxAttachmentProof
+    const isVerifiedLinuxMux =
+      options.subject?.kind === "mux" &&
+      (options.subject.id === "tmux" || options.subject.id === "screen") &&
+      options.subject.os === "linux" &&
+      disposable?.declaredTarget?.kind === "mux" &&
+      disposable.declaredTarget.id === options.subject.id &&
+      disposable.declaredTarget.os === "linux" &&
+      clipboard?.muxAttachmentProof?.platform === "linux" &&
+      clipboard.muxAttachmentProof.mux === options.subject.id
     if (
       clipboard &&
       verify &&
       (clipboard.profile !== "default" ||
-        ((probe.id === "extensions.osc52-write" ||
-          (probe.id === "extensions.clipboard-paste" &&
-            options.subject?.id === "kitty" &&
-            disposable?.declaredTarget?.id === "kitty")) &&
-          options.subject?.kind === "term" &&
-          options.subject.os === "linux" &&
-          disposable?.declaredTarget?.kind === "app" &&
-          disposable.declaredTarget.id === options.subject.id &&
-          disposable.declaredTarget.os === "linux" &&
-          !clipboard.muxAttachmentProof))
+        (isDirectLinuxApp &&
+          (probe.id === "extensions.osc52-write" ||
+            (probe.id === "extensions.clipboard-paste" && options.subject?.id !== "xterm"))) ||
+        (isVerifiedLinuxMux &&
+          (probe.id === "extensions.clipboard-paste" ||
+            probe.id === "extensions.osc52-write" ||
+            probe.id === "extensions.osc52-read" ||
+            probe.id === "extensions.osc52-clipboard")))
     ) {
+      const allowDisposablePasteSetup =
+        probe.id === "extensions.clipboard-paste" && isVerifiedLinuxMux && options.subject?.id === "screen"
       probeSource.withClipboardFixture = (work) =>
-        clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event), verify)
+        clipboard.withClipboardFixture(
+          (fixture) => work(allowDisposablePasteSetup ? { ...fixture, disposableSession: true } : fixture),
+          (event) => clipboardEvents.push(event),
+          verify,
+        )
     }
     if (options.input) {
       const input = options.input

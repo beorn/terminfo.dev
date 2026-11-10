@@ -48,6 +48,7 @@ const real = {...fs}
 const fsFault = new Error("fixture filesystem link unavailable")
 let spawns=0
 let mux, variant, table, socket, muxTarget, reads = 0
+let baselineValue = baseline, tmuxBuffers = [], tmuxSetClipboard = "external", tmuxDeleteCalls = []
 const statText = pid => {
   const p = table.get(pid)
   if (!p) throw Error("fixture missing process " + pid)
@@ -129,7 +130,14 @@ mock.module("node:child_process", () => ({...cp,
     if(variant==="screen-owner-lost")variant="detached"
     return {status:0,stdout:Buffer.alloc(0),stderr:Buffer.alloc(0)}
   },
-  spawn(){spawns++;throw new Error("unowned clipboard writer spawned")},
+  spawn(file,args){
+    if(file===exe("xclip") && Array.isArray(args) && args.includes("-i")){
+      const handlers={}
+      const child={pid:500001+spawns++,exitCode:0,signalCode:null,stdin:{once(){},end(text){baselineValue=text}},once(ev,cb){handlers[ev]=cb;if(ev==="exit")queueMicrotask(()=>cb(0,null))},kill(){}}
+      return child
+    }
+    spawns++;throw new Error("unowned clipboard writer spawned")
+  },
   execFile(file,args,options,callback) {
     if (file === "xdotool") callback(null,"76\n")
     else if (file === exe("tmux")) {
@@ -139,10 +147,27 @@ mock.module("node:child_process", () => ({...cp,
         else callback(null,variant==="scrollback-malformed"?"not counts\n":variant==="scrollback-bottom"?"20 24  0\n":variant==="scrollback-empty-mode"?"20 24  1\n":"20 24 3 1\n")
         return {}
       }
+      if(args.includes("show-options")) {
+        assert.deepEqual(args,["-S",socket,"show-options","-s","-v","set-clipboard"])
+        callback(null,tmuxSetClipboard+"\n")
+        return {}
+      }
+      if(args.includes("list-buffers")) {
+        assert.deepEqual(args,["-S",socket,"list-buffers","-F","#{buffer_name}"])
+        callback(null,tmuxBuffers.length?tmuxBuffers.join("\n")+"\n":"")
+        return {}
+      }
+      if(args.includes("delete-buffer")) {
+        assert.deepEqual(args.slice(0,4),["-S",socket,"delete-buffer","-b"])
+        tmuxDeleteCalls.push(args[4])
+        if(variant!=="tmux-buffer-restore-stuck") tmuxBuffers=tmuxBuffers.filter(name=>name!==args[4])
+        callback(null,"")
+        return {}
+      }
       const server = args.at(-1).includes("#{pid}") ? (variant === "foreign-server" ? "149" : "145") + "\t" : ""
       if (variant === "detached") callback(null,"")
       else callback(null, server + (variant === "client-changed" ? "150" : "148") + "\t/dev/pts/0\tterminfo-" + launch + "\t" + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n" + (variant === "second-client" ? server+"150\t/dev/pts/2\tterminfo-"+launch+"\t"+socket+"\n" : ""))
-    } else {reads++;callback(null,baseline)}
+    } else {reads++;callback(null,baselineValue)}
     return {}
   },
 }))
@@ -151,8 +176,8 @@ process.env.DISPLAY=":22"
 process.env.TERMINFO_CLIPBOARD_PROFILE="default"
 try {
   const {createLinuxClipboardAdapter}=await import(pathToFileURL(process.env.TERMINFO_TEST_SOURCE_ROOT+"/linux-clipboard.ts").href)
-  const initialize = (kind, bad) => {
-    mux=kind;variant=bad;reads=0
+    const initialize = (kind, bad) => {
+      mux=kind;variant=bad;reads=0;baselineValue=baseline;tmuxBuffers=[];tmuxSetClipboard="external";tmuxDeleteCalls=[]
     const p=(ppid,start,tty,exe)=>({ppid,start,tty,exe})
     // Faithful projection of measured-relations.json: tmux server keeps outer ctty;
     // Screen server has none and is a child of its attached client.
@@ -206,6 +231,32 @@ try {
       variant="scrollback-failed"
       await assert.rejects(()=>adapter.getScrollback(),/tmux history command failed/)
       variant="valid"
+      tmuxBuffers=["buffer0001"]
+      tmuxSetClipboard="external"
+      let observedSetClipboard
+      await adapter.withClipboardFixture(async fixture=>{
+        observedSetClipboard=fixture.tmuxSetClipboard
+        tmuxBuffers=["buffer0002","buffer0001"]
+        return {pass:true}
+      },()=>{},adapter.assertOwned)
+      assert.equal(observedSetClipboard,"external","tmux fixture must expose measured server set-clipboard")
+      assert.deepEqual(tmuxDeleteCalls,["buffer0002"],"newly added tmux paste buffer must be deleted in finally")
+      assert.deepEqual(tmuxBuffers,["buffer0001"],"pre-existing tmux paste buffers must remain intact")
+      assert.equal(baselineValue,baseline,"OS clipboard baseline must be restored")
+      tmuxDeleteCalls=[]
+      await assert.rejects(adapter.withClipboardFixture(async ()=>{
+        tmuxBuffers=["buffer0003","buffer0001"]
+        throw new Error("callback boom")
+      },()=>{},adapter.assertOwned),/callback boom/)
+      assert.deepEqual(tmuxDeleteCalls,["buffer0003"],"tmux buffer cleanup must run even when callback throws")
+      variant="tmux-buffer-restore-stuck"
+      await assert.rejects(adapter.withClipboardFixture(async ()=>{
+        tmuxBuffers=["buffer0004","buffer0001"]
+        return {pass:true}
+      },()=>{},adapter.assertOwned),/Owned clipboard restoration failed:.*tmux paste buffer/)
+      variant="valid"
+      tmuxBuffers=[]
+      tmuxDeleteCalls=[]
     } else {
       assert.equal(typeof adapter.getScrollback,"function","owned Screen history reader must be reachable")
       assert.equal(typeof adapter.resetScrollback,"function","owned Screen history reset must be reachable")

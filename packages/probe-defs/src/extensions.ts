@@ -4351,6 +4351,16 @@ async function liveClipboardProbe(
 ): Promise<ProbeCallbackResult> {
   if (!ctx.withClipboardFixture) return liveClipboardNotTested()
   return ctx.withClipboardFixture(async (fixture) => {
+    const mux = ctx.mux
+    if (
+      mux === "tmux" &&
+      (typeof fixture.tmuxSetClipboard !== "string" || fixture.tmuxSetClipboard.trim().length === 0)
+    ) {
+      return notTestedResult("tmux set-clipboard server option readback", { mux: "tmux" })
+    }
+    const muxContextNote =
+      mux === "tmux" ? `tmux set-clipboard=${fixture.tmuxSetClipboard}` : mux === "screen" ? "mux=screen" : undefined
+    const muxDefaultNegativeEligible = mux === "screen" || (mux === "tmux" && fixture.tmuxSetClipboard === "external")
     if (kind !== "read") {
       const nonce = `terminfo-osc52-${randomUUID()}`
       ctx.write(`\x1b]52;c;${btoa(nonce)}\x07`)
@@ -4384,6 +4394,7 @@ async function liveClipboardProbe(
             observation: {
               outcome: "supported",
               assertionType: "clipboard",
+              ...(muxContextNote && { note: `OSC 52 write observed on OS clipboard (${muxContextNote})` }),
             },
             assertions: [
               {
@@ -4396,21 +4407,34 @@ async function liveClipboardProbe(
           }
         }
         if (allBaseline && typeof baseline === "string") {
+          if (!mux || muxDefaultNegativeEligible) {
+            return {
+              pass: false,
+              observation: {
+                outcome: "unsupported",
+                assertionType: "clipboard",
+                note: muxContextNote
+                  ? `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote})`
+                  : "Independent clipboard selection remained at the owned baseline through the post-CPR deadline",
+              },
+              assertions: [
+                {
+                  assertionType: "clipboard" as const,
+                  kind: "negative",
+                  expected: "Independent clipboard text equals OSC 52 write nonce",
+                  observed: baseline,
+                },
+              ],
+            }
+          }
           return {
             pass: false,
             observation: {
-              outcome: "unsupported",
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
               assertionType: "clipboard",
-              note: "Independent clipboard selection remained at the owned baseline through the post-CPR deadline",
+              note: `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote}; default set-clipboard=external required for negative grade)`,
             },
-            assertions: [
-              {
-                assertionType: "clipboard" as const,
-                kind: "negative",
-                expected: "Independent clipboard text equals OSC 52 write nonce",
-                observed: baseline,
-              },
-            ],
           }
         }
         const byteLength = Buffer.byteLength(measured)
@@ -4421,11 +4445,40 @@ async function liveClipboardProbe(
             outcome: "inconclusive",
             reason: "insufficient-evidence",
             assertionType: "clipboard",
-            note: `Independent clipboard read returned neither the OSC 52 write nonce nor the owned baseline (length=${byteLength}, sha256=${sha256})`,
+            note: `Independent clipboard read returned neither the OSC 52 write nonce nor the owned baseline (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`,
           },
         }
       }
       if (measured !== nonce) {
+        if (mux && allBaseline && typeof baseline === "string") {
+          if (muxDefaultNegativeEligible) {
+            return {
+              pass: false,
+              observation: {
+                outcome: "unsupported",
+                assertionType: "clipboard",
+                note: `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote})`,
+              },
+              assertions: [
+                {
+                  assertionType: "clipboard" as const,
+                  kind: "negative",
+                  expected: "Independent clipboard text equals OSC 52 write nonce",
+                  observed: baseline,
+                },
+              ],
+            }
+          }
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "clipboard",
+              note: `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote}; default set-clipboard=external required for negative grade)`,
+            },
+          }
+        }
         const byteLength = Buffer.byteLength(measured)
         const sha256 = createHash("sha256").update(measured).digest("hex")
         return {
@@ -4434,13 +4487,62 @@ async function liveClipboardProbe(
             outcome: "inconclusive",
             reason: "insufficient-evidence",
             assertionType: "clipboard",
-            note: `Independent clipboard read did not equal the OSC 52 write nonce (length=${byteLength}, sha256=${sha256})`,
+            note: `Independent clipboard read did not equal the OSC 52 write nonce (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`,
           },
         }
       }
     }
     const nonce = `terminfo-osc52-${randomUUID()}`
     await fixture.writeText(nonce)
+    if (mux) {
+      const outcome = await ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
+      if (outcome.match && outcome.reason === "reply") {
+        const result = clipboardQueryResult(outcome, nonce)
+        if (result.observation && muxContextNote) {
+          result.observation = {
+            ...result.observation,
+            note: result.observation.note ? `${result.observation.note} (${muxContextNote})` : muxContextNote,
+          }
+        }
+        return result
+      }
+      if (outcome.reason === "sentinel" && !outcome.match && !osc52Reply.test(outcome.raw)) {
+        if (muxDefaultNegativeEligible) {
+          const note = `DA1 sentinel answered with zero OSC 52 reply bytes (${muxContextNote})`
+          return {
+            pass: false,
+            response: outcome.raw,
+            note,
+            observation: {
+              outcome: "unsupported",
+              assertionType: "query_reply",
+              note,
+            },
+            assertions: [
+              {
+                assertionType: "query_reply",
+                kind: "negative",
+                expected: "OSC 52 c returns the independently written nonce",
+                observed: `sentinel=${JSON.stringify(outcome.raw)}; osc52=none; ${muxContextNote}`,
+              },
+            ],
+          }
+        }
+        const note = `DA1 sentinel answered with zero OSC 52 reply bytes (${muxContextNote}; default set-clipboard=external required for negative grade)`
+        return {
+          pass: false,
+          response: outcome.raw,
+          note,
+          observation: {
+            outcome: "inconclusive",
+            reason: "no-response",
+            assertionType: "query_reply",
+            note,
+          },
+        }
+      }
+      return clipboardQueryResult(outcome, nonce)
+    }
     const outcome = await ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply)
     const result = clipboardQueryResult(outcome, nonce)
     if (!outcome.raw && ctx.capture) {
@@ -4639,7 +4741,8 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
   if (!ctx.withClipboardFixture) return notTestedResult("owned disposable clipboard paste", { clipboard: false })
   return ctx.withClipboardFixture(async (fixture) => {
     const incomingMode = await ctx.queryMode(2004)
-    if (incomingMode !== "set" && incomingMode !== "reset") {
+    const blindDisposableReset = incomingMode === null && fixture.disposableSession === true
+    if (!blindDisposableReset && incomingMode !== "set" && incomingMode !== "reset") {
       return notTestedResult("DECRPM 2004 readback for incoming paste-mode restoration", { incomingMode })
     }
     const control = (await readInput(/^a/, 1000, () => input.injectKey("a")))?.[0]
@@ -4668,7 +4771,17 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
           response: JSON.stringify({ reset, report, resetAgain }),
         }
       }
-      const observed = { mode: "clipboard-paste", control, reset, report, resetAgain }
+      const observed = {
+        mode: "clipboard-paste",
+        control,
+        reset,
+        report,
+        resetAgain,
+        ...(blindDisposableReset && { modeSetup: "blind-disposable-2004-reset" as const }),
+      }
+      const blindModeNote = blindDisposableReset
+        ? "DECRPM 2004 returned null; mode 2004 was set blind on the verified disposable session and restored with CSI ? 2004 l"
+        : undefined
       const expected =
         "OS XTEST ctrl+shift+v paste of clipboard nonce as CSI 200~nonce201~ after plain-a delivery control"
       const encoding = new RegExp(`\\x1b\\[200~${escapeRegex(nonce)}\\x1b\\[201~`)
@@ -4676,7 +4789,12 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
         return {
           pass: true,
           response: JSON.stringify(observed),
-          observation: { outcome: "supported" as const, assertionType: "input_bytes" as const },
+          ...(blindModeNote && { note: blindModeNote }),
+          observation: {
+            outcome: "supported" as const,
+            assertionType: "input_bytes" as const,
+            ...(blindModeNote && { note: blindModeNote }),
+          },
           assertions: [
             {
               assertionType: "input_bytes" as const,
@@ -4691,7 +4809,12 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       return {
         pass: false,
         response: JSON.stringify(observed),
-        observation: { outcome: "unsupported" as const, assertionType: "input_bytes" as const },
+        ...(blindModeNote && { note: blindModeNote }),
+        observation: {
+          outcome: "unsupported" as const,
+          assertionType: "input_bytes" as const,
+          ...(blindModeNote && { note: blindModeNote }),
+        },
         assertions: [
           {
             assertionType: "input_bytes" as const,
@@ -4709,7 +4832,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
     } finally {
       try {
         ctx.write(incomingMode === "set" ? "\x1b[?2004h" : "\x1b[?2004l")
-        if ((await ctx.queryMode(2004)) !== incomingMode) {
+        if (!blindDisposableReset && (await ctx.queryMode(2004)) !== incomingMode) {
           throw new Error("Clipboard paste incoming 2004 restoration verification failed")
         }
       } catch (error) {

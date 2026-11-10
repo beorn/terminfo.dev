@@ -86,7 +86,14 @@ export function createClipboardTransaction(
     readText(trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<string>
     writeText(text: string, trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<void>
   },
-  options?: { readonly writeDeadlineMs?: number; readonly writePollMs?: number },
+  options?: {
+    readonly writeDeadlineMs?: number
+    readonly writePollMs?: number
+    readonly muxState?: {
+      snapshot(): Promise<{ readonly tmuxSetClipboard?: string; readonly buffers: readonly string[] }>
+      restore(before: readonly string[]): Promise<void>
+    }
+  },
 ): LinuxClipboardAdapter["withClipboardFixture"] {
   let busy = false
   return async (work, trace, verify) => {
@@ -94,13 +101,18 @@ export function createClipboardTransaction(
     busy = true
     let result: ProbeCallbackResult | undefined
     let failure: unknown
+    let muxSnapshot: { readonly tmuxSetClipboard?: string; readonly buffers: readonly string[] } | undefined
     try {
       await verify()
       if ((await io.readText(trace, "clipboard-read", verify)) !== baseline) {
         throw new Error("Owned clipboard baseline changed before callback")
       }
+      if (options?.muxState) {
+        muxSnapshot = await options.muxState.snapshot()
+      }
       const fixture: ClipboardFixture = {
         baseline,
+        ...(muxSnapshot?.tmuxSetClipboard !== undefined && { tmuxSetClipboard: muxSnapshot.tmuxSetClipboard }),
         ...(options?.writeDeadlineMs !== undefined && { writeDeadlineMs: options.writeDeadlineMs }),
         ...(options?.writePollMs !== undefined && { writePollMs: options.writePollMs }),
         readText: () => io.readText(trace, "clipboard-read", verify),
@@ -114,6 +126,9 @@ export function createClipboardTransaction(
         await io.writeText(baseline, trace, "clipboard-restore", verify)
         if ((await io.readText(trace, "clipboard-verify", verify)) !== baseline) {
           throw new Error("Owned clipboard restoration verification failed")
+        }
+        if (muxSnapshot && options?.muxState) {
+          await options.muxState.restore(muxSnapshot.buffers)
         }
       } catch (error) {
         failure = new Error(
@@ -686,7 +701,62 @@ export async function createLinuxClipboardAdapter(
   if ((await readText(() => {}, "clipboard-read", assertOwned)) !== baseline) {
     throw new Error("Initial owned clipboard readback differs from generated baseline")
   }
-  const withClipboardFixture = createClipboardTransaction(baseline, { readText, writeText })
+  const tmuxTarget = receipt.target?.kind === "mux" && receipt.target.mux === "tmux" ? receipt.target : undefined
+  const listTmuxBuffers = async (target: MuxReceiptTarget): Promise<string[]> => {
+    await assertOwned()
+    const raw = await command(
+      target.executable.path,
+      ["-S", target.socketPath, "list-buffers", "-F", "#{buffer_name}"],
+      env,
+    )
+    await assertOwned()
+    return raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+  }
+  const withClipboardFixture = createClipboardTransaction(
+    baseline,
+    { readText, writeText },
+    tmuxTarget
+      ? {
+          muxState: {
+            async snapshot() {
+              await assertOwned()
+              const rawOption = await command(
+                tmuxTarget.executable.path,
+                ["-S", tmuxTarget.socketPath, "show-options", "-s", "-v", "set-clipboard"],
+                env,
+              )
+              await assertOwned()
+              const tmuxSetClipboard = rawOption.trim()
+              if (!tmuxSetClipboard) throw new Error("Owned tmux set-clipboard option readback was empty")
+              const buffers = await listTmuxBuffers(tmuxTarget)
+              return { tmuxSetClipboard, buffers }
+            },
+            async restore(before) {
+              const keep = new Set(before)
+              const current = await listTmuxBuffers(tmuxTarget)
+              for (const name of current) {
+                if (!keep.has(name)) {
+                  await assertOwned()
+                  await command(
+                    tmuxTarget.executable.path,
+                    ["-S", tmuxTarget.socketPath, "delete-buffer", "-b", name],
+                    env,
+                  )
+                  await assertOwned()
+                }
+              }
+              const restored = await listTmuxBuffers(tmuxTarget)
+              if (JSON.stringify(restored) !== JSON.stringify(before)) {
+                throw new Error("Owned tmux paste buffer restoration verification failed")
+              }
+            },
+          },
+        }
+      : undefined,
+  )
   const screenTarget = receipt.target?.kind === "mux" && receipt.target.mux === "screen" ? receipt.target : undefined
   let screenRead = 0
   const adapter: LinuxClipboardAdapter = {
