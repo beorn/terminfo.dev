@@ -2882,7 +2882,9 @@ export function recordExecutedProbe(input: {
     }
   }
   const assertionRefs = input.assertions.flatMap((entry, index) => (entry.featureId === featureId ? [index] : []))
+  // FrameUnavailable is this run's capture failing, not a terminal that has no capture route.
   const missingCapture = diagnostic?.kind === "collector-error" && diagnostic.name === "FrameUnavailable"
+  const unfinishedCalls = diagnostic?.kind === "collector-error" && diagnostic.name === "IncompleteReplay"
   const status = missingCapture
     ? "probe-todo"
     : diagnostic || observation?.outcome === "error"
@@ -2919,7 +2921,9 @@ export function recordExecutedProbe(input: {
       ? { harnessOutcome: input.harnessOutcome }
       : missingCapture
         ? { harnessOutcome: "capture-refused" as const }
-        : {}),
+        : unfinishedCalls
+          ? { harnessOutcome: "unfinished-calls" as const }
+          : {}),
     tests:
       input.tests && !diagnostic && observation?.outcome !== "error"
         ? input.tests.map((test) => {

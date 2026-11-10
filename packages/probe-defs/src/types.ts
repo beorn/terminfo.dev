@@ -159,6 +159,7 @@ export const HARNESS_OUTCOMES = [
   "probe-exceeded",
   "unfinished-calls",
   "capture-refused",
+  // Written by the 33048 expiry path, not by this package.
   "killed-mid-probe",
   "never-started",
 ] as const

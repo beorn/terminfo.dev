@@ -522,6 +522,7 @@ function composeContextSummaries(
     >()
     const decided = new Set<FeatureResultStatus>(["supported", "unsupported", "untestable"])
     const keptStreak = new Map<string, number>()
+    let keptCount = 0
     const keptDecidedCell = (run: LoadedRun, result: ProbeResult): boolean => {
       if (!isHarnessOutcome(result.harnessOutcome)) {
         keptStreak.delete(result.featureId)
@@ -544,6 +545,7 @@ function composeContextSummaries(
       }
       const streak = (keptStreak.get(result.featureId) ?? 0) + 1
       keptStreak.set(result.featureId, streak)
+      keptCount += 1
       console.log(
         `kept ${run.subject.id} ${result.featureId} ${priorStatus} refused ${result.harnessOutcome} from ${run.runId} streak ${streak}${streak >= 3 ? " needs its own issue" : ""}`,
       )
@@ -637,6 +639,7 @@ function composeContextSummaries(
     )
     const sourceOrder = [...baselines, ...selected.map((entry) => entry.run), ...candidates]
     const contributingRunIds = [...new Set(sourceOrder.map((run) => run.runId))].filter((id) => contributing.has(id))
+    if (keptCount > 0) console.log(`kept ${keptCount} row(s) for ${contextKey}`)
     const missingIds = viewIds.filter((id) => !cells[id])
     const aggregate = aggregateCurrentResults(
       // Environment groups have retained run metadata but no computed feature result.
