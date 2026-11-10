@@ -1,6 +1,6 @@
 {
   "issue": "33164",
-  "generatedBy": "/hh/var/@dev15/33164/generate-reopened-cells.ts",
+  "generatedBy": "@dev/15 issue 33164 packet: generate-reopened-cells.ts",
   "rows": [
     {
       "kind": "term",
@@ -10,7 +10,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
@@ -38,7 +38,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "3463950d05e8cc5338a2d41c3d069874407e3947b9031ccf5530a863401ad15b"
@@ -66,7 +66,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
@@ -94,7 +94,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
@@ -122,7 +122,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
@@ -150,7 +150,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
@@ -178,7 +178,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
@@ -206,7 +206,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
@@ -234,7 +234,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "3463950d05e8cc5338a2d41c3d069874407e3947b9031ccf5530a863401ad15b"
@@ -262,7 +262,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
@@ -290,7 +290,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
@@ -310,7 +310,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "3463950d05e8cc5338a2d41c3d069874407e3947b9031ccf5530a863401ad15b"
@@ -330,7 +330,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
@@ -350,7 +350,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
@@ -370,7 +370,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
@@ -390,7 +390,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
@@ -410,7 +410,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "3463950d05e8cc5338a2d41c3d069874407e3947b9031ccf5530a863401ad15b"
@@ -430,7 +430,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
@@ -450,7 +450,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
@@ -478,7 +478,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
@@ -506,7 +506,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
@@ -534,7 +534,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
@@ -562,7 +562,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
@@ -590,7 +590,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
@@ -618,7 +618,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
@@ -646,7 +646,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
@@ -674,7 +674,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
@@ -702,7 +702,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
@@ -730,7 +730,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
@@ -758,7 +758,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
@@ -786,7 +786,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
@@ -806,7 +806,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
@@ -826,7 +826,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
@@ -846,7 +846,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
@@ -866,7 +866,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
@@ -886,7 +886,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
@@ -906,7 +906,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
@@ -926,7 +926,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
@@ -946,7 +946,7 @@
       "graded": "unsupported",
       "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "/hh/var/@dev8/linux-graphics-audit/reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
         "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
@@ -966,7 +966,7 @@
       "graded": "unsupported",
       "reason": "reopened until re-measured: the stored window may be shorter than the blink period this witness can see",
       "ruling": "@cto 2026-11-10 12:42 PST (f58c5889) item 3, issue 33117",
-      "evidence": "/hh/var/@dev-luna6/blink-witness-table-2026-11-10.txt",
+      "evidence": "@dev/luna6 stored-record table blink-witness-table-2026-11-10.txt sha256 803c5b2a3d01b80e3ec3396bb61959d964f60d204285190c32ed9c76e9424074",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -988,7 +988,7 @@
       "graded": "unsupported",
       "reason": "reopened until re-measured: the stored window may be shorter than the blink period this witness can see",
       "ruling": "@cto 2026-11-10 12:42 PST (f58c5889) item 3, issue 33117",
-      "evidence": "/hh/var/@dev-luna6/blink-witness-table-2026-11-10.txt",
+      "evidence": "@dev/luna6 stored-record table blink-witness-table-2026-11-10.txt sha256 803c5b2a3d01b80e3ec3396bb61959d964f60d204285190c32ed9c76e9424074",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -999,6 +999,28 @@
         {
           "runId": "97f0b21b46a75ea76f81c85ff1611483",
           "assertionIndex": 58
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "iterm2",
+      "os": "macos",
+      "featureId": "sgr.blink",
+      "graded": "supported",
+      "reason": "reopened until re-measured: blink is a paint row, and a DECRQSS reply does not decide it",
+      "ruling": "@cto 2026-11-10 12:56 PST (f2adcbf3), issue 33164",
+      "evidence": "@cpo/term request 5af9e33d: the only Supported evidence is the query reply; the pixel series could not decide",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "8533e1c9630b"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "baafb08bace3486d4f97bacbae912412",
+          "assertionIndex": 47
         }
       ]
     }

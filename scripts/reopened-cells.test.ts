@@ -218,15 +218,16 @@ describe("loadReopenedCells", () => {
     )
   })
 
-  it("the committed file holds the generated 41 rows (39 criterion-text, 2 remeasured), all current", async () => {
+  it("the committed file holds the generated 42 rows (39 criterion-text, 3 remeasured), all current", async () => {
     const content = join(import.meta.dirname, "..", "content")
     const { loadFeatures } = await import("@terminfo/catalog")
     const rows = loadReopenedCells(content, loadFeatures(content))
-    expect(rows).toHaveLength(41)
+    expect(rows).toHaveLength(42)
     expect(rows.filter((row) => row.exit.kind === "criterion-text")).toHaveLength(39)
     expect(rows.filter((row) => row.exit.kind === "remeasured").map((row) => `${row.id}/${row.featureId}`)).toEqual([
       "alacritty/sgr.blink",
       "ghostty/sgr.blink",
+      "iterm2/sgr.blink",
     ])
   })
 })
