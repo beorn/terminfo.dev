@@ -2873,6 +2873,7 @@ const defaultClipboardCases: Array<{
   attachedMux?: "tmux" | "screen"
   refuseWrite?: boolean
   nullMode2004?: boolean
+  pasteboard?: "darwin"
   eligible: boolean
 }> = [
   { name: "direct Kitty default paste", eligible: true },

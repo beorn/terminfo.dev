@@ -1,3 +1,4 @@
+import type { ProbeCallbackResult } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import { createDarwinClipboardAdapter, type DarwinCommand } from "./darwin-clipboard.ts"
 
@@ -27,7 +28,7 @@ test("hosted Darwin pasteboard saves, writes, and restores through the owned tra
       expect(await fixture.readText()).toBe("baseline")
       await fixture.writeText("nonce")
       expect(await fixture.readText()).toBe("nonce")
-      return { pass: true, note: "wrote" }
+      return { pass: true, note: "wrote" } as ProbeCallbackResult
     },
     () => {},
     async () => {},
