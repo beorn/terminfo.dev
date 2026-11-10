@@ -851,3 +851,241 @@ it.each([true, false])("reselects current methods at the suite boundary (differe
   expect(current?.result).toBe(differentSuite ? newer.results?.[0] : older.results?.[0])
   expect(JSON.stringify([older, newer])).toBe(original)
 })
+
+it("a harness outcome keeps a decided cell of the same probe", () => {
+  const prior = supportedBaseline()
+  const featureId = ids[0]!
+  const results = todos()
+  const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T07:00:00.000Z" }
+  results[0] = {
+    featureId,
+    status: "probe-todo",
+    attempt: emittedAttempt,
+    tests: [
+      {
+        id: "criterion",
+        status: "probe-todo",
+        attempt: { scope: "none" },
+        reason: "Probe exceeded 30000ms",
+      },
+    ],
+    reason: "Probe exceeded 30000ms",
+    harnessOutcome: "probe-exceeded",
+  }
+  const next = raw(results)
+  const latest = parse({
+    ...next,
+    runId: "wall-run",
+    measuredAt: "2026-10-21T07:00:00.000Z",
+    rawReplies: {
+      ...next.rawReplies,
+      "collector.selection": JSON.stringify({ ids: [featureId] }),
+      "collector.collectionAttempt": JSON.stringify({
+        ids: [featureId],
+        startedAt: "2026-10-21T07:00:00.000Z",
+        result: "completed",
+      }),
+    },
+  })
+  const projection = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, [])
+  const cell = projection.contexts["term:kitty"]?.cells[featureId]
+  expect(cell?.origin.runId).toBe(prior.runId)
+  expect(cell?.result.status).toBe("supported")
+})
+
+// Fails without the selected-results.ts keep. The writer test is recordExecutedProbe's IncompleteReplay path.
+it("unfinished-calls keeps a decided cell of the same probe", () => {
+  const prior = supportedBaseline()
+  const featureId = ids[0]!
+  const results = todos()
+  const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T07:00:00.000Z" }
+  results[0] = {
+    featureId,
+    status: "probe-invalid",
+    attempt: emittedAttempt,
+    tests: [
+      {
+        id: "criterion",
+        status: "probe-invalid",
+        attempt: emittedAttempt,
+        reason: "Incomplete: call log has unfinished asynchronous calls",
+      },
+    ],
+    reason: "Incomplete: call log has unfinished asynchronous calls",
+    harnessOutcome: "unfinished-calls",
+  }
+  const next = raw(results)
+  const latest = parse({
+    ...next,
+    runId: "unfinished-run",
+    measuredAt: "2026-10-21T07:00:00.000Z",
+    rawReplies: {
+      ...next.rawReplies,
+      "collector.selection": JSON.stringify({ ids: [featureId] }),
+      "collector.collectionAttempt": JSON.stringify({
+        ids: [featureId],
+        startedAt: "2026-10-21T07:00:00.000Z",
+        result: "completed",
+      }),
+    },
+  })
+  const cell = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, []).contexts["term:kitty"]
+    ?.cells[featureId]
+  expect(cell?.origin.runId).toBe(prior.runId)
+  expect(cell?.result.status).toBe("supported")
+})
+
+it("a harness outcome is placed when the subject version changed", () => {
+  const prior = supportedBaseline()
+  const featureId = ids[0]!
+  const results = todos()
+  const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T07:00:00.000Z" }
+  results[0] = {
+    featureId,
+    status: "probe-todo",
+    attempt: emittedAttempt,
+    tests: [{ id: "criterion", status: "probe-todo", attempt: { scope: "none" }, reason: "Probe exceeded 30000ms" }],
+    reason: "Probe exceeded 30000ms",
+    harnessOutcome: "probe-exceeded",
+  }
+  const next = raw(results)
+  const latest = parse({
+    ...next,
+    runId: "version-run",
+    measuredAt: "2026-10-21T07:00:00.000Z",
+    subject: { ...next.subject, version: "9.9.9" },
+    rawReplies: {
+      ...next.rawReplies,
+      "collector.selection": JSON.stringify({ ids: [featureId] }),
+      "collector.collectionAttempt": JSON.stringify({
+        ids: [featureId],
+        startedAt: "2026-10-21T07:00:00.000Z",
+        result: "completed",
+      }),
+    },
+  })
+  const cell = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, []).contexts["term:kitty"]
+    ?.cells[featureId]
+  expect(cell?.origin.runId).toBe(latest.runId)
+  expect(cell?.result.harnessOutcome).toBe("probe-exceeded")
+})
+
+it("an open cell takes a newer harness outcome", () => {
+  const featureId = ids[0]!
+  const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
+  const priorResults = todos()
+  priorResults[0] = {
+    featureId,
+    status: "probe-todo",
+    attempt: emittedAttempt,
+    tests: [{ id: "criterion", status: "probe-todo", attempt: { scope: "none" }, reason: "not started" }],
+    reason: "not started",
+  }
+  const priorDraft = raw(priorResults)
+  const prior = parse({
+    ...priorDraft,
+    runId: "open-run",
+    rawReplies: {
+      ...priorDraft.rawReplies,
+      "collector.selection": JSON.stringify({ ids: [featureId] }),
+      "collector.collectionAttempt": JSON.stringify({
+        ids: [featureId],
+        startedAt: "2026-10-21T05:00:00.000Z",
+        result: "completed",
+      }),
+    },
+  })
+  const nextResults = todos()
+  nextResults[0] = {
+    featureId,
+    status: "probe-todo",
+    attempt: { scope: "probe", startedAt: "2026-10-21T07:00:00.000Z" },
+    tests: [{ id: "criterion", status: "probe-todo", attempt: { scope: "none" }, reason: "Probe exceeded 30000ms" }],
+    reason: "Probe exceeded 30000ms",
+    harnessOutcome: "probe-exceeded",
+  }
+  const next = raw(nextResults)
+  const latest = parse({
+    ...next,
+    runId: "later-open",
+    measuredAt: "2026-10-21T07:00:00.000Z",
+    rawReplies: {
+      ...next.rawReplies,
+      "collector.selection": JSON.stringify({ ids: [featureId] }),
+      "collector.collectionAttempt": JSON.stringify({
+        ids: [featureId],
+        startedAt: "2026-10-21T07:00:00.000Z",
+        result: "completed",
+      }),
+    },
+  })
+  const cell = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, []).contexts["term:kitty"]
+    ?.cells[featureId]
+  expect(cell?.origin.runId).toBe(latest.runId)
+  expect(cell?.result.harnessOutcome).toBe("probe-exceeded")
+})
+
+it("a newer unsupported result replaces a decided cell", () => {
+  const prior = supportedBaseline()
+  const featureId = ids[0]!
+  const results = todos()
+  const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T07:00:00.000Z" }
+  results[0] = {
+    featureId,
+    status: "unsupported",
+    assertionType: "query_reply",
+    rawReplyRef: featureId,
+    attempt: emittedAttempt,
+    tests: [
+      {
+        id: "criterion",
+        status: "unsupported",
+        attempt: emittedAttempt,
+        assertionRefs: [0],
+        rawReplyRef: featureId,
+      },
+    ],
+  }
+  const next = raw(results)
+  const latest = parse({
+    ...next,
+    assertions: [
+      {
+        featureId,
+        kind: "negative",
+        assertionType: "query_reply",
+        rawReplyRef: featureId,
+        expected: "ACK",
+        observed: "NAK",
+      },
+    ],
+    runId: "real-change",
+    measuredAt: "2026-10-21T07:00:00.000Z",
+    rawReplies: {
+      ...next.rawReplies,
+      [featureId]: "NAK",
+      "collector.selection": JSON.stringify({ ids: [featureId] }),
+      "collector.collectionAttempt": JSON.stringify({
+        ids: [featureId],
+        startedAt: "2026-10-21T07:00:00.000Z",
+        result: "completed",
+      }),
+    },
+  })
+  const cell = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, []).contexts["term:kitty"]
+    ?.cells[featureId]
+  expect(cell?.origin.runId).toBe(latest.runId)
+  expect(cell?.result.status).toBe("unsupported")
+})
+
+it("the parser refuses an unknown harness outcome", () => {
+  const next = raw(todos())
+  const feature = next.results[0]
+  expect(feature).toBeDefined()
+  expect(() =>
+    parse({
+      ...next,
+      results: [{ ...feature!, harnessOutcome: "not-a-real-outcome" }],
+    }),
+  ).toThrow(/harness outcome/)
+})

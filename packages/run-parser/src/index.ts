@@ -11,6 +11,7 @@ import {
   type HostRecipeExpectation,
   type HostRecipeName,
   PROBE_STATUSES,
+  isHarnessOutcome,
   parseSourceAnswerKey,
   initializeRunDraft,
   recordCollectorSelection,
@@ -821,12 +822,16 @@ export function parseProbeResults(
         "screenshotRef",
         "host",
         "assertionType",
+        "harnessOutcome",
       ],
       path,
       `${featureId} result`,
     )
     if (item.assertionType !== undefined && !ASSERTION_TYPES.includes(item.assertionType as AssertionType)) {
       fail(path, `invalid assertionType for ${featureId}`)
+    }
+    if (item.harnessOutcome !== undefined && !isHarnessOutcome(item.harnessOutcome)) {
+      fail(path, `invalid harness outcome for ${featureId}`)
     }
     if (!Array.isArray(item.tests)) fail(path, `${featureId} requires its explicit test set`)
     const testIds = new Set<string>()

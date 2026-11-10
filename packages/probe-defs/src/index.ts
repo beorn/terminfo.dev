@@ -216,7 +216,7 @@ export type { EnvironmentGroupId } from "./environment-groups.ts"
 
 export { TEXT_QUALIFICATION_SPEC, TEXT_QUALIFICATION_SHAPES, textQualificationFixtures } from "./text-qualification.ts"
 
-export { PROBE_STATUSES, FEATURE_RESULT_STATUSES } from "./types.ts"
+export { PROBE_STATUSES, FEATURE_RESULT_STATUSES, HARNESS_OUTCOMES, isHarnessOutcome } from "./types.ts"
 export type {
   ProbeStatus,
   FeatureResultStatus,
@@ -224,6 +224,7 @@ export type {
   CollectorSelection,
   CollectorAttempt,
   ProbeResult,
+  HarnessOutcome,
   ProbeTestResult,
   ProbeTestInput,
   RunDraft,

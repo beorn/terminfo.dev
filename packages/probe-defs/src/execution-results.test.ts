@@ -1359,3 +1359,17 @@ it("starts schema 4 drafts with explicit live source and rejects an unbound trac
   })
   expect(() => initializeRunDraft({ ...input, source: { kind: "trace" } } as never)).toThrow(/trace/i)
 })
+
+it("records an IncompleteReplay diagnostic as unfinished-calls", () => {
+  const result = recordExecutedProbe({
+    featureId: "sgr.reset",
+    attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+    diagnostic: {
+      kind: "collector-error",
+      name: "IncompleteReplay",
+      message: "Incomplete: call log has unfinished asynchronous calls",
+    },
+    assertions: [],
+  })
+  expect(result.harnessOutcome).toBe("unfinished-calls")
+})
