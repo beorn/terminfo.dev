@@ -2861,6 +2861,47 @@ it.each(["start", "read", "write"])(
   },
 )
 
+it("stops the batch when modes.deccolm leaves a different stty size", async () => {
+  verifiedBatchFixture()
+  const deccolm = ALL_PROBES.find((probe) => probe.id === "modes.deccolm")
+  const next = ALL_PROBES.find(
+    (probe) => probe.term && probe.termNeedsGeometry && !probe.termNeedsDisposable && probe.id !== "modes.deccolm",
+  )
+  if (!deccolm?.term || !next?.term) throw new Error("missing geometry probes")
+  const original = { term: deccolm.term, disposable: deccolm.termNeedsDisposable, next: next.term }
+  const calls: string[] = []
+  let reads = 0
+  const readGeometry = vi.fn(async () => {
+    reads += 1
+    return reads === 1 ? measured(30, 120) : measured(30, 80)
+  })
+  try {
+    deccolm.termNeedsDisposable = undefined
+    deccolm.term = async () => {
+      calls.push(deccolm.id)
+      return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
+    }
+    next.term = async () => {
+      calls.push(next.id)
+      return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
+    }
+    const batch = await runProbeBatch({
+      ids: [deccolm.id, next.id],
+      ownedTerminal: geometryOwner(measured(30, 120), readGeometry),
+    })
+    expect(calls).toEqual(["modes.deccolm"])
+    expect(readGeometry).toHaveBeenCalledTimes(2)
+    expect(batch.results.find((result) => result.featureId === next.id)).toMatchObject({
+      status: "probe-invalid",
+      reason: "modes.deccolm left the terminal at 30x80; it started at 30x120",
+    })
+  } finally {
+    deccolm.term = original.term
+    deccolm.termNeedsDisposable = original.disposable
+    next.term = original.next
+  }
+})
+
 const defaultClipboardCases: Array<{
   name: string
   featureId?: string

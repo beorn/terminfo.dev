@@ -1035,6 +1035,37 @@ test.each([null, 0] as const)("App DECCOLM reads controlled size replies after D
   expect(definition.termWrites).toBeUndefined()
 })
 
+test("App DECCOLM puts back the width it found when the terminal honors CSI 8", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
+  if (!definition?.term) throw new Error("Missing App DECCOLM callback")
+  const state = { width: 120, gate: false }
+  const writes: string[] = []
+  const result = await definition.term(
+    replayTermProbeSource(new Map(), {
+      cols: 120,
+      rows: 30,
+      write: (bytes) => {
+        writes.push(bytes)
+        for (const match of bytes.matchAll(/\x1b\[\?(\d+)([hl])/g)) {
+          if (match[1] === "40") state.gate = match[2] === "h"
+          if (match[1] === "3" && state.gate) state.width = match[2] === "h" ? 132 : 80
+        }
+        const resize = /\x1b\[8;(\d+);(\d+)t/.exec(bytes)
+        if (resize) state.width = Number(resize[2])
+      },
+      queryWithSentinel: async (query, pattern) => {
+        if (query === "\x1b[?3$p") return null
+        expect(query).toBe("\x1b[18t")
+        return pattern.exec(`\x1b[8;30;${state.width}t`)
+      },
+    }),
+  )
+  expect(result.observation?.outcome).toBe("supported")
+  expect(state.width).toBe(120)
+  expect(writes.join("")).toContain("\x1b[8;30;120t")
+  expect(result.note).not.toContain("restore left")
+})
+
 test.each([null, 0] as const)("App DECCOLM reads controlled width frames after DECRPM %s", async (ps) => {
   const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
   if (!definition?.term) throw new Error("Missing App DECCOLM callback")

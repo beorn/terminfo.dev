@@ -585,7 +585,23 @@ export async function runProbeBatch(
       capturePrepared = true
     }
   }
+  let sizeLeftBehind: string | undefined
   for (const probe of selected) {
+    if (sizeLeftBehind) {
+      const pending = batch.results.find((result) => result.featureId === probe.id)
+      if (!pending) throw new Error(`Native size stop ${probe.id} is outside initialized catalogue`)
+      const attempt = { scope: "none" as const }
+      pending.status = "probe-invalid"
+      pending.attempt = attempt
+      pending.reason = sizeLeftBehind
+      pending.rawReplyRef = probe.id
+      pending.tests = [
+        { id: "geometry", status: "probe-invalid", attempt, reason: sizeLeftBehind, rawReplyRef: probe.id },
+      ]
+      batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries: [], events: [] })
+      options.onCheckpoint?.(batch)
+      continue
+    }
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []
     const clipboardEvents: ClipboardTraceEvent[] = []
@@ -1196,6 +1212,14 @@ export async function runProbeBatch(
             rawReplyRef: probe.id,
           })
         : finalized
+      if (
+        probe.id === "modes.deccolm" &&
+        geometryCheck?.pre?.status === "measured" &&
+        geometryCheck.post?.status === "measured" &&
+        (geometryCheck.pre.rows !== geometryCheck.post.rows || geometryCheck.pre.cols !== geometryCheck.post.cols)
+      ) {
+        sizeLeftBehind = `modes.deccolm left the terminal at ${geometryCheck.post.rows}x${geometryCheck.post.cols}; it started at ${geometryCheck.pre.rows}x${geometryCheck.pre.cols}`
+      }
       options.onCheckpoint?.(batch)
     }
   }

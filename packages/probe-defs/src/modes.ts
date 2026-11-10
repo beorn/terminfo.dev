@@ -1997,6 +1997,7 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   }
   const initial = await size()
   if (initial) {
+    let delivered: ProbeCallbackResult | undefined
     try {
       ctx.write("\x1b[?40h\x1b[?3l")
       const reset = await size()
@@ -2026,7 +2027,7 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         }
       }
       const note = `${prefix}; controlled CSI 18 t width reports ${pass ? "establish 80/132 switching" : "show no column-mode effect"}`
-      return {
+      delivered = {
         pass,
         response,
         note,
@@ -2040,9 +2041,18 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
           },
         ],
       }
+      return delivered
     } finally {
-      // The existing disposable fixture owns a canonical 80-column, gate-open setup.
-      ctx.write("\x1b[?40h\x1b[?3l")
+      // DECCOLM can only set 80 or 132. Put back the size this probe found.
+      // An App run on a shared window does not own an 80-column setup.
+      ctx.write(`\x1b[8;${initial.rows};${initial.cols}t`)
+      const after = await size()
+      if (delivered && (!after || after.rows !== initial.rows || after.cols !== initial.cols)) {
+        const read = after ? `${after.rows}x${after.cols}` : "unread"
+        const extra = `restore left CSI 18t at ${read}; started at ${initial.rows}x${initial.cols}`
+        delivered.note = delivered.note ? `${delivered.note}; ${extra}` : extra
+        if (delivered.observation) delivered.observation.note = delivered.note
+      }
     }
   }
   if (!ctx.capture && !ctx.cells) {
