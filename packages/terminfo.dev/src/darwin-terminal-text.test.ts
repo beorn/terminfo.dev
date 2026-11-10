@@ -18,10 +18,14 @@ import {
   mapITermBufferToCells,
   NAMED_SINGLE_CELL_GLYPHS,
   osascriptReply,
+  readTerminalAppHistory,
   readTerminalTextSnapshot,
+  terminalAppHistoryReader,
   terminalTextScript,
   type OsascriptReply,
+  type TerminalHistoryControl,
 } from "./darwin-terminal-text.ts"
+import { ScrollbackReadingUnavailable } from "@terminfo/probe-defs"
 
 const reply = (overrides: Partial<OsascriptReply>): OsascriptReply => ({
   stdout: "",
@@ -734,5 +738,135 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
     })
     expect(read.status).toBe("refused")
     if (read.status === "refused") expect(read.reason).toMatch(/row 1 is 6 characters over 3 columns/u)
+  })
+})
+
+/**
+ * A Terminal.app tab that processes the reader's own writes: a clear empties the screen, and each
+ * CRLF-terminated line lands on the next row, scrolling the top row into history at the bottom. Its
+ * contents() is the padded screen and its history() the retained lines through the padded screen,
+ * so the real generated JXA, the reply parser and the control all run against it (31741).
+ */
+function terminalModel(rows: number, cols: number, options: { loseEvery?: number } = {}) {
+  const scrollback: string[] = []
+  let screen: string[] = []
+  let written = 0
+  const padded = () => [...screen, ...Array.from({ length: rows - screen.length }, () => "")]
+  const write = (text: string) => {
+    if (text.includes("\x1b[2J")) screen = []
+    for (const line of text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").split("\r\n").slice(0, -1)) {
+      written++
+      if (options.loseEvery !== undefined && written % options.loseEvery === 0) continue
+      screen.push(line)
+      if (screen.length === rows) scrollback.push(screen.shift()!)
+    }
+  }
+  const tab: Record<string, unknown> = {
+    tty: () => "/dev/ttys003",
+    contents: () => `${padded().join("\n")}\n`,
+    history: () => `${[...scrollback, ...padded()].join("\n")}\n`,
+    numberOfRows: () => rows,
+    numberOfColumns: () => cols,
+  }
+  const run = (script: string): OsascriptReply =>
+    reply({
+      stdout: String(
+        runInNewContext(`${script}\nrun()`, { Application: () => fakeApplication({ windows: [{ tabs: [tab] }] }) }),
+      ),
+    })
+  return { write, run, scrollback, tab }
+}
+
+describe("Terminal.app history: one snapshot, one count definition, and a per-run control (31741)", () => {
+  it("reads contents and history in the same script, and only Terminal.app is asked for history", () => {
+    const script = terminalTextScript("terminal-app", "/dev/ttys003", 4, 2, true)
+    expect(script.match(/match\.contents\(\)/g)).toHaveLength(1)
+    expect(script.match(/match\.history\(\)/g)).toHaveLength(1)
+    expect(terminalTextScript("terminal-app", "/dev/ttys003", 4, 2)).not.toContain("history()")
+    expect(() => terminalTextScript("iterm2", "/dev/ttys007", 4, 2, true)).toThrow(/Only Terminal.app/)
+  })
+
+  it("counts retained lines above the screen plus the screen's rows; an empty history reads exactly rows", () => {
+    const model = terminalModel(4, 20)
+    const empty = readTerminalAppHistory({ tty: "/dev/ttys003", cols: 20, rows: 4, run: model.run })
+    expect(empty).toEqual({ status: "read", historyLines: [], reading: { totalLines: 4, screenLines: 4 } })
+    model.write("a\r\nb\r\nc\r\nd\r\ne\r\n")
+    const read = readTerminalAppHistory({ tty: "/dev/ttys003", cols: 20, rows: 4, run: model.run })
+    // a and b scrolled off; c, d, e are on screen above the blank cursor row.
+    expect(read).toEqual({
+      status: "read",
+      historyLines: ["a", "b", "c", "d", "e"],
+      reading: { totalLines: 2 + 4, screenLines: 4 },
+    })
+  })
+
+  it.each([
+    ["a wrapped line", { history: () => `${"x".repeat(21)}\n\n\n\n\n` }, /21 characters on a 20-column grid/],
+    ["history not ending with the screen", { history: () => "a\nb\n", contents: () => "c\n\n\n\n" }, /does not end with the screen/],
+    ["a tab that raises on history()", { history: undefined }, /raised while reading: .*history/],
+  ] as const)("refuses %s, so it gives no reading", (_name, overrides, reason) => {
+    const model = terminalModel(4, 20)
+    Object.assign(model.tab, overrides)
+    if (overrides.history === undefined) delete model.tab.history
+    const read = readTerminalAppHistory({ tty: "/dev/ttys003", cols: 20, rows: 4, run: model.run })
+    expect(read.status).toBe("refused")
+    expect(read.status === "refused" && read.reason).toMatch(reason)
+  })
+
+  it("a timed-out script is no reading, never zero lines", () => {
+    const read = readTerminalAppHistory({
+      tty: "/dev/ttys003",
+      cols: 20,
+      rows: 4,
+      run: () => reply({ status: null, signal: "SIGTERM", timedOut: true }),
+    })
+    expect(read.status).toBe("refused")
+  })
+
+  it("proves itself once per run, then reads; the control's numbers are retained", async () => {
+    const model = terminalModel(6, 40)
+    const controls: TerminalHistoryControl[] = []
+    const reader = terminalAppHistoryReader({
+      read: () => readTerminalAppHistory({ tty: "/dev/ttys003", cols: 40, rows: 6, run: model.run }),
+      write: model.write,
+      rows: 6,
+      nonce: "run-1",
+      pollMs: 1,
+      onControl: (control) => controls.push(control),
+    })
+    const first = await reader()
+    expect(controls).toEqual([{ markers: 11, before: 0, after: 11, status: "passed" }])
+    expect(model.scrollback.at(0)).toBe("terminfo history control run-1 0")
+    // 11 markers on 6 rows: 6 scrolled into history, then the control cleared the 5 on screen.
+    expect(first).toEqual({ totalLines: 6 + 6, screenLines: 6 })
+    model.write(Array.from({ length: 16 }, (_unused, index) => `line ${index}\r\n`).join(""))
+    const second = await reader()
+    expect(second.totalLines - first.totalLines).toBe(16 - 5)
+    expect(controls).toHaveLength(1)
+  })
+
+  it("a control whose markers do not all land is no reading, by name, for every later call", async () => {
+    const model = terminalModel(6, 40, { loseEvery: 7 })
+    const controls: TerminalHistoryControl[] = []
+    const reader = terminalAppHistoryReader({
+      read: () => readTerminalAppHistory({ tty: "/dev/ttys003", cols: 40, rows: 6, run: model.run }),
+      write: model.write,
+      rows: 6,
+      nonce: "run-2",
+      timeoutMs: 20,
+      pollMs: 1,
+      onControl: (control) => controls.push(control),
+    })
+    await expect(reader()).rejects.toThrow(ScrollbackReadingUnavailable)
+    await expect(reader()).rejects.toThrow("the control wrote 11 marker lines and the history grew by 10")
+    expect(controls).toEqual([
+      {
+        markers: 11,
+        before: 0,
+        after: 10,
+        status: "failed",
+        reason: "the control wrote 11 marker lines and the history grew by 10",
+      },
+    ])
   })
 })

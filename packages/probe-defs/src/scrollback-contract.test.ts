@@ -10,7 +10,7 @@ import { expect, test } from "vitest"
 import { join } from "node:path"
 import { decodeCollectorDraft, parseRun } from "@terminfo/run-parser"
 import { initializeRunDraft, recordExecutedProbe } from "./helpers.ts"
-import { scrollbackProbes } from "./scrollback.ts"
+import { ScrollbackReadingUnavailable, scrollbackProbes } from "./scrollback.ts"
 import type { ProbeSuiteManifest } from "./types.ts"
 import {
   contractGaps,
@@ -591,5 +591,35 @@ test("App history resets owned history after clear+CPR fence before baseline rea
       'write:"\\u001b[0m\\u001b[2J\\u001b[H"',
       "queryCursorPosition:1",
     ])
+  }
+})
+
+// @failure An App history reader with no reading this run (its per-run control failed, or the app
+//   answered nothing) aborts the probe or reads as a count, instead of leaving the cell todo with
+//   the reader's own reason; or any other reader error is swallowed as "no reading" (31741).
+// @level l1
+// @consumer Terminal.app history reader (darwin-terminal-text.ts terminalAppHistoryReader).
+test("App history leaves the cell todo with the reason when its reader has no reading, and only then", async () => {
+  const source = (error: Error) =>
+    replayTermProbeSource(new Map(), {
+      rows: 12,
+      cols: 80,
+      write: () => {},
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
+      getScrollback: async () => {
+        throw error
+      },
+    })
+  for (const id of ["scrollback.accumulate", "scrollback.total-lines"]) {
+    const probe = scrollbackProbes.find((entry) => entry.id === id)!
+    const result = await probe.term!(
+      source(new ScrollbackReadingUnavailable("Terminal.app history: the control wrote 17 marker lines and the history grew by 16")),
+    )
+    expect(result.pass).toBe(false)
+    expect(result.notTested?.noObservable).toBe(
+      "owned scrollback history reader has no reading: Terminal.app history: the control wrote 17 marker lines and the history grew by 16",
+    )
+    expect(result.assertions).toBeUndefined()
+    await expect(probe.term!(source(new Error("osascript crashed")))).rejects.toThrow("osascript crashed")
   }
 })
