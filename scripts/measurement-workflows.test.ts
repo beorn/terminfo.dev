@@ -64,6 +64,44 @@ test("hosted collector build runs at background priority", () => {
   }
 })
 
+test("an exact sha input pins the checkout and refuses a difference", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const dispatch = (workflow.on ?? workflow[true]).workflow_dispatch
+  expect(dispatch.inputs.sha).toMatchObject({ type: "string", required: false })
+  const steps = workflow.jobs["measure-macos"].steps as { uses?: string; name?: string; with?: Record<string, string>; env?: Record<string, string>; run?: string }[]
+  const checkout = steps.find((step) => step.uses === "actions/checkout@v4")
+  expect(checkout?.with?.ref).toBe("${{ inputs.sha || github.sha }}")
+  const guard = steps.find((step) => step.name === "Refuse a checkout that differs from the requested sha")
+  expect(guard?.env?.REQUESTED_SHA).toBe("${{ inputs.sha }}")
+  const guardRun = guard?.run
+  if (!guardRun) throw new Error("The sha refusal step is absent")
+  const checkedOut = "f".repeat(40)
+  const directory = mkdtempSync(join(tmpdir(), "hosted-sha-guard-"))
+  writeFileSync(join(directory, "git"), `#!/bin/bash\nprintf '%s\\n' ${checkedOut}\n`, { mode: 0o755 })
+  const attempt = (requested: string) =>
+    spawnSync("/bin/bash", ["-c", guardRun], {
+      cwd: directory,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, REQUESTED_SHA: requested },
+    })
+  try {
+    const pinned = attempt(checkedOut)
+    expect(pinned.status, pinned.stderr).toBe(0)
+    const unpinned = attempt("")
+    expect(unpinned.status, unpinned.stderr).toBe(0)
+    const other = "a".repeat(40)
+    const mismatch = attempt(other)
+    expect(mismatch.status).toBe(1)
+    expect(mismatch.stdout).toContain(other)
+    expect(mismatch.stdout).toContain(checkedOut)
+    const malformed = attempt("NOT-A-SHA")
+    expect(malformed.status).toBe(1)
+    expect(malformed.stdout).toContain("lowercase hex")
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test("spent iTerm consent action is absent from the workflow", () => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   expect(workflow).not.toContain("18f8ea627153436fbb6a03572beb00ca")
