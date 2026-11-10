@@ -11,10 +11,6 @@ test("hosted Darwin pasteboard saves, writes, and restores through the owned tra
       pasteboard = stdin ?? ""
       return ""
     }
-    if (file.endsWith("osascript")) {
-      expect(args.join(" ")).toContain("iTerm2")
-      return `${title}\n`
-    }
     throw new Error(`unexpected ${file}`)
   }
   const adapter = await createDarwinClipboardAdapter({
@@ -23,7 +19,8 @@ test("hosted Darwin pasteboard saves, writes, and restores through the owned tra
     run,
   })
   expect(adapter.config).toBe(null)
-  expect(await adapter.readTitle()).toBe("Window")
+  await expect(adapter.readTitle()).rejects.toThrow(/System Events/)
+  expect(title).toBe("Window")
   const result = await adapter.withClipboardFixture(
     async (fixture) => {
       expect(await fixture.readText()).toBe("baseline")
