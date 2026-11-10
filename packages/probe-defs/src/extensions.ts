@@ -5402,6 +5402,13 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
 }
 
 const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
+/** A terminal that does not answer the OSC 22 query form, in the criterion's terms (@cto a7fb82cc). */
+export const OSC22_SILENT_TERMINAL =
+  "Open: the terminal gave no OSC 22 selected-shape reply, and silence on the query form is not unsupported, because a terminal can set pointer shapes without answering the query; with no reply, a cursor query cannot show the shape, and the visible pointer is outside this run's evidence."
+/** A multiplexer stays open by design: the pointer is the outer terminal's (@cto a7fb82cc). */
+export function osc22SilentMultiplexer(mux: "tmux" | "screen"): string {
+  return `Open by design: the mouse pointer belongs to the outer terminal, not ${mux}, so anything seen would grade the outer terminal; ${mux} gave no OSC 22 selected-shape reply.`
+}
 const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
 
 function readOsc22Shape(raw: string) {
@@ -8121,9 +8128,12 @@ const extensionDefinitions: ProbeDefinition[] = [
         }
         const initial = await read()
         if (initial.shape === undefined) {
+          // @cto a7fb82cc (#33100): silence on the query form is never Unsupported, and an answered OSC
+          // colour query is no control for OSC 22. Each subject says why it stays open.
+          const reason = ctx.mux === undefined ? OSC22_SILENT_TERMINAL : osc22SilentMultiplexer(ctx.mux)
           return {
-            ...notTestedResult(NO_SAME_PATH_CONTROL, { query, initial }),
-            note: "No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read",
+            ...notTestedResult(reason, { query, initial }),
+            note: `No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read; ${reason}`,
           }
         }
         const controlShape = initial.shape === "text" ? "wait" : "text"
