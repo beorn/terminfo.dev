@@ -267,20 +267,23 @@ export function colourCaptureCallbackResult(
  */
 const SIBLING_SEPARATION: Readonly<
   Record<string, { channel: "fg" | "bg"; siblingRowId: string; colour: string; assumption: string }>
-> = withUmbrellas({
-  "sgr.fg.truecolor": {
-    channel: "fg",
-    siblingRowId: "sgr.fg.256",
-    colour: "#ff8000",
-    assumption: "the run's default foreground is not (255,128,0)",
+> = withUmbrellas(
+  {
+    "sgr.fg.truecolor": {
+      channel: "fg",
+      siblingRowId: "sgr.fg.256",
+      colour: "#ff8000",
+      assumption: "the run's default foreground is not (255,128,0)",
+    },
+    "sgr.bg.truecolor": {
+      channel: "bg",
+      siblingRowId: "sgr.bg.256",
+      colour: "#00ff80",
+      assumption: "the run's default background is not (0,255,128)",
+    },
   },
-  "sgr.bg.truecolor": {
-    channel: "bg",
-    siblingRowId: "sgr.bg.256",
-    colour: "#00ff80",
-    assumption: "the run's default background is not (0,255,128)",
-  },
-}, "SIBLING_SEPARATION")
+  "SIBLING_SEPARATION",
+)
 
 /** The four region frames of a colour row, by the step label region-readback records verbatim. */
 const COLOUR_FRAME_STEPS = {
