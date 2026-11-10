@@ -240,6 +240,8 @@ describe("loadReopenedCells", () => {
       "ghostty/sgr.blink",
       "iterm2/sgr.blink",
     ])
-    for (const row of rows) expect(publicReopenedReason(row), cellLabel(row)).not.toMatch(/@|\b[0-9a-f]{7,}\b|#\d|\b\d{5}\b/)
+    for (const row of rows) {
+      expect(publicReopenedReason(row), cellLabel(row)).not.toMatch(/@|\b[0-9a-f]{7,}\b|#\d|\b\d{5}\b/)
+    }
   })
 })
