@@ -174,6 +174,12 @@ it("refuses a witness digest that is not a frame of its row, and a proof that is
     `whole-${digest("target")}`,
   )
   expect(() => parse(whole)).toThrow(/sibling.target is not a frame digest/)
+  // A frame's ref names the whole-window image too, so it cannot stand in for the cells (@cto 3f0d431b).
+  const byRef = run()
+  ;(byRef.assertions[0] as { witness: { sibling: { target: string } } }).witness.sibling.target = digest(
+    `ref-${digest("target")}`,
+  )
+  expect(() => parse(byRef)).toThrow(/sibling.target is not a frame digest/)
   const uneven = run()
   ;(uneven.assertions[0] as { witness: { requested: { target: string } } }).witness.requested.target = digest("flat")
   ;(uneven.results[0] as { frames: { regionDigest: string }[] }).frames.push(frame(digest("other")))
@@ -209,4 +215,10 @@ it("refuses a sibling row that is not in the same run", () => {
   const absent = run()
   ;(absent.assertions[0] as { witness: { siblingRowId: string } }).witness.siblingRowId = "sgr.fg.absent"
   expect(() => parse(absent)).toThrow(/sibling row sgr.fg.absent is not in this run/)
+})
+
+it("refuses a witness that names another run", () => {
+  const other = run()
+  ;(other.assertions[0] as { witness: { runId: string } }).witness.runId = "an-earlier-run"
+  expect(() => parse(other)).toThrow(/witness runId an-earlier-run is not this run screen-run/)
 })
