@@ -407,6 +407,35 @@ function matchResponseNative(
   })
 }
 
+/** Arm the stdin listener, then run inject, and keep the raw bytes. queryOutcome writes first and returns before a later inject. */
+export function readInjectedOutcome(
+  pattern: RegExp,
+  timeoutMs: number,
+  inject: () => Promise<void>,
+): Promise<QueryOutcome> {
+  return withTTYOperation(async () => {
+    let start!: () => void
+    let cancel!: () => void
+    const outcome = matchResponse(pattern, timeoutMs, undefined, false, "", undefined, (arm, release) => {
+      start = arm
+      cancel = release
+    })
+    const lease = operationContext.getStore() as TTYOperationLease
+    const previous = lease.startResponseTimer
+    lease.startResponseTimer = start
+    try {
+      await inject()
+      start()
+      return await outcome
+    } catch (error) {
+      cancel()
+      throw error
+    } finally {
+      lease.startResponseTimer = previous
+    }
+  })
+}
+
 export function readResponse(
   pattern: RegExp,
   timeoutMs: number,

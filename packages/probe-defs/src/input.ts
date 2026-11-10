@@ -578,99 +578,102 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
         observed,
       )
     } else {
-      const postResize = ctx.queryOutcome("", /^a$/, 1000)
-      await input.injectKey("a")
-      const echoed = await postResize
-      observed.postResizeKey = echoed.raw
-      if (echoed.raw !== "a") {
-        result = invalidInteraction("post-resize key did not echo; refusing to judge mouse controls", observed)
+      const readInjected = ctx.readInjected
+      if (!readInjected) {
+        result = invalidInteraction("UTF8 mouse needs the listener-first injected read", observed)
       } else {
-        result = await withMouseModes(ctx, async () => {
-          ctx.write("\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1015l\x1b[?1016l")
-          // A terminal may leave SGR (1006) when a sibling mouse-encoding mode is reset:
-          // WezTerm answered this control in legacy X10 form after 1016l although the same
-          // run's x10 control read SGR from it. Re-assert the encoding the control is judged in.
-          ctx.write("\x1b[?1006h")
-          const sgrClick = async (position: { x: number; y: number }) => {
-            const pending = ctx.queryOutcome("", /^\x1b\[<0;\d+;\d+M\x1b\[<0;\d+;\d+m$/, 2000)
-            await input.injectClick(1, position)
-            const read = await pending
-            return { text: read.raw, bytes: Array.from(atob(read.rawBase64), (byte) => byte.charCodeAt(0)) }
-          }
-          // A click injected right after a resize can be dropped before the App applies the
-          // mode write, and a loaded host can answer past the first read window. Retry the
-          // SAME control click a bounded number of times and keep every read as evidence, so a
-          // dropped click reads as harness noise instead of a terminal that cannot report it.
-          const sgrPair = /^\x1b\[<0;(\d+);(\d+)M\x1b\[<0;\1;\2m$/
-          const sgrClickControl = async (position: { x: number; y: number }) => {
-            const attempts: string[] = []
-            for (let attempt = 1; attempt <= 3; attempt++) {
-              const read = await sgrClick(position)
-              attempts.push(read.text)
-              const matched = sgrPair.exec(read.text)
-              if (matched) return { read, matched, attempts }
-              if (attempt < 3) await new Promise<void>((resolve) => setTimeout(resolve, 150))
+        const injected = async (pattern: RegExp, timeout: number, inject: () => Promise<void>) => {
+          const read = await readInjected(pattern, timeout, inject)
+          return { text: read.raw, bytes: Array.from(atob(read.rawBase64), (byte) => byte.charCodeAt(0)) }
+        }
+        const echoed = await injected(/^a$/, 1000, () => input.injectKey("a"))
+        observed.postResizeKey = echoed.text
+        if (echoed.text !== "a") {
+          result = invalidInteraction("post-resize key did not echo; refusing to judge mouse controls", observed)
+        } else {
+          result = await withMouseModes(ctx, async () => {
+            ctx.write("\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1015l\x1b[?1016l")
+            // A terminal may leave SGR (1006) when a sibling mouse-encoding mode is reset:
+            // WezTerm answered this control in legacy X10 form after 1016l although the same
+            // run's x10 control read SGR from it. Re-assert the encoding the control is judged in.
+            ctx.write("\x1b[?1006h")
+            const sgrClick = (position: { x: number; y: number }) =>
+              injected(/^\x1b\[<0;\d+;\d+M\x1b\[<0;\d+;\d+m$/, 2000, () => input.injectClick(1, position))
+            // A click injected right after a resize can be dropped before the App applies the
+            // mode write, and a loaded host can answer past the first read window. Retry the
+            // SAME control click a bounded number of times and keep every read as evidence, so a
+            // dropped click reads as harness noise instead of a terminal that cannot report it.
+            const sgrPair = /^\x1b\[<0;(\d+);(\d+)M\x1b\[<0;\1;\2m$/
+            const sgrClickControl = async (position: { x: number; y: number }) => {
+              const attempts: string[] = []
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                const read = await sgrClick(position)
+                attempts.push(read.text)
+                const matched = sgrPair.exec(read.text)
+                if (matched) return { read, matched, attempts }
+                if (attempt < 3) await new Promise<void>((resolve) => setTimeout(resolve, 150))
+              }
+              return { read: { text: "", bytes: [] as number[] }, matched: null, attempts }
             }
-            return { read: { text: "", bytes: [] as number[] }, matched: null, attempts }
-          }
-          const click = async () => {
-            // Reuse the existing reader/recorder; rawBase64 preserves legacy bytes
-            // that the text match necessarily decodes as replacement characters.
-            const pending = ctx.queryOutcome("", /^[\s\S]*a$/, 1000)
-            await input.injectClick(1, { x: 1300, y: 120 })
-            await input.injectKey("a")
-            const read = await pending
-            return { text: read.raw, bytes: Array.from(atob(read.rawBase64), (byte) => byte.charCodeAt(0)) }
-          }
-          const ordinary = await sgrClickControl({ x: 400, y: 300 })
-          observed.ordinaryControl = ordinary.read
-          observed.ordinaryAttempts = ordinary.attempts
-          const ordinaryX = Number(ordinary.matched?.[1])
-          const ordinaryY = Number(ordinary.matched?.[2])
-          if (!ordinary.matched || ordinaryX < 1 || ordinaryX > 95 || ordinaryY < 1 || ordinaryY > 223) {
+            const click = () =>
+              injected(/^[\s\S]*a$/, 1000, async () => {
+                await input.injectClick(1, { x: 1300, y: 120 })
+                await input.injectKey("a")
+              })
+            const ordinary = await sgrClickControl({ x: 400, y: 300 })
+            observed.ordinaryControl = ordinary.read
+            observed.ordinaryAttempts = ordinary.attempts
+            const ordinaryX = Number(ordinary.matched?.[1])
+            const ordinaryY = Number(ordinary.matched?.[2])
+            if (!ordinary.matched || ordinaryX < 1 || ordinaryX > 95 || ordinaryY < 1 || ordinaryY > 223) {
+              return invalidInteraction(
+                "UTF8 mouse ordinary-position SGR press/release control did not prove coordinates within columns 1 through 95",
+                observed,
+              )
+            }
+            const sensitive = await sgrClickControl({ x: 1300, y: 120 })
+            const control = sensitive.read
+            observed.control = control
+            observed.controlAttempts = sensitive.attempts
+            const sgr = sensitive.matched
+            const x = Number(sgr?.[1])
+            const y = Number(sgr?.[2])
+            if (!sgr || x <= 95 || x > 223 || y < 1 || y > 223) {
+              return invalidInteraction(
+                "UTF8 mouse SGR press/release control did not prove a sensitive same-position click after the ordinary click arrived",
+                observed,
+              )
+            }
+            ctx.write("\x1b[?1006l\x1b[?1005h")
+            const enabled = await click()
+            ctx.write("\x1b[?1005l")
+            const reset = await click()
+            ctx.write("\x1b[?1000l")
+            const trackingReset = await click()
+            Object.assign(observed, { enabled, reset, trackingReset })
+            const encoded = (utf8: boolean) => {
+              const coords = utf8
+                ? [...new TextEncoder().encode(String.fromCharCode(x + 32, y + 32))]
+                : [x + 32, y + 32]
+              return [27, 91, 77, 32, ...coords, 27, 91, 77, 35, ...coords, 97]
+            }
+            const same = (actual: number[], expected: number[]) =>
+              actual.length === expected.length && actual.every((byte, i) => byte === expected[i])
+            const expected =
+              "same-position UTF8 bytes only with 1005 set, legacy bytes with it reset, and a key without tracking"
+            if (!same(trackingReset.bytes, [97]) || !same(reset.bytes, encoded(false))) {
+              return invalidInteraction("UTF8 mouse reset coordinate/key or tracking-reset control failed", observed)
+            }
+            if (same(enabled.bytes, encoded(true))) return interactionResult("utf8-mouse-1005", expected, observed)
+            if (same(enabled.bytes, encoded(false))) {
+              return unsupportedInteraction("utf8-mouse-1005", expected, observed)
+            }
             return invalidInteraction(
-              "UTF8 mouse ordinary-position SGR press/release control did not prove coordinates within columns 1 through 95",
+              "UTF8 mouse enabled/reset encoding pair is neither UTF8/legacy nor legacy/legacy",
               observed,
             )
-          }
-          const sensitive = await sgrClickControl({ x: 1300, y: 120 })
-          const control = sensitive.read
-          observed.control = control
-          observed.controlAttempts = sensitive.attempts
-          const sgr = sensitive.matched
-          const x = Number(sgr?.[1])
-          const y = Number(sgr?.[2])
-          if (!sgr || x <= 95 || x > 223 || y < 1 || y > 223) {
-            return invalidInteraction(
-              "UTF8 mouse SGR press/release control did not prove a sensitive same-position click after the ordinary click arrived",
-              observed,
-            )
-          }
-          ctx.write("\x1b[?1006l\x1b[?1005h")
-          const enabled = await click()
-          ctx.write("\x1b[?1005l")
-          const reset = await click()
-          ctx.write("\x1b[?1000l")
-          const trackingReset = await click()
-          Object.assign(observed, { enabled, reset, trackingReset })
-          const encoded = (utf8: boolean) => {
-            const coords = utf8 ? [...new TextEncoder().encode(String.fromCharCode(x + 32, y + 32))] : [x + 32, y + 32]
-            return [27, 91, 77, 32, ...coords, 27, 91, 77, 35, ...coords, 97]
-          }
-          const same = (actual: number[], expected: number[]) =>
-            actual.length === expected.length && actual.every((byte, i) => byte === expected[i])
-          const expected =
-            "same-position UTF8 bytes only with 1005 set, legacy bytes with it reset, and a key without tracking"
-          if (!same(trackingReset.bytes, [97]) || !same(reset.bytes, encoded(false))) {
-            return invalidInteraction("UTF8 mouse reset coordinate/key or tracking-reset control failed", observed)
-          }
-          if (same(enabled.bytes, encoded(true))) return interactionResult("utf8-mouse-1005", expected, observed)
-          if (same(enabled.bytes, encoded(false))) return unsupportedInteraction("utf8-mouse-1005", expected, observed)
-          return invalidInteraction(
-            "UTF8 mouse enabled/reset encoding pair is neither UTF8/legacy nor legacy/legacy",
-            observed,
-          )
-        })
+          })
+        }
       }
     }
   } finally {

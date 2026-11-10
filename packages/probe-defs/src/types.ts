@@ -1144,6 +1144,8 @@ export interface TermProbeSource {
   input?: InputFixture
   /** Read unsolicited stdin. `inject` runs after the stdin listener is attached. */
   readInput?: (pattern: RegExp, timeoutMs?: number, inject?: () => Promise<void>) => Promise<string[] | null>
+  /** Like readInput, but returns the raw bytes. The listener is armed before inject runs. */
+  readInjected?: (pattern: RegExp, timeoutMs: number, inject: () => Promise<void>) => Promise<TerminalQueryOutcome>
   cols: number
   rows: number
 }

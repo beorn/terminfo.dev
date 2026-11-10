@@ -15,6 +15,7 @@ import {
   queryOutcome,
   queryWithSentinel,
   queryWithSentinelOutcome,
+  readInjectedOutcome,
   readResponse,
   withRawMode,
   withTTYOperation,
@@ -455,6 +456,17 @@ describe("TTY transaction replies", () => {
 
   it("captures stdin emitted during inject, which inject-then-listen would drop", async () => {
     expect(await readResponse(/^a/, 50, async () => reply("a"))).toEqual(["a"])
+  })
+
+  // queryOutcome returns before a later inject, so a click during that gap is already gone.
+  // rawBase64 is the contract: a text match decodes legacy byte 0x85 as a replacement character.
+  it("keeps non-UTF8 bytes that arrive during inject", async () => {
+    const outcome = await readInjectedOutcome(/^[\s\S]*a$/, 50, async () => {
+      process.stdin.emit("data", Buffer.from([0x85]))
+      reply("a")
+    })
+    expect(outcome.reason).toBe("reply")
+    expect(outcome.rawBase64).toBe(Buffer.from([0x85, 0x61]).toString("base64"))
   })
 
   it("starts the input reply budget after nested custody verification and releases a refused listener", async () => {

@@ -816,14 +816,12 @@ test(
           if (mutation === "intermediate" && cols === 80) cols = 107
           return mutation === "missing-size" && cols === 107 ? null : pattern.exec(`\x1b[8;24;${measured}t`)
         },
-        queryOutcome: async (_sequence, pattern) => {
+        readInjected: async (pattern, _timeout, inject) => {
           pending = Buffer.alloc(0)
           responsePattern = pattern
-          await new Promise<void>((resolve) => {
-            finish = resolve
-          })
+          await inject()
           const raw = pending.toString()
-          return { raw, rawBase64: pending.toString("base64"), match: pattern.exec(raw), reason: "reply" }
+          return { raw, rawBase64: pending.toString("base64"), match: pattern.exec(raw), reason: "reply" as const }
         },
         input: {
           resizeWindow: async (width: number, _height: number) => {

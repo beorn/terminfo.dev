@@ -42,6 +42,7 @@ import {
   measureUtf8Decoding,
   queryMode,
   readResponse,
+  readInjectedOutcome,
   withTTYOperation,
   withTTYQueryTrace,
   writeTTY,
@@ -115,6 +116,7 @@ export function createTermProbeSource({
     queryWithSentinelOutcome,
     queryMode,
     readInput: (pattern, timeoutMs = 1000, inject) => readResponse(pattern, timeoutMs, inject),
+    readInjected: (pattern, timeoutMs, inject) => readInjectedOutcome(pattern, timeoutMs, inject),
     get cols() {
       return size().cols
     },
