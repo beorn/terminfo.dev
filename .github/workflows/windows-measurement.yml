@@ -318,7 +318,7 @@ jobs:
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
           touch "$OUT/collector-ready"
 
-          for attempt in {1..300}; do
+          for attempt in {1..900}; do
             if [ -f "$OUT/collector-exit" ]; then
               status="$(cat "$OUT/collector-exit" | tr -d '\r\n ')"
               test "$status" = 0 || { echo "$APP_ID collector failed ($status); see collector.log artifact" >&2; exit 1; }
@@ -327,7 +327,7 @@ jobs:
             fi
             sleep 1
           done
-          echo "$APP_ID collector did not finish within 300 seconds; see launcher/collector artifacts" >&2
+          echo "$APP_ID collector did not finish within 900 seconds; see launcher/collector artifacts" >&2
           exit 1
 
       - name: Upload the receipt beside the exact collected run
