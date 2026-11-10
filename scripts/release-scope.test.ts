@@ -653,7 +653,8 @@ describe("probe method classification", () => {
       expect(counts).toEqual({ internal: 1067, output: 1712, visual: 477, "end-to-end": 100, source: 0 })
     }))
 
-  it("maps the growing live corpus without promoting a source answer", () => {
+  // Walks the whole committed corpus, which grows with every run; 5 s default was 4 s on CI by Nov 10 (33133).
+  it("maps the growing live corpus without promoting a source answer", { timeout: 30_000 }, () => {
     const runs = loadStoredRuns(contentDir, Object.keys(catalog).sort())
     let sourceMethods = 0
     for (const run of runs) {

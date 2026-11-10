@@ -165,14 +165,17 @@ test("mux attribution preserves positives and non-mux negatives", async () => {
   expect(finalizeVisualResult(negative.recorded, { kind: "lib" }, [])).toEqual(negative.recorded)
 })
 
-test("a multiplexer does not publish the single-underline negative from the attribute arm", async () => {
-  const { callback, recorded } = await measure("sgr.underline.curly", "single", true, "tmux")
-  expect(callback.criterionBranch).toBe("visual-review")
-  expect(callback.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo" })
-  expect(callback.observation?.outcome).toBe("inconclusive")
-  expect(callback.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
-  expect(callback.tests?.some((test) => test.status === "unsupported")).toBe(false)
-  expect(recorded.status).toBe("probe-todo")
+// 33118: a callback-level demotion skipped the outer command read, so Screen's dashed and dotted rows
+// lost "screen did not forward SGR 4:5" and reopened. The negative must reach the collector's outer read
+// on the same-run branch, and still stay open when no outer record exists (@cto 429f006d c).
+test("a multiplexer single-underline negative reaches the outer command read and stays open without it", async () => {
+  const { callback, recorded, frames } = await measure("sgr.underline.curly", "single", true, "screen")
+  expect(callback.criterionBranch).toBe("sgr-attribute-same-run")
+  expect(callback.tests?.[0]).toMatchObject({ id: "attribute", status: "unsupported" })
+  expect(callback.note).toContain("drawn as single underline")
+  const open = finalizeVisualResult(recorded, { kind: "mux", outerTerminal: "kitty" }, frames)
+  expect(open.status).toBe("probe-todo")
+  expect(open.reason).toContain("cannot separate the multiplexer from its outer terminal")
 })
 
 // A late stdout flush from a previous invocation cannot qualify this one's command read.
