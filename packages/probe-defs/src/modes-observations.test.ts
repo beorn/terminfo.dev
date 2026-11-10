@@ -791,6 +791,7 @@ test(
       "missing-size",
       "dropped-first-click",
       "clears-sgr-on-1016-reset",
+      "clears-tracking-on-1002-reset",
     ] as const) {
       const modes = new Set<number>()
       let cols = 61
@@ -806,6 +807,11 @@ test(
             if (match[2] === "h") modes.add(Number(match[1]))
             else modes.delete(Number(match[1]))
           }
+          // Ghostty, xterm and kitty (measured 2026-11-10, see utf8Mouse1005) clear mouse
+          // tracking outright when 1002/1003 are reset, not only their motion arm: a click
+          // after those resets reports nothing until 1000 is set again. Without this case the
+          // fake kept 1000 on and the missing re-assert could not fail a single test.
+          if (mutation === "clears-tracking-on-1002-reset" && /\x1b\[\?(1002|1003)l/.test(bytes)) modes.delete(1000)
           // WezTerm 2026-11-09: resetting a sibling encoding mode left SGR off and the
           // control click arrived in legacy X10 form even though 1006 had been set.
           if (mutation === "clears-sgr-on-1016-reset" && bytes.includes("\x1b[?1016l")) sgrDropped = true
@@ -875,7 +881,8 @@ test(
         mutation === "intermediate" ||
         mutation === "legacy" ||
         mutation === "dropped-first-click" ||
-        mutation === "clears-sgr-on-1016-reset"
+        mutation === "clears-sgr-on-1016-reset" ||
+        mutation === "clears-tracking-on-1002-reset"
       ) {
         expect(result.observation?.outcome, mutation).toBe(mutation === "legacy" ? "unsupported" : "supported")
         if (mutation === "dropped-first-click") {
