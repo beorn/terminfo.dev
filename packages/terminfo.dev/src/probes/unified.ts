@@ -292,6 +292,8 @@ export async function runProbeBatch(
   options: {
     ids?: string[]
     capture?: ProbeCapture
+    /** The pixel adapter's fixed wait before it reads the screen, when it declares one (#33032). */
+    captureSettleMs?: number
     /** What the installed adapter reads; a text adapter is honest even where pixel geometry was
      * refused, so it is installed regardless of `captureGeometryRefusal`. */
     captureKind?: "pixels" | "text-cells"
@@ -814,6 +816,9 @@ export async function runProbeBatch(
       }
     }
     const capture = options.capture
+    // A run-level fact, set for every row whether or not this row gets the adapter: a row may state
+    // what no capture in this run can see (#33032).
+    if (options.captureSettleMs !== undefined) probeSource.captureSettleMs = options.captureSettleMs
     // A text run hands its adapter to the region readback alone: it is the one consumer whose
     // verdict is about cells. Every other probe reads pixels, so it gets no adapter here and takes
     // its own named no-capture branch — an error row where a named refusal belongs is exactly what

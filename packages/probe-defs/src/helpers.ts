@@ -1767,6 +1767,15 @@ export function cursorProbe(
   }
 }
 
+/** A reset DECRPM reply after DECSET 2026, with no capture fact to measure the effect against. */
+export const SYNC_OUTPUT_RESET_UNMEASURED =
+  "synchronized-output set-state control unobservable: DECRPM reset reply after DECSET cannot establish enabled update; rendered effect unmeasured"
+
+/** The same reply where the run's capture declares its fixed wait: the effect is out of this collector's reach. */
+export function syncOutputCaptureTooSlow(settleMs: number): string {
+  return `synchronized-output set-state control unobservable: a DECRPM reset reply after DECSET is not a refusal, and the rendered effect cannot be read in this run: the capture waits at least ${settleMs} ms before it reads the screen, so an update held for a shorter time cannot be seen`
+}
+
 /**
  * DECRPM mode probe. Responsiveness after enabling a mode does not prove that mode,
  * and blindly disabling it could change a mode the user already had enabled.
@@ -1804,8 +1813,13 @@ export function decrpmModeProbe(
         }
       }
       if (modeNum === 2026 && snapshot === 2 && ps === 2) {
+        // A reset reply after DECSET is not a refusal: a terminal may treat synchronized output as a
+        // render directive with no stored state. Where this run's capture declares its fixed wait, the
+        // reason states from that number why the effect cannot be read here (@cto e9641d54, #33032).
         const reason =
-          "synchronized-output set-state control unobservable: DECRPM reset reply after DECSET cannot establish enabled update; rendered effect unmeasured"
+          ctx.captureSettleMs === undefined
+            ? SYNC_OUTPUT_RESET_UNMEASURED
+            : syncOutputCaptureTooSlow(ctx.captureSettleMs)
         return {
           pass: false,
           response,

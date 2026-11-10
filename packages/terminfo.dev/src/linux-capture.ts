@@ -131,6 +131,13 @@ export function kittyAncestor(executable: LiveExecutable): number {
 }
 
 /** Optional Linux adapter. Once configured, every ownership/capture failure is loud. */
+/**
+ * The fixed wait before every Linux capture reads the screen (static-frame settling). Exported so a
+ * probe can state what this collector cannot see: an update held for less than this is never read
+ * (#33032, @cto e9641d54).
+ */
+export const LINUX_CAPTURE_SETTLE_MS = 150
+
 export async function createLinuxCapture(
   directory: string,
   executable: LiveExecutable,
@@ -217,7 +224,7 @@ export async function createLinuxCapture(
     }
     // Static-frame settling is recorded; callbacks own any temporal schedule.
     await new Promise<void>((resolve) => {
-      setTimeout(resolve, 150)
+      setTimeout(resolve, LINUX_CAPTURE_SETTLE_MS)
     })
     await assertOwned(deadline)
     const before = (
@@ -307,5 +314,5 @@ export async function createLinuxCapture(
     })
     return { decoded, result }
   }
-  return { capture, captureRaw, declareWindowSize }
+  return { capture, captureRaw, declareWindowSize, settleMs: LINUX_CAPTURE_SETTLE_MS }
 }

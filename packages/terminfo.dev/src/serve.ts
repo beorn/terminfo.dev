@@ -579,6 +579,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       throw new Error("Controlled Linux collection lacks measured executable")
     }
     let capture: ProbeCapture | undefined
+    /** The installed pixel capture's fixed settle wait, when its adapter declares one. */
+    let captureSettleMs: number | undefined
     /** Set when `capture` above reads the terminal's own text rather than pixels. */
     let textCapture = false
     let textQualification: TextQualification | undefined
@@ -831,6 +833,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       if (!executable) throw new Error("Configured Linux capture lacks measured executable")
       const linuxCapture = await createLinuxCapture(captureDirectory, executable, onRetained)
       installPixelCapture(linuxCapture)
+      captureSettleMs = linuxCapture.settleMs
       input = await createLinuxInput(executable, { onResizeWindow: linuxCapture.declareWindowSize })
     } else if (provenancePath) {
       // A controlled Linux run with no capture directory cannot make a frame, so a probe that needs
@@ -1054,6 +1057,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                         sessionBus,
                       ),
                 ...(capture && { capture }),
+                ...(capture && !textCapture && captureSettleMs !== undefined && { captureSettleMs }),
                 ...(textCapture && { captureKind: "text-cells" as const }),
                 ...(input && { input }),
                 ...(ownedTerminal && { ownedTerminal }),

@@ -1207,6 +1207,12 @@ export interface TermProbeSource {
   ) => Promise<ProbeCallbackResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: CaptureRequest) => Promise<ObservationFrame>
+  /**
+   * The run's pixel capture waits this many ms before it reads the screen (the collector's own number,
+   * #33032). Set for every row of a run whose adapter declares a fixed wait, whether or not the row
+   * itself is handed the adapter; absent where the adapter declares none.
+   */
+  captureSettleMs?: number
   /** The terminal's OWN CELLS, on a text arm. Separate from `capture` because only the region
    * readback can decide a row from cells: every other consumer reads pixels, so a text run hands it
    * no adapter and the consumer takes its own named no-capture branch. */

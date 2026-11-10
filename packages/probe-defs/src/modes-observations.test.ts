@@ -7,7 +7,13 @@
 import { expect, test, vi } from "vitest"
 import { createHash } from "node:crypto"
 import { parseRun } from "@terminfo/run-parser"
-import { isDeclaredUntestable, NO_SAME_PATH_CONTROL, recordExecutedProbe } from "./helpers.ts"
+import {
+  isDeclaredUntestable,
+  NO_SAME_PATH_CONTROL,
+  recordExecutedProbe,
+  SYNC_OUTPUT_RESET_UNMEASURED,
+  syncOutputCaptureTooSlow,
+} from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import { libProbeSource, replayTermProbeSource, type StoredQuery } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
@@ -1073,6 +1079,41 @@ test.each([
   }
   expect(definition.termWrites).toBeUndefined()
   expect(definition.termNeedsDisposable).toBe(true)
+})
+
+/**
+ * @failure Alacritty answers DECRPM 2026 with a literal reset and flushes a held update after its own
+ *   150 ms timeout, while the Linux capture always waits 150 ms before it reads the screen: the row
+ *   repeats probe-invalid with a reason that names no measured cause (#33032). Where the run's
+ *   capture declares its fixed wait, the reason states from that number why the effect cannot be
+ *   read and that the reset reply is not a refusal; the reader names no terminal (@cto e9641d54).
+ * @level l1
+ * @consumer modes.synchronized-output App callback on runs with and without a declared capture wait.
+ * @testonly none
+ */
+test("a reset reply after DECSET 2026 names the capture wait when the run declares one", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.synchronized-output")!
+  const reasonFor = async (settleMs: number | undefined) => {
+    const context = captureSource(24, 80, [], [])
+    const replies = [2, 2]
+    context.write = () => {}
+    context.queryWithSentinel = async (_sequence, pattern) => pattern.exec(`\x1b[?2026;${replies.shift()}$y`)
+    context.queryWithSentinelOutcome = async (sequence, pattern) => {
+      const match = await context.queryWithSentinel(sequence, pattern)
+      return { match, reason: match ? "reply" : "timeout", raw: match?.[0] ?? "", rawBase64: "" }
+    }
+    if (settleMs === undefined) delete context.captureSettleMs
+    else context.captureSettleMs = settleMs
+    const result = await definition.term!(context)
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toHaveLength(1)
+    expect(result.tests?.[0]?.status).toBe("probe-invalid")
+    return result.tests?.[0]?.reason
+  }
+  expect(await reasonFor(150)).toBe(syncOutputCaptureTooSlow(150))
+  expect(await reasonFor(150)).toContain("is not a refusal")
+  expect(await reasonFor(150)).toContain("waits at least 150 ms before it reads the screen")
+  expect(await reasonFor(undefined)).toBe(SYNC_OUTPUT_RESET_UNMEASURED)
 })
 
 // Ask 3: size replies or an owned width frame decide silent/Ps0 DECCOLM.
