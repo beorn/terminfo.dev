@@ -187,11 +187,24 @@ function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selecte
   const requested = ids ? resolved.probes.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)) : resolved.probes
   return {
     expected,
-    selected: [
-      ...requested.filter((probe) => !probe.id.startsWith("extensions.osc52-")),
-      ...requested.filter((probe) => probe.id.startsWith("extensions.osc52-")),
-    ],
+    selected: scheduleAppProbes(requested),
   }
+}
+
+/**
+ * OSC 52 stays after the other probes so a clipboard write does not disturb them. DECRQCRA is
+ * last: on iTerm2 it raises a consent banner that covers every later pixel probe (#31741).
+ */
+export function scheduleAppProbes<T extends { readonly id: string }>(requested: readonly T[]): T[] {
+  const body: T[] = []
+  const clipboard: T[] = []
+  const consent: T[] = []
+  for (const probe of requested) {
+    if (probe.id === "editing.decrqcra") consent.push(probe)
+    else if (probe.id.startsWith("extensions.osc52-")) clipboard.push(probe)
+    else body.push(probe)
+  }
+  return [...body, ...clipboard, ...consent]
 }
 
 /**
