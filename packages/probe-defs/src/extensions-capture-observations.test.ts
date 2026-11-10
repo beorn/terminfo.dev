@@ -103,7 +103,7 @@ function calibratedIterm2Arm(
         if (bytes.includes("\x1b]7110") && options.colour.unknownApplies) defaultColour = "wrong"
         if (/\x1b\](?:4;0|10);rgb:12\/34\/56/.test(bytes) && options.colour.applies) defaultColour = "requested"
         if (bytes.includes("\x1b[3;2HXX")) plane = defaultColour
-        if (bytes.includes("\x1b[38;2;18;52;86mXX")) plane = "requested"
+        if (bytes.includes("\x1b[38;5;12mXX")) plane = "requested"
       }
       if (/^\x1b\[1;1H.$/.test(bytes)) glyph = bytes.slice(-1)
     },
