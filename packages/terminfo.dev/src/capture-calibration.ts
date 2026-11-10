@@ -637,6 +637,10 @@ export async function calibrateCaptureOrigin({
     const witnessKey = [...colorsByCount].sort((a, b) => b[1] - a[1])[0]?.[0]
     if (!witnessKey) throw refusal("Capture calibration solid grid: no changed pixels")
     const witness = witnessKey.split(",").map(Number)
+    const [red, green, blue] = witness
+    if (red === undefined || green === undefined || blue === undefined) {
+      throw new Error(`Capture calibration solid grid colour ${witnessKey} is not one RGB colour`)
+    }
     for (let offset = 0; offset < before.rgba.length; offset += 4) {
       if (rgbAt(before, offset, witness)) {
         throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
@@ -798,7 +802,7 @@ export async function calibrateCaptureOrigin({
     result = {
       origin: { x: authored.x, y: authored.y },
       pixelGeometry: measured,
-      sentinel: { form, rgb: [witness[0]!, witness[1]!, witness[2]!] },
+      sentinel: { form, rgb: [red, green, blue] },
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
       basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")}); current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }
