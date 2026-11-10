@@ -93,6 +93,20 @@ export function collectionIds(raw: string, contentDir: string): string[] {
   return Object.keys(loadFeatures(contentDir)).sort()
 }
 
+/** Finished rows have tests. The in-progress row has an attempt and no tests. */
+export function rowsFromDraft(draft: unknown): { finished: unknown[]; startedId?: string } {
+  if (!isRecord(draft) || !Array.isArray(draft.results)) return { finished: [] }
+  const finished: unknown[] = []
+  let startedId: string | undefined
+  for (const row of draft.results) {
+    if (!isRecord(row) || typeof row.featureId !== "string") continue
+    const tests = Array.isArray(row.tests) ? row.tests : []
+    if (tests.length > 0) finished.push(row)
+    else if (row.attempt !== undefined) startedId = row.featureId
+  }
+  return { finished, startedId }
+}
+
 export function readExistingRun(path: string): unknown {
   try {
     return JSON.parse(readFileSync(path, "utf8"))
@@ -102,16 +116,20 @@ export function readExistingRun(path: string): unknown {
 }
 
 if (import.meta.main) {
-  const [path, rawIds, duration, logPath] = process.argv.slice(2)
+  const [path, rawIds, duration, draftPath, logPath] = process.argv.slice(2)
   if (path === undefined || rawIds === undefined || duration === undefined) {
-    throw new Error("usage: flush-expired-collection.ts <run.json> <probe-ids-json|null> <duration-ms> [collector.log]")
+    throw new Error(
+      "usage: flush-expired-collection.ts <run.json> <probe-ids-json|null> <duration-ms> [draft.json] [collector.log]",
+    )
   }
   const ids = collectionIds(rawIds, join(process.cwd(), "content"))
-  const log = logPath === undefined ? "" : readFileSync(logPath, "utf8")
+  const draft = draftPath === undefined || draftPath === "" ? undefined : readExistingRun(draftPath)
+  const fromDraft = rowsFromDraft(draft)
+  const log = logPath === undefined || logPath === "" ? "" : readFileSync(logPath, "utf8")
   const run = expiredCollectionRun({
     ids,
-    existing: readExistingRun(path),
-    startedId: startedIdFromLog(log, ids),
+    existing: { ...(isRecord(readExistingRun(path)) ? readExistingRun(path) : {}), results: fromDraft.finished },
+    startedId: fromDraft.startedId ?? startedIdFromLog(log, ids),
     collectorDurationMs: Number(duration),
   })
   writeFileSync(path, `${JSON.stringify(run, null, 2)}\n`)

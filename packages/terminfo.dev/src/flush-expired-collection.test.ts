@@ -8,6 +8,7 @@ import {
   COLLECTOR_FLUSH_MARGIN_S,
   collectorPollSeconds,
   collectionIds,
+  rowsFromDraft,
   startedIdFromLog,
   writeExpiredCollection,
 } from "./flush-expired-collection.ts"
@@ -30,6 +31,11 @@ test("a collector that outlives the poll leaves a run the parser accepts", () =>
   expect(collectionIds("null", join(dirname(fileURLToPath(import.meta.url)), "../../../content")).length).toBeGreaterThan(0)
   const ids = ["modes.cursor.shape", "charsets.dec-line-drawing", "editing.decrqcra"]
   expect(startedIdFromLog("start charsets.dec-line-drawing\nthen editing.decrqcra", ids)).toBe("editing.decrqcra")
+  expect(
+    rowsFromDraft({
+      results: [finished, { featureId: "charsets.dec-line-drawing", attempt: { scope: "probe" }, tests: [] }],
+    }).startedId,
+  ).toBe("charsets.dec-line-drawing")
   const dir = mkdtempSync(join(tmpdir(), "flush-33048-"))
   roots.push(dir)
   const path = join(dir, "run.json")

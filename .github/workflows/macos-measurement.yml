@@ -635,7 +635,8 @@ jobs:
             kill -TERM "$(cat "$OUT/collector.pid")" 2>/dev/null || true
           fi
           duration_ms=$(( ($(date +%s) - COLLECT_EPOCH) * 1000 ))
-          bun "$GITHUB_WORKSPACE/packages/terminfo.dev/src/flush-expired-collection.ts" "$OUT/run.json" "$PROBE_IDS" "$duration_ms" "$OUT/collector.log" || {
+          draft="$(find "$OUT/artifacts" -name '*.draft.json' -print -quit 2>/dev/null || true)"
+          bun "$GITHUB_WORKSPACE/packages/terminfo.dev/src/flush-expired-collection.ts" "$OUT/run.json" "$PROBE_IDS" "$duration_ms" "$draft" "$OUT/collector.log" || {
             echo "$APP_ID collector poll ended and run.json was not written" >&2
             exit 1
           }
