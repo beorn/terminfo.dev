@@ -620,7 +620,10 @@ describe("in-run pixel probe results", () => {
     frames[2]!.located = { box: { x: 17, y: 126, width: 8, height: 16 }, pixels: 128 }
     frames[3]!.located = null
     const loaded = parse(run)
-    expect(loaded.results![0]?.frames?.[2]?.located).toEqual({ box: { x: 17, y: 126, width: 8, height: 16 }, pixels: 128 })
+    expect(loaded.results![0]?.frames?.[2]?.located).toEqual({
+      box: { x: 17, y: 126, width: 8, height: 16 },
+      pixels: 128,
+    })
     // null is an answer (the colour is absent), kept distinct from a frame that carries no answer.
     expect(loaded.results![0]?.frames?.[3]?.located).toBeNull()
     expect(loaded.results![0]?.frames?.[1]).not.toHaveProperty("located")
@@ -632,7 +635,9 @@ describe("in-run pixel probe results", () => {
       "here",
     ]) {
       const broken = kittyRun()
-      const brokenFrames = (broken.results as Array<Record<string, unknown>>)[0]!.frames as Array<Record<string, unknown>>
+      const brokenFrames = (broken.results as Array<Record<string, unknown>>)[0]!.frames as Array<
+        Record<string, unknown>
+      >
       brokenFrames[2]!.located = located
       expect(() => parse(broken)).toThrow(/invalid frame located/)
     }

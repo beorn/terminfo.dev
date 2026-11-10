@@ -55,7 +55,9 @@ function calibratedSource(located: Located) {
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     async queryWithSentinelOutcome(sequence) {
-      if (sequence === "\x1b[16t") return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply", raw: "", rawBase64: "" }
+      if (sequence === "\x1b[16t") {
+        return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply", raw: "", rawBase64: "" }
+      }
       if (sequence === "\x1b[14t") {
         return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
       }
@@ -123,7 +125,11 @@ test("on a window that did not move, the same-cells sentence is today's, unchang
 })
 
 test.each<[string, Located, string]>([
-  ["the sentinel is nowhere in the window", null, "probe text not in view: calibration's sentinel painted at cell 3,1 is nowhere in the window"],
+  [
+    "the sentinel is nowhere in the window",
+    null,
+    "probe text not in view: calibration's sentinel painted at cell 3,1 is nowhere in the window",
+  ],
   [
     "the colour is scattered, not one cell block",
     { box: { x: 17, y: 78, width: 8, height: 96 }, pixels: 128 },
@@ -134,14 +140,22 @@ test.each<[string, Located, string]>([
     { box: { x: 17, y: 158, width: 16, height: 16 }, pixels: 256 },
     "sentinel found but not as one cell block: 256 px in a 16x16 box at 17,158",
   ],
-  ["the arm returned no located field", "omitted", "layout check unanswered: the capture arm returned no located field"],
-])("%s: its own reason, never an offset guess", async (_name, located, clause) => {
-  const { result, note } = await sameCellsNote(located)
-  expect(result.observation?.outcome).toBe("inconclusive")
-  expect(note).toContain(clause)
-  expect(note).not.toContain("window layout moved")
-  // An absent sentinel waits out the probe's own paint timeout before it says so.
-}, 20_000)
+  [
+    "the arm returned no located field",
+    "omitted",
+    "layout check unanswered: the capture arm returned no located field",
+  ],
+])(
+  "%s: its own reason, never an offset guess",
+  async (_name, located, clause) => {
+    const { result, note } = await sameCellsNote(located)
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(note).toContain(clause)
+    expect(note).not.toContain("window layout moved")
+    // An absent sentinel waits out the probe's own paint timeout before it says so.
+  },
+  20_000,
+)
 
 test("a run whose calibration recorded no sentinel runs no check and writes nothing for it", async () => {
   const writes: string[] = []
@@ -193,13 +207,18 @@ test("a witness timeout while the frame moved takes the layout clause in place o
     timeoutMs: 20,
     pollMs: 1,
   }
-  const moved = await awaitPaintWitness({ ...options, layout: async () => "window layout moved since calibration: fixture" })
+  const moved = await awaitPaintWitness({
+    ...options,
+    layout: async () => "window layout moved since calibration: fixture",
+  })
   expect("witness" in moved).toBe(false)
   expect(String((moved as { observation?: { note?: string } }).observation?.note)).toMatch(
     /witness cell 3,1 unchanged for 20 ms after .* while the frame changed; window layout moved since calibration: fixture$/,
   )
   const unchecked = await awaitPaintWitness(options)
-  expect(String((unchecked as { observation?: { note?: string } }).observation?.note)).toMatch(/; cause not determined$/)
+  expect(String((unchecked as { observation?: { note?: string } }).observation?.note)).toMatch(
+    /; cause not determined$/,
+  )
 })
 
 test("the layout check never runs when the frame stood still or on a roundtrip return", async () => {

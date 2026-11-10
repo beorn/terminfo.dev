@@ -121,7 +121,15 @@ test("locate answers the bounding box and count of one exact colour, or null whe
   ])
   expect(locateColour(block, [255, 136, 255])).toEqual({ box: { x: 2, y: 1, width: 2, height: 2 }, pixels: 4 })
   // Two separate pixels: the box spans both and the count says the box is not solid.
-  expect(locateColour(paintedFrame([[0, 0], [5, 3]]), [255, 136, 255])).toEqual({
+  expect(
+    locateColour(
+      paintedFrame([
+        [0, 0],
+        [5, 3],
+      ]),
+      [255, 136, 255],
+    ),
+  ).toEqual({
     box: { x: 0, y: 0, width: 6, height: 4 },
     pixels: 2,
   })

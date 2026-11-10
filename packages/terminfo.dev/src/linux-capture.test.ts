@@ -366,22 +366,25 @@ test.runIf(process.platform === "linux")(
 )
 
 // The installed Linux arm, not a fake: its raw path carries the locate request to the finalizer (33000).
-test.runIf(process.platform === "linux")("the Linux capture installer answers a locate request from its decoded frame", async () => {
-  const { directory, release } = fixture()
-  writeFileSync(release, "continue")
-  // The stub converter paints the top chrome rows RGB 1,1,1 and the rest black.
-  process.env.TEST_CAPTURE_CHROME_ROWS = "3"
-  const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
-  const checkpoint = { featureId: "fixture", role: "control" as const, label: "layout check" }
-  const found = await captureRaw({ ...checkpoint, locate: { rgb: [1, 1, 1] } })
-  const width = found.decoded.width
-  expect(found.result.frame.located).toEqual({ box: { x: 0, y: 0, width, height: 3 }, pixels: width * 3 })
-  const absent = await captureRaw({ ...checkpoint, locate: { rgb: [9, 9, 9] } })
-  expect(absent.result.frame.located).toBeNull()
-  const plain = await captureRaw(checkpoint)
-  expect(plain.result.frame).not.toHaveProperty("located")
-  expect(plain.result.trace).not.toHaveProperty("locate")
-})
+test.runIf(process.platform === "linux")(
+  "the Linux capture installer answers a locate request from its decoded frame",
+  async () => {
+    const { directory, release } = fixture()
+    writeFileSync(release, "continue")
+    // The stub converter paints the top chrome rows RGB 1,1,1 and the rest black.
+    process.env.TEST_CAPTURE_CHROME_ROWS = "3"
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
+    const checkpoint = { featureId: "fixture", role: "control" as const, label: "layout check" }
+    const found = await captureRaw({ ...checkpoint, locate: { rgb: [1, 1, 1] } })
+    const width = found.decoded.width
+    expect(found.result.frame.located).toEqual({ box: { x: 0, y: 0, width, height: 3 }, pixels: width * 3 })
+    const absent = await captureRaw({ ...checkpoint, locate: { rgb: [9, 9, 9] } })
+    expect(absent.result.frame.located).toBeNull()
+    const plain = await captureRaw(checkpoint)
+    expect(plain.result.frame).not.toHaveProperty("located")
+    expect(plain.result.trace).not.toHaveProperty("locate")
+  },
+)
 
 // The existing XWD fixtures cannot prove that an OSC22 frame contains the X pointer.
 test.runIf(process.platform === "linux")("OSC22 captures pointer PNG through the same owned window", async () => {
