@@ -412,7 +412,15 @@ interface Screen {
 }
 
 function blankCell(): Cell {
-  return { char: " ", fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false, strike: false }
+  return {
+    char: " ",
+    fg: "default",
+    bg: "default",
+    underlineColour: "default",
+    underline: false,
+    blink: false,
+    strike: false,
+  }
 }
 
 function blankScreen(): Screen {
@@ -443,7 +451,14 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
         screen.col = Math.max(0, (params[1] ?? 1) - 1)
       } else if (final === "J" && (params[0] ?? 0) === 2) {
         for (const row of screen.grid) row.fill(blankCell())
-        screen.ink = { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false, strike: false }
+        screen.ink = {
+          fg: "default",
+          bg: "default",
+          underlineColour: "default",
+          underline: false,
+          blink: false,
+          strike: false,
+        }
         screen.row = 0
         screen.col = 0
       } else if (final === "m") {

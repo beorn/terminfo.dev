@@ -207,7 +207,10 @@ export function colourCaptureCallbackResult(
   // text. The walked negative is the same kind: the expected frame equals the frame that sets the
   // walked attribute on purpose, which differs from the seed. Neither is one of the oracle's untouched
   // negatives, so the downgrade below does not apply.
-  if (verdict.criterionBranch === "colour-no-attribute-witness" || verdict.criterionBranch === "colour-walked-parameters") {
+  if (
+    verdict.criterionBranch === "colour-no-attribute-witness" ||
+    verdict.criterionBranch === "colour-walked-parameters"
+  ) {
     // A multiplexer has no outer control in this arm, so the same frames cannot single out whether
     // the mux or its outer terminal dropped the sequence (@cto 4ed6bddf). Keep it undecided until an
     // outer control exists rather than blaming the mux on evidence that does not name it.
