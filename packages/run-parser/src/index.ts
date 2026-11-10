@@ -821,6 +821,7 @@ export function parseProbeResults(
         "screenshotRef",
         "host",
         "assertionType",
+        "harnessOutcome",
       ],
       path,
       `${featureId} result`,
