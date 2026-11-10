@@ -184,14 +184,22 @@ export function colourCaptureCallbackResult(
     // the mux or its outer terminal dropped the sequence (@cto 4ed6bddf). Keep it undecided until an
     // outer control exists rather than blaming the mux on evidence that does not name it.
     if (options?.mux === undefined) return verdict
+    // The collector grades from tests, not from observation. Spreading the witness verdict
+    // would keep `tests: [{ status: "unsupported" }]` and publish a negative whose reason
+    // says the frames cannot separate the mux from its outer terminal. This is the same
+    // shape as review(inconclusive(...)): probe-todo, and the observation stays inconclusive.
+    const note = `${observation.note}; this capture through multiplexer ${options.mux} cannot separate it from its outer terminal, and this run has no outer control for the sequence`
     return {
-      ...verdict,
+      pass: false,
+      criterionBranch: "visual-review",
+      tests: [{ id: "review", status: "probe-todo", reason: note }],
       observation: {
         ...observation,
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        note: `${observation.note}; this capture through multiplexer ${options.mux} cannot separate it from its outer terminal, and this run has no outer control for the sequence`,
+        note,
       },
+      ...(verdict.response === undefined ? {} : { response: verdict.response }),
     }
   }
   if (observation.outcome === "unsupported") {

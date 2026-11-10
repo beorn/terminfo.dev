@@ -831,6 +831,8 @@ test("a multiplexer stays inconclusive on the witness negative and says why", as
   expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
   expect(result.pass).toBe(false)
+  expect(result.tests?.some((test) => test.status === "unsupported")).toBe(false)
+  expect(result.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo" })
 })
 
 for (const id of REVIEW_IDS) {
