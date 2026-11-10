@@ -126,9 +126,11 @@ if (import.meta.main) {
   const draft = draftPath === undefined || draftPath === "" ? undefined : readExistingRun(draftPath)
   const fromDraft = rowsFromDraft(draft)
   const log = logPath === undefined || logPath === "" ? "" : readFileSync(logPath, "utf8")
+  const prior = readExistingRun(path)
+  const base = isRecord(prior) ? prior : {}
   const run = expiredCollectionRun({
     ids,
-    existing: { ...(isRecord(readExistingRun(path)) ? readExistingRun(path) : {}), results: fromDraft.finished },
+    existing: { ...base, results: fromDraft.finished },
     startedId: fromDraft.startedId ?? startedIdFromLog(log, ids),
     collectorDurationMs: Number(duration),
   })
