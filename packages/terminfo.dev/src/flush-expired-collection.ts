@@ -1,4 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { loadFeatures } from "@terminfo/catalog"
 
 /** Time left after the poll so the job can stop the collector and write run.json before timeout-minutes ends. */
 export const COLLECTOR_FLUSH_MARGIN_S = 180
@@ -7,7 +9,11 @@ export type ExpiredHarness = "killed-mid-probe" | "never-started"
 
 export interface ExpiredCollectionRow {
   featureId: string
-  harness: ExpiredHarness
+  status: "probe-todo"
+  reason: string
+  harnessOutcome: ExpiredHarness
+  attempt: { scope: "none" }
+  tests: [{ id: "criterion"; status: "probe-todo"; reason: string; attempt: { scope: "none" } }]
 }
 
 /**
@@ -18,55 +24,115 @@ export function collectorPollSeconds(jobLimitS: number, elapsedS: number, margin
   return Math.max(1, jobLimitS - marginS - elapsedS)
 }
 
-/** A run the collector did not finish. Finished ids stay out. One started id is killed; the rest never started. */
-export function expiredCollectionRun(args: {
-  ids: readonly string[]
-  finishedIds?: readonly string[]
-  startedId?: string
-  collectorDurationMs: number
-}): { suiteComplete: false; collectorDurationMs: number; results: ExpiredCollectionRow[] } {
-  const finished = new Set(args.finishedIds ?? [])
-  const results: ExpiredCollectionRow[] = []
-  for (const featureId of args.ids) {
-    if (finished.has(featureId)) continue
-    results.push({
-      featureId,
-      harness: featureId === args.startedId ? "killed-mid-probe" : "never-started",
-    })
+/** The last listed id that appears in the collector log is the one the poll interrupted. */
+export function startedIdFromLog(log: string, ids: readonly string[]): string | undefined {
+  let started: string | undefined
+  let at = -1
+  for (const id of ids) {
+    const index = log.lastIndexOf(id)
+    if (index > at) {
+      at = index
+      started = id
+    }
   }
-  return { suiteComplete: false, collectorDurationMs: args.collectorDurationMs, results }
+  return started
 }
 
-export function writeExpiredCollection(
-  path: string,
-  args: Parameters<typeof expiredCollectionRun>[0],
-): void {
+function unfinishedRow(featureId: string, harnessOutcome: ExpiredHarness): ExpiredCollectionRow {
+  const reason = harnessOutcome === "killed-mid-probe" ? "killed mid-probe" : "never started"
+  return {
+    featureId,
+    status: "probe-todo",
+    reason,
+    harnessOutcome,
+    attempt: { scope: "none" },
+    tests: [{ id: "criterion", status: "probe-todo", reason, attempt: { scope: "none" } }],
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+/** Keep results the collector already wrote. Add each unfinished id as its own harness outcome. */
+export function expiredCollectionRun(args: {
+  ids: readonly string[]
+  existing?: unknown
+  startedId?: string
+  collectorDurationMs: number
+}): { suiteComplete: false; collectorDurationMs: number; results: unknown[] } {
+  const existing = isRecord(args.existing) ? args.existing : {}
+  const prior = Array.isArray(existing.results) ? existing.results : []
+  const finished = new Set(
+    prior.flatMap((row) => (isRecord(row) && typeof row.featureId === "string" ? [row.featureId] : [])),
+  )
+  const added = args.ids
+    .filter((featureId) => !finished.has(featureId))
+    .map((featureId) => unfinishedRow(featureId, featureId === args.startedId ? "killed-mid-probe" : "never-started"))
+  return {
+    ...existing,
+    suiteComplete: false,
+    collectorDurationMs: args.collectorDurationMs,
+    results: [...prior, ...added],
+  }
+}
+
+export function writeExpiredCollection(path: string, args: Parameters<typeof expiredCollectionRun>[0]): void {
   writeFileSync(path, `${JSON.stringify(expiredCollectionRun(args), null, 2)}\n`)
 }
 
-export function readFinishedIds(runPath: string): string[] {
+/** A full-suite launch passes the string `null`. The catalogue is the list, not that argument. */
+export function collectionIds(raw: string, contentDir: string): string[] {
+  if (raw !== "null" && raw !== "") {
+    const ids = JSON.parse(raw) as unknown
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
+      throw new Error("probe ids must be a JSON array of strings")
+    }
+    return ids
+  }
+  return Object.keys(loadFeatures(contentDir)).sort()
+}
+
+/** Finished rows have tests. The in-progress row has an attempt and no tests. */
+export function rowsFromDraft(draft: unknown): { finished: unknown[]; startedId?: string } {
+  if (!isRecord(draft) || !Array.isArray(draft.results)) return { finished: [] }
+  const finished: unknown[] = []
+  let startedId: string | undefined
+  for (const row of draft.results) {
+    if (!isRecord(row) || typeof row.featureId !== "string") continue
+    const tests = Array.isArray(row.tests) ? row.tests : []
+    if (tests.length > 0) finished.push(row)
+    else if (row.attempt !== undefined) startedId = row.featureId
+  }
+  return { finished, startedId }
+}
+
+export function readExistingRun(path: string): unknown {
   try {
-    const parsed = JSON.parse(readFileSync(runPath, "utf8")) as { results?: { featureId?: string; harness?: string }[] }
-    return (parsed.results ?? []).flatMap((row) =>
-      typeof row.featureId === "string" && row.harness === undefined ? [row.featureId] : [],
-    )
+    return JSON.parse(readFileSync(path, "utf8"))
   } catch {
-    return []
+    return undefined
   }
 }
 
 if (import.meta.main) {
-  const [path, rawIds, duration] = process.argv.slice(2)
+  const [path, rawIds, duration, draftPath, logPath] = process.argv.slice(2)
   if (path === undefined || rawIds === undefined || duration === undefined) {
-    throw new Error("usage: flush-expired-collection.ts <run.json> <probe-ids-json> <duration-ms>")
+    throw new Error(
+      "usage: flush-expired-collection.ts <run.json> <probe-ids-json|null> <duration-ms> [draft.json] [collector.log]",
+    )
   }
-  const ids = JSON.parse(rawIds) as unknown
-  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
-    throw new Error("probe ids must be a JSON array of strings")
-  }
-  writeExpiredCollection(path, {
+  const ids = collectionIds(rawIds, join(process.cwd(), "content"))
+  const draft = draftPath === undefined || draftPath === "" ? undefined : readExistingRun(draftPath)
+  const fromDraft = rowsFromDraft(draft)
+  const log = logPath === undefined || logPath === "" ? "" : readFileSync(logPath, "utf8")
+  const prior = readExistingRun(path)
+  const base = isRecord(prior) ? prior : {}
+  const run = expiredCollectionRun({
     ids,
-    finishedIds: readFinishedIds(path),
+    existing: { ...base, results: fromDraft.finished },
+    startedId: fromDraft.startedId ?? startedIdFromLog(log, ids),
     collectorDurationMs: Number(duration),
   })
+  writeFileSync(path, `${JSON.stringify(run, null, 2)}\n`)
 }
