@@ -209,9 +209,19 @@ it.each([
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc555-flash" },
   { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc710-font-normal" },
   // #32601: existing subjects cannot catch a missing Alacritty audit or identity leakage from its one-cell declaration.
-  { kind: "term", id: "alacritty", version: "0.17.0", count: 16, feature: "extensions.osc710-font-normal" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc710-font-normal" },
   // #32918: Alacritty implements no OSC 133/633, so its thirteen prompt cells are declarations, not runs.
-  { kind: "term", id: "alacritty", version: "0.17.0", count: 16, feature: "extensions.osc133-a" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc133-a" },
+  // #32889: Alacritty 0.17.0 and tmux 3.8 drop OSC 176/3008/440/666 (and tmux 710) in their unknown-OSC parser paths.
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc666-termprop" },
+  { kind: "mux", id: "tmux", version: "3.8", count: 7, feature: "extensions.osc176-app-id" },
+  { kind: "mux", id: "tmux", version: "3.8", count: 7, feature: "extensions.osc3008-context" },
+  { kind: "mux", id: "tmux", version: "3.8", count: 7, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "tmux", version: "3.8", count: 7, feature: "extensions.osc666-termprop" },
+  { kind: "mux", id: "tmux", version: "3.8", count: 7, feature: "extensions.osc710-font-normal" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {

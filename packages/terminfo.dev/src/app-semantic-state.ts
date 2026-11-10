@@ -402,6 +402,25 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Alacritty 0.17.0 does not implement OSC 133 or OSC 633 at all - the sequence is dropped at the parser, so no prompt mark exists to observe. This is a source read of an absent feature, not a silent runtime probe. It ships alacritty_terminal 0.26.0 (alacritty/Cargo.toml:3,13-15 at tag v0.17.0, file SHA256 ccbe547a224e9a13d3a08e6cd24f2c1fd1c92c28e02eda9324c14892244238ff), the crate this App backend is built from (engine receipt: upstreamCrate alacritty_terminal 0.26.0, crate SHA256 bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59), and that crate's locked VTE 0.15.0 (crate SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd) dispatches only OSC 0/2, 4, 8, 10-12, 22, 50, 52, 104 and 110-112: ansi.rs:1329-1525 sends every other code to `_ => unhandled(params)` at :1523, whose Debug line at :1341 never reaches the handler. alacritty_terminal 0.26.0 has no prompt-mark code at all - impl Handler for Term (src/term/mod.rs:1059) declares no OSC 133/633 method, and semantic_escape_chars there is selection word separators - and Alacritty's own escape table (extra/man/alacritty-escapes.7.scd:215-255 at the same tag, file SHA256 bf0e0fdadcb3be999e810ba07794f305f8ebb749491c872f2bf84970fa13da44) lists no 133 or 633.",
   })),
+  // #32889: Alacritty 0.17.0 implements none of OSC 176, 3008, 440 or 666; VTE drops all four at
+  // the parser before any handler runs, corroborated by the 47 [unhandled osc_dispatch] lines in
+  // run 2026-11-10T00-20-28-870Z-502b6144aa69 / 2026-11-10T01-37-06-356Z-f7a0a479fab4.
+  ...(
+    [
+      ["extensions.osc176-app-id", "176"],
+      ["extensions.osc3008-context", "3008"],
+      ["extensions.osc440-audio", "440"],
+      ["extensions.osc666-termprop", "666"],
+    ] as const
+  ).map(([featureId, code]) => ({
+    kind: "term" as const,
+    id: "alacritty",
+    version: "0.17.0",
+    os: "linux",
+    featureId,
+    reason:
+      `Untestable (no way): Alacritty 0.17.0 does not implement OSC ${code} - its locked VTE 0.15.0 parser drops the sequence before any handler runs, so no state or reply exists to observe. Read from source, not measured. It ships alacritty_terminal 0.26.0 (alacritty/Cargo.toml:3,13-15 at tag v0.17.0, file SHA256 ccbe547a224e9a13d3a08e6cd24f2c1fd1c92c28e02eda9324c14892244238ff; engine receipt: upstreamCrate alacritty_terminal 0.26.0, crate SHA256 bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59), and that crate's locked VTE 0.15.0 (crate SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd, pinned by Cargo.lock:2119-2125) dispatches only OSC 0/2, 4, 8, 10-12, 22, 50, 52, 104 and 110-112: ansi.rs:1329-1525 sends every other code to \`_ => unhandled(params)\` at :1523, whose Debug line at :1341 never reaches the handler. Across alacritty_terminal 0.26.0, impl Handler for Term (src/term/mod.rs:1059) has no osc_dispatch override (only dynamic_color_sequence at :1675 and set_title at :2221), and Alacritty's own escape table (extra/man/alacritty-escapes.7.scd:215-255 at tag v0.17.0, file SHA256 bf0e0fdadcb3be999e810ba07794f305f8ebb749491c872f2bf84970fa13da44) lists no ${code}.`,
+  })),
   {
     kind: "mux",
     id: "screen",
@@ -456,6 +475,32 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): GNU Screen 5.0.2 drops OSC 710 without storing, forwarding or reporting a font selection. Read the complete StringEnd OSC dispatch in ansi.c:1223-1312 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 710 parses typ 710 and misses the accepted title/colour list (0, 1, 2, 11, 20, 39, 49, and 83 for commands) at 1267, so it reaches the non-title break at 1288. Screen has no font state, log or readback, and the outer terminal cannot supply Screen's missing own font reading.",
   },
+  // #32889 step 1: tmux 3.8 carries no handler for any of these five codes, and the drop is the
+  // unknown-OSC default in its own input parser. Read in tmux-3.8.tar.gz
+  // (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e):
+  // input_exit_osc at input.c:2699 parses the numeric option and dispatches only 0, 2, 4, 7, 8, 9,
+  // 10, 11, 12, 52, 104, 110, 111, 112 and 133; every other option reaches the default at
+  // input.c:2775-2777, which logs at debug level and returns. The file's only pass-through is DCS
+  // (input_exit_dcs, the allow-passthrough option) and it does not carry OSC. The run image's tmux
+  // 3.8 also keeps no verbose log at all (measured 2026-11-10: no log file, no open log fd, empty
+  // server stderr), so that debug line cannot be read either.
+  ...(
+    [
+      ["extensions.osc176-app-id", "176"],
+      ["extensions.osc3008-context", "3008"],
+      ["extensions.osc440-audio", "440"],
+      ["extensions.osc666-termprop", "666"],
+      ["extensions.osc710-font-normal", "710"],
+    ] as const
+  ).map(([featureId, code]) => ({
+    kind: "mux" as const,
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    featureId,
+    reason:
+      `Untestable (no way): tmux 3.8 has no OSC ${code} handler and drops it in the unknown-OSC default of its input parser. Read from source, not measured. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699 dispatches only 0, 2, 4, 7, 8, 9, 10, 11, 12, 52, 104, 110, 111, 112 and 133, and every other option reaches the default at input.c:2775-2777, which only logs at debug level and returns. The file's only pass-through is DCS (input_exit_dcs, the allow-passthrough option), which does not carry OSC. A debug-only drop with no state, reply or readback is not a command-specific refusal, and the run image's tmux 3.8 keeps no verbose log to read it from.`,
+  })),
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */

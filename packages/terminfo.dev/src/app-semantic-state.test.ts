@@ -122,7 +122,53 @@ test("reader capability rows do not become declarations or lend their identity t
   const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
   expect(Object.keys(appSemanticDeclarations(kitty))).toEqual(["extensions.osc133-b", "extensions.osc3008-context"])
   expect(appSemanticDeclarations({ ...kitty, version: "unreviewed" })).toEqual({})
-  expect(appSemanticDeclarations({ kind: "mux", id: "tmux", version: "3.8", os: "linux" })).toEqual({})
+  const tmux = { kind: "mux" as const, id: "tmux", version: "3.8", os: "linux" }
+  const tmuxDeclared = appSemanticDeclarations(tmux)
+  expect(Object.keys(tmuxDeclared).sort()).toEqual([
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+  ])
+  for (const [featureId, code] of [
+    ["extensions.osc176-app-id", "176"],
+    ["extensions.osc3008-context", "3008"],
+    ["extensions.osc440-audio", "440"],
+    ["extensions.osc666-termprop", "666"],
+    ["extensions.osc710-font-normal", "710"],
+  ] as const) {
+    expect(tmuxDeclared[featureId]).toMatch(
+      new RegExp(`^Untestable \\(no way\\): tmux 3\\.8 has no OSC ${code} handler.*Read from source, not measured\\..*input\\.c:2775-2777`),
+    )
+  }
+  for (const subject of [{ ...tmux, version: "3.7c" }, { ...tmux, os: "darwin" }, { ...tmux, kind: "term" as const }]) {
+    expect(appSemanticDeclarations(subject)).toEqual({})
+  }
+  const alacritty = { kind: "term" as const, id: "alacritty", version: "0.17.0", os: "linux" }
+  const alacrittyDeclared = appSemanticDeclarations(alacritty)
+  expect(alacrittyDeclared["extensions.osc710-font-normal"]).toMatch(
+    /^Untestable \(no way\): Alacritty 0\.17\.0's locked VTE 0\.15\.0 OSC parser has no OSC 710 font-selection handler\./,
+  )
+  for (const [featureId, code] of [
+    ["extensions.osc176-app-id", "176"],
+    ["extensions.osc3008-context", "3008"],
+    ["extensions.osc440-audio", "440"],
+    ["extensions.osc666-termprop", "666"],
+  ] as const) {
+    expect(alacrittyDeclared[featureId]).toMatch(
+      new RegExp(
+        `^Untestable \\(no way\\): Alacritty 0\\.17\\.0 does not implement OSC ${code}.*Read from source, not measured\\..*ansi\\.rs:1329-1525.*alacritty-escapes\\.7\\.scd:215-255`,
+      ),
+    )
+  }
+  for (const subject of [
+    { ...alacritty, version: "0.18.0" },
+    { ...alacritty, os: "darwin" },
+    { ...alacritty, kind: "mux" as const },
+  ]) {
+    expect(appSemanticDeclarations(subject)).toEqual({})
+  }
   const screen = { kind: "mux" as const, id: "screen", version: "5.0.2", os: "linux" }
   expect(appSemanticDeclarations(screen)["modes.color-scheme-reporting"]).toMatch(/Untestable \(no way\):.*2031/)
   for (const subject of [
