@@ -8,6 +8,7 @@ import type {
   MuxAttachmentProof,
   OuterAppProof,
   ProbeSubject,
+  TerminalScrollbackReading,
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
@@ -27,6 +28,7 @@ import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 import {
+  ScrollbackReadingUnavailable,
   TEXT_QUALIFICATION_OWNERSHIP_CELL,
   type TextQualificationOwnership,
   type TextQualificationRecipe,
@@ -44,7 +46,10 @@ import {
 import { kernelExecPath } from "./darwin-kernel-exec.ts"
 import {
   mapSnapshotToCells,
+  readTerminalAppHistory,
   readTerminalTextSnapshot,
+  terminalAppHistoryReader,
+  type TerminalHistoryControl,
   type TerminalTextApp,
   type TerminalTextRead,
 } from "./darwin-terminal-text.ts"
@@ -245,6 +250,8 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
 
 export interface OwnedTerminal {
   readonly getScrollback?: TermProbeSource["getScrollback"]
+  /** Terminal.app history reader's per-run control, once it has run (31741). */
+  readonly historyControl?: () => TerminalHistoryControl | undefined
   readonly resetScrollback?: TermProbeSource["resetScrollback"]
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
@@ -1254,6 +1261,34 @@ export async function createOwnedTerminal(options: {
     const kittySocket = process.env.KITTY_LISTEN_ON
     const kittyWindow = process.env.KITTY_WINDOW_ID
     const resetScrollback = clipboard?.resetScrollback?.bind(clipboard)
+    // Terminal.app keeps its history on the owned tab: the same JXA read as its screen text (31741).
+    let historyControl: TerminalHistoryControl | undefined
+    let terminalAppHistory: (() => Promise<TerminalScrollbackReading>) | undefined
+    const readTerminalAppHistoryReading =
+      darwinTextApp === "terminal-app" && darwinTextTty !== undefined
+        ? async () => {
+            if (!terminalAppHistory) {
+              const geometry = await readBoundGeometry(binding, windowsKernel)
+              if (geometry.status !== "measured") {
+                throw new ScrollbackReadingUnavailable(
+                  `Terminal.app history needs a measured grid: ${geometry.diagnostic}`,
+                )
+              }
+              terminalAppHistory = terminalAppHistoryReader({
+                read: () => readTerminalAppHistory({ tty: darwinTextTty, cols: geometry.cols, rows: geometry.rows }),
+                write: (text) => {
+                  out.write(text)
+                },
+                rows: geometry.rows,
+                nonce: captureRunId,
+                onControl: (control) => {
+                  historyControl = control
+                },
+              })
+            }
+            return terminalAppHistory()
+          }
+        : undefined
     const readScrollback =
       clipboard?.getScrollback?.bind(clipboard) ??
       (linux && appClipboard
@@ -1288,7 +1323,8 @@ export async function createOwnedTerminal(options: {
             if (read.status === "refused") throw new Error(read.reason)
             return { totalLines: read.totalLines, screenLines: read.screenLines }
           }
-        : undefined)
+        : undefined) ??
+      readTerminalAppHistoryReading
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
     const summary = JSON.stringify({
@@ -1376,6 +1412,7 @@ export async function createOwnedTerminal(options: {
           return readTitle()
         },
       }),
+      ...(readTerminalAppHistoryReading && { historyControl: () => historyControl }),
       ...(readScrollback && {
         async getScrollback() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned history read has no live bound capture")

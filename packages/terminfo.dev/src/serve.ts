@@ -1129,6 +1129,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     const historyIdentity = ownedTerminal?.getScrollback
       ? verifyTerminalIdentity(subject.id, batch.rawReplies)
       : undefined
+    const historyControl = ownedTerminal?.historyControl?.()
+    if (historyControl) batch.rawReplies["collector.historyControl"] = JSON.stringify(historyControl)
     const historyExecutable = ownedTerminal?.muxAttachmentProof?.executable ?? provenance?.executable
     const hasHistoryExecutable = Boolean(
       historyExecutable?.path && /^[a-f0-9]{64}$/u.test(historyExecutable.sha256) && historyExecutable.version,
