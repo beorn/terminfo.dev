@@ -518,8 +518,12 @@ test("OSC 9;4 says no observer on an App arm and keeps the no-setup sentence wit
     rawReplyRef: featureId,
     criterionBranch: muxResult.criterionBranch,
   })
-  const finalized = finalizeVisualResult(recorded, { kind: "mux", id: "screen", outerTerminal: "kitty" }, [])
-  expect(finalized.reason).toBe(`${sentence}; unchanged effect could have stopped at screen or its outer terminal kitty`)
+  // The same subject shape the mux no-setup test above passes: the finalizer names the mux by its id.
+  const screen = { kind: "mux" as const, id: "screen", outerTerminal: "kitty" }
+  const finalized = finalizeVisualResult(recorded, screen, [])
+  expect(finalized.reason).toBe(
+    `${sentence}; unchanged effect could have stopped at screen or its outer terminal kitty`,
+  )
 })
 
 test.each([
