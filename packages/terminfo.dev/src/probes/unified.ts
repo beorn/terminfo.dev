@@ -43,6 +43,7 @@ import {
   queryMode,
   readResponse,
   readInjectedOutcome,
+  releaseTTYQueue,
   withTTYOperation,
   withTTYQueryTrace,
   writeTTY,
@@ -870,24 +871,44 @@ export async function runProbeBatch(
       const sourceLog = probe.id.startsWith("sgr.") ? createCallLog() : undefined
       const sourceSession = sourceLog ? withCallLog(probeSource, { mode: "record", log: sourceLog }) : undefined
       let result: ProbeCallbackResult
+      let probeWallExceeded = false
       try {
-        result = await withTTYOperation(
-          () =>
-            withTTYQueryTrace(
-              queries,
-              events,
-              async () => {
-                return callback(sourceSession?.context ?? probeSource)
-              },
-              {
-                onLog(log) {
-                  if (!sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
+        const wallMs = 30_000
+        let wall: ReturnType<typeof setTimeout> | undefined
+        const raced = await Promise.race([
+          withTTYOperation(
+            () =>
+              withTTYQueryTrace(
+                queries,
+                events,
+                async () => {
+                  return callback(sourceSession?.context ?? probeSource)
                 },
-              },
-            ),
-          out,
-          verify,
-        )
+                {
+                  onLog(log) {
+                    if (!sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
+                  },
+                },
+              ),
+            out,
+            verify,
+          ).then((value) => ({ timedOut: false as const, value })),
+          new Promise<{ timedOut: true }>((resolve) => {
+            wall = setTimeout(() => resolve({ timedOut: true }), wallMs)
+          }),
+        ])
+        clearTimeout(wall)
+        if (raced.timedOut) {
+          // The callback did not return. Release the TTY queue so the rest of the run can finish (#33017).
+          releaseTTYQueue()
+          probeWallExceeded = true
+          result = {
+            pass: false,
+            tests: [{ id: "criterion", status: "probe-todo", reason: `Probe exceeded ${wallMs}ms` }],
+          }
+        } else {
+          result = raced.value
+        }
       } catch (error) {
         // An unavailable Screen query before the first write is an absent apparatus, not a target negative.
         // A later read or restoration failure remains invalid and retains the ordinary error path.
@@ -909,7 +930,7 @@ export async function runProbeBatch(
       } finally {
         sourceSession?.finish()
         if (sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(sourceLog)
-        if (geometryCheck) geometryCheck.post = await readGeometry()
+        if (geometryCheck && !probeWallExceeded) geometryCheck.post = await readGeometry()
       }
       result = withReplyFailureEvidence(probe.id, result, {
         producer: "TTY",
