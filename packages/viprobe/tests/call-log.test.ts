@@ -497,6 +497,8 @@ test("an abandoned recording can finish while a call is still pending", () => {
   void capture.context.read()
   capture.abandon()
   expect(() => capture.finish()).not.toThrow()
+  // The runner must not stringify this log. toJSON refuses an incomplete recording (#33047).
+  expect(() => JSON.stringify(log)).toThrow(/recording has not completed/)
 })
 
 test("unfinished logs cannot be serialized as complete artifacts", async () => {
