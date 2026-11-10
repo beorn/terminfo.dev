@@ -66,6 +66,25 @@ jobs:
       # tree cannot come from different commits.
       MEASURED_SHA: ${{ inputs.sha || github.sha }}
     steps:
+      # Validate the sha input before anything is fetched: a branch name or a short id must be
+      # refused by a format check, not by a checkout that quietly resolves it.
+      - name: Validate the requested sha before anything is fetched
+        env:
+          REQUESTED_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$REQUESTED_SHA" ]; then
+            echo "No sha input: measuring the ref this dispatch started from."
+            exit 0
+          fi
+          case "$REQUESTED_SHA" in
+            *[!0-9a-f]*) echo "::error::sha input is not lowercase hex: $REQUESTED_SHA"; exit 1 ;;
+          esac
+          if [ "${#REQUESTED_SHA}" -ne 40 ]; then
+            echo "::error::sha input must be exactly 40 lowercase hex characters; a branch name or short id cannot pin a tree: $REQUESTED_SHA"; exit 1
+          fi
+          echo "sha input is a full 40-character commit id: $REQUESTED_SHA"
+
       - name: Bootstrap the pinned producer and sample at job start
         run: |
           set -euo pipefail
@@ -90,19 +109,21 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.sha || github.sha }}
 
+      # The workflow FILE itself still comes from the dispatched ref — a dispatch cannot run a
+      # workflow it cannot find — while MEASURED_SHA pins only the tree. The receipt records the
+      # workflow ref and run ids, so that is where a reader sees which file version ran.
+      #
       # A pinned sha is a promise about what was measured; a checkout that silently differs breaks it.
+      # The format is already validated by the step before the bootstrap, so this compares only.
       - name: Refuse a checkout that differs from the requested sha
         env:
           REQUESTED_SHA: ${{ inputs.sha }}
         run: |
           set -euo pipefail
           if [ -z "$REQUESTED_SHA" ]; then
-            echo "No sha input: measuring the ref this dispatch started from."
+            echo "No sha input: nothing to compare."
             exit 0
           fi
-          case "$REQUESTED_SHA" in
-            *[!0-9a-f]*) echo "::error::sha input is not a lowercase hex commit id: $REQUESTED_SHA"; exit 1 ;;
-          esac
           ACTUAL="$(git rev-parse HEAD)"
           if [ "$ACTUAL" != "$REQUESTED_SHA" ]; then
             echo "::error::requested sha $REQUESTED_SHA but this job checked out $ACTUAL"

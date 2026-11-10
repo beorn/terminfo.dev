@@ -68,9 +68,29 @@ test("an exact sha input pins the checkout and refuses a difference", () => {
   const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
   const dispatch = workflow.on.workflow_dispatch
   expect(dispatch.inputs.sha).toMatchObject({ type: "string", required: false })
-  const steps = workflow.jobs["measure-macos"].steps as { uses?: string; name?: string; with?: Record<string, string>; env?: Record<string, string>; run?: string }[]
+  const steps = workflow.jobs["measure-macos"].steps as {
+    uses?: string
+    name?: string
+    with?: Record<string, string>
+    env?: Record<string, string>
+    run?: string
+  }[]
   const checkout = steps.find((step) => step.uses === "actions/checkout@v4")
   expect(checkout?.with?.ref).toBe("${{ inputs.sha || github.sha }}")
+  const validator = steps.find((step) => step.name === "Validate the requested sha before anything is fetched")
+  expect(validator?.env?.REQUESTED_SHA).toBe("${{ inputs.sha }}")
+  const validatorRun = validator?.run
+  if (!validatorRun) throw new Error("The sha format step is absent")
+  // A branch name or a short id has to be refused before the bootstrap fetches anything at it, so
+  // the format step must sit ahead of it in the job rather than after the fetch and the producer run.
+  const validatorIndex = steps.findIndex(
+    (step) => step.name === "Validate the requested sha before anything is fetched",
+  )
+  const bootstrapIndex = steps.findIndex(
+    (step) => step.name === "Bootstrap the pinned producer and sample at job start",
+  )
+  expect(validatorIndex).toBeGreaterThanOrEqual(0)
+  expect(bootstrapIndex).toBeGreaterThan(validatorIndex)
   const guard = steps.find((step) => step.name === "Refuse a checkout that differs from the requested sha")
   expect(guard?.env?.REQUESTED_SHA).toBe("${{ inputs.sha }}")
   const guardRun = guard?.run
@@ -78,25 +98,39 @@ test("an exact sha input pins the checkout and refuses a difference", () => {
   const checkedOut = "f".repeat(40)
   const directory = mkdtempSync(join(tmpdir(), "hosted-sha-guard-"))
   writeFileSync(join(directory, "git"), `#!/bin/bash\nprintf '%s\\n' ${checkedOut}\n`, { mode: 0o755 })
-  const attempt = (requested: string) =>
-    spawnSync("/bin/bash", ["-c", guardRun], {
+  const attempt = (script: string, requested: string) =>
+    spawnSync("/bin/bash", ["-c", script], {
       cwd: directory,
       encoding: "utf8",
       env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, REQUESTED_SHA: requested },
     })
   try {
-    const pinned = attempt(checkedOut)
+    // The format step owns the shape: only 40 lowercase hex characters may reach a fetch.
+    expect(attempt(validatorRun, "").status).toBe(0)
+    const full = attempt(validatorRun, checkedOut)
+    expect(full.status, full.stderr).toBe(0)
+    const short = attempt(validatorRun, "f".repeat(39))
+    expect(short.status).toBe(1)
+    expect(short.stdout).toContain("exactly 40")
+    const long = attempt(validatorRun, "f".repeat(41))
+    expect(long.status).toBe(1)
+    expect(long.stdout).toContain("exactly 40")
+    const upper = attempt(validatorRun, "F".repeat(40))
+    expect(upper.status).toBe(1)
+    expect(upper.stdout).toContain("lowercase hex")
+    const branch = attempt(validatorRun, "main")
+    expect(branch.status).toBe(1)
+    expect(branch.stdout).toContain("lowercase hex")
+    // The comparison step only compares: the shape was settled above it.
+    const pinned = attempt(guardRun, checkedOut)
     expect(pinned.status, pinned.stderr).toBe(0)
-    const unpinned = attempt("")
+    const unpinned = attempt(guardRun, "")
     expect(unpinned.status, unpinned.stderr).toBe(0)
     const other = "a".repeat(40)
-    const mismatch = attempt(other)
+    const mismatch = attempt(guardRun, other)
     expect(mismatch.status).toBe(1)
     expect(mismatch.stdout).toContain(other)
     expect(mismatch.stdout).toContain(checkedOut)
-    const malformed = attempt("NOT-A-SHA")
-    expect(malformed.status).toBe(1)
-    expect(malformed.stdout).toContain("lowercase hex")
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
