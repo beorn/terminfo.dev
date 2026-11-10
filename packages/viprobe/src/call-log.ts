@@ -534,15 +534,15 @@ function decodeValue(value: Encoded, projection = false): unknown {
 export function withCallLog<Subject extends object>(
   subject: Subject,
   options: { mode: "record"; log: CallLog },
-): { context: Subject; finish: () => void }
+): { context: Subject; finish: () => void; abandon: () => void }
 export function withCallLog<Subject extends object>(
   subject: null,
   options: { mode: "replay"; log: CallLog },
-): { context: Subject; finish: () => void }
+): { context: Subject; finish: () => void; abandon: () => void }
 export function withCallLog<Subject extends object>(
   subject: Subject | null,
   options: { mode: "record" | "replay"; log: CallLog },
-): { context: Subject; finish: () => void } {
+): { context: Subject; finish: () => void; abandon: () => void } {
   const { mode } = options
   const state = handles.get(options.log)
   if (!state) throw new IncompleteReplay("call log handle required; persisted data must be validated first")
@@ -795,9 +795,18 @@ export function withCallLog<Subject extends object>(
     if (!state.complete) throw new IncompleteReplay("replay requires a completed call log")
   }
   const context = wrap(mode === "record" ? subject : decode(log.root), "context") as Subject
+  let abandoned = false
   return {
     context,
+    abandon() {
+      abandoned = true
+      closed = true
+    },
     finish() {
+      if (abandoned) {
+        closed = true
+        return
+      }
       if (failure) throw failure
       if (
         pending ||
