@@ -242,6 +242,16 @@ export function colourCaptureCallbackResult(
 }
 
 /**
+ * Why Screen's base run paints 24-bit colour as the default (#33150, @cto 918fccd1): display.c:1349 and :1386
+ * emit 38;2 only `&& hastruecolor`, which is false (screen.c:144) until the `truecolor on` command
+ * (doc/screen.1:3572-3582, read from screen-5.0.2.tar.gz). The corpus config is the launcher's one line
+ * (scripts/linux-container-run.sh, `defscrollback 1000`); the run does not record it, so the reason names the
+ * harness config, never "this run's config".
+ */
+export const SCREEN_TRUECOLOR_CAUSE =
+  "GNU Screen 5.0.2 emits 24-bit colour only with its truecolor option on; default is off; corpus config is defscrollback 1000"
+
+/**
  * The two Screen truecolour rows and their same-channel sibling (#33041, @cto acd2e579 amended 16:05Z).
  * The requested colour and the declared default-colour assumption live beside each other here, so a
  * harness profile whose default equals the requested colour is read against the same line.
@@ -424,7 +434,7 @@ export function colourSiblingSeparation(input: {
       recordRunId: record.recordRunId,
     },
   }
-  const reason = `${id}: painted SGR ${requestedEncoding} as the default colour: this row's seed, target and expected frames are equal while sibling ${siblingId} separated in the same rectangle of run ${input.runId}, and the outer terminal ${record.id} ${record.version} reads supported in ${record.recordPath}`
+  const reason = `${id}: painted SGR ${requestedEncoding} as the default colour: this row's seed, target and expected frames are equal while sibling ${siblingId} separated in the same rectangle of run ${input.runId}, and the outer terminal ${record.id} ${record.version} reads supported in ${record.recordPath}. ${SCREEN_TRUECOLOR_CAUSE}`
   const { reason: _reason, ...settled } = own
   const { featureId: _featureId, ...observation } = settled
   return {
