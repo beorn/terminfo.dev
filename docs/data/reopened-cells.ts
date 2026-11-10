@@ -29,9 +29,11 @@ export interface ReopenedCell {
   featureId: string
   /** The published grade this row withdraws; a cell graded otherwise is not this row's. */
   graded: ProbeResult["status"]
-  /** In words, for the page: why the grade does not stand. */
+  /** In plain words for the public page: why the grade is withdrawn and what ends it. No seat, id or issue number. */
   reason: string
-  /** The ruling, in words with its date and id. */
+  /** The day the grade was withdrawn (YYYY-MM-DD), shown with the reason. */
+  reopenedOn: string
+  /** The ruling, with its seat, date and message id. Kept in the file for us; never projected. */
   ruling: string
   /** Where the row list came from. */
   evidence: string
@@ -40,11 +42,16 @@ export interface ReopenedCell {
   witnesses: Array<{ runId: string; assertionIndex: number }>
 }
 
-/** What a reopened cell carries for its readers: the row's words, never a bare id. */
+/** What a reopened cell carries for its readers: the row's public words and date; the ruling and evidence stay in the file. */
 export interface ReopenedMarker {
   reason: string
-  ruling: string
+  reopenedOn: string
   exit: ReopenedExit["kind"]
+}
+
+/** The sentence the public page shows on a reopened cell. */
+export function publicReopenedReason(marker: Pick<ReopenedMarker, "reason" | "reopenedOn">): string {
+  return `reopened ${marker.reopenedOn}: ${marker.reason}`
 }
 
 export const REOPENED_CELLS_FILE = "reopened-cells.json"
@@ -96,6 +103,11 @@ function checkRow(value: unknown, where: string): ReopenedCell {
     return field
   }
   if (row.kind !== "term" && row.kind !== "mux") throw new Error(`${where}: kind must be term or mux`)
+  const reason = text("reason")
+  if (/@|\b[0-9a-f]{7,}\b|#\d|\b\d{5}\b/.test(reason)) {
+    throw new Error(`${where}: the public reason names a seat, an id or an issue number; keep those in ruling`)
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(row.reopenedOn ?? "")) throw new Error(`${where}: reopenedOn must be YYYY-MM-DD`)
   const exit = row.exit
   if (exit?.kind === "criterion-text") {
     if (!/^[0-9a-f]{64}$/.test(exit.criterionSha256 ?? "")) {
@@ -126,7 +138,8 @@ function checkRow(value: unknown, where: string): ReopenedCell {
     os: text("os"),
     featureId: text("featureId"),
     graded: text("graded") as ProbeResult["status"],
-    reason: text("reason"),
+    reason,
+    reopenedOn: row.reopenedOn!,
     ruling: text("ruling"),
     evidence: text("evidence"),
     exit,

@@ -543,7 +543,7 @@ function applyReopened(
     cells[row.featureId] = {
       ...cell,
       featureResult: { ...featureResult, status: "probe-todo", strength: null },
-      reopened: { reason: row.reason, ruling: row.ruling, exit: row.exit.kind },
+      reopened: { reason: row.reason, reopenedOn: row.reopenedOn, exit: row.exit.kind },
     }
     applied.add(row)
   }

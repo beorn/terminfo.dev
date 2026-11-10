@@ -11,6 +11,7 @@ import type {
 } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentResult } from "./current-results.ts"
 import type { FeatureResult } from "./release-scope.ts"
+import { publicReopenedReason } from "./reopened-cells.ts"
 import {
   type SelectedCell,
   type SelectedContextCell,
@@ -342,7 +343,7 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
               ...(cell.supplement && { supplement: cell.supplement }),
               ...(cell.reopened && {
                 reopened: cell.reopened,
-                reason: `reopened: ${cell.reopened.reason}. Ruling: ${cell.reopened.ruling}`,
+                reason: publicReopenedReason(cell.reopened),
               }),
             },
           ]

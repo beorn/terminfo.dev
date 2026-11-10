@@ -8,7 +8,8 @@
       "os": "linux",
       "featureId": "editing.decrqcra",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -36,7 +37,8 @@
       "os": "linux",
       "featureId": "extensions.kitty-graphics",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -64,7 +66,8 @@
       "os": "linux",
       "featureId": "extensions.osc702-version",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -92,7 +95,8 @@
       "os": "linux",
       "featureId": "editing.decrqcra",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -120,7 +124,8 @@
       "os": "linux",
       "featureId": "extensions.osc702-version",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -148,7 +153,8 @@
       "os": "linux",
       "featureId": "editing.decrqcra",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -176,7 +182,8 @@
       "os": "linux",
       "featureId": "extensions.osc702-version",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -204,7 +211,8 @@
       "os": "linux",
       "featureId": "editing.decrqcra",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -232,7 +240,8 @@
       "os": "linux",
       "featureId": "extensions.kitty-graphics",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -260,7 +269,8 @@
       "os": "linux",
       "featureId": "extensions.osc702-version",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -288,7 +298,8 @@
       "os": "linux",
       "featureId": "editing.decrqcra",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -308,7 +319,8 @@
       "os": "linux",
       "featureId": "extensions.kitty-graphics",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -328,7 +340,8 @@
       "os": "linux",
       "featureId": "extensions.osc702-version",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -348,7 +361,8 @@
       "os": "linux",
       "featureId": "editing.decrqcra",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -368,7 +382,8 @@
       "os": "linux",
       "featureId": "extensions.osc702-version",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -388,7 +403,8 @@
       "os": "linux",
       "featureId": "editing.decrqcra",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -408,7 +424,8 @@
       "os": "linux",
       "featureId": "extensions.kitty-graphics",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -428,7 +445,8 @@
       "os": "linux",
       "featureId": "extensions.osc702-version",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
@@ -448,7 +466,8 @@
       "os": "linux",
       "featureId": "extensions.osc701-locale",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -476,7 +495,8 @@
       "os": "linux",
       "featureId": "extensions.osc776-cell-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -504,7 +524,8 @@
       "os": "linux",
       "featureId": "extensions.osc7770-font-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -532,7 +553,8 @@
       "os": "linux",
       "featureId": "extensions.osc701-locale",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -560,7 +582,8 @@
       "os": "linux",
       "featureId": "extensions.osc776-cell-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -588,7 +611,8 @@
       "os": "linux",
       "featureId": "extensions.osc7770-font-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -616,7 +640,8 @@
       "os": "linux",
       "featureId": "extensions.osc701-locale",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -644,7 +669,8 @@
       "os": "linux",
       "featureId": "extensions.osc776-cell-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -672,7 +698,8 @@
       "os": "linux",
       "featureId": "extensions.osc7770-font-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -700,7 +727,8 @@
       "os": "linux",
       "featureId": "extensions.osc701-locale",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -728,7 +756,8 @@
       "os": "linux",
       "featureId": "extensions.osc776-cell-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -756,7 +785,8 @@
       "os": "linux",
       "featureId": "extensions.osc7770-font-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -784,7 +814,8 @@
       "os": "linux",
       "featureId": "extensions.osc701-locale",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -804,7 +835,8 @@
       "os": "linux",
       "featureId": "extensions.osc776-cell-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -824,7 +856,8 @@
       "os": "linux",
       "featureId": "extensions.osc7770-font-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -844,7 +877,8 @@
       "os": "linux",
       "featureId": "extensions.osc701-locale",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -864,7 +898,8 @@
       "os": "linux",
       "featureId": "extensions.osc776-cell-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -884,7 +919,8 @@
       "os": "linux",
       "featureId": "extensions.osc7770-font-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -904,7 +940,8 @@
       "os": "linux",
       "featureId": "extensions.osc701-locale",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -924,7 +961,8 @@
       "os": "linux",
       "featureId": "extensions.osc776-cell-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -944,7 +982,8 @@
       "os": "linux",
       "featureId": "extensions.osc7770-font-size",
       "graded": "unsupported",
-      "reason": "criterion text does not yield the grade: graded Unsupported on silence, which this row's criterion does not make Unsupported",
+      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
       "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
@@ -964,7 +1003,8 @@
       "os": "linux",
       "featureId": "sgr.blink",
       "graded": "unsupported",
-      "reason": "reopened until re-measured: the stored window may be shorter than the blink period this witness can see",
+      "reason": "the stored capture window may be shorter than the blink period, so this grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:42 PST (f58c5889) item 3, issue 33117",
       "evidence": "@dev/luna6 stored-record table blink-witness-table-2026-11-10.txt sha256 803c5b2a3d01b80e3ec3396bb61959d964f60d204285190c32ed9c76e9424074",
       "exit": {
@@ -986,7 +1026,8 @@
       "os": "linux",
       "featureId": "sgr.blink",
       "graded": "unsupported",
-      "reason": "reopened until re-measured: the stored window may be shorter than the blink period this witness can see",
+      "reason": "the stored capture window may be shorter than the blink period, so this grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:42 PST (f58c5889) item 3, issue 33117",
       "evidence": "@dev/luna6 stored-record table blink-witness-table-2026-11-10.txt sha256 803c5b2a3d01b80e3ec3396bb61959d964f60d204285190c32ed9c76e9424074",
       "exit": {
@@ -1008,7 +1049,8 @@
       "os": "macos",
       "featureId": "sgr.blink",
       "graded": "supported",
-      "reason": "reopened until re-measured: blink is a paint row, and a DECRQSS reply does not decide it",
+      "reason": "blink is decided by what the terminal paints, and this grade rests only on a reply to a query, so it is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-10",
       "ruling": "@cto 2026-11-10 12:56 PST (f2adcbf3), issue 33164",
       "evidence": "@cpo/term request 5af9e33d: the only Supported evidence is the query reply; the pixel series could not decide",
       "exit": {

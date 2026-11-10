@@ -13,7 +13,7 @@ import { parseRun } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { initializeRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
-import { loadReopenedCells, type ReopenedCell } from "../docs/data/reopened-cells.ts"
+import { cellLabel, loadReopenedCells, publicReopenedReason, type ReopenedCell } from "../docs/data/reopened-cells.ts"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 
@@ -102,7 +102,8 @@ const silenceRow = (overrides: Partial<ReopenedCell> = {}): ReopenedCell => ({
   os: "linux",
   featureId: VERSION,
   graded: "unsupported",
-  reason: "criterion text does not yield the grade",
+  reason: "the criterion text does not say a silent terminal is Unsupported",
+  reopenedOn: "2026-11-10",
   ruling: "@cto 2026-11-10 12:21 PST (0a45cb8b), issue 33164",
   evidence: "test",
   exit: { kind: "criterion-text", criterionSha256: "0".repeat(64) },
@@ -112,7 +113,7 @@ const silenceRow = (overrides: Partial<ReopenedCell> = {}): ReopenedCell => ({
 const blinkRow = (suiteIds: string[]): ReopenedCell => ({
   ...silenceRow(),
   featureId: BLINK,
-  reason: "reopened until re-measured",
+  reason: "withdrawn until it is measured again",
   ruling: "@cto 2026-11-10 12:42 PST (f58c5889) item 3, issue 33117",
   exit: { kind: "remeasured", suiteIds },
   witnesses: [{ runId: "first", assertionIndex: 1 }],
@@ -138,8 +139,8 @@ describe("reopened cells (33164)", () => {
     expect(after.cells[VERSION]!.result).toEqual(before.cells[VERSION]!.result)
     expect(after.cells[VERSION]!.origin).toEqual(before.cells[VERSION]!.origin)
     expect(after.cells[VERSION]!.reopened).toEqual({
-      reason: "criterion text does not yield the grade",
-      ruling: "@cto 2026-11-10 12:21 PST (0a45cb8b), issue 33164",
+      reason: "the criterion text does not say a silent terminal is Unsupported",
+      reopenedOn: "2026-11-10",
       exit: "criterion-text",
     })
     for (const id of [BLINK, "sgr.bold"]) {
@@ -157,13 +158,12 @@ describe("reopened cells (33164)", () => {
     expect(after.cells[VERSION]!.featureResult!.status).toBe("probe-todo")
   })
 
-  it("shows the reason and the ruling in words on the published cell", () => {
+  it("shows the reason and the date in words on the published cell, never the ruling's seat, ids or issue", () => {
     const projection = project([first], [silenceRow()])
     const cell = publicResults(projection, new Map()).projection.contexts["term:xterm"]!.featureResults[VERSION]!
     expect(cell.status).toBe("probe-todo")
-    expect(cell.reason).toBe(
-      "reopened: criterion text does not yield the grade. Ruling: @cto 2026-11-10 12:21 PST (0a45cb8b), issue 33164",
-    )
+    expect(cell.reason).toBe("reopened 2026-11-10: the criterion text does not say a silent terminal is Unsupported")
+    expect(JSON.stringify(cell)).not.toMatch(/@|0a45cb8b|33164/)
   })
 
   it("reopens a remeasured cell only under the suites it names; a later suite's grade makes the row throw", () => {
@@ -218,6 +218,17 @@ describe("loadReopenedCells", () => {
     )
   })
 
+  it("refuses a public reason that names a seat, a hex id or an issue number, and a missing date", () => {
+    for (const reason of ["withdrawn per @cto", "withdrawn by f58c5889", "see #33117", "see issue 33164"]) {
+      expect(() => loadReopenedCells(write([{ ...silenceRow(), reason }]), features), reason).toThrow(
+        /the public reason names a seat, an id or an issue number/,
+      )
+    }
+    expect(() => loadReopenedCells(write([{ ...blinkRow(["s"]), reopenedOn: "today" }]), features)).toThrow(
+      /reopenedOn must be YYYY-MM-DD/,
+    )
+  })
+
   it("the committed file holds the generated 42 rows (39 criterion-text, 3 remeasured), all current", async () => {
     const content = join(import.meta.dirname, "..", "content")
     const { loadFeatures } = await import("@terminfo/catalog")
@@ -229,5 +240,6 @@ describe("loadReopenedCells", () => {
       "ghostty/sgr.blink",
       "iterm2/sgr.blink",
     ])
+    for (const row of rows) expect(publicReopenedReason(row), cellLabel(row)).not.toMatch(/@|\b[0-9a-f]{7,}\b|#\d|\b\d{5}\b/)
   })
 })
