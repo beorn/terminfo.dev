@@ -324,7 +324,9 @@ function validateColourNoAttributeWitness(
   const ownDigests = frameDigestSet(own)
   for (const key of ["seed", "expected", "noAttribute"] as const) {
     requireWitnessDigest(frames[key], path, featureId, `frames.${key}`)
-    if (!ownDigests.has(String(frames[key]))) fail(path, `${featureId} witness frames.${key} is not a frame digest of this row`)
+    if (!ownDigests.has(String(frames[key]))) {
+      fail(path, `${featureId} witness frames.${key} is not a frame digest of this row`)
+    }
   }
   if (frames.expected !== frames.noAttribute) {
     fail(path, `${featureId} witness expected frame is not the no-attribute frame`)

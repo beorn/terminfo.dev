@@ -2000,30 +2000,32 @@ it("drops a branch witness from a negative whose capture resized, so the run sti
   const original = { needs: definition.termNeedsGeometry, term: definition.term }
   definition.termNeedsGeometry = true
   const digest = (text: string) => `sha256:${text.repeat(64).slice(0, 64)}`
-  // The real callback runs its DA query, so the row keeps its retained raw payload; the result is replaced.
-  definition.term = async (...args: Parameters<NonNullable<typeof original.term>>) => ({
-    ...(await original.term!(...args)),
-    pass: false,
-    criterionBranch: "colour-no-attribute-witness",
-    response: "\x1b[?62;4c",
-    tests: [{ id: "criterion", status: "unsupported", assertionRefs: [0] }],
-    observation: { outcome: "unsupported", assertionType: "query_reply", note: "painted nothing" },
-    assertions: [
-      {
-        assertionType: "query_reply",
-        kind: "negative",
-        expected: "paints something other than plain text",
-        observed: digest("b"),
-        witness: {
-          kind: "colour-no-attribute-witness",
-          rowId: definition.id,
-          encoding: "58;2;255;0;128",
-          rectangle: { x: 1, y: 2, width: 3, height: 4 },
-          frames: { seed: digest("a"), expected: digest("b"), noAttribute: digest("b") },
+  // The real callback runs its DA query, so the row keeps its retained raw payload; its result is replaced.
+  definition.term = async (...args: Parameters<NonNullable<typeof original.term>>) => {
+    await original.term!(...args)
+    return {
+      pass: false,
+      criterionBranch: "colour-no-attribute-witness",
+      response: "\x1b[?62;4c",
+      tests: [{ id: "criterion", status: "unsupported", assertionRefs: [0] }],
+      observation: { outcome: "unsupported", assertionType: "query_reply", note: "painted nothing" },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: "negative",
+          expected: "paints something other than plain text",
+          observed: digest("b"),
+          witness: {
+            kind: "colour-no-attribute-witness",
+            rowId: definition.id,
+            encoding: "58;2;255;0;128",
+            rectangle: { x: 1, y: 2, width: 3, height: 4 },
+            frames: { seed: digest("a"), expected: digest("b"), noAttribute: digest("b") },
+          },
         },
-      },
-    ],
-  })
+      ],
+    }
+  }
   let reads = 0
   process.stdout.write = ((text: string) => {
     if (text === "\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?62;4c"))

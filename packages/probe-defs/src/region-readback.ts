@@ -1620,7 +1620,9 @@ export async function captureRegionReadbackDecision(
       if (spec.noAttributeNegative !== undefined && seed !== noAttribute) {
         const reason = `${id}: painted nothing for SGR ${spec.noAttributeNegative.sequence}: the frame equals plain text, and the underline was visible in the seed frame of this run`
         const rectangle = cropRectangles[2]
-        if (rectangle === undefined) throw new Error(`${id}: the expected frame reached the witness negative with no rectangle`)
+        if (rectangle === undefined) {
+          throw new Error(`${id}: the expected frame reached the witness negative with no rectangle`)
+        }
         const witness: ColourNoAttributeWitness = {
           kind: "colour-no-attribute-witness",
           rowId: id,
