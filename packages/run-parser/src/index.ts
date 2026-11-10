@@ -160,11 +160,11 @@ function requireWitnessDigest(value: unknown, path: string, featureId: string, n
   if (typeof value !== "string" || !WITNESS_DIGEST.test(value)) fail(path, `${featureId} witness missing ${name}`)
 }
 
-/** The digests a witness may cite: a frame's ref or the digest of the cells it compared, as the citation gate allows. */
+/** The digests a witness may cite: the digest of the cells a frame compared. A ref names the whole-window image, never the cells (@cto 3f0d431b). */
 function frameDigestSet(frames: readonly Record<string, unknown>[]): Set<string> {
   const digests = new Set<string>()
   for (const frame of frames) {
-    for (const key of ["ref", "regionDigest", "cellDigest"]) {
+    for (const key of ["regionDigest", "cellDigest"]) {
       const value = frame[key]
       if (typeof value === "string") digests.add(value)
     }
@@ -181,6 +181,7 @@ function validateColourSiblingWitness(
   featureId: string,
   path: string,
   results: readonly { featureId: string; criterionBranch?: string; frames?: unknown }[],
+  runId: string,
 ): void {
   const required = [
     "kind",
@@ -223,6 +224,9 @@ function validateColourSiblingWitness(
     requireWitnessString(witness.outerTerminal[key], path, featureId, `outerTerminal.${key}`)
   }
   if (witness.outerTerminal.status !== "supported") fail(path, `${featureId} witness missing outerTerminal.status`)
+  if (witness.runId !== runId) {
+    fail(path, `${featureId} witness runId ${String(witness.runId)} is not this run ${runId}`)
+  }
   if (witness.requestedRowId !== featureId) {
     fail(path, `${featureId} witness requestedRowId ${String(witness.requestedRowId)} is not this row`)
   }
@@ -261,7 +265,7 @@ function validateColourSiblingWitness(
     String(witness.sibling.target),
   ])
   const citedFrames = [...resultFrames(own ?? {}), ...resultFrames(siblingResult ?? {})].filter((frame) =>
-    ["ref", "regionDigest", "cellDigest"].some((key) => cited.has(String(frame[key] ?? ""))),
+    ["regionDigest", "cellDigest"].some((key) => cited.has(String(frame[key] ?? ""))),
   )
   const rectangles = citedFrames.map((frame) => frame.regionRectangle).filter(object)
   for (const rectangle of rectangles) {
@@ -277,6 +281,7 @@ function validateAssertionWitnesses(
   assertions: readonly ReadAssertion[],
   results: readonly { featureId: string; criterionBranch?: string }[],
   path: string,
+  runId: string,
 ): void {
   for (const assertion of assertions) {
     if (!Object.hasOwn(assertion, "witness") || assertion.witness === undefined) continue
@@ -290,7 +295,7 @@ function validateAssertionWitnesses(
     if (result?.criterionBranch !== witness.kind) {
       fail(path, `${assertion.featureId} witness kind ${witness.kind} disagrees with criterionBranch`)
     }
-    validateColourSiblingWitness(witness, assertion.featureId, path, results)
+    validateColourSiblingWitness(witness, assertion.featureId, path, results, runId)
   }
 }
 
@@ -1496,7 +1501,7 @@ export function parseRun(
     raw.screenshotRefs as string[],
     textSnapshotRefs,
   )
-  if (schemaVersion === 4) validateAssertionWitnesses(assertions, results, path)
+  if (schemaVersion === 4) validateAssertionWitnesses(assertions, results, path, String(raw.runId))
   // Version-2 collectors freeze qualification tests before seal. Validate their declared observer
   // context here, without recomputing a support result or changing historical single-recipe reads.
   if (manifest.textQualification && "recipes" in manifest.textQualification) {
