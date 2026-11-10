@@ -190,6 +190,134 @@ const scrollbackRun = () => ({
   ],
 })
 
+/**
+ * The shape a blink run writes at the #33117 schedule: the unstyled control shot and sixteen
+ * styled sample shots, each carrying its plain control region as a same-shot second crop,
+ * followed by the plain entries cropped from those same shots (same ref and capturedAt, the
+ * plain rectangle as their own region, no control fields — the older frame shape inside the
+ * same run).
+ */
+const BLINK_FEATURE = "sgr.blink"
+const BLINK_SUITE = "33117abcdef0"
+const blinkManifest: ProbeSuiteManifest & { schemaVersion: 4 } = {
+  schemaVersion: 4,
+  catalogIds: [BLINK_FEATURE],
+  probeHash: BLINK_SUITE,
+  adapterVersion: "3.3.1",
+  generatedAt: "2026-11-10T20:00:00.000Z",
+  probes: { term: [BLINK_FEATURE], lib: [], mux: [] },
+}
+const STYLED_RECT = { x: 16, y: 32, width: 104, height: 16 }
+const PLAIN_RECT = { x: 16, y: 0, width: 104, height: 16 }
+const BLINK_SAMPLES = 16
+const blinkFrames = (): ObservationFrame[] => {
+  const start = 1_000_000
+  const control: ObservationFrame = {
+    ...frame(
+      "control",
+      "Unstyled text sample",
+      start,
+      digest("blink-control"),
+      digest("blink-unstyled"),
+      digest("blink-whole-control"),
+    ),
+    regionRectangle: STYLED_RECT,
+    controlRegionDigest: digest("blink-plain"),
+    controlRegionRectangle: PLAIN_RECT,
+  }
+  const styled: ObservationFrame[] = []
+  const plain: ObservationFrame[] = [
+    {
+      ...frame(
+        "control",
+        "Plain line, control",
+        start,
+        digest("blink-control"),
+        digest("blink-plain"),
+        digest("blink-whole-control"),
+      ),
+      regionRectangle: PLAIN_RECT,
+    },
+  ]
+  for (let index = 0; index < BLINK_SAMPLES; index++) {
+    const capturedAt = start + 1000 + index * 500
+    const ref = digest(`blink-sample-${index}`)
+    styled.push({
+      ...frame(
+        "target",
+        `sgr.blink styled text, sample requested at +${index * 500} ms`,
+        capturedAt,
+        ref,
+        digest(index % 2 === 0 ? "blink-on" : "blink-off"),
+        digest(`blink-whole-${index}`),
+      ),
+      regionRectangle: STYLED_RECT,
+      controlRegionDigest: digest("blink-plain"),
+      controlRegionRectangle: PLAIN_RECT,
+    })
+    plain.push({
+      ...frame(
+        "control",
+        `Plain line, sample requested at +${index * 500} ms`,
+        capturedAt,
+        ref,
+        digest("blink-plain"),
+        digest(`blink-whole-${index}`),
+      ),
+      regionRectangle: PLAIN_RECT,
+    })
+  }
+  return [control, ...styled, ...plain]
+}
+const blinkRun = () => {
+  const frames = blinkFrames()
+  const draft = initializeRunDraft({
+    runId: "shape-blink",
+    sourceRevision: "4".repeat(40),
+    manifest: blinkManifest,
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
+  })
+  draft.subject = TARGET
+  draft.identity = "unverified"
+  draft.measuredAt = "2026-11-10T20:10:00.000Z"
+  draft.origin = { kind: "collector" }
+  const attempt = { scope: "probe" as const, startedAt: draft.measuredAt }
+  return {
+    ...draft,
+    subject: TARGET,
+    rawReplies: { [BLINK_FEATURE]: JSON.stringify({ writes: [], queries: [], events: [] }) },
+    assertions: [
+      {
+        featureId: BLINK_FEATURE,
+        kind: "positive",
+        assertionType: "screenshot",
+        rawReplyRef: BLINK_FEATURE,
+        expected: "a styled digest comes back after a different one, with every plain digest identical",
+        observed: JSON.stringify({ styled: [digest("blink-on"), digest("blink-off")], plain: [digest("blink-plain")] }),
+      },
+    ],
+    screenshotRefs: [
+      digest("blink-control"),
+      ...Array.from({ length: BLINK_SAMPLES }, (_, index) => digest(`blink-sample-${index}`)),
+    ],
+    results: [
+      {
+        featureId: BLINK_FEATURE,
+        status: "supported",
+        assertionType: "screenshot",
+        attempt,
+        tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0] }],
+        screenshotRef: digest("blink-sample-0"),
+        rawReplyRef: BLINK_FEATURE,
+        frames,
+      },
+    ],
+  }
+}
+const parseBlink = (run: Record<string, unknown>) =>
+  parseRun("pixels-verdict-blink.json", JSON.stringify(run), [BLINK_FEATURE], new Map([[BLINK_SUITE, blinkManifest]]))
+
 const parse = (run: Record<string, unknown>) => parseRun("pixels-verdict.json", JSON.stringify(run), catalog, suites)
 
 function callbackFixture(id: string) {
@@ -486,19 +614,27 @@ describe("in-run pixel probe results", () => {
     expect(() => parse(broken)).toThrow(/invalid frame regionRectangle/)
   })
 
-  it("carries a frame's same-shot control crop through the parse; an older frame without one parses unchanged (#33117)", () => {
-    const run = kittyRun()
-    const observations = run.results as Array<Record<string, unknown>>
-    const frames = observations[0]!.frames as Array<Record<string, unknown>>
-    frames[3]!.regionRectangle = { x: 10, y: 36, width: 104, height: 24 }
-    frames[3]!.controlRegionDigest = digest("plain-region")
-    frames[3]!.controlRegionRectangle = { x: 10, y: 12, width: 104, height: 24 }
-    const loaded = parse(run)
-    expect(loaded.results![0]?.frames?.[3]?.controlRegionDigest).toBe(digest("plain-region"))
-    expect(loaded.results![0]?.frames?.[3]?.controlRegionRectangle).toEqual({ x: 10, y: 12, width: 104, height: 24 })
-    // Additive and optional: every older frame in the same run carries no control fields at all.
-    expect(loaded.results![0]?.frames?.[0]?.controlRegionDigest).toBeUndefined()
-    expect(loaded.results![0]?.frames?.[0]?.controlRegionRectangle).toBeUndefined()
+  it("carries a blink run's same-shot control crops through the parse, beside its older-shape plain entries (#33117)", () => {
+    const loaded = parseBlink(blinkRun())
+    const frames = loaded.results![0]!.frames!
+    expect(frames).toHaveLength(1 + BLINK_SAMPLES + 1 + BLINK_SAMPLES)
+    const targets = frames.filter((entry) => entry.role === "target")
+    expect(targets).toHaveLength(BLINK_SAMPLES)
+    for (const target of targets) {
+      expect(target.controlRegionDigest).toBe(digest("blink-plain"))
+      expect(target.controlRegionRectangle).toEqual(PLAIN_RECT)
+      expect(target.regionRectangle).toEqual(STYLED_RECT)
+    }
+    expect(frames[0]?.controlRegionDigest).toBe(digest("blink-plain"))
+    // Additive at the scale the probe writes: the plain entries cropped from those same shots
+    // carry no control fields at all and parse unchanged in the same run.
+    const plainEntries = frames.filter((entry) => entry.label.startsWith("Plain line,"))
+    expect(plainEntries).toHaveLength(BLINK_SAMPLES + 1)
+    for (const entry of plainEntries) {
+      expect(entry.controlRegionDigest).toBeUndefined()
+      expect(entry.controlRegionRectangle).toBeUndefined()
+      expect(entry.regionDigest).toBe(digest("blink-plain"))
+    }
   })
 
   it.each([
