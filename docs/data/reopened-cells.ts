@@ -1,0 +1,122 @@
+/**
+ * Reopened cells (#33164, @cto PROCEED f8618145): the one correction route for a placed result whose published grade
+ * a ruling has withdrawn. A row names a CELL (kind, id, os, feature), never a run, so every run of that cell stays
+ * reopened until the row's exit is met. The run records are never edited: the witnessing runs and assertions stay as
+ * they are, and the one selection (selected-results.ts) reads the row into the cell's feature result.
+ *
+ * Each row names its exit, and the two kinds are fenced differently:
+ * - `criterion-text`: the criterion text does not yield the grade. The row holds the sha256 of that criterion text
+ *   (content/features.json `probe`); when the text changes, the row is stale and loading throws until it is deleted
+ *   or re-confirmed, so the text change and the row's deletion land together.
+ * - `remeasured`: the criterion stands but the stored measurement is not trusted. The row lists the suite ids it
+ *   applies to; a cell graded under any other suite makes the row stale, and loading throws until it is deleted.
+ *
+ * The file is generated (/hh/var/@dev15/33164/generate-reopened-cells.ts), never typed.
+ */
+import { createHash } from "node:crypto"
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
+import type { ProbeResult } from "@terminfo/probe-defs"
+
+export type ReopenedExit = { kind: "criterion-text"; criterionSha256: string } | { kind: "remeasured"; suiteIds: string[] }
+
+export interface ReopenedCell {
+  kind: "term" | "mux"
+  id: string
+  os: string
+  featureId: string
+  /** The published grade this row withdraws; a cell graded otherwise is not this row's. */
+  graded: ProbeResult["status"]
+  /** In words, for the page: why the grade does not stand. */
+  reason: string
+  /** The ruling, in words with its date and id. */
+  ruling: string
+  /** Where the row list came from. */
+  evidence: string
+  exit: ReopenedExit
+  /** Placed runs that show the withdrawn grade; each must exist and cite this feature at that assertion index. */
+  witnesses: Array<{ runId: string; assertionIndex: number }>
+}
+
+/** What a reopened cell carries for its readers: the row's words, never a bare id. */
+export interface ReopenedMarker {
+  reason: string
+  ruling: string
+  exit: ReopenedExit["kind"]
+}
+
+export const REOPENED_CELLS_FILE = "reopened-cells.json"
+
+export function cellLabel(row: Pick<ReopenedCell, "kind" | "id" | "os" | "featureId">): string {
+  return `${row.kind}:${row.id}/${row.os}/${row.featureId}`
+}
+
+const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex")
+
+/**
+ * Read and check content/reopened-cells.json. A missing file is no rows. A malformed row, a duplicate cell, or a
+ * criterion-text row whose criterion has changed throws, naming the rows.
+ */
+export function loadReopenedCells(contentDir: string, features: Readonly<Record<string, { probe?: string }>>): ReopenedCell[] {
+  const path = join(contentDir, REOPENED_CELLS_FILE)
+  if (!existsSync(path)) return []
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as { rows?: unknown }
+  if (!Array.isArray(parsed.rows)) throw new Error(`${path}: rows must be an array`)
+  const rows = parsed.rows.map((row, index) => checkRow(row, `${path} row ${index}`))
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const label = cellLabel(row)
+    if (seen.has(label)) throw new Error(`${path}: cell ${label} is reopened twice`)
+    seen.add(label)
+  }
+  const changed = rows.flatMap((row) => {
+    if (row.exit.kind !== "criterion-text") return []
+    const text = features[row.featureId]?.probe
+    if (text === undefined) return [`${cellLabel(row)} (features.json has no criterion text)`]
+    return sha256(text) === row.exit.criterionSha256 ? [] : [cellLabel(row)]
+  })
+  if (changed.length > 0) {
+    throw new Error(
+      `${path}: the criterion text changed under ${changed.length} reopened row(s); delete or re-confirm: ${changed.join(", ")}`,
+    )
+  }
+  return rows
+}
+
+function checkRow(value: unknown, where: string): ReopenedCell {
+  const row = value as Partial<ReopenedCell>
+  const text = (key: keyof ReopenedCell): string => {
+    const field = row[key]
+    if (typeof field !== "string" || field.length === 0) throw new Error(`${where}: ${key} must be a non-empty string`)
+    return field
+  }
+  if (row.kind !== "term" && row.kind !== "mux") throw new Error(`${where}: kind must be term or mux`)
+  const exit = row.exit
+  if (exit?.kind === "criterion-text") {
+    if (!/^[0-9a-f]{64}$/.test(exit.criterionSha256 ?? "")) throw new Error(`${where}: criterionSha256 must be a sha256`)
+  } else if (exit?.kind === "remeasured") {
+    if (!Array.isArray(exit.suiteIds) || exit.suiteIds.length === 0 || !exit.suiteIds.every((id) => typeof id === "string" && id)) {
+      throw new Error(`${where}: a remeasured exit names its suite ids`)
+    }
+  } else {
+    throw new Error(`${where}: exit.kind must be criterion-text or remeasured`)
+  }
+  if (!Array.isArray(row.witnesses) || row.witnesses.length === 0) throw new Error(`${where}: witnesses must be non-empty`)
+  for (const witness of row.witnesses) {
+    if (typeof witness?.runId !== "string" || !Number.isInteger(witness.assertionIndex) || witness.assertionIndex < 0) {
+      throw new Error(`${where}: each witness names a runId and an assertion index`)
+    }
+  }
+  return {
+    kind: row.kind,
+    id: text("id"),
+    os: text("os"),
+    featureId: text("featureId"),
+    graded: text("graded") as ProbeResult["status"],
+    reason: text("reason"),
+    ruling: text("ruling"),
+    evidence: text("evidence"),
+    exit,
+    witnesses: row.witnesses.map(({ runId, assertionIndex }) => ({ runId, assertionIndex })),
+  }
+}
