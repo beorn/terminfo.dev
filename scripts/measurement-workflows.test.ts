@@ -754,6 +754,7 @@ test("hosted Terminal finalise step carries launch and disposal into run.json or
     expect(run.runId).toBe("hosted-1")
     expect(Object.keys(run.rawReplies).sort()).toEqual(["collector.windowDisposal", "collector.windowLaunchProof"])
   } finally {
+    // raw-delete-allow: temp is this test's own mkdtemp scratch root
     rmSync(temp, { recursive: true, force: true })
   }
 })

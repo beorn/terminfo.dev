@@ -22,6 +22,7 @@ import {
 
 const dirs: string[] = []
 afterEach(() => {
+  // raw-delete-allow: dirs holds only this test's own mkdtemp fixture directories
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
