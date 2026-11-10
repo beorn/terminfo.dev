@@ -596,7 +596,10 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
             // A terminal may leave SGR (1006) when a sibling mouse-encoding mode is reset:
             // WezTerm answered this control in legacy X10 form after 1016l although the same
             // run's x10 control read SGR from it. Re-assert the encoding the control is judged in.
-            ctx.write("\x1b[?1006h")
+            // Ghostty, xterm and kitty also clear mouse tracking outright on 1002l/1003l rather
+            // than only their motion arm, so the encoding must be re-asserted WITH normal tracking
+            // or every later click is silently unreported (#32915 AC4, all three probe images).
+            ctx.write("\x1b[?1000h\x1b[?1006h")
             const sgrClick = (position: { x: number; y: number }) =>
               injected(/^\x1b\[<0;\d+;\d+M\x1b\[<0;\d+;\d+m$/, 2000, () => input.injectClick(1, position))
             // A click injected right after a resize can be dropped before the App applies the
