@@ -1316,7 +1316,7 @@ export function applyColourSiblingSeparation(
     muxConfig: string
   },
 ): void {
-  for (const observation of [...batch.observations]) {
+  for (const observation of batch.observations) {
     const decision = colourSiblingSeparation({
       featureId: observation.featureId,
       mux: input.mux,
@@ -1329,7 +1329,9 @@ export function applyColourSiblingSeparation(
     if (decision === undefined) continue
     const index = batch.results.findIndex((result) => result.featureId === observation.featureId)
     const current = batch.results[index]
-    if (current === undefined) throw new Error(`colour-sibling-separation: ${observation.featureId} has an observation but no result`)
+    if (current === undefined) {
+      throw new Error(`colour-sibling-separation: ${observation.featureId} has an observation but no result`)
+    }
     if (decision.kind === "open") {
       batch.results[index] = {
         ...current,
