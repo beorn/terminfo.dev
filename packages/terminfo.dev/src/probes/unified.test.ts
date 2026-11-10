@@ -186,10 +186,10 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc7-cwd" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "modes.decsclm" },
-  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc633-e" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc133-b" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 4, feature: "extensions.osc3008-context" },
@@ -197,18 +197,19 @@ it.each([
   { kind: "term", id: "ghostty", version: "1.4.0", count: 12, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 12, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 12, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 12, feature: "extensions.osc440-audio" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 12, feature: "extensions.osc3008-context" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc176-app-id" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc440-audio" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 23, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc555-flash" },
-  { kind: "term", id: "xterm", version: "411", count: 22, feature: "extensions.osc710-font-normal" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc555-flash" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc710-font-normal" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.clipboard-paste" },
   // #32601: existing subjects cannot catch a missing Alacritty audit or identity leakage from its one-cell declaration.
   { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc710-font-normal" },
   // #32918: Alacritty implements no OSC 133/633, so its thirteen prompt cells are declarations, not runs.
@@ -2831,10 +2832,45 @@ const defaultClipboardCases: Array<{
   mismatched?: boolean
   unowned?: boolean
   attached?: boolean
+  attachedMux?: "tmux" | "screen"
   refuseWrite?: boolean
+  nullMode2004?: boolean
   eligible: boolean
 }> = [
   { name: "direct Kitty default paste", eligible: true },
+  {
+    name: "direct Alacritty default paste",
+    subject: { kind: "term", id: "alacritty", os: "linux" },
+    eligible: true,
+  },
+  {
+    name: "direct Ghostty default paste",
+    subject: { kind: "term", id: "ghostty", os: "linux" },
+    eligible: true,
+  },
+  {
+    name: "direct WezTerm default paste",
+    subject: { kind: "term", id: "wezterm", os: "linux" },
+    eligible: true,
+  },
+  {
+    name: "direct xterm default paste stays gated",
+    subject: { kind: "term", id: "xterm", os: "linux" },
+    eligible: false,
+  },
+  {
+    name: "verified tmux default paste",
+    subject: { kind: "mux", id: "tmux", os: "linux" },
+    attachedMux: "tmux",
+    eligible: true,
+  },
+  {
+    name: "verified Screen default paste with blind 2004 setup",
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    attachedMux: "screen",
+    nullMode2004: true,
+    eligible: true,
+  },
   { name: "default OSC52 write", featureId: "extensions.osc52-write", eligible: true },
   {
     name: "default OSC52 write on other Linux app",
@@ -2849,14 +2885,91 @@ const defaultClipboardCases: Array<{
     refuseWrite: true,
     eligible: true,
   },
-  { name: "default OSC52 read", featureId: "extensions.osc52-read", eligible: false },
-  { name: "default OSC52 roundtrip", featureId: "extensions.osc52-clipboard", eligible: false },
-  { name: "other app", subject: { kind: "term", id: "ghostty", os: "linux" }, eligible: false },
-  { name: "mux subject", subject: { kind: "mux", id: "tmux", os: "linux" }, eligible: false },
   {
-    name: "default OSC52 write on mux subject",
+    name: "verified tmux default OSC52 write",
     featureId: "extensions.osc52-write",
     subject: { kind: "mux", id: "tmux", os: "linux" },
+    attachedMux: "tmux",
+    refuseWrite: true,
+    eligible: true,
+  },
+  {
+    name: "verified Screen default OSC52 write",
+    featureId: "extensions.osc52-write",
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    attachedMux: "screen",
+    refuseWrite: true,
+    eligible: true,
+  },
+  {
+    name: "verified tmux default OSC52 read",
+    featureId: "extensions.osc52-read",
+    subject: { kind: "mux", id: "tmux", os: "linux" },
+    attachedMux: "tmux",
+    refuseWrite: true,
+    eligible: true,
+  },
+  {
+    name: "verified Screen default OSC52 read",
+    featureId: "extensions.osc52-read",
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    attachedMux: "screen",
+    refuseWrite: true,
+    eligible: true,
+  },
+  {
+    name: "verified tmux default OSC52 roundtrip",
+    featureId: "extensions.osc52-clipboard",
+    subject: { kind: "mux", id: "tmux", os: "linux" },
+    attachedMux: "tmux",
+    refuseWrite: true,
+    eligible: true,
+  },
+  {
+    name: "verified Screen default OSC52 roundtrip",
+    featureId: "extensions.osc52-clipboard",
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    attachedMux: "screen",
+    refuseWrite: true,
+    eligible: true,
+  },
+  ...["kitty", "ghostty", "alacritty", "wezterm", "xterm"].flatMap((id) => [
+    {
+      name: `default OSC52 read stays gated on ${id}`,
+      featureId: "extensions.osc52-read",
+      subject: { kind: "term" as const, id, os: "linux" },
+      eligible: false,
+    },
+    {
+      name: `default OSC52 roundtrip stays gated on ${id}`,
+      featureId: "extensions.osc52-clipboard",
+      subject: { kind: "term" as const, id, os: "linux" },
+      eligible: false,
+    },
+  ]),
+  {
+    name: "unverified mux subject without attachment proof",
+    subject: { kind: "mux", id: "tmux", os: "linux" },
+    eligible: false,
+  },
+  {
+    name: "default OSC52 write on unverified mux subject",
+    featureId: "extensions.osc52-write",
+    subject: { kind: "mux", id: "tmux", os: "linux" },
+    eligible: false,
+  },
+  {
+    name: "mux subject with mismatched attachment proof",
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    attachedMux: "tmux",
+    eligible: false,
+  },
+  {
+    name: "Screen modes.bracketed-paste stays gated under default profile",
+    featureId: "modes.bracketed-paste",
+    subject: { kind: "mux", id: "screen", os: "linux" },
+    attachedMux: "screen",
+    nullMode2004: true,
     eligible: false,
   },
   { name: "library subject", subject: { kind: "lib", id: "kitty", os: "linux" }, eligible: false },
@@ -2906,9 +3019,12 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     if (text === "\x1b[?2004h") bracketedPaste = true
     if (text === "\x1b[?2004l") bracketedPaste = false
     if (text.includes("\x1b[?2004$p")) {
-      queueMicrotask(() => process.stdin.emit("data", Buffer.from(`\x1b[?2004;${bracketedPaste ? 1 : 2}$y\x1b[?1;2c`)))
+      const reply = scenario.nullMode2004 ? "\x1b[?1;2c" : `\x1b[?2004;${bracketedPaste ? 1 : 2}$y\x1b[?1;2c`
+      queueMicrotask(() => process.stdin.emit("data", Buffer.from(reply)))
     }
-    if (text.startsWith("\x1b]52;c;") && !scenario.refuseWrite) {
+    if (text.includes("\x1b]52;c;?\x07") && text.includes("\x1b[c")) {
+      queueMicrotask(() => process.stdin.emit("data", Buffer.from("\x1b[?1;2c")))
+    } else if (text.startsWith("\x1b]52;c;") && !scenario.refuseWrite) {
       clipboardText = atob(/\x1b\]52;c;([^\x07]+)\x07/.exec(text)?.[1] ?? "")
     }
     if (text === "\x1b[6n") {
@@ -2916,25 +3032,54 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     }
     return true
   }) as typeof process.stdout.write
-  const withClipboardFixture = vi.fn(
-    createClipboardTransaction(
-      baseline,
-      {
-        async readText(trace, kind, verify) {
-          await verify()
-          trace({ kind, at: new Date().toISOString(), length: clipboardText.length })
-          return clipboardText
-        },
-        async writeText(text, trace, kind, verify) {
-          await verify()
-          clipboardText = text
-          trace({ kind, at: new Date().toISOString(), length: text.length })
-        },
+  const attachedMux = scenario.attachedMux ?? (scenario.attached ? "tmux" : undefined)
+  const baseTransaction = createClipboardTransaction(
+    baseline,
+    {
+      async readText(trace, kind, verify) {
+        await verify()
+        trace({ kind, at: new Date().toISOString(), length: clipboardText.length })
+        return clipboardText
       },
-      { writeDeadlineMs: 25, writePollMs: 5 },
-    ),
+      async writeText(text, trace, kind, verify) {
+        await verify()
+        clipboardText = text
+        trace({ kind, at: new Date().toISOString(), length: text.length })
+      },
+    },
+    { writeDeadlineMs: 25, writePollMs: 5 },
   )
+  const withClipboardFixture = vi.fn(((work, trace, verify) =>
+    baseTransaction(
+      (fixture) => work(attachedMux === "tmux" ? { ...fixture, tmuxSetClipboard: "external" } : fixture),
+      trace,
+      verify,
+    )) as LinuxClipboardAdapter["withClipboardFixture"])
   const processIdentity = { pid: 42, startTicks: "1", ttyRdev: 34816 }
+  const muxAttachmentProof = attachedMux
+    ? {
+        platform: "linux" as const,
+        mux: attachedMux,
+        bootId: "00000000-0000-0000-0000-000000000001",
+        receiptSha256: "a".repeat(64),
+        launchRunId: "b".repeat(32),
+        captureRunId: "a".repeat(32),
+        preflightCollector: processIdentity,
+        outerShell: processIdentity,
+        outerTerminal: processIdentity,
+        collector: processIdentity,
+        attachedClient: processIdentity,
+        chain: [{ ...processIdentity, executablePath: `/fixture/${attachedMux}` }],
+        executable: {
+          path: `/fixture/${attachedMux}`,
+          sha256: "c".repeat(64),
+          version: attachedMux === "tmux" ? "3.8" : "5.0.2",
+        },
+        config: { path: "/fixture/empty.conf", sha256: "d".repeat(64) },
+        socketPath: `/fixture/${attachedMux}.sock`,
+        session: "fixture",
+      }
+    : undefined
   const clipboard: LinuxClipboardAdapter = {
     profile: scenario.profile ?? "default",
     config: "fixture",
@@ -2946,117 +3091,114 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     },
     dispose: async () => {},
     withClipboardFixture,
-    ...(scenario.attached && {
-      muxAttachmentProof: {
-        platform: "linux" as const,
-        mux: "tmux" as const,
-        bootId: "00000000-0000-0000-0000-000000000001",
-        receiptSha256: "a".repeat(64),
-        launchRunId: "b".repeat(32),
-        captureRunId: "a".repeat(32),
-        preflightCollector: processIdentity,
-        outerShell: processIdentity,
-        outerTerminal: processIdentity,
-        collector: processIdentity,
-        attachedClient: processIdentity,
-        chain: [{ ...processIdentity, executablePath: "/fixture/tmux" }],
-        executable: { path: "/fixture/tmux", sha256: "c".repeat(64), version: "3.8" },
-        config: { path: "/fixture/empty.conf", sha256: "d".repeat(64) },
-        socketPath: "/fixture/tmux.sock",
-        session: "fixture",
-      },
-    }),
+    ...(muxAttachmentProof && { muxAttachmentProof }),
   }
   const injectKey = vi.fn(async (keys: string) => {
     const text = keys === "a" ? "a" : bracketedPaste ? `\x1b[200~${clipboardText}\x1b[201~` : clipboardText
     process.stdin.emit("data", Buffer.from(text))
   })
   const featureId = scenario.featureId ?? "extensions.clipboard-paste"
-  const isOsc52Write = featureId === "extensions.osc52-write"
+  const isOsc52 = featureId.startsWith("extensions.osc52-")
+  const isOsc52WriteOrRoundtrip = featureId === "extensions.osc52-write" || featureId === "extensions.osc52-clipboard"
+  const isOsc52Read = featureId === "extensions.osc52-read"
+  const isXtermPaste =
+    featureId === "extensions.clipboard-paste" &&
+    subject.kind === "term" &&
+    subject.id === "xterm" &&
+    subject.os === "linux"
+  const appDeclarations = isXtermPaste
+    ? appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
+    : undefined
   const collected = runProbeBatch({
     ids: [featureId],
     subject,
     captureRunId: "a".repeat(32),
-    ownedTerminal: { ...geometryOwner(measured(24, 80)), clipboard },
+    ownedTerminal: { ...geometryOwner(measured(24, 80)), clipboard, ...(muxAttachmentProof && { muxAttachmentProof }) },
     input: { injectKey, injectClick: async () => {} },
+    ...(appDeclarations && { appDeclarations }),
   })
   if (scenario.mismatched) {
     await expect(collected).rejects.toThrow(/disagree/)
   } else {
     const batch = await collected
     const expectedOutcome = scenario.refuseWrite ? "unsupported" : "supported"
-    expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(
-      scenario.eligible ? expectedOutcome : "probe-todo",
-    )
+    const expectedStatus = scenario.eligible
+      ? expectedOutcome
+      : featureId === "modes.bracketed-paste"
+        ? "probe-invalid"
+        : isXtermPaste
+          ? "untestable"
+          : "probe-todo"
+    expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(expectedStatus)
     if (scenario.eligible) {
+      const expectedAssertionType = isOsc52Read ? "query_reply" : isOsc52WriteOrRoundtrip ? "clipboard" : "input_bytes"
       expect(batch.observations).toContainEqual(
         expect.objectContaining({
           featureId,
           outcome: expectedOutcome,
-          assertionType: isOsc52Write ? "clipboard" : "input_bytes",
+          assertionType: expectedAssertionType,
         }),
       )
+      if (scenario.nullMode2004 && featureId === "extensions.clipboard-paste") {
+        expect(batch.observations.find((obs) => obs.featureId === featureId)?.note).toContain("set blind")
+      }
+      if (attachedMux === "tmux" && isOsc52) {
+        expect(batch.observations.find((obs) => obs.featureId === featureId)?.note).toContain("set-clipboard=external")
+      }
       const trace = JSON.parse(batch.rawReplies[featureId]!) as { clipboard: Array<{ kind: string }> }
-      if (isOsc52Write && scenario.refuseWrite) {
+      if (isOsc52WriteOrRoundtrip && scenario.refuseWrite) {
         const kinds = trace.clipboard.map((event) => event.kind)
         expect(kinds.slice(0, 3)).toEqual(["clipboard-read", "clipboard-read", "clipboard-read"])
         expect(kinds.slice(-2)).toEqual(["clipboard-restore", "clipboard-verify"])
         expect(kinds.slice(0, -2).every((kind) => kind === "clipboard-read")).toBe(true)
       } else {
         expect(trace.clipboard.map((event) => event.kind)).toEqual(
-          isOsc52Write
+          isOsc52WriteOrRoundtrip
             ? ["clipboard-read", "clipboard-read", "clipboard-restore", "clipboard-verify"]
             : ["clipboard-read", "clipboard-write", "clipboard-restore", "clipboard-verify"],
         )
       }
-      if (isOsc52Write) {
-        const draft = asRun(batch)
-        const decoded = decodeCollectorDraft(
-          "owned-clipboard.json",
-          JSON.stringify(draft),
-          manifest,
-          sourceRevision,
-        ).run
-        expect(decoded.results.find((row) => row.featureId === featureId)?.status).toBe(expectedOutcome)
-        expect(decoded.assertions).toContainEqual(
-          expect.objectContaining({
-            featureId,
-            assertionType: "clipboard",
-            kind: scenario.refuseWrite ? "negative" : "positive",
-            rawReplyRef: featureId,
-          }),
-        )
-        const parsed = parseRun(
-          "owned-clipboard.json",
-          JSON.stringify(draft),
-          [featureId],
-          new Map([[manifest.probeHash, manifest]]),
-        )
-        expect(parsed.results?.find((row) => row.featureId === featureId)).toMatchObject({
+      const draft = asRun(batch)
+      const decoded = decodeCollectorDraft("owned-clipboard.json", JSON.stringify(draft), manifest, sourceRevision).run
+      expect(decoded.results.find((row) => row.featureId === featureId)?.status).toBe(expectedOutcome)
+      expect(decoded.assertions).toContainEqual(
+        expect.objectContaining({
           featureId,
-          status: expectedOutcome,
-          assertionType: "clipboard",
+          assertionType: expectedAssertionType,
+          kind: scenario.refuseWrite ? "negative" : "positive",
           rawReplyRef: featureId,
-        })
-        expect(parsed.assertions).toContainEqual(
-          expect.objectContaining({
-            featureId,
-            assertionType: "clipboard",
-            kind: scenario.refuseWrite ? "negative" : "positive",
-            rawReplyRef: featureId,
-          }),
-        )
-      }
+        }),
+      )
+      const parsed = parseRun(
+        "owned-clipboard.json",
+        JSON.stringify(draft),
+        [featureId],
+        new Map([[manifest.probeHash, manifest]]),
+      )
+      expect(parsed.results?.find((row) => row.featureId === featureId)).toMatchObject({
+        featureId,
+        status: expectedOutcome,
+        assertionType: expectedAssertionType,
+        rawReplyRef: featureId,
+      })
+      expect(parsed.assertions).toContainEqual(
+        expect.objectContaining({
+          featureId,
+          assertionType: expectedAssertionType,
+          kind: scenario.refuseWrite ? "negative" : "positive",
+          rawReplyRef: featureId,
+        }),
+      )
     } else {
       expect(batch.assertions).toEqual([])
     }
   }
   expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible ? 1 : 0)
   expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(
-    scenario.eligible && !isOsc52Write ? ["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"] : [],
+    scenario.eligible && !isOsc52 ? ["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"] : [],
   )
   expect(clipboardText).toBe(baseline)
-  if (scenario.eligible && isOsc52Write) {
+  if (scenario.eligible && isOsc52) {
     expect(writes.join("")).toContain("\x1b]52;c;")
   } else {
     expect(writes.join("")).not.toContain("\x1b]52;")

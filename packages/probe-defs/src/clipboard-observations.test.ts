@@ -266,6 +266,154 @@ describe("live OSC 52 write ordering", () => {
     expect(roundtripResult.assertions).toBeUndefined()
   })
 
+  test("mux OSC 52 read and roundtrip decide unsupported on sentinel silence and unchanged baseline only under default set-clipboard", async () => {
+    const readCallback = ALL_PROBES.find((item) => item.id === "extensions.osc52-read")?.term
+    const roundtripCallback = ALL_PROBES.find((item) => item.id === "extensions.osc52-clipboard")?.term
+    if (!readCallback || !roundtripCallback) throw new Error("OSC 52 callbacks are missing")
+
+    for (const mux of ["tmux", "screen"] as const) {
+      const sentinelCalls: string[] = []
+      const readResult = await readCallback(
+        termSource({
+          mux,
+          capture: async () => {
+            throw new Error("mux sentinel read must not capture a desktop prompt screenshot")
+          },
+          queryWithSentinelOutcome: async (sequence) => {
+            sentinelCalls.push(sequence)
+            return {
+              raw: "\x1b[?1;2c",
+              rawBase64: Buffer.from("\x1b[?1;2c").toString("base64"),
+              match: null,
+              reason: "sentinel",
+            }
+          },
+          withClipboardFixture: async (work) =>
+            work({
+              baseline: "baseline",
+              ...(mux === "tmux" && { tmuxSetClipboard: "external" }),
+              readText: async () => "baseline",
+              writeText: async () => {},
+            }),
+        }),
+      )
+      expect(sentinelCalls).toEqual(["\x1b]52;c;?\x07"])
+      expect(readResult.observation).toMatchObject({
+        outcome: "unsupported",
+        assertionType: "query_reply",
+        note: expect.stringContaining(mux === "tmux" ? "set-clipboard=external" : "mux=screen"),
+      })
+      expect(readResult.assertions).toEqual([
+        expect.objectContaining({
+          assertionType: "query_reply",
+          kind: "negative",
+        }),
+      ])
+
+      const roundtripResult = await roundtripCallback(
+        termSource({
+          mux,
+          write(sequence) {
+            writtenNonce(sequence)
+          },
+          queryCursorPosition: async () => ({ row: 1, col: 1 }),
+          withClipboardFixture: async (work) =>
+            work({
+              baseline: "baseline",
+              ...(mux === "tmux" && { tmuxSetClipboard: "external" }),
+              writeDeadlineMs: 25,
+              writePollMs: 5,
+              readText: async () => "baseline",
+              writeText: async () => {},
+            }),
+        }),
+      )
+      expect(roundtripResult.observation).toMatchObject({
+        outcome: "unsupported",
+        assertionType: "clipboard",
+        note: expect.stringContaining(mux === "tmux" ? "set-clipboard=external" : "mux=screen"),
+      })
+      expect(roundtripResult.assertions).toEqual([
+        expect.objectContaining({
+          assertionType: "clipboard",
+          kind: "negative",
+          observed: "baseline",
+        }),
+      ])
+    }
+
+    const nonDefaultTmuxRead = await readCallback(
+      termSource({
+        mux: "tmux",
+        queryWithSentinelOutcome: async () => ({
+          raw: "\x1b[?1;2c",
+          rawBase64: Buffer.from("\x1b[?1;2c").toString("base64"),
+          match: null,
+          reason: "sentinel",
+        }),
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            tmuxSetClipboard: "on",
+            readText: async () => "baseline",
+            writeText: async () => {},
+          }),
+      }),
+    )
+    expect(nonDefaultTmuxRead.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+      assertionType: "query_reply",
+      note: expect.stringContaining("set-clipboard=on"),
+    })
+    expect(nonDefaultTmuxRead.assertions).toBeUndefined()
+
+    const nonDefaultTmuxRoundtrip = await roundtripCallback(
+      termSource({
+        mux: "tmux",
+        write(sequence) {
+          writtenNonce(sequence)
+        },
+        queryCursorPosition: async () => ({ row: 1, col: 1 }),
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            tmuxSetClipboard: "off",
+            writeDeadlineMs: 25,
+            writePollMs: 5,
+            readText: async () => "baseline",
+            writeText: async () => {},
+          }),
+      }),
+    )
+    expect(nonDefaultTmuxRoundtrip.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      assertionType: "clipboard",
+      note: expect.stringContaining("set-clipboard=off"),
+    })
+    expect(nonDefaultTmuxRoundtrip.assertions).toBeUndefined()
+
+    const timeoutMuxRead = await readCallback(
+      termSource({
+        mux: "screen",
+        queryWithSentinelOutcome: async () => ({
+          raw: "",
+          rawBase64: "",
+          match: null,
+          reason: "timeout",
+        }),
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+          }),
+      }),
+    )
+    expect(timeoutMuxRead.tests?.[0]?.status).toBe("probe-invalid")
+  })
+
   test.each([
     {
       label: "empty",
@@ -626,6 +774,45 @@ test.each([null, "unknown"] as const)(
     expect(clipboardWrites).toEqual([])
   },
 )
+
+test("clipboard paste on a verified disposable session sets 2004 blind when queryMode(2004) is null, restores 2004l, and still refuses unknown", async () => {
+  const writes: string[] = []
+  const { ctx, clipboardWrites } = pasteAndRead({ paste: "controlled" }, writes)
+  const originalFixture = ctx.withClipboardFixture!
+  ctx.queryMode = async () => null
+  ctx.withClipboardFixture = (work) => originalFixture((fixture) => work({ ...fixture, disposableSession: true }))
+  const result = await pasteProbe().term!(ctx)
+  const nonce = clipboardWrites[0] ?? ""
+  expect(result.observation).toMatchObject({
+    outcome: "supported",
+    assertionType: "input_bytes",
+    note: expect.stringContaining("set blind"),
+  })
+  expect(writes.at(-1)).toBe("\x1b[?2004l")
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({
+    mode: "clipboard-paste",
+    modeSetup: "blind-disposable-2004-reset",
+    report: `\x1b[200~${nonce}\x1b[201~`,
+  })
+
+  const silentWrites: string[] = []
+  const silent = pasteAndRead({ paste: "silent" }, silentWrites)
+  const silentOrig = silent.ctx.withClipboardFixture!
+  silent.ctx.queryMode = async () => null
+  silent.ctx.withClipboardFixture = (work) => silentOrig((fixture) => work({ ...fixture, disposableSession: true }))
+  await expect(pasteProbe().term!(silent.ctx)).rejects.toThrow(/paste|silent/i)
+  expect(silentWrites.at(-1)).toBe("\x1b[?2004l")
+
+  const unknownWrites: string[] = []
+  const unknown = pasteAndRead({ paste: "controlled" }, unknownWrites)
+  const unknownOrig = unknown.ctx.withClipboardFixture!
+  unknown.ctx.queryMode = async () => "unknown"
+  unknown.ctx.withClipboardFixture = (work) => unknownOrig((fixture) => work({ ...fixture, disposableSession: true }))
+  const unknownResult = await pasteProbe().term!(unknown.ctx)
+  expect(unknownResult.notTested?.noObservable).toContain("DECRPM 2004")
+  expect(unknownWrites).toEqual([])
+})
 
 test.each([null, "reset"] as const)(
   "clipboard paste rejects unverified incoming-mode restore %s",

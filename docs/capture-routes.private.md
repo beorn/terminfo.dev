@@ -24,27 +24,19 @@ The existing outer Kitty/Xclip transaction is one implementation, not separate c
 providers for Kitty, tmux and Screen. Its OS-selection restore does not establish that
 every mux buffer or title state was restored.
 
-## Default direct-Kitty paste
+## Default Linux paste and mux OSC52 routes
 
-The batch collector enables the existing clipboard fixture for the default paste route
-only when all of these conditions hold:
+The batch collector enables the existing clipboard fixture under the `default` profile only
+for verified owned Linux runs matching one of these routes:
 
-- The selected probe is `extensions.clipboard-paste`.
-- Terminal output has passed the existing ownership verification.
-- A clipboard adapter and clipboard verification are available.
-- The measured subject is `term/kitty/linux`.
-- A disposable receipt declares the matching target `app/kitty/linux`.
-- Existing receipt binding has passed before writes.
-- No mux attachment proof is present.
-
-Every miss retains the previous eligibility behavior. In particular, a caller-supplied
-Kitty subject or a targetless receipt does not enable this default exception. The existing
-nondefault branch is unchanged; the exception introduces no global target requirement.
-
-The paste callback retains its plain-key control, nonce-bearing text, Ctrl+Shift+V input,
-bracketed-paste envelope and finally cleanup. The clipboard transaction retains baseline
-restoration and verification. Missing input remains an unmeasured prerequisite; it is not
-evidence that Kitty lacks paste support.
+- **Direct Linux apps (`term/<id>/linux` with matching `app/<id>/linux` disposable target and no `muxAttachmentProof`)**:
+  - `extensions.osc52-write` on all five apps (`kitty`, `ghostty`, `alacritty`, `wezterm`, `xterm`).
+  - `extensions.clipboard-paste` on apps whose default keymap binds `Ctrl+Shift+V` to `CLIPBOARD` (`kitty`, `ghostty`, `alacritty`, `wezterm`). Default `xterm` 411 binds `Shift+Insert` / `Button2` to `PRIMARY` (`SELECT`) rather than `Ctrl+Shift+V` / `CLIPBOARD` (`charproc.c:15021-15061`) and is declared Untestable naming that unbuilt route.
+  - All ten desktop `extensions.osc52-read` and `extensions.osc52-clipboard` cells remain gated outside the default profile so unattended runs never trigger ask-first read prompts.
+- **Verified Linux multiplexers (`mux/{tmux,screen}/linux` with matching `mux/<id>/linux` disposable target and matching `muxAttachmentProof`)**:
+  - `extensions.clipboard-paste`, `extensions.osc52-write`, `extensions.osc52-read`, and `extensions.osc52-clipboard`.
+  - On verified disposable `screen` 5.0.2 (`ansi.c:1186-1188` implements `2004` without `DECRQM`), `extensions.clipboard-paste` sets and restores `CSI ? 2004 l` blind in `finally` and records that blind setup in the observation; `modes.bracketed-paste` is unchanged.
+  - On `tmux` 3.8, `linux-clipboard.ts` reads `show-options -s -v set-clipboard`, snapshots `list-buffers -F "#{buffer_name}"`, deletes any callback-created paste buffers in `finally`, and verifies post-restore buffer state alongside OS `xclip` restoration; mux OSC52 negatives require default `set-clipboard=external` (`tmux`) or `screen` and record the measured setting.
 
 The focused [routing tests](../packages/terminfo.dev/src/probes/unified.test.ts) use the
 existing clipboard transaction with modeled input. They prove fixture selection and the

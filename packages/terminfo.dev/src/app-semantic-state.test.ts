@@ -646,3 +646,11 @@ test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audi
     "Untestable (no way): Ghostty 1.4.0 parses OSC 3008 but keeps no context state and exposes no readback. In ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar (SHA256 d692bb9b), osc.zig:1170 sends 3008 to parsers.hierarchical_context.parse, which validates the uapi start=<id>/end=<id> form and warns at hierarchical_context.zig:274; the parsed command then reaches stream.zig:2968, which lists .hierarchical_context among unimplemented OSC callbacks and only runs log.debug at :2970 (absent from the shipped binary: strings finds 0), a level main_ghostty.zig:203-211 pins off in every non-debug build. No context stack, environment, reply or public readback exists in src. A spec-valid payload leaves no observable trace, and the parser warning a malformed payload produces is payload validation, not a command-specific refusal.",
   )
 })
+
+test("xterm 411 declares extensions.clipboard-paste untestable naming the unbuilt Shift+Insert PRIMARY route", () => {
+  const declared = appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
+  expect(declared["extensions.clipboard-paste"]).toMatch(
+    /^Untestable \(unbuilt Shift\+Insert\/PRIMARY route\): default xterm 411 has no Ctrl\+Shift\+V or CLIPBOARD paste binding, and its own default paste route \(Shift\+Insert or Button2 from X11 PRIMARY\) is not built in this probe\..*charproc\.c:15021-15061.*xterm\.man:5452,5481/,
+  )
+  expect(appSemanticDeclarations({ kind: "term", id: "xterm", version: "412", os: "linux" })).toEqual({})
+})

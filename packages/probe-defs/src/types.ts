@@ -996,6 +996,10 @@ export interface LibMouseEvent {
 export interface ClipboardFixture {
   /** Owned transaction baseline verified before the callback starts. */
   readonly baseline?: string
+  /** True only when the collector verified a disposable session that sets and restores 2004 blind (#32164). */
+  readonly disposableSession?: boolean
+  /** Verified tmux server `set-clipboard` option read before the callback (#32164). */
+  readonly tmuxSetClipboard?: string
   /** Bounded post-CPR wait window in ms for OSC 52 write selection settlement (default 1000, max 2000). */
   readonly writeDeadlineMs?: number
   /** Polling interval in ms for post-CPR OSC 52 write selection settlement (default 25). */
