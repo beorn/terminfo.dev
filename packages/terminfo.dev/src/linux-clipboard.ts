@@ -840,12 +840,25 @@ export async function createLinuxClipboardAdapter(
       } finally {
         try {
           await verify()
+          const restoreTitle = async () => {
+            write(`\x1b]2;${originalTitle}\x07`)
+            await verify()
+            if ((await title()) === originalTitle) return "osc2" as const
+            // WezTerm keeps the window title on the OSC 1 payload and ignores a later OSC 2 (#32998).
+            write(`\x1b]0;${originalTitle}\x07`)
+            await verify()
+            return "osc0" as const
+          }
           if (before.value !== null) {
             write(`\x1b]1;${before.value}\x07`)
             await verify()
           }
-          write(`\x1b]2;${originalTitle}\x07`)
+          let restoredBy = await restoreTitle()
           cleanup.title = await title()
+          if (cleanup.title !== originalTitle) {
+            restoredBy = await restoreTitle()
+            cleanup.title = await title()
+          }
           const restored = await read()
           cleanup.icon = restored.value ?? undefined
           cleanup.propertiesExact =
@@ -860,7 +873,11 @@ export async function createLinuxClipboardAdapter(
           if (before.value === null) {
             cleanup.note = "Baseline icon property was absent; OSC cleanup does not delete a property the probe created"
           } else if (!before.legacy && cleanup.icon !== before.value) {
-            throw new Error("Owned icon/title restoration readback differs from baseline")
+            if (restoredBy === "osc0") {
+              cleanup.note = "OSC 0 restored the title after OSC 2 did not; the icon property was not restored exactly"
+            } else {
+              throw new Error("Owned icon/title restoration readback differs from baseline")
+            }
           } else if (before.legacy && cleanup.icon !== before.value) {
             cleanup.note = "OSC-only cleanup cannot reproduce original legacy icon value/type; snapshots retained"
           }

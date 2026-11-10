@@ -627,6 +627,31 @@ try {
     assert.equal(nativeTitle,originalTitle)
     assert.deepEqual(iconProperties._NET_WM_ICON_NAME.bytes,[])
     assert.equal(transaction.detail.iconFixture.cleanup.propertiesExact,true)
+    let latched = false
+    const wezterm = await adapter.clipboard.withIconNameFixture((bytes) => {
+      const match = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
+      assert(match, "wezterm cleanup sequence")
+      const code = match[1]
+      const payload = match[2] ?? ""
+      if (code === "1") {
+        nativeTitle = payload
+        latched = true
+        iconProperties._NET_WM_ICON_NAME = { type: "UTF8_STRING", bytes: [...Buffer.from(payload, "utf8")] }
+        return
+      }
+      if (code === "0") {
+        nativeTitle = payload
+        latched = false
+        return
+      }
+      if (!latched) nativeTitle = payload
+    }, async () => {
+      nativeTitle = "icon-name-b-latch"
+      latched = true
+      return { status: "unavailable", reason: "wezterm title latch" }
+    })
+    assert.equal(wezterm.status, "unavailable")
+    assert.equal(nativeTitle, originalTitle)
     for (const bad of [
       '_NET_WM_ICON_NAME(UTF8_STRING) = "quoted"\n',
       '_NET_WM_ICON_NAME(UTF8_STRING) = 256\n',
