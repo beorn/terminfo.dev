@@ -128,13 +128,13 @@ describe("finaliseTerminalWindowRecord", () => {
     {
       name: "window missing from the after census",
       files: { launch: { ...launch, afterIds: [12, 13, 15] }, disposal, run: RUN },
-      error: "owned Terminal window: terminal-launch.json is malformed at afterIds ([12,13,15])",
+      error:
+        "owned Terminal window 14: afterIds (12,13,15) does not hold the owned window, so the census contradicts the launch",
     },
     {
       name: "no new single-tab window on the launched tty",
       files: { launch: { ...launch, newIds: [{ windowId: 14, tabCount: 2, tty: TTY }] }, disposal, run: RUN },
-      error:
-        'owned Terminal window: terminal-launch.json is malformed at newIds ([{"windowId":14,"tabCount":2,"tty":"/dev/ttys003"}])',
+      error: "owned Terminal window: newIds has no single-tab window 14 on the launched tty /dev/ttys003 (new ids 14)",
     },
     {
       name: "a second new window on the launched tty",

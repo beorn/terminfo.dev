@@ -80,7 +80,12 @@ export function finaliseTerminalWindowRecord(out: string): void {
       `${WHO} ${windowId} was already present before the launch: before census held ${beforeIds.join(",")}`,
     )
   }
-  if (!afterIds.includes(windowId)) malformed("afterIds", afterIds)
+  // Well-formed bytes that contradict the launch are a contradiction, not a parse failure (@dev/11 review).
+  if (!afterIds.includes(windowId)) {
+    throw new Error(
+      `${WHO} ${windowId}: afterIds (${afterIds.join(",")}) does not hold the owned window, so the census contradicts the launch`,
+    )
+  }
   // A cold start opens Terminal's startup window beside ours (run 42560226484): other new ids are recorded, not refused.
   const fresh = newIds.filter((row) => !beforeIds.includes(row.windowId) && afterIds.includes(row.windowId))
   const onTTY = fresh.filter((row) => row.tty === tty)
@@ -90,7 +95,11 @@ export function finaliseTerminalWindowRecord(out: string): void {
     )
   }
   const [owned] = onTTY
-  if (owned?.tabCount !== 1 || owned.windowId !== windowId) malformed("newIds", newIds)
+  if (owned?.tabCount !== 1 || owned.windowId !== windowId) {
+    throw new Error(
+      `${WHO}: newIds has no single-tab window ${windowId} on the launched tty ${tty} (new ids ${fresh.map((row) => row.windowId).join(", ")})`,
+    )
+  }
 
   const disposalPath = join(out, DISPOSAL_FILE)
   if (!existsSync(disposalPath)) {
