@@ -44,6 +44,7 @@ import {
   type TerminalQueryOutcome,
   type TextQualification,
 } from "@terminfo/probe-defs"
+import { clipboardConfigAgrees } from "./clipboard-config.ts"
 import { detectTerminal } from "./detect.ts"
 import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts"
 import {
@@ -393,17 +394,6 @@ type ProbeCollectionOptions = {
   expectedLaunchRunId?: string
   captureRunId?: string
   intendedSubject?: Partial<ProbeSubject>
-}
-
-/** Hosted Mac runs have no runtime provenance. Missing provenance is not a config mismatch. */
-export function clipboardConfigAgrees(
-  provenance: { fixture: { config: string | null } } | undefined,
-  clipboard: { config: string | null },
-): void {
-  if (!provenance) return
-  if (provenance.fixture.config !== clipboard.config) {
-    throw new Error("Owned clipboard profile config differs from runtime provenance")
-  }
 }
 
 /** The same source-tree collector powers daemon and inline CLI entry points. */
