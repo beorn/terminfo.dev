@@ -48,7 +48,7 @@ jobs:
     name: macOS ${{ matrix.id }}
     if: ${{ toJSON(fromJSON(inputs.context_matrix).include) != '[]' && toJSON(fromJSON(inputs.probe_ids)) != '[]' }}
     runs-on: macos-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.context_matrix) }}
@@ -287,8 +287,8 @@ jobs:
           COLLECTOR_BUN="$(command -v bun)"
           printf 'collect_started_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
           COLLECT_EPOCH="$(date +%s)"
-          # 180s is enough to stop the collector and write run.json before timeout-minutes: 25 kills the job.
-          JOB_LIMIT_S=$((25 * 60))
+          # 35 minutes leaves about 300s above the 1200s Terminal.app needed on 42844675013, after this 180s flush margin.
+          JOB_LIMIT_S=$((35 * 60))
           FLUSH_MARGIN_S=180
           BUN_DIR="$(dirname "$COLLECTOR_BUN")"
           TARGET_VERSION_EXPORT=""
