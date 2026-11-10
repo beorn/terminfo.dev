@@ -319,6 +319,9 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
   }
 }
 
+/** OSC 1 with an empty name clears the icon title; the separator is required, or the terminal drops it. */
+const CLEAR_ICON_TITLE = "\x1b]1;\x07"
+
 /** Both App IDs measure the same two joint fixtures, through the owned title surface. */
 async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const read = ctx.readTitle
@@ -338,6 +341,9 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
   const before = await read()
   const saved = before === "pushed-title" ? "other-pushed-title" : "pushed-title"
   const set = (title: string) => ctx.write(`\x1b]2;${title}\x07`)
+  // The fixture sets its own start state instead of depending on probe order: an icon title left by
+  // an earlier probe would be shown in place of every OSC 2 control (#33035, @cto e9641d54).
+  ctx.write(CLEAR_ICON_TITLE)
   let pushed = false
   const state: Record<string, unknown> = { before }
   let result: ProbeCallbackResult
@@ -789,8 +795,14 @@ export const deviceProbes: ProbeDefinition[] = [
       },
       async (ctx) => {
         ctx.write("\x1b]1;test-icon\x07")
-        const reply = await ctx.queryWithSentinelOutcome(iconLabelReply.query, answerPattern(iconLabelReply))
-        return deviceOutcomeResult(iconLabelReply, reply)
+        try {
+          const reply = await ctx.queryWithSentinelOutcome(iconLabelReply.query, answerPattern(iconLabelReply))
+          return deviceOutcomeResult(iconLabelReply, reply)
+        } finally {
+          // Clear what this probe set, so no later probe starts with an icon title: a terminal that
+          // shows the icon title in preference to OSC 2 hid every later title control (#33035).
+          ctx.write(CLEAR_ICON_TITLE)
+        }
       },
     ),
     libAssertionType: "query_reply",
