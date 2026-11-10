@@ -149,6 +149,8 @@ type Mode =
   | "quantize-256"
   | "collapse-bright"
   | "deferred-paint"
+  | "ignore-58"
+  | "frozen"
 
 /** A colour SGR, as opposed to a reset, a CUP or the SGR 4 underline seed the colour rows qualify. */
 const COLOUR_SGR = /\x1b\[(?:3[0-7]|4[0-7]|9[0-7]|10[0-7]|(?:38|48|58);[25];)/
@@ -164,6 +166,7 @@ interface Ink {
   bg: string
   underlineColour: string
   underline: boolean
+  blink: boolean
 }
 
 interface Cell extends Ink {
@@ -287,6 +290,12 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
       next.bg = "default"
       next.underlineColour = "default"
       next.underline = false
+      next.blink = false
+      index += 1
+      continue
+    }
+    if (param === 5) {
+      next.blink = true
       index += 1
       continue
     }
@@ -332,6 +341,13 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
     }
     if (param >= 100 && param <= 107) {
       next.bg = resolve(mode, palette, "bg", { family: "bright", index: param - 100 }, suppressColour)
+      index += 1
+      continue
+    }
+    if (param === 58 && mode === "ignore-58") {
+      // This terminal does not know SGR 58, so it does not consume the sub-parameters: the walker
+      // continues into them, reaches the literal 0 of `58;2;255;0;128`, and resets the rendition —
+      // which drops the row's `\x1b[4m` seed and leaves plain text. Screen 5.0.2 behaves this way.
       index += 1
       continue
     }
@@ -383,7 +399,7 @@ interface Screen {
 }
 
 function blankCell(): Cell {
-  return { char: " ", fg: "default", bg: "default", underlineColour: "default", underline: false }
+  return { char: " ", fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false }
 }
 
 function blankScreen(): Screen {
@@ -391,7 +407,7 @@ function blankScreen(): Screen {
     grid: Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => blankCell())),
     row: 0,
     col: 0,
-    ink: { fg: "default", bg: "default", underlineColour: "default", underline: false },
+    ink: { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false },
   }
 }
 
@@ -414,7 +430,7 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
         screen.col = Math.max(0, (params[1] ?? 1) - 1)
       } else if (final === "J" && (params[0] ?? 0) === 2) {
         for (const row of screen.grid) row.fill(blankCell())
-        screen.ink = { fg: "default", bg: "default", underlineColour: "default", underline: false }
+        screen.ink = { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false }
         screen.row = 0
         screen.col = 0
       } else if (final === "m") {
@@ -445,7 +461,7 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
 
 function cellText(cell: Cell | undefined): string {
   if (!cell) return "outside"
-  return `${cell.char}${cell.fg}${cell.bg}${cell.underlineColour}${cell.underline ? "u" : ""}`
+  return `${cell.char}${cell.fg}${cell.bg}${cell.underlineColour}${cell.underline ? "u" : ""}${cell.blink ? "k" : ""}`
 }
 
 function regionDigest(grid: Cell[][], region: CaptureCells): string {
@@ -480,11 +496,19 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
   let reads = 0
   let frame = 0
   let firstColourFrame: number | undefined
+  // A capture that never repaints: the arm's own paint witness must refuse it. Freezing after the
+  // first read is what makes a "stale expected frame" reachable in a fixture, so the test can prove
+  // a frame nothing painted is never read as a measured negative.
+  let frozenGrid: Cell[][] | undefined
   const capture = async (request: CaptureRequest): Promise<ObservationFrame> => {
     reads += 1
+    if (mode === "frozen" && frozenGrid === undefined) {
+      frozenGrid = screen.grid.map((row) => row.map((cell) => ({ ...cell })))
+    }
+    const visible = frozenGrid ?? screen.grid
     const digests = {
-      region: request.cells ? regionDigest(screen.grid, request.cells) : undefined,
-      whole: wholeDigest(screen.grid),
+      region: request.cells ? regionDigest(visible, request.cells) : undefined,
+      whole: wholeDigest(visible),
     }
     return {
       role: request.role,
@@ -723,6 +747,91 @@ for (const { ids, mode, cause } of QUANTISATION) {
     }
   }
 }
+
+/**
+ * @failure A colour row that asks only that the expected frame differ from the seed accepts a
+ *   terminal which painted NO colour at all. A terminal that does not implement SGR 58 but walks
+ *   the SGR parameter list code by code reaches the literal 0 inside `58;2;255;0;128` and resets
+ *   the rendition, so the row's `\x1b[4m` seed underline is dropped and the styled sample renders
+ *   as plain text. That plain frame still differs from the underlined seed, so the arm published
+ *   SUPPORTED for an underline colour the terminal never painted. Screen 5.0.2 did exactly this on
+ *   the Linux app runs of 2026-11-10 and the published map carried the false positive; xterm 411
+ *   shows the same digest signature (bytes not replayed). The 0 in the test colour is what exposes
+ *   such a walker: a colour with no 0 component would let the walker stop at 2 (dim) and still
+ *   differ from both references, which is why 255;0;128 stays in the fixture.
+ * @level l1
+ * @consumer The capture arm of sgr.underline.color on owned app contexts.
+ * @testonly none
+ */
+/**
+ * @failure The witness negative: the seed frame shows the underline painting, the terminal runs the
+ *   sequence, and the expected frame equals plain text. That is a measured negative with a positive
+ *   witness in the same run, so the row must grade unsupported rather than stay undecided forever.
+ *   The reason must name what was compared — the sequence, and that the underline was visible in the
+ *   seed (@cto 4ed6bddf condition 2).
+ * @level l1
+ * @consumer The capture arm of the three underline-colour rows on owned app contexts.
+ * @testonly none
+ */
+test("sgr.underline.color is unsupported when the seed shows the underline and plain text is what the sequence paints", async () => {
+  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+  const result = await run("sgr.underline.color", ctx)
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(result.observation?.note ?? "").toContain("painted nothing for SGR 58;2;255;0;128")
+  expect(result.observation?.note ?? "").toContain("the underline was visible in the seed frame of this run")
+  expect(result.pass).toBe(false)
+})
+
+/**
+ * @failure Freshness (@cto 4ed6bddf condition 1): a frame nothing painted must never be read as a
+ *   measured negative. Tonight's Warp finding was a reader that trusted a stale frame; here the
+ *   capture never repaints, so the arm's paint witness must refuse before any digest comparison, and
+ *   the row must read inconclusive even though its frames would otherwise look like the witness
+ *   negative.
+ * @level l1
+ * @consumer Every capture-region row, through the shared freshness gate.
+ * @testonly none
+ */
+test("a stale capture reads inconclusive, never unsupported, on the underline-colour row", async () => {
+  const { ctx } = colourTerminal("frozen", PALETTES[0] as Palette)
+  const result = await run("sgr.underline.color", ctx)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.note ?? "").not.toContain("painted nothing for SGR")
+  expect(result.pass).toBe(false)
+}, 30000)
+
+/**
+ * @failure A terminal that paints a DIFFERENT attribute for the underline-colour sequence (here
+ *   blink, the shape screen produces) must not read as support, and must not read as the witness
+ *   negative either: the frames separate, but nothing in them says the colour was painted. It stays
+ *   inconclusive, which is what it reads today.
+ * @level l1
+ * @consumer sgr.underline-color-indexed on owned app contexts.
+ * @testonly none
+ */
+test("a terminal that paints blink for the underline-colour sequence stays inconclusive", async () => {
+  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+  const result = await run("sgr.underline-color-indexed", ctx)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.pass).toBe(false)
+})
+
+/**
+ * @failure A multiplexer is captured through its outer terminal, so the same frames cannot say which
+ *   of the two dropped the sequence. The witness negative must not be published for a mux while this
+ *   arm has no outer control (@cto 4ed6bddf): the row stays inconclusive and its note names the
+ *   multiplexer and the missing control, and no cross-run lookup stands in for one.
+ * @level l1
+ * @consumer The three underline-colour rows on owned multiplexer contexts.
+ * @testonly none
+ */
+test("a multiplexer stays inconclusive on the witness negative and says why", async () => {
+  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+  const result = await run("sgr.underline.color", { ...ctx, mux: "screen" as const })
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
+  expect(result.pass).toBe(false)
+})
 
 for (const id of REVIEW_IDS) {
   test(`${id} is never graded from the colour-only fixture`, async () => {

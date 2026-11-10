@@ -104,6 +104,21 @@ function frame(row: ColourRow, paint: string): string {
 }
 
 /**
+ * The frame that paints no attribute at all. A colour claim may never read support from it: a
+ * terminal that does not implement the row's sequence but walks the SGR parameter list code by code
+ * reaches the literal `0` inside `58;2;255;0;128` (or `38;2;255;128;0`) and resets the rendition,
+ * so the styled sample renders as plain text while still differing from a seed that carries an
+ * attribute. Screen 5.0.2 does exactly that (@dev/luna6, 2026-11-10): it emits `\x1b[4m\x1b[24m`
+ * for the underline-colour row's sequence and switches the underline off.
+ */
+const NO_ATTRIBUTE_FRAME = frame({ sequence: "", sibling: "", siblingLabel: "" }, "")
+
+/** The SGR parameters of a row's sequence, as a reason names them: `\x1b[58;2;255;0;128m` -> `58;2;255;0;128`. */
+function sgrParameters(sequence: string): string {
+  return sequence.replace(/^\x1b\[/, "").replace(/m$/, "")
+}
+
+/**
  * The eleven colour rows, keyed by the probe id that owns each claim. The target and the expected
  * frames paint the sequence under test; the ignored frame paints the sibling. The two degenerate
  * tests the oracle performs on those frames — expected differs from seed, expected differs from
@@ -120,6 +135,18 @@ export const COLOUR_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry"
       edit: frame(row, row.sequence),
       expected: frame(row, row.sequence),
       ignored: frame(row, row.sibling),
+      // Only the rows whose seed paints an attribute need this frame declared: for every other row
+      // the seed IS the no-attribute frame, so the oracle's existing `seed === expected` check
+      // already refuses a terminal that painted nothing.
+      ...(row.seed === undefined
+        ? {}
+        : {
+            noAttribute: NO_ATTRIBUTE_FRAME,
+            // The seed carries the underline, so an expected frame equal to plain text is a MEASURED
+            // NEGATIVE: the terminal ran the sequence and painted nothing, while the seed shows the
+            // attribute it should have decorated was painting. @cto 4ed6bddf.
+            noAttributeNegative: { sequence: sgrParameters(row.sequence) },
+          }),
       timeoutMs: 5000,
       pollMs: 250,
       minRows: CURSOR_ROW,
@@ -141,10 +168,32 @@ export function colourCaptureNote(id: string): string | undefined {
  * cannot separate an ignored sequence from one painted identically to the sibling, so they read
  * inconclusive BY NAME here. A supported observation carries the note that says what was compared.
  */
-export function colourCaptureCallbackResult(id: string, verdict: ProbeCallbackResult): ProbeCallbackResult {
+export function colourCaptureCallbackResult(
+  id: string,
+  verdict: ProbeCallbackResult,
+  options?: { mux?: "tmux" | "screen" },
+): ProbeCallbackResult {
   const note = colourCaptureNote(id)
   const observation = verdict.observation
   if (note === undefined || observation === undefined) return verdict
+  // The witness negative is this arm's own decision and carries its own reason: the seed frame is a
+  // positive witness that the attributed sample was painting, and the expected frame equals plain
+  // text. It is not one of the oracle's untouched negatives, so the downgrade below does not apply.
+  if (verdict.criterionBranch === "colour-no-attribute-witness") {
+    // A multiplexer has no outer control in this arm, so the same frames cannot single out whether
+    // the mux or its outer terminal dropped the sequence (@cto 4ed6bddf). Keep it undecided until an
+    // outer control exists rather than blaming the mux on evidence that does not name it.
+    if (options?.mux === undefined) return verdict
+    return {
+      ...verdict,
+      observation: {
+        ...observation,
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        note: `${observation.note}; this capture through multiplexer ${options.mux} cannot separate it from its outer terminal, and this run has no outer control for the sequence`,
+      },
+    }
+  }
   if (observation.outcome === "unsupported") {
     // A downgraded result keeps nothing from the verdict it replaced: the oracle's negative
     // assertion names an outcome this path does not publish, and the batch reader records every
