@@ -32,7 +32,12 @@ import {
 import { kittyWait } from "./kitty-capture.ts"
 import { captureRegionCallbackResult, cropPositionRefusal } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
-import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
+import {
+  COLOUR_CAPTURE,
+  UNDERLINE_INDEXED_BRANCH,
+  colourCaptureCallbackResult,
+  underlineColourIndexedCaptureResult,
+} from "./sgr-colour-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
@@ -1319,12 +1324,18 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
       },
-      sgrTermReadback(
-        "sgr.underline-color-indexed",
-        "\x1b[4m\x1b[58;5;5m",
-        { require: [4, 58], requireTokens: ["58:5:5"] },
-        (ctx) => consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m"),
-      ),
+      // #33146: pixels decide this row from one same-run witness, colon form only; DECRQSS decides
+      // nothing here (@cto d2f24294, b3d7680f). Without an owned pixel capture the cursor reply only
+      // proves consumption.
+      async (ctx) => {
+        if (ctx.capture) {
+          const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
+          if (refusal) return refusal
+          const captured = await underlineColourIndexedCaptureResult(ctx)
+          if (captured) return captured
+        }
+        return consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58:5:5m")
+      },
       null,
     ),
     termNeedsGeometry: true,
@@ -1456,6 +1467,7 @@ const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
 const muxVisualTests = new Map<string, { featureId: string | null; testId: string }>([
   ["sgr-blink-flat", { featureId: "sgr.blink", testId: "blink" }],
   ["sgr-attribute-same-run", { featureId: null, testId: "attribute" }],
+  [UNDERLINE_INDEXED_BRANCH, { featureId: "sgr.underline-color-indexed", testId: "attribute" }],
   ["cursor-shape-same-run", { featureId: "cursor.shape", testId: "review" }],
   ["reset-saved-rendition", { featureId: "reset.sgr", testId: "reset" }],
   ["sgr-reset-saved-rendition", { featureId: "sgr.reset", testId: "criterion" }],
