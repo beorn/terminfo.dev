@@ -873,33 +873,39 @@ export async function runProbeBatch(
       let result: ProbeCallbackResult
       let probeWallExceeded = false
       try {
-        const wallMs = 30_000
+        // A probe may declare its own wall. The default stays 30s. Run 42836445788 cut
+        // font-ligatures, reset.sgr and modes.xtrestore at that default.
+        const wallMs = probe.wallMs ?? 30_000
         let wall: ReturnType<typeof setTimeout> | undefined
+        const operation = withTTYOperation(
+          () =>
+            withTTYQueryTrace(
+              queries,
+              events,
+              async () => {
+                return callback(sourceSession?.context ?? probeSource)
+              },
+              {
+                onLog(log) {
+                  if (!sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
+                },
+              },
+            ),
+          out,
+          verify,
+        ).then((value) => ({ timedOut: false as const, value }))
         const raced = await Promise.race([
-          withTTYOperation(
-            () =>
-              withTTYQueryTrace(
-                queries,
-                events,
-                async () => {
-                  return callback(sourceSession?.context ?? probeSource)
-                },
-                {
-                  onLog(log) {
-                    if (!sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
-                  },
-                },
-              ),
-            out,
-            verify,
-          ).then((value) => ({ timedOut: false as const, value })),
+          operation,
           new Promise<{ timedOut: true }>((resolve) => {
             wall = setTimeout(() => resolve({ timedOut: true }), wallMs)
           }),
         ])
         clearTimeout(wall)
         if (raced.timedOut) {
-          // The callback did not return. Release the TTY queue so the rest of the run can finish (#33017).
+          // The callback did not return. Drop its call log and release the TTY queue so the
+          // next probe is not left with unfinished calls (#33017).
+          operation.catch(() => {})
+          sourceSession?.abandon()
           releaseTTYQueue()
           probeWallExceeded = true
           result = {

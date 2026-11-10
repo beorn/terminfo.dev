@@ -193,6 +193,8 @@ export const resetProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // Hosted Mac run 42836445788 still had this callback running at 30s.
+    wallMs: 120_000,
   },
 
   {

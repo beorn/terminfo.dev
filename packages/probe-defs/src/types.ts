@@ -1155,6 +1155,8 @@ export interface ProbeDefinition {
   id: string
   lib: ((ctx: LibProbeSource) => ProbeCallbackResult) | null
   term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null
+  /** Harness wall for this probe's app callback, in milliseconds. Absent uses the runner's 30s default. */
+  wallMs?: number
   /** Only an explicitly reviewed report request may run without a disposable terminal. */
   termWrites?: "query"
   /**

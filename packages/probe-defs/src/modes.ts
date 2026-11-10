@@ -3098,6 +3098,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // Hosted iTerm2 run 42836445788 still had this callback running at 30s.
+    wallMs: 120_000,
   },
 
   // XTPUSHCOLORS — push color palette (CSI # P)

@@ -491,6 +491,14 @@ test("completed call logs expose no mutable storage and serialize with canonical
   visit(JSON.parse(serialized))
 })
 
+test("an abandoned recording can finish while a call is still pending", () => {
+  const log = createCallLog()
+  const capture = withCallLog({ read: () => new Promise(() => {}) }, { mode: "record", log })
+  void capture.context.read()
+  capture.abandon()
+  expect(() => capture.finish()).not.toThrow()
+})
+
 test("unfinished logs cannot be serialized as complete artifacts", async () => {
   const log = createCallLog()
   expect(() => JSON.stringify(log)).toThrow(IncompleteReplay)
