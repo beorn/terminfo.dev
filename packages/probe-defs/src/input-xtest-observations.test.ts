@@ -337,6 +337,13 @@ test.each([
     const result = await definition.term!(context)
     expect(result.observation).toBeUndefined()
     expect(result.notTested?.noObservable).toBe("real-surface input injection (XTEST/CGEvent)")
+    expect(result.tests).toEqual([
+      {
+        id: "declared-untestable",
+        status: "untestable",
+        reason: "real-surface input injection (XTEST/CGEvent)",
+      },
+    ])
   }
 })
 

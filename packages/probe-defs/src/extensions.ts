@@ -4737,7 +4737,9 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
 async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return notTestedResult("real-surface input injection (XTEST/CGEvent)", { input: false })
+  if (!input || !readInput) {
+    return declaredUntestableResult("real-surface input injection (XTEST/CGEvent)", { input: false })
+  }
   if (!ctx.withClipboardFixture) return notTestedResult("owned disposable clipboard paste", { clipboard: false })
   return ctx.withClipboardFixture(async (fixture) => {
     const incomingMode = await ctx.queryMode(2004)
