@@ -3315,50 +3315,62 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
     if (text === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[1;1R"))
     return true
   }) as typeof process.stdout.write
-  const batch = await runProbeBatch({
-    ids: ["extensions.osc52-write", "sgr.blink"],
-    capture: async ({ role, label }) => {
-      order.push(`capture-${role}`)
-      return { frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` }, trace: {} }
-    },
-    ownedTerminal: {
-      ...geometryOwner(measured(24, 80)),
-      clipboard: {
-        profile: "allow",
-        config: "fixture",
-        permissions: "fixture",
-        summary: "{}",
-        assertOwned: async () => {},
-        readTitle: async () => {
-          throw new Error("This clipboard fixture has no title reader")
-        },
-        dispose: async () => {},
-        withClipboardFixture: createClipboardTransaction(baseline, {
-          async readText(trace, kind, verify) {
-            await verify()
-            trace({
-              kind,
-              at: new Date().toISOString(),
-              sha256: createHash("sha256").update(clipboardText).digest("hex"),
-              length: clipboardText.length,
-            })
-            return clipboardText
+  // sgr.blink samples on a real 7500 ms schedule; fake timers keep that wall out of this test.
+  vi.useFakeTimers()
+  const batch = await (async () => {
+    try {
+      const [collected] = await Promise.all([
+        runProbeBatch({
+          ids: ["extensions.osc52-write", "sgr.blink"],
+          capture: async ({ role, label }) => {
+            order.push(`capture-${role}`)
+            return { frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` }, trace: {} }
           },
-          async writeText(text, trace, kind, verify) {
-            await verify()
-            clipboardText = text
-            trace({
-              kind,
-              at: new Date().toISOString(),
-              sha256: createHash("sha256").update(text).digest("hex"),
-              length: text.length,
-            })
+          ownedTerminal: {
+            ...geometryOwner(measured(24, 80)),
+            clipboard: {
+              profile: "allow",
+              config: "fixture",
+              permissions: "fixture",
+              summary: "{}",
+              assertOwned: async () => {},
+              readTitle: async () => {
+                throw new Error("This clipboard fixture has no title reader")
+              },
+              dispose: async () => {},
+              withClipboardFixture: createClipboardTransaction(baseline, {
+                async readText(trace, kind, verify) {
+                  await verify()
+                  trace({
+                    kind,
+                    at: new Date().toISOString(),
+                    sha256: createHash("sha256").update(clipboardText).digest("hex"),
+                    length: clipboardText.length,
+                  })
+                  return clipboardText
+                },
+                async writeText(text, trace, kind, verify) {
+                  await verify()
+                  clipboardText = text
+                  trace({
+                    kind,
+                    at: new Date().toISOString(),
+                    sha256: createHash("sha256").update(text).digest("hex"),
+                    length: text.length,
+                  })
+                },
+              }),
+            },
           },
         }),
-      },
-    },
-  })
-  expect(order).toEqual(["capture-control", ...Array.from({ length: 9 }, () => "capture-target"), "osc52"])
+        vi.runAllTimersAsync(),
+      ])
+      return collected
+    } finally {
+      vi.useRealTimers()
+    }
+  })()
+  expect(order).toEqual(["capture-control", ...Array.from({ length: 16 }, () => "capture-target"), "osc52"])
   expect(batch.observations.find((item) => item.featureId === "extensions.osc52-write")).toMatchObject({
     outcome: "supported",
     rawReplyRef: "extensions.osc52-write",
@@ -3725,7 +3737,7 @@ it("retains same-callback control and target frames without declaring visual sup
   })
   expect(checkpoints.map(({ featureId, role }) => ({ featureId, role }))).toEqual([
     { featureId: "sgr.blink", role: "control" },
-    ...Array.from({ length: 9 }, () => ({ featureId: "sgr.blink", role: "target" })),
+    ...Array.from({ length: 16 }, () => ({ featureId: "sgr.blink", role: "target" })),
   ])
   // The DECRQSS readback attempt writes the styled sequence to set the state it queries, so assert
   // on the rendered sample: the control frame renders it unstyled, the target frame styled.
@@ -3745,7 +3757,7 @@ it("retains same-callback control and target frames without declaring visual sup
     }),
   ])
   const trace = JSON.parse(batch.rawReplies["sgr.blink"]!) as { captures: unknown[] }
-  expect(trace.captures).toHaveLength(10)
+  expect(trace.captures).toHaveLength(17)
   // The capture writer clones the batch before persistence; recorder proxies must not escape.
   expect(structuredClone(batch)).toEqual(batch)
   expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({

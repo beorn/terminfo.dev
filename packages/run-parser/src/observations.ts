@@ -241,7 +241,13 @@ export function parseObservationFrames(
       fail(path, `pixels observation for ${featureId} cites a ${kind} frame ${index}`)
     }
     const textFields = ["cellDigest", "frameDigest", "cellRectangle"] as const
-    const pixelFields = ["regionDigest", "pixelsDigest", "regionRectangle"] as const
+    const pixelFields = [
+      "regionDigest",
+      "pixelsDigest",
+      "regionRectangle",
+      "controlRegionDigest",
+      "controlRegionRectangle",
+    ] as const
     if (kind === "pixels") {
       const stray = textFields.find((field) => entry[field] !== undefined)
       if (stray !== undefined) {
@@ -278,6 +284,11 @@ export function parseObservationFrames(
       fail(path, `invalid frame pixelsDigest ${index} for ${featureId}`)
     }
     const regionRectangle = frameRegionRectangle(entry.regionRectangle, path, index, featureId)
+    const controlRegionDigest = entry.controlRegionDigest
+    if (controlRegionDigest !== undefined && !screenshotDigest(controlRegionDigest)) {
+      fail(path, `invalid frame controlRegionDigest ${index} for ${featureId}`)
+    }
+    const controlRegionRectangle = frameRegionRectangle(entry.controlRegionRectangle, path, index, featureId)
     const base = {
       role: entry.role as ObservationFrame["role"],
       ref,
@@ -298,6 +309,8 @@ export function parseObservationFrames(
       ...(regionDigest && { regionDigest }),
       ...(pixelsDigest && { pixelsDigest }),
       ...(regionRectangle && { regionRectangle }),
+      ...(controlRegionDigest && { controlRegionDigest }),
+      ...(controlRegionRectangle && { controlRegionRectangle }),
     }
   })
   const targets = frames.filter((frame) => frame.role === "target")

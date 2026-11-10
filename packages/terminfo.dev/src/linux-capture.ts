@@ -297,7 +297,7 @@ export async function createLinuxCapture(
     const result = await finishCapture({
       directory,
       onRetained,
-      checkpoint: { ...checkpoint, cells: undefined, pixelGeometry: undefined },
+      checkpoint: { ...checkpoint, cells: undefined, controlCells: undefined, pixelGeometry: undefined },
       ...acquired,
       decoded,
       deadline,

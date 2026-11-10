@@ -16,7 +16,7 @@
  * @consumer The capture arms of the 11 sgr.* colour rows on owned Linux app contexts.
  * @testonly none
  */
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { sgrProbes } from "./sgr.ts"
 import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
 import { captureRegionCallbackResult } from "./region-readback.ts"
@@ -517,6 +517,11 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
       ref: `sha256:${String(reads).repeat(64)}`,
       pixelsDigest: digests.whole,
       ...(digests.region === undefined ? {} : { regionDigest: digests.region, regionRectangle: RECTANGLE }),
+      // The modelled arm holds the whole screen, so a same-shot control region is a second crop
+      // of this same grid state (#33117).
+      ...(request.controlCells
+        ? { controlRegionDigest: regionDigest(visible, request.controlCells), controlRegionRectangle: RECTANGLE }
+        : {}),
     }
   }
   const ctx: TermProbeSource = {
@@ -844,14 +849,20 @@ for (const id of REVIEW_IDS) {
       await expect(run(id, ctx)).rejects.toThrow(/requires actual pixel.*matching cell-sized crop metadata/)
       return
     }
-    const result = await run(id, ctx)
+    // sgr.blink samples on its requested temporal schedule; fake timers keep that wall out of
+    // this test, and the fixture's own capturedAt counter stays the achieved series it grades.
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] })
+    const pending = run(id, ctx)
+    await vi.runAllTimersAsync()
+    const result = await pending.finally(() => vi.useRealTimers())
     if (id === "sgr.blink") {
-      // Steady colour pixels lack the row-local focus/input controls: inconclusive, never a colour grade.
+      // Steady colour pixels under a read counter never achieve the blink gate's span: open as
+      // capture too slow to decide blink (#33117), inconclusive and never a colour grade.
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
         assertionType: "screenshot",
         reason: "insufficient-evidence",
-        note: expect.stringContaining("missing focus read before and after sampling"),
+        note: expect.stringContaining("capture too slow to decide blink"),
       })
       expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(5)
       expect(result.assertions).toMatchObject([

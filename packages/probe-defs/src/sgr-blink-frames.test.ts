@@ -22,9 +22,10 @@ const GEOMETRY = {
   source: "measured by complete raster calibration" as const,
 }
 
-/** An app context whose capture answers each styled sample with the next digest in `styled`, and each plain
- *  line capture (the control's first) with the next one in `plain`; the unstyled control frame reads
- *  "unstyled". `latencyMs` makes every acquisition settle first, as the Linux producer does. */
+/** An app context whose one capture per sample answers the styled region with the next digest in
+ *  `styled` and the same shot's plain control region with the next one in `plain` (the control
+ *  shot's first); the unstyled control frame reads "unstyled". `latencyMs` makes every
+ *  acquisition settle first, as the Linux producer does. */
 function app(opts: {
   styled: readonly string[]
   plain: readonly string[]
@@ -36,7 +37,13 @@ function app(opts: {
   capturedAt?: (now: number, sample: number) => number
 }) {
   const writes: string[] = []
-  const captures: Array<{ writes: number; at: number; label: string; cells?: CaptureCells }> = []
+  const captures: Array<{
+    writes: number
+    at: number
+    label: string
+    cells?: CaptureCells
+    controlCells?: CaptureCells
+  }> = []
   const keys: string[] = []
   const focusReads: number[] = []
   let styled = 0
@@ -76,10 +83,16 @@ function app(opts: {
           },
         }
       : {}),
-    capture: async ({ role, label, cells }): Promise<ObservationFrame> => {
+    capture: async ({ role, label, cells, controlCells }): Promise<ObservationFrame> => {
       const requestedWrites = writes.length
       if (opts.latencyMs) await new Promise((resolve) => setTimeout(resolve, opts.latencyMs))
-      captures.push({ writes: requestedWrites, at: Date.now(), label, ...(cells ? { cells } : {}) })
+      captures.push({
+        writes: requestedWrites,
+        at: Date.now(),
+        label,
+        ...(cells ? { cells } : {}),
+        ...(controlCells ? { controlCells } : {}),
+      })
       const index = captures.length
       const base = {
         role,
@@ -104,13 +117,24 @@ function app(opts: {
         regionDigest: digest,
         pixelsDigest: `whole-${String(index)}`,
         regionRectangle: { x: 16, y: 16 * (cells.top - 1), width: 8 * (cells.right - cells.left + 1), height: 16 },
+        ...(controlCells
+          ? {
+              controlRegionDigest: opts.plain[plain++],
+              controlRegionRectangle: {
+                x: 16,
+                y: 16 * (controlCells.top - 1),
+                width: 8 * (controlCells.right - controlCells.left + 1),
+                height: 16,
+              },
+            }
+          : {}),
       }
     },
   }
   return { context, writes, captures, keys, focusReads }
 }
 
-// The schedule's own waits run on a fake clock, so nine samples over 3000 ms cost no wall time.
+// The schedule's own waits run on a fake clock, so the requested samples over 7500 ms cost no wall time.
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "Date"] })
 })
@@ -124,7 +148,7 @@ async function term(context: TermProbeSource) {
   return pending
 }
 
-const SAMPLES = 9
+const SAMPLES = 16
 const STEADY_PLAIN = Array.from({ length: SAMPLES + 1 }, () => "p")
 const ALTERNATING = Array.from({ length: SAMPLES }, (_, index) => (index % 2 === 0 ? "on" : "off"))
 const EQUAL = Array.from({ length: SAMPLES }, () => "on")
@@ -145,23 +169,25 @@ test("a valid 0;5 reply reaches the owned blink oracle", async () => {
   const result = await term(context)
   expect(context.queryWithSentinelOutcome).toHaveBeenCalledTimes(1)
   expect(captures.filter((entry) => entry.cells?.top === 3)).toHaveLength(SAMPLES + 1)
-  expect(captures.filter((entry) => entry.cells?.top === 1)).toHaveLength(SAMPLES + 1)
+  // One shot per sample carries both regions: the plain line is never a separate capture.
+  expect(captures.filter((entry) => entry.cells?.top === 1)).toHaveLength(0)
+  expect(captures.filter((entry) => entry.controlCells?.top === 1)).toHaveLength(SAMPLES + 1)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
   expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "screenshot" }])
 })
 
-test("blink samples the styled text nine times over 3000 ms with no write between, beside a plain line", async () => {
+test("blink samples the styled text sixteen times over 7500 ms with no write between, beside a plain line", async () => {
   const { context, writes, captures } = app({ styled: ALTERNATING, plain: STEADY_PLAIN, geometry: true })
   const result = await term(context)
   const samples = captures.filter((entry) => entry.cells?.top === 3).slice(1)
   expect(samples).toHaveLength(SAMPLES)
-  // The plain line is in the control and in every sample: ten frames.
-  expect(captures.filter((entry) => entry.cells?.top === 1)).toHaveLength(SAMPLES + 1)
-  // The control (text and plain line) sees the control write; every sample sees the one fixture write after it.
+  // The plain line rides the same shot as the control and every sample, never its own capture.
+  expect(captures.filter((entry) => entry.controlCells?.top === 1)).toHaveLength(SAMPLES + 1)
+  expect(captures.filter((entry) => entry.cells?.top === 1)).toHaveLength(0)
+  // The control sees the control write; every sample sees the one fixture write after it.
   const controlWrites = captures[0]!.writes
-  expect(captures[1]!.writes).toBe(controlWrites)
-  expect(new Set(captures.slice(2).map((entry) => entry.writes))).toEqual(new Set([controlWrites + 1]))
-  expect(samples.at(-1)!.at - samples[0]!.at).toBeGreaterThanOrEqual(3000)
+  expect(new Set(captures.slice(1).map((entry) => entry.writes))).toEqual(new Set([controlWrites + 1]))
+  expect(samples.at(-1)!.at - samples[0]!.at).toBeGreaterThanOrEqual(7500)
   expect(writes[controlWrites - 1]).toContain("\x1b[1;3H")
   expect(writes[controlWrites - 1]).not.toContain("\x1b[5m")
   expect(writes[controlWrites]).toContain("\x1b[1;3H")
@@ -173,11 +199,15 @@ test("blink samples the styled text nine times over 3000 ms with no write betwee
 
 test("a first sample caught before the fixture finished painting (A,B,B,B) is not blink", async () => {
   // @dev/10's counterexample (#31812 first-line review): mid-paint first, then steady styled text.
+  // One change never reads Supported; inside the achieved-frames gate it may only speak as a
+  // negative, and only with its live controls (#33117).
   const styled = ["partial", ...Array.from({ length: SAMPLES - 1 }, () => "steady")]
   const { context } = app({ styled, plain: STEADY_PLAIN, geometry: true })
   const result = await term(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", note: expect.stringContaining("one way") })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive" })
   expect(result.pass).toBe(false)
+  const controlled = app({ styled, plain: STEADY_PLAIN, geometry: true, controls: true })
+  expect((await term(controlled.context)).observation).toMatchObject({ outcome: "unsupported" })
 })
 
 test("an undecided blink is recorded as review pending, never a test failure; a return is recorded Supported", async () => {
@@ -205,18 +235,43 @@ test("an undecided blink is recorded as review pending, never a test failure; a 
   expect(record(await term(context)).status).toBe("supported")
 })
 
-test("a one-way change later in the window (A,A,B,B) is not blink either", async () => {
+test("a one-way change achieved too slowly stays open: capture too slow to decide blink", async () => {
+  // The Terminal.app 3053c5ec shape (#33117): one change then a hold, but the achieved capturedAt
+  // gaps are far above the negative gate's ceiling, so the series could not have seen a return.
   const styled = Array.from({ length: SAMPLES }, (_, index) => (index < 4 ? "a" : "b"))
-  const { context } = app({ styled, plain: STEADY_PLAIN, geometry: true })
+  const { context } = app({
+    styled,
+    plain: STEADY_PLAIN,
+    geometry: true,
+    capturedAt: (_now, sample) => sample * 1000,
+  })
   const result = await term(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", note: expect.stringContaining("one way") })
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    note: expect.stringContaining("capture too slow to decide blink"),
+  })
 })
 
-test("nine equal blink samples stay inconclusive: no blink period is recorded, so they are not Unsupported", async () => {
+test("equal blink samples without their live controls stay inconclusive, not Unsupported", async () => {
   const { context } = app({ styled: EQUAL, plain: STEADY_PLAIN, geometry: true })
   const result = await term(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", note: expect.stringContaining("blink period") })
   expect(result.observation?.outcome).not.toBe("unsupported")
+})
+
+test("equal blink samples achieved too slowly stay open even with every live control", async () => {
+  const { context } = app({
+    styled: EQUAL,
+    plain: STEADY_PLAIN,
+    geometry: true,
+    controls: true,
+    capturedAt: (_now, sample) => sample * 1000,
+  })
+  const result = await term(context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    note: expect.stringContaining("capture too slow to decide blink"),
+  })
 })
 
 test("a plain line that moves between samples vetoes blink: redraw, scroll or cursor motion is not blink", async () => {
@@ -225,7 +280,7 @@ test("a plain line that moves between samples vetoes blink: redraw, scroll or cu
   expect(result.observation).toMatchObject({ outcome: "inconclusive", note: expect.stringContaining("plain line") })
 })
 
-test("the plain line is held across all ten frames: a control that differs from the samples vetoes blink", async () => {
+test("the plain line is held across the control and every sample: a control that differs from the samples vetoes blink", async () => {
   const { context } = app({ styled: ALTERNATING, plain: plainMovingAt(0), geometry: true })
   const result = await term(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", note: expect.stringContaining("plain line") })
@@ -243,16 +298,18 @@ test("a producer that settles 200 ms per acquisition records requested offsets b
   const { timing } = JSON.parse(result.response ?? "") as {
     timing: Array<{ requestedOffsetMs: number; invokedMs: number; styledCapturedAt: number; plainCapturedAt: number }>
   }
-  expect(timing.map((entry) => entry.requestedOffsetMs)).toEqual([0, 375, 750, 1125, 1500, 1875, 2250, 2625, 3000])
-  // Two settled acquisitions per sample take longer than the 375 ms gap, so invocations land after the
-  // requested offsets; the record says so instead of relabelling them.
-  expect(timing.at(-1)!.invokedMs).toBeGreaterThan(3000)
+  expect(timing.map((entry) => entry.requestedOffsetMs)).toEqual([
+    0, 512, 1043, 1581, 2083, 2604, 3101, 3636, 4106, 4615, 5078, 5610, 6018, 6544, 6985, 7500,
+  ])
+  // One settled acquisition per sample now (#33117): the plain control is cropped from the same
+  // shot, so its timestamp IS the styled sample's, not a second settled acquisition later.
+  expect(timing.at(-1)!.invokedMs).toBeGreaterThanOrEqual(7500)
   for (const entry of timing) {
-    expect(entry.plainCapturedAt - entry.styledCapturedAt).toBeGreaterThanOrEqual(190)
+    expect(entry.plainCapturedAt - entry.styledCapturedAt).toBe(0)
   }
 })
 
-test("without a measured raster the control and nine blink samples go to review together", async () => {
+test("without a measured raster the control and the blink samples go to review together", async () => {
   const { context, captures } = app({ styled: [], plain: [], geometry: false })
   const result = await term(context)
   expect(captures).toHaveLength(SAMPLES + 1)
@@ -284,7 +341,11 @@ test("a 500 ms on/off blink returns to an earlier sample at every starting phase
 // The callback owns these decisions: old coverage only knew returns, settle and unqualified flat.
 // Qualified fade and flat exercise existing focus/input/capture boundaries, with no production seam.
 test.each([
-  { name: "qualified fade", styled: ["0", "1", "2", "3", "4", "5", "6", "7", "8"], outcome: "supported" },
+  {
+    name: "qualified fade",
+    styled: Array.from({ length: SAMPLES }, (_, index) => String(index)),
+    outcome: "supported",
+  },
   { name: "controlled flat", styled: EQUAL, outcome: "unsupported" },
 ])("$name decides from same-row temporal controls", async ({ styled, outcome }) => {
   const { context, captures, keys, focusReads } = app({ styled, plain: STEADY_PLAIN, geometry: true, controls: true })
@@ -294,7 +355,7 @@ test.each([
   if (outcome === "unsupported") {
     expect(keys).toEqual(["a"])
     const samples = captures.filter((entry) => entry.cells?.top === 3).slice(1)
-    expect(samples.at(-1)!.at - samples[0]!.at).toBeGreaterThanOrEqual(3000)
+    expect(samples.at(-1)!.at - samples[0]!.at).toBeGreaterThanOrEqual(7500)
     const paint = captures.filter((entry) => entry.cells?.top === 2)
     expect(paint).toHaveLength(2)
     expect(paint[1]!.at).toBeGreaterThanOrEqual(samples.at(-1)!.at)
@@ -366,10 +427,10 @@ test.each([
 
 test.each([
   {
-    name: "actual window 2999 ms",
-    capturedAt: (now: number, index: number) => now - index / 8,
+    name: "actual span 3000 ms",
+    capturedAt: (_now: number, index: number) => index * 200,
     repaint: true,
-    reason: "measured 2999 ms",
+    reason: "capture too slow to decide blink",
   },
   {
     name: "key age exactly 15000 ms",
@@ -387,37 +448,50 @@ test.each([
 test.each([
   {
     name: "missing focus",
-    styled: ["0", "1", "2", "3", "4", "5", "6", "7", "8"],
+    styled: Array.from({ length: SAMPLES }, (_, index) => String(index)),
     controls: false,
     plain: STEADY_PLAIN,
+    outcome: "inconclusive",
   },
-  { name: "two values", styled: ["0", "0", "0", "0", "1", "1", "1", "1", "1"], controls: true, plain: STEADY_PLAIN },
   {
-    name: "equal final pair",
-    styled: ["0", "1", "2", "3", "4", "5", "6", "7", "7"],
+    // Two values are no fade: one change then stillness inside the gate is a decidable negative.
+    name: "two values",
+    styled: Array.from({ length: SAMPLES }, (_, index) => (index < SAMPLES / 2 ? "0" : "1")),
     controls: true,
     plain: STEADY_PLAIN,
+    outcome: "unsupported",
+  },
+  {
+    name: "equal final pair",
+    styled: Array.from({ length: SAMPLES }, (_, index) => String(Math.min(index, SAMPLES - 2))),
+    controls: true,
+    plain: STEADY_PLAIN,
+    outcome: "inconclusive",
   },
   {
     name: "moving plain",
-    styled: ["0", "1", "2", "3", "4", "5", "6", "7", "8"],
+    styled: Array.from({ length: SAMPLES }, (_, index) => String(index)),
     controls: true,
     plain: plainMovingAt(4),
+    outcome: "inconclusive",
   },
-])("fade needs qualified values, final movement, plain and focus: $name", async ({ styled, controls, plain }) => {
-  const { context } = app({ styled, plain, geometry: true, controls })
-  expect((await term(context)).observation).toMatchObject({ outcome: "inconclusive" })
-})
+])(
+  "fade needs qualified values, final movement, plain and focus: $name",
+  async ({ styled, controls, plain, outcome }) => {
+    const { context } = app({ styled, plain, geometry: true, controls })
+    expect((await term(context)).observation).toMatchObject({ outcome })
+  },
+)
 
-test("a 14999 ms key age remains fresh at the exact 3000 ms capture boundary", async () => {
+test("a 14999 ms key age remains fresh at the exact 7500 ms capture span", async () => {
   const { context } = app({
     styled: EQUAL,
     plain: STEADY_PLAIN,
     geometry: true,
     controls: true,
-    capturedAt: (now) => now + 11999,
+    capturedAt: (now) => now + 7499,
   })
   const result = await term(context)
   expect(result.observation).toMatchObject({ outcome: "unsupported", note: expect.stringContaining("14999 ms") })
-  expect(result.observation?.note).toContain("measured 3000 ms")
+  expect(result.observation?.note).toContain("measured 7500 ms")
 })
