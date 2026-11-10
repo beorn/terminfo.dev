@@ -66,28 +66,30 @@ jobs:
       # tree cannot come from different commits.
       MEASURED_SHA: ${{ inputs.sha || github.sha }}
     steps:
-      # Validate the sha input before anything is fetched: a branch name or a short id must be
-      # refused by a format check, not by a checkout that quietly resolves it.
-      - name: Validate the requested sha before anything is fetched
+      - name: Bootstrap the pinned producer and sample at job start
         env:
           REQUESTED_SHA: ${{ inputs.sha }}
         run: |
           set -euo pipefail
+          # The job env is the normal source; the fallback keeps this script runnable on its own and
+          # is what the identity probe exercises, where only GITHUB_SHA is set.
+          MEASURED_SHA="${MEASURED_SHA:-$GITHUB_SHA}"
+          # BEGIN SHA-INPUT-VALIDATION
+          # A branch name, a short id or an uppercase id has to be refused here, before the three
+          # fetches below ask the API for a tree at it.
+          REQUESTED_SHA="${REQUESTED_SHA-}"
           if [ -z "$REQUESTED_SHA" ]; then
             echo "No sha input: measuring the ref this dispatch started from."
-            exit 0
+          else
+            case "$REQUESTED_SHA" in
+              *[!0-9a-f]*) echo "::error::sha input is not lowercase hex: $REQUESTED_SHA"; exit 1 ;;
+            esac
+            if [ "${#REQUESTED_SHA}" -ne 40 ]; then
+              echo "::error::sha input must be exactly 40 lowercase hex characters; a branch name or short id cannot pin a tree: $REQUESTED_SHA"; exit 1
+            fi
+            echo "sha input is a full 40-character commit id: $REQUESTED_SHA"
           fi
-          case "$REQUESTED_SHA" in
-            *[!0-9a-f]*) echo "::error::sha input is not lowercase hex: $REQUESTED_SHA"; exit 1 ;;
-          esac
-          if [ "${#REQUESTED_SHA}" -ne 40 ]; then
-            echo "::error::sha input must be exactly 40 lowercase hex characters; a branch name or short id cannot pin a tree: $REQUESTED_SHA"; exit 1
-          fi
-          echo "sha input is a full 40-character commit id: $REQUESTED_SHA"
-
-      - name: Bootstrap the pinned producer and sample at job start
-        run: |
-          set -euo pipefail
+          # END SHA-INPUT-VALIDATION
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
           OUT="$RUNNER_TEMP/measurement-artifacts"
           # The ONE app-launch parser is fetched beside the two receipt files so the bootstrap

@@ -77,20 +77,17 @@ test("an exact sha input pins the checkout and refuses a difference", () => {
   }[]
   const checkout = steps.find((step) => step.uses === "actions/checkout@v4")
   expect(checkout?.with?.ref).toBe("${{ inputs.sha || github.sha }}")
-  const validator = steps.find((step) => step.name === "Validate the requested sha before anything is fetched")
-  expect(validator?.env?.REQUESTED_SHA).toBe("${{ inputs.sha }}")
-  const validatorRun = validator?.run
-  if (!validatorRun) throw new Error("The sha format step is absent")
-  // A branch name or a short id has to be refused before the bootstrap fetches anything at it, so
-  // the format step must sit ahead of it in the job rather than after the fetch and the producer run.
-  const validatorIndex = steps.findIndex(
-    (step) => step.name === "Validate the requested sha before anything is fetched",
-  )
-  const bootstrapIndex = steps.findIndex(
-    (step) => step.name === "Bootstrap the pinned producer and sample at job start",
-  )
-  expect(validatorIndex).toBeGreaterThanOrEqual(0)
-  expect(bootstrapIndex).toBeGreaterThan(validatorIndex)
+  // The shape is checked inside the bootstrap step, ahead of its first fetch: a step of its own here
+  // would push the checkout off step 1, which the identity probe pins (macos-identity-probe.test.ts).
+  const bootstrap = steps.find((step) => step.name === "Bootstrap the pinned producer and sample at job start")
+  expect(bootstrap?.env?.REQUESTED_SHA).toBe("${{ inputs.sha }}")
+  const bootstrapRun = bootstrap?.run
+  if (!bootstrapRun) throw new Error("The bootstrap step is absent")
+  const block = bootstrapRun.match(/# BEGIN SHA-INPUT-VALIDATION\n([\s\S]*?)\n\s*# END SHA-INPUT-VALIDATION/u)?.[1]
+  if (!block) throw new Error("The sha format block is absent from the bootstrap step")
+  const fetchIndex = bootstrapRun.indexOf("curl ")
+  expect(fetchIndex).toBeGreaterThan(0)
+  expect(bootstrapRun.indexOf("# BEGIN SHA-INPUT-VALIDATION")).toBeLessThan(fetchIndex)
   const guard = steps.find((step) => step.name === "Refuse a checkout that differs from the requested sha")
   expect(guard?.env?.REQUESTED_SHA).toBe("${{ inputs.sha }}")
   const guardRun = guard?.run
@@ -105,20 +102,20 @@ test("an exact sha input pins the checkout and refuses a difference", () => {
       env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, REQUESTED_SHA: requested },
     })
   try {
-    // The format step owns the shape: only 40 lowercase hex characters may reach a fetch.
-    expect(attempt(validatorRun, "").status).toBe(0)
-    const full = attempt(validatorRun, checkedOut)
+    // The format block owns the shape: only 40 lowercase hex characters may reach a fetch.
+    expect(attempt(block, "").status).toBe(0)
+    const full = attempt(block, checkedOut)
     expect(full.status, full.stderr).toBe(0)
-    const short = attempt(validatorRun, "f".repeat(39))
+    const short = attempt(block, "f".repeat(39))
     expect(short.status).toBe(1)
     expect(short.stdout).toContain("exactly 40")
-    const long = attempt(validatorRun, "f".repeat(41))
+    const long = attempt(block, "f".repeat(41))
     expect(long.status).toBe(1)
     expect(long.stdout).toContain("exactly 40")
-    const upper = attempt(validatorRun, "F".repeat(40))
+    const upper = attempt(block, "F".repeat(40))
     expect(upper.status).toBe(1)
     expect(upper.stdout).toContain("lowercase hex")
-    const branch = attempt(validatorRun, "main")
+    const branch = attempt(block, "main")
     expect(branch.status).toBe(1)
     expect(branch.stdout).toContain("lowercase hex")
     // The comparison step only compares: the shape was settled above it.
