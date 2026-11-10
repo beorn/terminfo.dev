@@ -4,7 +4,7 @@
  * @consumer Linux hosted app-mode decisions for the sgr.* group.
  * @testonly none
  */
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { NO_SAME_PATH_CONTROL, recordExecutedProbe } from "./helpers.ts"
 import { COLOUR_CAPTURE } from "./sgr-colour-capture.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
@@ -242,9 +242,18 @@ test.each([
 
 test.each(DECIDED.map(([id]) => id))("%s stays inconclusive, never negative, when DECRQSS is silent", async (id) => {
   const { ctx } = sgrReadbackSource(null, true)
-  const result = await sgrTerm(id)(ctx)
-  expect(result.pass).toBe(false)
-  expect(result.observation?.outcome).not.toBe("unsupported")
+  // sgr.blink falls to its temporal capture schedule; fake timers keep its requested span out of
+  // this test's wall clock, exactly as the blink frame suite does.
+  if (id === "sgr.blink") vi.useFakeTimers({ toFake: ["setTimeout", "Date"] })
+  try {
+    const pending = sgrTerm(id)(ctx)
+    if (id === "sgr.blink") await vi.runAllTimersAsync()
+    const result = await pending
+    expect(result.pass).toBe(false)
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  } finally {
+    if (id === "sgr.blink") vi.useRealTimers()
+  }
 })
 
 // A reported selector alone cannot establish the requested color mode or value. Color operands

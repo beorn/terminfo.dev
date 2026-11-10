@@ -78,6 +78,32 @@ test.each(["png", "xwd"] as const)(
   },
 )
 
+test("capture finalizer crops the same-shot control region from the same decoded frame (#33117)", async () => {
+  const result = await finishCapture({
+    directory: directory(),
+    onRetained: () => {},
+    source: { bytes: PNG_STUB, format: "png", width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB,
+    decoded: { width: 4, height: 3, rgba: FRAME_RGBA },
+    origin: { origin: { x: 0, y: 0 }, basis: "measured fixture" },
+    trace: {},
+    checkpoint: {
+      featureId: "crop-fixture",
+      role: "target" as const,
+      label: "styled row beside plain row",
+      cells: { top: 2, left: 2, bottom: 3, right: 3 },
+      controlCells: { top: 1, left: 2, bottom: 1, right: 3 },
+      pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 4, textHeight: 3 },
+    },
+  })
+  const expectedControl = Buffer.from([4, 5, 6, 7, 8, 9, 10, 11])
+  expect(result.frame.controlRegionDigest).toBe(`sha256:${digest(expectedControl)}`)
+  expect(result.frame.controlRegionRectangle).toEqual({ x: 1, y: 0, width: 2, height: 1 })
+  expect(result.trace.reproduceControlRegion).toContain("-crop 2x1+1+0 +repage -depth 8 rgba:- | sha256sum")
+  const expectedRegion = Buffer.from([20, 21, 22, 23, 24, 25, 26, 27, 36, 37, 38, 39, 40, 41, 42, 43])
+  expect(result.frame.regionDigest).toBe(`sha256:${digest(expectedRegion)}`)
+})
+
 test.each([
   { width: 3, height: 3, rgba: FRAME_RGBA },
   { width: 4, height: 2, rgba: FRAME_RGBA },

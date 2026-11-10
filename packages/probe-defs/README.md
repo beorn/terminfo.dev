@@ -57,15 +57,22 @@ library criterion, cursor-name inference or runtime/publication authority.
 
 A feature result answers one feature on one subject from its current probes. Source never decides it. Supported/Unsupported disagreement between any valid non-source probes is PROBE CONFLICT (`probe-conflict`), naming those probes, regardless of strength. Otherwise the strongest decided probe wins; Untestable alone cannot conflict with a decided answer. With no decided probe, invalid takes precedence over todo, then all-untestable. A conflict counts as open and tier 2 when there is no todo. The [feature-result calculator](../../docs/data/release-scope.ts) replaces the old report-only minimum-method findings.
 
-The App blink callback retains nine styled/plain samples across requested offsets from 0 to 3000 ms.
-An earlier styled value returning still decides Supported first. At least three distinct values with
-a differing final pair also decide Supported when focus reads before and after qualify and every
-plain digest agrees. Flat pixels decide Unsupported only with those focus reads, this row's literal
-`a` injected and read back, input age below 15000 ms at the last styled capture, an actual styled
-`capturedAt` span of at least 3000 ms, and a changed third-region repaint after sampling. Missing
-controls remain PROBE TODO naming the condition. The negative reason states the measured window
-and its slower-period limit; the existing subject-aware finalizer keeps mux flat results PROBE TODO
-and names the recorded outer terminal. These controls use existing input and capture fixtures.
+The App blink callback requests sixteen styled samples at irregular offsets out to 7500 ms, each
+one window shot carrying the plain control region as a second crop of the same image
+(`CaptureRequest.controlCells`, answered as the frame's control region digest beside its target
+digest), and decides on the samples it achieved, never on the interval it requested. An earlier
+styled value returning decides Supported first, at any achieved rate, recording the measured
+half-period. At least three distinct values with a differing final pair also decide Supported when
+focus reads before and after qualify and every plain digest agrees. A negative may speak only
+inside the achieved-frames gate — at least 12 styled frames, an actual styled `capturedAt` span of
+at least 6000 ms, and no interim gap above 6000/(12−1) ms — where at most one change followed by
+stillness decides Unsupported only with those focus reads, this row's literal `a` injected and read
+back, input age below 15000 ms at the last styled capture, and a changed third-region repaint
+after sampling. Below the gate the row stays PROBE TODO as capture too slow to decide blink,
+recording the achieved frame count, span and gap min/median/max; missing controls remain PROBE
+TODO naming the condition. The negative reason states the measured span and gaps; the existing
+subject-aware finalizer keeps mux flat results PROBE TODO and names the recorded outer terminal.
+These controls use existing input and capture fixtures.
 
 The App font-ligature callback compares ten one-cell pixel crops of contiguous operators
 with two isolated-character checkpoints at those exact cells. Each checkpoint uses the

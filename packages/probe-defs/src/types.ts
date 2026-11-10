@@ -325,6 +325,19 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * carries neither.
    */
   regionRectangle?: CaptureRectangle
+  /**
+   * Raw-pixel digest of the second cell-aligned region named by the request's `controlCells`,
+   * cropped from the SAME captured image as `regionDigest` and `pixelsDigest`, so the two
+   * regions are simultaneous rather than one capture apart. Present exactly when the request
+   * named control cells and the arm could crop both regions from its one shot.
+   */
+  controlRegionDigest?: string
+  /**
+   * The screen rectangle the control region was cropped from, in the captured window's own
+   * pixels. Carried beside `controlRegionDigest` exactly as `regionRectangle` is carried beside
+   * `regionDigest`. Present exactly when `controlRegionDigest` is.
+   */
+  controlRegionRectangle?: CaptureRectangle
 }
 
 /**
@@ -338,6 +351,8 @@ export interface TextCellsObservationFrame extends ObservationFrameBase {
   regionDigest?: never
   pixelsDigest?: never
   regionRectangle?: never
+  controlRegionDigest?: never
+  controlRegionRectangle?: never
   /** Digest over the named cells' characters, and their attributes where the arm reports them. */
   cellDigest: string
   /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
@@ -435,6 +450,13 @@ export interface CaptureRequest {
   label: string
   /** The region to digest, in cells. `pixelGeometry` is required with it. */
   cells?: CaptureCells
+  /**
+   * A second region to digest from the SAME captured image, in cells: the control beside the
+   * target, simultaneous with it rather than one capture later. Only alongside `cells`, under
+   * the same `pixelGeometry`. An arm that cannot crop both regions from one shot returns a
+   * frame without the control digest, and the consumer names that absence.
+   */
+  controlCells?: CaptureCells
   /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
 }

@@ -372,7 +372,7 @@ export async function createDarwinCapture(
     const result = await finishCapture({
       directory,
       onRetained,
-      checkpoint: { ...checkpoint, cells: undefined, pixelGeometry: undefined },
+      checkpoint: { ...checkpoint, cells: undefined, controlCells: undefined, pixelGeometry: undefined },
       source,
       png: source.bytes,
       decoded,
