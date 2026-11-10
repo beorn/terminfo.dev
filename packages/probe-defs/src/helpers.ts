@@ -2870,6 +2870,7 @@ export function recordExecutedProbe(input: {
   assertions: readonly ProbeAssertion[]
   tests?: ProbeTestInput[]
   criterionBranch?: string
+  harnessOutcome?: ProbeResult["harnessOutcome"]
 }): ProbeResult {
   const { featureId, attempt, observation, diagnostic, coverage } = input
   if (!observation && !coverage && input.tests && !diagnostic) {
@@ -2914,6 +2915,11 @@ export function recordExecutedProbe(input: {
   return finalizeProbeResult({
     featureId,
     attempt,
+    ...(input.harnessOutcome
+      ? { harnessOutcome: input.harnessOutcome }
+      : missingCapture
+        ? { harnessOutcome: "capture-refused" as const }
+        : {}),
     tests:
       input.tests && !diagnostic && observation?.outcome !== "error"
         ? input.tests.map((test) => {

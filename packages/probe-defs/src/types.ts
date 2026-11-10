@@ -154,10 +154,25 @@ interface ProbeExecutionTests {
   criterionBranch?: string
 }
 
+/** A reading that says the harness did not finish, not what the terminal did. */
+export const HARNESS_OUTCOMES = [
+  "probe-exceeded",
+  "unfinished-calls",
+  "capture-refused",
+  "killed-mid-probe",
+  "never-started",
+] as const
+export type HarnessOutcome = (typeof HARNESS_OUTCOMES)[number]
+export function isHarnessOutcome(value: unknown): value is HarnessOutcome {
+  return typeof value === "string" && (HARNESS_OUTCOMES as readonly string[]).includes(value)
+}
+
 export interface ProbeResult {
   featureId: string
   status: ProbeStatus
   attempt: ProbeAttempt
+  /** Set only when this result is a harness outcome. Absent means the status is the terminal's. */
+  harnessOutcome?: HarnessOutcome
   tests: ProbeTestResult[]
   criterionBranch?: string
   rawReplyRef?: string

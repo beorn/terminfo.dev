@@ -851,3 +851,44 @@ it.each([true, false])("reselects current methods at the suite boundary (differe
   expect(current?.result).toBe(differentSuite ? newer.results?.[0] : older.results?.[0])
   expect(JSON.stringify([older, newer])).toBe(original)
 })
+
+it("a harness outcome keeps a decided cell of the same probe", () => {
+  const prior = supportedBaseline()
+  const featureId = ids[0]!
+  const results = todos()
+  const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T07:00:00.000Z" }
+  results[0] = {
+    featureId,
+    status: "probe-todo",
+    attempt: emittedAttempt,
+    tests: [
+      {
+        id: "criterion",
+        status: "probe-todo",
+        attempt: { scope: "none" },
+        reason: "Probe exceeded 30000ms",
+      },
+    ],
+    reason: "Probe exceeded 30000ms",
+    harnessOutcome: "probe-exceeded",
+  }
+  const next = raw(results)
+  const latest = parse({
+    ...next,
+    runId: "wall-run",
+    measuredAt: "2026-10-21T07:00:00.000Z",
+    rawReplies: {
+      ...next.rawReplies,
+      "collector.selection": JSON.stringify({ ids: [featureId] }),
+      "collector.collectionAttempt": JSON.stringify({
+        ids: [featureId],
+        startedAt: "2026-10-21T07:00:00.000Z",
+        result: "completed",
+      }),
+    },
+  })
+  const projection = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, [])
+  const cell = projection.contexts["term:kitty"]?.cells[featureId]
+  expect(cell?.origin.runId).toBe(prior.runId)
+  expect(cell?.result.status).toBe("supported")
+})

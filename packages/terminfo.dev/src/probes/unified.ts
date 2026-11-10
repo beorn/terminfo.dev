@@ -855,6 +855,7 @@ export async function runProbeBatch(
     options.onCheckpoint?.(batch)
     let callbackTests: ProbeCallbackResult["tests"]
     let criterionBranch: string | undefined
+    let wallFired = false
     const subject: (Pick<ProbeSubject, "kind" | "id" | "os"> & Partial<ProbeSubject>) | undefined =
       options.draft?.subject ?? options.subject
     const muxProof = options.ownedTerminal?.muxAttachmentProof
@@ -912,6 +913,7 @@ export async function runProbeBatch(
           sourceSession?.abandon()
           releaseTTYQueue()
           probeWallExceeded = true
+          wallFired = true
           result = {
             pass: false,
             tests: [{ id: "criterion", status: "probe-todo", reason: `Probe exceeded ${wallMs}ms` }],
@@ -1162,6 +1164,7 @@ export async function runProbeBatch(
         tests: callbackTests,
         rawReplyRef: probe.id,
         criterionBranch,
+        ...(wallFired ? { harnessOutcome: "probe-exceeded" as const } : {}),
       })
       const commands =
         recorded.status === "unsupported" &&

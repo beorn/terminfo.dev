@@ -27,6 +27,7 @@ import {
   type CollectorAttempt,
   readCollectorSelection,
   readCollectorAttempt,
+  isHarnessOutcome,
 } from "@terminfo/probe-defs"
 import { type LoadedRun, parseJsonStrict } from "@terminfo/run-parser"
 import {
@@ -519,6 +520,35 @@ function composeContextSummaries(
         probes: Map<ProbeMethod | null, { run: LoadedRun; result: ProbeResult }>
       }
     >()
+    const decided = new Set<FeatureResultStatus>(["supported", "unsupported", "untestable"])
+    const keptStreak = new Map<string, number>()
+    const keptDecidedCell = (run: LoadedRun, result: ProbeResult): boolean => {
+      if (!isHarnessOutcome(result.harnessOutcome)) {
+        keptStreak.delete(result.featureId)
+        return false
+      }
+      const prior = cells[result.featureId]
+      const priorStatus = prior?.featureResult?.status ?? prior?.result.status
+      const sameProbe =
+        prior !== undefined &&
+        prior.run.subject.version === run.subject.version &&
+        prior.run.probeHash === run.probeHash
+      if (!prior || !sameProbe || priorStatus === undefined || !decided.has(priorStatus)) {
+        if (prior && !sameProbe) {
+          console.log(
+            `placed ${run.subject.id} ${result.featureId} harness ${result.harnessOutcome} because the probe changed`,
+          )
+        }
+        keptStreak.delete(result.featureId)
+        return false
+      }
+      const streak = (keptStreak.get(result.featureId) ?? 0) + 1
+      keptStreak.set(result.featureId, streak)
+      console.log(
+        `kept ${run.subject.id} ${result.featureId} ${priorStatus} refused ${result.harnessOutcome} from ${run.runId} streak ${streak}${streak >= 3 ? " needs its own issue" : ""}`,
+      )
+      return true
+    }
     const remember = (run: LoadedRun, result: ProbeResult): void => {
       const classification = classifyResultMethod(result, run.subject, run.assertions)
       const method = classification.kind === "method" ? classification.method : null
@@ -583,6 +613,7 @@ function composeContextSummaries(
       for (const id of selection.ids) {
         const result = emitted.get(id)
         if (!result || attempt?.startedAt === undefined) noOutputIds.push(id)
+        else if (keptDecidedCell(run, result)) continue
         else remember(run, result)
       }
       attempts.push({ runId: run.runId, path: run.path, selection, attempt, noOutputIds })
