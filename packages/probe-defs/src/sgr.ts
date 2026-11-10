@@ -496,7 +496,7 @@ export function sgrTermReadback(
       }
       if (colour) {
         const verdict = await captureRegionCallbackResult(ctx, id, colour, true)
-        if (verdict) return colourCaptureCallbackResult(id, verdict)
+        if (verdict) return colourCaptureCallbackResult(id, verdict, { mux: ctx.mux })
       }
       return fallback(ctx)
     }
