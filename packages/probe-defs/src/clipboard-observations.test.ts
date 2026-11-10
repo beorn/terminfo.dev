@@ -1330,7 +1330,7 @@ describe("roundtrip read leg settles a stale own-nonce reply", () => {
     expect(asked()).toBeGreaterThan(1)
     expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
     expect(result.tests?.[0]).toMatchObject({
-      status: "probe-invalid",
+      status: "probe-todo",
       reason: expect.stringMatching(/^OSC 52 reply carried own earlier nonce for \d+ ms \(\d+ re-queries\)$/),
     })
   })
@@ -1340,7 +1340,7 @@ describe("roundtrip read leg settles a stale own-nonce reply", () => {
     const result = await roundtrip()(source)
     expect(asked()).toBe(1)
     expect(result.tests?.[0]).toMatchObject({
-      status: "probe-invalid",
+      status: "probe-todo",
       reason: expect.stringMatching(
         /^OSC 52 reply carried a value other than the independently written nonce \(length=12, sha256=[0-9a-f]{64}\)$/,
       ),

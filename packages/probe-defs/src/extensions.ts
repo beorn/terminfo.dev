@@ -4395,7 +4395,9 @@ function clipboardQueryResult(
       response: frame[0],
       note,
       observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "query_reply", note },
-      tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
+      // Undecided, not broken: the fixture verified by independent read that the selection held the nonce before
+      // this query, so neither a stale own write nor a foreign value means the test failed (#33145, @cto 0fc1f5db).
+      tests: [{ id: "criterion", status: "probe-todo", reason: note }],
     }
   }
   const settleNote =
