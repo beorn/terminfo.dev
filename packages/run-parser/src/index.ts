@@ -66,6 +66,7 @@ interface LoadedRunFields {
   suiteId: string
   probeHash: string | null
   suiteComplete: boolean
+  collectorDurationMs?: number
   suiteProbeCount: number | null
   sourceRevision: string | null
   measuredAt: string
@@ -1197,6 +1198,7 @@ export function parseRun(
         "textQualification",
         "results",
         "sealedAt",
+        "collectorDurationMs",
       ],
       path,
       "schema 4 run",
@@ -1398,6 +1400,7 @@ export function parseRun(
     suiteId: asString(raw.suiteId, path, "suiteId"),
     probeHash,
     suiteComplete: true,
+    ...(typeof raw.collectorDurationMs === "number" ? { collectorDurationMs: raw.collectorDurationMs } : {}),
     suiteProbeCount: expected.size,
     sourceRevision,
     measuredAt: raw.measuredAt,
