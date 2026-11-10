@@ -168,16 +168,10 @@ export function colourCaptureNote(id: string): string | undefined {
  * cannot separate an ignored sequence from one painted identically to the sibling, so they read
  * inconclusive BY NAME here. A supported observation carries the note that says what was compared.
  */
-const SCREEN_TRUECOLOR = new Set(["sgr.fg.truecolor", "sgr.bg.truecolor"])
-
 export function colourCaptureCallbackResult(
   id: string,
   verdict: ProbeCallbackResult,
-  options?: {
-    mux?: "tmux" | "screen"
-    /** Present when the launcher found a placed outer-terminal record for this row. */
-    outerRecord?: { id: string; version: string; os: string }
-  },
+  options?: { mux?: "tmux" | "screen" },
 ): ProbeCallbackResult {
   const note = colourCaptureNote(id)
   const observation = verdict.observation
@@ -205,28 +199,6 @@ export function colourCaptureCallbackResult(
         reason: "insufficient-evidence",
         note,
       },
-      ...(verdict.response === undefined ? {} : { response: verdict.response }),
-    }
-  }
-  // Screen truecolor stays a candidate. The sibling witness is attached after both rows exist,
-  // and the generic downgrade would strip the branch before that (#33041).
-  if (
-    observation.outcome === "unsupported" &&
-    options?.mux === "screen" &&
-    SCREEN_TRUECOLOR.has(id) &&
-    options.outerRecord !== undefined
-  ) {
-    return {
-      pass: false,
-      criterionBranch: "colour-sibling-separation",
-      tests: [
-        {
-          id: "criterion",
-          status: "unsupported",
-          reason: `${id}: the colour frames are flat; sibling separation is decided after both rows exist`,
-        },
-      ],
-      observation,
       ...(verdict.response === undefined ? {} : { response: verdict.response }),
     }
   }

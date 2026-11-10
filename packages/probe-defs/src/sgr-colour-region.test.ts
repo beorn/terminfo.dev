@@ -662,37 +662,6 @@ test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async
   }
 })
 
-test("screen truecolor with an outer record stays a sibling-separation candidate", () => {
-  const verdict = {
-    pass: false,
-    observation: {
-      outcome: "unsupported" as const,
-      assertionType: "screenshot" as const,
-      screenshotRef: "sha256:abc",
-      frames: [],
-    },
-    assertions: [
-      {
-        assertionType: "screenshot" as const,
-        kind: "negative" as const,
-        expected: "flat",
-        observed: "1",
-      },
-    ],
-  }
-  const kept = colourCaptureCallbackResult("sgr.fg.truecolor", verdict, {
-    mux: "screen",
-    outerRecord: { id: "kitty", version: "0.49.2", os: "linux" },
-  })
-  expect(kept.criterionBranch).toBe("colour-sibling-separation")
-  expect(kept.tests).toEqual([
-    expect.objectContaining({ id: "criterion", status: "unsupported" }),
-  ])
-  expect(kept.assertions).toBeUndefined()
-  const downgraded = colourCaptureCallbackResult("sgr.fg.truecolor", verdict, { mux: "screen" })
-  expect(downgraded.criterionBranch).not.toBe("colour-sibling-separation")
-})
-
 test("the colour verdict drops the oracle's negative assertion and keeps the frames it measured", () => {
   // The mapping is pinned directly as well, so a revert of the drop shows up without depending on
   // the fixture reaching the branch: the reader records every assertion it is handed.
