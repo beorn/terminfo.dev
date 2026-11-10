@@ -37,11 +37,29 @@ import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-captur
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
 /**
- * Blink is temporal: retain nine requested offsets and actual capturedAt values. The 3000 ms window
- * covers more than twice the longest measured cycle; acquisition latency can lengthen it.
- * Earlier-return remains the first positive route. Focus-qualified fade also decides support.
+ * Blink is temporal, and the witness decides on the samples it ACHIEVED, never on the interval it
+ * requested (#33117): one window shot per sample costs 265-493 ms on measured hosts, so a series
+ * sampled slower than a blink period aliases a return into a one-way change. The negative gate
+ * therefore speaks only about achieved frames: at least BLINK_MIN_FRAMES styled frames spanning
+ * at least BLINK_MIN_SPAN_MS of their own capturedAt, with no interim gap above
+ * BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1). The requested schedule asks for more than that
+ * minimum — jittered offsets near 500 ms apart out to about 7500 ms — because exactly
+ * BLINK_MIN_FRAMES frames cannot clear the gate together (their gaps sum to the span, so each
+ * would have to equal the ceiling), and because the loop waits for each offset, so the achieved
+ * span is never shorter than the requested one on any host. Earlier-return remains the first
+ * positive route at any achieved rate. Focus-qualified fade also decides support.
  */
-const BLINK_SAMPLE_OFFSETS_MS = [0, 375, 750, 1125, 1500, 1875, 2250, 2625, 3000] as const
+const BLINK_MIN_FRAMES = 12
+const BLINK_MIN_SPAN_MS = 6000
+// Irregular requested gaps, every one under the gate ceiling, so the schedule cannot phase-lock
+// to a blink period the way a fixed interval can; they sum to the requested 7500 ms span.
+const BLINK_GAPS_MS = [512, 531, 538, 502, 521, 497, 535, 470, 509, 463, 532, 408, 526, 441, 515] as const
+const BLINK_SAMPLE_OFFSETS_MS: number[] = [0]
+let blinkOffsetMs = 0
+for (const gap of BLINK_GAPS_MS) {
+  blinkOffsetMs += gap
+  BLINK_SAMPLE_OFFSETS_MS.push(blinkOffsetMs)
+}
 
 /** Whether some styled value comes back after a different one (A,B,A in order): a settle only ever goes one way. */
 function returnsToEarlierValue(values: readonly string[]): boolean {
@@ -52,10 +70,93 @@ function returnsToEarlierValue(values: readonly string[]): boolean {
   )
 }
 
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  const upper = sorted[middle] ?? 0
+  return sorted.length % 2 ? upper : Math.round(((sorted[middle - 1] ?? upper) + upper) / 2)
+}
+
+/** What one blink series achieved, recorded with every verdict so a reader can re-derive it. */
+export interface BlinkWitness {
+  frames: number
+  spanMs: number
+  gapMinMs?: number
+  gapMedianMs?: number
+  gapMaxMs?: number
+  transitions: number
+  halfPeriodMs?: number
+}
+
+export type BlinkSeriesVerdict =
+  | { kind: "supported"; witness: BlinkWitness }
+  | { kind: "negative-decidable"; witness: BlinkWitness }
+  | {
+      kind: "open"
+      reason: "control-moved" | "fade-focus" | "capture-too-slow" | "changed-without-return"
+      witness: BlinkWitness
+    }
+
 /**
- * Plain row 1 stays fixed beside styled row 3. A return or qualified fade proves blink.
- * Flat pixels need same-row focus, fresh literal input, measured duration and a changed handled
- * repaint on row 2; the subject-aware finalizer keeps mux negatives pending.
+ * The blink rule over one achieved series, in ruling order (#33117, @cto GO): a moved plain
+ * control vetoes; a styled digest returning after a different one decides Supported at any rate;
+ * a focus-qualified fade decides Supported; only inside the achieved-frames gate may at most one
+ * change followed by stillness speak as a negative at all, and below the gate the series stays
+ * open as capture too slow to decide blink. Live qualifications that are not in the series
+ * (input age, handled repaint) remain the caller's, after a negative-decidable verdict.
+ * Exported for the stored-series replay tests, which cannot re-run a live capture schedule.
+ */
+export function blinkSeriesDecision(input: {
+  styled: readonly string[]
+  plain: readonly string[]
+  capturedAt: readonly number[]
+  focusQualified: boolean
+}): BlinkSeriesVerdict {
+  const { styled, plain, capturedAt, focusQualified } = input
+  const gaps: number[] = []
+  const transitionAt: number[] = []
+  for (let index = 1; index < capturedAt.length; index++) {
+    const before = capturedAt[index - 1]
+    const after = capturedAt[index]
+    if (before === undefined || after === undefined) continue
+    gaps.push(after - before)
+    if (styled[index] !== styled[index - 1]) transitionAt.push(before + Math.round((after - before) / 2))
+  }
+  const firstCapturedAt = capturedAt[0]
+  const lastCapturedAt = capturedAt.at(-1)
+  const transitionGaps: number[] = []
+  for (let index = 1; index < transitionAt.length; index++) {
+    const before = transitionAt[index - 1]
+    const after = transitionAt[index]
+    if (before !== undefined && after !== undefined) transitionGaps.push(after - before)
+  }
+  const witness: BlinkWitness = {
+    frames: styled.length,
+    spanMs: firstCapturedAt !== undefined && lastCapturedAt !== undefined ? lastCapturedAt - firstCapturedAt : 0,
+    ...(gaps.length > 0 ? { gapMinMs: Math.min(...gaps), gapMedianMs: median(gaps), gapMaxMs: Math.max(...gaps) } : {}),
+    transitions: transitionAt.length,
+    ...(transitionGaps.length > 0 ? { halfPeriodMs: median(transitionGaps) } : {}),
+  }
+  if (new Set(plain).size > 1) return { kind: "open", reason: "control-moved", witness }
+  if (returnsToEarlierValue(styled)) return { kind: "supported", witness }
+  const fade = new Set(styled).size >= 3 && styled.at(-1) !== styled.at(-2)
+  if (fade) {
+    return focusQualified ? { kind: "supported", witness } : { kind: "open", reason: "fade-focus", witness }
+  }
+  const gateMissed =
+    styled.length < BLINK_MIN_FRAMES ||
+    witness.spanMs < BLINK_MIN_SPAN_MS ||
+    (witness.gapMaxMs !== undefined && witness.gapMaxMs > BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1))
+  if (gateMissed) return { kind: "open", reason: "capture-too-slow", witness }
+  if (transitionAt.length <= 1) return { kind: "negative-decidable", witness }
+  return { kind: "open", reason: "changed-without-return", witness }
+}
+
+/**
+ * Plain row 1 stays fixed beside styled row 3, cropped from the same shot. A return or qualified
+ * fade proves blink at any achieved rate. A decidable negative additionally needs same-row focus,
+ * fresh literal input and a changed handled repaint on row 2; the subject-aware finalizer keeps
+ * mux negatives pending.
  */
 async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): Promise<ProbeCallbackResult> {
   const capture = ctx.capture
@@ -64,13 +165,32 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   const styledCells = { top: row, left: col, bottom: row, right: col + sample.length - 1 }
   const plainCells = { top: 1, left: col, bottom: 1, right: col + sample.length - 1 }
   const geometry = ctx.captureGeometry?.geometry
-  const shoot = (role: "control" | "target", label: string, cells: CaptureCells) =>
-    capture(geometry ? { role, label, cells, pixelGeometry: geometry } : { role, label })
+  const shoot = (role: "control" | "target", label: string, cells: CaptureCells, controlCells?: CaptureCells) =>
+    capture(
+      geometry
+        ? { role, label, cells, ...(controlCells ? { controlCells } : {}), pixelGeometry: geometry }
+        : { role, label },
+    )
+  // The plain line beside the styled text, cropped from the SAME shot: one window capture per
+  // sample carries both regions, so control and target are simultaneous (#33117). A frame whose
+  // arm returned no same-shot control digest yields no plain frame, and the digest check below
+  // names that absence instead of falling back to a second, later shot.
+  const plainFrameOf = (frame: ObservationFrame, label: string): ObservationFrame | undefined => {
+    if (frame.kind === "text-cells" || frame.controlRegionDigest === undefined) return undefined
+    const { controlRegionDigest, controlRegionRectangle, regionRectangle: _styledRectangle, ...rest } = frame
+    return {
+      ...rest,
+      role: "control",
+      label,
+      regionDigest: controlRegionDigest,
+      ...(controlRegionRectangle ? { regionRectangle: controlRegionRectangle } : {}),
+    }
+  }
   const screen = (styled: string) =>
     `\x1b[0m\x1b[2J\x1b[1;${String(col)}H${sample}\x1b[${String(row)};${String(col)}H${styled}\x1b[0m\x1b[2;1H`
   ctx.write(screen(sample))
-  const control = await shoot("control", "Unstyled text sample", styledCells)
-  const controlPlain = geometry ? await shoot("control", "Plain line, control", plainCells) : undefined
+  const control = await shoot("control", "Unstyled text sample", styledCells, plainCells)
+  const controlPlain = geometry ? plainFrameOf(control, "Plain line, control") : undefined
   type Focus = Awaited<ReturnType<NonNullable<NonNullable<TermProbeSource["input"]>["focusRoundTrip"]>>>
   let focusBefore: Focus | undefined
   let focusAfter: Focus | undefined
@@ -117,10 +237,9 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       "target",
       `sgr.blink styled text, sample requested at +${String(offsetMs)} ms`,
       styledCells,
+      plainCells,
     )
-    const plain = geometry
-      ? await shoot("control", `Plain line, sample requested at +${String(offsetMs)} ms`, plainCells)
-      : undefined
+    const plain = geometry ? plainFrameOf(styled, `Plain line, sample requested at +${String(offsetMs)} ms`) : undefined
     samples.push({ offsetMs, invokedMs, styled, ...(plain ? { plain } : {}) })
   }
   if (ctx.input?.focusRoundTrip) {
@@ -192,15 +311,14 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
         {
           id: "review",
           status: "probe-todo",
-          reason: "Valid control and nine blink samples; no same-run pixel check decides it",
+          reason: `Valid control and ${String(BLINK_SAMPLE_OFFSETS_MS.length)} blink samples; no same-run pixel check decides it`,
         },
       ],
       assertions: [
         {
           assertionType: "screenshot" as const,
           kind: "positive",
-          expected:
-            "The styled text changes and then comes back to an earlier look across the nine samples, while the plain line holds still in the control and every sample",
+          expected: `The styled text changes and then comes back to an earlier look across the ${String(BLINK_SAMPLE_OFFSETS_MS.length)} samples, while the plain line holds still in the control and every sample`,
           observed: JSON.stringify({ control, samples }),
         },
       ],
@@ -250,26 +368,38 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     })
     if (refusal) return refusal
   }
-  if (new Set(plain).size > 1) {
+  const styledDigests = styled.filter((digest): digest is string => digest !== undefined)
+  const plainDigests = plain.filter((digest): digest is string => digest !== undefined)
+  const decision = blinkSeriesDecision({
+    styled: styledDigests,
+    plain: plainDigests,
+    capturedAt: timing.map((entry) => entry.styledCapturedAt),
+    focusQualified,
+  })
+  const witness = decision.witness
+  const witnessed = JSON.stringify({ ...(JSON.parse(observed) as Record<string, unknown>), witness })
+  const gapsWording =
+    witness.gapMinMs !== undefined && witness.gapMedianMs !== undefined && witness.gapMaxMs !== undefined
+      ? `gaps ${String(witness.gapMinMs)}/${String(witness.gapMedianMs)}/${String(witness.gapMaxMs)} ms min/median/max`
+      : "no interim gaps"
+  if (decision.kind === "open" && decision.reason === "control-moved") {
     return inconclusive(
       "The plain line moved across the control and the samples, so a styled-text change could be redraw, scroll or cursor motion rather than blink",
-      observed,
+      witnessed,
     )
   }
-  const styledDigests = styled.filter((digest): digest is string => digest !== undefined)
-  const earlierReturn = returnsToEarlierValue(styledDigests)
-  const fade = new Set(styledDigests).size >= 3 && styledDigests.at(-1) !== styledDigests.at(-2)
-  if (earlierReturn || (fade && focusQualified)) {
+  if (decision.kind === "supported") {
+    const earlierReturn = returnsToEarlierValue(styledDigests)
     return {
       pass: true,
-      response: observed,
+      response: witnessed,
       observation: {
         outcome: "supported",
         assertionType: "screenshot",
         screenshotRef: styledFrames[0]?.ref,
         frames,
         note: earlierReturn
-          ? "With no write between samples, the styled text's region digest changed and then came back to an earlier value, while the plain line held still in the control and every sample"
+          ? `With no write between samples, the styled text's region digest changed and then came back to an earlier value across ${String(witness.frames)} frames spanning ${String(witness.spanMs)} ms (${gapsWording}${witness.halfPeriodMs !== undefined ? `; measured half-period ${String(witness.halfPeriodMs)} ms` : ""}), while the plain line held still in the control and every sample`
           : "With focus read before and after, the styled region has at least three distinct values and its last two samples differ, while every plain digest holds still",
       },
       assertions: [
@@ -277,31 +407,36 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
           assertionType: "screenshot" as const,
           kind: "positive",
           expected: earlierReturn
-            ? "Nine SGR 5 samples requested every 375 ms from +0 to +3000 ms with no write between: a styled digest comes back after a different one, with every plain digest identical"
+            ? `${String(witness.frames)} SGR 5 samples with no write between: a styled digest comes back after a different one, with every plain digest identical`
             : "With focus read before and after, at least three distinct styled values with a differing final pair and every plain digest identical",
-          observed,
+          observed: witnessed,
         },
       ],
     }
   }
-  if (fade && !focusQualified) {
+  if (decision.kind === "open" && decision.reason === "fade-focus") {
     return inconclusive(
       "Fade needs qualified focus read before and after sampling" + (focusError ? `: ${focusError}` : ""),
-      observed,
+      witnessed,
     )
   }
-  if (new Set(styledDigests).size > 1) {
+  if (decision.kind === "open" && decision.reason === "capture-too-slow") {
     return inconclusive(
-      "The styled text changed one way and then held still; a first sample caught before the fixture finished painting looks the same, so a one-way change is not blink evidence",
-      observed,
+      `capture too slow to decide blink: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) against a negative bound of ${String(BLINK_MIN_FRAMES)} frames, ${String(BLINK_MIN_SPAN_MS)} ms span and no gap above ${String(Math.floor(BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1)))} ms; at this achieved rate a blink and a one-way paint settle look the same`,
+      witnessed,
     )
   }
-  const firstCapturedAt = timing[0]?.styledCapturedAt
-  const lastCapturedAt = timing.at(-1)?.styledCapturedAt
-  if (firstCapturedAt === undefined || lastCapturedAt === undefined) {
-    return inconclusive("Missing styled capture timestamp", observed)
+  if (decision.kind === "open") {
+    return inconclusive(
+      `The styled text changed ${String(witness.transitions)} times across ${String(witness.frames)} frames without coming back to an earlier look; a change that never returns is not blink evidence`,
+      witnessed,
+    )
   }
-  const spanMs = lastCapturedAt - firstCapturedAt
+  const lastCapturedAt = timing.at(-1)?.styledCapturedAt
+  if (lastCapturedAt === undefined) {
+    return inconclusive("Missing styled capture timestamp", witnessed)
+  }
+  const spanMs = witness.spanMs
   const keyAgeMs = keyAt === undefined ? undefined : lastCapturedAt - keyAt
   const missing = [
     !focusQualified ? `focus read before and after sampling${focusError ? `: ${focusError}` : ""}` : undefined,
@@ -311,16 +446,18 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     keyAgeMs === undefined || !Number.isFinite(keyAgeMs) || keyAgeMs < 0 || keyAgeMs >= 15000
       ? `input age under 15000 ms at last styled capture (measured ${String(keyAgeMs)} ms)`
       : undefined,
-    !Number.isFinite(spanMs) || spanMs < 3000
-      ? `actual styled capturedAt span at least 3000 ms (measured ${String(spanMs)} ms)`
-      : undefined,
   ].find((reason) => reason !== undefined)
-  if (missing) return inconclusive(`Nine equal samples do not establish a blink period; missing ${missing}`, observed)
+  if (missing) {
+    return inconclusive(
+      `${String(witness.frames)} styled samples spanning ${String(spanMs)} ms do not establish a blink period; missing ${missing}`,
+      witnessed,
+    )
+  }
   ctx.write(`\x1b[0m\x1b[2;${String(col)}H${sample}\x1b[2;1H`)
   const paintAfter = await shoot("target", "Third-region handled repaint after blink samples", paintCells)
   frames.push(paintAfter)
   const paintObserved = JSON.stringify({
-    samples: JSON.parse(observed),
+    samples: JSON.parse(witnessed),
     spanMs,
     keyAgeMs,
     repaint: { before: paintBefore, after: paintAfter },
@@ -349,7 +486,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       paintObserved,
     )
   }
-  const note = `Nine equal styled samples across measured ${String(spanMs)} ms with focus, row-local input age ${String(keyAgeMs)} ms and a post-sampling handled repaint; no blink in this window. A period slower than 3000 ms remains outside this bound.`
+  const note = `${String(witness.frames)} styled samples changed ${String(witness.transitions)} times across measured ${String(spanMs)} ms (${gapsWording}) with focus, row-local input age ${String(keyAgeMs)} ms and a post-sampling handled repaint; no blink in this window. A blink slower than the measured span, or faster than the measured gaps could show, remains outside this bound.`
   return {
     pass: false,
     response: paintObserved,
