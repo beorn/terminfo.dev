@@ -1427,11 +1427,15 @@ export const sgrProbes: ProbeDefinition[] = [
 
   // ── Selective resets ──
 
-  resetProbe("sgr.selective-reset.bold", "\x1b[1;2;3m", "\x1b[22m", ["bold", "dim"], ["italic"], {
-    setup: "\x1b[1;2;3;4m",
-    preserve: ["italic", "underline"],
-    preserveMode: "any",
-  }),
+  // Run 42853381528: 66 captures at about 400ms, so the 30s wall cuts the probe mid-capture.
+  {
+    ...resetProbe("sgr.selective-reset.bold", "\x1b[1;2;3m", "\x1b[22m", ["bold", "dim"], ["italic"], {
+      setup: "\x1b[1;2;3;4m",
+      preserve: ["italic", "underline"],
+      preserveMode: "any",
+    }),
+    wallMs: 120_000,
+  },
 
   resetProbe("sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", ["underline"], ["bold"]),
 
@@ -1441,7 +1445,11 @@ export const sgrProbes: ProbeDefinition[] = [
 
   // ── Full SGR reset ──
 
-  resetProbe("sgr.reset", "\x1b[1;3;4m", "\x1b[0m", ["bold", "italic", "underline"]),
+  // Run 42853381528: 72 captures at about 400ms, so the 30s wall cuts the probe mid-capture.
+  {
+    ...resetProbe("sgr.reset", "\x1b[1;3;4m", "\x1b[0m", ["bold", "italic", "underline"]),
+    wallMs: 120_000,
+  },
 ]
 
 const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
