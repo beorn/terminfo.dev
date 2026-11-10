@@ -1121,6 +1121,33 @@ export async function sgrAttributeCaptureResult(
     }
     if (target === plain) return finish("unsupported", `${id}: drew nothing for this SGR`)
     if (phases.some(({ name }) => name === "single underline") && target === digest("single underline")) {
+      // Same multiplexer demotion as the colour witness: probe-todo, visual-review, and the
+      // note that this run cannot separate the mux from its outer terminal (@cto 08:34).
+      if (ctx.mux !== undefined) {
+        const note = `${id}: drawn as single underline; this capture through multiplexer ${ctx.mux} cannot separate it from its outer terminal, and this run has no outer control for the sequence`
+        const targetFrame = measured.find(({ name }) => name === "target")?.capture.frame
+        return {
+          pass: false,
+          note,
+          response: JSON.stringify({
+            region,
+            pixelGeometry,
+            geometrySource: reported.source,
+            stability,
+            samples: Object.fromEntries(measured.map(({ name, capture }) => [name, capture.regionDigest])),
+          }),
+          criterionBranch: "visual-review",
+          tests: [{ id: "review", status: "probe-todo", reason: note }],
+          observation: {
+            outcome: "inconclusive",
+            assertionType: "screenshot",
+            reason: "insufficient-evidence",
+            screenshotRef: targetFrame?.ref ?? frames.at(-1)?.ref,
+            frames,
+            note,
+          },
+        }
+      }
       return finish("unsupported", `${id}: drawn as single underline`)
     }
     if (id !== "sgr.inverse" && target === digest("inverse")) return finish("unsupported", `${id}: drawn as inverse`)
