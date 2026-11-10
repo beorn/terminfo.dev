@@ -236,7 +236,7 @@ test("a stale window is inconclusive by name, never unsupported: kitty answers t
   expect(result.assertions).toBeUndefined()
 })
 
-test("a frame that moves while the witness cell stands still names the geometry, not a capability", async () => {
+test("a frame that moves while the witness cell stands still does not name a cause", async () => {
   const fake = ownedWindow({
     repaintAfterPolls: 2,
     sentinelAnswers: false,
@@ -250,8 +250,10 @@ test("a frame that moves while the witness cell stands still names the geometry,
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.reason).toBe("timeout")
-  expect(result.observation.note).toContain("paint witnessed outside the sentinel region")
-  expect(result.observation.note).toContain("cells-to-pixels geometry is wrong")
+  expect(result.observation.note).toContain("unchanged for 200 ms")
+  expect(result.observation.note).toContain("while the frame changed")
+  expect(result.observation.note).toContain("cause not determined")
+  expect(result.observation.note).not.toContain("geometry is wrong")
 })
 
 test("an edit that is a third distinct frame is inconclusive, stating the observation only", async () => {
