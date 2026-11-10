@@ -69,9 +69,10 @@ export async function createDarwinClipboardAdapter(input: {
     summary: `darwin hosted pasteboard for ${input.appComm}`,
     assertOwned: input.assertOwned,
     async readTitle() {
+      // System Events raises an AppleScript permission dialog inside hosted iTerm2 and the
+      // collector waits on it until the 900s job limit (#33017). Do not spawn osascript.
       await input.assertOwned()
-      const script = `tell application "System Events" to get name of window 1 of process ${JSON.stringify(input.appComm)}`
-      return (await run("/usr/bin/osascript", ["-e", script])).replace(/\n$/u, "")
+      throw new Error("Hosted Darwin title read does not use System Events")
     },
     withClipboardFixture,
     async dispose() {},
