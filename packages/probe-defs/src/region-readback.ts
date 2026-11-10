@@ -134,6 +134,16 @@ export interface RegionReadback {
    */
   noAttribute?: string
   /**
+   * Declare that an expected frame equal to `noAttribute` is a MEASURED NEGATIVE, not an
+   * unseparable fixture: the terminal ran the sequence and its result is indistinguishable from
+   * painting nothing, while `seed` shows the attribute it should have decorated was painting a
+   * moment earlier in the same run. Only a row that qualifies an attribute the seed carries can
+   * declare this; where the seed paints nothing the `seed === expected` check decides first.
+   * The frames are already freshness-checked (`awaitPaintWitness`) before this comparison, so a
+   * stale expected frame refuses earlier and never reaches here (@cto 4ed6bddf).
+   */
+  noAttributeNegative?: { sequence: string }
+  /**
    * Qualify an immutable initial rendition with DECSC/DECRC before testing a reset. `expected`
    * paints the sample without setters, `seed` sets the full rendition and `edit` applies the reset.
    * Every subset must differ from the initial sample and every restore must return it exactly.
@@ -1602,6 +1612,31 @@ export async function captureRegionReadbackDecision(
       )
     }
     if (noAttribute !== undefined && expected === noAttribute) {
+      // A declared negative: the seed demonstrated the attribute, and the sequence left a frame that
+      // paints nothing. That is a witnessed negative, not an unseparable fixture.
+      if (spec.noAttributeNegative !== undefined && seed !== noAttribute) {
+        const reason = `${id}: painted nothing for SGR ${spec.noAttributeNegative.sequence}: the frame equals plain text, and the underline was visible in the seed frame of this run`
+        return {
+          pass: false,
+          criterionBranch: "colour-no-attribute-witness",
+          tests: [{ id: "criterion", status: "unsupported", assertionRefs: [0] }],
+          response: observed,
+          observation: {
+            outcome: "unsupported",
+            assertionType,
+            ...cite(targetScreenshotRef, frames),
+            note: reason,
+          },
+          assertions: [
+            {
+              assertionType,
+              kind: "negative",
+              expected: `${id}: the terminal paints SGR ${spec.noAttributeNegative.sequence} as something other than plain text`,
+              observed: expected,
+            },
+          ],
+        }
+      }
       // A frame with no attributes at all cannot witness a colour. This is not the `seed === expected`
       // case above: the seed carries the attribute the row qualifies (an underline), so the terminal's
       // reset of it still differs from the seed. The row asked for a colour; it showed none.
