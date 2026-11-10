@@ -577,7 +577,12 @@ export interface ProbeSuiteManifest {
  * schemaVersion stays 4 and runs written before this parse unchanged. */
 export type ProbeWitness = ColourSiblingSeparationWitness
 
-/** The same-channel sibling that proves this capture can show a colour in this rectangle. */
+/**
+ * The same-channel sibling that proves this capture can show a colour in this rectangle.
+ * The parser checks the hashes and the rectangle against this run's frames. It does not check
+ * `outerTerminal.recordPath` or `recordRunId` (those name another file) or the colour assumption
+ * (that is declared, not measured).
+ */
 export interface ColourSiblingSeparationWitness {
   kind: "colour-sibling-separation"
   requestedRowId: string

@@ -159,11 +159,26 @@ function requireWitnessDigest(value: unknown, path: string, featureId: string, n
   if (typeof value !== "string" || !WITNESS_DIGEST.test(value)) fail(path, `${featureId} witness missing ${name}`)
 }
 
+function frameDigestSet(frames: readonly Record<string, unknown>[]): Set<string> {
+  const digests = new Set<string>()
+  for (const frame of frames) {
+    for (const key of ["ref", "sourceRef", "regionDigest", "pixelsDigest", "cellDigest", "frameDigest"]) {
+      const value = frame[key]
+      if (typeof value === "string") digests.add(value)
+    }
+  }
+  return digests
+}
+
+function resultFrames(result: { frames?: unknown }): Record<string, unknown>[] {
+  return Array.isArray(result.frames) ? result.frames.filter(object) : []
+}
+
 function validateColourSiblingWitness(
   witness: Record<string, unknown>,
   featureId: string,
   path: string,
-  results: readonly { featureId: string; criterionBranch?: string }[],
+  results: readonly { featureId: string; criterionBranch?: string; frames?: unknown }[],
 ): void {
   const required = [
     "kind",
@@ -206,9 +221,44 @@ function validateColourSiblingWitness(
     requireWitnessString(witness.outerTerminal[key], path, featureId, `outerTerminal.${key}`)
   }
   if (witness.outerTerminal.status !== "supported") fail(path, `${featureId} witness missing outerTerminal.status`)
+  if (witness.requestedRowId !== featureId) {
+    fail(path, `${featureId} witness requestedRowId ${String(witness.requestedRowId)} is not this row`)
+  }
   const sibling = String(witness.siblingRowId)
-  if (!results.some((row) => row.featureId === sibling)) {
-    fail(path, `${featureId} witness sibling row ${sibling} is not in this run`)
+  if (sibling === featureId) fail(path, `${featureId} witness siblingRowId is the same row`)
+  const siblingResult = results.find((row) => row.featureId === sibling)
+  if (!siblingResult) fail(path, `${featureId} witness sibling row ${sibling} is not in this run`)
+  const own = results.find((row) => row.featureId === featureId)
+  const ownDigests = frameDigestSet(resultFrames(own ?? {}))
+  for (const key of ["seed", "target", "expected", "ignored"] as const) {
+    const digest = String(witness.requested[key])
+    if (!ownDigests.has(digest)) {
+      fail(path, `${featureId} witness requested.${key} is not a frame digest of this row`)
+    }
+  }
+  const requested = witness.requested
+  if (requested.seed !== requested.target || requested.target !== requested.expected) {
+    fail(path, `${featureId} witness requested frames are not equal`)
+  }
+  const siblingDigests = frameDigestSet(resultFrames(siblingResult ?? {}))
+  for (const key of ["seed", "target"] as const) {
+    const digest = String(witness.sibling[key])
+    if (!siblingDigests.has(digest)) {
+      fail(path, `${featureId} witness sibling.${key} is not a frame digest of ${sibling}`)
+    }
+  }
+  if (witness.sibling.seed === witness.sibling.target) {
+    fail(path, `${featureId} witness sibling frames do not differ`)
+  }
+  const rectangles = [...resultFrames(own ?? {}), ...resultFrames(siblingResult ?? {})]
+    .map((frame) => frame.regionRectangle)
+    .filter(object)
+  for (const rectangle of rectangles) {
+    for (const key of ["x", "y", "width", "height"] as const) {
+      if (rectangle[key] !== witness.rectangle[key]) {
+        fail(path, `${featureId} witness rectangle does not match the frame rectangle`)
+      }
+    }
   }
 }
 

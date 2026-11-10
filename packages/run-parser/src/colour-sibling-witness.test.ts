@@ -22,6 +22,18 @@ const suites = new Map<string, ProbeSuiteManifest>([
   ],
 ])
 
+const rectangle = { x: 29, y: 68, width: 52, height: 29 }
+const frame = (region: string) => ({
+  role: "target" as const,
+  ref: digest(`ref-${region}`),
+  capturedAt: 1,
+  label: region,
+  kind: "pixels" as const,
+  regionDigest: region,
+  pixelsDigest: digest(`whole-${region}`),
+  regionRectangle: rectangle,
+})
+
 const witness = () => ({
   kind: "colour-sibling-separation",
   requestedRowId: ROW,
@@ -96,6 +108,7 @@ const run = (overrides: Record<string, unknown> = {}) => {
         criterionBranch: "colour-sibling-separation",
         rawReplyRef: ROW,
         reason: "open",
+        frames: [frame(digest("flat"))],
         tests: [{ id: "criterion", status: "probe-todo", attempt, reason: "open" }],
       },
       {
@@ -104,6 +117,7 @@ const run = (overrides: Record<string, unknown> = {}) => {
         attempt,
         rawReplyRef: SIBLING,
         reason: "open",
+        frames: [frame(digest("seed")), frame(digest("target"))],
         tests: [{ id: "criterion", status: "probe-todo", attempt, reason: "open" }],
       },
     ],
@@ -138,6 +152,34 @@ it("refuses a witness on a positive assertion and a witness whose kind disagrees
   const branch = run()
   ;(branch.results[0] as { criterionBranch?: string }).criterionBranch = "other-branch"
   expect(() => parse(branch)).toThrow(/disagrees with criterionBranch/)
+})
+
+it("refuses a witness digest that is not a frame of its row, and a proof that is not flat against separated", () => {
+  const own = run()
+  ;(own.assertions[0] as { witness: { requested: { seed: string } } }).witness.requested.seed = digest("missing")
+  expect(() => parse(own)).toThrow(/requested.seed is not a frame digest/)
+  const sibling = run()
+  ;(sibling.assertions[0] as { witness: { sibling: { target: string } } }).witness.sibling.target = digest("missing")
+  expect(() => parse(sibling)).toThrow(/sibling.target is not a frame digest/)
+  const uneven = run()
+  ;(uneven.assertions[0] as { witness: { requested: { target: string } } }).witness.requested.target = digest("flat")
+  ;(uneven.results[0] as { frames: { regionDigest: string }[] }).frames.push(frame(digest("other")))
+  ;(uneven.assertions[0] as { witness: { requested: { target: string } } }).witness.requested.target = digest("other")
+  expect(() => parse(uneven)).toThrow(/requested frames are not equal/)
+  const flatSibling = run()
+  const same = digest("same")
+  ;(flatSibling.assertions[0] as { witness: { sibling: { seed: string; target: string } } }).witness.sibling = {
+    seed: same,
+    target: same,
+  }
+  ;(flatSibling.results[1] as { frames: unknown[] }).frames = [frame(same)]
+  expect(() => parse(flatSibling)).toThrow(/sibling frames do not differ/)
+})
+
+it("refuses a requested row id that is not this row", () => {
+  const bad = run()
+  ;(bad.assertions[0] as { witness: { requestedRowId: string } }).witness.requestedRowId = SIBLING
+  expect(() => parse(bad)).toThrow(/requestedRowId/)
 })
 
 it("refuses a sibling row that is not in the same run", () => {
