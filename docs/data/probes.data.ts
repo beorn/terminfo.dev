@@ -20,7 +20,7 @@ import {
   type PublicRunMetadata,
 } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
-import { siteWorkingHistory, type WorkingView } from "./working-runs.ts"
+import { siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
 import type { ProbeStatus, FeatureResultStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
@@ -179,9 +179,14 @@ function loadBackendMeta(): Record<string, BackendMeta> {
  * `load()` drops can never stay advertised in the client-side type.
  */
 export type ClientProbeData = Omit<ProbeData, "selected"> & {
-  workingHistory?: WorkingView[]
+  workingHistory?: ClientWorkingView[]
+  /** #33037: each distinct historical status map once; a history context names its map by `statesRef`. */
+  workingStates?: Array<Readonly<Record<string, FeatureResultStatus>>>
   workingOriginals?: Record<string, Array<PublicRunMetadata & { states: Record<string, ProbeStatus> }>>
 }
+
+export type ClientWorkingContext = Omit<WorkingContext, "states"> & { statesRef?: number }
+export type ClientWorkingView = Omit<WorkingView, "contexts"> & { contexts: ClientWorkingContext[] }
 
 declare const data: ClientProbeData
 export { data }
@@ -321,8 +326,31 @@ export default {
         })),
       ]),
     )
-    return { ...client, workingHistory, workingOriginals }
+    return { ...client, ...shareStates(workingHistory), workingOriginals }
   },
+}
+
+/**
+ * #33037: the client chunk is one JSON value, so a status map repeated per run per context was sent every time
+ * (2,151 maps, 240 distinct, 92.6% of the theme chunk). Equal maps are sent once; the cached server views stay whole.
+ */
+function shareStates(views: WorkingView[]): Pick<ClientProbeData, "workingHistory" | "workingStates"> {
+  const workingStates: NonNullable<ClientProbeData["workingStates"]> = []
+  const refs = new Map<string, number>()
+  const workingHistory = views.map((view) => ({
+    ...view,
+    contexts: view.contexts.map(({ states, ...context }): ClientWorkingContext => {
+      if (!states) return context
+      const key = JSON.stringify(states)
+      let statesRef = refs.get(key)
+      if (statesRef === undefined) {
+        statesRef = workingStates.push(states) - 1
+        refs.set(key, statesRef)
+      }
+      return { ...context, statesRef }
+    }),
+  }))
+  return { workingHistory, workingStates }
 }
 
 function computeBaselines(data: ProbeData): void {

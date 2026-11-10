@@ -198,41 +198,45 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // Walking the live content tree passed the 5s default on CI (run 42830234597).
   // A local run was 3.5s; 30s leaves room when the host is busy.
-  it("retains app pass contexts and named store gaps without changing the newest-only view", { timeout: 30_000 }, () => {
-    const instrument = runsDir()
-    const libraries = join(instrument, "runs")
-    mkdirSync(libraries)
-    collection(libraries)
-    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
-    const before = JSON.stringify(siteWorkingView(join(root, "content")))
-    const linux = appCollection(instrument, "linux")
-    appCollection(instrument, "linux", PARTIAL)
-    appCollection(instrument, "macos")
-    const history = siteWorkingHistory(join(root, "content"))!
-    const apps = history.flatMap((view) => view.contexts).filter((context) => context.kind === "term")
-    expect(apps).toHaveLength(3)
-    expect(new Set(apps.map((context) => context.contextKey)).size).toBe(2)
-    expect(apps.some((context) => context.contextKey.includes('"macos"'))).toBe(true)
-    expect(apps.find((context) => context.contextKey.includes('"macos"'))?.reviewedContextKey).toBeNull()
-    expect(apps.find((context) => context.contextKey.includes('"linux"'))).toMatchObject({
-      runId: linux.original.runId,
-      measuredAt: linux.original.measuredAt,
-      sha256: createHash("sha256").update(readFileSync(linux.rawPath)).digest("hex"),
-      states: { "text.basic": "supported" },
-      cells: [],
-    })
-    expect(apps.every((context) => context.changes === undefined)).toBe(true)
-    expect(apps.some((context) => context.changeQualification?.includes("not comparable"))).toBe(true)
-    expect(
-      history
-        .flatMap((view) => view.unmeasured)
-        .some(
-          (gap) =>
-            gap.engine === "kitty/linux" && gap.reason.includes(join(instrument, "apps", "kitty", "linux", "runs")),
-        ),
-    ).toBe(true)
-    expect(JSON.stringify(siteWorkingView(join(root, "content")))).toBe(before)
-  })
+  it(
+    "retains app pass contexts and named store gaps without changing the newest-only view",
+    { timeout: 30_000 },
+    () => {
+      const instrument = runsDir()
+      const libraries = join(instrument, "runs")
+      mkdirSync(libraries)
+      collection(libraries)
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
+      const before = JSON.stringify(siteWorkingView(join(root, "content")))
+      const linux = appCollection(instrument, "linux")
+      appCollection(instrument, "linux", PARTIAL)
+      appCollection(instrument, "macos")
+      const history = siteWorkingHistory(join(root, "content"))!
+      const apps = history.flatMap((view) => view.contexts).filter((context) => context.kind === "term")
+      expect(apps).toHaveLength(3)
+      expect(new Set(apps.map((context) => context.contextKey)).size).toBe(2)
+      expect(apps.some((context) => context.contextKey.includes('"macos"'))).toBe(true)
+      expect(apps.find((context) => context.contextKey.includes('"macos"'))?.reviewedContextKey).toBeNull()
+      expect(apps.find((context) => context.contextKey.includes('"linux"'))).toMatchObject({
+        runId: linux.original.runId,
+        measuredAt: linux.original.measuredAt,
+        sha256: createHash("sha256").update(readFileSync(linux.rawPath)).digest("hex"),
+        states: { "text.basic": "supported" },
+        cells: [],
+      })
+      expect(apps.every((context) => context.changes === undefined)).toBe(true)
+      expect(apps.some((context) => context.changeQualification?.includes("not comparable"))).toBe(true)
+      expect(
+        history
+          .flatMap((view) => view.unmeasured)
+          .some(
+            (gap) =>
+              gap.engine === "kitty/linux" && gap.reason.includes(join(instrument, "apps", "kitty", "linux", "runs")),
+          ),
+      ).toBe(true)
+      expect(JSON.stringify(siteWorkingView(join(root, "content")))).toBe(before)
+    },
+  )
 
   it.each(["untrusted suite", "multiple passes"])(
     "keeps an app collection with %s visible and uncounted",
@@ -350,6 +354,21 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     collection(older.parent, WRITING)
     const sameBuild = clientProbes.load()
     expect(sameBuild.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+  })
+
+  // #33037: every hourly run repeated an identical status map per context, and the theme chunk crossed
+  // the 26,214,400-byte Pages asset limit (2,151 maps carried, 240 distinct). Equal maps are sent once.
+  it("sends an identical historical status map once and points every context at it", () => {
+    const parent = runsDir()
+    collection(parent, OLD)
+    collection(parent, PARTIAL)
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", parent)
+    const server = siteWorkingHistory(join(root, "content"))!
+    const client = clientProbes.load()
+    const refs = client.workingHistory!.flatMap((view) => view.contexts.map((context) => context.statesRef))
+    expect(refs.length).toBeGreaterThan(1)
+    expect(new Set(refs)).toEqual(new Set([0]))
+    expect(client.workingStates).toEqual([server[0]!.contexts[0]!.states])
   })
 
   // Selected-original history is required on feature pages and for Mac contexts without raw stores.
@@ -503,10 +522,12 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     const fixture = collection()
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", fixture.parent)
     const original = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds }).runs[0]!
-    const context = clientProbes.load().workingHistory?.[0]?.contexts[0]
-    expect(context?.states).toEqual(
+    const client = clientProbes.load()
+    const context = client.workingHistory?.[0]?.contexts[0]
+    expect(client.workingStates?.[context?.statesRef ?? -1]).toEqual(
       Object.fromEntries(original.results!.map((result) => [result.featureId, result.status])),
     )
+    expect(context).not.toHaveProperty("states")
     expect(context).toMatchObject({
       runId: original.runId,
       sha256: original.sha256,
