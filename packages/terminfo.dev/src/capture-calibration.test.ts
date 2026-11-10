@@ -1127,9 +1127,18 @@ test("the macOS alacritty window specimen no longer refuses for its corner fille
   expect(run.reads.get("column edge paint")).toBeGreaterThan(0)
 })
 
+/** Hosted run 42861023633's retained calibration frames, by stage, under their own sha256 names (33056). */
+const WARP_FRAMES: Record<string, string> = {
+  before: "003004e19b836de88bfa06de9f12166510f16b1339e166fffa94d708277ece96",
+  solid: "ea3959854af83fd8cd7fa6186882ab655cd5ddbe1599924e4dfaa85dd454c63e",
+  columns: "e73d56181065fb98e3f99382a2da7a5c781797787c97956637680afb85f8bf97",
+  rows: "9a16232c6a334fa26a5eba8bdbdb0f03eeadaa647075aa9a2d0dc685532b9822",
+  restore: "df0b0fdb3f16f6af6ed178a49e58e2a9d17724b24936ec44a952860dc00cee4c",
+}
+
 /** Decode one retained 8-bit RGBA, non-interlaced PNG (the collector's own frame format) without magick. */
 function retainedFrame(name: string): CapturedFrame {
-  const png = readFileSync(new URL(`./fixtures/warp-chrome-33056/${name}.png`, import.meta.url))
+  const png = readFileSync(new URL(`../../../test-fixtures/artifacts/${WARP_FRAMES[name]}.png`, import.meta.url))
   let offset = 8
   let width = 0
   let height = 0
