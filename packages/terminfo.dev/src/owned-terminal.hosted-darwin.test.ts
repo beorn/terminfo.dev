@@ -188,40 +188,49 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
   ).toEqual({
     id: "terminal-app",
     comm: "Terminal",
+    titleRead: "system-events",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/iTerm.app/Contents/MacOS/iTerm2")).toEqual({
     id: "iterm2",
     comm: "iTerm2",
+    titleRead: "none",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Ghostty.app/Contents/MacOS/ghostty")).toEqual({
     id: "ghostty",
     comm: "ghostty",
+    titleRead: "system-events",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Alacritty.app/Contents/MacOS/alacritty")).toEqual({
     id: "alacritty",
     comm: "alacritty",
+    titleRead: "system-events",
   })
   // WezTerm.app's CFBundleExecutable is wezterm-gui (run 39274899363); the CLI binary never appears here.
   expect(hostedDarwinAppFromExecutablePath("/Applications/WezTerm.app/Contents/MacOS/wezterm-gui")).toEqual({
     id: "wezterm",
     comm: "wezterm-gui",
+    titleRead: "system-events",
   })
   // 30211: the receipt names the editor GUI, never its CLI or an Electron helper.
   expect(hostedDarwinAppFromExecutablePath("/Applications/Cursor.app/Contents/MacOS/Cursor")).toEqual({
     id: "cursor",
     comm: "Cursor",
+    titleRead: "system-events",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Visual Studio Code.app/Contents/MacOS/Code")).toEqual({
     id: "com.microsoft.VSCode",
     comm: "Code",
+    titleRead: "system-events",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Warp.app/Contents/MacOS/stable")).toEqual({
     id: "warp",
     comm: "stable",
+    titleRead: "system-events",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux")).toEqual({
     id: "cmux",
     comm: "cmux",
+    titleRead: "system-events",
   })
   for (const path of [
     "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",

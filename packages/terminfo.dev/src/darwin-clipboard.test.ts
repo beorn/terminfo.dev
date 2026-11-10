@@ -4,7 +4,7 @@ import { createDarwinClipboardAdapter, type DarwinCommand } from "./darwin-clipb
 
 test("hosted Darwin pasteboard saves, writes, and restores through the owned transaction", async () => {
   let pasteboard = "baseline"
-  let title = "Window"
+  const title = "Window"
   const run: DarwinCommand = async (file, args, stdin) => {
     if (file.endsWith("pbpaste")) return `${pasteboard}\n`
     if (file.endsWith("pbcopy")) {
@@ -15,6 +15,7 @@ test("hosted Darwin pasteboard saves, writes, and restores through the owned tra
   }
   const adapter = await createDarwinClipboardAdapter({
     appComm: "iTerm2",
+    titleRead: "none",
     assertOwned: async () => {},
     run,
   })
@@ -33,4 +34,24 @@ test("hosted Darwin pasteboard saves, writes, and restores through the owned tra
   )
   expect(result.pass).toBe(true)
   expect(pasteboard).toBe("baseline")
+})
+
+test("a system-events declaration reads the window name and does not depend on the app id", async () => {
+  const scripts: string[] = []
+  const run: DarwinCommand = async (file, args) => {
+    if (file.endsWith("pbpaste")) return "baseline\n"
+    if (file.endsWith("osascript")) {
+      scripts.push(args.join("\n"))
+      return "Measured Title\n"
+    }
+    throw new Error(`unexpected ${file}`)
+  }
+  const adapter = await createDarwinClipboardAdapter({
+    appComm: "stable",
+    titleRead: "system-events",
+    assertOwned: async () => {},
+    run,
+  })
+  await expect(adapter.readTitle()).resolves.toBe("Measured Title")
+  expect(scripts).toEqual([`-e\ntell application "System Events" to get name of window 1 of process "stable"`])
 })
