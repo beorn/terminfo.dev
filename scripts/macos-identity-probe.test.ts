@@ -220,10 +220,10 @@ test("nine fresh Mac jobs bootstrap the shared producer before checkout and coll
     "cmux",
   ])
   expect(job["runs-on"]).toBe("macos-latest")
-  // The sha-shape check runs before anything is fetched (33124), then the bootstrap, then the checkout.
-  expect(job.steps[0].name).toBe("Validate the requested sha before anything is fetched")
-  const first = job.steps[1]
-  expect(job.steps[2].uses).toBe("actions/checkout@v4")
+  // The bootstrap validates the sha shape before its first fetch (33124), then the checkout.
+  const first = job.steps[0]
+  expect(first.name).toBe("Bootstrap the pinned producer and sample at job start")
+  expect(job.steps[1].uses).toBe("actions/checkout@v4")
   const collectIndex = job.steps.findIndex((step: { id?: string }) => step.id === "collect")
   const failureIndex = job.steps.findIndex(
     (step: { name?: string }) => step.name === "Preserve terminal launch failure evidence",
