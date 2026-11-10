@@ -1,10 +1,11 @@
 /**
  * @failure A query_reply row's criterion text and its silence grade drift apart again: the text says silence is
- *   inconclusive, PROBE INVALID or "silently consumes" while the recorder grades a fenced silence Unsupported, or the
- *   text claims Unsupported on a row whose callbacks never mark a fenced silence (#33165, @cto be3fb080 and f990c003).
+ *   inconclusive, PROBE INVALID or "silently consumes" while the recorder grades a fenced silence Unsupported; or the
+ *   text claims Unsupported on a row whose callbacks never mark a fenced silence; or a row leaves or joins the exemption
+ *   list without anyone deciding it (#33165, @cto be3fb080, f990c003 and 767c9bcd).
  * @level l2
  * @consumer content/features.json `probe` text on every row whose term or library arm declares query_reply, read by
- *   the feature pages, beside the rule recordExecutedProbe applies from the row's `silence` field.
+ *   the feature pages, beside the default rule recordExecutedProbe applies to a marked fenced silence.
  * @testonly none
  */
 import { dirname, join } from "node:path"
@@ -27,91 +28,81 @@ const features = loadFeatures(join(dirname(fileURLToPath(import.meta.url)), ".."
 const DEFAULT_RULE = /device attributes answer with no (?:[\w-]+ )*reply before it is Unsupported/i
 
 /**
- * Rows whose term or library callback, declared query_reply, does not mark a fenced silence, so the default sentence
- * would be false there. Pending a product decision (#33165 report); they say nothing about silence being Unsupported.
- * Seven of them (kitty-keyboard x6, input.csi-u) grade a DA1-only silence Unsupported by their own code, outside the
- * row rule; the reset/stack OSC rows fold silence to Untestable or PROBE TODO by their own controls; the sgr rows are
- * paint rows; cursor, text and modes rows read a cursor or DECRPM reply without the DA1 fence.
+ * query_reply rows that do not mark a fenced silence on every query_reply arm, so the default sentence would be false
+ * there. They say nothing about silence (@cto 767c9bcd). Each reason is checked below:
+ * - "no fence": at least one query_reply arm asks no DA1-fenced query (cursor, DECRPM, tab and clipboard reads; DA1
+ *   itself as the query).
+ * - "own fold": every query_reply arm asks a DA1-fenced query and folds the silence by its own controls (Untestable,
+ *   PROBE TODO or not tested) instead of marking it.
+ * - "paint row": an sgr row, decided by what is painted; its term arm declares screenshot.
  */
-const SILENCE_NOT_MARKED = [
-  "cursor.cpl",
-  "cursor.cuu-past-top",
-  "cursor.horizontal-absolute",
-  "cursor.hpa",
-  "cursor.move.absolute",
-  "cursor.move.back",
-  "cursor.move.down",
-  "cursor.move.forward",
-  "cursor.move.home",
-  "cursor.move.up",
-  "cursor.next-line",
-  "cursor.position-report",
-  "cursor.vpa",
-  "device.primary-da",
-  "extensions.kitty-graphics.display",
-  "extensions.kitty-graphics.transmit",
-  "extensions.kitty-keyboard",
-  "extensions.kitty-keyboard.disambiguate",
-  "extensions.kitty-keyboard.report-all-keys",
-  "extensions.kitty-keyboard.report-alternate",
-  "extensions.kitty-keyboard.report-events",
-  "extensions.kitty-keyboard.report-text",
-  "extensions.osc0-icon-title",
-  "extensions.osc104-reset-palette",
-  "extensions.osc110-reset-fg",
-  "extensions.osc111-reset-bg",
-  "extensions.osc112-reset-cursor",
-  "extensions.osc113-reset-pointer-fg",
-  "extensions.osc114-reset-pointer-bg",
-  "extensions.osc117-reset-highlight-bg",
-  "extensions.osc119-reset-highlight-fg",
-  "extensions.osc22-pointer",
-  "extensions.osc30001-color-stack-push",
-  "extensions.osc30101-color-stack-pop",
-  "extensions.osc52-clipboard",
-  "extensions.osc52-read",
-  "extensions.osc52-write",
-  "extensions.osc5522-clipboard",
-  "extensions.osc66-text-sizing",
-  "extensions.sixel-da1",
-  "input.csi-u",
-  "modes.alt-screen.enter",
-  "modes.altscreen-1047",
-  "modes.application-cursor",
-  "modes.auto-wrap",
-  "modes.bracketed-paste",
-  "modes.color-scheme-reporting",
-  "modes.deccolm",
-  "modes.decsclm",
-  "modes.mouse-all",
-  "modes.mouse-sgr",
-  "modes.mouse-tracking",
-  "modes.reverse-video",
-  "modes.synchronized-output",
-  "sgr.blink",
-  "sgr.bold",
-  "sgr.faint",
-  "sgr.hidden",
-  "sgr.inverse",
-  "sgr.italic",
-  "sgr.overline",
-  "sgr.strikethrough",
-  "sgr.underline.curly",
-  "sgr.underline.dashed",
-  "sgr.underline.dotted",
-  "sgr.underline.double",
-  "sgr.underline.single",
-  "text.cbt",
-  "text.cht",
-  "text.tbc",
-  "unicode.grapheme-cursor",
-]
-
-/**
- * Marks a fenced silence, but its text says no reply is defined; adding the default sentence would bless that grade
- * against the text, which needs @cpo/term's written call (@cto be3fb080). Pending a decision (#33165 report).
- */
-const TEXT_CONTRADICTS_MARK = ["extensions.osc7777-font-window-size"]
+type ExemptReason = "no fence" | "own fold" | "paint row"
+const SILENCE_EXEMPT: Record<string, ExemptReason> = {
+  "cursor.cpl": "no fence",
+  "cursor.cuu-past-top": "no fence",
+  "cursor.horizontal-absolute": "no fence",
+  "cursor.hpa": "no fence",
+  "cursor.move.absolute": "no fence",
+  "cursor.move.back": "no fence",
+  "cursor.move.down": "no fence",
+  "cursor.move.forward": "no fence",
+  "cursor.move.home": "no fence",
+  "cursor.move.up": "no fence",
+  "cursor.next-line": "no fence",
+  "cursor.position-report": "no fence",
+  "cursor.vpa": "no fence",
+  "device.primary-da": "no fence",
+  "extensions.kitty-graphics.display": "own fold",
+  "extensions.kitty-graphics.transmit": "own fold",
+  "extensions.osc0-icon-title": "own fold",
+  "extensions.osc104-reset-palette": "own fold",
+  "extensions.osc110-reset-fg": "own fold",
+  "extensions.osc111-reset-bg": "own fold",
+  "extensions.osc112-reset-cursor": "own fold",
+  "extensions.osc113-reset-pointer-fg": "own fold",
+  "extensions.osc114-reset-pointer-bg": "own fold",
+  "extensions.osc117-reset-highlight-bg": "own fold",
+  "extensions.osc119-reset-highlight-fg": "own fold",
+  "extensions.osc22-pointer": "no fence",
+  "extensions.osc30001-color-stack-push": "own fold",
+  "extensions.osc30101-color-stack-pop": "own fold",
+  "extensions.osc52-clipboard": "no fence",
+  "extensions.osc52-read": "no fence",
+  "extensions.osc52-write": "no fence",
+  "extensions.osc5522-clipboard": "own fold",
+  "extensions.osc66-text-sizing": "no fence",
+  "extensions.sixel-da1": "no fence",
+  "modes.alt-screen.enter": "no fence",
+  "modes.altscreen-1047": "no fence",
+  "modes.application-cursor": "no fence",
+  "modes.auto-wrap": "no fence",
+  "modes.bracketed-paste": "no fence",
+  "modes.color-scheme-reporting": "no fence",
+  "modes.deccolm": "no fence",
+  "modes.decsclm": "no fence",
+  "modes.mouse-all": "no fence",
+  "modes.mouse-sgr": "no fence",
+  "modes.mouse-tracking": "no fence",
+  "modes.reverse-video": "own fold",
+  "modes.synchronized-output": "no fence",
+  "sgr.blink": "paint row",
+  "sgr.bold": "paint row",
+  "sgr.faint": "paint row",
+  "sgr.hidden": "paint row",
+  "sgr.inverse": "paint row",
+  "sgr.italic": "paint row",
+  "sgr.overline": "paint row",
+  "sgr.strikethrough": "paint row",
+  "sgr.underline.curly": "paint row",
+  "sgr.underline.dashed": "paint row",
+  "sgr.underline.dotted": "paint row",
+  "sgr.underline.double": "paint row",
+  "sgr.underline.single": "paint row",
+  "text.cbt": "no fence",
+  "text.cht": "no fence",
+  "text.tbc": "no fence",
+  "unicode.grapheme-cursor": "no fence",
+}
 
 const declaresQueryReply = (declared: ProbeDefinition["termAssertionType"] | ProbeDefinition["libAssertionType"]) =>
   declared === "query_reply" ||
@@ -120,15 +111,26 @@ const declaresQueryReply = (declared: ProbeDefinition["termAssertionType"] | Pro
     [...declared.then, ...declared.otherwise].includes("query_reply"))
 
 const DA1 = "\x1b[?62;22c"
-const fencedOutcome = () => ({
-  match: null,
-  reason: "sentinel" as const,
-  raw: DA1,
-  rawBase64: Buffer.from(DA1).toString("base64"),
-  sentinel: { atMs: 3, graceMs: 250 },
-})
-const silentTerminal = (): TermProbeSource =>
-  ({
+
+/** One query_reply arm run where every DA1-fenced query is a fenced silence: did it mark, and how often did it ask? */
+interface ArmSilence {
+  marked: boolean
+  fencedAsks: number
+}
+
+async function armSilences(probe: ProbeDefinition): Promise<ArmSilence[]> {
+  let fencedAsks = 0
+  const fencedOutcome = () => {
+    fencedAsks++
+    return {
+      match: null,
+      reason: "sentinel" as const,
+      raw: DA1,
+      rawBase64: Buffer.from(DA1).toString("base64"),
+      sentinel: { atMs: 3, graceMs: 250 },
+    }
+  }
+  const terminal = {
     kind: "live",
     cols: 80,
     rows: 24,
@@ -140,52 +142,74 @@ const silentTerminal = (): TermProbeSource =>
     queryWithSentinel: async () => null,
     queryWithSentinelOutcome: async () => fencedOutcome(),
     queryMode: async () => null,
-  }) as unknown as TermProbeSource
-const silentLibrary = (): LibProbeSource => ({
-  ...inertLibProbeSource(),
-  queryWithSentinelOutcome: () => fencedOutcome(),
-})
-
-/** Every query_reply arm of the row, run where every DA1-fenced query is a fenced silence, marks it. */
-async function marksFencedSilence(probe: ProbeDefinition): Promise<boolean> {
-  const results: Array<ProbeCallbackResult | undefined> = []
-  if (probe.term && declaresQueryReply(probe.termAssertionType)) results.push(await probe.term(silentTerminal()))
-  if (probe.lib && declaresQueryReply(probe.libAssertionType)) results.push(probe.lib(silentLibrary()))
-  return results.length > 0 && results.every((result) => isFencedSilence(result?.observation))
+  } as unknown as TermProbeSource
+  // A library capture that ends with the DA1 request (Kitty keyboard detection) answers with DA1 alone.
+  const library: LibProbeSource = {
+    ...inertLibProbeSource(),
+    feedCapture: (sequence: string) => {
+      if (!sequence.endsWith("\x1b[c")) return ""
+      fencedAsks++
+      return DA1
+    },
+    queryWithSentinelOutcome: () => fencedOutcome(),
+  }
+  const arms: Array<() => Promise<ProbeCallbackResult | undefined> | ProbeCallbackResult | undefined> = []
+  if (probe.term && declaresQueryReply(probe.termAssertionType)) arms.push(() => probe.term?.(terminal))
+  if (probe.lib && declaresQueryReply(probe.libAssertionType)) arms.push(() => probe.lib?.(library))
+  const out: ArmSilence[] = []
+  for (const run of arms) {
+    fencedAsks = 0
+    const result = await run()
+    out.push({ marked: isFencedSilence(result?.observation), fencedAsks })
+  }
+  return out
 }
+
+const marksFencedSilence = (arms: ArmSilence[]) => arms.length > 0 && arms.every((arm) => arm.marked)
 
 const population = ALL_PROBES.filter(
   (probe) => declaresQueryReply(probe.termAssertionType) || declaresQueryReply(probe.libAssertionType),
 )
 
 describe("every query_reply row's criterion text states the silence rule the recorder applies", () => {
-  test("the population is classified: every row either marks a fenced silence or is named as not marking one", async () => {
+  test("the exemption list is exactly the rows that do not mark a fenced silence, each for its stated reason", async () => {
     expect(population.length).toBe(105)
     const unmarked: string[] = []
-    for (const probe of population) if (!(await marksFencedSilence(probe))) unmarked.push(probe.id)
-    expect(unmarked.sort()).toEqual(SILENCE_NOT_MARKED)
+    const wrongReason: string[] = []
+    for (const probe of population) {
+      const arms = await armSilences(probe)
+      if (marksFencedSilence(arms)) continue
+      unmarked.push(probe.id)
+      const reason = SILENCE_EXEMPT[probe.id]
+      const holds =
+        reason === "no fence"
+          ? arms.some((arm) => arm.fencedAsks === 0)
+          : reason === "own fold"
+            ? arms.every((arm) => arm.fencedAsks > 0)
+            : reason === "paint row"
+              ? probe.id.startsWith("sgr.") && !declaresQueryReply(probe.termAssertionType)
+              : false
+      if (reason && !holds) wrongReason.push(`${probe.id} (${reason})`)
+    }
+    // A listed row that gains a fence and marks it, or a fenceless query_reply row missing from the list, fails here.
+    expect(unmarked.sort()).toEqual(Object.keys(SILENCE_EXEMPT).sort())
+    // A listed row whose reason stopped being true (a "no fence" row that now asks a fenced query on every arm) fails here.
+    expect(wrongReason).toEqual([])
   })
 
   test.each(population.map((probe) => [probe.id, probe] as const))("%s", async (id, probe) => {
     const row = features[id]
     if (!row) throw new Error(`${id} declares query_reply but has no content/features.json row`)
-    const silence = row.silence
-    if (silence) {
-      // A non-default rule: the text names the rule's reason, and never the default sentence.
-      expect(row.probe, id).toContain(silence.reason)
+    if (SILENCE_EXEMPT[id]) {
+      // The callbacks never grade a fenced silence through the rule, so the text must not say they do.
       expect(row.probe, id).not.toMatch(DEFAULT_RULE)
       return
     }
-    if (SILENCE_NOT_MARKED.includes(id) || TEXT_CONTRADICTS_MARK.includes(id)) {
-      // The callbacks never grade a fenced silence Unsupported through the rule, so the text must not say they do.
-      expect(row.probe, id).not.toMatch(DEFAULT_RULE)
-      return
-    }
-    expect(await marksFencedSilence(probe), id).toBe(true)
+    expect(marksFencedSilence(await armSilences(probe)), id).toBe(true)
     expect(row.probe, id).toMatch(DEFAULT_RULE)
     // The old contradicting phrases are gone from every default-rule row.
     expect(row.probe, id).not.toMatch(
-      /silently consumes|missing (?:or malformed )?repl(?:y|ies)[^.]*(?:inconclusive|PROBE INVALID)/i,
+      /silently consumes|no reply is defined|missing (?:or malformed )?repl(?:y|ies)[^.]*(?:inconclusive|PROBE INVALID)/i,
     )
   })
 })

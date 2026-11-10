@@ -120,6 +120,51 @@ describe("a fenced silence is marked by the helper and graded once, by the row's
   })
 })
 
+// @cto 767c9bcd ruling 3: Kitty keyboard detection reads a DA1-only capture with its own parser; it marks the silence
+// through the helper and the recorder grades it, recording exactly the Unsupported result the probe decided itself.
+test("Kitty keyboard detection marks a DA1-only capture, and the default rule records the result it used to decide", async () => {
+  const id = "extensions.kitty-keyboard.disambiguate"
+  const kitty = ALL_PROBES.find((probe) => probe.id === id)?.term
+  if (!kitty) throw new Error(`${id} has no term arm`)
+  const result = await kitty({
+    kind: "live",
+    cols: 80,
+    rows: 24,
+    write() {},
+    queryWithSentinelOutcome: async () => ({
+      match: null,
+      reason: "sentinel",
+      raw: DA1,
+      rawBase64: Buffer.from(DA1).toString("base64"),
+      sentinel: { atMs: 2, graceMs: 250 },
+    }),
+  } as unknown as TermProbeSource)
+  expect(isFencedSilence(result.observation)).toBe(true)
+  const note =
+    "DA1 answered without any Kitty keyboard flags reply; the protocol is not supported (necessary-condition negative; key-event conformance was not tested)"
+  const assertion = {
+    featureId: id,
+    assertionType: "query_reply" as const,
+    kind: "negative" as const,
+    expected: "A complete Kitty keyboard flags reply answers before the DA1 reply",
+    observed: DA1,
+    rawReplyRef: id,
+  }
+  const recordAs = (observation: Omit<Observation, "featureId">) =>
+    recordExecutedProbe({
+      featureId: id,
+      attempt,
+      observation: { featureId: id, ...observation, rawReplyRef: id },
+      assertions: [assertion],
+      rawReplyRef: id,
+    })
+  const recorded = recordAs(result.observation!)
+  // Before #33165's ruling 3 the probe returned this observation itself.
+  const before = recordAs({ outcome: "unsupported", assertionType: "query_reply", note })
+  expect(JSON.stringify(recorded)).toBe(JSON.stringify(before))
+  expect(recorded).toMatchObject({ status: "unsupported", reason: note })
+})
+
 // Ruling 7 (@cto be3fb080): a multiplexer arm keeps its hop rule. A silence that may have stopped at the hop is never
 // marked, so no row rule, the default included, turns it into Unsupported.
 test("a multiplexer silence that may have stopped at the hop stays as it is today", async () => {

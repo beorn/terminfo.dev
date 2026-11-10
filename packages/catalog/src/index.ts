@@ -178,7 +178,10 @@ function optionalTier1(path: string, id: string, value: unknown): Tier1 | undefi
   return value as Tier1
 }
 
-/** A declared silence rule: one of SILENCE_RULES with a non-empty reason; absent means the default rule. */
+/**
+ * A declared silence rule: one of SILENCE_RULES with a non-empty reason; absent means the default rule. A well-formed
+ * declaration is still refused while no route carries it to the collectors (#33165, @cto 767c9bcd).
+ */
 function optionalSilence(path: string, id: string, value: unknown): SilenceDeclaration | undefined {
   if (value === undefined) return undefined
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -196,7 +199,11 @@ function optionalSilence(path: string, id: string, value: unknown): SilenceDecla
   if (Object.keys(extra).length > 0) {
     throw new Error(`${path}: entry "${id}" has unknown silence keys ${Object.keys(extra).sort().join(", ")}`)
   }
-  return { rule: rule as SilenceDeclaration["rule"], reason }
+  // #33165 (@cto 767c9bcd): no route carries a row's rule to the collectors yet, so a declared rule would silently grade
+  // as the default. Refuse it until that route is built.
+  throw new Error(
+    `${path}: entry "${id}" declares silence rule "${String(rule)}", but the suite-manifest route that carries a row's silence rule to the collectors is not built, so it would grade as the default rule; remove the "silence" field until that route lands`,
+  )
 }
 
 function entries(path: string, root: Record<string, unknown>): Array<[string, Record<string, unknown>]> {

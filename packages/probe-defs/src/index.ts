@@ -89,6 +89,7 @@ export {
   DECLARED_UNTESTABLE_TEST,
   FENCED_SILENCE,
   declaredUntestableResult,
+  fencedSilenceResult,
   fencedSilenceStatus,
   isDeclaredUntestable,
   isFencedSilence,

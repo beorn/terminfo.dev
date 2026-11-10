@@ -2685,10 +2685,25 @@ export function sentinelNegativeResult(
       ? "no reply at control; no grace wait"
       : `no reply through the ${String(sentinel.graceMs)} ms window`
   const observed = `${cpr ? "CPR brackets" : "DA1"} answered at +${String(sentinel.atMs)}ms; ${silence}`
+  return fencedSilenceResult(raw, observed, expected, observed)
+}
+
+/**
+ * The one shape of a marked fenced silence (#33165, @cto be3fb080 and 767c9bcd): a DA1 answer with no feature reply
+ * before it. It decides nothing; `recordExecutedProbe` grades it through the row's rule. `sentinelNegativeResult`
+ * builds it from a measured sentinel window; a probe that reads the same DA1-only capture by its own parser (Kitty
+ * keyboard detection) builds it here, with its own note, so both reach the recorder by one path.
+ */
+export function fencedSilenceResult(
+  response: string,
+  note: string,
+  expected: string,
+  observed: string,
+): ProbeCallbackResult & { pass: false } {
   return {
     pass: false,
-    response: raw,
-    observation: { outcome: "inconclusive", reason: FENCED_SILENCE, assertionType: "query_reply", note: observed },
+    response,
+    observation: { outcome: "inconclusive", reason: FENCED_SILENCE, assertionType: "query_reply", note },
     assertions: [{ assertionType: "query_reply" as const, kind: "negative", expected, observed }],
   }
 }

@@ -115,18 +115,22 @@ test("throws when an optional field carries the wrong type", () => {
   expect(() => loadTerminals(dir)).toThrow(/t1.*"year"/)
 })
 
-// #33165 (@cto be3fb080): a row's silence rule is what the recorder applies to a fenced silence. An unknown rule, or a
-// non-default rule with no reason, would grade silence under a rule nobody declared, so loading refuses both.
-test("reads a declared silence rule and refuses an unknown rule or a non-default rule without a reason", () => {
+// #33165 (@cto be3fb080, 767c9bcd): a row's silence rule is what the recorder applies to a fenced silence. An unknown
+// rule, or a non-default rule with no reason, would grade silence under a rule nobody declared; and while no route
+// carries a declared rule to the collectors, even a well-formed one would silently grade as the default. Loading
+// refuses all three, naming the row.
+test("refuses any declared silence rule while no route carries it to the collectors, and reads an absent one as default", () => {
   const row = { name: "N", slug: "n", body: "b", probe: "p", baseline: "x" }
   const load = (name: string, silence: unknown) =>
     loadFeatures(fixture(`silence-${name}`, { "features.json": { "a.one": { ...row, silence } } }))
-  const switchable = { rule: "switchable", reason: "enabled by the allowWindowOps resource" }
-  expect(required(load("switchable", switchable), "a.one").silence).toEqual(switchable)
-  const untestable = { rule: "untestable", reason: "silence cannot decide" }
-  expect(required(load("untestable", untestable), "a.one").silence).toEqual(untestable)
   const absent = loadFeatures(fixture("silence-absent", { "features.json": { "a.one": row } }))
   expect(required(absent, "a.one").silence).toBeUndefined()
+  const notBuilt =
+    /a\.one.*declares silence rule "(switchable|untestable)".*route that carries a row's silence rule to the collectors is not built/
+  expect(() => load("switchable", { rule: "switchable", reason: "enabled by the allowWindowOps resource" })).toThrow(
+    notBuilt,
+  )
+  expect(() => load("untestable", { rule: "untestable", reason: "silence cannot decide" })).toThrow(notBuilt)
   expect(() => load("unknown", { rule: "consumes", reason: "r" })).toThrow(/a\.one.*unknown silence rule "consumes"/)
   expect(() => load("explicit-default", { rule: "default", reason: "r" })).toThrow(/unknown silence rule "default"/)
   expect(() => load("no-reason", { rule: "switchable" })).toThrow(
