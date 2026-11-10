@@ -58,8 +58,8 @@ export interface LinuxClipboardAdapter {
   readonly resetScrollback?: TermProbeSource["resetScrollback"]
   /** Set only by the hosted Darwin pasteboard. Linux receipts leave it absent. */
   readonly pasteboard?: "darwin"
+  readonly config: string | null
   readonly profile: ClipboardReceipt["profile"]
-  readonly config: string
   readonly permissions: string
   readonly summary: string
   readonly muxAttachmentProof?: LinuxMuxAttachmentProof

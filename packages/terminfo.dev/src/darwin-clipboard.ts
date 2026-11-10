@@ -64,7 +64,7 @@ export async function createDarwinClipboardAdapter(input: {
   return {
     profile: "default",
     pasteboard: "darwin",
-    config: "darwin-pasteboard",
+    config: null,
     permissions: "clipboard: read=allow,write=allow",
     summary: `darwin hosted pasteboard for ${input.appComm}`,
     assertOwned: input.assertOwned,

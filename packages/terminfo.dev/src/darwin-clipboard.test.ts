@@ -22,6 +22,7 @@ test("hosted Darwin pasteboard saves, writes, and restores through the owned tra
     assertOwned: async () => {},
     run,
   })
+  expect(adapter.config).toBe(null)
   expect(await adapter.readTitle()).toBe("Window")
   const result = await adapter.withClipboardFixture(
     async (fixture) => {
