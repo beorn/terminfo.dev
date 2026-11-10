@@ -873,7 +873,9 @@ export async function runProbeBatch(
       let result: ProbeCallbackResult
       let probeWallExceeded = false
       try {
-        const wallMs = 30_000
+        // 120s is past a slow healthy probe. At 30s, run 42836445788 turned decided cells into
+        // probe-todo and left their call logs unfinished. A callback that never returns still stops here.
+        const wallMs = 120_000
         let wall: ReturnType<typeof setTimeout> | undefined
         const raced = await Promise.race([
           withTTYOperation(
