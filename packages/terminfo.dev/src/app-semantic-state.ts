@@ -439,6 +439,32 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): GNU Screen 5.0.2 drops OSC 710 without storing, forwarding or reporting a font selection. Read the complete StringEnd OSC dispatch in ansi.c:1223-1312 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 710 parses typ 710 and misses the accepted title/colour list (0, 1, 2, 11, 20, 39, 49, and 83 for commands) at 1267, so it reaches the non-title break at 1288. Screen has no font state, log or readback, and the outer terminal cannot supply Screen's missing own font reading.",
   },
+  // #32889 step 1: tmux 3.8 carries no handler for any of these five codes, and the drop is the
+  // unknown-OSC default in its own input parser. Read in tmux-3.8.tar.gz
+  // (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e):
+  // input_exit_osc at input.c:2699 parses the numeric option and dispatches only 0, 2, 4, 7, 8, 9,
+  // 10, 11, 12, 52, 104, 110, 111, 112 and 133; every other option reaches the default at
+  // input.c:2775-2777, which logs at debug level and returns. The file's only pass-through is DCS
+  // (input_exit_dcs, the allow-passthrough option) and it does not carry OSC. The run image's tmux
+  // 3.8 also keeps no verbose log at all (measured 2026-11-10: no log file, no open log fd, empty
+  // server stderr), so that debug line cannot be read either.
+  ...(
+    [
+      ["extensions.osc176-app-id", "176"],
+      ["extensions.osc3008-context", "3008"],
+      ["extensions.osc440-audio", "440"],
+      ["extensions.osc666-termprop", "666"],
+      ["extensions.osc710-font-normal", "710"],
+    ] as const
+  ).map(([featureId, code]) => ({
+    kind: "mux",
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    featureId,
+    reason:
+      `Untestable (no way): tmux 3.8 has no OSC ${code} handler and drops it in the unknown-OSC default of its input parser. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699 dispatches only 0, 2, 4, 7, 8, 9, 10, 11, 12, 52, 104, 110, 111, 112 and 133, and every other option reaches the default at input.c:2775-2777, which only logs at debug level and returns. The file's only pass-through is DCS (input_exit_dcs, the allow-passthrough option), which does not carry OSC. A debug-only drop with no state, reply or readback is not a command-specific refusal, and the run image's tmux 3.8 keeps no verbose log to read it from.`,
+  })),
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */

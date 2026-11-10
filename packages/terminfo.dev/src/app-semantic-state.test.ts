@@ -122,7 +122,19 @@ test("reader capability rows do not become declarations or lend their identity t
   const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
   expect(Object.keys(appSemanticDeclarations(kitty))).toEqual(["extensions.osc133-b", "extensions.osc3008-context"])
   expect(appSemanticDeclarations({ ...kitty, version: "unreviewed" })).toEqual({})
-  expect(appSemanticDeclarations({ kind: "mux", id: "tmux", version: "3.8", os: "linux" })).toEqual({})
+  const tmux = { kind: "mux" as const, id: "tmux", version: "3.8", os: "linux" }
+  const tmuxDeclared = appSemanticDeclarations(tmux)
+  expect(Object.keys(tmuxDeclared).sort()).toEqual([
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+  ])
+  expect(tmuxDeclared["extensions.osc710-font-normal"]).toMatch(/Untestable \(no way\):.*input\.c:2775-2777/)
+  for (const subject of [{ ...tmux, version: "3.7c" }, { ...tmux, os: "darwin" }, { ...tmux, kind: "term" as const }]) {
+    expect(appSemanticDeclarations(subject)).toEqual({})
+  }
   const screen = { kind: "mux" as const, id: "screen", version: "5.0.2", os: "linux" }
   expect(appSemanticDeclarations(screen)["modes.color-scheme-reporting"]).toMatch(/Untestable \(no way\):.*2031/)
   for (const subject of [
