@@ -1129,6 +1129,11 @@ remain outside it. The rewrite preserves positive capture tests and screenshot e
 the concrete observation reason with its row, and adds the outer-terminal ambiguity or missing
 identity reason. Mux positives, libraries and unselected branches retain their original results.
 The collector supplies the existing full draft subject when available, not new callback metadata.
+Reverse video is the one row where a mux negative can decide without the outer command trace:
+when tmux's own DECRPM 0 (its DA1 parameters beside the 0 in the same reply, recorded by the
+probe as its `decrpm-zero-witness` test) accompanies the same run's no-change pixel read, the
+finalizer keeps Unsupported with that reason; an outer terminal's DA, no DA beside the 0, or no
+pixel read leaves the negative pending exactly as before (#33036).
 Library SGR results retain their existing cell-state criterion results, including through headless checkpointing
 and library replay. They describe the effect on observed cells; they do not establish a rendered pixel effect.
 Ghostty web 0.4.0's canvas draws double, curly, dotted and dashed underline styles as a single line.
