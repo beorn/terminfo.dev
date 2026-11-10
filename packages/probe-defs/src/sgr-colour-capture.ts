@@ -101,8 +101,8 @@ const COLOUR_ROWS: Record<string, ColourRow> = {
   },
   "sgr.underline-color-indexed": {
     sequence: "\x1b[58;5;5m",
-    sibling: "\x1b[58;5;2m",
-    siblingLabel: "index 2, a 16-colour entry different from index 5",
+    sibling: "\x1b[58;5;4m",
+    siblingLabel: "index 4, blue: its nearest 16-colour entry is 4, distinct from index 5's entry 5",
     seed: "\x1b[4m",
   },
 }
