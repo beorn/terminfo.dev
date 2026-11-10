@@ -780,6 +780,18 @@ test("sgr.underline.color is unsupported when the seed shows the underline and p
   expect(result.observation?.note ?? "").toContain("painted nothing for SGR 58;2;255;0;128")
   expect(result.observation?.note ?? "").toContain("the underline was visible in the seed frame of this run")
   expect(result.pass).toBe(false)
+  // #33054: the witness is the structured union member, not prose spread over expected/observed/note.
+  const assertion = result.assertions?.[0]
+  const witness = assertion?.witness
+  if (witness?.kind !== "colour-no-attribute-witness") throw new Error("the negative carries no no-attribute witness")
+  expect(witness.rowId).toBe("sgr.underline.color")
+  expect(witness.encoding).toBe("58;2;255;0;128")
+  expect(witness.frames.expected).toBe(witness.frames.noAttribute)
+  expect(witness.frames.seed).not.toBe(witness.frames.noAttribute)
+  expect(assertion?.observed).toBe(witness.frames.expected)
+  const compared = (result.observation?.frames ?? []).filter((frame) => frame.regionDigest === witness.frames.seed)
+  expect(compared.length).toBeGreaterThan(0)
+  for (const frame of compared) expect(frame.regionRectangle).toEqual(witness.rectangle)
 })
 
 /**

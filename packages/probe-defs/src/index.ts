@@ -57,6 +57,7 @@ export type {
   ProbeAssertion,
   ProbeWitness,
   ColourSiblingSeparationWitness,
+  ColourNoAttributeWitness,
   UngradedDiagnostic,
   NotTestedCoverage,
   HeadlessRuntimeIdentity,
