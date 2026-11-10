@@ -1151,13 +1151,13 @@ describe("private finite daemon startup", () => {
       assert.equal("ungradedDiagnostics" in derived, false)
       assert.equal("ungradedDiagnostics" in reported, false)
     `,
-      90_000,
+      360_000,
     )
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)
-    // One probe may use the 30s wall before the rest of the catalogue finishes.
+    // GitHub killed this child at 90s on 875c2bc. A local run then took 129s.
     // Keep the child's limit below the outer test so a wedged child leaves its diagnostic result.
-  }, 120_000)
+  }, 420_000)
 
   // @cto, 28785 REVISE round 2 must 2: pin EVERY classification site of queryPixelGeometry with
   // one table. A timeout - nothing answered at all, DA1 included - is the one transient cause, and
