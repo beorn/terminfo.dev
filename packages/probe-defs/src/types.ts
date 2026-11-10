@@ -574,6 +574,39 @@ export interface ProbeSuiteManifest {
   textQualification?: TextQualificationSpec
 }
 
+/** Proof a negative assertion was decided on. A union on `kind`, so the next witness adds a member
+ * rather than a field on ProbeAssertion. Added 2026-11-10 (#33041); optional and additive, so
+ * schemaVersion stays 4 and runs written before this parse unchanged. */
+export type ProbeWitness = ColourSiblingSeparationWitness
+
+/**
+ * The same-channel sibling that proves this capture can show a colour in this rectangle.
+ * The parser checks the hashes and the rectangle against this run's frames. It does not check
+ * `outerTerminal.recordPath` or `recordRunId` (those name another file) or the colour assumption
+ * (that is declared, not measured).
+ */
+export interface ColourSiblingSeparationWitness {
+  kind: "colour-sibling-separation"
+  requestedRowId: string
+  requestedEncoding: string
+  siblingRowId: string
+  siblingEncoding: string
+  channel: "fg" | "bg"
+  runId: string
+  rectangle: { x: number; y: number; width: number; height: number }
+  requested: { seed: string; target: string; expected: string; ignored: string }
+  sibling: { seed: string; target: string }
+  colour: { requested: string; assumption: string; harnessProfile: string; muxConfig: string }
+  outerTerminal: {
+    id: string
+    version: string
+    rowId: string
+    status: "supported"
+    recordPath: string
+    recordRunId: string
+  }
+}
+
 export interface ProbeAssertion {
   featureId: string
   kind: "positive" | "negative"
@@ -585,6 +618,8 @@ export interface ProbeAssertion {
   /** Required for interaction evidence; names the action actually performed. */
   action?: string
   note?: string
+  /** Structured proof for one negative branch. Absent on every other assertion. */
+  witness?: ProbeWitness
 }
 
 export type UngradedDiagnostic =

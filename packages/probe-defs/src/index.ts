@@ -55,6 +55,8 @@ export type {
   AppSourceArtifact,
   DerivedSourceTreeArtifact,
   ProbeAssertion,
+  ProbeWitness,
+  ColourSiblingSeparationWitness,
   UngradedDiagnostic,
   NotTestedCoverage,
   HeadlessRuntimeIdentity,
@@ -192,6 +194,12 @@ export function resolveProbeIds(
 
 export { collectorIds } from "./helpers.ts"
 export { finalizeVisualResult, fontLigatureMuxCoverage, MUX_FONT_LIGATURE_NO_OBSERVABLE } from "./sgr.ts"
+export {
+  colourSiblingSeparation,
+  type ColourSiblingDecision,
+  type OuterColourControl,
+  type OuterColourRecord,
+} from "./sgr-colour-capture.ts"
 
 export {
   sgrProbes,

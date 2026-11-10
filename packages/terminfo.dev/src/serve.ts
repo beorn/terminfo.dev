@@ -43,6 +43,7 @@ import {
   type TermProbeSource,
   type TerminalQueryOutcome,
   type TextQualification,
+  type OuterColourControl,
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
 import { detectTerminal } from "./detect.ts"
@@ -215,6 +216,52 @@ const SOURCE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".
 /** Bun's CLI build replaces this identifier with a validated immutable receipt. */
 declare const __TERMINFO_BUNDLED_SUITE__: { manifest: ProbeSuiteManifest; collectorRevision: string }
 const bundledSuite = typeof __TERMINFO_BUNDLED_SUITE__ === "undefined" ? null : __TERMINFO_BUNDLED_SUITE__
+
+/**
+ * The outer control for a mux colour negative (#33041): the launcher copies the outer terminal's
+ * placed record (or why there is none) into the run, and this names exactly what the batch may cite.
+ * A named but absent or malformed file is our own launcher's defect and fails the run loudly; an
+ * unnamed one is a missing control and leaves the colour rows open with that reason.
+ */
+export function readOuterColourControl(
+  path: string | undefined,
+  outerApp: Pick<ProbeSubject, "id" | "version" | "os">,
+): OuterColourControl {
+  if (!path) return { missing: "the launcher named no outer-terminal record (TERMINFO_OUTER_COLOUR_RECORD unset)" }
+  if (!existsSync(path)) {
+    throw new Error(`Outer-terminal record ${path} is named but absent: the launcher writes it for every mux run`)
+  }
+  const value: unknown = JSON.parse(readFileSync(path, "utf8"))
+  const record = value as Record<string, unknown>
+  if (record && typeof record === "object" && typeof record.missing === "string" && Object.keys(record).length === 1) {
+    return { missing: record.missing }
+  }
+  const strings = ["id", "version", "os", "recordPath", "recordRunId"] as const
+  const statuses = record?.statuses
+  if (
+    !record ||
+    typeof record !== "object" ||
+    strings.some((key) => typeof record[key] !== "string" || (record[key] as string).length === 0) ||
+    !statuses ||
+    typeof statuses !== "object" ||
+    Object.values(statuses).some((status) => typeof status !== "string")
+  ) {
+    throw new Error(
+      `Outer-terminal record ${path} is malformed: expected {id, version, os, recordPath, recordRunId, statuses} or {missing}`,
+    )
+  }
+  return {
+    record: {
+      id: record.id as string,
+      version: record.version as string,
+      os: record.os as string,
+      recordPath: record.recordPath as string,
+      recordRunId: record.recordRunId as string,
+      statuses: statuses as Record<string, string>,
+    },
+    outerApp: { id: outerApp.id, version: outerApp.version, os: outerApp.os },
+  }
+}
 
 function measuredExecutable(value: unknown): LiveExecutable {
   if (!value || typeof value !== "object") throw new Error("Runtime provenance has no executable")
@@ -517,6 +564,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         )
       : undefined
     if (muxSubject && !outerApp?.provenance) throw new Error("Mux runtime provenance lacks outer app provenance")
+    const colourControl =
+      muxSubject && outerApp?.provenance
+        ? {
+            outer: readOuterColourControl(process.env.TERMINFO_OUTER_COLOUR_RECORD, outerApp.subject),
+            harnessProfile: outerApp.provenance.fixture.config || "no outer harness config declared",
+            muxConfig: muxSubject.config ?? "no mux config declared",
+          }
+        : undefined
     const executableSource = outerApp?.provenance ?? provenanceSource
     const executable = executableSource ? measuredExecutable(executableSource) : undefined
     const measuredTerminal = muxSubject ? { name: muxSubject.id, version: muxSubject.version } : terminal
@@ -983,6 +1038,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                   os: terminal.os,
                   ...(declarationVersion !== undefined && { version: declarationVersion }),
                 },
+                ...(colourControl === undefined ? {} : { colourControl }),
                 appDeclarations:
                   declarationVersion === undefined
                     ? {}

@@ -10,6 +10,8 @@ import {
   ALL_PROBES as PROBE_DEFS,
   resolveProbeIds,
   recordExecutedProbe,
+  colourSiblingSeparation,
+  type OuterColourControl,
   finalizeProbeResult,
   finalizeVisualResult,
   fontLigatureMuxCoverage,
@@ -324,6 +326,12 @@ export async function runProbeBatch(
     appDeclarations?: Readonly<Record<string, string>>
     draft?: Pick<RunDraft, "results"> & Partial<Pick<RunDraft, "subject">>
     onCheckpoint?: (batch: ProbeBatch) => void
+    /**
+     * The outer control a mux colour negative needs (#33041): the placed outer-terminal record the
+     * launcher matched, or why there is none, plus the declared harness profile and mux config the
+     * default-colour assumption rests on. Absent on a run that is not a mux run.
+     */
+    colourControl?: { outer: OuterColourControl; harnessProfile: string; muxConfig: string }
   } = {},
 ): Promise<ProbeBatch> {
   const out = options.out ?? process.stdout
@@ -1281,5 +1289,80 @@ export async function runProbeBatch(
     expected.every((probe) => observed.has(probe.id) || namedNotTested.has(probe.id)) &&
     Object.keys(batch.ungradedDiagnostics).length === 0
   if (options.prepareCapturePhase !== "after-probes") await verify?.()
+  const runMux =
+    options.ownedTerminal?.muxAttachmentProof?.mux ??
+    (options.subject?.kind === "mux" && (options.subject.id === "tmux" || options.subject.id === "screen")
+      ? options.subject.id
+      : undefined)
+  if (runMux && options.colourControl) {
+    applyColourSiblingSeparation(batch, { mux: runMux, runId: options.captureRunId, ...options.colourControl })
+  }
   return batch
+}
+
+/**
+ * The colour-sibling-separation pass (#33041). It runs after every row exists, because a row's
+ * proof is a second row's frames; no probe order is assumed. A decided row is re-recorded through
+ * the same recorder as every other row, with its witness assertion appended; an open row keeps its
+ * own verdict and gains the reason the decision was not made.
+ */
+export function applyColourSiblingSeparation(
+  batch: Pick<ProbeBatch, "results" | "observations" | "assertions">,
+  input: {
+    mux: "tmux" | "screen"
+    runId: string | undefined
+    outer: OuterColourControl
+    harnessProfile: string
+    muxConfig: string
+  },
+): void {
+  for (const observation of batch.observations) {
+    const decision = colourSiblingSeparation({
+      featureId: observation.featureId,
+      mux: input.mux,
+      runId: input.runId ?? "",
+      observations: batch.observations,
+      outer: input.runId === undefined ? { missing: "this run has no run id to cite" } : input.outer,
+      harnessProfile: input.harnessProfile,
+      muxConfig: input.muxConfig,
+    })
+    if (decision === undefined) continue
+    const index = batch.results.findIndex((result) => result.featureId === observation.featureId)
+    const current = batch.results[index]
+    if (current === undefined) {
+      throw new Error(`colour-sibling-separation: ${observation.featureId} has an observation but no result`)
+    }
+    if (decision.kind === "open") {
+      batch.results[index] = {
+        ...current,
+        ...(current.reason === undefined ? {} : { reason: `${current.reason}; ${decision.reason}` }),
+        tests: current.tests.map((test) => ({
+          ...test,
+          reason: test.reason ? `${test.reason}; ${decision.reason}` : decision.reason,
+        })),
+      }
+      continue
+    }
+    if (current.attempt.scope === "none") {
+      throw new Error(`colour-sibling-separation: ${observation.featureId} was decided but recorded no attempt`)
+    }
+    const decided: Observation = { featureId: observation.featureId, ...decision.observation }
+    batch.observations[batch.observations.indexOf(observation)] = decided
+    // A test names a row-local assertion ordinal; the witness lands after any the row already holds.
+    const ordinal = batch.assertions.filter((assertion) => assertion.featureId === observation.featureId).length
+    batch.assertions.push({
+      featureId: observation.featureId,
+      ...decision.assertion,
+      ...(current.rawReplyRef === undefined ? {} : { rawReplyRef: current.rawReplyRef }),
+    })
+    batch.results[index] = recordExecutedProbe({
+      featureId: observation.featureId,
+      attempt: current.attempt,
+      observation: decided,
+      assertions: batch.assertions,
+      tests: [{ ...decision.test, assertionRefs: [ordinal] }],
+      criterionBranch: decision.criterionBranch,
+      ...(current.rawReplyRef === undefined ? {} : { rawReplyRef: current.rawReplyRef }),
+    })
+  }
 }

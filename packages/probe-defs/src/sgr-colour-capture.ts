@@ -21,14 +21,23 @@
  *   - underline colour: the same underline in another colour, painted on a seed that already
  *     carries the underline, so the only possible difference is the colour.
  *
- *   THIS PATH NEVER DECIDES UNSUPPORTED. The oracle's measured negatives ("the sequence left the
- *   screen untouched", "the sequence matched the sibling") cannot separate a terminal that ignores
- *   the colour from one that paints it identically to the reference it was compared against, so
- *   both read inconclusive BY NAME. Deciding colour unsupported is a separate ruling.
+ *   A ROW'S OWN FRAMES NEVER DECIDE UNSUPPORTED. The oracle's measured negatives ("the sequence left
+ *   the screen untouched", "the sequence matched the sibling") cannot separate a terminal that
+ *   ignores the colour from one that paints it identically to the reference it was compared
+ *   against, so both read inconclusive BY NAME. Unsupported is decided only by a named branch with
+ *   its own witness: colour-no-attribute-witness (region-readback) and colour-sibling-separation
+ *   (colourSiblingSeparation below, run at the batch tail because it reads a second row).
  */
 import { HEADLESS_OBSERVABLE_REVIEW } from "./helpers.ts"
 import { SENTINEL, type RegionReadback } from "./region-readback.ts"
-import type { ProbeCallbackResult } from "./types.ts"
+import type {
+  ColourSiblingSeparationWitness,
+  Observation,
+  ObservationFrame,
+  ProbeAssertion,
+  ProbeCallbackResult,
+  ProbeTestInput,
+} from "./types.ts"
 
 const SAMPLE = "AaBb"
 const REGION = { top: 3, left: 3, bottom: 3, right: 3 + SAMPLE.length - 1 } as const
@@ -222,7 +231,7 @@ export function colourCaptureCallbackResult(
         ...observation,
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        note: `${id}: the sequence left the sample in the neutral or the sibling frame; this colour path does not decide unsupported, because that cannot separate a terminal that ignores the colour from one that paints it identically to the reference it was compared against`,
+        note: `${id}: the sequence left the sample in the neutral or the sibling frame; these frames alone do not decide unsupported, because they cannot separate a terminal that ignores the colour from one that paints it identically to the reference it was compared against`,
       },
     }
   }
@@ -230,4 +239,206 @@ export function colourCaptureCallbackResult(
     return { ...verdict, observation: { ...observation, note } }
   }
   return verdict
+}
+
+/**
+ * The two Screen truecolour rows and their same-channel sibling (#33041, @cto acd2e579 amended 16:05Z).
+ * The requested colour and the declared default-colour assumption live beside each other here, so a
+ * harness profile whose default equals the requested colour is read against the same line.
+ */
+const SIBLING_SEPARATION: Readonly<
+  Record<string, { channel: "fg" | "bg"; siblingRowId: string; colour: string; assumption: string }>
+> = {
+  "sgr.fg.truecolor": {
+    channel: "fg",
+    siblingRowId: "sgr.fg.256",
+    colour: "#ff8000",
+    assumption: "the run's default foreground is not (255,128,0)",
+  },
+  "sgr.bg.truecolor": {
+    channel: "bg",
+    siblingRowId: "sgr.bg.256",
+    colour: "#00ff80",
+    assumption: "the run's default background is not (0,255,128)",
+  },
+}
+
+/** The four region frames of a colour row, by the step label region-readback records verbatim. */
+const COLOUR_FRAME_STEPS = {
+  seed: "pre-edit seed",
+  target: "post-sequence target",
+  expected: "expected frame",
+  ignored: "ignored-attribute frame",
+} as const
+
+/** The placed outer-terminal record the launcher matched for this run, reduced to what the witness cites. */
+export interface OuterColourRecord {
+  id: string
+  version: string
+  os: string
+  /** Repository-relative, e.g. content/probes-apps/kitty-0.49.2-linux-<runId>.json. */
+  recordPath: string
+  recordRunId: string
+  /** featureId -> status in that record, for the rows this branch decides. */
+  statuses: Readonly<Record<string, string>>
+}
+
+/** What the batch tail knows about the outer control: the matched record, or why there is none. */
+export type OuterColourControl =
+  | { record: OuterColourRecord; outerApp: { id: string; version: string; os: string | null } }
+  | { missing: string }
+
+export type ColourSiblingDecision =
+  | {
+      kind: "decided"
+      criterionBranch: "colour-sibling-separation"
+      observation: Omit<Observation, "featureId">
+      assertion: Omit<ProbeAssertion, "featureId">
+      test: ProbeTestInput
+    }
+  | { kind: "open"; reason: string }
+
+type RegionFrame = ObservationFrame & {
+  regionDigest: string
+  regionRectangle: { x: number; y: number; width: number; height: number }
+}
+
+function regionFrame(observation: Observation | undefined, id: string, step: string): RegionFrame | undefined {
+  const frame = observation?.frames?.find((candidate) => candidate.label === `${id}: ${step}`)
+  return frame && "regionDigest" in frame && typeof frame.regionDigest === "string" && frame.regionRectangle
+    ? (frame as RegionFrame)
+    : undefined
+}
+
+function sameRectangle(a: RegionFrame["regionRectangle"], b: RegionFrame["regionRectangle"]): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+}
+
+/**
+ * Decide a Screen truecolour row from a same-channel sibling, after every row of the run exists.
+ * Returns undefined when the row is not this branch's case (another subject, another row, or the
+ * row's own seed, target and expected frames are not equal), so its own verdict stands untouched.
+ * Returns `open` with the missing condition named when the frames are flat but the proof is not
+ * complete: the row then stays open with that reason. Decides unsupported only when all hold:
+ *   1. this row's seed, target and expected region hashes are equal (its own stability control);
+ *   2. the same-channel sibling, same run, same rectangle and capture kind, has seed != target;
+ *   3. the default-colour assumption is declared with the harness profile it rests on;
+ *   4. the placed outer record matches the run's outer app on exact id, version and platform and
+ *      reads supported for this row.
+ */
+export function colourSiblingSeparation(input: {
+  featureId: string
+  mux: "tmux" | "screen" | undefined
+  runId: string
+  observations: readonly Observation[]
+  outer: OuterColourControl
+  harnessProfile: string
+  muxConfig: string
+}): ColourSiblingDecision | undefined {
+  const { featureId: id } = input
+  const declared = SIBLING_SEPARATION[id]
+  const row = COLOUR_ROWS[id]
+  if (input.mux !== "screen" || declared === undefined || row === undefined) return undefined
+  const own = input.observations.find((observation) => observation.featureId === id)
+  const seed = regionFrame(own, id, COLOUR_FRAME_STEPS.seed)
+  const target = regionFrame(own, id, COLOUR_FRAME_STEPS.target)
+  const expected = regionFrame(own, id, COLOUR_FRAME_STEPS.expected)
+  const ignored = regionFrame(own, id, COLOUR_FRAME_STEPS.ignored)
+  if (!own || !seed || !target || !expected || !ignored) return undefined
+  if (seed.regionDigest !== target.regionDigest || seed.regionDigest !== expected.regionDigest) return undefined
+  const open = (reason: string): ColourSiblingDecision => ({
+    kind: "open",
+    reason: `${id}: no colour-sibling-separation decision: ${reason}`,
+  })
+  const rectangle = seed.regionRectangle
+  if (![target, expected, ignored].every((frame) => sameRectangle(frame.regionRectangle, rectangle))) {
+    return open("this row's cited frames were cropped from different rectangles")
+  }
+  const siblingId = declared.siblingRowId
+  const siblingObservation = input.observations.find((observation) => observation.featureId === siblingId)
+  const siblingSeed = regionFrame(siblingObservation, siblingId, COLOUR_FRAME_STEPS.seed)
+  const siblingTarget = regionFrame(siblingObservation, siblingId, COLOUR_FRAME_STEPS.target)
+  if (!siblingObservation || !siblingSeed || !siblingTarget) {
+    return open(`sibling ${siblingId} has no seed and target region frames in run ${input.runId}`)
+  }
+  if (
+    siblingObservation.assertionType !== own.assertionType ||
+    (siblingSeed.kind ?? "pixels") !== (seed.kind ?? "pixels") ||
+    (siblingTarget.kind ?? "pixels") !== (seed.kind ?? "pixels")
+  ) {
+    return open(`sibling ${siblingId} was captured by a different method`)
+  }
+  if (
+    !sameRectangle(siblingSeed.regionRectangle, rectangle) ||
+    !sameRectangle(siblingTarget.regionRectangle, rectangle)
+  ) {
+    return open(`sibling ${siblingId} was cropped from a different rectangle`)
+  }
+  if (siblingSeed.regionDigest === siblingTarget.regionDigest) {
+    return open(
+      `sibling ${siblingId}'s seed and target hashes are equal, so this capture showed no colour in the rectangle`,
+    )
+  }
+  if ("missing" in input.outer) return open(`no outer-terminal control: ${input.outer.missing}`)
+  const { record, outerApp } = input.outer
+  if (record.id !== outerApp.id || record.version !== outerApp.version || record.os !== outerApp.os) {
+    return open(
+      `the placed outer record ${record.recordPath} names ${record.id} ${record.version} ${record.os}, not this run's outer terminal ${outerApp.id} ${outerApp.version} ${outerApp.os ?? "(no platform)"}`,
+    )
+  }
+  const outerStatus = record.statuses[id]
+  if (outerStatus !== "supported") {
+    return open(`the outer terminal's placed record ${record.recordPath} reads ${outerStatus ?? "no result"} for ${id}`)
+  }
+  const requestedEncoding = sgrParameters(row.sequence)
+  const siblingRow = COLOUR_ROWS[siblingId]
+  if (siblingRow === undefined) throw new Error(`colour sibling ${siblingId} for ${id} is not a colour row`)
+  const witness: ColourSiblingSeparationWitness = {
+    kind: "colour-sibling-separation",
+    requestedRowId: id,
+    requestedEncoding,
+    siblingRowId: siblingId,
+    siblingEncoding: sgrParameters(siblingRow.sequence),
+    channel: declared.channel,
+    runId: input.runId,
+    rectangle: { ...rectangle },
+    requested: {
+      seed: seed.regionDigest,
+      target: target.regionDigest,
+      expected: expected.regionDigest,
+      ignored: ignored.regionDigest,
+    },
+    sibling: { seed: siblingSeed.regionDigest, target: siblingTarget.regionDigest },
+    colour: {
+      requested: declared.colour,
+      assumption: declared.assumption,
+      harnessProfile: input.harnessProfile,
+      muxConfig: input.muxConfig,
+    },
+    outerTerminal: {
+      id: record.id,
+      version: record.version,
+      rowId: id,
+      status: "supported",
+      recordPath: record.recordPath,
+      recordRunId: record.recordRunId,
+    },
+  }
+  const reason = `${id}: painted SGR ${requestedEncoding} as the default colour: this row's seed, target and expected frames are equal while sibling ${siblingId} separated in the same rectangle of run ${input.runId}, and the outer terminal ${record.id} ${record.version} reads supported in ${record.recordPath}`
+  const { reason: _reason, ...settled } = own
+  const { featureId: _featureId, ...observation } = settled
+  return {
+    kind: "decided",
+    criterionBranch: "colour-sibling-separation",
+    observation: { ...observation, outcome: "unsupported", note: reason },
+    assertion: {
+      kind: "negative",
+      assertionType: own.assertionType,
+      expected: `${id}: the terminal paints SGR ${requestedEncoding} as something other than the default colour`,
+      observed: expected.regionDigest,
+      note: reason,
+      witness,
+    },
+    test: { id: "criterion", status: "unsupported", reason, assertionRefs: [0] },
+  }
 }
