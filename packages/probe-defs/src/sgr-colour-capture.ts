@@ -54,6 +54,23 @@ interface ColourRow {
   seed?: string
 }
 
+/**
+ * Umbrella rows whose claim is exactly a component's (@cto a7fb82cc and e9641d54, #33104): every table
+ * keyed by row id points the umbrella at the component's own entry, never a copy, so the umbrella
+ * runs the same pixel arm with the same controls, multiplexer demotion and sibling witness.
+ */
+export const COLOUR_UMBRELLAS: Readonly<Record<string, string>> = { "extensions.truecolor": "sgr.fg.truecolor" }
+
+/** Point each umbrella at its component's entry in an id-keyed table; a missing component is a bug. */
+function withUmbrellas<T>(table: Record<string, T>, name: string): Record<string, T> {
+  for (const [umbrella, component] of Object.entries(COLOUR_UMBRELLAS)) {
+    const entry = table[component]
+    if (entry === undefined) throw new Error(`${name}: umbrella ${umbrella} names ${component}, which has no entry`)
+    table[umbrella] = entry
+  }
+  return table
+}
+
 const COLOUR_ROWS: Record<string, ColourRow> = {
   "sgr.fg.standard": { sequence: "\x1b[31m", sibling: "\x1b[32m", siblingLabel: "SGR 32" },
   "sgr.bg.standard": { sequence: "\x1b[41m", sibling: "\x1b[42m", siblingLabel: "SGR 42" },
@@ -163,6 +180,8 @@ export const COLOUR_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry"
     },
   ]),
 )
+withUmbrellas(COLOUR_CAPTURE, "COLOUR_CAPTURE")
+withUmbrellas(COLOUR_ROWS, "COLOUR_ROWS")
 
 /** What this decision compared, and what it did not. */
 export function colourCaptureNote(id: string): string | undefined {
@@ -248,7 +267,7 @@ export function colourCaptureCallbackResult(
  */
 const SIBLING_SEPARATION: Readonly<
   Record<string, { channel: "fg" | "bg"; siblingRowId: string; colour: string; assumption: string }>
-> = {
+> = withUmbrellas({
   "sgr.fg.truecolor": {
     channel: "fg",
     siblingRowId: "sgr.fg.256",
@@ -261,7 +280,7 @@ const SIBLING_SEPARATION: Readonly<
     colour: "#00ff80",
     assumption: "the run's default background is not (0,255,128)",
   },
-}
+}, "SIBLING_SEPARATION")
 
 /** The four region frames of a colour row, by the step label region-readback records verbatim. */
 const COLOUR_FRAME_STEPS = {
