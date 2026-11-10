@@ -880,8 +880,8 @@ test("the modelled 256-to-16 quantiser keeps entries 0-15 and sends others to th
   expect(nearest16Index(67)).toBe(8)
   // Index 164 shares index 5's 16-colour entry, so it cannot decide the indexed underline row.
   expect(nearest16Index(164)).toBe(nearest16Index(5))
-  expect(nearest16Index(2)).toBe(2)
-  expect(nearest16Index(2)).not.toBe(nearest16Index(5))
+  expect(nearest16Index(4)).toBe(4)
+  expect(nearest16Index(4)).not.toBe(nearest16Index(5))
 })
 
 test("the colour fixture separates colours, and collapses the sibling pairs it should", async () => {
@@ -924,6 +924,7 @@ test("the colour fixture separates colours, and collapses the sibling pairs it s
     if (indexed?.expected === undefined || indexed.ignored === undefined) {
       throw new Error("sgr.underline-color-indexed must name both frames")
     }
+    expect(indexed.ignored).toContain("\x1b[58;5;4m")
     expect(await readFrame("quantize-256", indexed.expected, palette)).not.toBe(
       await readFrame("quantize-256", indexed.ignored, palette),
     )
