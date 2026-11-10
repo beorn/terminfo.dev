@@ -176,6 +176,16 @@ it("refuses a witness digest that is not a frame of its row, and a proof that is
   expect(() => parse(flatSibling)).toThrow(/sibling frames do not differ/)
 })
 
+it("a sentinel rectangle does not refuse a witness that cites the region frames", () => {
+  const sentinel = { x: 3, y: 10, width: 13, height: 29 }
+  const both = run()
+  const ownFrames = (both.results[0] as { frames: { regionRectangle: typeof sentinel }[] }).frames
+  ownFrames.push({ ...frame(digest("sentinel")), regionRectangle: sentinel })
+  expect(() => parse(both)).not.toThrow()
+  ;(both.assertions[0] as { witness: { rectangle: typeof sentinel } }).witness.rectangle = sentinel
+  expect(() => parse(both)).toThrow(/rectangle does not match/)
+})
+
 it("refuses a requested row id that is not this row", () => {
   const bad = run()
   ;(bad.assertions[0] as { witness: { requestedRowId: string } }).witness.requestedRowId = SIBLING

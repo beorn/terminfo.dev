@@ -250,9 +250,18 @@ function validateColourSiblingWitness(
   if (witness.sibling.seed === witness.sibling.target) {
     fail(path, `${featureId} witness sibling frames do not differ`)
   }
-  const rectangles = [...resultFrames(own ?? {}), ...resultFrames(siblingResult ?? {})]
-    .map((frame) => frame.regionRectangle)
-    .filter(object)
+  const cited = new Set<string>([
+    String(requested.seed),
+    String(requested.target),
+    String(requested.expected),
+    String(requested.ignored),
+    String(witness.sibling.seed),
+    String(witness.sibling.target),
+  ])
+  const citedFrames = [...resultFrames(own ?? {}), ...resultFrames(siblingResult ?? {})].filter((frame) =>
+    ["ref", "regionDigest", "cellDigest"].some((key) => cited.has(String(frame[key] ?? ""))),
+  )
+  const rectangles = citedFrames.map((frame) => frame.regionRectangle).filter(object)
   for (const rectangle of rectangles) {
     for (const key of ["x", "y", "width", "height"] as const) {
       if (rectangle[key] !== witness.rectangle[key]) {
