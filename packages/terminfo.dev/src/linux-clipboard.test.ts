@@ -999,7 +999,7 @@ readers = [threading.Thread(target=drain, args=(primary_master, primary, True), 
            threading.Thread(target=drain, args=(foreign_master, foreign), daemon=True)]
 for reader in readers: reader.start()
 try:
-    _, errors = child.communicate(timeout=10)
+    _, errors = child.communicate(timeout=45)
 except subprocess.TimeoutExpired:
     child.kill()
     _, errors = child.communicate()
@@ -1016,16 +1016,17 @@ if mode == 'owned' and (primary.count(b'\x1bc') != 2 or foreign):
     sys.exit(3)
 `
   for (const mode of ["owned", "no-ctty"]) {
+    // A probe that does not return is bounded at 30s, so this child must outlive that wall.
     const result = spawnSync("python3", ["-c", python, mode, process.execPath, "-e", child], {
       cwd: codeRoot,
       encoding: "utf8",
-      timeout: 40000,
+      timeout: 70_000,
       env: { ...process.env, TERMINFO_TEST_SOURCE_ROOT: sourceRoot },
     })
     expect(result.error, `${mode}: ${result.stderr}`).toBeUndefined()
     expect(result.status, `${mode}: ${result.stderr}`).toBe(0)
   }
-})
+}, 90_000)
 
 test("a nested transaction refuses and callback failure restores and verifies the generated baseline", async () => {
   let text = "baseline-nonce"
