@@ -1090,9 +1090,13 @@ function clipboardProfileArgs(profile: string, app: string): string[] {
 
 /** Runs the launcher's own xterm paste-rebinding check on these arguments: the argument it refuses, or null. */
 function pasteRebinding(args: readonly string[]): string | null {
-  const result = spawnSync("bash", ["-c", 'source "$1"; shift; xterm_paste_rebinding_arg "$@"', "_", launcher, ...args], {
-    encoding: "utf8",
-  })
+  const result = spawnSync(
+    "bash",
+    ["-c", 'source "$1"; shift; xterm_paste_rebinding_arg "$@"', "_", launcher, ...args],
+    {
+      encoding: "utf8",
+    },
+  )
   return result.status === 0 ? result.stdout.trim() : null
 }
 
@@ -1105,9 +1109,9 @@ describe("xterm paste route launch arguments", () => {
     expect(allow).toEqual(["-xrm", "*disallowedWindowOps: GetChecksum,GetIconTitle,GetWinTitle,SetXprop"])
     expect(pasteRebinding(launch)).toBeNull()
     expect(pasteRebinding([...launch, ...allow])).toBeNull()
-    expect(pasteRebinding([...launch, ...allow, "-xrm", "*VT100.translations: #override Shift<Key>Insert: string(x)"])).toBe(
-      "*VT100.translations: #override Shift<Key>Insert: string(x)",
-    )
+    expect(
+      pasteRebinding([...launch, ...allow, "-xrm", "*VT100.translations: #override Shift<Key>Insert: string(x)"]),
+    ).toBe("*VT100.translations: #override Shift<Key>Insert: string(x)")
     expect(pasteRebinding(["-xrm", "*selectToClipboard: true"])).toBe("*selectToClipboard: true")
   })
 })
