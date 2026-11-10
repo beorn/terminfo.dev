@@ -1150,7 +1150,9 @@ function retainedFrame(name: string): CapturedFrame {
     if (type === "IHDR") {
       width = body.readUInt32BE(0)
       height = body.readUInt32BE(4)
-      if (body[8] !== 8 || body[9] !== 6 || body[12] !== 0) throw new Error(`${name}.png is not 8-bit RGBA non-interlaced`)
+      if (body[8] !== 8 || body[9] !== 6 || body[12] !== 0) {
+        throw new Error(`${name}.png is not 8-bit RGBA non-interlaced`)
+      }
     }
     if (type === "IDAT") data.push(body)
     offset += 12 + length

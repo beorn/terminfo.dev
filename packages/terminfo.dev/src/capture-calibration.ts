@@ -487,7 +487,9 @@ export async function calibrateCaptureOrigin({
       chromeBand.height < 1 ||
       chromeBand.reason.trim() === "")
   ) {
-    throw new Error(`Capture calibration chrome band must be integer y >= 0, height >= 1, with a reason: ${JSON.stringify(chromeBand)}`)
+    throw new Error(
+      `Capture calibration chrome band must be integer y >= 0, height >= 1, with a reason: ${JSON.stringify(chromeBand)}`,
+    )
   }
   if (![ctx.rows, ctx.cols].every((value) => Number.isSafeInteger(value) && value >= 2)) {
     throw new Error("Capture calibration requires a verified grid of at least 2x2 cells")
@@ -564,7 +566,10 @@ export async function calibrateCaptureOrigin({
   let bandClearOfGrid = false
   const inBand = (y: number) => chromeBand !== undefined && y >= chromeBand.y && y < chromeBand.y + chromeBand.height
   /** Pixels that differ from `reference` inside the band; any difference outside it makes the frames unequal. */
-  const bandDifference = (frame: CapturedFrame, reference: CapturedFrame): { equalOutside: boolean; changed: number } => {
+  const bandDifference = (
+    frame: CapturedFrame,
+    reference: CapturedFrame,
+  ): { equalOutside: boolean; changed: number } => {
     validateFrame(frame)
     validateFrame(reference)
     if (frame.width !== reference.width || frame.height !== reference.height) {
