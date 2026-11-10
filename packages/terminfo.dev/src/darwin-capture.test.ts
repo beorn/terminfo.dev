@@ -184,6 +184,62 @@ test("Darwin capture falls back to a region capture of the window bounds when th
   }
 })
 
+// #33117: a checkpoint naming a same-shot control region still acquires exactly one screenshot;
+// both region digests are crops of that one acquired image, never a second acquisition.
+test("Darwin capture crops target and same-shot control from one acquired screenshot", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-same-shot-"))
+  const own = {
+    id: 7,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 12, y: 31, width: 1000, height: 677 },
+    alpha: 1,
+    onscreen: true,
+  }
+  const screenshots: string[][] = []
+  // The adapter's capture path decodes inside finishCapture; inject the decoded frame there, as
+  // captureRaw does, so the real crop code runs over known pixels without a real magick decode.
+  const actualFinish = captureCore.finishCapture
+  const decoder = vi
+    .spyOn(captureCore, "finishCapture")
+    .mockImplementation(async (input) =>
+      actualFinish({ ...input, decoded: { width: 1000, height: 677, rgba: Buffer.alloc(1000 * 677 * 4) } }),
+    )
+  const runner = vi
+    .spyOn(captureCore, "command")
+    .mockImplementation(async (file, args, _input, _deadline, _onStderr) => {
+      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+      if (file === "magick") return Buffer.from(args[0] === "-version" ? "test converter" : "1000x677")
+      if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
+      screenshots.push(args)
+      writeFileSync(args.at(-1)!, PNG_STUB)
+      return Buffer.alloc(0)
+    })
+  try {
+    const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
+    const { frame } = await adapter.capture(
+      {
+        featureId: "sgr.blink",
+        role: "target",
+        label: "styled row beside plain row",
+        cells: { top: 3, left: 2, bottom: 3, right: 4 },
+        controlCells: { top: 1, left: 2, bottom: 1, right: 4 },
+        pixelGeometry: { cellWidth: 10, cellHeight: 10, textWidth: 1000, textHeight: 670 },
+      },
+      { origin: { x: 0, y: 0 }, basis: "measured fixture" },
+    )
+    expect(screenshots).toHaveLength(1)
+    expect(frame.regionRectangle).toEqual({ x: 10, y: 20, width: 30, height: 10 })
+    expect(frame.controlRegionRectangle).toEqual({ x: 10, y: 0, width: 30, height: 10 })
+    expect(frame.regionDigest).toMatch(/^sha256:/)
+    expect(frame.controlRegionDigest).toMatch(/^sha256:/)
+  } finally {
+    decoder.mockRestore()
+    runner.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // Selection tests cannot observe a successful command that creates no file. Exercise the actual
 // adapter acquisition and filesystem read; the shared core owns real subprocess stderr transport.
 // A refused window image is retried as a region capture, so "command failure" fails both attempts

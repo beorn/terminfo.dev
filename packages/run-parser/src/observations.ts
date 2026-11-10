@@ -289,6 +289,21 @@ export function parseObservationFrames(
       fail(path, `invalid frame controlRegionDigest ${index} for ${featureId}`)
     }
     const controlRegionRectangle = frameRegionRectangle(entry.controlRegionRectangle, path, index, featureId)
+    // The same-shot control crop is one measurement in two fields: its digest and rectangle are
+    // carried together or not at all, and the control crop can never be the target crop again.
+    if ((controlRegionDigest === undefined) !== (entry.controlRegionRectangle === undefined)) {
+      fail(path, `frame control region ${index} for ${featureId} carries only one of its digest and rectangle`)
+    }
+    if (
+      regionRectangle &&
+      controlRegionRectangle &&
+      controlRegionRectangle.x < regionRectangle.x + regionRectangle.width &&
+      regionRectangle.x < controlRegionRectangle.x + controlRegionRectangle.width &&
+      controlRegionRectangle.y < regionRectangle.y + regionRectangle.height &&
+      regionRectangle.y < controlRegionRectangle.y + controlRegionRectangle.height
+    ) {
+      fail(path, `frame control region ${index} for ${featureId} overlaps its target region`)
+    }
     const base = {
       role: entry.role as ObservationFrame["role"],
       ref,

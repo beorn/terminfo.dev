@@ -486,6 +486,46 @@ describe("in-run pixel probe results", () => {
     expect(() => parse(broken)).toThrow(/invalid frame regionRectangle/)
   })
 
+  it("carries a frame's same-shot control crop through the parse; an older frame without one parses unchanged (#33117)", () => {
+    const run = kittyRun()
+    const observations = run.results as Array<Record<string, unknown>>
+    const frames = observations[0]!.frames as Array<Record<string, unknown>>
+    frames[3]!.regionRectangle = { x: 10, y: 36, width: 104, height: 24 }
+    frames[3]!.controlRegionDigest = digest("plain-region")
+    frames[3]!.controlRegionRectangle = { x: 10, y: 12, width: 104, height: 24 }
+    const loaded = parse(run)
+    expect(loaded.results![0]?.frames?.[3]?.controlRegionDigest).toBe(digest("plain-region"))
+    expect(loaded.results![0]?.frames?.[3]?.controlRegionRectangle).toEqual({ x: 10, y: 12, width: 104, height: 24 })
+    // Additive and optional: every older frame in the same run carries no control fields at all.
+    expect(loaded.results![0]?.frames?.[0]?.controlRegionDigest).toBeUndefined()
+    expect(loaded.results![0]?.frames?.[0]?.controlRegionRectangle).toBeUndefined()
+  })
+
+  it.each([
+    { name: "digest without rectangle", control: { controlRegionDigest: digest("plain-region") } },
+    {
+      name: "rectangle without digest",
+      control: { controlRegionRectangle: { x: 10, y: 12, width: 104, height: 24 } },
+    },
+  ])("refuses a same-shot control crop carrying only one of its two fields: $name (#33117)", ({ control }) => {
+    const run = kittyRun()
+    const observations = run.results as Array<Record<string, unknown>>
+    const frames = observations[0]!.frames as Array<Record<string, unknown>>
+    frames[3]!.regionRectangle = { x: 10, y: 36, width: 104, height: 24 }
+    Object.assign(frames[3]!, control)
+    expect(() => parse(run)).toThrow(/control region 3 .* only one of its digest and rectangle/)
+  })
+
+  it("refuses a same-shot control crop that overlaps its target region (#33117)", () => {
+    const run = kittyRun()
+    const observations = run.results as Array<Record<string, unknown>>
+    const frames = observations[0]!.frames as Array<Record<string, unknown>>
+    frames[3]!.regionRectangle = { x: 10, y: 36, width: 104, height: 24 }
+    frames[3]!.controlRegionDigest = digest("plain-region")
+    frames[3]!.controlRegionRectangle = { x: 10, y: 48, width: 104, height: 24 }
+    expect(() => parse(run)).toThrow(/control region 3 .* overlaps its target region/)
+  })
+
   it("admits a probe result whose assertion cites the frame refs it compared", () => {
     const loaded = parse(scrollbackRun())
     expect(loaded.results![0]?.status).toBe("supported")
