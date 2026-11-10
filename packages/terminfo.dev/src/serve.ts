@@ -431,6 +431,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     return draft
   }
   let collectionStartedAt: string | undefined
+  let collectionStartedMs: number | undefined
   let delegatedIds = manifest.probes.term.filter((id) => !options.ids || options.ids.includes(id))
   try {
     const terminal = detectTerminal()
@@ -889,6 +890,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         }
       }
       collectionStartedAt = new Date().toISOString()
+      collectionStartedMs = Date.now()
       recordCollectorAttempt(draft, {
         result: "started",
         startedAt: collectionStartedAt,
@@ -1148,6 +1150,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       captured.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...retainedArtifacts.values()] })
     }
     recordCollectorAttempt(captured, { ids: selectedIds, startedAt: collectionStartedAt, result: "completed" })
+    if (collectionStartedMs !== undefined) captured.collectorDurationMs = Date.now() - collectionStartedMs
     Object.assign(draft, captured)
     checkpoint()
     return captured

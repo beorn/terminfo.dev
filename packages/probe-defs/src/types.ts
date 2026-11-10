@@ -215,6 +215,8 @@ export interface RunDraft {
   textSnapshotRefs?: string[]
   textQualification?: TextQualification
   results: ProbeResult[]
+  /** Wall time of a live collection. Absent on runs written before the field existed. */
+  collectorDurationMs?: number
 }
 
 /** Captured identity is present, but HTTP/intent/app-launch enrichment and review can still run. */
