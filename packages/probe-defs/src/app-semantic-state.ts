@@ -97,8 +97,9 @@ export function withAppSemanticObservation(definition: ProbeDefinition): ProbeDe
         if (!ctx.readAppSemanticState) return term(ctx)
         const reading = await ctx.readAppSemanticState(definition.id, ctx.write)
         if (reading.status === "unavailable") return iconReaderGap(reading.reason)
-        if (reading.status === "measured" && reading.reader === "state")
+        if (reading.status === "measured" && reading.reader === "state") {
           return gradeIconNameReading(definition.id, reading)
+        }
         return gradeAppSemanticState(reading)
       }
       if (!ctx.readAppSemanticState) return term(ctx)
