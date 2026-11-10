@@ -23,7 +23,7 @@ type Fault = "none" | "unknown+blind" | "blind+ignored" | "ignored" | "single" |
 
 /** A tiny paint adapter, not a grader: independently supplied style failures change pixels.
  * The real callbacks own writes, geometry, control ordering, witnesses and result recording. */
-async function measure(id: string, fault: Fault = "none", reply = true) {
+async function measure(id: string, fault: Fault = "none", reply = true, mux?: "tmux" | "screen") {
   const probe = sgrProbes.find((entry) => entry.id === id)
   if (!probe?.term) throw new Error(`Missing App callback ${id}`)
   const frames: ObservationFrame[] = []
@@ -55,6 +55,7 @@ async function measure(id: string, fault: Fault = "none", reply = true) {
   }
   const ctx = {
     kind: "live",
+    ...(mux === undefined ? {} : { mux }),
     rows: 24,
     cols: 80,
     captureKind: "pixels",
@@ -162,6 +163,16 @@ test("mux attribution preserves positives and non-mux negatives", async () => {
   }
   expect(finalizeVisualResult(negative.recorded, { kind: "term" }, negative.frames)).toEqual(negative.recorded)
   expect(finalizeVisualResult(negative.recorded, { kind: "lib" }, [])).toEqual(negative.recorded)
+})
+
+test("a multiplexer does not publish the single-underline negative from the attribute arm", async () => {
+  const { callback, recorded } = await measure("sgr.underline.curly", "single", true, "tmux")
+  expect(callback.criterionBranch).toBe("visual-review")
+  expect(callback.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo" })
+  expect(callback.observation?.outcome).toBe("inconclusive")
+  expect(callback.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
+  expect(callback.tests?.some((test) => test.status === "unsupported")).toBe(false)
+  expect(recorded.status).toBe("probe-todo")
 })
 
 // A late stdout flush from a previous invocation cannot qualify this one's command read.
