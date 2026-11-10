@@ -1409,7 +1409,6 @@ describe("selected-run consumer parity", () => {
       expect(unreviewed).toContain("No recorded support among")
       expect(unreviewed).toContain("Not supported by:")
       cell.note = "Reviewed Kitty sixel observation note"
-      cell.chain.correctionId = "reviewed-sixel"
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(reviewed).not.toContain(unscoped)
       expect(reviewed).not.toContain("Reviewed Kitty sixel observation note")
@@ -1427,7 +1426,6 @@ describe("selected-run consumer parity", () => {
       warning.mockRestore()
       Object.assign(cell, original)
       if (original.note === undefined) delete cell.note
-      if (original.chain.correctionId === undefined) Reflect.deleteProperty(cell.chain, "correctionId")
       if (previousAnnotated) fixture.selected.cells[annotationId] = previousAnnotated
       else Reflect.deleteProperty(fixture.selected.cells, annotationId)
     }

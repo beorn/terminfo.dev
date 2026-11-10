@@ -71,7 +71,6 @@ export interface SelectedCell extends ReadObservation {
     runSha256: string
     rawReplyRef?: string
     screenshotRef?: string
-    correctionId?: string
     sources?: string[]
   }
 }
