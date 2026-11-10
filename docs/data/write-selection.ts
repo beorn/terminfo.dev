@@ -15,30 +15,50 @@ export interface SelectionFileCell {
   status: string
   terminalId: string
   version: string
+  os: string | null
+  /** The projection's context key, the same key the site's selection uses. */
+  context: string
   measuredAt: string
   suiteId: string
   runId: string
   source: "placed" | "working"
+  /** Repository-relative run file for a placed row (`content/...`); null for a working run, which is not placed. */
+  contentPath: string | null
+}
+
+function isUnder(path: string, dir: string): boolean {
+  const rel = relative(resolve(dir), resolve(path))
+  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel))
 }
 
 export function selectionFile(
   projection: SelectedProjection,
   workingRunIds: ReadonlySet<string>,
+  contentDir: string,
 ): { cells: SelectionFileCell[] } {
+  const root = resolve(contentDir, "..")
   const cells: SelectionFileCell[] = []
-  for (const summary of Object.values(projection.contexts)) {
+  for (const [context, summary] of Object.entries(projection.contexts)) {
     for (const [featureId, cell] of Object.entries(summary.cells)) {
+      const runId = cell.origin.runId
       const version = cell.run.subject.version
-      if (!version) throw new Error(`${cell.origin.runId} ${featureId}: selected cell has no subject version`)
+      if (!version) throw new Error(`${runId} ${featureId}: selected cell has no subject version`)
+      const working = workingRunIds.has(runId)
+      if (!working && !isUnder(cell.run.path, contentDir)) {
+        throw new Error(`${runId} ${featureId}: placed run file ${cell.run.path} is not under ${contentDir}`)
+      }
       cells.push({
         featureId,
         status: cell.featureResult?.status ?? cell.result.status,
         terminalId: cell.run.subject.id,
         version,
+        os: cell.run.subject.os,
+        context,
         measuredAt: cell.run.measuredAt,
         suiteId: cell.run.suiteId,
-        runId: cell.origin.runId,
-        source: workingRunIds.has(cell.origin.runId) ? "working" : "placed",
+        runId,
+        source: working ? "working" : "placed",
+        contentPath: working ? null : relative(root, resolve(cell.run.path)).split(sep).join("/"),
       })
     }
   }
@@ -48,10 +68,7 @@ export function selectionFile(
 
 /** Refuse a path that is the content directory or inside it. */
 export function refuseOutputUnderContent(outPath: string, contentDir: string): void {
-  const out = resolve(outPath)
-  const content = resolve(contentDir)
-  const rel = relative(content, out)
-  if (rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel))) {
+  if (isUnder(outPath, contentDir)) {
     throw new Error(`${outPath}: --out must not be under content/`)
   }
 }
@@ -90,7 +107,7 @@ export function writeSelection(options: { out: string; content: string; workingR
   const root = resolve(options.content, "..")
   const loaded = options.workingRuns.map((path) => loadRawCapture(path, { root, catalogIds: catalog }))
   const projection = loadSelectedResults(options.content, probeHash(), { workingRuns: loaded })
-  const document = selectionFile(projection, new Set(loaded.map((run) => run.runId)))
+  const document = selectionFile(projection, new Set(loaded.map((run) => run.runId)), options.content)
   writeFileSync(options.out, `${JSON.stringify(document, null, 2)}\n`)
   console.log(`wrote ${document.cells.length} cells`)
   return document.cells.length

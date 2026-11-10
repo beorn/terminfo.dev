@@ -12,7 +12,8 @@ const projection = {
         "sgr.reset": {
           origin: { runId: "placed-run", resultId: "sgr.reset" },
           run: {
-            subject: { id: "screen", version: "5.0.2" },
+            subject: { id: "screen", version: "5.0.2", os: "linux" },
+            path: "/repo/content/results/term/screen-placed.json",
             measuredAt: "2026-11-10T15:32:47.000Z",
             suiteId: "99ceae876abc",
           },
@@ -21,7 +22,8 @@ const projection = {
         "sgr.bold": {
           origin: { runId: "working-run", resultId: "sgr.bold" },
           run: {
-            subject: { id: "screen", version: "5.0.2" },
+            subject: { id: "screen", version: "5.0.2", os: "linux" },
+            path: "/scratch/working-run.json",
             measuredAt: "2026-11-10T16:00:00.000Z",
             suiteId: "99ceae876abc",
           },
@@ -33,30 +35,40 @@ const projection = {
 } as unknown as SelectedProjection
 
 test("a cell from a working run is marked working and a placed cell is not", () => {
-  expect(selectionFile(projection, new Set(["working-run"]))).toEqual({
+  expect(selectionFile(projection, new Set(["working-run"]), "/repo/content")).toEqual({
     cells: [
       {
         featureId: "sgr.bold",
         status: "probe-todo",
         terminalId: "screen",
         version: "5.0.2",
+        os: "linux",
+        context: "term:screen",
         measuredAt: "2026-11-10T16:00:00.000Z",
         suiteId: "99ceae876abc",
         runId: "working-run",
         source: "working",
+        contentPath: null,
       },
       {
         featureId: "sgr.reset",
         status: "supported",
         terminalId: "screen",
         version: "5.0.2",
+        os: "linux",
+        context: "term:screen",
         measuredAt: "2026-11-10T15:32:47.000Z",
         suiteId: "99ceae876abc",
         runId: "placed-run",
         source: "placed",
+        contentPath: "content/results/term/screen-placed.json",
       },
     ],
   })
+})
+
+test("a placed cell whose run file is outside content/ is an error, not a guessed path", () => {
+  expect(() => selectionFile(projection, new Set(), "/other/content")).toThrow(/not under/)
 })
 
 test("--out under content is refused", () => {
