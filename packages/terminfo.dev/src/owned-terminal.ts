@@ -14,6 +14,7 @@ import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
 import { readAppSemanticState } from "./app-semantic-state.ts"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
+import type { CaptureChromeBand } from "./capture-calibration.ts"
 import {
   readDisposableReceipt,
   parseLstart,
@@ -257,6 +258,8 @@ export interface OwnedTerminal {
   readonly appPid?: number
   /** Canonical identity from the hosted receipt's executable mapping, shared by both platforms. */
   readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
+  /** The hosted app's declared self-repainting chrome strip, for capture calibration (33056). Absent: whole window. */
+  readonly captureChromeBand?: CaptureChromeBand
   readonly clipboard?: LinuxClipboardAdapter
   /** One verified attachment carrier for both platforms; clipboard is only a Linux adapter. */
   readonly muxAttachmentProof?: MuxAttachmentProof
@@ -337,6 +340,8 @@ export type HostedDarwinApp = {
   comm: string
   /** Window-title method for this subject. The Darwin reader follows this and names no app. */
   titleRead: "system-events" | "none"
+  /** Chrome strip the app repaints by itself; capture calibration excuses and counts changes there (33056). */
+  captureChromeBand?: CaptureChromeBand
 }
 export type AncestryRow = {
   pid: number
@@ -367,7 +372,14 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   "wezterm-gui": { id: "wezterm", comm: "wezterm-gui", titleRead: "system-events" },
   Cursor: { id: "cursor", comm: "Cursor", titleRead: "system-events" },
   Code: { id: "com.microsoft.VSCode", comm: "Code", titleRead: "system-events" },
-  stable: { id: "warp", comm: "stable", titleRead: "system-events" },
+  // Warp's title bar shows an "Update Warp" pill ~3 s after launch (797 px at y 6-29 on run 42861023633; grid from
+  // y 46), so calibration excuses y 0-39 there and records the count (33056, @cto f15dec92).
+  stable: {
+    id: "warp",
+    comm: "stable",
+    titleRead: "system-events",
+    captureChromeBand: { y: 0, height: 40, reason: "Warp title bar: Update Warp pill" },
+  },
   cmux: { id: "cmux", comm: "cmux", titleRead: "system-events" },
 }
 const CMUX_GUI_EXECUTABLE_PATH = "/Applications/cmux.app/Contents/MacOS/cmux"
@@ -1356,6 +1368,7 @@ export async function createOwnedTerminal(options: {
       summary,
       ...(appPid !== undefined && { appPid }),
       ...(hostedAppId && { hostedAppId }),
+      ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
       ...(clipboard && { clipboard }),
       ...(readTitle && {
         async readTitle() {

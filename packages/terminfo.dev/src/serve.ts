@@ -59,7 +59,7 @@ import { withRawMode, withTTYOperation, drainStdin, queryOutcome, queryWithSenti
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
-import { calibrateCaptureOrigin } from "./capture-calibration.ts"
+import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
 import { muxAttachmentVersionMatches } from "./disposable-receipt.ts"
@@ -692,6 +692,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     const installPixelCapture = (
       adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
       installCensus?: DarwinInstallCensus,
+      chromeBand?: CaptureChromeBand,
     ) => {
       // Preflight installs pixels later; preserve the hosted observer's retained text preparation.
       const prepareTextCapture = prepareCapture
@@ -720,6 +721,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ctx: probeSource,
               pixelGeometry: reportedGeometry,
               timeoutMs: DEFAULT_TIMEOUT_MS,
+              ...(chromeBand ? { chromeBand } : {}),
               collectorLaunched:
                 kind === "darwinHosted" ||
                 (kind === "process" && process.platform === "darwin") ||
@@ -823,7 +825,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         hostedAppId: terminal.hostedAppId,
         onRetained,
       })
-      installPixelCapture(darwinCapture, darwinCapture.installCensus)
+      installPixelCapture(darwinCapture, darwinCapture.installCensus, terminal.captureChromeBand)
     }
     if (captureDirectory && process.platform === "linux") {
       if (!executable) throw new Error("Configured Linux capture lacks measured executable")

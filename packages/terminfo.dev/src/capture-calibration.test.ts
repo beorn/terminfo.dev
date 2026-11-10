@@ -5,7 +5,9 @@
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
-import { calibrateCaptureOrigin } from "./capture-calibration.ts"
+import { readFileSync } from "node:fs"
+import { inflateSync } from "node:zlib"
+import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
 import type { CapturedFrame } from "./capture-core.ts"
 import type { TermProbeSource, TerminalQueryOutcome } from "@terminfo/probe-defs"
 
@@ -244,6 +246,7 @@ function calibration(
     visibility?: "set" | "reset"
     visibilityReport?: TerminalQueryOutcome
     collectorLaunched?: boolean
+    chromeBand?: CaptureChromeBand
   } = {},
 ) {
   const defaults: Record<Stage, CapturedFrame> = {
@@ -271,6 +274,7 @@ function calibration(
     } as unknown as TermProbeSource,
     pixelGeometry: options.geometry,
     collectorLaunched: options.collectorLaunched,
+    chromeBand: options.chromeBand,
     timeoutMs: 100,
     captureRaw: async (label, deadline) => {
       options.beforeCapture?.(label, writes)
@@ -1121,4 +1125,100 @@ test("the macOS alacritty window specimen no longer refuses for its corner fille
   // Proven stage: column stripes are only captured after the solid grid is accepted, so this is
   // what distinguishes "past the corners" from "refused somewhere else".
   expect(run.reads.get("column edge paint")).toBeGreaterThan(0)
+})
+
+/** Hosted run 42861023633's retained calibration frames, by stage, under their own sha256 names (33056). */
+const WARP_FRAMES: Record<string, string> = {
+  before: "003004e19b836de88bfa06de9f12166510f16b1339e166fffa94d708277ece96",
+  solid: "ea3959854af83fd8cd7fa6186882ab655cd5ddbe1599924e4dfaa85dd454c63e",
+  columns: "e73d56181065fb98e3f99382a2da7a5c781797787c97956637680afb85f8bf97",
+  rows: "9a16232c6a334fa26a5eba8bdbdb0f03eeadaa647075aa9a2d0dc685532b9822",
+  restore: "df0b0fdb3f16f6af6ed178a49e58e2a9d17724b24936ec44a952860dc00cee4c",
+}
+
+/** Decode one retained 8-bit RGBA, non-interlaced PNG (the collector's own frame format) without magick. */
+function retainedFrame(name: string): CapturedFrame {
+  const png = readFileSync(new URL(`../../../test-fixtures/artifacts/${WARP_FRAMES[name]}.png`, import.meta.url))
+  let offset = 8
+  let width = 0
+  let height = 0
+  const data: Buffer[] = []
+  while (offset < png.length) {
+    const length = png.readUInt32BE(offset)
+    const type = png.toString("latin1", offset + 4, offset + 8)
+    const body = png.subarray(offset + 8, offset + 8 + length)
+    if (type === "IHDR") {
+      width = body.readUInt32BE(0)
+      height = body.readUInt32BE(4)
+      if (body[8] !== 8 || body[9] !== 6 || body[12] !== 0) {
+        throw new Error(`${name}.png is not 8-bit RGBA non-interlaced`)
+      }
+    }
+    if (type === "IDAT") data.push(body)
+    offset += 12 + length
+  }
+  const raw = inflateSync(Buffer.concat(data))
+  const stride = width * 4
+  const rgba = new Uint8Array(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)]!
+    for (let x = 0; x < stride; x++) {
+      const left = x >= 4 ? rgba[y * stride + x - 4]! : 0
+      const up = y > 0 ? rgba[(y - 1) * stride + x]! : 0
+      const corner = x >= 4 && y > 0 ? rgba[(y - 1) * stride + x - 4]! : 0
+      const estimate = left + up - corner
+      const [dl, du, dc] = [Math.abs(estimate - left), Math.abs(estimate - up), Math.abs(estimate - corner)]
+      const paeth = dl <= du && dl <= dc ? left : du <= dc ? up : corner
+      const predictor = [0, left, up, (left + up) >> 1, paeth][filter]!
+      rgba[y * stride + x] = (raw[y * (stride + 1) + 1 + x]! + predictor) & 255
+    }
+  }
+  return { width, height, rgba }
+}
+
+// 33056 (@cto f15dec92): Warp's "Update Warp" pill repaints its title bar ~3 s after launch. Hosted run 42861023633
+// retained these five frames; the pill is 797 px at x 835-925, y 6-29 on the row and restore frames only.
+const WARP_TITLE_BAR: CaptureChromeBand = { y: 0, height: 40, reason: "Warp title bar" }
+function warpRun(chromeBand?: CaptureChromeBand) {
+  const [before, solid, columns, rows, restore] = ["before", "solid", "columns", "rows", "restore"].map(retainedFrame)
+  return calibration({
+    rows: 39,
+    cols: 123,
+    collectorLaunched: true,
+    ...(chromeBand ? { chromeBand } : {}),
+    frames: {
+      "before grid paint": [before!, before!],
+      "solid grid paint": [solid!, solid!],
+      "column edge paint": [columns!, columns!],
+      "row edge paint": [rows!, rows!],
+      "restore grid paint": [restore!, restore!],
+    },
+  })
+}
+
+test("the retained Warp pill refuses without a declared band", async () => {
+  await expect(warpRun().promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("the retained Warp pill inside the declared title-bar band calibrates and records the excused count", async () => {
+  const origin = await warpRun(WARP_TITLE_BAR).promise
+  expect(origin.basis).toContain(
+    "declared chrome band y 0..39 full width (Warp title bar), changed px excused: solid 0 px, columns 0 px, rows 797 px; restore 797 px",
+  )
+  expect(origin.basis).toContain("restore identical outside the declared chrome band confirmed")
+})
+
+test("a change outside both the grid and the declared band still refuses", async () => {
+  const rows = rasterFrame("rows")
+  rows.rgba.set([255, 255, 255, 255], (11 * 12 + 0) * 4)
+  const run = calibration({
+    chromeBand: { y: 0, height: 1, reason: "test strip" },
+    frames: { "row edge paint": [rows, rows] },
+  })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a declared band that reaches the grid is refused", async () => {
+  const run = calibration({ chromeBand: { y: 0, height: 2, reason: "test strip" } })
+  await expect(run.promise).rejects.toThrow(/chrome band y 0..1 overlaps the witnessed grid rows 2..9/)
 })
