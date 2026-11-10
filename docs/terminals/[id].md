@@ -236,7 +236,7 @@ const breadcrumbParent = (() => {
 
 </div>
 
-<RunHistory v-if="data.workingHistory && historySubjects.length" :history="data.workingHistory" :originals="data.workingOriginals" :subjects="historySubjects" />
+<RunHistory v-if="data.workingHistory && historySubjects.length" :history="data.workingHistory" :states="data.workingStates" :originals="data.workingOriginals" :subjects="historySubjects" />
 
 <style>
 .backend-page {
