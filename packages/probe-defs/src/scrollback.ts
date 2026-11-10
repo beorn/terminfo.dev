@@ -973,9 +973,12 @@ export const scrollbackProbes: ProbeDefinition[] = [
 
   ...regionReadbackProbes(scrollbackReadbackRows),
   {
+    // Measured spans: WezTerm 96.1 s, Alacritty 74.9 s, Ghostty 65.4 s, Kitty 54.3 s.
+    // 180 s is the headroom past 96.1 s. The 30 s default stays for the rest of the suite (@cto 2f538d50).
     ...probe("scrollback.viewport-hold-output", viewportHold, viewportHoldApp, "screenshot"),
     libAssertionType: "buffer_state",
     termNeedsGeometry: true,
     termNeedsDisposable: true,
+    wallMs: 180_000,
   },
 ]
