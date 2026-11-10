@@ -6,8 +6,9 @@ set -euo pipefail
 # 120s curl was the artefact (ghostty 140.6s, xterm 157.9s completed under 600);
 # 180s attach SIGTERM'd wezterm at 177s before classify. Do not split these.
 # A full WezTerm batch was still progressing when the shared 600s limit sent SIGTERM
-# on 2026-11-04 (OOMKilled=false). Keep both consumers on the same shared batch budget.
-PROBE_BATCH_TIMEOUT_SECONDS=1200
+# on 2026-11-04 (OOMKilled=false) and when the 1200s limit sent SIGTERM at 1196.9s
+# (exit 143) on 2026-11-09 (#32889). Keep both consumers on the same shared batch budget.
+PROBE_BATCH_TIMEOUT_SECONDS=1800
 
 # Calibrate the source face independently of the terminal. A missing proof is a named tool gap,
 # never an engine grade. The private fontconfig pins the regular face and its style companions,
