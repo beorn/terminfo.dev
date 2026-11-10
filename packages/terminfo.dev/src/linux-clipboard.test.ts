@@ -484,10 +484,12 @@ test.runIf(process.platform === "linux")(
 )
 
 /** This child tests real Linux fds; Vitest workers replace stdin even when Vitest itself has a PTY. */
-test.runIf(process.platform === "linux")("owned Linux output proof uses a real controlling PTY", () => {
-  const sourceRoot = dirname(fileURLToPath(import.meta.url))
-  const codeRoot = resolve(sourceRoot, "../../..")
-  const child = String.raw`
+test.runIf(process.platform === "linux")(
+  "owned Linux output proof uses a real controlling PTY",
+  () => {
+    const sourceRoot = dirname(fileURLToPath(import.meta.url))
+    const codeRoot = resolve(sourceRoot, "../../..")
+    const child = String.raw`
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import * as realChildProcess from "node:child_process"
@@ -982,7 +984,7 @@ try {
   realFs.rmSync(dir, { recursive: true, force: true })
 }
 `
-  const python = String.raw`
+    const python = String.raw`
 import fcntl, os, pty, re, struct, subprocess, sys, termios, threading
 mode = sys.argv[1]
 primary_master, primary_slave = pty.openpty()
@@ -1038,18 +1040,20 @@ if mode == 'owned' and (primary.count(b'\x1bc') != 2 or foreign):
     sys.stderr.write('wrong owned PTY byte count or foreign PTY received bytes\n')
     sys.exit(3)
 `
-  for (const mode of ["owned", "no-ctty"]) {
-    // A probe that does not return is bounded at 30s, so this child must outlive that wall.
-    const result = spawnSync("python3", ["-c", python, mode, process.execPath, "-e", child], {
-      cwd: codeRoot,
-      encoding: "utf8",
-      timeout: 70_000,
-      env: { ...process.env, TERMINFO_TEST_SOURCE_ROOT: sourceRoot },
-    })
-    expect(result.error, `${mode}: ${result.stderr}`).toBeUndefined()
-    expect(result.status, `${mode}: ${result.stderr}`).toBe(0)
-  }
-}, 90_000)
+    for (const mode of ["owned", "no-ctty"]) {
+      // A probe that does not return is bounded at 30s, so this child must outlive that wall.
+      const result = spawnSync("python3", ["-c", python, mode, process.execPath, "-e", child], {
+        cwd: codeRoot,
+        encoding: "utf8",
+        timeout: 70_000,
+        env: { ...process.env, TERMINFO_TEST_SOURCE_ROOT: sourceRoot },
+      })
+      expect(result.error, `${mode}: ${result.stderr}`).toBeUndefined()
+      expect(result.status, `${mode}: ${result.stderr}`).toBe(0)
+    }
+  },
+  90_000,
+)
 
 test("a nested transaction refuses and callback failure restores and verifies the generated baseline", async () => {
   let text = "baseline-nonce"

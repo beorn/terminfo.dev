@@ -11,6 +11,7 @@ import {
   ALL_PROBES,
   type ClipboardFixture,
   type LibProbeSource,
+  type PasteRoute,
   type ProbeCallbackResult,
   type TermProbeSource,
 } from "./index.ts"
@@ -532,7 +533,13 @@ function pasteProbe() {
   return probe
 }
 
+/** The route the collector gives the four Ctrl+Shift+V Apps; xterm's is PRIMARY with Shift+Insert. */
+const CLIPBOARD_PASTE: PasteRoute = { selection: "clipboard", key: "ctrl+shift+v", binding: "fixture binding" }
+const PRIMARY_PASTE: PasteRoute = { selection: "primary", key: "shift+Insert", binding: "fixture binding" }
+
+/** Paste tests run with the collector's default route unless a fixture names its own. */
 function pasteTerm(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
+  const fixture = overrides.withClipboardFixture
   return termSource({
     queryCursorPosition: async () => {
       throw new Error("Unexpected queryCursorPosition in paste observation")
@@ -553,16 +560,27 @@ function pasteTerm(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
       throw new Error("Unexpected queryMode in paste observation")
     },
     ...overrides,
+    ...(fixture && {
+      withClipboardFixture: (work: Parameters<typeof fixture>[0]) =>
+        fixture((owned) => work({ paste: CLIPBOARD_PASTE, ...owned })),
+    }),
   })
 }
 
 function pasteAndRead(
-  script: { control?: string | null; paste?: "controlled" | "bracketed" | "raw" | "silent"; incomingMode?: boolean },
+  script: {
+    control?: string | null
+    paste?: "controlled" | "bracketed" | "raw" | "silent"
+    incomingMode?: boolean
+    route?: PasteRoute
+  },
   writes: string[] = [],
 ): { ctx: TermProbeSource; keys: string[]; clipboardWrites: string[] } {
   const keys: string[] = []
   const clipboardWrites: string[] = []
   let clipboard = ""
+  let primary = "primary-selection-control"
+  const seedsPrimary = script.route?.selection === "primary"
   const pending: string[] = []
   let listening = false
   const surface = createSemanticSurface({ cols: 80, rows: 24 })
@@ -579,9 +597,11 @@ function pasteAndRead(
     },
     withClipboardFixture: async (work) =>
       work({
-        readText: async () => clipboard,
+        ...(script.route && { paste: script.route }),
+        readText: async () => (seedsPrimary ? primary : clipboard),
         writeText: async (text) => {
-          clipboard = text
+          if (seedsPrimary) primary = text
+          else clipboard = text
           clipboardWrites.push(text)
         },
       }),
@@ -594,8 +614,8 @@ function pasteAndRead(
           else if (script.control === undefined) pending.push("a")
           return
         }
-        // X11 PRIMARY and CLIPBOARD are distinct; the fixture seeds only CLIPBOARD.
-        const pasted = key === "ctrl+shift+v" ? clipboard : key === "shift+Insert" ? "primary-selection-control" : null
+        // X11 PRIMARY and CLIPBOARD are distinct: Ctrl+Shift+V pastes CLIPBOARD, Shift+Insert PRIMARY.
+        const pasted = key === "ctrl+shift+v" ? clipboard : key === "shift+Insert" ? primary : null
         if (pasted !== null) {
           if (script.paste === "bracketed" || (script.paste === "controlled" && surface.getMode("bracketedPaste"))) {
             pending.push(`\x1b[200~${pasted}\x1b[201~`)
@@ -835,13 +855,53 @@ test("extensions.clipboard-paste reads the seeded CLIPBOARD rather than the dist
   expect(writes.join("")).toContain("\x1b[?2004l")
   expect(writes.join("")).not.toContain("\x1b]52;")
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "clipboard-paste:ctrl+shift+v" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "clipboard-paste:clipboard:ctrl+shift+v" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({
     mode: "clipboard-paste",
     control: "a",
     report: `\x1b[200~${nonce}\x1b[201~`,
   })
+})
+
+// #32164: xterm's default paste reads PRIMARY with Shift+Insert. The collector's route decides both; the probe
+// seeds the route's selection, presses the route's key, and says so in its evidence.
+test("extensions.clipboard-paste seeds and presses the route the collector chose (xterm: PRIMARY, Shift+Insert)", async () => {
+  const { ctx, keys, clipboardWrites } = pasteAndRead({ paste: "controlled", route: PRIMARY_PASTE })
+  const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
+  expect(keys).toEqual(["a", "shift+Insert", "shift+Insert", "shift+Insert"])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "clipboard-paste:primary:shift+Insert" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({
+    selection: "primary",
+    key: "shift+Insert",
+    report: `\x1b[200~${clipboardWrites[0]}\x1b[201~`,
+  })
+})
+
+test("extensions.clipboard-paste without a reviewed route presses nothing and is not tested", async () => {
+  const keys: string[] = []
+  const ctx = termSource({
+    queryMode: async () => "reset",
+    withClipboardFixture: async (work) =>
+      work({
+        readText: async () => "",
+        writeText: async () => {
+          throw new Error("no route: the selection must stay untouched")
+        },
+      }),
+    input: {
+      injectKey: async (key) => {
+        keys.push(key)
+      },
+      injectClick: async () => {},
+    },
+    readInput: async () => null,
+  })
+  const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
+  expect(keys).toEqual([])
+  expect(JSON.stringify(result)).toContain("a reviewed default paste route for this App")
 })
 
 test("extensions.clipboard-paste records unsupported interaction when paste arrives as the raw nonce", async () => {
@@ -853,7 +913,7 @@ test("extensions.clipboard-paste records unsupported interaction when paste arri
   expect(writes.join("")).toContain("\x1b[?2004h")
   expect(writes.join("")).toContain("\x1b[?2004l")
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "clipboard-paste:ctrl+shift+v" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "clipboard-paste:clipboard:ctrl+shift+v" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "clipboard-paste", control: "a", report: nonce })
 })

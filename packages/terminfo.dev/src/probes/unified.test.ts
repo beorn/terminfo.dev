@@ -3263,7 +3263,9 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
       )
       if (featureId === "extensions.clipboard-paste") {
         // The row says how it was measured: selection and key are in its evidence (@cto a4ec8fe2 condition 2).
-        const route = isXtermPaste ? { selection: "primary", key: "shift+Insert" } : { selection: "clipboard", key: "ctrl+shift+v" }
+        const route = isXtermPaste
+          ? { selection: "primary", key: "shift+Insert" }
+          : { selection: "clipboard", key: "ctrl+shift+v" }
         expect(batch.assertions.find((assertion) => assertion.featureId === featureId)).toMatchObject({
           action: `clipboard-paste:${route.selection}:${route.key}`,
         })

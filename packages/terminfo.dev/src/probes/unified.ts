@@ -283,20 +283,39 @@ export function captureAdapterEligible(
   return captureKind === "text-cells" ? probe.cellReadback === true : !captureGeometryRefusal
 }
 
+/** Probes that press the App's paste key: clipboard-paste, and bracketed-paste, whose App effect reuses it. */
+const PASTE_PROBE_IDS: ReadonlySet<string> = new Set(["extensions.clipboard-paste", "modes.bracketed-paste"])
+
 /**
  * Direct Linux Apps whose default paste action is reviewed (@cto 73d66ae2, a4ec8fe2); any other App stays gated.
  * Each route is evidence: the App's own source or manual, at the pinned version, binds the key to paste that
  * selection, and the owned launch passes no config or resource that rebinds it (#32164).
  */
-export const LINUX_PASTE_ROUTES: Readonly<Record<string, PasteRoute>> = {
-  kitty: { selection: "clipboard", key: "ctrl+shift+v", binding: 
-      "kitty 0.49.2 (tag v0.49.2): kitty/options/definition.py:3811 maps kitty_mod+v to paste_from_clipboard, and kitty_mod defaults to ctrl+shift (definition.py:3648-3651)" },
-  ghostty: { selection: "clipboard", key: "ctrl+shift+v", binding: 
-      "ghostty 1.4.0 (tag v1.4.0): src/config/Config.zig:6698-6716 binds ctrl+shift+v to paste_from_clipboard on Linux" },
-  alacritty: { selection: "clipboard", key: "ctrl+shift+v", binding: 
-      "alacritty 0.17.0 (tag v0.17.0): alacritty/src/config/bindings.rs:544-549 binds Ctrl+Shift+V to Paste (CLIPBOARD)" },
-  wezterm: { selection: "clipboard", key: "ctrl+shift+v", binding: 
-      "wezterm 0-unstable-2026-10-10 (rev e2a98e1b8af1): wezterm-gui/src/commands.rs:665-670 declares PasteFrom(Clipboard) on SUPER+v and :126-131 derives CTRL+SHIFT+v from it; docs default-keys.md:19" },
+const LINUX_PASTE_ROUTES: Readonly<Record<string, PasteRoute>> = {
+  kitty: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "kitty 0.49.2 (tag v0.49.2): kitty/options/definition.py:3811 maps kitty_mod+v to paste_from_clipboard, and kitty_mod defaults to ctrl+shift (definition.py:3648-3651)",
+  },
+  ghostty: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "ghostty 1.4.0 (tag v1.4.0): src/config/Config.zig:6698-6716 binds ctrl+shift+v to paste_from_clipboard on Linux",
+  },
+  alacritty: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "alacritty 0.17.0 (tag v0.17.0): alacritty/src/config/bindings.rs:544-549 binds Ctrl+Shift+V to Paste (CLIPBOARD)",
+  },
+  wezterm: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "wezterm 0-unstable-2026-10-10 (rev e2a98e1b8af1): wezterm-gui/src/commands.rs:665-670 declares PasteFrom(Clipboard) on SUPER+v and :126-131 derives CTRL+SHIFT+v from it; docs default-keys.md:19",
+  },
   xterm: {
     selection: "primary",
     key: "shift+Insert",
@@ -806,14 +825,13 @@ export async function runProbeBatch(
       // A paste route only where it is reviewed: the direct App's own, or Kitty's for a mux, whose outer the
       // owned launch refuses to be anything but Kitty (linux-container-run.sh "Owned Linux mux outer must be Kitty").
       const pasteRoute =
-        probe.id !== "extensions.clipboard-paste" || clipboard.pasteboard === "darwin"
+        !PASTE_PROBE_IDS.has(probe.id) || clipboard.pasteboard === "darwin"
           ? undefined
           : isVerifiedLinuxMux
             ? LINUX_PASTE_ROUTES.kitty
             : LINUX_PASTE_ROUTES[options.subject?.id ?? ""]
-      const missingPrimary = async (): Promise<never> => {
-        throw new Error("Owned PRIMARY selection is absent from this run's clipboard receipt")
-      }
+      const missingPrimary = (): Promise<never> =>
+        Promise.reject(new Error("Owned PRIMARY selection is absent from this run's clipboard receipt"))
       const transaction: typeof clipboard.withClipboardFixture =
         pasteRoute?.selection === "primary"
           ? (clipboard.withPrimaryFixture ?? missingPrimary)
