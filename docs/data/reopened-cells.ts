@@ -107,7 +107,10 @@ function checkRow(value: unknown, where: string): ReopenedCell {
   if (/@|\b[0-9a-f]{7,}\b|#\d|\b\d{5}\b/.test(reason)) {
     throw new Error(`${where}: the public reason names a seat, an id or an issue number; keep those in ruling`)
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(row.reopenedOn ?? "")) throw new Error(`${where}: reopenedOn must be YYYY-MM-DD`)
+  const reopenedOn = row.reopenedOn
+  if (reopenedOn === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(reopenedOn)) {
+    throw new Error(`${where}: reopenedOn must be YYYY-MM-DD`)
+  }
   const exit = row.exit
   if (exit?.kind === "criterion-text") {
     if (!/^[0-9a-f]{64}$/.test(exit.criterionSha256 ?? "")) {
@@ -139,7 +142,7 @@ function checkRow(value: unknown, where: string): ReopenedCell {
     featureId: text("featureId"),
     graded: text("graded") as ProbeResult["status"],
     reason,
-    reopenedOn: row.reopenedOn!,
+    reopenedOn,
     ruling: text("ruling"),
     evidence: text("evidence"),
     exit,
