@@ -186,54 +186,61 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc7-cwd" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 25, feature: "extensions.osc7-cwd" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 25, feature: "modes.decsclm" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc633-e" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 25, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 9, feature: "extensions.osc133-b" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 9, feature: "extensions.osc133-p" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 9, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 9, feature: "extensions.semantic-prompts" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 9, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-d" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-a" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-p" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 21, feature: "extensions.osc633-e" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 21, feature: "extensions.osc633-a" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 21, feature: "extensions.osc-633-vscode" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 21, feature: "extensions.osc133-a" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 21, feature: "extensions.osc133-p" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 21, feature: "extensions.osc666-termprop" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 25, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 21, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 21, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "ghostty", version: "1.4.0", count: 21, feature: "extensions.osc3008-context" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 25, feature: "extensions.osc176-app-id" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 25, feature: "extensions.osc440-audio" },
-  { kind: "mux", id: "screen", version: "5.0.2", count: 25, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc555-flash" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc710-font-normal" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.clipboard-paste" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc7-cwd" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc7-cwd" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "modes.decsclm" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc633-e" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc133-a" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-b" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-p" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-a" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.semantic-prompts" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc133-d" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc133-a" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc133-p" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-e" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-a" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc-633-vscode" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc133-a" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc133-p" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc666-termprop" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc3008-context" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc176-app-id" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc440-audio" },
+  { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc555-flash" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc710-font-normal" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.clipboard-paste" },
   // #32601: existing subjects cannot catch a missing Alacritty audit or identity leakage from its one-cell declaration.
-  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc710-font-normal" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc710-font-normal" },
   // #32918: Alacritty implements no OSC 133/633, so its thirteen prompt cells are declarations, not runs.
-  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc133-a" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc133-a" },
   // #32889: Alacritty 0.17.0 and tmux 3.8 drop OSC 176/3008/440/666 (and tmux 710) in their unknown-OSC parser paths.
-  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "alacritty", version: "0.17.0", count: 20, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc176-app-id" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc3008-context" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc440-audio" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc710-font-normal" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc633-e" },
+  // #32948: 6 Linux App and mux OSC 8 hyperlink declarations.
+  { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc8" },
+  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc8" },
+  { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc8" },
+  { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc8" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc8" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc8" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
@@ -351,7 +358,7 @@ it.each(["address present", "socket present", "socket unreadable", "both absent"
       expect(JSON.stringify(record)).not.toContain("secret-address-never-retained")
       const selected = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" }, record)
       const absent = state === "both absent" || state === "not a directory"
-      expect(Object.keys(selected)).toHaveLength(absent ? 21 : 17)
+      expect(Object.keys(selected)).toHaveLength(absent ? 22 : 18)
       if (absent) expect(selected["extensions.osc133-d"]).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
       else expect(selected["extensions.osc133-d"]).toBeUndefined()
       if (state === "socket unreadable") expect(record.socket.code).toBe("EACCES")
@@ -524,6 +531,7 @@ function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>, ownManifest = m
 // @consumer Registered App semantic callback -> native recorder -> strict daemon capture reader.
 it.each([
   { id: "extensions.osc133-a", positive: true, report: false },
+  { id: "extensions.osc8", positive: true, report: false },
   { id: "extensions.osc-633-vscode", positive: false, report: false },
   { id: "extensions.osc633-a", positive: false, report: true },
 ])("binds write-only App state assertions through the strict reader: $id", async ({ id, positive, report }) => {
@@ -534,13 +542,18 @@ it.each([
     return true
   }) as typeof process.stdout.write
   const cycle = id === "extensions.osc-633-vscode"
-  const empty = cycle ? JSON.stringify(["NONE", "NONE", "NONE"]) : "NONE"
+  const osc8 = id === "extensions.osc8"
+  const empty = cycle ? JSON.stringify(["NONE", "NONE", "NONE"]) : osc8 ? "linked after " : "NONE"
   const handled = cycle
     ? JSON.stringify(["START_PROMPT@0", "START_OUTPUT@0", "END_OUTPUT@0:0;status=0"])
-    : "START_OUTPUT@0"
+    : osc8
+      ? "\x1b]8;;https://control.invalid/osc8\x1b\\linked\x1b]8;;\x1b\\ after "
+      : "START_OUTPUT@0"
   const expected = cycle
     ? JSON.stringify(["START_PROMPT@0", "START_OUTPUT@0", "END_OUTPUT@0:17;status=17"])
-    : "START_PROMPT@0"
+    : osc8
+      ? "\x1b]8;id=ex-link-1;https://terminfo.dev/osc8\x1b\\linked\x1b]8;;\x1b\\ after "
+      : "START_PROMPT@0"
   const reading: AppSemanticReading = report
     ? {
         status: "measured",
@@ -555,7 +568,7 @@ it.each([
         status: "measured",
         reader: "state",
         runId: "a".repeat(32),
-        unknown: { before: "NONE", after: "NONE" },
+        unknown: { before: empty, after: empty },
         handled: { before: empty, after: handled, expected: handled },
         target: { before: empty, after: positive ? expected : empty, expected },
         detail: {},
@@ -566,6 +579,10 @@ it.each([
       write("\x1b]7654;fixture\x07")
       write("\x1b]2;fixture\x07")
       write("\x1b]633;A\x07")
+    } else if (osc8) {
+      write("\x1b]888;id=ex-link-1;https://terminfo.dev/osc8\x07linked\x1b]888;;\x07 after ")
+      write("\x1b]8;;https://control.invalid/osc8\x07linked\x1b]8;;\x07 after ")
+      write("\x1b]8;id=ex-link-1;https://terminfo.dev/osc8\x07linked\x1b]8;;\x07 after ")
     } else {
       write("\x1b]133;Z\x07")
       write(cycle ? "\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;0\x07" : "\x1b]133;C\x07")
@@ -575,7 +592,7 @@ it.each([
   })
   const batch = await runProbeBatch({
     ids: [id],
-    ownedTerminal: { ...geometryOwner(noGeometry), readAppSemanticState: read },
+    ownedTerminal: { ...geometryOwner(osc8 ? measured(24, 80) : noGeometry), readAppSemanticState: read },
   })
   expect(read).toHaveBeenCalledOnce()
   expect(writes).toHaveLength(3)

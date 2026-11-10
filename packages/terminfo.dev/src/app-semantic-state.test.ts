@@ -126,6 +126,7 @@ test("reader capability rows do not become declarations or lend their identity t
     "extensions.osc133-d",
     "extensions.osc133-p",
     "extensions.osc3008-context",
+    "extensions.osc8",
     "extensions.semantic-prompts",
   ])
   expect(appSemanticDeclarations({ ...kitty, version: "unreviewed" })).toEqual({})
