@@ -220,7 +220,10 @@ export function underlineColourIndexedDecision(digest: (name: string) => string)
 }
 
 /** The callback result for a decision, on the same-run branch the mux finalizer knows. */
-export function underlineColourIndexedResult(run: SameRunCapture, decision: UnderlineIndexedDecision): ProbeCallbackResult {
+export function underlineColourIndexedResult(
+  run: SameRunCapture,
+  decision: UnderlineIndexedDecision,
+): ProbeCallbackResult {
   const { status, note } = decision
   const decided = status !== "probe-todo"
   const target = run.measured.find(({ name }) => name === UNDERLINE_PHASE.colour(UNDERLINE_INDICES[0]))?.capture.frame

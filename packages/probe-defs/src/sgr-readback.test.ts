@@ -98,7 +98,6 @@ const DECIDED: ReadonlyArray<readonly [id: string, reply: string]> = [
   ["sgr.overline", "0;53"],
   ["sgr.underline.color", "0;4;58;2;255;0;128"],
   ["sgr.underline-color-rgb", "0;4;58;2;255;0;128"],
-  ["sgr.underline-color-indexed", "0;4;58;5;5"],
   ["sgr.underline-color-reset", "0;4"],
   ["sgr.fg.standard", "0;31"],
   ["sgr.bg.standard", "0;41"],
@@ -128,6 +127,22 @@ test("every sgr probe decides from the terminal's own DECRQSS report", async () 
     })
   }
 })
+
+// #33146 (@cto d2f24294, b3d7680f): pixels decide the indexed underline colour; DECRQSS decides nothing
+// here, so no report, matching or not, in either encoding, becomes a verdict or is even asked.
+test.each(["0;4;58;5;5", "0;4;58:5:5", "0;4;58;5;6", "0;4"])(
+  "sgr.underline-color-indexed never decides from DECRQSS %s",
+  async (reply) => {
+    const { ctx, queries } = sgrReadbackSource(reply)
+    const result = await sgrTerm("sgr.underline-color-indexed")(ctx)
+    expect(queries).toHaveLength(0)
+    expect(result.observation).toBeUndefined()
+    expect(result.pass).toBe(false)
+    expect(result.tests).toEqual([
+      { id: "criterion", status: "probe-todo", reason: "Cursor advance does not verify SGR styling" },
+    ])
+  },
+)
 
 // With no capture adapter, attribute rows retain their existing DECRQSS decisions.
 const PLAIN_STYLE_REPLIES = DECIDED.filter(
@@ -241,7 +256,6 @@ test.each([
   ["sgr.bg.truecolor", "0;48;2;0;255;129", "unsupported"],
   ["sgr.underline.color", "0;4;58;2;255;0;129", "unsupported"],
   ["sgr.underline-color-rgb", "0;4;58;2;255;0;129", "unsupported"],
-  ["sgr.underline-color-indexed", "0;4;58;5;6", "unsupported"],
   ["sgr.fg.truecolor", "0;38", "inconclusive"],
   ["sgr.bg.truecolor", "0;48;2;0;255", "inconclusive"],
   ["sgr.underline-color-rgb", "0;4;58:2::255:0", "inconclusive"],
@@ -250,7 +264,6 @@ test.each([
   ["sgr.fg.truecolor", "0;38:2::255:128:0", "supported"],
   ["sgr.bg.truecolor", "0;48:2:0:0:255:128", "supported"],
   ["sgr.underline.color", "0;4;58:2:255:0:128", "supported"],
-  ["sgr.underline-color-indexed", "0;4;58:5:5", "supported"],
   ["sgr.selective-reset.bold", "0;3;38;2;255;1;5", "supported"],
   ["sgr.fg.default", "0;38;5;31", "unsupported"],
   ["sgr.bg.default", "0;48;5;42", "unsupported"],
@@ -316,7 +329,6 @@ test.each([
   ["sgr.hidden", "0"],
   ["sgr.underline.color", "0;4"],
   ["sgr.underline-color-rgb", "0;4"],
-  ["sgr.underline-color-indexed", "0;4"],
   ["sgr.underline.curly", "0;4"],
   ["sgr.underline.dotted", "0;4"],
   ["sgr.underline.dotted", "0;4:1"],
