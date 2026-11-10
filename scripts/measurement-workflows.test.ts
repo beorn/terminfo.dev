@@ -693,6 +693,71 @@ test("hosted Terminal launch owns its window and closes only it before upload", 
   expect(steps.indexOf(close!)).toBeLessThan(steps.indexOf(upload!))
 })
 
+// #33152: the close step's side files never reached run.json, so a placed Terminal.app record could
+// not show its owned window was opened by this run and is gone. Run the finalise step the way the
+// runner does: it must refuse by name with ::error:: and exit 1, or carry both entries into run.json.
+test("hosted Terminal finalise step carries launch and disposal into run.json or fails the job by name", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const steps = workflow.jobs["measure-macos"].steps as Array<{
+    name?: string
+    if?: string
+    run?: string
+    uses?: string
+  }>
+  const collect = steps.find((step) => step.name === "Launch, emit the receipt, and collect as the last mutating step")
+  expect(collect?.run).toContain("launchTerminalWindowCensus")
+  const close = steps.find((step) => step.name === "Close the owned Terminal window before upload")
+  const finalise = steps.find((step) => step.name === "Finalise the run record with the owned Terminal window")
+  const upload = steps.find((step) => step.uses === "actions/upload-artifact@v4")
+  expect(finalise?.if).toBe("always() && matrix.id == 'terminal-app'")
+  expect(steps.indexOf(close!)).toBe(steps.indexOf(finalise!) - 1)
+  expect(steps.indexOf(finalise!)).toBeLessThan(steps.indexOf(upload!))
+
+  const temp = mkdtempSync(join(tmpdir(), "terminal-finalise-"))
+  try {
+    const out = join(temp, "measurement-artifacts")
+    mkdirSync(out)
+    writeFileSync(join(out, "run.json"), JSON.stringify({ runId: "hosted-1", rawReplies: {} }))
+    const step = () =>
+      spawnSync("bash", ["-e", "-c", finalise!.run!], {
+        cwd: root,
+        env: { ...process.env, RUNNER_TEMP: temp },
+        encoding: "utf8",
+      })
+    const refused = step()
+    expect(refused.status).toBe(1)
+    expect(refused.stdout).toContain(
+      "::error::owned Terminal window: terminal-launch.json is absent, so this run opened no window it can name",
+    )
+    const tty = "/dev/ttys003"
+    writeFileSync(
+      join(out, "terminal-launch.json"),
+      JSON.stringify({
+        appId: "terminal-app",
+        terminalWindow: { provider: "terminal-app", windowId: 14, tty },
+        beforeIds: [],
+        afterIds: [14],
+        newIds: [{ windowId: 14, tabCount: 1, tty }],
+      }),
+    )
+    writeFileSync(
+      join(out, "terminal-window-disposal.json"),
+      JSON.stringify({ appId: "terminal-app", windowId: 14, tty, remaining: 0 }),
+    )
+    const carried = step()
+    expect(carried.stderr).toBe("")
+    expect(carried.status).toBe(0)
+    const run = JSON.parse(readFileSync(join(out, "run.json"), "utf8")) as {
+      runId: string
+      rawReplies: Record<string, string>
+    }
+    expect(run.runId).toBe("hosted-1")
+    expect(Object.keys(run.rawReplies).sort()).toEqual(["collector.windowDisposal", "collector.windowLaunchProof"])
+  } finally {
+    rmSync(temp, { recursive: true, force: true })
+  }
+})
+
 // 30729 P0: the terminal-app arm read COMMAND_PATH from a bun --eval child while the shell never
 // exported it, so the child got undefined and AppleScript ran `do script undefined`. Run the arm the
 // way bash does and hand it a bun stand-in that records what the child really receives.
@@ -728,7 +793,7 @@ test("the hosted terminal-app arm hands the collector command path to its child"
     // Red on 6c6def1e2: the child inherited no COMMAND_PATH at all.
     expect(readFileSync(join(directory, "child-env"), "utf8")).toContain(`COMMAND_PATH=${commandPath}\n`)
     expect(readFileSync(join(directory, "child-body"), "utf8")).toContain(
-      "launchTerminalWindow(process.env.COMMAND_PATH)",
+      "launchTerminalWindowCensus(process.env.COMMAND_PATH)",
     )
   } finally {
     rmSync(directory, { recursive: true, force: true })

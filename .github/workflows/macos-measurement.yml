@@ -412,12 +412,13 @@ jobs:
               COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_TERMINAL_LAUNCH'
           const { writeFileSync } = require("node:fs");
           const { join } = require("node:path");
-          const { launchTerminalWindow } = require(process.cwd() + "/packages/admin/src/terminal-app-receipt.ts");
+          const { launchTerminalWindowCensus } = require(process.cwd() + "/packages/admin/src/terminal-app-receipt.ts");
           // The owned-window launch replaces `open -a`: the window id and exact tab TTY are the close handle.
-          const terminalWindow = launchTerminalWindow(process.env.COMMAND_PATH);
+          // #33152 (@cto 5c2b1f65): the launcher's own transaction census goes in the launch record.
+          const { terminalWindow, beforeIds, afterIds, newIds } = launchTerminalWindowCensus(process.env.COMMAND_PATH);
           if (!terminalWindow || !terminalWindow.tty) throw new Error("Hosted Terminal launch resolved no owned window id and TTY");
           const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
-          writeFileSync(join(out, "terminal-launch.json"), JSON.stringify({ appId: process.env.APP_ID, terminalWindow }), { mode: 0o600 });
+          writeFileSync(join(out, "terminal-launch.json"), JSON.stringify({ appId: process.env.APP_ID, terminalWindow, beforeIds, afterIds, newIds }), { mode: 0o600 });
           console.log(JSON.stringify({ terminalWindow }));
           HOSTED_TERMINAL_LAUNCH
           )" > "$OUT/launcher.log" 2>&1
@@ -892,6 +893,23 @@ jobs:
             if (remaining !== 0) throw new Error("Owned Terminal window survived its close: remaining " + remaining);
           }
           HOSTED_TERMINAL_CLOSE
+          )"
+
+      # #33152 (@cto 56e401d9 point 3): run.json carries the owned window's launch and disposal, each with
+      # its side file's sha256, or the job fails by name before the upload can look clean.
+      - name: Finalise the run record with the owned Terminal window
+        if: always() && matrix.id == 'terminal-app'
+        run: |
+          bun --eval "$(cat <<'HOSTED_TERMINAL_FINALISE'
+          const { join } = require("node:path");
+          const { finaliseTerminalWindowRecord } = require(process.cwd() + "/packages/admin/src/terminal-window-record.ts");
+          try {
+            finaliseTerminalWindowRecord(join(process.env.RUNNER_TEMP, "measurement-artifacts"));
+          } catch (error) {
+            console.log("::error::" + (error instanceof Error ? error.message : String(error)));
+            process.exit(1);
+          }
+          HOSTED_TERMINAL_FINALISE
           )"
 
       - name: Upload the receipt beside the exact collected run
