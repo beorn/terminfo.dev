@@ -243,7 +243,8 @@ describe("device query observations", () => {
       const result = await callback(item.id).terminal(terminal(da1, "sentinel", { atMs: 9, graceMs: 250 }))
       expect(result.response, item.id).toBe(da1)
       expect(result.observation, item.id).toMatchObject({
-        outcome: "unsupported",
+        outcome: "inconclusive",
+        reason: "fenced-silence",
         assertionType: "query_reply",
         note: "DA1 answered at +9ms; no reply through the 250 ms window",
       })
@@ -597,7 +598,8 @@ describe("device query observations", () => {
     const result = await callback("device.decrqss").terminal(script.ctx)
     expect(script.queries).toEqual([DECRQSS_SGR_QUERY])
     expect(result.observation).toMatchObject({
-      outcome: "unsupported",
+      outcome: "inconclusive",
+      reason: "fenced-silence",
       assertionType: "query_reply",
       note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
     })

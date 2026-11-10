@@ -11,7 +11,7 @@ import { expect, test } from "vitest"
 import { deviceProbes } from "./device.ts"
 import { editingProbes } from "./editing.ts"
 import { extensionsProbes } from "./extensions.ts"
-import { isDeclaredUntestable } from "./helpers.ts"
+import { isDeclaredUntestable, isFencedSilence } from "./helpers.ts"
 import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const da1 = "\x1b[?1;2c"
@@ -58,7 +58,8 @@ test.each(F4)("%s: qualified silence distinguishes reply negatives and absent co
   const result = run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel() })
   if (QUERY_CRITERIA.has(id)) {
     expect(result.observation).toMatchObject({
-      outcome: "unsupported",
+      outcome: "inconclusive",
+      reason: "fenced-silence",
       assertionType: "query_reply",
       note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
     })
@@ -93,7 +94,7 @@ test.each(F4)("%s: an engine with no proven reply path keeps its pre-existing re
   expect(withoutMember.observation?.outcome).toBe(memberWithoutSentinel.observation?.outcome)
   expect(isDeclaredUntestable(withoutMember)).toBe(false)
   expect(isDeclaredUntestable(memberWithoutSentinel)).toBe(false)
-  if (QUERY_CRITERIA.has(id)) expect(withMember.observation?.outcome).toBe("unsupported")
+  if (QUERY_CRITERIA.has(id)) expect(isFencedSilence(withMember.observation)).toBe(true)
   else if (id !== "extensions.osc104-reset-palette") expect(isDeclaredUntestable(withMember)).toBe(true)
   else {
     expect(withMember.observation).toBeUndefined()

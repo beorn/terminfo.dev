@@ -21,7 +21,13 @@
 import { existsSync, readFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { isAbsolute, join } from "node:path"
-import { parseJsonStrict, canonicalJson, boundFeatureEntry } from "@terminfo/run-parser"
+import {
+  parseJsonStrict,
+  canonicalJson,
+  boundFeatureEntry,
+  SILENCE_RULES,
+  type SilenceDeclaration,
+} from "@terminfo/run-parser"
 export { FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "@terminfo/run-parser"
 
 /** One feature catalog entry, keyed by its probe dot-path id in `content/features.json`. */
@@ -44,6 +50,11 @@ export interface FeatureRecord {
   probeStatus?: string
   /** Why a reviewed probeStatus override is what it is; required beside any override. */
   probeStatusReason?: string
+  /**
+   * The row's silence rule for a fenced silence (#33165): `switchable` or `untestable`, each with its reason.
+   * Absent is the default rule, Unsupported. The recorder applies it; the `probe` text states it.
+   */
+  silence?: SilenceDeclaration
 }
 
 export type FeatureCatalog = Readonly<Record<string, FeatureRecord>>
@@ -167,6 +178,27 @@ function optionalTier1(path: string, id: string, value: unknown): Tier1 | undefi
   return value as Tier1
 }
 
+/** A declared silence rule: one of SILENCE_RULES with a non-empty reason; absent means the default rule. */
+function optionalSilence(path: string, id: string, value: unknown): SilenceDeclaration | undefined {
+  if (value === undefined) return undefined
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${path}: entry "${id}" has a "silence" that is not an object`)
+  }
+  const { rule, reason, ...extra } = value as Record<string, unknown>
+  if (!SILENCE_RULES.includes(rule as SilenceDeclaration["rule"])) {
+    throw new Error(
+      `${path}: entry "${id}" has an unknown silence rule ${JSON.stringify(rule)}; expected ${SILENCE_RULES.join(" or ")}, or no "silence" field for the default rule`,
+    )
+  }
+  if (typeof reason !== "string" || reason.trim() === "") {
+    throw new Error(`${path}: entry "${id}" declares silence rule "${String(rule)}" without a non-empty "reason"`)
+  }
+  if (Object.keys(extra).length > 0) {
+    throw new Error(`${path}: entry "${id}" has unknown silence keys ${Object.keys(extra).sort().join(", ")}`)
+  }
+  return { rule: rule as SilenceDeclaration["rule"], reason }
+}
+
 function entries(path: string, root: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
   const out: Array<[string, Record<string, unknown>]> = []
   for (const [id, value] of Object.entries(root)) {
@@ -193,6 +225,7 @@ function parseFeature(path: string, id: string, raw: Record<string, unknown>): F
     tier1: optionalTier1(path, id, raw.tier1),
     probeStatus: optionalString(path, id, "probeStatus", raw.probeStatus),
     probeStatusReason: optionalString(path, id, "probeStatusReason", raw.probeStatusReason),
+    silence: optionalSilence(path, id, raw.silence),
   }
 }
 

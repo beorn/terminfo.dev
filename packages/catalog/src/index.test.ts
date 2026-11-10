@@ -115,6 +115,30 @@ test("throws when an optional field carries the wrong type", () => {
   expect(() => loadTerminals(dir)).toThrow(/t1.*"year"/)
 })
 
+// #33165 (@cto be3fb080): a row's silence rule is what the recorder applies to a fenced silence. An unknown rule, or a
+// non-default rule with no reason, would grade silence under a rule nobody declared, so loading refuses both.
+test("reads a declared silence rule and refuses an unknown rule or a non-default rule without a reason", () => {
+  const row = { name: "N", slug: "n", body: "b", probe: "p", baseline: "x" }
+  const load = (name: string, silence: unknown) =>
+    loadFeatures(fixture(`silence-${name}`, { "features.json": { "a.one": { ...row, silence } } }))
+  const switchable = { rule: "switchable", reason: "enabled by the allowWindowOps resource" }
+  expect(required(load("switchable", switchable), "a.one").silence).toEqual(switchable)
+  const untestable = { rule: "untestable", reason: "silence cannot decide" }
+  expect(required(load("untestable", untestable), "a.one").silence).toEqual(untestable)
+  const absent = loadFeatures(fixture("silence-absent", { "features.json": { "a.one": row } }))
+  expect(required(absent, "a.one").silence).toBeUndefined()
+  expect(() => load("unknown", { rule: "consumes", reason: "r" })).toThrow(/a\.one.*unknown silence rule "consumes"/)
+  expect(() => load("explicit-default", { rule: "default", reason: "r" })).toThrow(/unknown silence rule "default"/)
+  expect(() => load("no-reason", { rule: "switchable" })).toThrow(
+    /a\.one.*silence rule "switchable" without a non-empty "reason"/,
+  )
+  expect(() => load("blank-reason", { rule: "untestable", reason: "  " })).toThrow(/without a non-empty "reason"/)
+  expect(() => load("not-object", "switchable")).toThrow(/"silence" that is not an object/)
+  expect(() => load("extra-key", { rule: "switchable", reason: "r", supplement: "x" })).toThrow(
+    /unknown silence keys supplement/,
+  )
+})
+
 test("throws when a required catalog file is absent", () => {
   const dir = fixture("empty", {})
   expect(() => loadFeatures(dir)).toThrow(/Missing required content catalog/)
@@ -191,6 +215,7 @@ test("enumerates FeatureRecord keys against FEATURE_ENTRY_PROSE_DENYLIST and omi
     tier1: true,
     probeStatus: true,
     probeStatusReason: true,
+    silence: true,
   } satisfies Record<keyof FeatureRecord, boolean>
   expect(FEATURE_ENTRY_PROSE_DENYLIST).toEqual(["body"])
   const denylisted = new Set<string>(FEATURE_ENTRY_PROSE_DENYLIST)

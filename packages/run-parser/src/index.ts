@@ -50,6 +50,8 @@ import { parseObservation, parseObservationFrames, validateCurrentAssertions } f
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
 import { parseJsonStrict } from "./json.ts"
 export { parseJsonStrict, canonicalJson, FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "./json.ts"
+// The catalogue loader validates a row's declared silence rule against the recorder's own rule list (#33165).
+export { SILENCE_RULES, type SilenceDeclaration } from "@terminfo/probe-defs"
 import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
 
 export { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree }

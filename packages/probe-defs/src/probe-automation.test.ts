@@ -2761,7 +2761,8 @@ describe("Kitty protocol detection", () => {
       )
       if (id === "extensions.osc52-read") {
         expect(measuredSilence.observation).toMatchObject({
-          outcome: "unsupported",
+          outcome: "inconclusive",
+          reason: "fenced-silence",
           note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
         })
         expect(measuredSilence.assertions).toMatchObject([{ kind: "negative" }])
@@ -3377,7 +3378,7 @@ describe("Kitty protocol detection", () => {
       expect(result.assertions).toMatchObject([{ kind: "positive", observed }])
       expect(result.response).toBe(observed)
     } else if (replyKind === "qualified-silence") {
-      expect(result.observation?.outcome).toBe("unsupported")
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "fenced-silence" })
       expect(result.assertions).toMatchObject([{ kind: "negative" }])
     } else if (replyKind === "timeout") {
       expect(result.observation?.outcome).not.toBe("unsupported")

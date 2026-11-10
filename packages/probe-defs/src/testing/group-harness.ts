@@ -19,6 +19,7 @@ import {
   type TerminalQueryOutcome,
 } from "../types.ts"
 import { splitDecidableBasis } from "../decidable-basis.ts"
+import { fencedSilenceStatus, isFencedSilence } from "../helpers.ts"
 
 /** One feature's contract: the id, the outcome it must read when its controls hold, and its claim. */
 export interface ContractRow {
@@ -397,6 +398,14 @@ export interface RegradeResult {
   readonly satisfies: boolean
 }
 
+/**
+ * The outcome a callback result records for a default-rule row: a marked fenced silence takes the row's
+ * silence rule in the recorder (#33165), and these contract rows declare none, so it reads as its status.
+ */
+export function gradedOutcome(result: ProbeCallbackResult | undefined): ObservationOutcome | undefined {
+  return isFencedSilence(result?.observation) ? fencedSilenceStatus() : result?.observation?.outcome
+}
+
 /** Part 3 (runner) - re-grade one row through its probe and compare to the contract. */
 export async function regradeRow(
   probe: ProbeDefinition,
@@ -406,7 +415,7 @@ export async function regradeRow(
   let result: ProbeCallbackResult | undefined
   if (probe.lib && sources.headless !== undefined) result = probe.lib(sources.headless)
   else if (probe.term && sources.term !== undefined) result = await probe.term(sources.term)
-  const after = result?.observation?.outcome
+  const after = gradedOutcome(result)
   return {
     id: probe.id,
     before: undefined,
