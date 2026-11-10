@@ -149,6 +149,7 @@ type Mode =
   | "quantize-256"
   | "collapse-bright"
   | "deferred-paint"
+  | "ignore-58"
 
 /** A colour SGR, as opposed to a reset, a CUP or the SGR 4 underline seed the colour rows qualify. */
 const COLOUR_SGR = /\x1b\[(?:3[0-7]|4[0-7]|9[0-7]|10[0-7]|(?:38|48|58);[25];)/
@@ -332,6 +333,13 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
     }
     if (param >= 100 && param <= 107) {
       next.bg = resolve(mode, palette, "bg", { family: "bright", index: param - 100 }, suppressColour)
+      index += 1
+      continue
+    }
+    if (param === 58 && mode === "ignore-58") {
+      // This terminal does not know SGR 58, so it does not consume the sub-parameters: the walker
+      // continues into them, reaches the literal 0 of `58;2;255;0;128`, and resets the rendition —
+      // which drops the row's `\x1b[4m` seed and leaves plain text. Screen 5.0.2 behaves this way.
       index += 1
       continue
     }
@@ -723,6 +731,29 @@ for (const { ids, mode, cause } of QUANTISATION) {
     }
   }
 }
+
+/**
+ * @failure A colour row that asks only that the expected frame differ from the seed accepts a
+ *   terminal which painted NO colour at all. A terminal that does not implement SGR 58 but walks
+ *   the SGR parameter list code by code reaches the literal 0 inside `58;2;255;0;128` and resets
+ *   the rendition, so the row's `\x1b[4m` seed underline is dropped and the styled sample renders
+ *   as plain text. That plain frame still differs from the underlined seed, so the arm published
+ *   SUPPORTED for an underline colour the terminal never painted. Screen 5.0.2 did exactly this on
+ *   the Linux app runs of 2026-11-10 and the published map carried the false positive; xterm 411
+ *   shows the same digest signature (bytes not replayed). The 0 in the test colour is what exposes
+ *   such a walker: a colour with no 0 component would let the walker stop at 2 (dim) and still
+ *   differ from both references, which is why 255;0;128 stays in the fixture.
+ * @level l1
+ * @consumer The capture arm of sgr.underline.color on owned app contexts.
+ * @testonly none
+ */
+test("sgr.underline.color is inconclusive on a terminal that lacks SGR 58 and resets on the 0", async () => {
+  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+  const result = await run("sgr.underline.color", ctx)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.note ?? "").toContain("the expected frame is the no-attribute frame")
+  expect(result.pass).toBe(false)
+})
 
 for (const id of REVIEW_IDS) {
   test(`${id} is never graded from the colour-only fixture`, async () => {

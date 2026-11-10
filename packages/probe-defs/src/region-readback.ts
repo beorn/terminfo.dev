@@ -123,6 +123,17 @@ export interface RegionReadback {
   /** Independently authored full setup; the observed seed must match before any reset verdict. */
   setupReference?: string
   /**
+   * The frame that paints NO attribute at all — not the seed, which may carry the attribute the row
+   * qualifies. A colour claim may never read support from it. A terminal that does not implement the
+   * row's sequence but walks the SGR parameter list code by code reaches the literal `0` inside
+   * `58;2;255;0;128` and resets the rendition, so its styled sample equals plain text while still
+   * differing from an attributed seed: without this frame that difference reads as support. Screen
+   * 5.0.2 published exactly that false positive for `sgr.underline.color` (@dev/luna6, 2026-11-10;
+   * xterm 411 carries the same digest signature, bytes not replayed). Absent when the seed already
+   * paints nothing, where the `seed === expected` check below is this same test.
+   */
+  noAttribute?: string
+  /**
    * Qualify an immutable initial rendition with DECSC/DECRC before testing a reset. `expected`
    * paints the sample without setters, `seed` sets the full rendition and `edit` applies the reset.
    * Every subset must differ from the initial sample and every restore must return it exactly.
@@ -1289,6 +1300,9 @@ export async function captureRegionReadbackDecision(
         ...(spec.setupReference === undefined
           ? []
           : [{ role: "control" as const, label: `${id}: setup reference frame`, writes: spec.setupReference }]),
+        ...(spec.noAttribute === undefined
+          ? []
+          : [{ role: "control" as const, label: `${id}: no-attribute frame`, writes: spec.noAttribute }]),
       ]
   const frames: ObservationFrame[] = []
   let targetScreenshotRef: string | undefined
@@ -1504,12 +1518,15 @@ export async function captureRegionReadbackDecision(
     const ignored = spec.ignored === undefined ? undefined : digests[3]
     const referenceIndex = spec.ignored === undefined ? 3 : 4
     const setupReference = spec.setupReference === undefined ? undefined : digests[referenceIndex]
+    const noAttribute =
+      spec.noAttribute === undefined ? undefined : digests[referenceIndex + (spec.setupReference === undefined ? 0 : 1)]
     if (
       seed === undefined ||
       after === undefined ||
       expected === undefined ||
       (spec.ignored !== undefined && ignored === undefined) ||
-      (spec.setupReference !== undefined && setupReference === undefined)
+      (spec.setupReference !== undefined && setupReference === undefined) ||
+      (spec.noAttribute !== undefined && noAttribute === undefined)
     ) {
       throw new Error(
         `${id}: the capture-region decision reached the verdict with ${digests.length} of ${steps.length} digests`,
@@ -1527,6 +1544,7 @@ export async function captureRegionReadbackDecision(
       expected,
       ...(ignored !== undefined && { ignored }),
       ...(setupReference !== undefined && { setupReference }),
+      ...(noAttribute !== undefined && { noAttribute }),
       ...(discriminator && { discriminator }),
     })
     const cropRefusal = cropPositionRefusal({
@@ -1539,6 +1557,14 @@ export async function captureRegionReadbackDecision(
         ...(spec.setupReference === undefined
           ? []
           : [{ role: "the independent setup reference", rectangle: cropRectangles[referenceIndex] }]),
+        ...(spec.noAttribute === undefined
+          ? []
+          : [
+              {
+                role: "the no-attribute frame",
+                rectangle: cropRectangles[referenceIndex + (spec.setupReference === undefined ? 0 : 1)],
+              },
+            ]),
       ],
       response: observed,
       frames,
@@ -1569,6 +1595,20 @@ export async function captureRegionReadbackDecision(
         inconclusive(
           id,
           `${id}: the seed frame and the expected frame read the same cells, so this run cannot separate them`,
+          "insufficient-evidence",
+          assertionType,
+          cite(targetScreenshotRef, frames),
+        ),
+      )
+    }
+    if (noAttribute !== undefined && expected === noAttribute) {
+      // A frame with no attributes at all cannot witness a colour. This is not the `seed === expected`
+      // case above: the seed carries the attribute the row qualifies (an underline), so the terminal's
+      // reset of it still differs from the seed. The row asked for a colour; it showed none.
+      return review(
+        inconclusive(
+          id,
+          `${id}: the expected frame is the no-attribute frame, so this run cannot separate a colour from no colour: the terminal painted nothing for the sequence under test`,
           "insufficient-evidence",
           assertionType,
           cite(targetScreenshotRef, frames),

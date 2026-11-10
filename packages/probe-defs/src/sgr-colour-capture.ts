@@ -104,6 +104,16 @@ function frame(row: ColourRow, paint: string): string {
 }
 
 /**
+ * The frame that paints no attribute at all. A colour claim may never read support from it: a
+ * terminal that does not implement the row's sequence but walks the SGR parameter list code by code
+ * reaches the literal `0` inside `58;2;255;0;128` (or `38;2;255;128;0`) and resets the rendition,
+ * so the styled sample renders as plain text while still differing from a seed that carries an
+ * attribute. Screen 5.0.2 does exactly that (@dev/luna6, 2026-11-10): it emits `\x1b[4m\x1b[24m`
+ * for the underline-colour row's sequence and switches the underline off.
+ */
+const NO_ATTRIBUTE_FRAME = frame({ sequence: "", sibling: "", siblingLabel: "" }, "")
+
+/**
  * The eleven colour rows, keyed by the probe id that owns each claim. The target and the expected
  * frames paint the sequence under test; the ignored frame paints the sibling. The two degenerate
  * tests the oracle performs on those frames — expected differs from seed, expected differs from
@@ -120,6 +130,10 @@ export const COLOUR_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry"
       edit: frame(row, row.sequence),
       expected: frame(row, row.sequence),
       ignored: frame(row, row.sibling),
+      // Only the rows whose seed paints an attribute need this frame declared: for every other row
+      // the seed IS the no-attribute frame, so the oracle's existing `seed === expected` check
+      // already refuses a terminal that painted nothing.
+      ...(row.seed === undefined ? {} : { noAttribute: NO_ATTRIBUTE_FRAME }),
       timeoutMs: 5000,
       pollMs: 250,
       minRows: CURSOR_ROW,
