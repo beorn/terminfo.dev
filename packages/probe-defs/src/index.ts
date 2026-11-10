@@ -55,6 +55,8 @@ export type {
   AppSourceArtifact,
   DerivedSourceTreeArtifact,
   ProbeAssertion,
+  ProbeWitness,
+  ColourSiblingSeparationWitness,
   UngradedDiagnostic,
   NotTestedCoverage,
   HeadlessRuntimeIdentity,

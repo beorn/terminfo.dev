@@ -148,6 +148,91 @@ function parseCurrentSource(value: unknown, path: string): RunDraft["source"] {
   }
 }
 
+const WITNESS_DIGEST = /^sha256:[0-9a-f]{64}$/u
+
+function requireWitnessString(value: unknown, path: string, featureId: string, name: string): string {
+  if (typeof value !== "string" || value.length === 0) fail(path, `${featureId} witness missing ${name}`)
+  return value
+}
+
+function requireWitnessDigest(value: unknown, path: string, featureId: string, name: string): void {
+  if (typeof value !== "string" || !WITNESS_DIGEST.test(value)) fail(path, `${featureId} witness missing ${name}`)
+}
+
+function validateColourSiblingWitness(
+  witness: Record<string, unknown>,
+  featureId: string,
+  path: string,
+  results: readonly { featureId: string; criterionBranch?: string }[],
+): void {
+  const required = [
+    "kind",
+    "requestedRowId",
+    "requestedEncoding",
+    "siblingRowId",
+    "siblingEncoding",
+    "channel",
+    "runId",
+    "rectangle",
+    "requested",
+    "sibling",
+    "colour",
+    "outerTerminal",
+  ]
+  for (const key of required) {
+    if (!Object.hasOwn(witness, key)) fail(path, `${featureId} witness missing ${key}`)
+  }
+  rejectUnknownFields(witness, required, path, `${featureId} witness`)
+  if (witness.channel !== "fg" && witness.channel !== "bg") fail(path, `${featureId} witness missing channel`)
+  for (const key of ["requestedRowId", "requestedEncoding", "siblingRowId", "siblingEncoding", "runId"]) {
+    requireWitnessString(witness[key], path, featureId, key)
+  }
+  if (!object(witness.rectangle)) fail(path, `${featureId} witness missing rectangle`)
+  for (const key of ["x", "y", "width", "height"]) {
+    if (!Number.isSafeInteger(witness.rectangle[key])) fail(path, `${featureId} witness missing rectangle.${key}`)
+  }
+  if (!object(witness.requested)) fail(path, `${featureId} witness missing requested`)
+  for (const key of ["seed", "target", "expected", "ignored"]) {
+    requireWitnessDigest(witness.requested[key], path, featureId, `requested.${key}`)
+  }
+  if (!object(witness.sibling)) fail(path, `${featureId} witness missing sibling`)
+  for (const key of ["seed", "target"]) requireWitnessDigest(witness.sibling[key], path, featureId, `sibling.${key}`)
+  if (!object(witness.colour)) fail(path, `${featureId} witness missing colour`)
+  for (const key of ["requested", "assumption", "harnessProfile", "muxConfig"]) {
+    requireWitnessString(witness.colour[key], path, featureId, `colour.${key}`)
+  }
+  if (!object(witness.outerTerminal)) fail(path, `${featureId} witness missing outerTerminal`)
+  for (const key of ["id", "version", "rowId", "recordPath", "recordRunId"]) {
+    requireWitnessString(witness.outerTerminal[key], path, featureId, `outerTerminal.${key}`)
+  }
+  if (witness.outerTerminal.status !== "supported") fail(path, `${featureId} witness missing outerTerminal.status`)
+  const sibling = String(witness.siblingRowId)
+  if (!results.some((row) => row.featureId === sibling)) {
+    fail(path, `${featureId} witness sibling row ${sibling} is not in this run`)
+  }
+}
+
+function validateAssertionWitnesses(
+  assertions: readonly ReadAssertion[],
+  results: readonly { featureId: string; criterionBranch?: string }[],
+  path: string,
+): void {
+  for (const assertion of assertions) {
+    if (!Object.hasOwn(assertion, "witness") || assertion.witness === undefined) continue
+    if (assertion.kind !== "negative") fail(path, `${assertion.featureId} witness requires a negative assertion`)
+    const witness = assertion.witness
+    if (!object(witness) || typeof witness.kind !== "string") fail(path, `${assertion.featureId} witness missing kind`)
+    if (witness.kind !== "colour-sibling-separation") {
+      fail(path, `${assertion.featureId} unknown witness kind ${witness.kind}`)
+    }
+    const result = results.find((row) => row.featureId === assertion.featureId)
+    if (result?.criterionBranch !== witness.kind) {
+      fail(path, `${assertion.featureId} witness kind ${witness.kind} disagrees with criterionBranch`)
+    }
+    validateColourSiblingWitness(witness, assertion.featureId, path, results)
+  }
+}
+
 function rejectUnknownFields(
   value: Record<string, unknown>,
   allowed: readonly string[],
@@ -1299,7 +1384,7 @@ export function parseRun(
     if (schemaVersion === 4) {
       rejectUnknownFields(
         assertion,
-        ["featureId", "kind", "assertionType", "rawReplyRef", "expected", "observed", "action", "note"],
+        ["featureId", "kind", "assertionType", "rawReplyRef", "expected", "observed", "action", "note", "witness"],
         path,
         "assertion",
       )
@@ -1349,6 +1434,7 @@ export function parseRun(
     raw.screenshotRefs as string[],
     textSnapshotRefs,
   )
+  if (schemaVersion === 4) validateAssertionWitnesses(assertions, results, path)
   // Version-2 collectors freeze qualification tests before seal. Validate their declared observer
   // context here, without recomputing a support result or changing historical single-recipe reads.
   if (manifest.textQualification && "recipes" in manifest.textQualification) {
