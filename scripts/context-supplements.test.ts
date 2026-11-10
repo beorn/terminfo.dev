@@ -221,16 +221,29 @@ const screen = (runId: string, measured: Measured, config: string, measuredAt = 
   run("screen", runId, measured, null, measuredAt, { config })
 
 describe("truecolor-on supplement (33151)", () => {
-  const base = run("screen", "screen-default", { [FG]: "unsupported", [BG]: "unsupported", "sgr.bold": "supported" }, null, at, {
-    config: MUX_DEFAULT_CONFIG,
-  })
-  const truecolor = screen("screen-truecolor", { [FG]: "supported", [BG]: "unsupported", [TRUECOLOR]: "supported" }, SCREEN_TRUECOLOR_CONFIG)
+  const base = run(
+    "screen",
+    "screen-default",
+    { [FG]: "unsupported", [BG]: "unsupported", "sgr.bold": "supported" },
+    null,
+    at,
+    {
+      config: MUX_DEFAULT_CONFIG,
+    },
+  )
+  const truecolor = screen(
+    "screen-truecolor",
+    { [FG]: "supported", [BG]: "unsupported", [TRUECOLOR]: "supported" },
+    SCREEN_TRUECOLOR_CONFIG,
+  )
 
   it("keys the Screen run on its recorded config, never on permissions", () => {
     expect(supplementOf(truecolor.subject)).toBe(TRUECOLOR_ON)
     expect(supplementOf(base.subject)).toBeUndefined()
     // A term run whose config happens to equal the Screen value is not a supplement: Apps key on permissions only.
-    expect(supplementOf({ kind: "term", id: "screen", os: "linux", config: SCREEN_TRUECOLOR_CONFIG, permissions: null })).toBeUndefined()
+    expect(
+      supplementOf({ kind: "term", id: "screen", os: "linux", config: SCREEN_TRUECOLOR_CONFIG, permissions: null }),
+    ).toBeUndefined()
   })
 
   it("keeps the context keys and every other cell, and never changes a decided cell's status", () => {

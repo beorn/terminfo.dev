@@ -790,7 +790,10 @@ function applySupplements(
     const prior = cells[id]
     const priorStatus = prior?.featureResult?.status ?? prior?.result.status
     const priorDecided = priorStatus !== undefined && decided.has(priorStatus)
-    if (priorDecided && !newestFirst.some(({ supplement }) => supplement.notesDecided && supplement.featureIds.includes(id))) {
+    if (
+      priorDecided &&
+      !newestFirst.some(({ supplement }) => supplement.notesDecided && supplement.featureIds.includes(id))
+    ) {
       continue
     }
     const source = newestFirst.find(
