@@ -984,7 +984,10 @@ function evaluateSgrReadback(
   for (let token = remaining.shift(); token !== undefined; token = remaining.shift()) {
     const selector = leadingSgrCode(token)
     // Underline reports have one style subparameter, from 0 (off) through 5 (dashed).
-    if (selector === 4 && token.includes(":") && !/^4:[0-5]$/.test(token)) {
+    // "4:" is a collapsed style: no token. It is coverage and falls through to not-tested so
+    // the capture arm can run. A style outside 0 to 5, or extra subparameters, stays malformed
+    // (@cto 429f006d).
+    if (selector === 4 && token.includes(":") && token !== "4:" && !/^4:[0-5]$/.test(token)) {
       unmeasured = `DECRQSS underline parameter ${token} has an unqualified style or extra subparameters`
       break
     }

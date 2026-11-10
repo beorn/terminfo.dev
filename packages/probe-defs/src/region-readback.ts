@@ -1121,6 +1121,33 @@ export async function sgrAttributeCaptureResult(
     }
     if (target === plain) return finish("unsupported", `${id}: drew nothing for this SGR`)
     if (phases.some(({ name }) => name === "single underline") && target === digest("single underline")) {
+      // Same multiplexer demotion as the colour witness: probe-todo, visual-review, and the
+      // note that this run cannot separate the mux from its outer terminal (@cto 08:34).
+      if (ctx.mux !== undefined) {
+        const note = `${id}: drawn as single underline; this capture through multiplexer ${ctx.mux} cannot separate it from its outer terminal, and this run has no outer control for the sequence`
+        const targetFrame = measured.find(({ name }) => name === "target")?.capture.frame
+        return {
+          pass: false,
+          note,
+          response: JSON.stringify({
+            region,
+            pixelGeometry,
+            geometrySource: reported.source,
+            stability,
+            samples: Object.fromEntries(measured.map(({ name, capture }) => [name, capture.regionDigest])),
+          }),
+          criterionBranch: "visual-review",
+          tests: [{ id: "review", status: "probe-todo", reason: note }],
+          observation: {
+            outcome: "inconclusive",
+            assertionType: "screenshot",
+            reason: "insufficient-evidence",
+            screenshotRef: targetFrame?.ref ?? frames.at(-1)?.ref,
+            frames,
+            note,
+          },
+        }
+      }
       return finish("unsupported", `${id}: drawn as single underline`)
     }
     if (id !== "sgr.inverse" && target === digest("inverse")) return finish("unsupported", `${id}: drawn as inverse`)
@@ -1675,8 +1702,9 @@ export async function captureRegionReadbackDecision(
     // `ignored` is the sequence running while dropping the attribute the row claims. Both are
     // measured negatives of a change claim. A declared no-change instead requires seed == expected;
     // only its distinct ignored control can establish the measured negative.
-    const unsupported =
-      (discriminator?.expected !== "no-change" && after === seed) || (ignored !== undefined && after === ignored)
+    const untouched = discriminator?.expected !== "no-change" && after === seed
+    const matchedIgnored = ignored !== undefined && after === ignored
+    const unsupported = untouched || matchedIgnored
     if (!supported && !unsupported && rowGroups && rowGroupsNegative(groupReads)) {
       return rowGroupsUnsupported(id, spec.edit, rowGroups, groupReads, observed, {
         assertionType,
@@ -1732,9 +1760,15 @@ export async function captureRegionReadbackDecision(
         outcome: supported ? "supported" : "unsupported",
         assertionType,
         ...cite(targetScreenshotRef, frames),
-        ...(spec.setupReference !== undefined && after === ignored
-          ? { note: `${id}: the reset also cleared the preserved attribute` }
-          : {}),
+        ...(supported
+          ? {}
+          : {
+              note: untouched
+                ? `${id}: the sequence left the screen untouched; the frame equals the seed and differs from the expected frame`
+                : spec.setupReference !== undefined && after === ignored
+                  ? `${id}: the reset also cleared the preserved attribute`
+                  : `${id}: the frame equals the ignored-attribute frame, not the expected frame`,
+            }),
       },
       assertions: [
         {

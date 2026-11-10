@@ -208,6 +208,7 @@ test("viewport hold declares its measured library and disposable app pixel route
   expect(viewport?.termAssertionType).toBe("screenshot")
   expect(viewport?.termNeedsGeometry).toBe(true)
   expect(viewport?.termNeedsDisposable).toBe(true)
+  expect(viewport?.wallMs).toBe(180_000)
   expect(contractGaps(scrollbackProbes, SCROLLBACK_CONTRACT).unknown).toEqual([])
 })
 

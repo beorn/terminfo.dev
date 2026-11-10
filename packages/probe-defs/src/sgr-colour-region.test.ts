@@ -723,7 +723,7 @@ const QUANTISATION: ReadonlyArray<{ ids: readonly string[]; mode: Mode; cause: s
     cause: "quantises truecolour to the xterm-256 palette",
   },
   {
-    ids: ["sgr.fg.256", "sgr.bg.256", "sgr.underline-color-indexed"],
+    ids: ["sgr.fg.256", "sgr.bg.256"],
     mode: "quantize-256",
     cause: "quantises 256 colours to the 16-colour palette",
   },
@@ -878,7 +878,10 @@ test("the modelled 256-to-16 quantiser keeps entries 0-15 and sends others to th
   // on rendered pixels that a palette alias could make equal for the wrong reason.
   for (let index = 0; index < 16; index += 1) expect(nearest16Index(index)).toBe(index)
   expect(nearest16Index(67)).toBe(8)
+  // Index 164 shares index 5's 16-colour entry, so it cannot decide the indexed underline row.
   expect(nearest16Index(164)).toBe(nearest16Index(5))
+  expect(nearest16Index(2)).toBe(2)
+  expect(nearest16Index(2)).not.toBe(nearest16Index(5))
 })
 
 test("the colour fixture separates colours, and collapses the sibling pairs it should", async () => {
@@ -915,6 +918,14 @@ test("the colour fixture separates colours, and collapses the sibling pairs it s
     expect(await read("collapse", "\x1b[31mX", palette)).toBe(await read("collapse", "\x1b[34mX", palette))
     expect(await read("collapse-bright", "\x1b[91mX", palette)).toBe(
       await read("collapse-bright", "\x1b[31mX", palette),
+    )
+    // The indexed underline sibling is a different 16-colour entry, so a 16-colour terminal can separate it.
+    const indexed = COLOUR_CAPTURE["sgr.underline-color-indexed"]
+    if (indexed?.expected === undefined || indexed.ignored === undefined) {
+      throw new Error("sgr.underline-color-indexed must name both frames")
+    }
+    expect(await readFrame("quantize-256", indexed.expected, palette)).not.toBe(
+      await readFrame("quantize-256", indexed.ignored, palette),
     )
     // Each negative mode collapses exactly the pair the row ships as its sibling.
     for (const { ids, mode } of QUANTISATION) {
