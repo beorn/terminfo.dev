@@ -1633,9 +1633,15 @@ export async function captureRegionReadbackDecision(
         ),
       )
     }
-    // Reached only with seed !== expected, so a walked frame equal to the expected frame also differs
-    // from the seed: the crop saw the walked attribute.
-    if (spec.walkedAttribute !== undefined && walked !== undefined && expected === walked && after === expected) {
+    // A walked frame equal to the seed would mean the crop cannot see the walked attribute, so it is
+    // excluded here in code (a no-change row passes the seed === expected refusal above).
+    if (
+      spec.walkedAttribute !== undefined &&
+      walked !== undefined &&
+      walked !== seed &&
+      expected === walked &&
+      after === expected
+    ) {
       const { sequence, attribute } = spec.walkedAttribute
       const reason = `${id}: painted ${attribute} for SGR ${sequence}, the same cells as the frame that sets ${attribute} on purpose: the terminal walked the parameters code by code instead of running the sequence`
       return {

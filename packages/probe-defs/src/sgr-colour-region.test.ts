@@ -511,6 +511,7 @@ function wholeDigest(grid: Cell[][]): string {
 interface ColourTerminal {
   ctx: TermProbeSource
   writes: string[]
+  screen: Screen
 }
 
 /**
@@ -580,7 +581,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => null,
   }
-  return { ctx, writes }
+  return { ctx, writes, screen }
 }
 
 async function run(id: string, ctx: TermProbeSource) {
@@ -852,6 +853,41 @@ test("a terminal that walks the indexed underline-colour parameters reads unsupp
   expect(result.tests).toEqual([{ id: "criterion", status: "unsupported", assertionRefs: [0] }])
   expect(result.assertions).toHaveLength(1)
   expect(result.pass).toBe(false)
+})
+
+/**
+ * @failure A frame a code-by-code walker paints with blink on is sampled at whatever blink phase
+ *   each capture lands, so the same terminal reads differently run to run (#33181: xterm turned the
+ *   5 of `58;5;5` into blink). Every frame the two underline-colour rows compare must hold still on
+ *   a walker: each sibling ends with blink-off (25), and `58;2;255;0;128` reaches its own 0, which
+ *   resets the underline onto the no-attribute witness (@cto 30b12293).
+ * @level l1
+ * @consumer sgr.underline.color and sgr.underline-color-indexed on owned app contexts.
+ * @testonly none
+ */
+test("a walker paints every compared underline-colour frame static", async () => {
+  for (const id of ["sgr.underline.color", "sgr.underline-color-indexed"]) {
+    const spec = COLOUR_CAPTURE[id]
+    if (!spec) throw new Error(`${id}: no colour capture row`)
+    const writes = [
+      spec.seed,
+      `${spec.seed}${spec.edit}`,
+      spec.expected,
+      spec.ignored,
+      spec.noAttribute,
+      spec.walkedAttribute?.frame,
+    ].filter((write): write is string => write !== undefined)
+    expect(writes.length, id).toBeGreaterThanOrEqual(5)
+    for (const write of writes) {
+      const { ctx, screen } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+      ctx.write(write)
+      const blinking = screen.grid.flat().filter((cell) => cell.blink && cell.char !== " ")
+      expect(blinking.map((cell) => cell.char).join(""), `${id}: ${JSON.stringify(write)}`).toBe("")
+    }
+  }
+  const result = await run("sgr.underline.color", colourTerminal("ignore-58", PALETTES[0] as Palette).ctx)
+  expect(result.criterionBranch).toBe("colour-no-attribute-witness")
+  expect(result.observation?.outcome).toBe("unsupported")
 })
 
 /**

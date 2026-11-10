@@ -90,9 +90,13 @@ const COLOUR_ROWS: Record<string, ColourRow> = {
     sibling: "\x1b[48;2;0;255;135m",
     siblingLabel: "the RGB 0;255;135, the nearest xterm-256 entry to 0;255;128",
   },
+  // A walker of the sibling turns blink on with its 5 and off again with the trailing 25, so the
+  // frame holds still and equals the seed; a terminal with 58 reads index 5 and 25 is a no-op. The
+  // sequence itself needs no change: a walker's 0 resets the underline, which lands on the
+  // no-attribute witness (@cto 30b12293, #33181).
   "sgr.underline.color": {
     sequence: "\x1b[58;2;255;0;128m",
-    sibling: "\x1b[58;5;5m",
+    sibling: "\x1b[58;5;5;25m",
     siblingLabel: "SGR 58;5;5, another underline colour",
     seed: "\x1b[4m",
   },
