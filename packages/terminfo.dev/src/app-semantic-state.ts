@@ -385,6 +385,23 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Alacritty 0.17.0's locked VTE 0.15.0 OSC parser has no OSC 710 font-selection handler. Read the complete OSC dispatch in vte-0.15.0/src/ansi.rs:1329-1525 (crate SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd, pinned by Alacritty's Cargo.lock:2119-2125): 710 reaches only the unhandled Debug path at 1341/1523, not Alacritty's Term handler. The existing Warn launch has no qualified same-run report reader; silence is not Unsupported.",
   },
+  // Alacritty does not implement OSC 133/633: the sequence is dropped at the parser, before any
+  // handler runs, so this is a source read of an absent feature rather than a missing probe. The
+  // version link is the shipped crate, not the engine receipt alone: Alacritty 0.17.0 pins
+  // alacritty_terminal 0.26.0 (alacritty/Cargo.toml:3,13-15 at tag v0.17.0, file SHA256
+  // ccbe547a224e9a13d3a08e6cd24f2c1fd1c92c28e02eda9324c14892244238ff), which is the crate the
+  // App backend builds (receipt: upstreamCrate alacritty_terminal 0.26.0, crate SHA256
+  // bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59), and that crate's locked
+  // VTE 0.15.0 is the same dispatch already cited for its OSC 710 row.
+  ...promptFeatures.map((featureId) => ({
+    kind: "term",
+    id: "alacritty",
+    version: "0.17.0",
+    os: "linux",
+    featureId,
+    reason:
+      "Untestable (no way): Alacritty 0.17.0 does not implement OSC 133 or OSC 633 at all - the sequence is dropped at the parser, so no prompt mark exists to observe. This is a source read of an absent feature, not a silent runtime probe. It ships alacritty_terminal 0.26.0 (alacritty/Cargo.toml:3,13-15 at tag v0.17.0, file SHA256 ccbe547a224e9a13d3a08e6cd24f2c1fd1c92c28e02eda9324c14892244238ff), the crate this App backend is built from (engine receipt: upstreamCrate alacritty_terminal 0.26.0, crate SHA256 bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59), and that crate's locked VTE 0.15.0 (crate SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd) dispatches only OSC 0/2, 4, 8, 10-12, 22, 50, 52, 104 and 110-112: ansi.rs:1329-1525 sends every other code to `_ => unhandled(params)` at :1523, whose Debug line at :1341 never reaches the handler. alacritty_terminal 0.26.0 has no prompt-mark code at all - impl Handler for Term (src/term/mod.rs:1059) declares no OSC 133/633 method, and semantic_escape_chars there is selection word separators - and Alacritty's own escape table (extra/man/alacritty-escapes.7.scd:215-255 at the same tag, file SHA256 bf0e0fdadcb3be999e810ba07794f305f8ebb749491c872f2bf84970fa13da44) lists no 133 or 633.",
+  })),
   {
     kind: "mux",
     id: "screen",
