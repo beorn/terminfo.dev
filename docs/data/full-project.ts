@@ -11,7 +11,7 @@
 import type { ContextCandidate } from "./run-selection.ts"
 import { pickContextRun } from "./run-selection.ts"
 import type { FeatureResultStatus } from "@terminfo/probe-defs"
-import { originalRunFor, type SelectedProjection } from "./selected-results.ts"
+import { originalRunFor, type SelectedContextCell, type SelectedProjection } from "./selected-results.ts"
 import { scopeAggregate, type ScopeResult } from "./full-scope.ts"
 import {
   environmentGroupIds,
@@ -76,6 +76,12 @@ export interface FullProjectRows {
   notCollected: number
   complete: boolean
   recordedPositions: number
+}
+
+/** The note beside a cell a context supplement read: its qualifier or open reason, then the declared default. */
+function supplementNote(supplement: NonNullable<SelectedContextCell["supplement"]>): string {
+  const head = supplement.filled ? supplement.qualifier : `${supplement.qualifier}: ${supplement.open}`
+  return supplement.declaredDefault ? `${head}; declared, ${supplement.declaredDefault}` : head
 }
 
 /**
@@ -178,6 +184,7 @@ function buildRow(
       throw new Error(`Current context ${picked.run.key}/${id} lacks its computed feature result`)
     }
     const original = picked.run.context?.cells[id]?.run
+    const supplement = picked.run.context?.cells[id]?.supplement
     const source = original ?? firstOnSuite
     const hold =
       source.suiteId !== args.requiredSuiteId
@@ -188,7 +195,7 @@ function buildRow(
       id,
       state: isEnvironmentGroup(id) ? cell.status : (featureResult?.status ?? cell.status),
       method: cell.assertionType ?? null,
-      note: null,
+      note: supplement ? supplementNote(supplement) : null,
       reason: cell.reason ?? null,
       origin: { runId: source.runId, resultId: id },
       suiteId: source.suiteId,

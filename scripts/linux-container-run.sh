@@ -562,18 +562,35 @@ if [[ "${1:-}" == "--inside" ]]; then
     default)
       clipboard_permissions='clipboard: read=ask,write=allow; OSC52: write=run,read=not-run'
       ;;
-    allow|deny-read)
+    allow)
+      # Each terminal's own read-allowed setting, read from its pinned version (issue 33119, @cto 53ee5175). The same
+      # args are CLIPBOARD_ALLOW_ARGS in packages/terminfo.dev/src/linux-clipboard.ts, which re-reads the live argv;
+      # clipboard-allow-args.test.ts keeps the two equal. WezTerm has no such setting: it runs as it is, with the
+      # fixture, and its result is measured, never declared.
+      case "$target_id" in
+        kitty) target_clipboard_args=(-o 'clipboard_control=write-clipboard read-clipboard') ;;
+        ghostty) target_clipboard_args=('--clipboard-read=allow') ;;
+        alacritty) target_clipboard_args=(-o 'terminal.osc52="CopyPaste"') ;;
+        xterm) target_clipboard_args=(-xrm '*disallowedWindowOps: GetChecksum,GetIconTitle,GetWinTitle,SetXprop') ;;
+        wezterm) target_clipboard_args=() ;;
+        *)
+          echo "$target_id: clipboard profile allow has no declared control on this target" >&2
+          exit 2
+          ;;
+      esac
+      if [[ "$target_id" == wezterm ]]; then
+        clipboard_permissions='clipboard: read=no-setting,write=allow'
+      else
+        clipboard_permissions='clipboard: read=allow,write=allow'
+      fi
+      ;;
+    deny-read)
       if [[ "$target_id" != kitty ]]; then
         echo "$target_id: clipboard profile $TERMINFO_CLIPBOARD_PROFILE has no declared control on this target" >&2
         exit 2
       fi
-      if [[ "$TERMINFO_CLIPBOARD_PROFILE" == allow ]]; then
-        target_clipboard_args=(-o 'clipboard_control=write-clipboard read-clipboard')
-        clipboard_permissions='clipboard: read=allow,write=allow'
-      else
-        target_clipboard_args=(-o 'clipboard_control=write-clipboard')
-        clipboard_permissions='clipboard: read=deny,write=allow'
-      fi
+      target_clipboard_args=(-o 'clipboard_control=write-clipboard')
+      clipboard_permissions='clipboard: read=deny,write=allow'
       ;;
     *) echo "Unknown clipboard profile: $TERMINFO_CLIPBOARD_PROFILE" >&2; exit 2 ;;
   esac

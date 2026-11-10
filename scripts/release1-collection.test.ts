@@ -1022,7 +1022,8 @@ it.each([
         expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
       }
       expect(collector).toHaveBeenCalledTimes(1)
-      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(7)
+      // Five Linux App default launches, two mux launches, then one read-allowed supplement per Linux App (33119).
+      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(12)
       // Both Linux mux rows run inside the Kitty container through the launcher's --mux arm.
       for (const id of ["tmux", "screen"]) {
         const row = pass.contexts.find(
@@ -1079,6 +1080,39 @@ it.each([
         expect(readFileSync(join(output, "launcher.stderr.log"), "utf8")).toBe("launcher fixture diagnostic")
         if (id === "kitty") expect(row?.error).toMatch(/exited 17/)
         else expect(readFileSync(join(output, "fixture-run", "raw", "v2-run.json"), "utf8")).toBe("{}")
+        // The supplement is its own launch with only its two ids, kept on the default row: a failure is visible
+        // there and never changes the default row's own status or error.
+        const supplementOutput = join(pass.directory, "linux", `${id}.read-allowed`)
+        expect(launcher).toHaveBeenCalledWith(
+          "bash",
+          [
+            "scripts/linux-container-run.sh",
+            "--target",
+            id,
+            "--preset",
+            id === "kitty" ? "current" : "default",
+            "--clipboard-profile",
+            "allow",
+            "--ids",
+            "extensions.osc52-read,extensions.osc52-clipboard",
+            supplementOutput,
+          ],
+          expect.objectContaining({ env: expect.objectContaining({ TERMINFO_PROBE_HASH: pass.probeHash }) }),
+        )
+        expect(row?.supplements).toHaveLength(1)
+        expect(row?.supplements?.[0]).toMatchObject({
+          name: "read-allowed",
+          featureIds: ["extensions.osc52-read", "extensions.osc52-clipboard"],
+          status: "failed",
+          directory: supplementOutput,
+        })
+        expect(row?.supplements?.[0]?.runId).toMatch(/^[0-9a-f]{32}$/)
+        expect(row?.supplements?.[0]?.error).toContain(`${id}/linux read-allowed supplement`)
+      }
+      for (const row of pass.contexts.filter(
+        (entry) => entry.context.kind !== "term" || entry.context.os !== "linux",
+      )) {
+        expect(row.supplements, `${row.context.id}/${row.context.os}`).toBeUndefined()
       }
       expect(readFileSync(original, "utf8")).toBe(originalBytes)
       if (inputChange === "blocked-hosted" || inputChange === "blocked-macos") {

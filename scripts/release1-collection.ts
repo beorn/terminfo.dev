@@ -36,6 +36,7 @@ import {
   type RunDraft,
 } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
+import { LINUX_SUPPLEMENTS, type ContextSupplement } from "../docs/data/context-supplements.ts"
 import { decodeCollectorDraft } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
@@ -89,6 +90,14 @@ function linuxLiveArgs(kind: CollectionContext["kind"], id: string): string[] {
     "default",
     ...(kind === "mux" ? ["--mux", id] : []),
   ]
+}
+
+/** The supplement's launcher argv: the row's own live flags with its profile pair replaced, then its ids. */
+function supplementArgs(context: CollectionContext, supplement: ContextSupplement, ids: readonly string[]): string[] {
+  const live = linuxLiveArgs(context.kind, context.id)
+  const profile = live.indexOf("--clipboard-profile")
+  if (profile < 0) throw new Error(`${context.id}: live launcher flags carry no clipboard profile to replace`)
+  return [...live.slice(0, profile), ...supplement.launcherArgs, ...live.slice(profile + 2), "--ids", ids.join(",")]
 }
 
 /** Discover the existing launcher's retained raw file on either successful or failed exit. */
@@ -347,9 +356,25 @@ export interface CollectionPass {
     transport?: CollectionPass["transport"]
     error?: string
     reason?: string
+    /** Every declared supplement of this row, run or not, so a missing one is visible and never read as no result. */
+    supplements?: SupplementRow[]
   }>
   errors: string[]
   complete: boolean
+}
+
+export interface SupplementRow {
+  name: string
+  featureIds: string[]
+  runId: string
+  status: "not-started" | "classified" | "failed"
+  /** The run's own subject.permissions, read from the classified run. */
+  permissions?: string
+  rawRun?: string
+  directory?: string
+  classification?: ReturnType<typeof classifyDevelopmentRun>
+  error?: string
+  reason?: string
 }
 
 /**
@@ -867,6 +892,22 @@ export async function collectPass(
       writeFileSync(handed.path, `${JSON.stringify(retained, null, 2)}\n`)
     }
   }
+  for (const row of pass.contexts) {
+    const { context } = row
+    if (context.route !== "linux-container" || context.kind !== "term") continue
+    const declared = LINUX_SUPPLEMENTS[context.id] ?? []
+    if (declared.length === 0) continue
+    row.supplements = declared.map((supplement) =>
+      runSupplement(context, supplement, {
+        directory,
+        sourceRevision,
+        snapshot,
+        suites,
+        catalogIds,
+        probeIds,
+      }),
+    )
+  }
   const eligible = pass.contexts
   for (const [path, hash] of Object.entries(inputSha256)) {
     try {
@@ -887,6 +928,86 @@ export async function collectPass(
     eligible.every((row) => row.summary?.complete === true)
   writeFileSync(join(directory, "pass.json"), `${JSON.stringify(pass, null, 2)}\n`, { flag: "wx" })
   return pass
+}
+
+/**
+ * One supplement launch: its own draft and run id, only its declared ids (narrowed by the pass's selection), and its
+ * classified run kept beside the default row. A failure stays on the supplement and never touches the default row.
+ */
+function runSupplement(
+  context: CollectionContext,
+  supplement: ContextSupplement,
+  pass: {
+    directory: string
+    sourceRevision: string
+    snapshot: ReturnType<typeof probeSuiteSnapshot>
+    suites: Parameters<typeof parseRun>[3]
+    catalogIds: string[]
+    probeIds: string[] | undefined
+  },
+): SupplementRow {
+  const ids = supplement.featureIds.filter((id) => pass.probeIds === undefined || pass.probeIds.includes(id))
+  const row: SupplementRow = {
+    name: supplement.name,
+    featureIds: [...supplement.featureIds],
+    runId: randomBytes(16).toString("hex"),
+    status: "not-started",
+  }
+  if (ids.length === 0) {
+    row.reason = "The pass's probe selection excludes every id this supplement declares"
+    return row
+  }
+  const label = `${labelOf(context)} ${supplement.name} supplement`
+  try {
+    const draft = initializeRunDraft({
+      source: { kind: "live" },
+      runId: row.runId,
+      sourceRevision: pass.sourceRevision,
+      manifest: derivedSuiteManifest(pass.snapshot),
+      intendedSubject: { kind: context.kind, id: context.id, os: context.os },
+    })
+    recordCollectorSelection(draft, ids)
+    const draftPath = join(pass.directory, `${context.kind}-${context.id}-${context.os}.${supplement.name}.draft.json`)
+    writeFileSync(draftPath, `${JSON.stringify(draft, null, 2)}\n`, { flag: "wx" })
+    row.rawRun = draftPath
+    const output = join(pass.directory, "linux", `${context.id}.${supplement.name}`)
+    row.directory = output
+    mkdirSync(output, { recursive: true })
+    runChild(
+      ["bash", "scripts/linux-container-run.sh", ...supplementArgs(context, supplement, ids), output],
+      label,
+      { stdout: join(output, "launcher.stdout.log"), stderr: join(output, "launcher.stderr.log") },
+      {
+        TERMINFO_CAPTURE_RUN_ID: row.runId,
+        TERMINFO_PROBE_HASH: pass.snapshot.probeHash,
+        TERMINFO_SOURCE_REVISION: pass.sourceRevision,
+      },
+    )
+    const path = linuxRawRun(output, row.runId)
+    if (!path) throw new Error(`Linux launcher produced no raw run in ${output}`)
+    row.rawRun = path
+    const run = parseRun(path, readFileSync(path, "utf8"), pass.catalogIds, pass.suites)
+    if (
+      run.schemaVersion !== 4 ||
+      run.subject.kind !== context.kind ||
+      run.subject.id !== context.id ||
+      run.subject.os !== context.os
+    ) {
+      throw new Error(`raw run does not identify the expected ${context.kind}:${context.id} context`)
+    }
+    if (run.runId !== row.runId) throw new Error(`Collector changed logical runId for ${label}`)
+    if (run.sourceRevision !== pass.sourceRevision) {
+      throw new Error(`raw source ${run.sourceRevision} differs from pass source ${pass.sourceRevision}`)
+    }
+    if (!run.subject.permissions) throw new Error(`${label} run records no permissions`)
+    row.permissions = run.subject.permissions
+    row.classification = classifyDevelopmentRun(run)
+    row.status = "classified"
+  } catch (error) {
+    row.error = `${label}: ${error instanceof Error ? error.message : String(error)}`
+    row.status = row.directory ? "failed" : "not-started"
+  }
+  return row
 }
 
 /** Dispatch each existing hosted matrix once and retain every job's companion artifacts. */
