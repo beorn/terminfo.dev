@@ -205,6 +205,11 @@ export async function withTTYQueryTrace<T>(
   }
 }
 
+/** Drop a queued operation that will not finish, so the next probe is not stuck behind it. */
+export function releaseTTYQueue(): void {
+  ttyOperations.set(process.stdin, Promise.resolve())
+}
+
 /** Serialize whole terminal operations; queries inside one operation run inline. */
 export function withTTYOperation<T>(
   fn: () => Promise<T>,
