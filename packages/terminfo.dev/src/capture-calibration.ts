@@ -26,6 +26,14 @@ function validateFrame(frame: CapturedFrame): void {
   }
 }
 
+/**
+ * A full-width horizontal strip of the window, in window pixels, that the terminal's own chrome repaints by itself:
+ * Warp's title bar shows an "Update Warp" pill about 3 s after launch (33056, @cto f15dec92). Declared per terminal;
+ * absent keeps the whole-window rule. Inside it, changes are excused for the outside-grid comparison and the restore
+ * match only, and the record states the band and how many pixels changed in it. It may not touch the grid.
+ */
+export type CaptureChromeBand = { readonly y: number; readonly height: number; readonly reason: string }
+
 function equal(left: CapturedFrame, right: CapturedFrame): boolean {
   validateFrame(left)
   validateFrame(right)
@@ -460,6 +468,7 @@ export async function calibrateCaptureOrigin({
   timeoutMs,
   captureRaw,
   collectorLaunched = false,
+  chromeBand,
 }: {
   ctx: TermProbeSource
   pixelGeometry?: CapturePixelGeometry
@@ -467,7 +476,19 @@ export async function calibrateCaptureOrigin({
   captureRaw: (label: string, deadline: number) => Promise<CapturedFrame>
   /** Verified collector-owned disposable session: set visibility before painting and restore set. */
   collectorLaunched?: boolean
+  /** The terminal's declared self-repainting chrome strip; absent keeps the whole-window rule. */
+  chromeBand?: CaptureChromeBand
 }): Promise<NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }> {
+  if (
+    chromeBand &&
+    (!Number.isSafeInteger(chromeBand.y) ||
+      !Number.isSafeInteger(chromeBand.height) ||
+      chromeBand.y < 0 ||
+      chromeBand.height < 1 ||
+      chromeBand.reason.trim() === "")
+  ) {
+    throw new Error(`Capture calibration chrome band must be integer y >= 0, height >= 1, with a reason: ${JSON.stringify(chromeBand)}`)
+  }
   if (![ctx.rows, ctx.cols].every((value) => Number.isSafeInteger(value) && value >= 2)) {
     throw new Error("Capture calibration requires a verified grid of at least 2x2 cells")
   }
@@ -539,6 +560,26 @@ export async function calibrateCaptureOrigin({
   let baseline: CapturedFrame | undefined
   let observedPaint: CapturedFrame | undefined
   let failure: unknown
+  // The band excuses nothing until it is proven clear of the witnessed grid; the restore match stays strict before that.
+  let bandClearOfGrid = false
+  const inBand = (y: number) => chromeBand !== undefined && y >= chromeBand.y && y < chromeBand.y + chromeBand.height
+  /** Pixels that differ from `reference` inside the band; any difference outside it makes the frames unequal. */
+  const bandDifference = (frame: CapturedFrame, reference: CapturedFrame): { equalOutside: boolean; changed: number } => {
+    validateFrame(frame)
+    validateFrame(reference)
+    if (frame.width !== reference.width || frame.height !== reference.height) {
+      throw new Error("Capture calibration window dimensions changed")
+    }
+    let changed = 0
+    for (let offset = 0; offset < frame.rgba.length; offset += 4) {
+      if ([0, 1, 2, 3].every((channel) => frame.rgba[offset + channel] === reference.rgba[offset + channel])) continue
+      if (!inBand(Math.floor(offset / 4 / frame.width))) return { equalOutside: false, changed }
+      changed++
+    }
+    return { equalOutside: true, changed }
+  }
+  const excused: Array<{ stage: string; changed: number }> = []
+  let result: (NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }) | undefined
   const eraseVisibleGrid = collectorLaunched
     ? Array.from({ length: ctx.rows }, (_unused, row) => cursorTo(row, 0) + clearLine()).join("") + cursorHome()
     : "\x1b[2J\x1b[H"
@@ -594,7 +635,14 @@ export async function calibrateCaptureOrigin({
     const { grid, fillets } = rectangle(solidFrame, (offset) => rgbAt(solidFrame, offset, witness))
     const filletMask = new Set<number>()
     for (const fillet of fillets) for (const key of fillet.holes) filletMask.add(key)
-    const outsideUnchanged = (frame: CapturedFrame): EdgeBlend[] => {
+    // The band may not reach the grid or the one-pixel blend line beside it, so no paint the grid owns is excused.
+    if (chromeBand && chromeBand.y < grid.y + grid.height + 1 && chromeBand.y + chromeBand.height > grid.y - 1) {
+      throw refusal(
+        `Capture calibration declared chrome band y ${chromeBand.y}..${chromeBand.y + chromeBand.height - 1} overlaps the witnessed grid rows ${grid.y}..${grid.y + grid.height - 1} (with its edge line)`,
+      )
+    }
+    bandClearOfGrid = chromeBand !== undefined
+    const outsideUnchanged = (frame: CapturedFrame, stage: string): EdgeBlend[] => {
       validateFrame(frame)
       if (frame.width !== before.width || frame.height !== before.height) {
         throw new Error("Capture calibration window dimensions changed")
@@ -602,10 +650,18 @@ export async function calibrateCaptureOrigin({
       const blends = edgeBlends(grid, before, frame)
       const explained = new Set<number>()
       for (const blend of blends) for (const key of blend.pixels) explained.add(key)
+      let changedInBand = 0
       for (let y = 0; y < frame.height; y++) {
+        const band = inBand(y)
         for (let x = 0; x < frame.width; x++) {
           if (x >= grid.x && x < grid.x + grid.width && y >= grid.y && y < grid.y + grid.height) continue
           const offset = (y * frame.width + x) * 4
+          if (band) {
+            if ([0, 1, 2, 3].some((channel) => frame.rgba[offset + channel] !== before.rgba[offset + channel])) {
+              changedInBand++
+            }
+            continue
+          }
           // The blend model covers colour only: it says nothing about the alpha byte, which stays
           // exactly as the baseline frame had it even on an explained pixel.
           for (let channel = explained.has(y * frame.width + x) ? 3 : 0; channel < 4; channel++) {
@@ -615,9 +671,10 @@ export async function calibrateCaptureOrigin({
           }
         }
       }
+      if (chromeBand) excused.push({ stage, changed: changedInBand })
       return blends
     }
-    const solidBlends = outsideUnchanged(solid)
+    const solidBlends = outsideUnchanged(solid, "solid")
     // One axis-generic rule: an axis's leading edge is the grid's own first pixel line only when that
     // line was admitted on the solid frame and on the axis's own frame. Lead is 1 or 0, never a width.
     const leadingLine = (axis: "columns" | "rows", own: readonly EdgeBlend[]): EdgeBlend | null => {
@@ -645,7 +702,7 @@ export async function calibrateCaptureOrigin({
       }
     }
     if (!colors) throw refusal("Capture calibration columns: distinct stripe colors not witnessed")
-    const columnBlends = outsideUnchanged(columns)
+    const columnBlends = outsideUnchanged(columns, "columns")
     const columnLine = leadingLine("columns", columnBlends)
     const columnLead: 0 | 1 = columnLine === null ? 0 : 1
     const { pitch: cellWidth, clip: columnClip } = stripeSize(
@@ -660,7 +717,7 @@ export async function calibrateCaptureOrigin({
     )
     paintGrid("rows", form)
     const rows = await confirmedFrame("row edge paint", () => true, columns)
-    const rowBlends = outsideUnchanged(rows)
+    const rowBlends = outsideUnchanged(rows, "rows")
     const rowLine = leadingLine("rows", rowBlends)
     const rowLead: 0 | 1 = rowLine === null ? 0 : 1
     const { pitch: cellHeight, clip: rowClip } = stripeSize(
@@ -722,12 +779,18 @@ export async function calibrateCaptureOrigin({
                 `${stage} ${edge} ${edge === "top" || edge === "bottom" ? "y" : "x"}=${coordinate} alpha ${alpha.toFixed(3)} (${pixels.size} px)`,
             )
             .join(", ")}`
-    return {
+    const restoreTrace = chromeBand ? "restore identical outside the declared chrome band" : "identical restore"
+    // Last, so the restore stage's own excused count (added after the restore is confirmed) reads in sequence.
+    const bandTrace = chromeBand
+      ? `; declared chrome band y ${chromeBand.y}..${chromeBand.y + chromeBand.height - 1} full width (${chromeBand.reason}), changed px excused: ${excused.map(({ stage, changed }) => `${stage} ${changed} px`).join(", ")}`
+      : ""
+    result = {
       origin: { x: authored.x, y: authored.y },
       pixelGeometry: measured,
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")}); current paints and identical restore confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")}); current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }
+    return result
   } catch (cause) {
     failure = cause
     throw cause
@@ -744,7 +807,15 @@ export async function calibrateCaptureOrigin({
           )
         }
         const before = baseline
-        await confirmedFrame("restore grid paint", (frame) => equal(frame, before), observedPaint)
+        const restored = await confirmedFrame(
+          "restore grid paint",
+          (frame) => (bandClearOfGrid ? bandDifference(frame, before).equalOutside : equal(frame, before)),
+          observedPaint,
+        )
+        if (bandClearOfGrid && result) {
+          // The returned record is this object: the restore's own excused count joins it before the caller reads it.
+          result.basis += `; restore ${bandDifference(restored, before).changed} px`
+        }
       } catch (cause) {
         surfaceFailure = cause
       }

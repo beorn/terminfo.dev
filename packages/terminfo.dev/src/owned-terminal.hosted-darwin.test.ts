@@ -222,10 +222,12 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     comm: "Code",
     titleRead: "system-events",
   })
+  // 33056: Warp alone declares a chrome band; every other row's exact match proves the default is none.
   expect(hostedDarwinAppFromExecutablePath("/Applications/Warp.app/Contents/MacOS/stable")).toEqual({
     id: "warp",
     comm: "stable",
     titleRead: "system-events",
+    captureChromeBand: { y: 0, height: 40, reason: "Warp title bar: Update Warp pill" },
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux")).toEqual({
     id: "cmux",
