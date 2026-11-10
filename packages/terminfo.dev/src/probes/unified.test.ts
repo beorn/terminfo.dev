@@ -2939,6 +2939,11 @@ const defaultClipboardCases: Array<{
     eligible: false,
   },
   {
+    name: "unreviewed Linux app default paste stays gated",
+    subject: { kind: "term", id: "foot", os: "linux" },
+    eligible: false,
+  },
+  {
     name: "verified tmux default paste",
     subject: { kind: "mux", id: "tmux", os: "linux" },
     attachedMux: "tmux",

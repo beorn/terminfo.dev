@@ -4387,27 +4387,30 @@ async function liveClipboardProbe(
           allBaseline = false
         }
       }
-      if (kind === "write") {
-        if (measured === nonce) {
-          return {
-            pass: true,
-            observation: {
-              outcome: "supported",
-              assertionType: "clipboard",
-              ...(muxContextNote && { note: `OSC 52 write observed on OS clipboard (${muxContextNote})` }),
+      if (kind === "write" && measured === nonce) {
+        return {
+          pass: true,
+          observation: {
+            outcome: "supported",
+            assertionType: "clipboard",
+            ...(muxContextNote && { note: `OSC 52 write observed on OS clipboard (${muxContextNote})` }),
+          },
+          assertions: [
+            {
+              assertionType: "clipboard" as const,
+              kind: "positive",
+              expected: "Independent clipboard text equals OSC 52 write nonce",
+              observed: measured,
             },
-            assertions: [
-              {
-                assertionType: "clipboard" as const,
-                kind: "positive",
-                expected: "Independent clipboard text equals OSC 52 write nonce",
-                observed: measured,
-              },
-            ],
-          }
+          ],
         }
+      }
+      if (measured !== nonce) {
+        // Both `write` (!mux || mux) and `roundtrip` (mux; clipboard-observations.test.ts:269) share one baseline check.
+        const baselineNegativeEligible =
+          kind === "write" ? !mux || muxDefaultNegativeEligible : Boolean(mux && muxDefaultNegativeEligible)
         if (allBaseline && typeof baseline === "string") {
-          if (!mux || muxDefaultNegativeEligible) {
+          if (baselineNegativeEligible) {
             return {
               pass: false,
               observation: {
@@ -4427,56 +4430,16 @@ async function liveClipboardProbe(
               ],
             }
           }
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              assertionType: "clipboard",
-              note: `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote}; default set-clipboard=external required for negative grade)`,
-            },
-          }
-        }
-        const byteLength = Buffer.byteLength(measured)
-        const sha256 = createHash("sha256").update(measured).digest("hex")
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            assertionType: "clipboard",
-            note: `Independent clipboard read returned neither the OSC 52 write nonce nor the owned baseline (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`,
-          },
-        }
-      }
-      if (measured !== nonce) {
-        if (mux && allBaseline && typeof baseline === "string") {
-          if (muxDefaultNegativeEligible) {
+          if (mux) {
             return {
               pass: false,
               observation: {
-                outcome: "unsupported",
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
                 assertionType: "clipboard",
-                note: `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote})`,
+                note: `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote}; default set-clipboard=external required for negative grade)`,
               },
-              assertions: [
-                {
-                  assertionType: "clipboard" as const,
-                  kind: "negative",
-                  expected: "Independent clipboard text equals OSC 52 write nonce",
-                  observed: baseline,
-                },
-              ],
             }
-          }
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              assertionType: "clipboard",
-              note: `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote}; default set-clipboard=external required for negative grade)`,
-            },
           }
         }
         const byteLength = Buffer.byteLength(measured)
@@ -4487,7 +4450,10 @@ async function liveClipboardProbe(
             outcome: "inconclusive",
             reason: "insufficient-evidence",
             assertionType: "clipboard",
-            note: `Independent clipboard read did not equal the OSC 52 write nonce (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`,
+            note:
+              kind === "write"
+                ? `Independent clipboard read returned neither the OSC 52 write nonce nor the owned baseline (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`
+                : `Independent clipboard read did not equal the OSC 52 write nonce (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`,
           },
         }
       }

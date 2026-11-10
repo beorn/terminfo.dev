@@ -280,6 +280,9 @@ export function captureAdapterEligible(
   return captureKind === "text-cells" ? probe.cellReadback === true : !captureGeometryRefusal
 }
 
+/** Direct Linux Apps whose default-profile clipboard-paste route is reviewed (@cto 73d66ae2); any other App stays gated. */
+const LINUX_DEFAULT_PASTE_APPS: ReadonlySet<string> = new Set(["kitty", "ghostty", "alacritty", "wezterm"])
+
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
 export async function runProbeBatch(
   options: {
@@ -736,6 +739,8 @@ export async function runProbeBatch(
       disposable.declaredTarget.id === options.subject.id &&
       disposable.declaredTarget.os === "linux" &&
       !clipboard?.muxAttachmentProof
+    const isDirectLinuxPasteApp =
+      isDirectLinuxApp && options.subject !== undefined && LINUX_DEFAULT_PASTE_APPS.has(options.subject.id)
     const isVerifiedLinuxMux =
       options.subject?.kind === "mux" &&
       (options.subject.id === "tmux" || options.subject.id === "screen") &&
@@ -757,9 +762,8 @@ export async function runProbeBatch(
       clipboard &&
       verify &&
       (clipboard.profile !== "default" ||
-        (isDirectLinuxApp &&
-          (probe.id === "extensions.osc52-write" ||
-            (probe.id === "extensions.clipboard-paste" && options.subject?.id !== "xterm"))) ||
+        (isDirectLinuxApp && probe.id === "extensions.osc52-write") ||
+        (isDirectLinuxPasteApp && probe.id === "extensions.clipboard-paste") ||
         (isDirectDarwinApp &&
           (probe.id === "extensions.osc52-write" ||
             probe.id === "extensions.osc52-read" ||
