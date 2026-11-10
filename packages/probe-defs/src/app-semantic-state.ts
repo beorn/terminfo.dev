@@ -87,6 +87,7 @@ export function withAppSemanticObservation(definition: ProbeDefinition): ProbeDe
     icon ||
     /^extensions\.osc(?:133|633)-[abcdep]$/.test(definition.id) ||
     definition.id === "extensions.osc7-cwd" ||
+    definition.id === "extensions.osc8" ||
     definition.id === "extensions.semantic-prompts" ||
     definition.id === "extensions.osc-633-vscode"
   if (!term || (!semantic && !reportFeatures.has(definition.id))) return definition
@@ -105,7 +106,12 @@ export function withAppSemanticObservation(definition: ProbeDefinition): ProbeDe
       if (!ctx.readAppSemanticState) return term(ctx)
       if (semantic) {
         const reading = await ctx.readAppSemanticState(definition.id, ctx.write)
-        if (definition.id === "extensions.osc7-cwd" && reading.status === "unavailable") return term(ctx)
+        if (
+          (definition.id === "extensions.osc7-cwd" || definition.id === "extensions.osc8") &&
+          reading.status === "unavailable"
+        ) {
+          return term(ctx)
+        }
         return gradeAppSemanticState(reading)
       }
       const previous = await term(ctx)

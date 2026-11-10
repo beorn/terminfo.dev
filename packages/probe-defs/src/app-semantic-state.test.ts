@@ -88,6 +88,7 @@ test("missing reader stays pending and a broken owned read stays invalid", () =>
 test("registered OSC callbacks forward their own feature and recorded writer to the owned reader", async () => {
   for (const id of [
     "extensions.osc7-cwd",
+    "extensions.osc8",
     "extensions.osc133-a",
     "extensions.osc133-b",
     "extensions.osc133-c",
@@ -107,11 +108,11 @@ test("registered OSC callbacks forward their own feature and recorded writer to 
     ctx.readAppSemanticState = async (featureId, write) => {
       seen.push(featureId)
       expect(write).toBe(ctx.write)
-      return id === "extensions.osc7-cwd" ? state() : report()
+      return id === "extensions.osc7-cwd" || id === "extensions.osc8" ? state() : report()
     }
     const definition = extensionsProbes.find((probe) => probe.id === id)!
     expect(await definition.term!(ctx), id).toMatchObject({
-      observation: { outcome: id === "extensions.osc7-cwd" ? "supported" : "unsupported" },
+      observation: { outcome: id === "extensions.osc7-cwd" || id === "extensions.osc8" ? "supported" : "unsupported" },
     })
     expect(seen).toEqual([id])
   }

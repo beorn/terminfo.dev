@@ -188,3 +188,88 @@ test.runIf(process.platform === "linux")(
     expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("fresh") })
   },
 )
+
+test.runIf(process.platform === "linux").each(["working", "unclosed"] as const)(
+  "OSC8 reads tmux capture-pane -p -e hyperlink span and post-close negative tail (%s)",
+  async (mode) => {
+    const runId = "a".repeat(32)
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-osc8-"))
+    const directoryFd = openSync(directory, "r")
+    const socket = `/proc/self/fd/${directoryFd}/terminfo-${runId}.sock`
+    const server = createServer()
+    const writes: string[] = []
+    const plainLines = ["", "", ""]
+    const escapedLines = ["", "", ""]
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject)
+        server.listen(socket, resolve)
+      })
+      writeFileSync(join(directory, "mux-socket.txt"), socket)
+      vi.stubEnv("TERMINFO_RUN_ID", runId)
+      vi.stubEnv("TERMINFO_MUX_KIND", "tmux")
+      vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", join(directory, "capture"))
+      vi.stubEnv("TMUX_PANE", "%1")
+      vi.stubEnv("TMUX", `${socket},41,0`)
+      command.mockImplementation((file: string, args: string[]) => {
+        expect(file).toBe("tmux")
+        expect(args.slice(0, 2)).toEqual(["-S", socket])
+        const action = args.slice(2)
+        if (action[0] === "display-message") {
+          return `3.8\t41\t%1\t${process.pid}\t${readlinkSync("/proc/self/fd/0")}\t${socket}\n`
+        }
+        expect(action[0]).toBe("capture-pane")
+        return action.includes("-e") ? escapedLines.join("\n") : plainLines.join("\n")
+      })
+      const reading = await readAppSemanticState({
+        featureId: "extensions.osc8",
+        mux: "tmux",
+        runId,
+        executable: { path: "/unused", sha256: "b".repeat(64) },
+        write(text) {
+          writes.push(text)
+          const position = /^\x1b\[(\d+);1H\x1b\[2K([\s\S]*)$/.exec(text)
+          if (!position) return
+          const index = Number(position[1]) - 1
+          const body = position[2] ?? ""
+          plainLines[index] = body.replaceAll(/\x1b\][^\x07]*\x07/g, "")
+          let activeLink = false
+          escapedLines[index] =
+            body
+              .replaceAll(/\x1b\]888;[^\x07]*\x07/g, "")
+              .replaceAll(/\x1b\]8;([^\x07]*)\x07/g, (_, payload: string) => {
+                if (payload === ";") {
+                  if (mode === "unclosed" && index === 2) return ""
+                  activeLink = false
+                  return "\x1b]8;;\x1b\\"
+                }
+                activeLink = true
+                return `\x1b]8;${payload}\x1b\\`
+              }) + (activeLink ? "\x1b]8;;\x1b\\" : "")
+        },
+      })
+      expect(reading.status).toBe("measured")
+      if (reading.status !== "measured" || reading.reader !== "state") throw new Error("Missing OSC8 reading")
+      expect(reading.unknown).toEqual({ before: "linked after ", after: "linked after " })
+      expect(reading.handled.before).toBe("linked after ")
+      expect(reading.handled.after).toBe(reading.handled.expected)
+      expect(reading.handled.expected).toMatch(
+        /^\x1b\]8;;https:\/\/control-[0-9a-f]{8}\.invalid\/osc8\x1b\\linked\x1b\]8;;\x1b\\ after $/,
+      )
+      expect(reading.target.before).toBe("linked after ")
+      expect(reading.target.expected).toBe(
+        "\x1b]8;id=ex-link-1;https://terminfo.dev/osc8\x1b\\linked\x1b]8;;\x1b\\ after ",
+      )
+      if (mode === "working") {
+        expect(reading.target.after).toBe(reading.target.expected)
+      } else {
+        expect(reading.target.after).not.toBe(reading.target.expected)
+      }
+      expect(writes.at(-1)).toBe("\x1b]8;;\x07\x1b[2J\x1b[3J\x1b[H")
+    } finally {
+      if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()))
+      closeSync(directoryFd)
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)

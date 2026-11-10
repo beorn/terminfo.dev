@@ -39,7 +39,7 @@ type AppSemanticCapability = {
   reason?: string
   requiresMissingSessionBus?: true
   outerCommands?: true
-  reader?: "grid" | "cycle" | "cwd" | "report"
+  reader?: "grid" | "cycle" | "cwd" | "report" | "osc8"
   command?: { code: string; body: string }
   reportControls?: {
     sentinel: { code: string; body: string; line: string }
@@ -60,6 +60,14 @@ const declarations: readonly AppSemanticCapability[] = [
     os: "linux",
     featureId: "extensions.osc7-cwd",
     reader: "cwd",
+  },
+  {
+    kind: "mux",
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    featureId: "extensions.osc8",
+    reader: "osc8",
   },
   ...promptFeatures
     .filter((featureId) => featureId !== "extensions.osc633-e")
@@ -615,6 +623,61 @@ const declarations: readonly AppSemanticCapability[] = [
     featureId: "extensions.osc633-e",
     reason:
       "Untestable (no way): tmux 3.8 has no OSC 633 handler, drops OSC 633 E in the debug-only unknown-OSC default of its input parser, and exposes no stored command-line string in capture-pane -R or formats. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699-2777 dispatches 133 and not 633, cmd-capture-pane.c:132-160 reports row flags without an explicit E command-line field, and the run image keeps no -v server log.",
+  },
+  // #32948 (@cto f400853c): 6 Linux App and mux OSC 8 hyperlink declarations at their exact pinned versions.
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.2",
+    os: "linux",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.2 drops OSC 8 without storing, forwarding or reporting a hyperlink. Read StringEnd in ansi.c:1237-1289 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 8 is outside Screen's accepted OSC 83 and title/colour list (0, 1, 2, 11, 20, 39, 49) and hits the non-title break at :1288-1289 without calling SetXtermOSC.",
+  },
+  {
+    kind: "term",
+    id: "xterm",
+    version: "411",
+    os: "linux",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no way): xterm 411 has no OSC 8 hyperlink handler, cell storage or public readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1017-1037 in xterm-411.tgz (SHA256 969be283); OSC 8 reaches the unnamed default TRACE at misc.c:4353-4355.",
+  },
+  {
+    kind: "term",
+    id: "alacritty",
+    version: "0.17.0",
+    os: "linux",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no way): Alacritty 0.17.0 parses OSC 8 hyperlinks via locked VTE 0.15.0 (ansi.rs:1329-1525, crate SHA256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd) into internal CellExtra.hyperlink state in alacritty_terminal 0.26.0 (alacritty/Cargo.toml:3,13-15 SHA256 ccbe547a224e9a13d3a08e6cd24f2c1fd1c92c28e02eda9324c14892244238ff; crate SHA256 bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; src/term/mod.rs:1874-1877, src/term/cell.rs:40-98,128,202-221), with no public IPC, CLI, escape-query or non-trace log readback (alacritty/src/cli.rs:256-266 and polling/ipc.rs:62-88 expose only CreateWindow, Config and GetConfig).",
+  },
+  {
+    kind: "term",
+    id: "ghostty",
+    version: "1.4.0",
+    os: "linux",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 parses OSC 8 hyperlinks into internal page state with no public CLI, IPC, escape-query or non-debug log readback on default launch. Read tag v1.4.0 (ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar, SHA256 d692bb9b) src/terminal/osc.zig:103-110,1160, src/terminal/osc/parsers/hyperlink.zig:9-57 and src/terminal/Screen.zig:2848-2945 (page.hyperlink_set and page.hyperlink_map); ScreenFormatter VT/HTML hyperlink serialization (src/terminal/formatter.zig:1574-1693) is invoked only for interactive GUI selections (src/Surface.zig:2338-2430,5923-5941).",
+  },
+  {
+    kind: "term",
+    id: "kitty",
+    version: "0.49.2",
+    os: "linux",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no setup): Kitty 0.49.2 parses OSC 8 hyperlinks into Screen.hyperlink_pool and CPUCell.hyperlink_id, which are readable via kitten @ get-text --ansi when remote control is enabled, but default launch sets allow_remote_control=no and daemon.log emits no line for handled OSC 8. Read tag v0.49.2 kitty/vt-parser.c:483-510,583, kitty/screen.c:1043-1051,4514-4576, kitty/line.c:543-569,646-648 and kitty/rc/get_text.py:48-52,132-137; enabling -o allow_remote_control=socket-only --listen-on unix:<path> with before/after App qualification is tracked in #32955.",
+  },
+  {
+    kind: "term",
+    id: "wezterm",
+    version: "0-unstable-2026-10-10",
+    os: "linux",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no setup): WezTerm 0-unstable-2026-10-10 parses OSC 8 hyperlinks into CellAttributes and re-emits them via wezterm cli get-text --escapes, which is not yet wired into the collector's App semantic reader and emits no unknown-OSC log line. Read e2a98e1b8af1 wezterm-escape-parser/src/osc.rs:318,470,571-572, wezterm-escape-parser/src/hyperlink.rs:76-119, term/src/terminalstate/performer.rs:773-775, wezterm/src/cli/get_text.rs:34,86-87 and lua-api-crates/termwiz-funcs/src/lib.rs:247-303; wiring wezterm cli get-text --escapes with before/after App qualification is tracked in #33001.",
   },
 ] as const
 
@@ -1194,6 +1257,54 @@ export async function readAppSemanticState(input: {
     if (!tmux || !pane) throw new Error("App state reader has no bound tmux command")
     const command = tmux
     const targetPane = pane
+    if (row.reader === "osc8") {
+      let serial = 0
+      const sample = async (number: number, feed: string) => {
+        const marker = `Q-${nonce}-${serial++}`
+        input.write(`\x1b[${number};1H\x1b[2K${feed}${marker}`)
+        await until(
+          () => command("capture-pane", "-p", "-t", targetPane),
+          (value) => value.split("\n")[number - 1]?.includes(marker) === true,
+          "tmux osc8 marker",
+        )
+        const escaped = command("capture-pane", "-p", "-e", "-t", targetPane)
+        const line = escaped.split("\n")[number - 1]
+        const index = line?.lastIndexOf(marker) ?? -1
+        if (line === undefined || index < 0) throw new Error(`Unreadable tmux osc8 row${number}`)
+        const value = line.slice(0, index) + line.slice(index + marker.length)
+        detail.phases.push({ number, feed, marker, line, escaped, value })
+        return value
+      }
+      const controlUri = `https://control-${nonce}.invalid/osc8`
+      const targetId = "ex-link-1"
+      const targetUri = "https://terminfo.dev/osc8"
+      input.write("\x1b]8;;\x07\x1b[2J\x1b[3J\x1b[H")
+      try {
+        const initial = await sample(1, "linked after ")
+        const unknown = await sample(1, `${osc(`888;id=${targetId};${targetUri}`)}linked${osc("888;;")} after `)
+        const handled = await sample(2, `${osc(`8;;${controlUri}`)}linked${osc("8;;")} after `)
+        const target = await sample(3, `${osc(`8;id=${targetId};${targetUri}`)}linked${osc("8;;")} after `)
+        return {
+          status: "measured",
+          reader: "state",
+          runId: input.runId,
+          unknown: { before: initial, after: unknown },
+          handled: {
+            before: initial,
+            after: handled,
+            expected: `\x1b]8;;${controlUri}\x1b\\linked\x1b]8;;\x1b\\ after `,
+          },
+          target: {
+            before: initial,
+            after: target,
+            expected: `\x1b]8;id=${targetId};${targetUri}\x1b\\linked\x1b]8;;\x1b\\ after `,
+          },
+          detail,
+        }
+      } finally {
+        input.write("\x1b]8;;\x07\x1b[2J\x1b[3J\x1b[H")
+      }
+    }
     const format = () => {
       const fields = command("display-message", "-p", "-t", targetPane, "#{pane_command_status}\t#{pane_path}")
         .replace(/\n$/, "")
