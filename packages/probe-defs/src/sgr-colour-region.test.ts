@@ -167,6 +167,7 @@ interface Ink {
   underlineColour: string
   underline: boolean
   blink: boolean
+  strike: boolean
 }
 
 interface Cell extends Ink {
@@ -291,11 +292,23 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
       next.underlineColour = "default"
       next.underline = false
       next.blink = false
+      next.strike = false
       index += 1
       continue
     }
     if (param === 5) {
       next.blink = true
+      index += 1
+      continue
+    }
+    // xterm's crossed-out and blink-off: a walker of `58;5;9;25` ends on a static strike line (#33181).
+    if (param === 9 || param === 29) {
+      next.strike = param === 9
+      index += 1
+      continue
+    }
+    if (param === 25) {
+      next.blink = false
       index += 1
       continue
     }
@@ -399,7 +412,7 @@ interface Screen {
 }
 
 function blankCell(): Cell {
-  return { char: " ", fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false }
+  return { char: " ", fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false, strike: false }
 }
 
 function blankScreen(): Screen {
@@ -407,7 +420,7 @@ function blankScreen(): Screen {
     grid: Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => blankCell())),
     row: 0,
     col: 0,
-    ink: { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false },
+    ink: { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false, strike: false },
   }
 }
 
@@ -430,7 +443,7 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
         screen.col = Math.max(0, (params[1] ?? 1) - 1)
       } else if (final === "J" && (params[0] ?? 0) === 2) {
         for (const row of screen.grid) row.fill(blankCell())
-        screen.ink = { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false }
+        screen.ink = { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false, strike: false }
         screen.row = 0
         screen.col = 0
       } else if (final === "m") {
@@ -461,7 +474,7 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
 
 function cellText(cell: Cell | undefined): string {
   if (!cell) return "outside"
-  return `${cell.char}${cell.fg}${cell.bg}${cell.underlineColour}${cell.underline ? "u" : ""}${cell.blink ? "k" : ""}`
+  return `${cell.char}${cell.fg}${cell.bg}${cell.underlineColour}${cell.underline ? "u" : ""}${cell.blink ? "k" : ""}${cell.strike ? "s" : ""}`
 }
 
 function regionDigest(grid: Cell[][], region: CaptureCells): string {
@@ -806,19 +819,40 @@ test("a stale capture reads inconclusive, never unsupported, on the underline-co
 }, 30000)
 
 /**
- * @failure A terminal that paints a DIFFERENT attribute for the underline-colour sequence (here
- *   blink, the shape screen produces) must not read as support, and must not read as the witness
- *   negative either: the frames separate, but nothing in them says the colour was painted. It stays
- *   inconclusive, which is what it reads today.
+ * @failure xterm has no SGR 58 and walks `58;5;N` code by code, so the old `58;5;5` turned blink on
+ *   and every compared crop was a blink-phase sample: the row flipped between refused and open from
+ *   run to run (#33181). The indexed sequence is now `58;5;9;25`: a walker paints a static strike
+ *   line and blink-off, and the frame that sets crossed-out on purpose reads the same cells, so the
+ *   pixels decide a measured negative (@cto b6db70c8). The DECRQSS reply never grades this paint row.
  * @level l1
  * @consumer sgr.underline-color-indexed on owned app contexts.
  * @testonly none
  */
-test("a terminal that paints blink for the underline-colour sequence stays inconclusive", async () => {
+test("a terminal that walks the indexed underline-colour parameters reads unsupported from the pixels", async () => {
   const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
   const result = await run("sgr.underline-color-indexed", ctx)
-  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.criterionBranch).toBe("colour-walked-parameters")
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(result.observation?.note).toContain("painted crossed-out (SGR 9) for SGR 58;5;9;25")
+  expect(result.tests).toEqual([{ id: "criterion", status: "unsupported", assertionRefs: [0] }])
+  expect(result.assertions).toHaveLength(1)
   expect(result.pass).toBe(false)
+})
+
+/**
+ * @failure The walked negative is decided from frames captured through a multiplexer's outer
+ *   terminal, which cannot say which of the two walked the parameters; like the witness negative it
+ *   must stay open there (@cto 4ed6bddf), never publish Unsupported against the mux.
+ * @level l1
+ * @consumer sgr.underline-color-indexed on owned multiplexer contexts.
+ * @testonly none
+ */
+test("a multiplexer stays inconclusive on the walked negative and says why", async () => {
+  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+  const result = await run("sgr.underline-color-indexed", { ...ctx, mux: "screen" as const })
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
+  expect(result.tests).toEqual([expect.objectContaining({ id: "review", status: "probe-todo" })])
 })
 
 /**
@@ -935,7 +969,7 @@ test("the colour fixture separates colours, and collapses the sibling pairs it s
     if (indexed?.expected === undefined || indexed.ignored === undefined) {
       throw new Error("sgr.underline-color-indexed must name both frames")
     }
-    expect(indexed.ignored).toContain("\x1b[58;5;4m")
+    expect(indexed.ignored).toContain("\x1b[58;5;4;25m")
     expect(await readFrame("quantize-256", indexed.expected, palette)).not.toBe(
       await readFrame("quantize-256", indexed.ignored, palette),
     )

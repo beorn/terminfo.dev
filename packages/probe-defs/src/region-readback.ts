@@ -144,6 +144,15 @@ export interface RegionReadback {
    */
   noAttributeNegative?: { sequence: string }
   /**
+   * The frame a terminal LACKING the row's sequence paints when it walks the sequence's SGR
+   * parameters code by code: the seed plus the static attribute the walk lands on, set on purpose.
+   * The row's sequence is chosen so that walk ends on an attribute a crop can see and holds still
+   * (xterm takes `58;5;9;25` as blink on, crossed-out, blink off: @cto b6db70c8, #33181). An
+   * expected frame equal to this one, with the post-sequence frame agreeing, is a MEASURED
+   * NEGATIVE in pixels. A frame equal to the seed cannot see the attribute and decides nothing.
+   */
+  walkedAttribute?: { frame: string; sequence: string; attribute: string }
+  /**
    * Qualify an immutable initial rendition with DECSC/DECRC before testing a reset. `expected`
    * paints the sample without setters, `seed` sets the full rendition and `edit` applies the reset.
    * Every subset must differ from the initial sample and every restore must return it exactly.
@@ -1315,6 +1324,9 @@ export async function captureRegionReadbackDecision(
         ...(spec.noAttribute === undefined
           ? []
           : [{ role: "control" as const, label: `${id}: no-attribute frame`, writes: spec.noAttribute }]),
+        ...(spec.walkedAttribute === undefined
+          ? []
+          : [{ role: "control" as const, label: `${id}: walked-attribute frame`, writes: spec.walkedAttribute.frame }]),
       ]
   const frames: ObservationFrame[] = []
   let targetScreenshotRef: string | undefined
@@ -1532,13 +1544,17 @@ export async function captureRegionReadbackDecision(
     const setupReference = spec.setupReference === undefined ? undefined : digests[referenceIndex]
     const noAttribute =
       spec.noAttribute === undefined ? undefined : digests[referenceIndex + (spec.setupReference === undefined ? 0 : 1)]
+    const walkedIndex =
+      referenceIndex + (spec.setupReference === undefined ? 0 : 1) + (spec.noAttribute === undefined ? 0 : 1)
+    const walked = spec.walkedAttribute === undefined ? undefined : digests[walkedIndex]
     if (
       seed === undefined ||
       after === undefined ||
       expected === undefined ||
       (spec.ignored !== undefined && ignored === undefined) ||
       (spec.setupReference !== undefined && setupReference === undefined) ||
-      (spec.noAttribute !== undefined && noAttribute === undefined)
+      (spec.noAttribute !== undefined && noAttribute === undefined) ||
+      (spec.walkedAttribute !== undefined && walked === undefined)
     ) {
       throw new Error(
         `${id}: the capture-region decision reached the verdict with ${digests.length} of ${steps.length} digests`,
@@ -1557,6 +1573,7 @@ export async function captureRegionReadbackDecision(
       ...(ignored !== undefined && { ignored }),
       ...(setupReference !== undefined && { setupReference }),
       ...(noAttribute !== undefined && { noAttribute }),
+      ...(walked !== undefined && { walked }),
       ...(discriminator && { discriminator }),
     })
     const cropRefusal = cropPositionRefusal({
@@ -1577,6 +1594,9 @@ export async function captureRegionReadbackDecision(
                 rectangle: cropRectangles[referenceIndex + (spec.setupReference === undefined ? 0 : 1)],
               },
             ]),
+        ...(spec.walkedAttribute === undefined
+          ? []
+          : [{ role: "the walked-attribute frame", rectangle: cropRectangles[walkedIndex] }]),
       ],
       response: observed,
       frames,
@@ -1612,6 +1632,32 @@ export async function captureRegionReadbackDecision(
           cite(targetScreenshotRef, frames),
         ),
       )
+    }
+    // Reached only with seed !== expected, so a walked frame equal to the expected frame also differs
+    // from the seed: the crop saw the walked attribute.
+    if (spec.walkedAttribute !== undefined && walked !== undefined && expected === walked && after === expected) {
+      const { sequence, attribute } = spec.walkedAttribute
+      const reason = `${id}: painted ${attribute} for SGR ${sequence}, the same cells as the frame that sets ${attribute} on purpose: the terminal walked the parameters code by code instead of running the sequence`
+      return {
+        pass: false,
+        criterionBranch: "colour-walked-parameters",
+        tests: [{ id: "criterion", status: "unsupported", assertionRefs: [0] }],
+        response: observed,
+        observation: {
+          outcome: "unsupported",
+          assertionType,
+          ...cite(targetScreenshotRef, frames),
+          note: reason,
+        },
+        assertions: [
+          {
+            assertionType,
+            kind: "negative",
+            expected: `${id}: the terminal paints SGR ${sequence} as something other than ${attribute} on the seed`,
+            observed: expected,
+          },
+        ],
+      }
     }
     if (noAttribute !== undefined && expected === noAttribute) {
       // A declared negative: the seed demonstrated the attribute, and the sequence left a frame that
