@@ -30,8 +30,9 @@ const BUN = process.versions.bun
 
 const root = join(import.meta.dirname, "..")
 
-// #33321: macOS Bash 3.2 scans quotes in command-substitution heredocs even inside JS comments.
-// Local Bash 5 accepts the two broken comments, so syntax-only checks here missed the hosted failure.
+// #33321: macOS Bash 3.2 failed on unmatched apostrophes in command-substitution JS comments.
+// Paired quotes in ITERM_STARTUP already worked; this checks comment-local imbalance, not all quotes.
+// Local Bash 5 accepts the broken comments, so syntax-only checks here missed the hosted failure.
 test("hosted Mac scripts parse and keep command-substitution comments compatible with Bash 3.2", () => {
   const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
   const steps = workflow.jobs["measure-macos"].steps as { name: string; run?: string }[]
@@ -43,10 +44,8 @@ test("hosted Mac scripts parse and keep command-substitution comments compatible
     for (const body of step.run.matchAll(/\$\(cat <<'([^']+)'\n([\s\S]*?)\n\1\n\s*\)/gu)) {
       checkedBodies++
       const comments = body[2]!.split("\n").filter((line) => /^\s*\/\//u.test(line))
-      expect(
-        comments.filter((line) => line.includes("'")),
-        `${step.name}: Bash 3.2 quote-sensitive comments`,
-      ).toEqual([])
+      const unmatchedComments = comments.filter((line) => (line.match(/'/gu)?.length ?? 0) % 2 !== 0)
+      expect(unmatchedComments, `${step.name}: Bash 3.2 unmatched comment quotes`).toEqual([])
     }
   }
   expect(checkedBodies).toBeGreaterThan(0)
