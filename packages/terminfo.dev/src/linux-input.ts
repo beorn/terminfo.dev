@@ -1,6 +1,6 @@
 import type { InputFixture } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
-import { kittyAncestor, windowPixels, type LiveExecutable } from "./linux-capture.ts"
+import { kittyAncestor, windowPixels, windowRectangle, type LiveExecutable, type WindowRect } from "./linux-capture.ts"
 
 export interface CollectorInputAdapter extends InputFixture {
   resizeWindow(width: number, height: number, featureId?: string): Promise<{ width: number; height: number }>
@@ -35,21 +35,8 @@ function focusHelperWindowId(): string {
   return window
 }
 
-interface WindowRect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
 async function windowRect(windowId: string): Promise<WindowRect> {
-  const output = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
-  const field = (name: string): number => {
-    const match = new RegExp(`^${name}=(-?\\d+)$`, "m").exec(output)
-    if (!match?.[1]) throw new Error(`getwindowgeometry for ${windowId} has no ${name}: ${output.trim()}`)
-    return Number(match[1])
-  }
-  return { x: field("X"), y: field("Y"), width: field("WIDTH"), height: field("HEIGHT") }
+  return windowRectangle((await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString())
 }
 
 /** Bind OS-level XTEST key/click/wheel injection to the owned Kitty window. */

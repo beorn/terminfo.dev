@@ -780,6 +780,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   focus_helper_geometry=$(xdotool getwindowgeometry "$focus_helper_window" | tr '\n' ' ')
   chmod 600 /out/focus-helper.log
   export TERMINFO_FOCUS_HELPER_WINDOW="$focus_helper_window"
+  export TERMINFO_FOCUS_HELPER_PID="$focus_helper_pid"
 
   baseline_path="$HOME/clipboard-baseline.txt"
   printf 'terminfo-owned-clipboard-%s' "$TERMINFO_RUN_ID" > "$baseline_path"

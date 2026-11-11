@@ -1912,14 +1912,17 @@ exit 2
       { mode: 0o755 },
     )
     const block = source.slice(start, end).replaceAll("/out/", `${out}/`)
-    const script = `set -euo pipefail\n${block}\nprintf 'HELPER %s\\n' "$TERMINFO_FOCUS_HELPER_WINDOW"\n`
+    const script = `set -euo pipefail\n${block}\nprintf 'HELPER %s %s\\n' "$TERMINFO_FOCUS_HELPER_WINDOW" "$TERMINFO_FOCUS_HELPER_PID"\n`
     const result = spawnSync("bash", ["-c", script], {
       encoding: "utf8",
       env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}`, HOME: out },
     })
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)
-    expect(result.stdout.trim()).toBe("HELPER 4242")
+    const [label, helperWindow, helperPid] = result.stdout.trim().split(/\s+/)
+    expect(label).toBe("HELPER")
+    expect(helperWindow).toBe("4242")
+    expect(helperPid).toMatch(/^\d+$/)
     expect(Number(readFileSync(counter, "utf8"))).toBe(3)
   })
 })
