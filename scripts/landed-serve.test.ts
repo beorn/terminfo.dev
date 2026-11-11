@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { spawnSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
 import {
   createPreviewHandler,
   createRunRebuilder,
@@ -39,9 +41,71 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; dist is this test's own mkdtemp scratch root
   rmSync(dist, { recursive: true, force: true })
 })
+
+// 29595: injected runBuild fixtures bypass the real child process and miss its task declaration.
+// Both launch paths must expose the existing guard's identity and ceiling to the host observer.
+it.each(["code", "run"] as const)(
+  "declares the %s build as its own bounded task",
+  async (reason) => {
+    const bin = join(dist, "bin")
+    const landing = join(dist, "landing")
+    const trace = join(dist, "build-argv.json")
+    mkdirSync(bin)
+    mkdirSync(landing)
+    writeFileSync(
+      join(bin, "bun"),
+      `#!${process.execPath}\nawait Bun.write(process.env.BUILD_ARGV_TRACE, JSON.stringify(process.argv.slice(2))); process.exit(17);\n`,
+      { mode: 0o755 },
+    )
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`)
+    vi.stubEnv("TERMINFO_SITE_LANDING_ROOT", landing)
+    vi.stubEnv("TERMINFO_SITE_OUT_DIR", dist)
+    vi.stubEnv("BUILD_ARGV_TRACE", trace)
+    if (reason === "code") {
+      const child = spawnSync(process.execPath, [fileURLToPath(new URL("./landed-serve.ts", import.meta.url))], {
+        env: process.env,
+        encoding: "utf8",
+        timeout: 15_000,
+      })
+      expect(child.error).toBeUndefined()
+      expect(child.status).toBe(1)
+      expect(child.stderr).toContain("site build failed (exit 17)")
+    } else {
+      mkdirSync(join(dist, "dist"))
+      writeFileSync(
+        join(dist, "dist", "build.json"),
+        JSON.stringify({ sourceCommit: "code", workingRun: { id: "old" } }),
+      )
+      const report = vi.spyOn(console, "error").mockImplementation(() => {})
+      const progress = vi.spyOn(console, "log").mockImplementation(() => {})
+      try {
+        expect(await rebuildForRun({ outRoot: dist, target: "code", runId: "new" })).toBe(false)
+        expect(report).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("site build exit 17"))
+        expect(progress).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("hourly run new"))
+        expect(readServedStamp(join(dist, "dist")).workingRunId).toBe("old")
+      } finally {
+        progress.mockRestore()
+        report.mockRestore()
+      }
+    }
+    expect(JSON.parse(readFileSync(trace, "utf8"))).toEqual([
+      join(landing, "tools", "gate-task-guard.ts"),
+      "--task",
+      "terminfo-site-build",
+      "--max-rss-mib",
+      "16384",
+      "--",
+      "bun",
+      "run",
+      "build",
+    ])
+  },
+  20_000,
+)
 
 function get(path: string, init?: RequestInit): Response {
   return createPreviewHandler(dist)(new Request(`http://preview.test${path}`, init))
