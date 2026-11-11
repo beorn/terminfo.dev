@@ -46,6 +46,7 @@ import {
   type CapturedRunDraft,
 } from "@terminfo/probe-defs"
 import {
+  assertHostedWindowCustody,
   collectPass,
   ownedAppCommand,
   ownedAppRunsDirectory,
@@ -2010,4 +2011,24 @@ it.each([
     launcher.mockRestore()
     rmSync(directory, { recursive: true, force: true })
   }
+})
+
+// #33152: placement is where a hosted Terminal.app record without its owned window's launch and disposal
+// stops; other hosted apps and the local owned-app route keep their own custody and must not be refused here.
+describe("assertHostedWindowCustody", () => {
+  const lacking = { "collector.collectionStatus": "collected" }
+  it("refuses a hosted Terminal.app record lacking the launch and disposal entries", () => {
+    expect(() =>
+      assertHostedWindowCustody({ route: "hosted-workflow", os: "macos", id: "terminal-app" }, lacking, "run.json"),
+    ).toThrow(
+      "run.json: hosted Terminal.app record lacks collector.windowLaunchProof, so it cannot claim an owned window opened and closed by this run",
+    )
+  })
+  it.each([
+    { route: "hosted-workflow", os: "macos", id: "iterm2" },
+    { route: "local-owned-app", os: "macos", id: "terminal-app" },
+    { route: "hosted-workflow", os: "windows", id: "windows-terminal" },
+  ] as const)("leaves $id on $route/$os to its own custody", (context) => {
+    expect(() => assertHostedWindowCustody(context, lacking, "run.json")).not.toThrow()
+  })
 })

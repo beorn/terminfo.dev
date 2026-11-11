@@ -8,7 +8,12 @@ import { beforeEach, describe, expect, test, vi } from "vitest"
 import { spawnSync } from "node:child_process"
 import { readFileSync, realpathSync } from "node:fs"
 import { createHash } from "node:crypto"
-import { TERMINAL_LAUNCH_TIMEOUT_MS, captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
+import {
+  TERMINAL_LAUNCH_TIMEOUT_MS,
+  captureTerminalAppReceipt,
+  launchTerminalWindow,
+  launchTerminalWindowCensus,
+} from "./terminal-app-receipt.ts"
 import { closeOwnedTerminalWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }))
@@ -84,7 +89,7 @@ describe("owned Terminal.app receipt", () => {
     // between censuses, so old windows do not appear in the post inventory.
     vi.mocked(spawnSync).mockReturnValueOnce({
       status: 0,
-      stdout: "12,13\n/dev/ttys003\n14|1|/dev/ttys003\n15|1|/dev/ttys004\n",
+      stdout: "12,13\n/dev/ttys003\n14|1|/dev/ttys003\n15|1|/dev/ttys004\nafter:12,13,14,15\n",
       stderr: "",
     } as ReturnType<typeof spawnSync>)
     expect(launchTerminalWindow("/private/run/serve.sh")).toEqual({
@@ -92,6 +97,37 @@ describe("owned Terminal.app receipt", () => {
       windowId: 14,
       tty: "/dev/ttys003",
     })
+  })
+
+  // #33152 (@cto 5c2b1f65): the hosted run record needs this transaction's census, including the cold
+  // start's own startup window (another tty), so the finalise step can show the owned window was new.
+  test("launch census returns before, after and every new window from the one transaction", () => {
+    // A multi-tab new window has no single tty: it is recorded with tty null.
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 0,
+      stdout: "12,13\n/dev/ttys003\n14|1|/dev/ttys003\n15|1|/dev/ttys004\n16|2|\nafter:12,13,14,15,16\n",
+      stderr: "",
+    } as ReturnType<typeof spawnSync>)
+    expect(launchTerminalWindowCensus("/private/run/serve.sh")).toEqual({
+      terminalWindow: { provider: "terminal-app", windowId: 14, tty: "/dev/ttys003" },
+      beforeIds: [12, 13],
+      afterIds: [12, 13, 14, 15, 16],
+      newIds: [
+        { windowId: 14, tabCount: 1, tty: "/dev/ttys003" },
+        { windowId: 15, tabCount: 1, tty: "/dev/ttys004" },
+        { windowId: 16, tabCount: 2, tty: null },
+      ],
+    })
+  })
+
+  test.each([
+    ["no after census", "12\n/dev/ttys003\n14|1|/dev/ttys003\n"],
+    ["after census without the window", "12\n/dev/ttys003\n14|1|/dev/ttys003\nafter:12,15\n"],
+  ] as const)("launch refuses %s rather than record an unproved window", (_case, stdout) => {
+    vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout, stderr: "" } as ReturnType<typeof spawnSync>)
+    expect(() => launchTerminalWindowCensus("/private/run/serve.sh")).toThrow(
+      /no valid after census containing window 14/,
+    )
   })
 
   test.each([
@@ -127,7 +163,7 @@ describe("owned Terminal.app receipt", () => {
   test("launch gives the cold app its own budget and names an unanswered launch as the Automation grant", () => {
     vi.mocked(spawnSync).mockReturnValueOnce({
       status: 0,
-      stdout: "12\n/dev/ttys003\n14|1|/dev/ttys003\n",
+      stdout: "12\n/dev/ttys003\n14|1|/dev/ttys003\nafter:12,14\n",
       stderr: "",
     } as ReturnType<typeof spawnSync>)
     launchTerminalWindow("/private/run/serve.sh")
@@ -387,7 +423,7 @@ test.each([
 test("launch activates Terminal, fronts its new window and refuses one it cannot prove visible", () => {
   vi.mocked(spawnSync).mockReturnValueOnce({
     status: 0,
-    stdout: "12\n/dev/ttys003\n34|1|/dev/ttys003\n",
+    stdout: "12\n/dev/ttys003\n34|1|/dev/ttys003\nafter:12,34\n",
     stderr: "",
   } as ReturnType<typeof spawnSync>)
   expect(launchTerminalWindow("/private/run/serve.sh")).toEqual({
