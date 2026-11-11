@@ -1081,6 +1081,13 @@ export interface ClipboardFixture {
   readonly writePollMs?: number
   readText(): Promise<string>
   writeText(text: string): Promise<void>
+  /**
+   * X selection fixtures only: one real key event (shift press and release) on the owned window, recorded in the
+   * clipboard trace. A terminal stamps its OSC 52 selection claim with its last input-event time, and X ignores a
+   * claim older than the current owner's, so a terminal that never saw input loses to the fixture's own writer
+   * (#33145). The OSC 52 write and roundtrip probes call it before their write, inside a PTY read.
+   */
+  realKeyEvent?(): Promise<void>
 }
 
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */

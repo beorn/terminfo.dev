@@ -45,12 +45,18 @@ interface ClipboardReceipt {
 }
 
 export interface ClipboardTraceEvent {
-  kind: "clipboard-read" | "clipboard-write" | "clipboard-restore" | "clipboard-verify"
+  kind: "clipboard-read" | "clipboard-write" | "clipboard-restore" | "clipboard-verify" | "clipboard-key"
   at: string
   sha256?: string
   length?: number
   status?: "error"
   helperPid?: number
+  /** clipboard-key: the keysym pressed and released through XTEST. */
+  key?: string
+  /** clipboard-key: the focused window read back before the press. */
+  windowId?: string
+  /** clipboard-key: X server time bracketing the press, ms mod 2^32. */
+  xTimeMs?: [number, number]
 }
 
 export interface LinuxClipboardAdapter {
@@ -81,12 +87,68 @@ export interface LinuxClipboardAdapter {
 
 type Trace = (event: ClipboardTraceEvent) => void
 
+/** /proc/uptime counts centiseconds: a read of t means the clock is in [t, t + 10 ms). */
+const UPTIME_RESOLUTION_MS = 10
+
+/**
+ * The X server's clock in ms mod 2^32. Xorg's GetTimeInMillis reads CLOCK_MONOTONIC; /proc/uptime is the same
+ * kernel clock on a host that never suspends. Measured on the xterm image (#33145): xterm's claim TIMESTAMP
+ * 3979146112 fell inside the press's uptime bracket 3979146100..3979146120.
+ */
+function xServerTimeMs(): number {
+  const seconds = Number(readFileSync("/proc/uptime", "utf8").split(" ")[0])
+  if (!Number.isFinite(seconds)) throw new Error("/proc/uptime has no readable seconds field")
+  return Math.floor(seconds * 1000) % 2 ** 32
+}
+
+/**
+ * One real XTEST key event (shift press and release) on the owned window before an OSC 52 write (#33145,
+ * @cto 70645b74). xterm and Alacritty stamp their selection claim with their last input-event time, and X
+ * ignores a claim older than the current owner's (ICCCM), so a terminal that never saw input loses to the
+ * fixture's own xclip writer. A focus or XTEST failure throws by name; the probe refuses the sample.
+ */
+export async function pressRealKey(
+  windowId: string,
+  run: (file: string, args: string[]) => Promise<string>,
+  clock: () => number,
+  trace: Trace,
+  verify: () => Promise<void>,
+): Promise<void> {
+  const at = new Date().toISOString()
+  try {
+    await verify()
+    // Xvfb has no window manager: XSetInputFocus then getwindowfocus, as linux-input.ts focusOwnedWindow.
+    await run("xdotool", ["windowfocus", windowId])
+    const focused = (await run("xdotool", ["getwindowfocus"])).trim()
+    if (focused !== windowId) {
+      throw new Error(`owned window ${windowId} is not focused; getwindowfocus is ${focused || "empty"}`)
+    }
+    const before = clock()
+    await run("xdotool", ["key", "--window", "0", "--clearmodifiers", "shift"])
+    const after = clock()
+    trace({
+      kind: "clipboard-key",
+      at,
+      key: "shift",
+      windowId: focused,
+      xTimeMs: [before, after + UPTIME_RESOLUTION_MS],
+    })
+  } catch (error) {
+    trace({ kind: "clipboard-key", at, status: "error" })
+    throw new Error(
+      `Real key event before the OSC 52 write failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
 /** Single flight includes the finally restoration; failure there overrides the callback. */
 export function createClipboardTransaction(
   baseline: string,
   io: {
     readText(trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<string>
     writeText(text: string, trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<void>
+    /** X selection fixtures: the real key event the OSC 52 write probes call first (#33145). */
+    realKeyEvent?(trace: Trace, verify: () => Promise<void>): Promise<void>
   },
   options?: {
     readonly writeDeadlineMs?: number
@@ -112,6 +174,7 @@ export function createClipboardTransaction(
       if (options?.muxState) {
         muxSnapshot = await options.muxState.snapshot()
       }
+      const realKeyEvent = io.realKeyEvent
       const fixture: ClipboardFixture = {
         baseline,
         ...(muxSnapshot?.tmuxSetClipboard !== undefined && { tmuxSetClipboard: muxSnapshot.tmuxSetClipboard }),
@@ -119,6 +182,7 @@ export function createClipboardTransaction(
         ...(options?.writePollMs !== undefined && { writePollMs: options.writePollMs }),
         readText: () => io.readText(trace, "clipboard-read", verify),
         writeText: (text) => io.writeText(text, trace, "clipboard-write", verify),
+        ...(realKeyEvent && { realKeyEvent: () => realKeyEvent(trace, verify) }),
       }
       result = await work(fixture)
     } catch (error) {
@@ -772,7 +836,12 @@ export async function createLinuxClipboardAdapter(
   }
   const withClipboardFixture = createClipboardTransaction(
     baseline,
-    { readText, writeText },
+    {
+      readText,
+      writeText,
+      realKeyEvent: (trace, verify) =>
+        pressRealKey(receipt.terminal.windowId, (file, args) => command(file, args, env), xServerTimeMs, trace, verify),
+    },
     tmuxTarget
       ? {
           muxState: {
