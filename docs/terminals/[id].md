@@ -170,7 +170,7 @@ const breadcrumbParent = (() => {
     <span v-if="measuredBar.counts['probe-invalid']" class="result-share-error" :style="{ width: `${measuredBar.counts['probe-invalid'] / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts['probe-conflict']" class="result-share-error" title="PROBE CONFLICT" :style="{ width: `${measuredBar.counts['probe-conflict'] / measuredBar.denominator * 100}%` }"></span>
   </div>
-  <p>Selection {{ selectedRun.complete ? 'complete' : 'incomplete' }}. Completion and feature support are separate.</p>
+  <p>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
 </div>
 
 <details v-if="selectedRun" class="run-context">
