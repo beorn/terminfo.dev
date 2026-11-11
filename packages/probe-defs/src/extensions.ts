@@ -1553,6 +1553,20 @@ async function cursorColorSetupAppCapture(
     )
     if (reset.refusal) return reset.refusal
     const afterReset = { ...state, reset: { stability: reset.stability, digest: reset.second.regionDigest } }
+    // 33442: the reset reads are compared with `before`, so they must have been cropped from the same cells as the
+    // pre-colour frames. A digest taken over another screen position is not the same measurement, whatever it says.
+    const comparedFrames = [...frames, ...resetReads.map((entry) => entry.frame)]
+    const resetCropped = cropPositionRefusal({
+      id,
+      compared: comparedFrames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+      response: JSON.stringify(afterReset),
+      frames: comparedFrames,
+      screenshotRef: target.frame.ref,
+    })
+    if (resetCropped) return resetCropped
+    if (comparedFrames.some((frame) => !frame.regionRectangle)) {
+      return notTestedResult("OSC 112 reset capture lacks registered crop rectangles", afterReset)
+    }
     if (reset.second.regionDigest !== before) {
       return notTestedResult(
         "OSC 112 left the cursor colour changed: the frame after the reset still differs from the pre-colour frame",
