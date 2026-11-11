@@ -140,6 +140,7 @@ compose_receipt() {
         probeRun:(if $finalRun == null then $c.probeRun else $finalRun end),
         display:$c.display,
         clipboardFixture:$c.clipboardFixture,
+        sessionBus:$c.sessionBus,
         capture:$c.capture,
         receiptInputs:{hostSha256:$hostSha,containerSha256:$containerSha}
       }

@@ -4,6 +4,8 @@
  * A minimal D-Bus client over a unix socket that owns `org.freedesktop.Notifications` on a private session bus and
  * appends every call it receives to a JSONL record. Hand-rolled (no JS D-Bus dependency in the runner bundle): EXTERNAL
  * auth, Hello, RequestName with DO_NOT_QUEUE, and the marshalling subset the Notifications interface needs.
+ * Protocol scope is frozen: if one more protocol feature is needed, replace this client with a packaged one
+ * instead of growing it (CTO exact-head review, 2026-11-10).
  *
  * Receipt: written atomically only after the bus says PRIMARY_OWNER; any other RequestName reply refuses loudly.
  * Record: one line per Notify (`notify`), per other method call (`call`), per message it cannot interpret (`unparsed`,

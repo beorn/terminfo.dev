@@ -104,6 +104,7 @@ function compose(
         probeRun: { path: "v3-capture.json", runId: "b".repeat(32), sha256: "probe-hash" },
         display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
         clipboardFixture: { runId: containerRunId, profile: containerProfile, sha256: "fixture-hash" },
+        sessionBus: { path: "session-bus.json", sha256: "session-bus-hash" },
         capture,
       }),
     )
@@ -575,6 +576,7 @@ describe("container run receipt composition", () => {
       collector: { frozenRunnerSha256: string }
       probeRun: { runId: string; sha256: string }
       clipboardFixture: { profile: string; sha256: string }
+      sessionBus: { path: string; sha256: string }
     }
     expect(receipt.runtime.imageId).toBe("sha256:image")
     expect(receipt.executable.sha256).toBe("elf-hash")
@@ -589,6 +591,7 @@ describe("container run receipt composition", () => {
     expect(receipt.collector.frozenRunnerSha256).toBe("runner-hash")
     expect(receipt.probeRun).toEqual({ path: "v3-capture.json", runId: "b".repeat(32), sha256: "probe-hash" })
     expect(receipt.clipboardFixture).toEqual({ runId: "a".repeat(32), profile: "default", sha256: "fixture-hash" })
+    expect(receipt.sessionBus).toEqual({ path: "session-bus.json", sha256: "session-bus-hash" })
   })
 
   // Accepted: a completed capture binds the final bytes and original container receipt.
