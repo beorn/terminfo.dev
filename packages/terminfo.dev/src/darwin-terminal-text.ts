@@ -149,13 +149,12 @@ ${geometry}
     if (terminatorRemoved) lines.pop()
     var dropped = lines.length - ${String(rows)}
     if (dropped < 0) {
-      return refused("returned " + lines.length + " rows where the measured screen has ${String(rows)}", ${
-        app === "iterm2"
-          ? `{
+      // What the app returned stays in the refusal: whether a missing row is a wrapped logical line is
+      // read from these lengths, never inferred (33512).
+      return refused("returned " + lines.length + " rows where the measured screen has ${String(rows)}", {
         contents: text, tty: readTty, appCols: appCols, appRows: appRows,
-        splitRows: splitRows, terminatorRemoved: terminatorRemoved, rowsAfterPop: lines.length
-      }`
-          : "undefined"
+        splitRows: splitRows, terminatorRemoved: terminatorRemoved, rowsAfterPop: lines.length,
+        lineLengths: lines.map(function (line) { return line.length })
       })
     }
     return JSON.stringify({

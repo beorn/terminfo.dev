@@ -85,6 +85,7 @@ interface ScriptReply {
   droppedLines?: number
   appCols?: number
   appRows?: number
+  diagnostic?: unknown
 }
 
 const runGenerated = (script: string, application: unknown): ScriptReply =>
@@ -119,6 +120,31 @@ describe("terminalTextScript — the walk each app's object model actually expos
     const result = runGenerated(script, fakeApplication({ windows: [{ tabs: [other] }, { tabs: [terminalTab()] }] }))
     expect(result.status).toBe("read")
     expect(result.lines).toEqual(["ab", "cd"])
+  })
+
+  // 33512: run 42939520969 refused Terminal.app's 29 rows on a 30-row screen with nothing retained,
+  // so whether the missing row was a wrapped logical line could not be read. The refusal keeps what
+  // the app returned and each line's length; the equality check and its refusal are unchanged.
+  it("refuses a short Terminal.app screen and carries the lines it returned with their lengths", () => {
+    const script = terminalTextScript("terminal-app", "/dev/ttys003", 4, 3)
+    const result = runGenerated(
+      script,
+      fakeApplication({
+        windows: [{ tabs: [terminalTab({ contents: () => "abcdef\ncd\n", numberOfRows: () => 3 })] }],
+      }),
+    )
+    expect(result.status).toBe("refused")
+    expect(result.reason).toMatch(/returned 2 rows where the measured screen has 3/u)
+    expect(result.diagnostic).toEqual({
+      contents: "abcdef\ncd\n",
+      tty: "/dev/ttys003",
+      appCols: 4,
+      appRows: 3,
+      splitRows: 3,
+      terminatorRemoved: true,
+      rowsAfterPop: 2,
+      lineLengths: [6, 2],
+    })
   })
 
   // Empty text is a value: the terminator is popped once, in the script, so a real blank last row

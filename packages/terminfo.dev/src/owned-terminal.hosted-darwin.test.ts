@@ -1,6 +1,6 @@
 /**
  * @failure Hosted macOS geometry probes skip, a PTY bind attributes geometry to the wrong app,
- *   or a failed iTerm qualification read loses its original diagnostic inputs.
+ *   or a failed iTerm or Terminal.app qualification read loses its original diagnostic inputs.
  * @level l1
  * @consumer createOwnedTerminal darwinHosted arm used by collectProbeRun on hosted Mac.
  * @testonly none
@@ -170,6 +170,102 @@ test("retains native iTerm protocol frames with their checkpoint and unchanged r
         assert.deepEqual(envelope.grid, { rows: 25, cols: 80 })
         assert.equal(envelope.reply, "sha256:" + frames[index].sha256)
         assert.deepEqual(fs.readFileSync(frames[index].path), nativeReplies[index])
+        assert.equal((await import("node:crypto")).createHash("sha256").update(bytes).digest("hex"), artifact.sha256)
+      }
+    } finally { await owner.dispose() }
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
+})
+
+// 33512: Terminal.app's refused read is retained the way iTerm's frames are: the osascript reply
+// that carries the returned lines and their lengths, keyed to its checkpoint. Removing retention
+// must fail without changing the refusal.
+test("retains Terminal.app's refused text reply with its checkpoint and unchanged refusal", () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminal-app-failed-inputs-"))
+  directories.push(directory)
+  const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    import { runInNewContext } from "node:vm"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const directory = ${JSON.stringify(directory)}
+    process.env.TERMINFO_CAPTURE_DIRECTORY = directory
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device,
+      openSync: (path, ...args) => path === "/dev/fd/1" ? 900 : fs.openSync(path, ...args),
+      closeSync: (fd) => fd === 900 ? undefined : fs.closeSync(fd) }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    // Terminal.app's contents are logical lines: one wrapped 82-character line plus 23 rows is 24 lines on 25 rows.
+    const contents = "W".repeat(80) + "XY\\n" + "r\\n".repeat(23)
+    const tab = { tty: () => "/dev/ttys004", contents: () => contents, numberOfRows: () => 25, numberOfColumns: () => 80 }
+    const application = { running: () => true, frontmost: () => true, windows: [{ tabs: [tab] }] }
+    const scriptReplies = []
+    mock.module("node:child_process", () => ({ ...cp,
+      execFileSync: (command, args) => {
+        assert.equal(command, "/bin/ps")
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid ? process.pid + " 4242 /bin/zsh"
+          : pid === 4242 ? "4242 1 /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" : "1 0 /sbin/launchd"
+      },
+      spawnSync: (command, args) => {
+        assert.equal(command, "/usr/bin/osascript")
+        const stdout = String(runInNewContext(args[args.length - 1] + "\\nrun()", { Application: () => application })) + "\\n"
+        scriptReplies.push(stdout)
+        return { stdout, stderr: "", status: 0, signal: null }
+      },
+      spawn: (file) => {
+        if (String(file).endsWith("pbpaste") || String(file).endsWith("pbcopy") || String(file).endsWith("osascript")) {
+          const child = new EventEmitter()
+          child.stdout = new EventEmitter()
+          child.stderr = new EventEmitter()
+          child.kill = () => true
+          child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+          return child
+        }
+        const child = new EventEmitter()
+        child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => true
+        queueMicrotask(() => { child.stdout.emit("data", Buffer.from("25 80\\n")); child.emit("close", 0) })
+        return child
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
+      readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64),
+        appLaunch: { executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" } }) }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const retained = []
+    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: (artifact) => retained.push(artifact) })
+    const labels = ["text qualification soft-wrap target", "text qualification prior-scrollback control"]
+    try {
+      for (const label of [...labels, "another checkpoint"]) {
+        assert.deepEqual(await owner.readCells({ label, directory, onRetained: (artifact) => retained.push(artifact) }),
+          { status: "refused", reason: "Terminal.app returned 24 rows where the measured screen has 25" })
+      }
+      const envelopes = retained.filter(artifact => artifact.path.endsWith(".json"))
+      const frames = retained.filter(artifact => artifact.path.endsWith(".bin"))
+      assert.equal(envelopes.length, 3); assert.equal(frames.length, 3)
+      for (const [index, artifact] of envelopes.entries()) {
+        const bytes = fs.readFileSync(artifact.path)
+        const envelope = JSON.parse(bytes.toString("utf8"))
+        assert.equal(envelope.captureRunId, "a".repeat(32))
+        assert.equal(envelope.checkpoint, [...labels, "another checkpoint"][index])
+        assert.equal(envelope.tty, "/dev/ttys004")
+        assert.deepEqual(envelope.grid, { rows: 25, cols: 80 })
+        assert.equal(envelope.reply, "sha256:" + frames[index].sha256)
+        assert.equal(fs.readFileSync(frames[index].path, "utf8"), scriptReplies[index])
+        const diagnostic = JSON.parse(scriptReplies[index]).diagnostic
+        assert.equal(diagnostic.contents, contents)
+        assert.deepEqual(diagnostic.lineLengths, [82, ...Array(23).fill(1)])
         assert.equal((await import("node:crypto")).createHash("sha256").update(bytes).digest("hex"), artifact.sha256)
       }
     } finally { await owner.dispose() }

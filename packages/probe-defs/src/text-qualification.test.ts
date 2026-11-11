@@ -3,6 +3,8 @@
  *   recorded the macOS recipe is admitted, or a Windows Terminal run passes while its observer reads
  *   the console host's buffer (U+0001 where the terminal shows a glyph), so a host's verdict is
  *   published as the terminal's (#30720, @cto 5a737c28 and 79a35617).
+ *   A history seed that only overwrites a screen an earlier shape soft-wrapped keeps the join in a
+ *   logical-line reader (Terminal.app), so prior-scrollback refuses a row short (33512).
  * @level l1
  * @consumer recordTextQualificationTests (collector) and parseProbeResults (reader), through
  *   admitsTextObservation and assessTextQualification.
@@ -79,6 +81,26 @@ function run(
     snapshots,
   }
 }
+
+// 33512 (@cto 55b3c9d3 option a): Terminal.app refused prior-scrollback's control at 29 rows of 30
+// (run 42939520969) right after soft-wrap's target joined rows 1-2; overwriting that screen kept the
+// join, while empty-last-row, whose writes scroll it off, read all 30. The history seed therefore
+// scrolls every earlier row off and prints only lines shorter than the grid, leaving the rows read
+// unchanged.
+describe("text qualification history seed", () => {
+  it("scrolls every earlier row off before its history and prints no full-width line", () => {
+    const fixtures = textQualificationFixtures(ROWS, COLS)
+    if (typeof fixtures === "string") throw new Error(fixtures)
+    for (const shape of ["prior-scrollback", "empty-last-row"] as const) {
+      const fixture = fixtures.find((candidate) => candidate.shape === shape)
+      if (fixture === undefined) throw new Error(`${shape} fixture is missing`)
+      expect(fixture.controlWrites.startsWith(`\x1b[${ROWS};1H${"\r\n".repeat(ROWS)}`), shape).toBe(true)
+      // oxlint-disable-next-line no-control-regex -- the writes are terminal control sequences
+      const printed = fixture.controlWrites.replaceAll(/\x1b\[[0-9;]*[A-Za-z]/gu, "\r\n").split("\r\n")
+      expect(Math.max(...printed.map((line) => line.length)), shape).toBeLessThan(COLS)
+    }
+  })
+})
 
 describe("text qualification recipes", () => {
   it("keeps a retained version-1 suite's macOS qualification", () => {

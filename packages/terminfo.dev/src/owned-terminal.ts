@@ -46,6 +46,7 @@ import {
 import { kernelExecPath } from "./darwin-kernel-exec.ts"
 import {
   mapSnapshotToCells,
+  type OsascriptReply,
   readTerminalAppHistory,
   readTerminalTextSnapshot,
   terminalAppHistoryReader,
@@ -1627,30 +1628,32 @@ export async function createOwnedTerminal(options: {
               }
               return { status: "read", app: "kitty", cells }
             }
+            // Each app's raw reply is kept with its checkpoint, so a refused read keeps what the app returned.
+            const retainReply =
+              checkpoint &&
+              ((bytes: Uint8Array) => {
+                const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
+                retain(
+                  checkpoint.directory,
+                  Buffer.from(
+                    JSON.stringify({
+                      captureRunId,
+                      checkpoint: checkpoint.label,
+                      tty: darwinTextTty,
+                      grid: { rows: geometry.rows, cols: geometry.cols },
+                      reply,
+                    }),
+                  ),
+                  "json",
+                  checkpoint.onRetained,
+                )
+              })
             if (darwinTextApp === "iterm2") {
               return readITermCells({
                 tty: darwinTextTty,
                 cols: geometry.cols,
                 rows: geometry.rows,
-                ...(checkpoint && {
-                  onReply: (bytes: Uint8Array) => {
-                    const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
-                    retain(
-                      checkpoint.directory,
-                      Buffer.from(
-                        JSON.stringify({
-                          captureRunId,
-                          checkpoint: checkpoint.label,
-                          tty: darwinTextTty,
-                          grid: { rows: geometry.rows, cols: geometry.cols },
-                          reply,
-                        }),
-                      ),
-                      "json",
-                      checkpoint.onRetained,
-                    )
-                  },
-                }),
+                ...(retainReply && { onReply: retainReply }),
               })
             }
             return readTerminalTextSnapshot({
@@ -1658,6 +1661,7 @@ export async function createOwnedTerminal(options: {
               tty: darwinTextTty,
               cols: geometry.cols,
               rows: geometry.rows,
+              ...(retainReply && { onReply: (reply: OsascriptReply) => retainReply(Buffer.from(reply.stdout)) }),
             })
           },
         }),
