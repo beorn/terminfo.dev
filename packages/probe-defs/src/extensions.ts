@@ -55,6 +55,7 @@ import {
 } from "./helpers.ts"
 import { measureAlternateReflow } from "./modes.ts"
 import { sgrTermReadback } from "./sgr.ts"
+import { unavailableScrollbackReading } from "./scrollback.ts"
 import {
   awaitPaintWitness,
   beginCaptureLifecycle,
@@ -8563,7 +8564,13 @@ const extensionDefinitions: ProbeDefinition[] = [
 
   // OSC 720 — rxvt-unicode scroll view up
   {
-    ...probe("extensions.osc720-scroll-up", osc720ScrollProbe(), osc720ScrollUpApp),
+    ...probe("extensions.osc720-scroll-up", osc720ScrollProbe(), async (ctx) => {
+      try {
+        return await osc720ScrollUpApp(ctx)
+      } catch (error) {
+        return unavailableScrollbackReading(error)
+      }
+    }),
     libAssertionType: "buffer_state",
     termNeedsGeometry: true,
   },
