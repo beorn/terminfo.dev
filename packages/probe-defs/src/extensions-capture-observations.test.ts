@@ -550,11 +550,120 @@ test("extensions.osc112-reset-cursor reads the cursor cell after the reset, not 
   expect(reset).toBeGreaterThan(coloured)
   expect(result.observation?.outcome).toBe("supported")
   expect(result.observation?.frames?.some((frame) => /reset after OSC 112/.test(frame.label))).toBe(true)
+
   // Run-parser refuses a whole run whose screenshot row cites a control frame as its primary, so the
   // decided row must name the changed cursor cell — the one target frame — not the reset control.
   const targets = result.observation?.frames?.filter((frame) => frame.role === "target") ?? []
   expect(targets).toHaveLength(1)
   expect(result.observation?.screenshotRef).toBe(targets[0]?.ref)
+})
+
+// The verdict can be right while the wire shape is refused, and that failure mode costs the WHOLE run:
+// tmux 2026-11-11 07:51Z recorded every probe as supported and the collector then threw
+// "primary screenshotRef for extensions.osc112-reset-cursor must be a target frame". So this test parses
+// the supported observation through the same run parser the collector uses, at the rule that failed.
+test("extensions.osc112-reset-cursor's supported observation survives the run parser", async () => {
+  const featureId = "extensions.osc112-reset-cursor"
+  const { context } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
+  const result = await find(featureId).term!(context)
+  expect(result.observation?.outcome).toBe("supported")
+  const assertions = (result.assertions ?? []).map((entry) => ({ ...entry, featureId, rawReplyRef: featureId }))
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: "2026-11-11T08:00:00.000Z" },
+    rawReplyRef: featureId,
+    observation: result.observation ? { ...result.observation, featureId, rawReplyRef: featureId } : undefined,
+    assertions,
+    tests: result.tests,
+  })
+  // This arm's fixture digests are labels (`sha256:frame3`, `cursor:true:...`), which the parser rejects
+  // as digests before it reaches the rule under test. Rewriting them deterministically keeps the rules
+  // honest - equal fixture values stay equal, so the equality the arm relies on survives - instead of
+  // relaxing the parser or skipping it.
+  const digestOf = (value: string) =>
+    /^sha256:[0-9a-f]{64}$/.test(value) ? value : `sha256:${createHash("sha256").update(value).digest("hex")}`
+  const rewrites = new Map<string, string>()
+  for (const frame of recorded.frames ?? []) {
+    for (const [key, value] of Object.entries(frame)) {
+      if (typeof value === "string" && (key === "ref" || key.endsWith("Digest"))) rewrites.set(value, digestOf(value))
+    }
+  }
+  const rewriteText = (text: string) => {
+    let out = text
+    for (const [from, to] of rewrites) out = out.split(from).join(to)
+    return out
+  }
+  const recordedWithDigests = {
+    ...recorded,
+    ...(recorded.screenshotRef ? { screenshotRef: rewriteText(recorded.screenshotRef) } : {}),
+    ...(recorded.reason ? { reason: rewriteText(recorded.reason) } : {}),
+    frames: (recorded.frames ?? []).map((frame) => ({
+      ...frame,
+      ...Object.fromEntries(
+        Object.entries(frame)
+          .filter(([key, value]) => typeof value === "string" && (key === "ref" || key.endsWith("Digest")))
+          .map(([key, value]) => [key, rewriteText(value as string)]),
+      ),
+      ...(frame.sourceRef ? { sourceRef: rewriteText(frame.sourceRef) } : {}),
+    })),
+  }
+  const suite = "c".repeat(64)
+  const manifest: ProbeSuiteManifest = {
+    schemaVersion: 4,
+    probeHash: suite,
+    adapterVersion: "3.3.1",
+    generatedAt: "2026-11-11T08:00:00.000Z",
+    catalogIds: [featureId],
+    probes: { term: [featureId], lib: [], mux: [] },
+  }
+  const run = {
+    schemaVersion: 4,
+    source: { kind: "live" },
+    runId: "osc112-parse",
+    suiteId: suite,
+    probeHash: suite,
+    sourceRevision: "5".repeat(40),
+    intendedSubject: { kind: "term", id: "tmux" },
+    subject: {
+      kind: "term",
+      id: "tmux",
+      version: "3.5a",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: "2026-11-11T08:01:00.000Z",
+    origin: { kind: "collector" },
+    sealedAt: "2026-11-11T08:02:00.000Z",
+    rawReplies: {
+      [featureId]: JSON.stringify({ writes: [], queries: [], events: [] }),
+      ...(result.response ? { [`${featureId}.callbackResponse`]: result.response } : {}),
+    },
+    assertions: assertions.map((entry) => ({
+      ...entry,
+      expected: rewriteText(entry.expected),
+      observed: rewriteText(entry.observed),
+    })),
+    screenshotRefs: [...new Set((recordedWithDigests.frames ?? []).map((frame) => frame.ref))],
+    results: [recordedWithDigests],
+  }
+  const parsed = parseRun("osc112-parse.json", JSON.stringify(run), [featureId], new Map([[suite, manifest]]))
+  expect(parsed.results?.[0]?.status).toBe("supported")
+  expect(() =>
+    parseObservationFrames(
+      parsed.results?.[0]?.frames,
+      "osc112-parse.json",
+      featureId,
+      parsed.screenshotRefs,
+      parsed.textSnapshotRefs,
+      parsed.results?.[0]?.screenshotRef,
+      parsed.results?.[0]?.assertionType,
+    ),
+  ).not.toThrow()
 })
 
 test("extensions.osc112-reset-cursor names a reset that did not restore the cursor colour", async () => {
