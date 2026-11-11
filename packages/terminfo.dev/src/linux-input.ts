@@ -15,14 +15,41 @@ function requireLinuxDisplay(): void {
 }
 
 /**
- * The window manager that owns the collection display for this whole run (#33305), or null when
- * the environment has none. A GTK toplevel only reports focus when its window manager activates
- * it, so the focus arm has to ask the manager whenever one is running. Unset is the WM-free
- * environment byte for byte; the name is the one the container receipt records.
+ * The owned helper window that takes X focus in the middle of the witness (#33305). GTK reports
+ * no focus change when focus moves to the display root, so a root step proves nothing for Ghostty
+ * while xterm reports it - the middle target has to be a window that both kinds of terminal see
+ * losing focus to. The container script maps it before the app and dies with the display; this
+ * adapter only learns its id.
  */
-function ownedWindowManager(): string | null {
-  const name = process.env.TERMINFO_XVFB_WM?.trim()
-  return name === undefined || name === "" ? null : name
+function focusHelperWindowId(): string {
+  const window = process.env.TERMINFO_FOCUS_HELPER_WINDOW?.trim()
+  if (window === undefined || window === "") {
+    throw new Error(
+      "The owned focus helper window is missing: TERMINFO_FOCUS_HELPER_WINDOW must name the helper " +
+        "toplevel, because a GTK terminal reports no focus change to the display root (#33305)",
+    )
+  }
+  if (!/^\d+$/.test(window)) {
+    throw new Error(`TERMINFO_FOCUS_HELPER_WINDOW is not an X window id: ${window}`)
+  }
+  return window
+}
+
+interface WindowRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+async function windowRect(windowId: string): Promise<WindowRect> {
+  const output = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
+  const field = (name: string): number => {
+    const match = new RegExp(`^${name}=(-?\\d+)$`, "m").exec(output)
+    if (!match?.[1]) throw new Error(`getwindowgeometry for ${windowId} has no ${name}: ${output.trim()}`)
+    return Number(match[1])
+  }
+  return { x: field("X"), y: field("Y"), width: field("WIDTH"), height: field("HEIGHT") }
 }
 
 /** Bind OS-level XTEST key/click/wheel injection to the owned Kitty window. */
@@ -46,74 +73,64 @@ export async function createLinuxInput(
     throw new Error(`Collector's Kitty PID ${kittyPid} owns ${windows.length} visible windows; expected one`)
   }
   const ownedWindowId: string = windowId
+  const helperWindowId = focusHelperWindowId()
+  if (helperWindowId === ownedWindowId) {
+    throw new Error(`The focus helper window ${helperWindowId} is the owned window; the witness needs two`)
+  }
+  // The helper must never occlude the owned window: an XGetImage capture of an obscured window can
+  // read undefined pixels, so an overlapping helper would corrupt every captured cell it covers.
+  const ownedRect = await windowRect(ownedWindowId)
+  const helperRect = await windowRect(helperWindowId)
+  const overlaps =
+    helperRect.x < ownedRect.x + ownedRect.width &&
+    ownedRect.x < helperRect.x + helperRect.width &&
+    helperRect.y < ownedRect.y + ownedRect.height &&
+    ownedRect.y < helperRect.y + helperRect.height
+  if (overlaps) {
+    throw new Error(
+      `The owned focus helper ${helperWindowId} at ${String(helperRect.x)},${String(helperRect.y)} ` +
+        `${String(helperRect.width)}x${String(helperRect.height)} overlaps the owned window ${ownedWindowId} at ` +
+        `${String(ownedRect.x)},${String(ownedRect.y)} ${String(ownedRect.width)}x${String(ownedRect.height)}; ` +
+        "an obscured capture is not a reading",
+    )
+  }
 
   async function focusRoundTrip(): Promise<{
     ownedWindowId: string
-    rootWindowId: string
+    helperWindowId: string
     focusedWindowIds: [string, string, string]
   }> {
-    const selectedScreen = /default screen number:\s*(\d+)/.exec(display)?.[1]
-    const section = selectedScreen === undefined ? undefined : display.split(`screen #${selectedScreen}:`)[1]
-    const rootHex = section?.split(/screen #\d+:/)[0]?.match(/root window id:\s*(0x[0-9a-f]+)/i)?.[1]
-    if (!rootHex) throw new Error("Owned DISPLAY xdpyinfo lacks its selected screen root window id")
-    const rootWindowId = String(Number.parseInt(rootHex, 16))
-    const windowManager = ownedWindowManager()
-    const focus = async (target: string, activation: "manager" | "raw"): Promise<string> => {
-      if (activation === "manager") {
-        try {
-          await command("xdotool", ["windowactivate", "--sync", target])
-        } catch (error) {
-          throw new Error(`Window manager ${windowManager} refused to activate ${target}: ${(error as Error).message}`)
-        }
-      } else {
-        await command("xdotool", ["windowfocus", target])
-      }
+    const focus = async (target: string): Promise<string> => {
+      await command("xdotool", ["windowfocus", target])
       const focused = (await command("xdotool", ["getwindowfocus", "-f"])).toString().trim()
       if (focused !== target) {
-        throw new Error(
-          `Owned focus roundtrip expected ${target}; getwindowfocus -f is ${focused}` +
-            (windowManager === null ? "" : ` under window manager ${windowManager}`),
-        )
+        throw new Error(`Owned focus roundtrip expected ${target}; getwindowfocus -f is ${focused}`)
       }
       return focused
     }
-    // The root step is the witness, not an activation: it must move X input focus away and back.
-    const focusOwned = (): Promise<string> => focus(ownedWindowId, windowManager === null ? "raw" : "manager")
-    const initialFocus = await focusOwned()
-    let rootFocus: string
+    // The helper step is the witness, not an activation: it must move X input focus away and back.
+    const initialFocus = await focus(ownedWindowId)
+    let helperFocus: string
     let restoredFocus: string
     try {
-      rootFocus = await focus(rootWindowId, "raw")
+      helperFocus = await focus(helperWindowId)
     } finally {
-      restoredFocus = await focusOwned()
+      restoredFocus = await focus(ownedWindowId)
     }
-    return { ownedWindowId, rootWindowId, focusedWindowIds: [initialFocus, rootFocus, restoredFocus] }
+    return { ownedWindowId, helperWindowId, focusedWindowIds: [initialFocus, helperFocus, restoredFocus] }
   }
 
   async function focusOwnedWindow(): Promise<void> {
-    // Xvfb has no EWMH WM by default: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW.
-    // windowfocus uses XSetInputFocus, which CURRENTWINDOW (--window 0) then follows.
+    // Xvfb has no EWMH WM: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW, and a
+    // manager would take the focus back anyway. windowfocus uses XSetInputFocus, which
+    // CURRENTWINDOW (--window 0) then follows.
     // xterm on the collection image never completes xdotool --sync (28550/28556).
     // XSetInputFocus then getwindowfocus, without --sync, is the bound: inject cannot wait out a 10s execFile timeout.
-    // Under TERMINFO_XVFB_WM the manager owns activation, and the raw roundtrip above produces no
-    // GTK focus report (#33305), so the owned step asks the manager and still verifies the result.
-    const windowManager = ownedWindowManager()
-    if (windowManager === null) {
-      await command("xdotool", ["windowfocus", ownedWindowId])
-    } else {
-      try {
-        await command("xdotool", ["windowactivate", "--sync", ownedWindowId])
-      } catch (error) {
-        throw new Error(
-          `Window manager ${windowManager} refused to activate the owned window ${ownedWindowId}: ${(error as Error).message}`,
-        )
-      }
-    }
+    await command("xdotool", ["windowfocus", ownedWindowId])
     const focused = (await command("xdotool", ["getwindowfocus"])).toString().trim()
     if (focused !== ownedWindowId) {
       throw new Error(
-        `XTEST inject requires the owned window ${ownedWindowId} to be focused; getwindowfocus is ${focused}` +
-          (windowManager === null ? "" : ` under window manager ${windowManager}`),
+        `XTEST inject requires the owned window ${ownedWindowId} to be focused; getwindowfocus is ${focused}`,
       )
     }
   }

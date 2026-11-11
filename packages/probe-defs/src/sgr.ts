@@ -253,13 +253,13 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     !!focusBefore &&
     !!focusAfter &&
     focusBefore.ownedWindowId.length > 0 &&
-    focusBefore.rootWindowId.length > 0 &&
+    focusBefore.helperWindowId.length > 0 &&
     focusBefore.ownedWindowId === focusAfter.ownedWindowId &&
-    focusBefore.rootWindowId === focusAfter.rootWindowId &&
+    focusBefore.helperWindowId === focusAfter.helperWindowId &&
     [focusBefore, focusAfter].every(
       (reading) =>
         reading.focusedWindowIds[0] === reading.ownedWindowId &&
-        reading.focusedWindowIds[1] === reading.rootWindowId &&
+        reading.focusedWindowIds[1] === reading.helperWindowId &&
         reading.focusedWindowIds[2] === reading.ownedWindowId,
     )
   const styledFrames = samples.map((entry) => entry.styled)

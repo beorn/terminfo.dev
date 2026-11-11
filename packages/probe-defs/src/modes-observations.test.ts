@@ -50,7 +50,7 @@ test("App focus tracking grades delivered set/reset input rather than DECRPM", a
         bytes += arm++ === 0 ? enabled.replace(/a$/, "") : reset.replace(/a$/, "")
         return {
           ownedWindowId: "42",
-          rootWindowId: "543",
+          helperWindowId: "543",
           focusedWindowIds: ["42", "543", "42"] as [string, string, string],
         }
       },

@@ -73,13 +73,20 @@ it.each(["ghostty", "wezterm"])(
   },
 )
 
+/** The owned focus helper window the display receipt must name (#33305). */
+const DEFAULT_FOCUS_HELPER = {
+  pid: 4321,
+  window: "6291468",
+  geometry: "Window 6291468 Position: 1600,900 Geometry: 160x60",
+}
+
 function compose(
   containerRunId = "a".repeat(32),
   writeContainer = true,
   containerRunnerSha = "runner-hash",
   containerProfile = "default",
   capture: unknown = { xwdSha256: "xwd-hash", pngSha256: "png-hash" },
-  wm: { host?: unknown; container?: unknown; omitContainerDisplay?: boolean } = { host: null, container: null },
+  focusHelper: { container?: unknown; omitContainerDisplay?: boolean } = { container: DEFAULT_FOCUS_HELPER },
 ) {
   const host = join(dir, "host.json")
   const container = join(dir, "container.json")
@@ -91,7 +98,6 @@ function compose(
       clipboardProfile: "default",
       sourceArtifact: { url: "https://example.invalid/kitty.txz" },
       runnerArtifact: { frozenRunnerSha256: "runner-hash", buildReceiptSha256: "receipt-hash" },
-      xvfbWm: wm.host ?? null,
       runtime: { imageId: "sha256:image", imageTarSha256: "tar-hash" },
     }),
   )
@@ -108,7 +114,7 @@ function compose(
         display: {
           glxinfo: "llvmpipe",
           geometry: "WIDTH=800",
-          ...(wm.omitContainerDisplay === true ? {} : { wm: wm.container ?? null }),
+          ...(focusHelper.omitContainerDisplay === true ? {} : { focusHelper: focusHelper.container ?? null }),
         },
         clipboardFixture: { runId: containerRunId, profile: containerProfile, sha256: "fixture-hash" },
         capture,
@@ -701,71 +707,34 @@ describe("container run receipt composition", () => {
     expect(existsSync(output)).toBe(false)
   })
 
-  // #33305: a window-manager run and a WM-free run must never be told apart by guessing, so the
-  // receipt names the manager it ran and the host-declared switch has to agree with it.
-  it("records the window manager the container ran and the switch the host declared", () => {
+  // #33305: the focus witness needs a second window, so the receipt must name the owned helper by
+  // pid, window id and geometry - a run whose receipt omits it cannot be read as a focused run.
+  it("records the owned focus helper window and its geometry", () => {
     const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
-      host: "openbox",
-      container: {
-        name: "openbox",
-        version: "3.6.1",
-        argv: ["openbox", "--config-file", "/home/runner/wm-rc.xml"],
-        config: { path: "/home/runner/wm-rc.xml", sha256: "config-hash" },
-      },
+      container: DEFAULT_FOCUS_HELPER,
     })
     expect(result.status, result.stderr).toBe(0)
-    const receipt = JSON.parse(readFileSync(output, "utf8")) as { display: { wm: { name: string; version: string } } }
-    expect(receipt.display.wm).toMatchObject({ name: "openbox", version: "3.6.1" })
+    const receipt = JSON.parse(readFileSync(output, "utf8")) as {
+      display: { focusHelper: { pid: number; window: string; geometry: string } }
+    }
+    expect(receipt.display.focusHelper).toEqual(DEFAULT_FOCUS_HELPER)
   })
 
-  it("refuses a display receipt that never says which window manager ran", () => {
+  it("refuses a display receipt that never names the owned focus helper window", () => {
     const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
-      host: null,
-      container: null,
       omitContainerDisplay: true,
     })
     expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain("window manager")
+    expect(result.stderr).toContain("focus helper")
     expect(existsSync(output)).toBe(false)
   })
 
-  it("refuses a host-declared window manager that the container did not run", () => {
+  it("refuses a focus helper named without the window id it was mapped as", () => {
     const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
-      host: "openbox",
-      container: null,
+      container: { pid: 4321, geometry: "Window 6291468 Position: 1600,900 Geometry: 160x60" },
     })
     expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain("host-declared window manager disagrees")
-    expect(existsSync(output)).toBe(false)
-  })
-
-  it("refuses a window manager named without the argv it was launched with", () => {
-    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
-      host: "openbox",
-      container: {
-        name: "openbox",
-        version: "3.6.1",
-        config: { path: "/home/runner/wm-rc.xml", sha256: "config-hash" },
-      },
-    })
-    expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain("config hash")
-    expect(existsSync(output)).toBe(false)
-  })
-
-  // @cto d10e47a6: the config the manager reads must be the run's own bytes, so its hash travels.
-  it("refuses a window manager whose config is named without the hash of its bytes", () => {
-    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
-      host: "openbox",
-      container: {
-        name: "openbox",
-        version: "3.6.1",
-        argv: ["openbox", "--config-file", "/home/runner/wm-rc.xml"],
-        config: { path: "/home/runner/wm-rc.xml" },
-      },
-    })
-    expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain("config hash")
+    expect(result.stderr).toContain("focus helper")
     expect(existsSync(output)).toBe(false)
   })
 })
@@ -1503,7 +1472,7 @@ it.each([false, true])("writes a Linux completion receipt for captured bytes, pe
         .update(readFileSync(join(dir, "v3-capture.json")))
         .digest("hex"),
     },
-    display: { glxinfo: "llvmpipe", geometry: "WIDTH=800", wm: null },
+    display: { glxinfo: "llvmpipe", geometry: "WIDTH=800", focusHelper: DEFAULT_FOCUS_HELPER },
     clipboardFixture: { runId: capture.runId, profile: "default", sha256: "fixture-hash" },
     capture: null,
   }

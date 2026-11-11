@@ -127,15 +127,11 @@ compose_receipt() {
       error("host/container probe selection mismatch")
     elif ($c.display.glxinfo | type) != "string" or ($c.display.geometry | type) != "string" then
       error("container display receipt is missing")
-    elif ($c.display | has("wm") | not) then
-      error("container display receipt does not say which window manager ran (wm must be present, null when none did)")
-    elif $c.display.wm != null and (
-         ($c.display.wm.name | type) != "string" or ($c.display.wm.version | type) != "string" or
-         ($c.display.wm.argv | type) != "array" or any($c.display.wm.argv[]; type != "string") or
-         ($c.display.wm.config.path | type) != "string" or ($c.display.wm.config.sha256 | type) != "string") then
-      error("container display receipt window manager is not named by name, version, argv and its config hash")
-    elif ($h.xvfbWm // null) != (if $c.display.wm == null then null else $c.display.wm.name end) then
-      error("host-declared window manager disagrees with the window manager the container ran")
+    elif ($c.display | has("focusHelper") | not) then
+      error("container display receipt does not name the owned focus helper window (#33305)")
+    elif ($c.display.focusHelper.pid | type) != "number" or ($c.display.focusHelper.window | type) != "string" or
+         ($c.display.focusHelper.window | length) == 0 or ($c.display.focusHelper.geometry | type) != "string" then
+      error("container display receipt focus helper is not named by pid, window id and geometry")
     elif $c.clipboardFixture.runId != $h.runId or $c.clipboardFixture.profile != $h.clipboardProfile or
          ($c.clipboardFixture.sha256 | type) != "string" then
       error("container clipboard fixture disagrees with host run or profile")
@@ -174,7 +170,6 @@ write_host_receipt() {
     --arg grace "${TERMINFO_SENTINEL_GRACE_MS:-250}" \
     --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$target_version" \
     --arg target "$target_id" --arg mux "$mux_kind" \
-    --arg wm "${TERMINFO_XVFB_WM:-}" \
     --arg url "$source_url" --arg sri "$source_sri" \
     --arg kind "$proof_kind" --arg narSri "$proof_nar_sri" --arg revision "$proof_revision" \
     '{kind:"app",id:$target,version:$version,os:"linux"} as $app |
@@ -187,7 +182,6 @@ write_host_receipt() {
       runnerArtifact:{sha256:$bundle,narSha256:$bundleNar,
         frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
         build:$build[0],rootBunLockSha256:$lock},
-      xvfbWm:(if $wm == "" then null else $wm end),
       runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,
         sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
       status:"raw-unreviewed-history"} + (if $ids == null then {} else {selectedIDs:$ids} end)' > "$1"
@@ -711,7 +705,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   esac
 
   xvfb_pid=
-  wm_pid=
+  focus_helper_pid=
   helper_pid=
   primary_helper_pid=
   daemon_pid=
@@ -719,7 +713,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   cleanup() {
     local status=$?
     trap - EXIT
-    stop_owned_processes "$daemon_pid" "$wm_pid" "$helper_pid" "$primary_helper_pid" "$xvfb_pid" "$collector_pid"
+    stop_owned_processes "$daemon_pid" "$focus_helper_pid" "$helper_pid" "$primary_helper_pid" "$xvfb_pid" "$collector_pid"
     exit "$status"
   }
   trap cleanup EXIT
@@ -750,73 +744,34 @@ if [[ "${1:-}" == "--inside" ]]; then
     exit 2
   }
 
-  # Off by default (#33305): TERMINFO_XVFB_WM names the window manager that owns this display for
-  # the whole run. Unset is the WM-free environment, byte for byte. A GTK toplevel only reports
-  # focus when a manager activates it, so the focus arm needs one; it is started here, before the
-  # app under test maps, so no row is measured across a window-state change, and it dies with the
-  # display. The run record names it, so WM readings and WM-free readings are never confused.
-  wm_name=
-  wm_version=
-  wm_argv=
-  wm_config_sha=
-  if [[ -n "${TERMINFO_XVFB_WM:-}" ]]; then
-    case "$TERMINFO_XVFB_WM" in
-      openbox) ;;
-      *)
-        echo "TERMINFO_XVFB_WM=$TERMINFO_XVFB_WM is not a window manager this image ships; the only one is openbox" >&2
-        exit 2
-        ;;
-    esac
-    wm_version=$(openbox --version | sed -nE 's/^Openbox ([0-9][^[:space:]]*)$/\1/p' | head -n 1)
-    [[ -n "$wm_version" ]] || {
-      echo "Owned openbox did not report its version" >&2
+  # The focus witness needs a second window (#33305): a GTK terminal reports no focus change when
+  # focus moves to the display root, so the arm moves focus to this owned helper and back. It is
+  # mapped here, before the app under test, in the bottom-right corner of the screen, and it dies
+  # with the display. Its pid and window id are in the receipt, and the input adapter refuses the
+  # run if its rectangle ever intersects the owned window's.
+  focus_helper_pid=
+  focus_helper_window=
+  focus_helper_geometry=
+  xterm -geometry 20x3-0-0 -e sleep 36000 > /out/focus-helper.log 2>&1 &
+  focus_helper_pid=$!
+  for _ in $(seq 1 100); do
+    kill -0 "$focus_helper_pid" 2>/dev/null || {
+      echo "Owned focus helper exited before it mapped" >&2
+      cat /out/focus-helper.log >&2
       exit 2
     }
-    # Only this owned, explicit config is read, never a home-directory rc.xml, and it turns
-    # decorations off so the client geometry and capture origin stay the WM-free ones.
-    cat > "$HOME/wm-rc.xml" <<'TERMINFO_WM_RC'
-<?xml version="1.0" encoding="UTF-8"?>
-<openbox_config xmlns="http://openbox.org/3.4/rc">
-  <focus>
-    <focusNew>yes</focusNew>
-    <followMouse>no</followMouse>
-    <focusLast>yes</focusLast>
-    <underMouse>no</underMouse>
-    <raiseOnFocus>no</raiseOnFocus>
-  </focus>
-  <applications>
-    <application class="*">
-      <decor>no</decor>
-      <focus>yes</focus>
-    </application>
-  </applications>
-</openbox_config>
-TERMINFO_WM_RC
-    chmod 600 "$HOME/wm-rc.xml"
-    wm_config_sha=$(sha256sum "$HOME/wm-rc.xml" | cut -d ' ' -f 1)
-    wm_argv=$(jq -cn --args '$ARGS.positional' -- openbox --config-file "$HOME/wm-rc.xml" --sm-disable)
-    openbox --config-file "$HOME/wm-rc.xml" --sm-disable > /out/wm.log 2>&1 &
-    wm_pid=$!
-    for _ in $(seq 1 100); do
-      kill -0 "$wm_pid" 2>/dev/null || {
-        echo "Owned openbox exited before it owned the display" >&2
-        cat /out/wm.log >&2
-        exit 2
-      }
-      xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id' && break
-      sleep 0.1
-    done
-    xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id' || {
-      echo "Owned openbox never became the display's window manager" >&2
-      cat /out/wm.log >&2
-      exit 2
-    }
-    xprop -root _NET_SUPPORTED 2>/dev/null | grep -qw '_NET_ACTIVE_WINDOW' || {
-      echo "Owned openbox does not advertise _NET_ACTIVE_WINDOW, so xdotool windowactivate cannot activate a window" >&2
-      exit 2
-    }
-    wm_name=$TERMINFO_XVFB_WM
+    focus_helper_window=$(xdotool search --onlyvisible --pid "$focus_helper_pid" 2>/dev/null | tail -n 1)
+    [[ -n "$focus_helper_window" ]] && break
+    sleep 0.1
+  done
+  if [[ -z "$focus_helper_window" ]]; then
+    echo "Owned focus helper window never mapped; the focus witness has no second window" >&2
+    cat /out/focus-helper.log >&2
+    exit 2
   fi
+  focus_helper_geometry=$(xdotool getwindowgeometry "$focus_helper_window" | tr '\n' ' ')
+  chmod 600 /out/focus-helper.log
+  export TERMINFO_FOCUS_HELPER_WINDOW="$focus_helper_window"
 
   baseline_path="$HOME/clipboard-baseline.txt"
   printf 'terminfo-owned-clipboard-%s' "$TERMINFO_RUN_ID" > "$baseline_path"
@@ -1166,8 +1121,8 @@ TERMINFO_WM_RC
     --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg clipboardSha "$clipboard_fixture_sha" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
-    --arg wm "$wm_name" --arg wmVersion "$wm_version" --arg wmArgv "$wm_argv" \
-    --arg wmConfig "$HOME/wm-rc.xml" --arg wmConfigSha "$wm_config_sha" \
+    --argjson focusHelperPid "$focus_helper_pid" --arg focusHelperWindow "$focus_helper_window" \
+    --arg focusHelperGeometry "$focus_helper_geometry" \
     '{runId:$run,
       executable:{path:$executablePath,version:$executableVersion,sha256:$executableSha},
       invocation:{path:$invocationPath,sha256:$invocationSha},
@@ -1175,9 +1130,7 @@ TERMINFO_WM_RC
       collector:{frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha},
       probeRun:{path:"v3-capture.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry,
-        wm:(if $wm == "" then null
-            else {name:$wm,version:$wmVersion,argv:($wmArgv|fromjson),
-                  config:{path:$wmConfig,sha256:$wmConfigSha},log:"wm.log"} end)},
+        focusHelper:{pid:$focusHelperPid,window:$focusHelperWindow,geometry:$focusHelperGeometry}},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
       capture:$capture} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
     > /out/container-receipt.json
@@ -1191,7 +1144,6 @@ usage() {
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
   echo "That sibling and its completion receipt retain private collection custody." >&2
   echo "This launcher has no capture-only mode; do not use it for a raw-only authorization." >&2
-  echo "Set TERMINFO_XVFB_WM=openbox to give the collection display a window manager (#33305); unset is the WM-free environment." >&2
   exit 2
 }
 target_id=
@@ -1472,10 +1424,6 @@ selection_env=()
 # asked for it, so an ordinary collection keeps the measured floor.
 grace_env=()
 [[ -z "${TERMINFO_SENTINEL_GRACE_MS:-}" ]] || grace_env=(--env "TERMINFO_SENTINEL_GRACE_MS=$TERMINFO_SENTINEL_GRACE_MS")
-# The collection window manager is off unless the caller names one (#33305); forward the switch
-# only when set, so an ordinary run's container environment is unchanged.
-wm_env=()
-[[ -z "${TERMINFO_XVFB_WM:-}" ]] || wm_env=(--env "TERMINFO_XVFB_WM=$TERMINFO_XVFB_WM")
 # The declared locale every collector-owned terminal launch runs under (28752): the container's
 # shell, the terminal and the collector all inherit ONE value, so a run's decode context is pinned
 # rather than whatever the launching shell happened to carry. Recorded in observed.json below.
@@ -1498,7 +1446,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "TERMINFO_TARGET_SOURCE_KIND=$proof_kind" \
   --env "TERMINFO_TARGET_SOURCE_NAR_SRI=$proof_nar_sri" \
   --env "TERMINFO_TARGET_SOURCE_REVISION=$proof_revision" \
-  "${grace_env[@]}" "${wm_env[@]}" \
+  "${grace_env[@]}" \
   --env "TERMINFO_DISPOSABLE_RECEIPT=/receipt/host-measured.json" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"

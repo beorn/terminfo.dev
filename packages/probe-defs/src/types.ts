@@ -1166,10 +1166,13 @@ export interface ClipboardFixture {
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
 export interface InputFixture {
   injectKey(keys: string): Promise<void>
-  /** Move focus to the display root and back, verifying both owned X focus reads. */
+  /**
+   * Move focus to the owned helper window and back, verifying every X focus read. The middle read
+   * must be the helper: GTK reports no focus change to the display root (#33305).
+   */
   focusRoundTrip?(): Promise<{
     ownedWindowId: string
-    rootWindowId: string
+    helperWindowId: string
     focusedWindowIds: [string, string, string]
   }>
   injectClick(button: 1 | 4 | 5, position?: { x: number; y: number }): Promise<void>

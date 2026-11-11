@@ -972,7 +972,7 @@ it("retains the focus report emitted while enabling 1004", async () => {
         if (enabled) process.stdin.emit("data", Buffer.from("\x1b[O\x1b[I"))
         return {
           ownedWindowId: "42",
-          rootWindowId: "543",
+          helperWindowId: "543",
           focusedWindowIds: ["42", "543", "42"] as [string, string, string],
         }
       },
@@ -986,8 +986,8 @@ it("retains the focus report emitted while enabling 1004", async () => {
     enableTimeReport: "\x1b[I",
     roundTrip: "\x1b[O\x1b[I",
     focus: {
-      enabled: { ownedWindowId: "42", rootWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
-      reset: { ownedWindowId: "42", rootWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
+      enabled: { ownedWindowId: "42", helperWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
+      reset: { ownedWindowId: "42", helperWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
     },
   })
 })
