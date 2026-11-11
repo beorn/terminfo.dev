@@ -25,8 +25,9 @@
  *   the screen untouched", "the sequence matched the sibling") cannot separate a terminal that
  *   ignores the colour from one that paints it identically to the reference it was compared
  *   against, so both read inconclusive BY NAME. Unsupported is decided only by a named branch with
- *   its own witness: colour-no-attribute-witness (region-readback) and colour-sibling-separation
- *   (colourSiblingSeparation below, run at the batch tail because it reads a second row).
+ *   its own witness: colour-no-attribute-witness and colour-walked-parameters (region-readback)
+ *   and colour-sibling-separation (colourSiblingSeparation below, run at the batch tail because it
+ *   reads a second row).
  */
 import { HEADLESS_OBSERVABLE_REVIEW } from "./helpers.ts"
 import { SENTINEL, type RegionReadback } from "./region-readback.ts"
@@ -52,6 +53,8 @@ interface ColourRow {
   siblingLabel: string
   /** A setup painted before the sample in every frame — the underline the colour rows qualify. */
   seed?: string
+  /** The static attribute a terminal lacking the sequence reaches by walking its parameters. */
+  walked?: { paint: string; attribute: string }
 }
 
 const COLOUR_ROWS: Record<string, ColourRow> = {
@@ -87,9 +90,13 @@ const COLOUR_ROWS: Record<string, ColourRow> = {
     sibling: "\x1b[48;2;0;255;135m",
     siblingLabel: "the RGB 0;255;135, the nearest xterm-256 entry to 0;255;128",
   },
+  // A walker of the sibling turns blink on with its 5 and off again with the trailing 25, so the
+  // frame holds still and equals the seed; a terminal with 58 reads index 5 and 25 is a no-op. The
+  // sequence itself needs no change: a walker's 0 resets the underline, which lands on the
+  // no-attribute witness (@cto 30b12293, #33181).
   "sgr.underline.color": {
     sequence: "\x1b[58;2;255;0;128m",
-    sibling: "\x1b[58;5;5m",
+    sibling: "\x1b[58;5;5;25m",
     siblingLabel: "SGR 58;5;5, another underline colour",
     seed: "\x1b[4m",
   },
@@ -99,11 +106,16 @@ const COLOUR_ROWS: Record<string, ColourRow> = {
     siblingLabel: "the RGB 255;0;135, the nearest xterm-256 entry to 255;0;128",
     seed: "\x1b[4m",
   },
+  // A terminal without SGR 58 walks the parameters code by code. Index 9 is the crossed-out code, so
+  // the walk paints a strike line a crop can see; the trailing 25 turns off the blink the walk's 5
+  // turned on, so every frame holds still. A terminal with 58 takes exactly 5;9 as the colour and 25
+  // is a no-op (@cto b6db70c8, #33181: xterm read 58;5;5 as blink and each crop was a blink phase).
   "sgr.underline-color-indexed": {
-    sequence: "\x1b[58;5;5m",
-    sibling: "\x1b[58;5;4m",
-    siblingLabel: "index 4, blue: its nearest 16-colour entry is 4, distinct from index 5's entry 5",
+    sequence: "\x1b[58;5;9;25m",
+    sibling: "\x1b[58;5;4;25m",
+    siblingLabel: "index 4, blue: its nearest 16-colour entry is 4, distinct from index 9's entry 9",
     seed: "\x1b[4m",
+    walked: { paint: "\x1b[9m", attribute: "crossed-out (SGR 9)" },
   },
 }
 
@@ -156,6 +168,15 @@ export const COLOUR_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry"
             // attribute it should have decorated was painting. @cto 4ed6bddf.
             noAttributeNegative: { sequence: sgrParameters(row.sequence) },
           }),
+      ...(row.walked === undefined
+        ? {}
+        : {
+            walkedAttribute: {
+              frame: frame(row, row.walked.paint),
+              sequence: sgrParameters(row.sequence),
+              attribute: row.walked.attribute,
+            },
+          }),
       timeoutMs: 5000,
       pollMs: 250,
       minRows: CURSOR_ROW,
@@ -188,10 +209,14 @@ export function colourCaptureCallbackResult(
     (options?.mux !== undefined && id === "sgr.underline-color-reset" ? observation?.note : undefined)
   if (note === undefined || observation === undefined) return verdict
   // A non-mux witness negative is this arm's own decision: the seed showed the attribute painting,
-  // and the expected frame equals plain text. A mux cannot attribute that negative or an
-  // inconclusive capture to its own hop without an outer control. Broken captures stay errors.
+  // and the expected frame equals plain text. The walked negative is the same kind: the expected
+  // frame equals the frame that sets the walked attribute on purpose, which differs from the seed.
+  // Neither is one of the oracle's untouched negatives, so the downgrade below does not apply. A mux
+  // cannot attribute either negative, or an inconclusive capture, to its own hop without an outer
+  // control. Broken captures stay errors.
   if (
     verdict.criterionBranch === "colour-no-attribute-witness" ||
+    verdict.criterionBranch === "colour-walked-parameters" ||
     (options?.mux !== undefined && observation.outcome === "inconclusive")
   ) {
     // A multiplexer has no outer control in this arm, so the same frames cannot single out whether
