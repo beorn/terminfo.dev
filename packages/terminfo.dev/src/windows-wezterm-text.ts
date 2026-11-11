@@ -67,8 +67,9 @@ export function readWindowsWezTermRows(
   } catch {
     return { status: "refused", reason: `WezTerm owned get-text did not return UTF-8: ${retained}` }
   }
-  // get-text prints one newline per physical row. Remove that one terminator, never trim blank
-  // rows or manufacture missing rows. Native qualification decides whether this mapping is usable.
+  // With --escapes, termwiz ends each physical row with CRLF and the CLI println adds one LF.
+  // Remove only that distinct outer LF, then the final row terminator; never trim physical blanks.
+  if (options.escapes && text.endsWith("\r\n\n")) text = text.slice(0, -1)
   if (!text.endsWith("\n")) {
     return { status: "refused", reason: `WezTerm get-text returned no complete row terminator: ${retained}` }
   }
