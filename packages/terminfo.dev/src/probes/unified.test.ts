@@ -328,6 +328,10 @@ it.each([
 })
 
 // @failure An unreadable socket or a present address is mistaken for a missing current-run bus.
+// #33529 (@chief Option A 2026-11-11T15:18Z) took `extensions.osc133-d` and `extensions.semantic-prompts` off
+// `requiresMissingSessionBus`: their no-setup sentence now comes from Ghostty's shipped default and must therefore
+// appear in EVERY arm, whatever the bus records. The @failure subject is preserved on the two rows that still declare
+// the requirement -- `extensions.notifications` and `extensions.osc777-notify` -- which is what this test selects on.
 it.each(["address present", "socket present", "socket unreadable", "both absent", "not a directory"] as const)(
   "selects Ghostty no-setup only from current-run absence: %s",
   (state) => {
@@ -357,9 +361,21 @@ it.each(["address present", "socket present", "socket unreadable", "both absent"
       expect(JSON.stringify(record)).not.toContain("secret-address-never-retained")
       const selected = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" }, record)
       const absent = state === "both absent" || state === "not a directory"
-      expect(Object.keys(selected)).toHaveLength(absent ? 22 : 18)
-      if (absent) expect(selected["extensions.osc133-d"]).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
-      else expect(selected["extensions.osc133-d"]).toBeUndefined()
+      expect(Object.keys(selected)).toHaveLength(absent ? 22 : 20)
+      for (const featureId of ["extensions.notifications", "extensions.osc777-notify"] as const) {
+        if (absent) {
+          expect(selected[featureId], state).toContain(
+            "Untestable (no setup): ghostty 1.4.0 desktop notification delivery requires a session bus.",
+          )
+          expect(selected[featureId], state).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
+        } else expect(selected[featureId], state).toBeUndefined()
+      }
+      const shippedDefault = "at its shipped default configuration exposes no readback of OSC 133;D"
+      for (const featureId of ["extensions.osc133-d", "extensions.semantic-prompts"] as const) {
+        expect(selected[featureId], state).toContain(shippedDefault)
+        expect(selected[featureId], state).not.toContain("session bus")
+      }
+      expect(selected["extensions.semantic-prompts"], state).toBe(selected["extensions.osc133-d"])
       if (state === "socket unreadable") expect(record.socket.code).toBe("EACCES")
       stat.mockClear()
       readSessionBus({})
