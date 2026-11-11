@@ -68,7 +68,8 @@ export async function sendTerminalSideControl(options: {
       undefined,
       deadline,
       undefined,
-      // Exactly the environment read from the terminal process: no merge with the collector's own.
+      // Exactly the environment read from the terminal process: no merge with the collector's own. The bus
+      // address passed in --bus is the terminal's own too, so this proves delivery from the terminal's side.
       options.environment,
     )
   } catch (error) {

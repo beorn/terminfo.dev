@@ -952,10 +952,14 @@ export async function runProbeBatch(
             : undefined
         let terminalSideControl: { nonce: string; id: number; latencyMs: number } | undefined
         let terminalSideControlRefusal: string | undefined
-        if (measured?.environment !== undefined) {
+        // The control goes to the bus named in the TERMINAL's own environment, in memory, not to the
+        // collector's: an explicit address overrides the environment's, so using ours would prove only that
+        // the recorder's bus accepts us (peer review, @dev/8 14:30Z).
+        const terminalAddress = measured?.environment?.DBUS_SESSION_BUS_ADDRESS
+        if (measured?.environment !== undefined && terminalAddress !== undefined && terminalAddress !== "") {
           try {
             terminalSideControl = await sendTerminalSideControl({
-              address,
+              address: terminalAddress,
               recordPath: observer.receipt.recordPath,
               environment: measured.environment,
               deadlineMs: 1000,
