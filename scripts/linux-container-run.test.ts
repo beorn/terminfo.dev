@@ -1873,3 +1873,53 @@ describe("mux profile configs", () => {
     )
   })
 })
+
+/**
+ * @failure The owned focus helper's mapping wait aborts the run on its first unmapped read: `xdotool search`
+ *   exits 1 until the window exists, and a bare assignment from that pipeline ends the launcher under `set -e`,
+ *   so the App run exits 1 with an empty helper log instead of waiting for the window (33305 App run
+ *   2026-11-11T05-48Z stopped exactly there).
+ * @level l3 — runs the launcher's own focus-helper block with real bash, a stub xterm and a stub xdotool that
+ *   reports no window twice before it maps one.
+ * @consumer scripts/linux-container-run.sh --inside focus helper mapping (#33305)
+ */
+describe("focus helper waits for its window instead of aborting the run (#33305)", () => {
+  it("retries while xdotool reports no window yet, then exports the mapped window", () => {
+    const source = readFileSync(launcher, "utf8")
+    const start = source.indexOf("\n  xterm -geometry 20x3-0-0 -e sleep 36000")
+    const end = source.indexOf("\n  baseline_path=", start)
+    if (start < 0 || end < 0) throw new Error("focus helper block not found in scripts/linux-container-run.sh")
+    const out = mkdtempSync(join(tmpdir(), "focus-helper-"))
+    const bin = join(out, "bin")
+    mkdirSync(bin)
+    const counter = join(out, "search-count")
+    writeFileSync(counter, "0")
+    writeFileSync(join(bin, "xterm"), "#!/usr/bin/env bash\nexec sleep 30\n", { mode: 0o755 })
+    writeFileSync(
+      join(bin, "xdotool"),
+      `#!/usr/bin/env bash
+if [[ "$1" == "search" ]]; then
+  n=$(cat "${counter}")
+  n=$((n + 1))
+  echo "$n" > "${counter}"
+  if (( n < 3 )); then exit 1; fi
+  echo 4242
+  exit 0
+fi
+if [[ "$1" == "getwindowgeometry" ]]; then echo "WIDTH=160"; echo "HEIGHT=40"; exit 0; fi
+exit 2
+`,
+      { mode: 0o755 },
+    )
+    const block = source.slice(start, end).replaceAll("/out/", `${out}/`)
+    const script = `set -euo pipefail\n${block}\nprintf 'HELPER %s\\n' "$TERMINFO_FOCUS_HELPER_WINDOW"\n`
+    const result = spawnSync("bash", ["-c", script], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}`, HOME: out },
+    })
+    expect(result.stderr).toBe("")
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim()).toBe("HELPER 4242")
+    expect(Number(readFileSync(counter, "utf8"))).toBe(3)
+  })
+})

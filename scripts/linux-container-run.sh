@@ -765,7 +765,10 @@ if [[ "${1:-}" == "--inside" ]]; then
       cat /out/focus-helper.log >&2
       exit 2
     }
-    focus_helper_window=$(xdotool search --onlyvisible --pid "$focus_helper_pid" 2>/dev/null | tail -n 1)
+    # `xdotool search` exits 1 until the window exists; under `set -e` a bare assignment from that
+    # pipeline killed the run on its first attempt (33305 App run 2026-11-11T05-48Z, exit 1 with an
+    # empty helper log). The loop is the wait: swallow "not mapped yet" and let it retry.
+    focus_helper_window=$(xdotool search --onlyvisible --pid "$focus_helper_pid" 2>/dev/null | tail -n 1 || true)
     [[ -n "$focus_helper_window" ]] && break
     sleep 0.1
   done
