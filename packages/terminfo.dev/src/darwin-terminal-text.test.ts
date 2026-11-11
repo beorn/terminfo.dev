@@ -804,10 +804,10 @@ describe("Terminal.app history: one snapshot, one count definition, and a per-ru
   })
 
   it.each([
-    ["a wrapped line", { history: () => `${"x".repeat(21)}\n\n\n\n\n` }, /21 characters on a 20-column grid/],
+    ["a wrapped line", { history: (): string => `${"x".repeat(21)}\n\n\n\n\n` }, /21 characters on a 20-column grid/],
     [
       "history not ending with the screen",
-      { history: () => "a\nb\n", contents: () => "c\n\n\n\n" },
+      { history: (): string => "a\nb\n", contents: (): string => "c\n\n\n\n" },
       /does not end with the screen/,
     ],
     ["a tab that raises on history()", { history: undefined }, /raised while reading: .*history/],
