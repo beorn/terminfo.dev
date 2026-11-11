@@ -75,6 +75,12 @@ function calibratedIterm2Arm(
     blind?: boolean
     /** Shift only the OSC 112 post-reset reads, to model a capture whose crop moved after the reset. */
     resetRegionShift?: { x: number; y: number }
+    /**
+     * Drop the crop rectangle from the OSC 112 post-reset reads, to model a capture producer that recorded a digest
+     * without the rectangle it was taken over (33448). `cropPositionRefusal` abstains when a compared frame carries no
+     * rectangle, so this is the only shape that reaches the arm's explicit rectangle check.
+     */
+    resetRegionMissing?: boolean
   } = {},
 ) {
   const writes: string[] = []
@@ -124,6 +130,7 @@ function calibratedIterm2Arm(
       const { role, label, cells } = request
       const resetShift =
         options.resetRegionShift && /reset after OSC 112/.test(label) ? options.resetRegionShift : { x: 0, y: 0 }
+      const resetRegionMissing = options.resetRegionMissing === true && /reset after OSC 112/.test(label)
       const frame: ObservationFrame = {
         kind: "pixels",
         role,
@@ -137,14 +144,15 @@ function calibratedIterm2Arm(
               ? `cursor:${options.blind ? true : cursorShown}:${defaultColour}`
               : `plane:${plane}`,
         pixelsDigest: `window:${plane}:${glyph}`,
-        ...(cells && {
-          regionRectangle: {
-            x: (cells.left - 1) * 8 + (resetShift.x ?? 0),
-            y: (cells.top - 1) * 17 + (resetShift.y ?? 0),
-            width: (cells.right - cells.left + 1) * 8,
-            height: (cells.bottom - cells.top + 1) * 17,
-          },
-        }),
+        ...(cells &&
+          !resetRegionMissing && {
+            regionRectangle: {
+              x: (cells.left - 1) * 8 + (resetShift.x ?? 0),
+              y: (cells.top - 1) * 17 + (resetShift.y ?? 0),
+              width: (cells.right - cells.left + 1) * 8,
+              height: (cells.bottom - cells.top + 1) * 17,
+            },
+          }),
       }
       frames.push(frame)
       return frame
@@ -699,6 +707,40 @@ test("extensions.osc112-reset-cursor refuses reset reads cropped away from the p
     (preColour?.regionRectangle?.x ?? 0) + 8,
     (preColour?.regionRectangle?.x ?? 0) + 8,
   ])
+})
+
+// 33448: the crop refusal above needs every compared frame to carry a rectangle before it can compare them, and it
+// deliberately abstains when one carries none, because a digest without a rectangle is a hand-built read rather than
+// an owned capture. The arm therefore needs its own check: without it, a reset read with no rectangle reaches the
+// digest equality and a missing measurement could be graded as support.
+test("extensions.osc112-reset-cursor keeps the row open when a reset read carries no crop rectangle", async () => {
+  const { context, frames } = calibratedIterm2Arm({
+    colour: { applies: true },
+    effect: "cursor",
+    resetRegionMissing: true,
+  })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  // The digests do agree in this capture: the reset really did restore the cursor colour, which is exactly why the
+  // rectangle check has to run first, or this shape would read supported without ever naming where it was read.
+  const resetReads = frames.filter((frame) => /reset after OSC 112/.test(frame.label))
+  expect(resetReads).toHaveLength(2)
+  expect(resetReads.every((frame) => frame.regionRectangle === undefined)).toBe(true)
+
+  expect(result.pass).not.toBe(true)
+  expect(result.note).toBe("OSC 112 reset capture lacks registered crop rectangles")
+  expect(result.notTested?.noObservable).toBe("OSC 112 reset capture lacks registered crop rectangles")
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions ?? []).toHaveLength(0)
+})
+
+test("extensions.osc112-reset-cursor still reads supported when the reset reads carry aligned rectangles", async () => {
+  const { context, frames } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  const resetReads = frames.filter((frame) => /reset after OSC 112/.test(frame.label))
+  expect(resetReads).toHaveLength(2)
+  expect(resetReads.every((frame) => frame.regionRectangle !== undefined)).toBe(true)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(result.note).toContain("OSC 112 restored the cursor cell")
 })
 
 test("extensions.font-ligatures records mux declared-untestable coverage and leaves a native subject on its own path", () => {
