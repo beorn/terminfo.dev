@@ -18,7 +18,7 @@ import {
   type TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
 import { recordTextQualificationTests } from "./text-qualification.ts"
-import { textCellsFrame } from "./serve.ts"
+import { TextSnapshotRefused, textCellsFrame } from "./serve.ts"
 
 const sha = (bytes: Uint8Array) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`
 const checkpoint = { role: "target" as const, label: "after erase" }
@@ -257,6 +257,36 @@ describe("textCellsFrame — one screen, one rectangle, one set of bytes", () =>
     expect(() => textCellsFrame(checkpoint, { status: "refused", reason: "iTerm2 is not frontmost" }, 1)).toThrow(
       /after erase: the terminal refused the text snapshot — iTerm2 is not frontmost/u,
     )
+  })
+
+  // The refusal that explains a short screen has to reach the caller that records it (33512), while
+  // every caller that only logs the message sees exactly the bytes it always saw.
+  it("carries the refused read's diagnostic on the error and leaves its message alone", () => {
+    const diagnostic = {
+      tty: "/dev/ttys003",
+      appCols: 12,
+      appRows: 4,
+      splitRows: 3,
+      terminatorRemoved: true,
+      rowsAfterPop: 2,
+      lineLengths: [6, 2],
+      lineLengthsTruncated: false,
+    }
+    let thrown: unknown
+    try {
+      textCellsFrame(
+        checkpoint,
+        { status: "refused", reason: "Terminal.app returned 2 rows where the measured screen has 4", diagnostic },
+        1,
+      )
+    } catch (cause) {
+      thrown = cause
+    }
+    expect(thrown).toBeInstanceOf(TextSnapshotRefused)
+    expect((thrown as TextSnapshotRefused).message).toBe(
+      "after erase: the terminal refused the text snapshot — Terminal.app returned 2 rows where the measured screen has 4",
+    )
+    expect((thrown as TextSnapshotRefused).diagnostic).toEqual(diagnostic)
   })
 
   it("refuses a rectangle the read does not cover before any bytes are returned for retention", () => {

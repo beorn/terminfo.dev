@@ -38,7 +38,11 @@
  * Empty text is a VALUE. A blank row and a blank screen are rows of spaces, never "could not read".
  */
 import { spawnSync } from "node:child_process"
-import { ScrollbackReadingUnavailable, type TerminalScrollbackReading } from "@terminfo/probe-defs"
+import {
+  ScrollbackReadingUnavailable,
+  type TerminalScrollbackReading,
+  type TextSnapshotDiagnostic,
+} from "@terminfo/probe-defs"
 
 /** The two macOS terminals this arm can read, with the bundle name JXA addresses. */
 export const TERMINAL_TEXT_APPS = {
@@ -70,7 +74,14 @@ export type TerminalTextRead =
       readonly app: TerminalTextApp | "kitty" | "windows-terminal" | "wezterm"
       readonly cells: TerminalCellGrid
     }
-  | { readonly status: "refused"; readonly reason: string }
+  | {
+      readonly status: "refused"
+      readonly reason: string
+      /** The reply's own account of the rows it returned, when it stated one in the typed shape. */
+      readonly diagnostic?: TextSnapshotDiagnostic
+      /** How many stated diagnostics this read could not type. Present only when one was dropped. */
+      readonly diagnosticDropped?: number
+    }
 
 export interface OsascriptReply {
   readonly stdout: string
@@ -392,8 +403,64 @@ export interface TerminalTextReadOptions {
 const stringArray = (value: unknown): readonly string[] | undefined =>
   Array.isArray(value) && value.every((entry): entry is string => typeof entry === "string") ? value : undefined
 
+/** Rows a diagnostic may name beyond the measured screen: a wrapped logical line adds a few at most. */
+const DIAGNOSTIC_ROW_MARGIN = 4
+
+const nonNegativeInteger = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+
+/**
+ * The reply's stated diagnostic as the one record that may travel, or undefined when it states
+ * anything less: a partial record is not filled in, because a blank field would read as a measured
+ * zero. The reply's raw `contents` is never copied — the lengths are what a missing row is read from
+ * — and `lineLengths` stops at the measured screen plus a small margin rather than growing the record
+ * with whatever scrollback the app returned.
+ */
+function parseSnapshotDiagnostic(value: unknown, rowBound: number): TextSnapshotDiagnostic | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  const record = value as Record<string, unknown>
+  const tty = typeof record.tty === "string" && record.tty !== "" ? record.tty : undefined
+  const appCols = nonNegativeInteger(record.appCols)
+  const appRows = nonNegativeInteger(record.appRows)
+  const splitRows = nonNegativeInteger(record.splitRows)
+  const rowsAfterPop = nonNegativeInteger(record.rowsAfterPop)
+  const terminatorRemoved = typeof record.terminatorRemoved === "boolean" ? record.terminatorRemoved : undefined
+  if (!Array.isArray(record.lineLengths)) return undefined
+  const kept: number[] = []
+  for (const entry of record.lineLengths) {
+    const length = nonNegativeInteger(entry)
+    if (length === undefined) return undefined
+    if (kept.length < rowBound) kept.push(length)
+  }
+  if (
+    tty === undefined ||
+    appCols === undefined ||
+    appRows === undefined ||
+    splitRows === undefined ||
+    rowsAfterPop === undefined ||
+    terminatorRemoved === undefined
+  ) {
+    return undefined
+  }
+  return {
+    tty,
+    appCols,
+    appRows,
+    splitRows,
+    terminatorRemoved,
+    rowsAfterPop,
+    lineLengths: kept,
+    lineLengthsTruncated: kept.length < record.lineLengths.length,
+  }
+}
+
 type SnapshotReply =
-  | { readonly status: "refused"; readonly reason: string }
+  | {
+      readonly status: "refused"
+      readonly reason: string
+      readonly diagnostic?: TextSnapshotDiagnostic
+      readonly diagnosticDropped?: number
+    }
   | {
       readonly status: "read"
       readonly lines: readonly string[]
@@ -431,7 +498,13 @@ function readSnapshotReply(options: TerminalTextReadOptions, history: boolean): 
       return { status: "refused", reason: automationDeniedReason(options.app) }
     }
     const reason = "reason" in parsed && typeof parsed.reason === "string" ? parsed.reason : "no reason given"
-    return { status: "refused", reason }
+    if (!("diagnostic" in parsed) || parsed.diagnostic === undefined) return { status: "refused", reason }
+    // A short screen is the refusal this diagnostic explains (33512); the measured screen plus a
+    // margin is the bound, so an app that overstated its own grid cannot grow the record.
+    const diagnostic = parseSnapshotDiagnostic(parsed.diagnostic, options.rows + DIAGNOSTIC_ROW_MARGIN)
+    return diagnostic === undefined
+      ? { status: "refused", reason, diagnosticDropped: 1 }
+      : { status: "refused", reason, diagnostic }
   }
   if (parsed.status !== "read" || !("lines" in parsed)) {
     return { status: "refused", reason: `${label} returned an unrecognised snapshot` }

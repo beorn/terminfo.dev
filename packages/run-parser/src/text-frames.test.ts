@@ -373,6 +373,47 @@ describe("run-owned text qualification ingestion", () => {
     })
   })
 
+  // 30729 AC3b: a refused shape may carry the diagnostic its reply stated, in exactly the typed
+  // record — and never the reply's raw contents, which is what the old payload named.
+  it("carries a refused shape's diagnostic and refuses one that names contents", () => {
+    const refused = {
+      shape: "soft-wrap",
+      reason: "Terminal.app returned 29 rows where the measured screen has 30",
+      diagnostic: {
+        tty: "/dev/ttys003",
+        appCols: 100,
+        appRows: 30,
+        splitRows: 31,
+        terminatorRemoved: true,
+        rowsAfterPop: 30,
+        lineLengths: [100, 2],
+        lineLengthsTruncated: false,
+      },
+    }
+    const written = { ...qualification, shapes: [refused] }
+    expect(parse(textRun({ textQualification: written })).textQualification).toEqual(written)
+    const refusedShape = refused.shape
+    const malformations: [Record<string, unknown>, RegExp][] = [
+      [
+        { ...refused, diagnostic: { ...refused.diagnostic, contents: "raw screen" } },
+        new RegExp(`invalid textQualification ${refusedShape} diagnostic`, "u"),
+      ],
+      [{ ...refused, diagnostic: { ...refused.diagnostic, lineLengths: [-1] } }, /diagnostic line lengths/u],
+      [{ ...refused, diagnosticDropped: 0 }, /diagnosticDropped/u],
+      [
+        {
+          shape: refusedShape,
+          frames: [textFrame("control", 1), textFrame("target", 2)],
+          diagnostic: refused.diagnostic,
+        },
+        /diagnostic only with its refusal reason/u,
+      ],
+    ]
+    for (const [shapes, pattern] of malformations) {
+      expect(() => parse(textRun({ textQualification: { ...qualification, shapes: [shapes] } }))).toThrow(pattern)
+    }
+  })
+
   it.each([3, 7])("retains future version %s and recipe without qualifying it", (version) => {
     const future = { ...qualification, version, recipe: "future-recipe" }
     expect(parse(textRun({ textQualification: future })).textQualification).toEqual(future)
