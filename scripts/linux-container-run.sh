@@ -1164,19 +1164,28 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "no frame captured: no selected probe called ctx.capture" >&2
     capture_receipt=null
   else
+    # The frame is checked against the source its capture route wrote, never assumed to be an xwd
+    # (33334): the shared window grab keeps an xwd source, the OSC 22 pointer-composited capture a
+    # png one, and a selection of only extensions.osc22-pointer has no xwd-sourced frame at all.
     png_sha=$(jq -er '.ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
-    xwd_sha=$(jq -er '.sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
-    [[ -r "/out/artifacts/$png_sha.png" && -r "/out/artifacts/$xwd_sha.xwd" ]] || {
-      echo "Callback capture artifacts are missing" >&2; exit 2;
+    source_sha=$(jq -er '.sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
+    if [[ -r "/out/artifacts/$source_sha.xwd" ]]; then source_kind=xwd
+    elif [[ -r "/out/artifacts/$source_sha.png" ]]; then source_kind=png
+    else source_kind=""; fi
+    [[ -r "/out/artifacts/$png_sha.png" && -n "$source_kind" ]] || {
+      echo "Callback capture artifacts are missing: frame artifacts/$png_sha.png, source artifacts/$source_sha.xwd or .png" >&2
+      exit 2
     }
+    source_file="artifacts/$source_sha.$source_kind"
     [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
-       "$(sha256sum "/out/artifacts/$xwd_sha.xwd" | cut -d ' ' -f 1)" == "$xwd_sha" ]] || {
+       "$(sha256sum "/out/$source_file" | cut -d ' ' -f 1)" == "$source_sha" ]] || {
       echo "Callback capture digest mismatch" >&2; exit 2;
     }
     magick identify "/out/artifacts/$png_sha.png" > /out/image-info.txt
-    capture_receipt=$(jq -n --arg xwd "artifacts/$xwd_sha.xwd" --arg xwdSha "$xwd_sha" \
+    capture_receipt=$(jq -n --arg kind "$source_kind" --arg source "$source_file" --arg sourceSha "$source_sha" \
       --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" \
-      '{xwd:$xwd,xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}')
+      '(if $kind == "xwd" then {xwd:$source,xwdSha256:$sourceSha} else {sourcePng:$source,sourcePngSha256:$sourceSha} end)
+        + {png:$png,pngSha256:$pngSha}')
   fi
   if compgen -G "/out/artifacts/*" >/dev/null; then
     sha256sum /out/artifacts/* > /out/capture-hashes.txt
