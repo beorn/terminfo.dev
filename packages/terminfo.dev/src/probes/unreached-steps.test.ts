@@ -39,9 +39,9 @@ test("an open exit beside an Unsupported entry stays Probe to-do and names the e
   applyUnreachedSteps(batch)
   const step = batch.results[1]!
   expect(step.status).toBe("probe-todo")
-  expect(step.reason).toBe(`${OPEN}; ${REACHED}, so this step was never reached`)
+  expect(step.reason).toBe(`${OPEN.replace(/\.$/u, "")}; ${REACHED}, so this step was never reached`)
   expect(step.tests).toMatchObject([
-    { id: "entry-qualified", status: "probe-todo", reason: `${OPEN}; ${REACHED}, so this step was never reached` },
+    { id: "entry-qualified", status: "probe-todo", reason: `${OPEN.replace(/\.$/u, "")}; ${REACHED}, so this step was never reached` },
   ])
 })
 

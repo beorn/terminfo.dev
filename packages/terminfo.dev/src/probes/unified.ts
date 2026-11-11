@@ -1417,12 +1417,11 @@ export function applyUnreachedSteps(
     const entry = batch.results.find((result) => result.featureId === pair.entry)
     if (step === undefined || step.status !== "probe-todo" || entry?.status !== "unsupported") continue
     const reason = `this run reads ${pair.entryName} Unsupported, so this step was never reached`
+    const joined = (earlier: string | undefined) => (earlier ? `${earlier.replace(/\.$/u, "")}; ${reason}` : reason)
     batch.results[index] = {
       ...step,
-      ...(step.reason === undefined ? {} : { reason: `${step.reason}; ${reason}` }),
-      tests: step.tests.map((test) =>
-        test.status === "probe-todo" ? { ...test, reason: test.reason ? `${test.reason}; ${reason}` : reason } : test,
-      ),
+      ...(step.reason === undefined ? {} : { reason: joined(step.reason) }),
+      tests: step.tests.map((test) => (test.status === "probe-todo" ? { ...test, reason: joined(test.reason) } : test)),
     }
   }
 }
