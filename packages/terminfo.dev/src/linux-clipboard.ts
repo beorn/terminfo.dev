@@ -1024,7 +1024,9 @@ export async function createLinuxClipboardAdapter(
             const deadline = Date.now() + 2000
             let seen = await title()
             while (seen !== originalTitle && Date.now() < deadline) {
-              await new Promise((resolve) => setTimeout(resolve, 25))
+              await new Promise<void>((resolve) => {
+                setTimeout(resolve, 25)
+              })
               seen = await title()
             }
             return seen
