@@ -11,6 +11,7 @@ export function command(
   input?: Buffer,
   deadline?: number,
   onStderr?: (stderr: Buffer) => void,
+  environment?: Readonly<Record<string, string>>,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let timeout = 10_000
@@ -33,7 +34,13 @@ export function command(
     const chunks: Record<"stdout" | "stderr", Buffer[]> = { stdout: [], stderr: [] }
     const sizes = { stdout: 0, stderr: 0 }
     const killSignal = deadline === undefined ? "SIGTERM" : "SIGKILL"
-    const child = spawn(file, args, { detached: process.platform !== "win32", stdio: "pipe" })
+    const child = spawn(file, args, {
+      detached: process.platform !== "win32",
+      stdio: "pipe",
+      // An explicit environment is the caller's whole environment, never merged with ours: a control run
+      // as another process must not inherit the collector's variables (#33333).
+      ...(environment === undefined ? {} : { env: { ...environment } }),
+    })
     const terminate = () => {
       if (killed || child.pid === undefined) return
       try {

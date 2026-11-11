@@ -1169,8 +1169,21 @@ export interface NotificationFixture {
   readonly recordPath: string
   readonly deadlineMs: number
   readonly terminalBus: { readonly state: "same" | "different" | "unknown"; readonly reason: string }
+  /**
+   * A control Notify sent from the terminal's OWN process environment and recorded inside the same window
+   * (#33333, @cto a6fddd6e). Absent means the path from the terminal's side was never proven, so a silent
+   * target write stays inconclusive and never becomes a "not supported" for that terminal.
+   */
+  readonly terminalSideControl?: { readonly nonce: string; readonly id: number; readonly latencyMs: number }
+  /** Why the terminal-side control is absent, when the run tried and failed: named, never silent. */
+  readonly terminalSideControlRefusal?: string
   readonly profile: { readonly state: "default" | "non-default" | "unknown"; readonly reason: string }
+  /**
+   * The hosting terminal's own measurement of this row, named, when it reads supported (#33333 condition 3).
+   * Absent means the mux may not carry a negative; `outerTerminalRecordRefusal` says which fact is missing.
+   */
   readonly outerTerminalRecord?: string
+  readonly outerTerminalRecordRefusal?: string
   cursor(): number
   readSince(cursor: number): {
     readonly entries: readonly {

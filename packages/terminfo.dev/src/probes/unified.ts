@@ -56,7 +56,8 @@ import {
   type TTYTraceScope,
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
-import { createNotificationObserver } from "../linux-notification.ts"
+import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
+import { qualifyNotificationDefaults, qualifyOuterTerminalRecord } from "../notification-defaults.ts"
 import { createCallLog, withCallLog } from "viprobe"
 import {
   ownedTerminalVerifiedFor,
@@ -921,20 +922,65 @@ export async function runProbeBatch(
         const address = process.env.DBUS_SESSION_BUS_ADDRESS
         if (!address) throw new Error("Owned notification recorder declared without DBUS_SESSION_BUS_ADDRESS")
         const observer = await createNotificationObserver({ receiptPath: notificationReceiptPath, address })
+        // The terminal's own bus and a control sent from its own environment (#33333): without both, silence
+        // is unreadable, and a row may not claim the terminal does not notify.
+        const terminalEnvironment = options.ownedTerminal?.readNotificationEnvironment?.()
+        const measured =
+          terminalEnvironment?.status === "measured" && terminalEnvironment.bus !== undefined
+            ? terminalEnvironment
+            : undefined
+        const terminalBus = measured?.bus ?? {
+          state: "unknown" as const,
+          reason:
+            terminalEnvironment?.reason ??
+            "The terminal process environment was not independently read: this run has no owned reader for it",
+        }
+        // Default configuration, stated only from what this run controls: its own launch line, and tmux's
+        // live allow-passthrough (#33333 condition 4). A user's dotfiles are never read, so never claimed.
+        const allowPassthrough =
+          options.subject?.kind === "mux" && options.subject.id === "tmux" && clipboard?.readAllowPassthrough
+            ? await clipboard.readAllowPassthrough()
+            : undefined
+        const notificationDefaults = qualifyNotificationDefaults({
+          ...(clipboard?.config ? { launchLine: clipboard.config } : {}),
+          ...(allowPassthrough === undefined ? {} : { passthrough: allowPassthrough }),
+        })
+        // A mux may carry a negative only when the terminal that hosted this very run measured the same row as
+        // supported (#33333 condition 3); the record is this run's own outer-terminal record.
+        const outerReading =
+          options.subject?.kind === "mux"
+            ? qualifyOuterTerminalRecord({ record: options.colourControl?.outer, probeId: probe.id })
+            : undefined
+        let terminalSideControl: { nonce: string; id: number; latencyMs: number } | undefined
+        let terminalSideControlRefusal: string | undefined
+        // The control goes to the bus named in the TERMINAL's own environment, in memory, not to the
+        // collector's: an explicit address overrides the environment's, so using ours would prove only that
+        // the recorder's bus accepts us (peer review, @dev/8 14:30Z).
+        const terminalAddress = measured?.environment?.DBUS_SESSION_BUS_ADDRESS
+        if (measured?.environment !== undefined && terminalAddress !== undefined && terminalAddress !== "") {
+          try {
+            terminalSideControl = await sendTerminalSideControl({
+              address: terminalAddress,
+              recordPath: observer.receipt.recordPath,
+              environment: measured.environment,
+              deadlineMs: 1000,
+            })
+          } catch (controlError) {
+            terminalSideControlRefusal = (controlError as Error).message
+          }
+        } else {
+          terminalSideControlRefusal = terminalBus.reason
+        }
         const result = await work({
           control: observer.control,
           recordPath: observer.receipt.recordPath,
           deadlineMs: 1000,
-          terminalBus: {
-            state: "unknown",
-            reason:
-              "Collector and recorder share the private bus; the terminal process environment was not independently read",
-          },
-          profile: {
-            state: "unknown",
-            reason:
-              "The launch receipt qualifies clipboard permissions, not the terminal's effective notification defaults",
-          },
+          terminalBus,
+          ...(terminalSideControl === undefined ? {} : { terminalSideControl }),
+          ...(terminalSideControlRefusal === undefined ? {} : { terminalSideControlRefusal }),
+          ...(outerReading?.record === undefined ? {} : { outerTerminalRecord: outerReading.record }),
+          ...(outerReading?.refusal === undefined ? {} : { outerTerminalRecordRefusal: outerReading.refusal }),
+          profile: notificationDefaults,
           cursor: () => observer.cursor(),
           readSince: (cursor) => observer.readSince(cursor),
         })

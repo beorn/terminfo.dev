@@ -1,3 +1,4 @@
+import { readMuxAllowPassthrough } from "./notification-defaults.ts"
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from "node:fs"
@@ -71,6 +72,11 @@ export interface LinuxClipboardAdapter {
   readonly permissions: string
   readonly summary: string
   readonly muxAttachmentProof?: LinuxMuxAttachmentProof
+  /**
+   * tmux's live `allow-passthrough`, the option that decides whether anything an application writes inside a
+   * pane reaches the outer terminal at all (#33333). Absent unless this run owns a tmux server.
+   */
+  readonly readAllowPassthrough?: () => Promise<{ readonly value: string } | { readonly reason: string }>
   assertOwned(): Promise<void>
   /** The same receipt owns the App window or the mux's own title, never the outer window for a mux. */
   readTitle(): Promise<string>
@@ -929,6 +935,13 @@ export async function createLinuxClipboardAdapter(
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
     config: receipt.config,
+    ...(tmuxTarget && {
+      readAllowPassthrough: () =>
+        readMuxAllowPassthrough({
+          run: async (args) =>
+            (await command(tmuxTarget.executable.path, ["-S", tmuxTarget.socketPath, ...args], env)).toString(),
+        }),
+    }),
     permissions: receipt.permissions,
     assertOwned,
     async withIconNameFixture(write, work, verify = () => adapter.assertOwned()) {
@@ -1011,7 +1024,9 @@ export async function createLinuxClipboardAdapter(
             const deadline = Date.now() + 2000
             let seen = await title()
             while (seen !== originalTitle && Date.now() < deadline) {
-              await new Promise((resolve) => setTimeout(resolve, 25))
+              await new Promise<void>((resolve) => {
+                setTimeout(resolve, 25)
+              })
               seen = await title()
             }
             return seen

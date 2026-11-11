@@ -4561,12 +4561,20 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
       focusedBefore === helperWindowId &&
       focusedAfter === helperWindowId
     const missing = [
+      ...(fixture.terminalSideControl === undefined
+        ? [
+            fixture.terminalSideControlRefusal ??
+              "No control Notify sent from the terminal's own process environment was recorded in this window",
+          ]
+        : []),
       ...(fixture.terminalBus.state !== "same" ? [fixture.terminalBus.reason] : []),
       ...(fixture.profile.state !== "default" ? [fixture.profile.reason] : []),
       ...(!unfocusedAtWrite
         ? [focusError ?? "Terminal was not proven unfocused immediately before and after the target write"]
         : []),
-      ...(ctx.mux && !fixture.outerTerminalRecord ? ["No matching outer-terminal record for this multiplexer"] : []),
+      ...(ctx.mux && !fixture.outerTerminalRecord
+        ? [fixture.outerTerminalRecordRefusal ?? "No matching outer-terminal record for this multiplexer"]
+        : []),
       ...observed.problems,
     ]
     // A parse loss makes notification rows Open even if another recorded call happens to match.
@@ -4581,6 +4589,7 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
       recordPath: fixture.recordPath,
       busInTerminalEnvironment: fixture.terminalBus,
       controlRecorded: fixture.control,
+      terminalSideControl: fixture.terminalSideControl,
       defaultProfile: fixture.profile,
       noNonceCallByDeadline: matches.length === 0,
       unfocusedAtWrite: {
