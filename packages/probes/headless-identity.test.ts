@@ -517,7 +517,8 @@ test.each([
   ["lock", "receipt lock differs"],
 ] as const)("native artifact receipt %s is checked independently of delivery metadata", (mode, error) => {
   // 33579: every refusal names the one command that rebuilds this adapter's addon and writes its receipt.
-  const rebuild = "rebuild it from the Termless root: nix shell .#native-tools --command bun run --cwd packages/vt100 build:native"
+  const rebuild =
+    "rebuild it from the Termless root: nix shell .#native-tools --command bun run --cwd packages/vt100 build:native"
   const run = spawnSync(
     process.execPath,
     [
