@@ -42,7 +42,7 @@ test("hosted Mac scripts parse and keep command-substitution comments compatible
     expect(result.status, `${step.name}: ${result.stderr}`).toBe(0)
     for (const body of step.run.matchAll(/\$\(cat <<'([^']+)'\n([\s\S]*?)\n\1\n\s*\)/gu)) {
       checkedBodies++
-      const comments = body[2].split("\n").filter((line) => /^\s*\/\//u.test(line))
+      const comments = body[2]!.split("\n").filter((line) => /^\s*\/\//u.test(line))
       expect(
         comments.filter((line) => line.includes("'")),
         `${step.name}: Bash 3.2 quote-sensitive comments`,
