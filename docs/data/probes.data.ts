@@ -21,6 +21,7 @@ import {
 } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
+import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
 import type { ProbeStatus, FeatureResultStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
@@ -310,6 +311,7 @@ export function loadFullProbes(): ProbeData {
     releaseTable,
   }
   computeBaselines(result)
+  collectGarbage()
   return result
 }
 

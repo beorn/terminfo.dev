@@ -18,7 +18,7 @@ import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { isEnvironmentGroup, type FeatureResultStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
-import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import { collectGarbage, compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { originalRunFor } from "../docs/data/selected-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
@@ -1349,7 +1349,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
   for (const entry of Object.values(output)) {
     entry.analysis = linkify(entry.analysis, terminals, features, categories, standards, baselines, glossary)
   }
-
+  collectGarbage()
   return output
 }
 

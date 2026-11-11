@@ -1613,7 +1613,7 @@ const muxVisualTests = new Map<string, { featureId: string | null; testId: strin
  * existing path.
  */
 export const MUX_FONT_LIGATURE_NO_OBSERVABLE =
-  "ligature shaping is done by the host terminal; the multiplexer only emits text cells"
+  "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells"
 
 export function fontLigatureMuxCoverage(
   target: Pick<ProbeSubject, "kind">,

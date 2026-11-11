@@ -544,7 +544,10 @@ export const resetProbes: ProbeDefinition[] = [
         })
       },
       () => {
-        const note = "The app context has no reset() method or equivalent state readback"
+        // 33341 (@cto 8ce68510): a backend method, so a terminal app has nothing to call; (no way), not our setup.
+        const note =
+          "Untestable (no way): reset.method is a method of the Termless backend, not a terminal sequence, and a running " +
+          "terminal has no such method to call. The terminal's own reset is measured by reset.ris."
         return Promise.resolve(declaredUntestableResult(note, {}))
       },
     ),
