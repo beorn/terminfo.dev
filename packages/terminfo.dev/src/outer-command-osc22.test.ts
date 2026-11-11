@@ -104,16 +104,19 @@ test.each(["tmux", "screen"] as const)(
 )
 
 test("a record with the control and no OSC 22 line reads the target as not sent, naming every other line", async () => {
+  // The multiplexer arm sends no made-up name, so its record line leaves with the target.
   const result = await read("tmux", (title) =>
-    capture.replace("tdv-title-32593", title).replace("set_dynamic_color 22 pointer\n", ""),
+    capture
+      .replace("tdv-title-32593", title)
+      .replace("set_dynamic_color 22 tdv-made-up-shape\n", "")
+      .replace("set_dynamic_color 22 pointer\n", ""),
   )
   expect(result).toMatchObject({ status: "measured", targetSent: false })
   expect(result.detail).toMatchObject({
     closedBy: "deadline",
     unknown: {
-      count: 6,
+      count: 5,
       lines: [
-        "set_dynamic_color 22 tdv-made-up-shape",
         "select_graphic_rendition 1",
         "draw B",
         "select_graphic_rendition 0",
@@ -122,6 +125,22 @@ test("a record with the control and no OSC 22 line reads the target as not sent,
       ],
     },
   })
+}, 20_000)
+
+// @cto 18d11184: a target forwarded in another form must never read as "did not send".
+test("the target's command word in another form is a named failure, never Unsupported", async () => {
+  const result = await read("tmux", (title) =>
+    capture
+      .replace("tdv-title-32593", title)
+      .replace("set_dynamic_color 22 tdv-made-up-shape\n", "")
+      .replace("set_dynamic_color 22 pointer\n", "set_dynamic_color 22 hand\n"),
+  )
+  expect(result.status).toBe("unavailable")
+  if (result.status === "unavailable") {
+    expect(result.reason).toBe(
+      "Outer command record has set_dynamic_color 22 in another form than the target line: set_dynamic_color 22 hand",
+    )
+  }
 }, 20_000)
 
 test.each([

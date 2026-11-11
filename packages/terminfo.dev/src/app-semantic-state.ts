@@ -967,6 +967,13 @@ function controlTargetMatcher(spec: {
           if (seen.control === undefined) {
             throw new Error(`Outer command record has no forwarding control line: ${controlLine}`)
           }
+          // A target forwarded in another form (terminator, parameter, name) is not "did not send"
+          // (@cto 18d11184). The command word is the declared target line's tokens before its value.
+          const command = spec.target.line.slice(0, spec.target.line.lastIndexOf(" "))
+          const other = scan.unknown.lines.find((line) => line.startsWith(`${command} `))
+          if (seen.target === undefined && other !== undefined) {
+            throw new Error(`Outer command record has ${command} in another form than the target line: ${other}`)
+          }
           return { target: spec.target.line, targetSent: seen.target !== undefined }
         },
       }
