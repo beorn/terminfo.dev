@@ -138,11 +138,13 @@ The same decision helper serves the App OSC 113/114/117/119 reset fallbacks, wit
 cause. After a sentinel-qualified silent initial query, App OSC 104/110 and the foreground colour
 stack can instead qualify unchanged colour setup through the existing pixel-region oracle, with a
 made-up OSC control and a distinct independent SGR reference. OSC 112 uses a visible steady cursor,
-CPR, shown/hidden/restored pixels and the made-up control. Only unchanged setup declares Untestable
-(no setup); a changed setter does not itself establish a positive reset or stack result. App OSC 9;4
-uses stable whole-window clear/set-50/clear captures, plain paint/restore and a made-up subcommand;
-qualified no-change declares Untestable (no observer), because the progress shows outside the window
-the run captures. The same no-change on a tmux or Screen arm keeps Untestable (no setup). OSC 555 uses the same whole-window controls and
+CPR, shown/hidden/restored pixels and the made-up control, and both post-reset reads must be cropped
+from the same rectangle as the frames they are compared with; a moved crop is probe-invalid. Only
+unchanged setup declares Untestable (no setup); a changed setter does not itself establish a positive
+reset or stack result. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
+paint/restore and a made-up subcommand; qualified no-change declares Untestable (no observer), because
+the progress shows outside the window the run captures. The same no-change on a tmux or Screen arm
+keeps Untestable (no setup). OSC 555 uses the same whole-window controls and
 nine finite samples; missed flash declares Untestable (no way to tell), never Unsupported. Missing
 or broken controls keep these rows open. Real colour replies and qualified exact-command reports
 retain precedence. For the original ten tmux/Screen positions, finalization names both the actual mux

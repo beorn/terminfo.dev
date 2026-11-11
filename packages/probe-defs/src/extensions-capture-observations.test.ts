@@ -73,6 +73,8 @@ function calibratedIterm2Arm(
     colour?: { applies?: boolean; unknownApplies?: boolean; sentinel?: boolean; resetRestores?: boolean }
     effect?: "cursor" | "progress" | "flash"
     blind?: boolean
+    /** Shift only the OSC 112 post-reset reads, to model a capture whose crop moved after the reset. */
+    resetRegionShift?: { x: number; y: number }
   } = {},
 ) {
   const writes: string[] = []
@@ -120,6 +122,7 @@ function calibratedIterm2Arm(
     }) => {
       assertCalibratedCaptureGeometry(context.captureGeometry, request)
       const { role, label, cells } = request
+      const resetShift = options.resetRegionShift && /reset after OSC 112/.test(label) ? options.resetRegionShift : {}
       const frame: ObservationFrame = {
         kind: "pixels",
         role,
@@ -135,8 +138,8 @@ function calibratedIterm2Arm(
         pixelsDigest: `window:${plane}:${glyph}`,
         ...(cells && {
           regionRectangle: {
-            x: (cells.left - 1) * 8,
-            y: (cells.top - 1) * 17,
+            x: (cells.left - 1) * 8 + (resetShift.x ?? 0),
+            y: (cells.top - 1) * 17 + (resetShift.y ?? 0),
             width: (cells.right - cells.left + 1) * 8,
             height: (cells.bottom - cells.top + 1) * 17,
           },
@@ -672,6 +675,29 @@ test("extensions.osc112-reset-cursor names a reset that did not restore the curs
   expect(result.pass).not.toBe(true)
   expect(result.note).toContain("the frame after the reset still differs")
   expect(result.observation?.outcome).not.toBe("supported")
+})
+
+test("extensions.osc112-reset-cursor refuses reset reads cropped away from the pre-colour frames", async () => {
+  // 33442: the reset digests are compared with the pre-colour frame, so a moved crop must read probe-invalid
+  // rather than be compared as if the same cells had been measured twice.
+  const { context, frames } = calibratedIterm2Arm({
+    colour: { applies: true },
+    effect: "cursor",
+    resetRegionShift: { x: 8, y: 0 },
+  })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  expect(result.pass).not.toBe(true)
+  expect(result.criterionBranch).toBe("same-crop-comparison")
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "comparison", status: "probe-invalid" }))
+  expect(result.observation?.note).toContain("cropped from different screen positions")
+  const resetReads = frames.filter((frame) => /reset after OSC 112/.test(frame.label))
+  expect(resetReads).toHaveLength(2)
+  const preColour = frames.find((frame) => frame.role === "target")
+  expect(resetReads.every((frame) => frame.regionRectangle?.x === preColour?.regionRectangle?.x)).toBe(false)
+  expect(resetReads.map((frame) => frame.regionRectangle?.x)).toEqual([
+    (preColour?.regionRectangle?.x ?? 0) + 8,
+    (preColour?.regionRectangle?.x ?? 0) + 8,
+  ])
 })
 
 test("extensions.font-ligatures records mux declared-untestable coverage and leaves a native subject on its own path", () => {
