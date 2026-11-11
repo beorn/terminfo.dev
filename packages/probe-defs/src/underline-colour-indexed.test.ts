@@ -183,7 +183,7 @@ describe("indexed underline colour callback result", () => {
       criterionBranch: callback.criterionBranch,
       rawReplyRef: ID,
     })
-    const finalized = finalizeVisualResult(recorded, { kind: "app" }, run().frames)
+    const finalized = finalizeVisualResult(recorded, { kind: "term" }, run().frames)
     expect(finalized.status).toBe("unsupported")
     expect(finalized.reason).not.toContain("declared, not confirmed sent")
     expect(finalized.reason).toBe(decision.note)
