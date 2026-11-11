@@ -194,6 +194,11 @@ test.each([null, 0] as const)("App reverse video reads controlled pixels after D
     if (mutation === "inverse-noop" || mutation === "stale-pixels") {
       expect(["probe-todo", "probe-invalid"]).toContain(recorded.status)
     } else expect(recorded.status, mutation ?? "working reverse video").toBe(mutation ? "unsupported" : "supported")
+    if (ps === 0 && mutation === "stale-pixels") {
+      expect(recorded.reason).toContain("DECSCNM pixel arm has no fresh capture")
+    } else if (ps === null && mutation === "stale-pixels") {
+      expect(recorded.reason).toBe("no freshness witness")
+    }
     if (ps === 0 && !mutation) expect(result.note).toContain("Ps 0")
     expect(surface.getMode("reverseVideo")).toBe(false)
   }
