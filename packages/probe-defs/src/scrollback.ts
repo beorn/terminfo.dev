@@ -636,10 +636,31 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   }
 }
 
+/**
+ * An App history reader that has no reading this run, by name: its own per-run control failed, or
+ * the app answered nothing. The App history probe records the reason and leaves the cell todo; any
+ * other error from a reader stays an error.
+ */
+export class ScrollbackReadingUnavailable extends Error {
+  override name = "ScrollbackReadingUnavailable"
+}
+
 /** The App reader uses the existing library history criteria, with same-path controls. */
 async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCallbackResult> {
-  const read = ctx.getScrollback
-  if (!read) return notTestedResult("owned scrollback history reader", {})
+  if (!ctx.getScrollback) return notTestedResult("owned scrollback history reader", {})
+  try {
+    return await appHistoryReadings(ctx, ctx.getScrollback, total)
+  } catch (error) {
+    if (!(error instanceof ScrollbackReadingUnavailable)) throw error
+    return notTestedResult(`owned scrollback history reader has no reading: ${error.message}`, {})
+  }
+}
+
+async function appHistoryReadings(
+  ctx: TermProbeSource,
+  read: NonNullable<TermProbeSource["getScrollback"]>,
+  total: boolean,
+): Promise<ProbeCallbackResult> {
   const refusal = tooSmall(ctx, 1, `line ${ctx.rows + 9}`.length, "Scrollback fixture")
   if (refusal) return refusal
   ctx.write("\x1b[0m\x1b[2J\x1b[H")

@@ -155,7 +155,7 @@ export { editingReadbackRows } from "./editing.ts"
 export { eraseReadbackRows } from "./erase.ts"
 export { modesReadbackRows } from "./modes.ts"
 export { textReadbackRows } from "./text.ts"
-export { scrollbackReadbackRows } from "./scrollback.ts"
+export { scrollbackReadbackRows, ScrollbackReadingUnavailable } from "./scrollback.ts"
 
 import { sgrProbes } from "./sgr.ts"
 import { cursorProbes } from "./cursor.ts"
