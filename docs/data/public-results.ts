@@ -13,6 +13,7 @@ import type { CurrentResult } from "./current-results.ts"
 import type { FeatureResult } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
 import { publicDerivedReason } from "./derived-cells.ts"
+import { publicHeldReason } from "./held-negatives.ts"
 import {
   type SelectedCell,
   type SelectedContextCell,
@@ -192,6 +193,8 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
       reopened?: SelectedContextCell["reopened"]
       /** Present only when a declared pair derived this cell from its parent (#33019); `reason` says so in words. */
       derived?: SelectedContextCell["derived"]
+      /** Present only when a held negative waits for a Supported reading in its suite (#33034); `reason` says so. */
+      held?: SelectedContextCell["held"]
     }
   >
   sources: Record<string, PublicRunMetadata>
@@ -348,6 +351,7 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
                 reopened: cell.reopened,
                 reason: publicReopenedReason(cell.reopened),
               }),
+              ...(cell.held && { held: cell.held, reason: publicHeldReason(cell.held) }),
               ...(cell.derived && {
                 derived: cell.derived,
                 reason: publicDerivedReason(cell.derived),

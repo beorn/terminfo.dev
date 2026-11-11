@@ -69,8 +69,11 @@ import {
 import {
   KITTY_BOUNDS,
   KITTY_CLEAR,
-  KITTY_FRAME_BLUE,
-  KITTY_FRAME_RED,
+  KITTY_FRAME_TWO_ONLY,
+  KITTY_FRAME_TWO_ONLY_BRANCH,
+  KITTY_ROW_IMAGES,
+  type KittyImageRow,
+  type KittyRgb,
   KITTY_GAP_MS,
   KITTY_GUARD_REGION,
   KITTY_GUARD_TEXT,
@@ -3659,9 +3662,11 @@ function allocationReply(imageNumber: number): RegExp {
   return kittyReplyFrame({ I: String(imageNumber), i: "\\d+" })
 }
 
-function imageTransferRequest(imageNumber: number): string {
-  // I requests a new image; a fixed i would overwrite somebody else's image.
-  return `\x1b_Ga=t,f=24,s=1,v=1,t=d,I=${imageNumber};/wAA\x1b\\`
+function imageTransferRequest(imageNumber: number, row: KittyImageRow): string {
+  // I requests a new image; a fixed i would overwrite somebody else's image. One pixel in the row's own colour
+  // (#33034), so no two rows ever send a terminal the same image bytes.
+  const pixel = Buffer.from(KITTY_ROW_IMAGES[row].image).toString("base64")
+  return `\x1b_Ga=t,f=24,s=1,v=1,t=d,I=${imageNumber};${pixel}\x1b\\`
 }
 
 function allocatedImageResult(
@@ -3776,9 +3781,12 @@ function kittyDisplayWithoutTransmit(code: string | null, imageNumber: number): 
 }
 
 /** Same-run image prerequisite for the two pixel rows; successful allocation is released immediately. */
-async function kittyPixelPrerequisite(ctx: TermProbeSource): Promise<ProbeCallbackResult | null> {
+async function kittyPixelPrerequisite(ctx: TermProbeSource, row: KittyImageRow): Promise<ProbeCallbackResult | null> {
   const imageNumber = kittyImageNumber()
-  const transfer = await ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber))
+  const transfer = await ctx.queryWithSentinelOutcome(
+    imageTransferRequest(imageNumber, row),
+    allocationReply(imageNumber),
+  )
   const uploaded = allocationOutcomeResult(transfer, imageNumber)
   if (uploaded.silent) {
     const query = await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)
@@ -3795,10 +3803,10 @@ async function kittyPixelPrerequisite(ctx: TermProbeSource): Promise<ProbeCallba
   return null
 }
 
-/** Both pixel rows qualify opaque red against the same independently painted cell rectangle. */
-function kittyPaintReference(ctx: TermProbeSource): void {
+/** Each pixel row qualifies its own opaque image colour against an independently painted cell rectangle. */
+function kittyPaintReference(ctx: TermProbeSource, rgb: KittyRgb): void {
   ctx.write(KITTY_CLEAR)
-  ctx.write(`\x1b[48;2;${KITTY_FRAME_RED.join(";")}m`)
+  ctx.write(`\x1b[48;2;${rgb.join(";")}m`)
   for (let row = KITTY_REGION.top; row <= KITTY_REGION.bottom; row++) {
     ctx.write(`\x1b[${row};${KITTY_REGION.left}H${" ".repeat(KITTY_REGION.right - KITTY_REGION.left + 1)}`)
   }
@@ -3920,7 +3928,7 @@ function kittyUnobservableResult(id: string, note: string): ProbeCallbackResult 
   }
 }
 
-function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition {
+function kittyImageTransferProbe(id: KittyImageRow, display: boolean): ProbeDefinition {
   const newNumber = () => (Number.parseInt(globalThis.crypto.randomUUID().slice(0, 8), 16) % 0xfffffffe) + 1
   return {
     ...probe(
@@ -3934,7 +3942,7 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
             // silent on it. When that silent read decides nothing, one same-run canonical query asks
             // whether graphics is refused at all: an ERROR frame decides, continued silence does not.
             const uploaded = allocationOutcomeResult(
-              ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber)),
+              ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber, id), allocationReply(imageNumber)),
               imageNumber,
             )
             imageId = uploaded.imageId
@@ -3976,7 +3984,7 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
               cells && readImages ? { ...cells, after: readImages(cells.row, cells.col) } : undefined,
             )
           }
-          const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber)), imageNumber)
+          const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber, id)), imageNumber)
           imageId = uploaded.imageId
           if (!imageId || !display) return uploaded.result
           const response = ctx.feedCapture(placementRequest(imageId))
@@ -3990,7 +3998,7 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         let imageId: number | null = null
         try {
           const transfer = await ctx.queryWithSentinelOutcome(
-            imageTransferRequest(imageNumber),
+            imageTransferRequest(imageNumber, id),
             allocationReply(imageNumber),
           )
           const uploaded = allocationOutcomeResult(transfer, imageNumber)
@@ -6151,7 +6159,8 @@ const extensionDefinitions: ProbeDefinition[] = [
       },
       async (ctx) => {
         const id = "extensions.kitty-graphics.animation"
-        const prerequisite = await kittyPixelPrerequisite(ctx)
+        const colours = KITTY_ROW_IMAGES[id]
+        const prerequisite = await kittyPixelPrerequisite(ctx, id)
         if (prerequisite) return prerequisite
         const capture = ctx.capture
         if (!capture) {
@@ -6196,14 +6205,22 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
           const blank = await shoot("control", "Blank rectangle before the static image control")
-          kittyPaintReference(ctx)
-          const reference = await shoot("control", "Independent SGR opaque-red reference in the same rectangle")
+          kittyPaintReference(ctx, colours.image)
+          const reference = await shoot(
+            "control",
+            "Independent SGR reference in the row's own image colour, same rectangle",
+          )
+          kittyPaintReference(ctx, colours.second)
+          const secondReference = await shoot(
+            "control",
+            "Independent SGR reference in the second frame's own colour, same rectangle",
+          )
           // Arm 3 — a one-frame image over the same intervals must hold still.
           const stillId = kittyImageNumber()
           ids.push(stillId)
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
-          ctx.write(kittyFrameTransfer(stillId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+          ctx.write(kittyFrameTransfer(stillId, { ...size, rgb: colours.image }, { root: true }))
           ctx.write(kittyBlockOrigin())
           await ctx.queryWithSentinelOutcome(kittyPlace(stillId), kittyReplyFrame({ i: String(stillId) }))
           ctx.write(kittyPark())
@@ -6236,8 +6253,8 @@ const extensionDefinitions: ProbeDefinition[] = [
             const readback = await ctx.queryWithSentinelOutcome(bytes, kittyReplyFrame({ i: String(playbackId) }))
             replies.push({ label, readback })
           }
-          await command("base image", kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
-          await command("second frame", kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
+          await command("base image", kittyFrameTransfer(playbackId, { ...size, rgb: colours.image }, { root: true }))
+          await command("second frame", kittyFrameTransfer(playbackId, { ...size, rgb: colours.second }))
           // The root frame carries no gap at transfer time; its gap is set by the control code.
           await command("root frame gap", kittyRootGap(playbackId))
           ctx.write(kittyBlockOrigin())
@@ -6294,6 +6311,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             still: [stillFirst.regionDigest, stillSecond.regionDigest],
             blank: blank.regionDigest,
             reference: reference.regionDigest,
+            secondReference: secondReference.regionDigest,
             cursorOnly: [cursorFirst.regionDigest, cursorSecond.regionDigest],
             redraw: [redrawFirst.pixelsDigest, redrawSecond.pixelsDigest],
             playbackElapsedMs,
@@ -6306,8 +6324,11 @@ const extensionDefinitions: ProbeDefinition[] = [
             )
             .join("; ")
           const note = `${captureDecision.note}; observed replies: ${replyNotes}`
+          // A refusal decides from the terminal's reply; the frame-two-only negative decides from pixels.
           const assertionType =
-            captureDecision.outcome === "unsupported" ? ("query_reply" as const) : ("screenshot" as const)
+            captureDecision.outcome === "unsupported" && captureDecision.decidedBy !== KITTY_FRAME_TWO_ONLY
+              ? ("query_reply" as const)
+              : ("screenshot" as const)
           const observed = JSON.stringify({
             id,
             region: KITTY_REGION,
@@ -6320,6 +6341,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             digests: {
               blank: blank.regionDigest,
               reference: reference.regionDigest,
+              secondReference: secondReference.regionDigest,
               still: [stillFirst.regionDigest, stillSecond.regionDigest],
               playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
               retry,
@@ -6338,6 +6360,10 @@ const extensionDefinitions: ProbeDefinition[] = [
               ...(assertionType === "screenshot" ? { frames } : {}),
               note,
             },
+            // The publication gate keys on this branch (docs/data/held-negatives.ts, @cto edab7573).
+            ...(captureDecision.decidedBy === KITTY_FRAME_TWO_ONLY
+              ? { criterionBranch: KITTY_FRAME_TWO_ONLY_BRANCH }
+              : {}),
             ...(captureDecision.decidedBy === "a missing region digest"
               ? {
                   criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
@@ -6352,7 +6378,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                       assertionType,
                       kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                       expected:
-                        "The static image matches the independent nonblank reference and holds still; the cursor-only pair is equal and redraw differs. Moving playback requires differing hand-selected frames. A negative requires an exact animation-command refusal, an equal retry and initial playback matching the static image",
+                        "The static image matches the independent nonblank reference and holds still; the cursor-only pair is equal and redraw differs. Moving playback requires differing hand-selected frames. A negative requires either an exact animation-command refusal, an equal retry and initial playback matching the static image, or frame 2 matching its own reference with neither timed playback nor hand selection bringing frame 1 back",
                       observed,
                       note: `decided by ${captureDecision.decidedBy}`,
                     },
@@ -6381,7 +6407,8 @@ const extensionDefinitions: ProbeDefinition[] = [
       },
       async (ctx) => {
         const id = "extensions.kitty-graphics.unicode-placeholders"
-        const prerequisite = await kittyPixelPrerequisite(ctx)
+        const colours = KITTY_ROW_IMAGES[id]
+        const prerequisite = await kittyPixelPrerequisite(ctx, id)
         if (prerequisite) return prerequisite
         const capture = ctx.capture
         if (!capture) {
@@ -6450,7 +6477,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           // is kept so a refusal still reads as one.
           ctx.write(kittyPlaceholderText(placeholderId))
           const virtualPlacement = await ctx.queryWithSentinelOutcome(
-            kittyVirtualPlacement(placeholderId, { ...size, rgb: KITTY_FRAME_RED }),
+            kittyVirtualPlacement(placeholderId, { ...size, rgb: colours.image }),
             kittyReplyFrame({ i: String(placeholderId) }),
           )
           const withImageFirst = await shoot(
@@ -6492,7 +6519,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           const ordinaryId = kittyPlaceholderNumber()
           ids.push(ordinaryId)
           const blank = await shoot("control", "Blank rectangle captured before the ordinary placement")
-          ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+          ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: colours.image }, { root: true }))
           ctx.write(kittyBlockOrigin())
           const placement = await ctx.queryWithSentinelOutcome(
             kittyPlace(ordinaryId),
@@ -6501,8 +6528,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(kittyPark())
           const ordinary = await shoot("control", "Ordinary a=p placement of the same pixels in the same rectangle")
           ctx.write(kittyDeleteImage(ordinaryId))
-          kittyPaintReference(ctx)
-          const reference = await shoot("control", "Independent SGR opaque-red reference in the same rectangle")
+          kittyPaintReference(ctx, colours.image)
+          const reference = await shoot(
+            "control",
+            "Independent SGR reference in the row's own image colour, same rectangle",
+          )
           const virtualMessage = virtualPlacement.match?.[2]
           const captureDecision = decideKittyPlaceholders({
             withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
@@ -9395,8 +9425,14 @@ const LIBVTERM_R1_ABSENCES: Readonly<Record<string, string>> = Object.fromEntrie
 )
 const LIBVTERM_R1_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
   "modes.decsscls": { feed: "\x1b[9 p", code: { kind: "csi", code: " 9p" } },
-  "extensions.kitty-graphics.display": { feed: imageTransferRequest(1), code: { kind: "apc", code: "G" } },
-  "extensions.kitty-graphics.transmit": { feed: imageTransferRequest(1), code: { kind: "apc", code: "G" } },
+  "extensions.kitty-graphics.display": {
+    feed: imageTransferRequest(1, "extensions.kitty-graphics.display"),
+    code: { kind: "apc", code: "G" },
+  },
+  "extensions.kitty-graphics.transmit": {
+    feed: imageTransferRequest(1, "extensions.kitty-graphics.transmit"),
+    code: { kind: "apc", code: "G" },
+  },
 }
 
 /** One registry consumer; other subjects and decided results retain their existing path. */
