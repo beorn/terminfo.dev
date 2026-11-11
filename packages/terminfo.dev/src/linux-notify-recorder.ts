@@ -92,11 +92,13 @@ export function parseSignature(signature: string): DbusType[] {
       if (signature[at] === "{") {
         at++
         const key = one(depth + 1)
-        if (key.kind !== "basic")
+        if (key.kind !== "basic") {
           throw new DbusParseError(`signature ${JSON.stringify(signature)} has a non-basic dict key`)
+        }
         const value = one(depth + 1)
-        if (signature[at++] !== "}")
+        if (signature[at++] !== "}") {
           throw new DbusParseError(`signature ${JSON.stringify(signature)} has an unclosed {`)
+        }
         return { kind: "array", element: { kind: "dict", key, value } }
       }
       return { kind: "array", element: one(depth + 1) }
@@ -198,9 +200,11 @@ class Reader {
       case "variant": {
         const signature = this.string(1)
         const types = parseSignature(signature)
-        if (types.length !== 1)
+        const type = types[0]
+        if (types.length !== 1 || type === undefined) {
           throw new DbusParseError(`variant signature ${JSON.stringify(signature)} is not one type`)
-        return { signature, value: this.value(types[0]!, depth + 1) } satisfies DbusVariant
+        }
+        return { signature, value: this.value(type, depth + 1) } satisfies DbusVariant
       }
       case "struct":
       case "dict": {
@@ -309,9 +313,12 @@ class Writer {
       case "variant": {
         const variant = value as DbusVariant
         const types = parseSignature(variant.signature)
-        if (types.length !== 1) throw new TypeError(`variant signature ${variant.signature} is not one type`)
+        const type = types[0]
+        if (types.length !== 1 || type === undefined) {
+          throw new TypeError(`variant signature ${variant.signature} is not one type`)
+        }
         this.string(variant.signature, 1)
-        return this.value(types[0]!, variant.value)
+        return this.value(type, variant.value)
       }
       case "struct":
       case "dict": {
@@ -427,7 +434,10 @@ export function encodeMessage(message: OutgoingMessage, serial: number): Uint8Ar
   bodyTypes.forEach((type, index) => body.value(type, message.body[index]))
   const fields: [number, DbusVariant][] = []
   const add = (code: number, value: unknown): void => {
-    if (value !== undefined) fields.push([code, { signature: FIELD_SIGNATURE[code]!, value }])
+    if (value === undefined) return
+    const signature = FIELD_SIGNATURE[code]
+    if (signature === undefined) throw new TypeError(`unknown D-Bus header field ${code}`)
+    fields.push([code, { signature, value }])
   }
   add(FIELD.path, message.path)
   add(FIELD.interface, message.interface)
@@ -653,7 +663,9 @@ class DbusConnection {
 
   async close(): Promise<void> {
     this.closing = true
-    await new Promise<void>((resolve) => this.socket.end(resolve))
+    await new Promise<void>((resolve) => {
+      this.socket.end(resolve)
+    })
     this.socket.destroy()
   }
 }
@@ -680,7 +692,8 @@ async function authenticate(socket: Socket): Promise<Uint8Array> {
       socket.off("data", onData)
       socket.off("close", onClose)
       if (error) reject(error)
-      else resolve(value!)
+      else if (value !== undefined) resolve(value)
+      else reject(new Error("D-Bus auth completed without a reply"))
     }
     socket.on("data", onData)
     socket.on("close", onClose)
@@ -800,14 +813,15 @@ export async function startNotifyRecorder(options: NotifyRecorderOptions): Promi
   const busAddress = parseBusAddress(options.address)
   const record = (entry: NotifyRecordEntry): void => appendFileSync(options.recordPath, `${JSON.stringify(entry)}\n`)
   let settle!: { resolve(): void; reject(error: Error): void }
-  const finished = new Promise<void>((resolve, reject) => (settle = { resolve, reject }))
+  const finished = new Promise<void>((resolve, reject) => {
+    settle = { resolve, reject }
+  })
   let serving = false
   let nextId = 1
-  let connection: DbusConnection | undefined
 
   const reply = (call: DbusMessage, signature: string, body: unknown[]): void => {
     if ((call.flags & NO_REPLY_EXPECTED) !== 0 || call.sender === undefined) return
-    connection!.send({
+    connection.send({
       type: MessageType.methodReturn,
       replySerial: call.serial,
       destination: call.sender,
@@ -817,7 +831,7 @@ export async function startNotifyRecorder(options: NotifyRecorderOptions): Promi
   }
   const replyError = (call: DbusMessage, errorName: string, detail: string): void => {
     if ((call.flags & NO_REPLY_EXPECTED) !== 0 || call.sender === undefined) return
-    connection!.send({
+    connection.send({
       type: MessageType.error,
       replySerial: call.serial,
       destination: call.sender,
@@ -898,7 +912,7 @@ export async function startNotifyRecorder(options: NotifyRecorderOptions): Promi
     record({ kind: "fatal", reason, ...stamp() })
     settle.reject(new Error(`notify recorder lost the bus: ${reason}`))
   }
-  connection = await DbusConnection.open(busAddress, {
+  const connection = await DbusConnection.open(busAddress, {
     message(message, frame) {
       if (serving && message.type === MessageType.methodCall) return serve(message, frame)
       const fromBus = message.sender === "org.freedesktop.DBus" && message.type === MessageType.signal
@@ -928,10 +942,11 @@ export async function startNotifyRecorder(options: NotifyRecorderOptions): Promi
     },
     unparsed(reason, frame) {
       if (serving) record(unparsedEntry(reason, frame))
-      else
+      else {
         console.error(
           `notify recorder: before owning ${NOTIFICATIONS_NAME}, unparsed ${frame.length}-byte message: ${reason}`,
         )
+      }
     },
     fatal(reason) {
       if (serving) fatal(reason)
@@ -1060,9 +1075,14 @@ const USAGE = "usage: bun linux-notify-recorder.ts --address <dbus-address> --re
 function parseCliArgs(argv: readonly string[]): NotifyRecorderOptions {
   const values = new Map<string, string>()
   for (let index = 0; index < argv.length; index += 2) {
-    const flag = argv[index]!
+    const flag = argv[index]
     const value = argv[index + 1]
-    if (!["--address", "--record", "--receipt"].includes(flag) || value === undefined || values.has(flag)) {
+    if (
+      flag === undefined ||
+      !["--address", "--record", "--receipt"].includes(flag) ||
+      value === undefined ||
+      values.has(flag)
+    ) {
       throw new Error(`unexpected argument ${JSON.stringify(flag)}\n${USAGE}`)
     }
     values.set(flag, value)
@@ -1079,7 +1099,7 @@ if (import.meta.main) {
   try {
     const recorder = await startNotifyRecorder(parseCliArgs(process.argv.slice(2)))
     const stop = (): void => {
-      recorder.stop().then(
+      void recorder.stop().then(
         () => process.exit(0),
         (error: unknown) => {
           console.error(`notify recorder: stop failed: ${error instanceof Error ? error.message : String(error)}`)
