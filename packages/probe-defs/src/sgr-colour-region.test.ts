@@ -20,6 +20,7 @@ import { expect, test, vi } from "vitest"
 import { sgrProbes } from "./sgr.ts"
 import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
 import { captureRegionCallbackResult } from "./region-readback.ts"
+import { recordExecutedProbe } from "./helpers.ts"
 import type {
   CaptureCells,
   CapturePixelGeometry,
@@ -583,6 +584,37 @@ test.each(["0", "0;38;2;255;128;0", "0;38;2;255;128;1"])(
     }
   },
 )
+
+/**
+ * @failure Xterm's equal-reference and witness-timeout captures return inconclusive without
+ *   explicit tests, so the writer publishes PROBE INVALID. Neither observation decided support.
+ * @level l1
+ * @consumer Indexed underline colour through its callback owner and the real result writer.
+ * @testonly none
+ */
+test.each([
+  ["insufficient-evidence", "the ignored-attribute frame and the expected frame read the same cells"],
+  ["timeout", "witness cell 1,1 unchanged for 5000 ms after the target while the frame changed"],
+] as const)("inconclusive indexed colour publishes pending for %s", (reason, note) => {
+  const frames: ObservationFrame[] = [
+    { kind: "pixels", role: "target", label: "target", capturedAt: 1, ref: "sha256:abc", pixelsDigest: "d" },
+  ]
+  const result = colourCaptureCallbackResult("sgr.underline-color-indexed", {
+    pass: false,
+    response: "retained capture",
+    observation: { outcome: "inconclusive", reason, assertionType: "screenshot", note, frames },
+  })
+  const published = recordExecutedProbe({
+    featureId: "sgr.underline-color-indexed",
+    attempt: { scope: "probe", startedAt: "2026-11-11T01:43:09.619Z" },
+    observation: result.observation,
+    assertions: result.assertions ?? [],
+    ...(result.tests === undefined ? {} : { tests: result.tests }),
+  })
+  expect(published.tests[0]).toMatchObject({ id: "review", status: "probe-todo", reason: note })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason, note, frames })
+  expect(result.response).toBe("retained capture")
+})
 
 for (const id of COLOUR_IDS) {
   for (const palette of PALETTES) {
