@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs"
+
 import type { InputFixture } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
 import { createInjectedInput, type InputButton, type InputMechanism, type OwnedFrame } from "./input-fixture.ts"
@@ -13,6 +14,12 @@ export interface DarwinWindowFrame extends OwnedFrame {
   readonly id: number
 }
 
+/** The window a run launched, from its own launch receipt: the window to target and the tty inside it. */
+export interface DarwinLaunchTarget {
+  readonly windowId: number
+  readonly windowTty?: string
+}
+
 export interface DarwinInputOptions {
   /** The measured app PID: every event is posted to this process. */
   readonly appPid: number
@@ -20,6 +27,14 @@ export interface DarwinInputOptions {
   readonly appName: string
   /** The helper the job compiled; absent names the missing binary rather than guessing a path. */
   readonly helperPath: string | undefined
+  /**
+   * The window the run's own launch receipt recorded, and the tty inside it. When present the
+   * adapter targets THAT window and refuses when it is not the app's front window, instead of
+   * guessing the app's largest window (#33574; run 43106790420 named window 33 on /dev/ttys001
+   * while another Terminal window was open).
+   */
+  readonly windowId?: number
+  readonly windowTty?: string | undefined
   /**
    * Post one key through the fresh adapter and return what the app's own TTY echoed, or null when
    * nothing came back. The install refuses BY NAME when this is null, so no probe reads a row that
@@ -38,8 +53,11 @@ function requireAppPid(appPid: number): void {
   }
 }
 
-/** The largest layer-0 on-screen window the app owns, from the helper's own window census. */
-export function selectDarwinInputWindow(rows: unknown, appPid: number): DarwinWindowFrame {
+/**
+ * The window the events must land in: the run's own launched window when the receipt named one,
+ * otherwise the largest layer-0 on-screen window the app owns.
+ */
+export function selectDarwinInputWindow(rows: unknown, appPid: number, expectedWindowId?: number): DarwinWindowFrame {
   if (!Array.isArray(rows)) throw new Error("macOS input window census is not an array")
   const owned = rows
     .map((row: unknown) => {
@@ -57,6 +75,16 @@ export function selectDarwinInputWindow(rows: unknown, appPid: number): DarwinWi
     })
     .filter((frame) => frame.width >= 1 && frame.height >= 1)
     .sort((left, right) => right.width * right.height - left.width * left.height)
+  if (expectedWindowId !== undefined) {
+    const expected = owned.find((frame) => frame.id === expectedWindowId)
+    if (!expected) {
+      throw new Error(
+        `macOS input targets the run's own window ${expectedWindowId}, which is not among the ` +
+          `${owned.length} usable window(s) the app owns of the ${rows.length} listed for pid ${appPid}`,
+      )
+    }
+    return expected
+  }
   const selected = owned[0]
   if (!selected) {
     throw new Error(
@@ -72,11 +100,15 @@ export function selectDarwinInputWindow(rows: unknown, appPid: number): DarwinWi
  * event stream is the one a real keyboard produces; the helper refuses at build time when the
  * Accessibility grant is missing, and this module never writes TCC (@cto 2026-11-11, 33574 C1).
  */
-function helperMechanism(helperPath: string, appPid: number): InputMechanism {
+function helperMechanism(
+  helperPath: string,
+  appPid: number,
+  target: { windowId?: number; windowTty?: string },
+): InputMechanism {
   const run = async (...args: string[]): Promise<string> => (await command(helperPath, args)).toString().trim()
   let frame: DarwinWindowFrame | undefined
   const ownedFrame = async (): Promise<DarwinWindowFrame> => {
-    frame ??= selectDarwinInputWindow(JSON.parse(await run("windows", String(appPid))), appPid)
+    frame ??= selectDarwinInputWindow(JSON.parse(await run("windows", String(appPid))), appPid, target.windowId)
     return frame
   }
   const globalPoint = async (x: number, y: number): Promise<{ x: number; y: number }> => {
@@ -85,7 +117,9 @@ function helperMechanism(helperPath: string, appPid: number): InputMechanism {
   }
   return {
     async focus() {
-      await run("front", String(appPid))
+      // The helper refuses by name when the target window is not the app's front window, because a
+      // posting then lands in another window and its silence would be read as terminal behaviour.
+      await run("front", String(appPid), ...(target.windowId === undefined ? [] : [String(target.windowId)]))
     },
     async geometry() {
       return ownedFrame()
@@ -130,7 +164,10 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
           `the job compiles native/darwin-input/main.swift and a build failure refuses by name`,
       )
     }
-    mechanism = helperMechanism(options.helperPath, options.appPid)
+    mechanism = helperMechanism(options.helperPath, options.appPid, {
+      ...(options.windowId === undefined ? {} : { windowId: options.windowId }),
+      windowTty: options.windowTty,
+    })
   }
   const input = createInjectedInput(mechanism, "CGEvent")
   const echoed = await options.selfTest(() => input.injectKey(DARWIN_INPUT_SELF_TEST_KEYSYM))
@@ -141,6 +178,9 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
         `${echoed === null ? "nothing" : JSON.stringify(echoed)}; refusing to measure input rows through it`,
     )
   }
-  options.report?.(`darwin input installed: pid ${options.appPid}, self-test echoed ${JSON.stringify(echoed)}`)
+  options.report?.(
+    `darwin input installed: pid ${options.appPid}, window ${options.windowId ?? "largest"}, ` +
+      `tty ${options.windowTty ?? "unrecorded"}, self-test echoed ${JSON.stringify(echoed)}`,
+  )
   return input
 }

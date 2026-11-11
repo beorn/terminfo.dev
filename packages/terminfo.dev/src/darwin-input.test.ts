@@ -77,7 +77,7 @@ describe("macOS input install", () => {
       { op: "key", args: [DARWIN_INPUT_SELF_TEST_KEYSYM] },
     ])
     expect(typeof input.injectKey).toBe("function")
-    expect(facts).toEqual([`darwin input installed: pid 4242, self-test echoed "z"`])
+    expect(facts).toEqual([`darwin input installed: pid 4242, window largest, tty unrecorded, self-test echoed "z"`])
   })
 
   it("requires the measured app PID", async () => {
@@ -98,6 +98,20 @@ describe("macOS input window selection", () => {
         4242,
       ),
     ).toEqual({ id: 9, x: 0, y: 0, width: 800, height: 600 })
+  })
+
+  it("targets the window the run launched when its receipt named one", () => {
+    const rows = [
+      { id: 28, x: 0, y: 0, width: 1440, height: 900 },
+      { id: 33, x: 40, y: 40, width: 700, height: 400 },
+    ]
+    expect(selectDarwinInputWindow(rows, 4242, 33)).toEqual({ id: 33, x: 40, y: 40, width: 700, height: 400 })
+  })
+
+  it("refuses by name when the launched window is not among the app windows", () => {
+    expect(() => selectDarwinInputWindow([{ id: 28, x: 0, y: 0, width: 800, height: 600 }], 4242, 33)).toThrow(
+      /targets the run's own window 33, which is not among the 1 usable window\(s\) the app owns of the 1 listed for pid 4242/,
+    )
   })
 
   it("refuses by name when the app owns no usable window, naming what it saw", () => {

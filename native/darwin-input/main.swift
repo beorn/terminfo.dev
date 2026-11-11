@@ -200,10 +200,29 @@ switch arguments[1] {
 case "trust":
     out("trusted=\(trusted())")
 case "front":
-    guard arguments.count == 3 else { fail("usage: darwin-input-helper front <pid>") }
+    guard arguments.count == 3 || arguments.count == 4 else {
+        fail("usage: darwin-input-helper front <pid> [window-id]")
+    }
     requireTrust()
     let pid = processId(arguments[2])
     activate(pid)
+    if arguments.count == 4 {
+        guard let target = Int(arguments[3]), target > 0 else {
+            fail("front requires a positive window id; got \(arguments[3])")
+        }
+        // CGWindowListCopyWindowInfo is front-to-back, so the first layer-0 window this pid owns is
+        // the one a keystroke reaches. A posting into any other window is silence, not a reading.
+        let front = windowRows(pid).first?["id"]
+        guard let front else {
+            fail("pid \(pid) owns no on-screen layer-0 window; the targeted window \(target) cannot be key")
+        }
+        if front != target {
+            fail("the run's own window \(target) is not the app front window; the app front window is \(front), " +
+                "so a posting would land in another window and its silence would be read as terminal behaviour")
+        }
+        out("frontmost=true pid=\(pid) window=\(target)")
+        return
+    }
     out("frontmost=true pid=\(pid)")
 case "windows":
     guard arguments.count == 3 else { fail("usage: darwin-input-helper windows <pid>") }

@@ -72,7 +72,7 @@ import { collectTextQualification, recordTextQualificationTests } from "./text-q
 import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { createLinuxInput } from "./linux-input.ts"
-import { createDarwinInput, DARWIN_INPUT_HELPER_ENV } from "./darwin-input.ts"
+import { createDarwinInput, DARWIN_INPUT_HELPER_ENV, type DarwinLaunchTarget } from "./darwin-input.ts"
 import {
   createOwnedTerminal,
   parseProcessOwnerAssertion,
@@ -837,6 +837,33 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
     }
     /**
+     * The window this run launched, from its own launch receipt in the capture directory. The
+     * adapter targets that window instead of the app's largest one: run 43106790420 named window 33
+     * on /dev/ttys001 while another Terminal window was open, so "largest" can be the wrong window.
+     */
+    const launchedWindowTarget = (): DarwinLaunchTarget | undefined => {
+      if (!captureDirectory) return undefined
+      // The launcher writes the receipt beside its artifact directory, and retired layouts write it
+      // inside it; both are checked, and absence is not a refusal (a run without a launch receipt
+      // keeps the largest-window behaviour).
+      const receipt = [join(dirname(captureDirectory), "terminal-launch.json"), join(captureDirectory, "terminal-launch.json")].find(
+        (candidate) => existsSync(candidate),
+      )
+      if (!receipt) return undefined
+      try {
+        const parsed: unknown = JSON.parse(readFileSync(receipt, "utf8"))
+        const window = (parsed as { terminalWindow?: { windowId?: unknown; tty?: unknown } }).terminalWindow
+        if (!window || typeof window.windowId !== "number" || !Number.isSafeInteger(window.windowId)) return undefined
+        return {
+          windowId: window.windowId,
+          ...(typeof window.tty === "string" ? { windowTty: window.tty } : {}),
+        }
+      } catch (error) {
+        out.write(`input not installed: the launch receipt ${receipt} could not be read (${String(error)})\n`)
+        return undefined
+      }
+    }
+    /**
      * Bind OS-level injection to the owned app window (#33574). A missing helper, a missing
      * Accessibility grant or a key that does not come back through the app's own TTY names the
      * refusal on this run and installs nothing: no probe may read a row this runner never delivered.
@@ -852,6 +879,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           appPid,
           appName: terminal.hostedAppId ?? kind ?? "macOS app",
           helperPath: process.env[DARWIN_INPUT_HELPER_ENV],
+          ...launchedWindowTarget(),
           selfTest: async (inject) => {
             // The app echoes a typed key only in cooked mode, so this read stays out of raw mode -
             // and it must restore the flowing state that withRawMode's lease restores, or the
