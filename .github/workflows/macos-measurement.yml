@@ -414,7 +414,7 @@ jobs:
           const { join } = require("node:path");
           const { launchTerminalWindowCensus } = require(process.cwd() + "/packages/admin/src/terminal-app-receipt.ts");
           // The owned-window launch replaces `open -a`: the window id and exact tab TTY are the close handle.
-          // #33152 (@cto 5c2b1f65): the launcher's own transaction census goes in the launch record.
+          // #33152 (@cto 5c2b1f65): the launch transaction census goes in the launch record.
           const { terminalWindow, beforeIds, afterIds, newIds } = launchTerminalWindowCensus(process.env.COMMAND_PATH);
           if (!terminalWindow || !terminalWindow.tty) throw new Error("Hosted Terminal launch resolved no owned window id and TTY");
           const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
@@ -886,7 +886,7 @@ jobs:
             const { appId, terminalWindow } = JSON.parse(readFileSync(record, "utf8"));
             const owned = { appId, windowId: terminalWindow.windowId, tty: terminalWindow.tty };
             try {
-              // Recheck the exact window id and tab TTY, then close only that window. The close's own
+              // Recheck the exact window id and tab TTY, then close only that window. The retained
               // zero-match proof (its osascript argv, status and output) is kept in the disposal file.
               const closeProof = JSON.parse(closeOwnedTerminalWindow(terminalWindow));
               const probe = Bun.spawnSync(["osascript", "-e", `tell application "Terminal"\nreturn count of (every window whose id is ${terminalWindow.windowId})\nend tell`]);
