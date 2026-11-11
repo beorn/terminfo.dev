@@ -19,7 +19,13 @@
 import { expect, test, vi } from "vitest"
 import { sgrProbes } from "./sgr.ts"
 import { extensionsProbes } from "./extensions.ts"
-import { COLOUR_CAPTURE, COLOUR_UMBRELLAS, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
+import {
+  COLOUR_CAPTURE,
+  COLOUR_UMBRELLAS,
+  UNDERLINE_INDEXED_PHASES,
+  UNDERLINE_INDEXED_BRANCH,
+  colourCaptureCallbackResult,
+} from "./sgr-colour-capture.ts"
 import { captureRegionCallbackResult } from "./region-readback.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import type {
@@ -36,10 +42,12 @@ const COLS = 80
 const GEOMETRY: CapturePixelGeometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
 const RECTANGLE: CaptureRectangle = { x: 0, y: 0, width: 640, height: 384 }
 
-/** The 11 colour rows whose termless arm already demands a distinct-colour reference. */
+/**
+ * The 10 colour rows whose termless arm already demands a distinct-colour reference.
+ * sgr.underline-color-indexed has its own same-run witness (#33146, underline-colour-indexed.test.ts).
+ */
 const COLOUR_IDS = [
   "sgr.underline.color",
-  "sgr.underline-color-indexed",
   "sgr.underline-color-rgb",
   "sgr.fg.standard",
   "sgr.bg.standard",
@@ -444,7 +452,9 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
     const control = CONTROL.exec(rest)
     if (control) {
       const params = (control[1] ?? "")
-        .split(/[;:]/)
+        .split(";")
+        // An unknown colon group is one SGR parameter; only the semicolon form walks into 5/N.
+        .flatMap((part) => (mode === "ignore-58" && part.startsWith("58:") ? [] : part.split(":")))
         .filter((part) => part.length > 0)
         .map(Number)
       const final = control[2]
@@ -491,7 +501,9 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
 
 function cellText(cell: Cell | undefined): string {
   if (!cell) return "outside"
-  return `${cell.char}${cell.fg}${cell.bg}${cell.underlineColour}${cell.underline ? "u" : ""}${cell.blink ? "k" : ""}${cell.strike ? "s" : ""}`
+  // Pixel samples of spaces show no foreground glyph. A default underline follows the foreground.
+  const underlineColour = cell.underline && cell.underlineColour === "default" ? cell.fg : cell.underlineColour
+  return `${cell.char}${cell.char === " " ? "" : cell.fg}${cell.bg}${underlineColour}${cell.underline ? "u" : ""}${cell.blink ? "k" : ""}${cell.strike ? "s" : ""}`
 }
 
 function regionDigest(grid: Cell[][], region: CaptureCells): string {
@@ -915,22 +927,20 @@ test("a stale capture reads inconclusive, never unsupported, on the underline-co
 }, 30000)
 
 /**
- * @failure xterm has no SGR 58 and walks `58;5;N` code by code, so the old `58;5;5` turned blink on
- *   and every compared crop was a blink-phase sample: the row flipped between refused and open from
- *   run to run (#33181). The indexed sequence is now `58;5;9;25`: a walker paints a static strike
- *   line and blink-off, and the frame that sets crossed-out on purpose reads the same cells, so the
- *   pixels decide a measured negative (@cto b6db70c8). The DECRQSS reply never grades this paint row.
+ * @failure A terminal that ignores colon-form SGR 58 must be measured on the preserved underline,
+ *   not blink/strike parameters from the retired semicolon sequence (#33146). The foreground route
+ *   proves both palette entries are visible before the same-run witness publishes a negative.
  * @level l1
  * @consumer sgr.underline-color-indexed on owned app contexts.
  * @testonly none
  */
-test("a terminal that walks the indexed underline-colour parameters reads unsupported from the pixels", async () => {
+test("a terminal that ignores indexed colon colour reads unsupported from the preserved underline", async () => {
   const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
   const result = await run("sgr.underline-color-indexed", ctx)
-  expect(result.criterionBranch).toBe("colour-walked-parameters")
+  expect(result.criterionBranch).toBe(UNDERLINE_INDEXED_BRANCH)
   expect(result.observation?.outcome).toBe("unsupported")
-  expect(result.observation?.note).toContain("painted crossed-out (SGR 9) for SGR 58;5;9;25")
-  expect(result.tests).toEqual([{ id: "criterion", status: "unsupported", assertionRefs: [0] }])
+  expect(result.observation?.note).toContain("colour ignored, decoration kept")
+  expect(result.tests).toEqual([{ id: "attribute", status: "unsupported", assertionRefs: [0] }])
   expect(result.assertions).toHaveLength(1)
   expect(result.pass).toBe(false)
 })
@@ -946,7 +956,7 @@ test("a terminal that walks the indexed underline-colour parameters reads unsupp
  * @testonly none
  */
 test("a walker paints every compared underline-colour frame static", async () => {
-  for (const id of ["sgr.underline.color", "sgr.underline-color-indexed"]) {
+  for (const id of ["sgr.underline.color"]) {
     const spec = COLOUR_CAPTURE[id]
     if (!spec) throw new Error(`${id}: no colour capture row`)
     const writes = [
@@ -965,20 +975,28 @@ test("a walker paints every compared underline-colour frame static", async () =>
       expect(blinking.map((cell) => cell.char).join(""), `${id}: ${JSON.stringify(write)}`).toBe("")
     }
   }
+  for (const phase of UNDERLINE_INDEXED_PHASES) {
+    const { ctx, screen } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+    ctx.write(`${phase.sequence}${phase.sample}`)
+    expect(
+      screen.grid.flat().some((cell) => cell.blink),
+      phase.name,
+    ).toBe(false)
+  }
   const result = await run("sgr.underline.color", colourTerminal("ignore-58", PALETTES[0] as Palette).ctx)
   expect(result.criterionBranch).toBe("colour-no-attribute-witness")
   expect(result.observation?.outcome).toBe("unsupported")
 })
 
 /**
- * @failure The walked negative is decided from frames captured through a multiplexer's outer
+ * @failure The indexed same-run negative is decided from frames captured through a multiplexer's outer
  *   terminal, which cannot say which of the two walked the parameters; like the witness negative it
  *   must stay open there (@cto 4ed6bddf), never publish Unsupported against the mux.
  * @level l1
  * @consumer sgr.underline-color-indexed on owned multiplexer contexts.
  * @testonly none
  */
-test("a multiplexer stays inconclusive on the walked negative and says why", async () => {
+test("a multiplexer stays inconclusive on the indexed same-run negative and says why", async () => {
   const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
   const result = await run("sgr.underline-color-indexed", { ...ctx, mux: "screen" as const })
   expect(result.observation?.outcome).toBe("inconclusive")
@@ -1131,15 +1149,6 @@ test("the colour fixture separates colours, and collapses the sibling pairs it s
     expect(await read("collapse", "\x1b[31mX", palette)).toBe(await read("collapse", "\x1b[34mX", palette))
     expect(await read("collapse-bright", "\x1b[91mX", palette)).toBe(
       await read("collapse-bright", "\x1b[31mX", palette),
-    )
-    // The indexed underline sibling is a different 16-colour entry, so a 16-colour terminal can separate it.
-    const indexed = COLOUR_CAPTURE["sgr.underline-color-indexed"]
-    if (indexed?.expected === undefined || indexed.ignored === undefined) {
-      throw new Error("sgr.underline-color-indexed must name both frames")
-    }
-    expect(indexed.ignored).toContain("\x1b[58;5;4;25m")
-    expect(await readFrame("quantize-256", indexed.expected, palette)).not.toBe(
-      await readFrame("quantize-256", indexed.ignored, palette),
     )
     // Each negative mode collapses exactly the pair the row ships as its sibling.
     for (const { ids, mode } of QUANTISATION) {
