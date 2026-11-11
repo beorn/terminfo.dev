@@ -12,7 +12,9 @@
  */
 import { describe, expect, test } from "vitest"
 
+import { recordExecutedProbe } from "./helpers.ts"
 import {
+  colourCaptureCallbackResult,
   UNDERLINE_INDEXED_BRANCH,
   UNDERLINE_INDEXED_PHASES,
   underlineColourIndexedDecision,
@@ -111,8 +113,8 @@ describe("indexed underline colour decision: five outcomes in the ruled order", 
     const decision = underlineColourIndexedDecision(digests(overrides))
     expect(decision).toMatchObject({ status })
     expect(decision.note).toContain(note)
-    expect(decision.note).toContain("58:5:1 and 58:5:4 (colon form)")
-    expect(decision.note).toContain("38:5:1 and 38:5:4 (colon form)")
+    expect(decision.note).toContain("SGR 58:5:1 (colon form) and SGR 58:5:4 (colon form)")
+    expect(decision.note).toContain("SGR 38:5:1 (colon form) and SGR 38:5:4 (colon form)")
   })
 
   test("a blind control wins over every later check", () => {
@@ -167,6 +169,24 @@ describe("indexed underline colour callback result", () => {
     })
     expect(JSON.parse(result.response ?? "") as { evidence: unknown }).toMatchObject({ evidence: decision.evidence })
     expect(result.assertions).toHaveLength(1)
+
+    // The real Xterm capture reached this boundary but gained duplicate encoding context and
+    // the recorder-failure disclaimer. Keep the measured callback's reason through recording.
+    const callback = colourCaptureCallbackResult(ID, result)
+    const recorded = recordExecutedProbe({
+      featureId: ID,
+      attempt: { scope: "probe", startedAt: "2026-11-11T18:30:00.000Z" },
+      observation: callback.observation && { ...callback.observation, featureId: ID, rawReplyRef: ID },
+      coverage: callback.notTested && { ...callback.notTested, featureId: ID, rawReplyRef: ID },
+      assertions: (callback.assertions ?? []).map((assertion) => ({ featureId: ID, ...assertion })),
+      tests: callback.tests,
+      criterionBranch: callback.criterionBranch,
+      rawReplyRef: ID,
+    })
+    const finalized = finalizeVisualResult(recorded, { kind: "app" }, run().frames)
+    expect(finalized.status).toBe("unsupported")
+    expect(finalized.reason).not.toContain("declared, not confirmed sent")
+    expect(finalized.reason).toBe(decision.note)
   })
 
   test("an inconclusive outcome asserts nothing and names its reason", () => {

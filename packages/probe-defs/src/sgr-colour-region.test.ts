@@ -694,7 +694,7 @@ test.each([
     status: "probe-todo",
     reason: expect.stringContaining(note),
   })
-  expect(published.tests[0]?.reason).toContain("58:5:1 and 58:5:4 (colon form)")
+  expect(published.tests[0]?.reason).toContain("SGR 58:5:1 (colon form) and SGR 58:5:4 (colon form)")
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason,

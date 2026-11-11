@@ -328,7 +328,9 @@ function sgrParameters(sequence: string): string {
 /** Display the selected encoding from the existing fixture declarations, never a second row table. */
 function colourEncoding(id: string): string | undefined {
   if (id === UNDERLINE_INDEXED_ID) {
-    return `SGR ${UNDERLINE_INDICES.map((index) => `58:5:${index}`).join(" and ")} (colon form); two palette indices test whether foreground-route controls ${UNDERLINE_INDICES.map((index) => `38:5:${index}`).join(" and ")} (colon form) distinguish the requested colours`
+    const targets = sgrColourEncoding(UNDERLINE_INDICES.map((index) => `\x1b[58:5:${index}m`).join(""))
+    const controls = sgrColourEncoding(UNDERLINE_INDICES.map((index) => `\x1b[38:5:${index}m`).join(""))
+    return `${targets}; two palette indices test whether foreground-route controls ${controls} distinguish the requested colours`
   }
   const reset = id === "sgr.underline-color-reset"
   const sequence = reset ? RESET_FAMILY_CAPTURE[id]?.seed.match(/\x1b\[58[:;][\d:;]+m/)?.[0] : COLOUR_ROWS[id]?.sequence
@@ -408,28 +410,29 @@ export function colourCaptureCallbackResult(
   if (encoding !== undefined) {
     // "Selected" covers refusals before target bytes as well as measured outcomes. The existing
     // reason still says which phases actually ran; this prefix makes no new measurement claim.
-    const context = `Selected ${encoding}`
-    verdict = { ...verdict, note: `${context}${verdict.note === undefined ? "" : `; ${verdict.note}`}` }
+    const withEncoding = (note?: string): string =>
+      note?.includes(encoding) ? note : `Selected ${encoding}${note === undefined ? "" : `; ${note}`}`
+    verdict = { ...verdict, note: withEncoding(verdict.note) }
     if (verdict.observation !== undefined) {
       verdict = {
         ...verdict,
         observation: {
           ...verdict.observation,
-          note: `${context}${verdict.observation.note === undefined ? "" : `; ${verdict.observation.note}`}`,
+          note: withEncoding(verdict.observation.note),
         },
         ...(verdict.tests && {
           tests: verdict.tests.map((test) =>
-            test.reason === undefined ? test : { ...test, reason: `${context}; ${test.reason}` },
+            test.reason === undefined ? test : { ...test, reason: withEncoding(test.reason) },
           ),
         }),
       }
     } else if (verdict.notTested !== undefined) {
       verdict = {
         ...verdict,
-        notTested: { ...verdict.notTested, noObservable: `${context}; ${verdict.notTested.noObservable}` },
+        notTested: { ...verdict.notTested, noObservable: withEncoding(verdict.notTested.noObservable) },
         ...(verdict.tests && {
           tests: verdict.tests.map((test) =>
-            test.reason === undefined ? test : { ...test, reason: `${context}; ${test.reason}` },
+            test.reason === undefined ? test : { ...test, reason: withEncoding(test.reason) },
           ),
         }),
       }
@@ -439,8 +442,8 @@ export function colourCaptureCallbackResult(
       verdict = {
         ...verdict,
         tests: [
-          { ...first, reason: `${context}; ${first.reason}` },
-          ...rest.map((test) => ({ ...test, reason: `${context}; ${test.reason}` })),
+          { ...first, reason: withEncoding(first.reason) },
+          ...rest.map((test) => ({ ...test, reason: withEncoding(test.reason) })),
         ],
       }
     }
