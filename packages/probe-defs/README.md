@@ -14,7 +14,7 @@ This describes the implemented system. Callbacks still perform live I/O and eval
 - **Assertion**: one expected-versus-observed comparison. `ProbeAssertion` carries positive/negative polarity independently of its `assertionType`.
 - **Probe result**: one probe on one subject, with its status, tests, assertions and retained evidence. Stored `ProbeResult` and callback `ProbeCallbackResult` are separate shapes.
 
-The six assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard; `process_environment` reads a terminal child's allowlisted export with its same-run launch, PID and TTY controls. Probe setup and feed writes retain their existing order and bytes; they are not assertion types.
+The seven assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard; `process_environment` reads a terminal child's allowlisted export with its same-run launch, PID and TTY controls; `notification` reads an independent desktop service Notify carrying the App run nonce. Probe setup and feed writes retain their existing order and bytes; they are not assertion types.
 
 The owned App source may supply `getScrollback`, as an async `TerminalScrollbackReading` (total lines, optional screen rows and top-relative viewport offset; unreported fields are absent), and an optional `resetScrollback` hook returning `TerminalScrollbackReset` (`{ status: "reset", capacity }`) when the owned multiplexer can empty its window history back to the run's configured capacity after the baseline clear fence and before the baseline read; `appHistory` retains `historyReset` in evidence and refuses with `owned history reset left N lines` when post-reset baseline history is non-zero. Its history callbacks use rows from run geometry and require an unchanged no-overflow count and a changed overflow count before applying the existing history criteria. Without a complete owned reading, the existing named observation gaps remain.
 
@@ -608,7 +608,7 @@ and require two distinct OSC 9 messages to append in order without changing
 that prefix. The collector gives each probe its own disposable backend, so
 notification messages cannot leak into another probe. These are `buffer_state`
 observations of parser metadata, not a filesystem operation, OS notification
-or OSC 9;4 progress measurement. Missing readers keep the existing
+or OSC 9;4 progress measurement. App desktop readback uses the separate `notification` class. Missing readers keep the existing
 `headless-observable-review` tool gap; getter errors propagate. Notifications
 instead use the operator's declared Untestable route when neither notification
 nor toast reader exists and the measured source matches the audited VT100.js
@@ -828,7 +828,7 @@ This does not change earlier captures or xterm's rendering pin.
 
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
 
-The six `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes`, `clipboard` and `process_environment`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action. Process environment is an App end-to-end method and remains unmapped for Library subjects.
+The seven `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes`, `clipboard`, `process_environment` and `notification`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action. Process environment is an App end-to-end method and remains unmapped for Library subjects.
 
 The XTEST key criterion requires the ctrl+a modified-key encoding after its plain-a delivery
 control; a bare control byte or another modified key does not meet it. Pixel mouse reporting
@@ -1322,3 +1322,15 @@ Other missing observers keep their existing coverage result.
 The Vterm input source wrapper retains raw state as PROBE TODO, without a deciding
 input observation or assertion: the callback performs no input event and supplies no measured input negative.
 Terminal criteria are unchanged.
+
+App OSC9 and OSC777 delivery uses the owned private-bus notification observer. The observer validates its
+launch receipt and an independent dbus-send control, then reads records after the target-write cursor.
+A recorded Notify carrying the run nonce establishes Supported. Unparsed or fatal records keep the row Open.
+Unsupported requires all five recorded facts: terminal environment bound to that bus, the recorded control,
+qualified default notification configuration, no nonce Notify by the numeric deadline (1000ms in the
+collector), and focus read immediately before and after the write showing the non-terminal window.
+The existing focus fixture holds that state through the deadline and restores in finally. A terminal-focused
+negative trial is PROBE INVALID; unavailable focus evidence stays Open. Multiplexer negatives additionally
+require the outer-terminal record. Collector bus presence and the clipboard default profile do not prove
+those notification facts: the current adapter retains both as unknown until independently qualified.
+Headless parser notification stores keep their existing buffer_state criteria; historical runs are untouched.

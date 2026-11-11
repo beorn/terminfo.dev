@@ -806,7 +806,7 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
 > = {
   "extensions.osc777-notify": {
     status: "probe-todo",
-    reason: "Cursor response does not measure OSC 777 notification delivery",
+    reason: "No owned desktop notification observer for OSC 777",
   },
   "extensions.osc666-termprop": {
     status: "probe-todo",
@@ -914,7 +914,7 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
     status: "probe-todo",
     reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
   },
-  "extensions.notifications": { status: "probe-todo", reason: "No desktop notification delivery readback for OSC 9" },
+  "extensions.notifications": { status: "probe-todo", reason: "No owned desktop notification observer for OSC 9" },
   "extensions.osc9-progress": {
     status: "probe-todo",
     reason: "extensions.osc9-progress: no owned whole-window pixel capture for this effect",

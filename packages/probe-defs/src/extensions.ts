@@ -4345,6 +4345,137 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
   }
 }
 
+async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"): Promise<ProbeCallbackResult> {
+  if (!ctx.withNotificationObserver) {
+    const note = `No owned desktop notification observer for OSC ${selector}`
+    return { pass: false, note, tests: [{ id: "criterion", status: "probe-todo", reason: note }] }
+  }
+  return ctx.withNotificationObserver(async (fixture): Promise<ProbeCallbackResult> => {
+    const nonce = `terminfo-notify-${randomUUID()}`
+    const sequence = selector === "9" ? `\x1b]9;${nonce}\x07` : `\x1b]777;notify;${nonce};${nonce}\x07`
+    const deadlineMs = Math.min(fixture.deadlineMs, 2000)
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+      throw new Error("Notification observation needs a positive deadline")
+    }
+    let focusedBefore: string | undefined
+    let focusedAfter: string | undefined
+    let ownedWindowId: string | undefined
+    let rootWindowId: string | undefined
+    let focusError: string | undefined
+    let wrote = false
+    let observed: ReturnType<typeof fixture.readSince> = { entries: [], problems: [] }
+    const observe = async (readFocus?: () => Promise<string>): Promise<void> => {
+      const cursor = fixture.cursor()
+      focusedBefore = await readFocus?.()
+      ctx.write(sequence)
+      wrote = true
+      focusedAfter = await readFocus?.()
+      const deadline = Date.now() + deadlineMs
+      for (;;) {
+        observed = fixture.readSince(cursor)
+        const remaining = deadline - Date.now()
+        if (remaining <= 0) break
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, Math.min(25, remaining))
+        })
+      }
+    }
+    if (ctx.input?.focusRoundTrip) {
+      try {
+        const focus = await ctx.input.focusRoundTrip(observe)
+        ownedWindowId = focus.ownedWindowId
+        rootWindowId = focus.rootWindowId
+      } catch (error) {
+        focusError = error instanceof Error ? error.message : String(error)
+        // A failed move may still permit positive delivery; never repeat a target write.
+        if (!wrote) await observe()
+      }
+    } else {
+      await observe()
+      focusError = "No owned fixture can hold the terminal unfocused"
+    }
+    const matches = observed.entries.filter((entry) => entry.body.includes(nonce) || entry.summary.includes(nonce))
+    const unfocusedAtWrite =
+      rootWindowId !== undefined &&
+      rootWindowId !== ownedWindowId &&
+      focusedBefore === rootWindowId &&
+      focusedAfter === rootWindowId
+    const missing = [
+      ...(fixture.terminalBus.state !== "same" ? [fixture.terminalBus.reason] : []),
+      ...(fixture.profile.state !== "default" ? [fixture.profile.reason] : []),
+      ...(!unfocusedAtWrite
+        ? [focusError ?? "Terminal was not proven unfocused immediately before and after the target write"]
+        : []),
+      ...(ctx.mux && !fixture.outerTerminalRecord ? ["No matching outer-terminal record for this multiplexer"] : []),
+      ...observed.problems,
+    ]
+    // A parse loss makes notification rows Open even if another recorded call happens to match.
+    const supported = matches.length > 0 && observed.problems.length === 0
+    const unsupported = matches.length === 0 && missing.length === 0
+    const outcome = supported ? "supported" : unsupported ? "unsupported" : "inconclusive"
+    const response = JSON.stringify({
+      selector,
+      nonce,
+      sequence,
+      deadlineMs,
+      recordPath: fixture.recordPath,
+      busInTerminalEnvironment: fixture.terminalBus,
+      controlRecorded: fixture.control,
+      defaultProfile: fixture.profile,
+      noNonceCallByDeadline: matches.length === 0,
+      unfocusedAtWrite: {
+        verified: unfocusedAtWrite,
+        ownedWindowId,
+        rootWindowId,
+        focusedBefore,
+        focusedAfter,
+        error: focusError,
+      },
+      outerTerminalRecord: fixture.outerTerminalRecord,
+      notifications: observed.entries,
+      problems: observed.problems,
+      missing,
+    })
+    const note = supported
+      ? `OSC ${selector} delivered the run nonce to the owned desktop service`
+      : unsupported
+        ? `OSC ${selector} sent no nonce Notify within ${deadlineMs}ms on the qualified default, unfocused run`
+        : `OSC ${selector} delivery remains open: ${missing.join("; ")}`
+    if (
+      !supported &&
+      matches.length === 0 &&
+      ownedWindowId !== undefined &&
+      (focusedBefore === ownedWindowId || focusedAfter === ownedWindowId)
+    ) {
+      const reason = "Notification negative trial invalid: the terminal was focused at the target write"
+      return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-invalid", reason }] }
+    }
+    return {
+      pass: supported,
+      response,
+      note,
+      observation: {
+        outcome,
+        assertionType: "notification",
+        note,
+        ...(outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+      },
+      ...(supported || unsupported
+        ? {
+            assertions: [
+              {
+                assertionType: "notification" as const,
+                kind: supported ? ("positive" as const) : ("negative" as const),
+                expected: "The terminal sends a Notify carrying the target OSC nonce to the owned desktop service",
+                observed: response,
+              },
+            ],
+          }
+        : {}),
+    }
+  })
+}
+
 async function liveClipboardProbe(
   ctx: TermProbeSource,
   kind: "write" | "read" | "roundtrip",
@@ -7578,14 +7709,8 @@ const extensionDefinitions: ProbeDefinition[] = [
           "Measures the parser notification sink, not OS notification delivery or OSC 9;4 progress",
         )
       },
-      () => {
-        const note = "No desktop notification delivery readback for OSC 9"
-        return Promise.resolve<ProbeCallbackResult>({
-          pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
-        })
-      },
+      (ctx) => liveNotificationProbe(ctx, "9"),
+      "notification",
     ),
     libAssertionType: "buffer_state",
   },
@@ -8255,13 +8380,8 @@ const extensionDefinitions: ProbeDefinition[] = [
           "Measures the parser OSC 777 sink, not OS notification delivery",
         )
       },
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]777;notify;test;body\x07")
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "OSC 777 notification delivery")
-      },
-      null,
+      (ctx) => liveNotificationProbe(ctx, "777"),
+      "notification",
     ),
     libAssertionType: "buffer_state",
   },

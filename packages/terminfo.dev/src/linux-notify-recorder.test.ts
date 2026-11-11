@@ -22,7 +22,6 @@ import {
   MessageType,
   NOTIFY_RECEIPT_SCHEMA,
   parseNotifyRecord,
-  readNotifyRecord,
   type DbusMessage,
 } from "./linux-notify-recorder.ts"
 
@@ -179,7 +178,9 @@ test("a control Notify from dbus-send gets a uint32 id and its nonce lands in th
   const second = dbusSend(bus, "Notify", notifyArgs(`${nonce}-2`))
   expect(second.output).toMatch(/^\s*uint32 2$/m)
 
-  const notifies = readNotifyRecord(recorder.recordPath).filter((entry) => entry.kind === "notify")
+  const notifies = parseNotifyRecord(readFileSync(recorder.recordPath, "utf8"), recorder.recordPath).filter(
+    (entry) => entry.kind === "notify",
+  )
   expect(notifies).toHaveLength(2)
   expect(notifies[0]).toMatchObject({
     appName: "app",
@@ -243,7 +244,9 @@ test("GetCapabilities, GetServerInformation and an unknown method each leave a c
   expect(unknown.status).not.toBe(0)
   expect(unknown.output).toContain("org.freedesktop.DBus.Error.UnknownMethod")
 
-  const calls = readNotifyRecord(recorder.recordPath).filter((entry) => entry.kind === "call")
+  const calls = parseNotifyRecord(readFileSync(recorder.recordPath, "utf8"), recorder.recordPath).filter(
+    (entry) => entry.kind === "call",
+  )
   expect(calls.map((entry) => [entry.member, entry.reply])).toEqual([
     ["GetCapabilities", "return"],
     ["GetServerInformation", "return"],
@@ -260,7 +263,7 @@ test("a Notify it cannot interpret is recorded as unparsed, answered InvalidArgs
   const nonce = randomBytes(8).toString("hex")
   expect(dbusSend(bus, "Notify", notifyArgs(nonce)).output).toMatch(/^\s*uint32 1$/m)
 
-  const entries = readNotifyRecord(recorder.recordPath)
+  const entries = parseNotifyRecord(readFileSync(recorder.recordPath, "utf8"), recorder.recordPath)
   expect(entries.map((entry) => entry.kind)).toEqual(["unparsed", "notify"])
   const unparsed = entries[0]!
   if (unparsed.kind !== "unparsed") throw new Error("first entry is not unparsed")

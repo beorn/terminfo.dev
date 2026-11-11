@@ -12,7 +12,7 @@
  *
  * CLI: `bun linux-notify-recorder.ts --address <addr> --record <path> --receipt <path>`; SIGTERM exits 0.
  */
-import { appendFileSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { appendFileSync, renameSync, writeFileSync } from "node:fs"
 import { connect, type Socket } from "node:net"
 
 export const NOTIFICATIONS_NAME = "org.freedesktop.Notifications"
@@ -1061,10 +1061,6 @@ export function parseNotifyRecord(text: string, source: string): NotifyRecordEnt
       }
       return entry as unknown as NotifyRecordEntry
     })
-}
-
-export function readNotifyRecord(path: string): NotifyRecordEntry[] {
-  return parseNotifyRecord(readFileSync(path, "utf8"), path)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
