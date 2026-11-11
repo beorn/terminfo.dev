@@ -2148,6 +2148,13 @@ async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   const note = `${ps === 0 ? "DECRPM mode 5 returned Ps 0" : "No usable DECRPM reply for mode 5"}; controlled reverse-video pixel read${detail ? `; ${detail}` : ""}`
   result.note = note
   if (result.observation) result.observation.note = note
+  const missingFreshPixel = result.tests?.find(
+    (test) => test.id === "review" && test.status === "probe-todo" && test.reason === "no freshness witness",
+  )
+  if (ps === 0 && missingFreshPixel) {
+    missingFreshPixel.reason =
+      "Open: DECRPM mode 5 returned Ps 0, but the DECSCNM pixel arm has no fresh capture; App capture must complete a same-crop sentinel roundtrip before a no-change verdict."
+  }
   // #33036 (@cto case 3): beside a no-change pixel read, record whose Ps 0 it was. The DA1
   // sentinel answered in the same raw reply as the 0; its parameters name the answering
   // device, and the subject-aware finalizer decides attribution from them. No DA bytes in
