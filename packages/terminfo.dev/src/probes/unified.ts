@@ -1381,7 +1381,50 @@ export async function runProbeBatch(
   if (runMux && options.colourControl) {
     applyColourSiblingSeparation(batch, { mux: runMux, runId: options.captureRunId, ...options.colourControl })
   }
+  applyUnreachedSteps(batch)
   return batch
+}
+
+/** A step that can only be measured after its entry, as data: no terminal is named (#32785). */
+export interface UnreachedStepPair {
+  readonly step: string
+  readonly entry: string
+  /** The entry as a reader knows it, for the step's reason. */
+  readonly entryName: string
+}
+
+export const UNREACHED_STEPS: readonly UnreachedStepPair[] = [
+  {
+    step: "modes.alt-screen.exit",
+    entry: "modes.alt-screen.enter",
+    entryName: "switching to the alternate screen (modes.alt-screen.enter)",
+  },
+]
+
+/**
+ * The unreached-step pass (#32785, @cto aed8cf7c ruling B). It runs after every row exists, because the step's reason
+ * is a second row's result. A step still open while the same run reads its entry Unsupported stays Probe to-do, and
+ * its reason now says the step was never reached. Any other entry result, or a step already decided, is left as it
+ * reads. Whether such a step may read Untestable instead waits on the operator (ruling A).
+ */
+export function applyUnreachedSteps(
+  batch: Pick<ProbeBatch, "results">,
+  pairs: readonly UnreachedStepPair[] = UNREACHED_STEPS,
+): void {
+  for (const pair of pairs) {
+    const index = batch.results.findIndex((result) => result.featureId === pair.step)
+    const step = batch.results[index]
+    const entry = batch.results.find((result) => result.featureId === pair.entry)
+    if (step === undefined || step.status !== "probe-todo" || entry?.status !== "unsupported") continue
+    const reason = `this run reads ${pair.entryName} Unsupported, so this step was never reached`
+    batch.results[index] = {
+      ...step,
+      ...(step.reason === undefined ? {} : { reason: `${step.reason}; ${reason}` }),
+      tests: step.tests.map((test) =>
+        test.status === "probe-todo" ? { ...test, reason: test.reason ? `${test.reason}; ${reason}` : reason } : test,
+      ),
+    }
+  }
 }
 
 /**
