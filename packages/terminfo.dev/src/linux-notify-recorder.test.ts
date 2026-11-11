@@ -13,6 +13,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, expect, test } from "vitest"
+import { createNotificationObserver } from "./linux-notification.ts"
 import {
   DbusFramer,
   DbusFramingError,
@@ -203,6 +204,32 @@ test("a second recorder on a held name refuses loudly and writes no receipt", as
   expect(stderr).toContain("replied 3 (EXISTS), not PRIMARY_OWNER(1)")
   expect(existsSync(second.receiptPath)).toBe(false)
   expect(existsSync(second.recordPath)).toBe(false)
+})
+
+test("the App observer qualifies its own bus with dbus-send and excludes notifications before its write cursor", async () => {
+  const bus = await startBus()
+  const recorder = await startRecorder(bus)
+  expect(dbusSend(bus, "Notify", notifyArgs("stale-target")).status).toBe(0)
+  const observer = await createNotificationObserver({ receiptPath: recorder.receiptPath, address: bus.address })
+  expect(observer.control.id).toBe(2)
+  const cursor = observer.cursor()
+  expect(observer.readSince(cursor).entries).toEqual([])
+  expect(dbusSend(bus, "Notify", notifyArgs("after-write")).status).toBe(0)
+  const reading = observer.readSince(cursor)
+  expect(reading.problems).toEqual([])
+  expect(reading.entries).toMatchObject([{ summary: "summary after-write", body: "body after-write", id: 3 }])
+  expect(observer.control.nonce).not.toBe("stale-target")
+})
+
+test("the App observer keeps an unreadable Notify visible as a problem, never a clean empty reading", async () => {
+  const bus = await startBus()
+  const recorder = await startRecorder(bus)
+  const observer = await createNotificationObserver({ receiptPath: recorder.receiptPath, address: bus.address })
+  const cursor = observer.cursor()
+  expect(dbusSend(bus, "Notify", ["string:incomplete"]).status).not.toBe(0)
+  const reading = observer.readSince(cursor)
+  expect(reading.entries).toEqual([])
+  expect(reading.problems).toEqual([expect.stringContaining('Notify signature "s"')])
 })
 
 test("GetCapabilities, GetServerInformation and an unknown method each leave a call line", async () => {
