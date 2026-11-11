@@ -70,7 +70,7 @@ function calibratedIterm2Arm(
     target?: "red" | "blank" | "printed" | "third"
     truecolor?: boolean
     captureKind?: "pixels" | "text-cells"
-    colour?: { applies?: boolean; unknownApplies?: boolean; sentinel?: boolean }
+    colour?: { applies?: boolean; unknownApplies?: boolean; sentinel?: boolean; resetRestores?: boolean }
     effect?: "cursor" | "progress" | "flash"
     blind?: boolean
   } = {},
@@ -103,6 +103,10 @@ function calibratedIterm2Arm(
       if (options.colour) {
         if (bytes.includes("\x1b]7110") && options.colour.unknownApplies) defaultColour = "wrong"
         if (/\x1b\](?:4;0|10);rgb:12\/34\/56/.test(bytes) && options.colour.applies) defaultColour = "requested"
+        // OSC 12 colours the cursor and OSC 112 puts it back. `resetRestores: false` models a terminal that accepts the
+        // reset sequence and keeps the colour -- the shape this arm must name, never call Unsupported (33102).
+        if (bytes.includes("\x1b]12;rgb:12/34/56\x07") && options.colour.applies) defaultColour = "requested"
+        if (bytes.includes("\x1b]112\x07") && options.colour.resetRestores !== false) defaultColour = "initial"
         if (bytes.includes("\x1b[3;2HXX")) plane = defaultColour
         if (bytes.includes("\x1b[38;5;12mXX")) plane = "requested"
       }
@@ -502,6 +506,25 @@ test.each([
   const { context } = calibratedIterm2Arm({ colour: {}, effect, blind: true })
   const result = await find(id).term!(context)
   expect(result.tests?.some((entry) => entry.status === "untestable")).not.toBe(true)
+})
+
+test("extensions.osc112-reset-cursor reads the cursor cell after the reset, not only in cleanup", async () => {
+  const { context, writes } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  const coloured = writes.findIndex((bytes) => bytes.includes("\x1b]12;rgb:12/34/56\x07"))
+  const reset = writes.findIndex((bytes) => bytes.includes("\x1b]112\x07"))
+  expect(coloured).toBeGreaterThan(-1)
+  expect(reset).toBeGreaterThan(coloured)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(result.observation?.frames?.some((frame) => /reset after OSC 112/.test(frame.label))).toBe(true)
+})
+
+test("extensions.osc112-reset-cursor names a reset that did not restore the cursor colour", async () => {
+  const { context } = calibratedIterm2Arm({ colour: { applies: true, resetRestores: false }, effect: "cursor" })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  expect(result.pass).not.toBe(true)
+  expect(result.note).toContain("the frame after the reset still differs")
+  expect(result.observation?.outcome).not.toBe("supported")
 })
 
 test("extensions.font-ligatures records mux declared-untestable coverage and leaves a native subject on its own path", () => {
