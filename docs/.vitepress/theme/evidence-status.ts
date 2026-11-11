@@ -11,9 +11,10 @@
  * the TS-only unit population (same arrangement as `ungraded-explanation.ts`).
  */
 import type { FeatureResultStatus } from "../../../packages/probe-defs/src/types.ts"
+import { DIFFERS_BY_CONTEXT } from "../../data/app-cells.ts"
 import { isEnvironmentGroup } from "../../../packages/probe-defs/src/environment-groups.ts"
 
-export type EvidenceTone = "yes" | "no" | "ungraded" | "unknown" | "error"
+export type EvidenceTone = "yes" | "no" | "ungraded" | "unknown" | "error" | "differs"
 
 export interface EvidenceStatus {
   readonly text: string
@@ -40,15 +41,22 @@ const STORED_STATUS: Readonly<Record<FeatureResultStatus, EvidenceStatus>> = {
   "probe-conflict": { text: "PROBE CONFLICT", icon: "!", tone: "error" },
 }
 
+/**
+ * What a cell wears when the contexts that measured the same release disagree (@cto d321729a rule 3):
+ * decided, in its own bucket, never Supported or Unsupported. The cell itself names each context.
+ */
+export const DIFFERS_BY_CONTEXT_STATUS: EvidenceStatus = { text: "Differs by context", icon: "≠", tone: "differs" }
+
 /** What a cell derived from a refused parent wears (#33019): never the bare words of a direct measurement. */
 export const DERIVED_UNSUPPORTED_STATUS: EvidenceStatus = { text: "Unsupported, derived", icon: "✗", tone: "no" }
 
 export function evidenceStatus(
   featureId: string,
-  status: FeatureResultStatus | undefined,
+  status: FeatureResultStatus | typeof DIFFERS_BY_CONTEXT | undefined,
   derived = false,
 ): EvidenceStatus {
   if (status === undefined) return MISSING_STATUS
+  if (status === DIFFERS_BY_CONTEXT) return DIFFERS_BY_CONTEXT_STATUS
   if (status === "probe-todo" && isEnvironmentGroup(featureId)) return MANUAL_BY_DESIGN_STATUS
   if (status === "unsupported" && derived) return DERIVED_UNSUPPORTED_STATUS
   return STORED_STATUS[status]

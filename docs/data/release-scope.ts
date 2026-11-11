@@ -8,6 +8,7 @@ import {
 } from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, scoredFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { PublicVersion, PublicProbeResult, PublicFeatureResult, PublicContextSummary } from "./public-results.ts"
+import { DIFFERS_BY_CONTEXT } from "./app-cells.ts"
 
 /** Read a current (schema 3 or 4) published result without manufacturing any legacy observation. */
 export function publicResultFor(
@@ -17,6 +18,27 @@ export function publicResultFor(
   if (!version) return undefined
   if ("featureResults" in version) return version.featureResults[featureId]
   return version.results.find((result) => result.featureId === featureId)
+}
+
+/**
+ * The input the shared terminal rollup accepts: every published cell's verdict, read as a stored status.
+ * `rollupTerminalStatuses` has no bucket for `differs-by-context` — the accepted boundary at this head
+ * (@cto c5ddabf3) — so a rollup over such a cell refuses loudly rather than scoring it Supported or
+ * Unsupported, which the criterion forbids (@cto d321729a). Every bar, baseline and page that folds
+ * published cells through the rollup reads them through here.
+ */
+export function rollupInputs(
+  app: string,
+  summary: Pick<PublicContextSummary, "featureResults">,
+): Array<{ featureId: string; status: FeatureResultStatus; derived?: unknown }> {
+  return Object.values(summary.featureResults).map((result) => {
+    if (result.status === DIFFERS_BY_CONTEXT) {
+      throw new Error(
+        `${app}: ${result.featureId} reads ${DIFFERS_BY_CONTEXT}; the shared terminal rollup has no bucket for it (@cto d321729a), so this bar cannot be drawn`,
+      )
+    }
+    return { featureId: result.featureId, status: result.status, derived: result.derived }
+  })
 }
 
 /** The populated categories a page displays, preserving the catalog's supplied order. */

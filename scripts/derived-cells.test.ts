@@ -18,6 +18,7 @@ import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import {
   aggregateCurrentResults,
+  rollupInputs,
   currentCoverageSentence,
   decisiveCells,
   runDecidedNothing,
@@ -174,7 +175,7 @@ describe("unsupported, derived (33019)", () => {
     expect(decisiveCells(ctx.counts, ctx.derivedIds.length)).toBe(1)
     // The page bar path: an aggregate over the published feature results carries the same split.
     const published = publicResults(projection, new Map()).projection.contexts["term:xterm"]!
-    const bar = aggregateCurrentResults(Object.values(published.featureResults), published.catalogIds)
+    const bar = aggregateCurrentResults(rollupInputs("term:xterm", published), published.catalogIds)
     expect(bar.counts.unsupported).toBe(2)
     expect(bar.derived).toBe(1)
     expect(currentCoverageSentence(bar)).toContain("2 Unsupported (of which derived: 1)")

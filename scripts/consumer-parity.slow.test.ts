@@ -32,7 +32,7 @@ import type {
   SelectedContextSummary,
 } from "../docs/data/selected-results.ts"
 import type { LoadedRun } from "@terminfo/run-parser"
-import { aggregateCurrentResults } from "../docs/data/release-scope.ts"
+import { aggregateCurrentResults, rollupInputs } from "../docs/data/release-scope.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import type { PublicContextSummary, PublicVersion } from "../docs/data/public-results.ts"
@@ -1293,7 +1293,10 @@ describe("selected-run consumer parity", () => {
       entry.states = Object.fromEntries(
         Object.values(entry.selected.featureResults).map((result) => [result.featureId, result.status]),
       )
-      const aggregate = aggregateCurrentResults(Object.values(entry.selected.featureResults), entry.selected.catalogIds)
+      const aggregate = aggregateCurrentResults(
+        rollupInputs(entry.selected.contextKey, entry.selected),
+        entry.selected.catalogIds,
+      )
       entry.selected.complete = aggregate.complete
       entry.selected.counts = aggregate.counts
       entry.selected.score = { supported: aggregate.supported, all: aggregate.denominator }

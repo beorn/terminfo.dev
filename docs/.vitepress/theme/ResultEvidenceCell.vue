@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
-import type { ObservationReason } from "@terminfo/probe-defs"
+import type { FeatureResultStatus, ObservationReason } from "@terminfo/probe-defs"
 import type {
   PublicProbeResult,
   PublicRunMetadata,
@@ -17,6 +17,8 @@ import {
 import { data } from "../../data/probes.data"
 import { describeReplyBytes, describeSentBytes, describeStepTable, type StepSource } from "../../data/step-table"
 import { textEvidenceExplanation } from "./ungraded-explanation"
+import { contextLabel } from "./context-label"
+import { DIFFERS_BY_CONTEXT, type AppCellStatus } from "../../data/app-cells"
 import { evidenceStatus } from "./evidence-status"
 import ResultSteps from "./ResultSteps.vue"
 
@@ -29,7 +31,11 @@ const props = withDefaults(
     probeGuidance?: string
     subjectName: string
     version?: PublicRunMetadata | PublicContextSummary
-    cell?: PublicProbeResult | PublicFeatureResult
+    cell?:
+      | PublicProbeResult
+      | (PublicFeatureResult & {
+          joined?: { status: AppCellStatus; from: Array<{ context: string; status: FeatureResultStatus }> }
+        })
     display?: "compact" | "text"
   }>(),
   { display: "compact" },
@@ -74,7 +80,33 @@ const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATION
 // environment position becomes the manual-by-design words (@cto 98cd142b D1).
 // #33019: a cell derived from a refused parent says so in its label.
 const derived = computed(() => currentResult.value !== undefined && "derived" in currentResult.value)
-const status = computed(() => evidenceStatus(props.featureId, currentResult.value?.status, derived.value))
+// A joined cell reads the verdict across every context that measured the same release (@cto d321729a);
+// the stored status of the context whose evidence is shown stays available beside it.
+const joined = computed(() => (props.cell && "joined" in props.cell ? props.cell.joined : undefined))
+const status = computed(() =>
+  evidenceStatus(props.featureId, joined.value?.status ?? currentResult.value?.status, derived.value),
+)
+const STATUS_WORD: Record<string, string> = {
+  supported: "Supported",
+  unsupported: "Unsupported",
+  untestable: "Untestable",
+  "probe-todo": "To do",
+  "probe-invalid": "Invalid",
+  "probe-conflict": "Conflicting",
+}
+/**
+ * Rule 4: a cell names the contexts its grade comes from unless every context of the app carries that
+ * same decided grade. The names are the recorded machine and launch profile, never a context key.
+ */
+const joinedGrades = computed(() => {
+  const grades = joined.value?.from
+  if (!grades || grades.length === 0) return undefined
+  const every = props.version && "contexts" in props.version ? (props.version.contexts ?? []) : []
+  const uniform = new Set(grades.map((grade) => grade.status)).size === 1
+  if (uniform && every.length > 0 && grades.length === every.length) return undefined
+  const named = grades.map((grade) => `${contextLabel(grade.context)} — ${STATUS_WORD[grade.status] ?? grade.status}`)
+  return joined.value?.status === DIFFERS_BY_CONTEXT ? `Differs by context: ${named.join(" · ")}` : `Context: ${named.join(" · ")}`
+})
 const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>
   props.cell?.assertionType === "query_reply" ? "Terminal query" : (props.cell?.assertionType ?? ""),
@@ -128,6 +160,7 @@ const STEP_STATUS: Record<string, string> = {
   "PROBE TODO": "probe-todo",
   "PROBE INVALID": "probe-invalid",
   "PROBE CONFLICT": "probe-conflict",
+  "Differs by context": DIFFERS_BY_CONTEXT,
 }
 const stepSource = computed<StepSource | undefined>(() => {
   const screen = sourceRun.value?.screen
@@ -403,6 +436,7 @@ onBeforeUnmount(() => {
           ><span aria-hidden="true">{{ status.icon }}</span
           >{{ status.text }}</strong
         >
+        <p v-if="joinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
         <strong class="result-evidence__test-title">{{ featureName }}</strong>
         <span class="result-evidence__compact-context"
           >{{ subjectName

@@ -10,6 +10,7 @@ import type {
   TextCellsObservationFrame,
 } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentResult } from "./current-results.ts"
+import type { AppCellStatus, JoinedApp } from "./app-cells.ts"
 import type { FeatureResult } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
 import { publicDerivedReason } from "./derived-cells.ts"
@@ -170,19 +171,27 @@ export interface PublicProjection {
 
 export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
   selected: PublicContextSummary
-  states: Readonly<Record<string, FeatureResultStatus>>
+  states: Readonly<Record<string, AppCellStatus>>
 }
 
 /** An original run's public receipt, separate from a context's composed cells. */
 export type PublicRunMetadata = Omit<PublicVersion, "results">
 
 export type PublicFeatureResult = Omit<PublicProbeResult, "status"> &
-  Pick<FeatureResult, "status" | "strength" | "conflictingProbes">
+  Pick<FeatureResult, "strength" | "conflictingProbes"> & {
+    /** This cell's published verdict: the joined grade when contexts joined, else this run's stored grade. */
+    status: AppCellStatus
+  }
 
 export interface PublicContextSummary extends Omit<SelectedContextSummary, "cells" | "attempts"> {
   featureResults: Record<
     string,
     PublicFeatureResult & {
+      /**
+       * The joined verdict across every context that measured the same release (@cto d321729a). Present
+       * only when more than one context joined; its `status` alone may read "differs by context".
+       */
+      joined?: { status: AppCellStatus; from: PublicFeatureGradeSource[] }
       origin: { runId: string; resultId: string }
       measuredAt: string
       suiteId: string
@@ -200,6 +209,58 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
   sources: Record<string, PublicRunMetadata>
   /** Public attempt facts are flat; private paths and original outcomes remain in the canonical input. */
   attempts: Array<{ runId: string; startedAt?: string; noOutputIds: string[] }>
+  /**
+   * Every context joined into this app's cells, primary first, when more than one measured the same
+   * app version and probe suite (@cto d321729a). Absent when the app has one context.
+   */
+  contexts?: string[]
+}
+
+/** One context's contribution to a joined cell's grade, for the cell that must name its contexts. */
+export interface PublicFeatureGradeSource {
+  context: string
+  status: FeatureResultStatus
+}
+
+/**
+ * One app's published summary: the primary context's identity and evidence, with every joined context's
+ * grades applied. `from` names the contexts behind each cell so a page can apply rule 4; a cell whose
+ * grade came from a joined context carries that context's evidence rather than the primary's.
+ */
+function composeJoinedSummary(
+  primary: PublicContextSummary,
+  app: JoinedApp,
+  contexts: Record<string, PublicContextSummary>,
+): PublicContextSummary {
+  if (app.contexts.length < 2) return primary
+  const featureResults = { ...primary.featureResults }
+  for (const [featureId, cell] of Object.entries(app.cells)) {
+    const own = primary.featureResults[featureId]
+    if (!own) continue
+    // The primary's own result carries the origin, measuredAt and reason a page shows whenever the
+    // primary decided; another context's result stands in only when the primary did not decide
+    // (@cto c5ddabf3).
+    const primaryDecided = cell.from.some((grade) => grade.context === primary.contextKey)
+    const source = primaryDecided ? undefined : cell.from.find((grade) => grade.context !== primary.contextKey)
+    const other = source ? contexts[source.context]?.featureResults[featureId] : undefined
+    featureResults[featureId] = {
+      ...(other ?? own),
+      status: cell.status,
+      joined: {
+        status: cell.status,
+        from: cell.from.map((grade) => ({ context: grade.context, status: grade.status })),
+      },
+    }
+  }
+  // One published count set: the join's. `score.all` stays the primary's graded positions, which the
+  // join never adds to — a context adds evidence, never a cell (@cto d321729a).
+  return {
+    ...primary,
+    featureResults,
+    contexts: app.contexts,
+    counts: { ...app.counts },
+    score: { supported: app.counts.supported, all: primary.score.all },
+  }
 }
 
 type PublicDocuments = Map<
@@ -252,7 +313,12 @@ function publicTodoReason(reason: string | undefined): string | undefined {
 }
 
 /** The API and site consume canonical contexts and original run-owned evidence documents. */
-export function publicResults(projection: SelectedProjection, subjects: ReadonlyMap<string, CurrentResult>) {
+export function publicResults(
+  projection: SelectedProjection,
+  subjects: ReadonlyMap<string, CurrentResult>,
+  /** The same-suite join for every chosen subject (`joinedAppCells`); omitted by readers that hold one context. */
+  joined?: ReadonlyMap<string, JoinedApp>,
+) {
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
   const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
@@ -388,13 +454,17 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
     [...subjects].map(([key, value]) => {
       const context = contexts[value.contextKey]
       if (!context) throw new Error(`Selected context ${value.contextKey} for ${key} is absent from public contexts`)
+      const app = joined?.get(key)
       return [
         key,
         {
           contextKey: value.contextKey,
-          selected: context,
+          selected: app ? composeJoinedSummary(context, app, contexts) : context,
           states: Object.fromEntries(
-            context.catalogIds.map((id) => [id, context.featureResults[id]?.status ?? "probe-todo"]),
+            context.catalogIds.map((id) => [
+              id,
+              app?.cells[id]?.status ?? context.featureResults[id]?.status ?? "probe-todo",
+            ]),
           ),
         },
       ]

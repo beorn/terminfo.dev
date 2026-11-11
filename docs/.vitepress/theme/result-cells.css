@@ -103,6 +103,16 @@
   color: #7c3aed;
   background: rgba(124, 58, 237, 0.12);
 }
+.result-evidence__contexts {
+  margin: 0 0 0.35rem;
+  font-size: 0.85em;
+  color: var(--vp-c-text-2);
+}
+
+.result-evidence__trigger--differs {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+}
 .result-evidence__trigger--ungraded {
   color: var(--vp-c-text-2);
 }

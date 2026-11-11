@@ -14,6 +14,9 @@ import {
   type SelectedContextCell,
   type SelectedProjection,
 } from "./selected-results.ts"
+import { compatibilitySubjects, joinedAppCells } from "./current-results.ts"
+import { scoredFeatureIds } from "@terminfo/probe-defs"
+import type { AppCellStatus } from "./app-cells.ts"
 
 export interface SelectionFileCell {
   featureId: string
@@ -121,7 +124,8 @@ export function writeSelection(options: { out: string; content: string; workingR
   const loaded = options.workingRuns.map((path) => loadRawCapture(path, { root, catalogIds: catalog }))
   const projection = loadSelectedResults(options.content, probeHash(), { workingRuns: loaded })
   const document = selectionFile(projection, new Set(loaded.map((run) => run.runId)), options.content)
-  writeFileSync(options.out, `${JSON.stringify(document, null, 2)}\n`)
+  const apps = appSections(projection, compatibilitySubjects(projection, options.content), options.content)
+  writeFileSync(options.out, `${JSON.stringify({ ...document, apps }, null, 2)}\n`)
   console.log(`wrote ${document.cells.length} cells`)
   return document.cells.length
 }
@@ -129,4 +133,78 @@ export function writeSelection(options: { out: string; content: string; workingR
 if (import.meta.main) {
   const args = parseSelectionArgs(process.argv.slice(2))
   writeSelection(args)
+}
+
+/** One app as the site counts it: every context that measured the same release, joined by rule (@cto d321729a). */
+export interface SelectionFileApp {
+  kind: string
+  /** The measured app id, the same `terminalId` the per-cell rows carry. */
+  id: string
+  /** The recorded OS of the primary context, so a page can key an app exactly as its cells key it. */
+  os: string | null
+  /** The newest contributing measurement across the joined contexts. */
+  date: string
+  /** The joined contexts, primary first. The primary is the one the site's pick order has always chosen. */
+  contexts: string[]
+  runs: string[]
+  suites: string[]
+  paths: string[]
+  /** The graded probe positions the counts fold over; the catalogue's environment groups are not scores. */
+  positions: number
+  counts: Record<AppCellStatus, number>
+  cells: Record<string, { status: AppCellStatus; from: Array<{ context: string; status: string }> }>
+}
+
+/**
+ * The per-app section a status-page build reads instead of choosing the newest context itself: the same
+ * `compatibilitySubjects` + `joinedAppCells` the site's own pages use, so the two can never count
+ * differently. Keyed by the site's compatibility key (the app's published name).
+ */
+export function appSections(
+  projection: SelectedProjection,
+  subjects: ReadonlyMap<string, { contextKey: string }>,
+  contentDir: string,
+): Record<string, SelectionFileApp> {
+  const joined = joinedAppCells(projection, subjects)
+  const apps: Record<string, SelectionFileApp> = {}
+  for (const [key, subject] of subjects) {
+    const app = joined.get(key)
+    const primary = projection.contexts[subject.contextKey]
+    if (!app || !primary?.subject) continue
+    const contexts = app.contexts.flatMap((contextKey) => {
+      const summary = projection.contexts[contextKey]
+      return summary ? [summary] : []
+    })
+    const runs = new Set<string>()
+    const suites = new Set<string>()
+    const paths = new Set<string>()
+    let date = ""
+    for (const summary of contexts) {
+      for (const cell of Object.values(summary.cells)) {
+        runs.add(cell.run.runId)
+        suites.add(cell.run.suiteId)
+        if (cell.run.path) paths.add(relative(resolve(contentDir, ".."), resolve(cell.run.path)).split(sep).join("/"))
+        if (cell.run.measuredAt > date) date = cell.run.measuredAt
+      }
+    }
+    apps[key] = {
+      kind: primary.subject.kind,
+      id: primary.subject.id,
+      os: primary.subject.os ?? null,
+      date,
+      contexts: app.contexts,
+      runs: [...runs].sort(),
+      suites: [...suites].sort(),
+      paths: [...paths].sort(),
+      positions: scoredFeatureIds(primary.catalogIds).length,
+      counts: { ...app.counts },
+      cells: Object.fromEntries(
+        Object.entries(app.cells).map(([featureId, cell]) => [
+          featureId,
+          { status: cell.status, from: cell.from.map((grade) => ({ context: grade.context, status: grade.status })) },
+        ]),
+      ),
+    }
+  }
+  return apps
 }

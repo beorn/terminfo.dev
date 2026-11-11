@@ -14,7 +14,9 @@ import {
   statesFor,
 } from "./selected-results.ts"
 import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
+import { joinContextCells, type ContextCellFacts, type ContextFacts, type JoinedApp } from "./app-cells.ts"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
+import { scoredFeatureIds } from "@terminfo/probe-defs"
 import { loadTerminals } from "@terminfo/catalog"
 
 export interface CurrentResult {
@@ -200,4 +202,61 @@ export function compatibilitySubjects(projection: SelectedProjection, contentDir
     bySubject.set(key, chosen)
   }
   return bySubject
+}
+
+/** One context reduced to the facts the join compares and names (`app-cells.ts`). */
+function contextFacts(summary: SelectedContextSummary): ContextFacts {
+  const cells: Record<string, ContextCellFacts | undefined> = {}
+  for (const [featureId, cell] of Object.entries(summary.cells)) {
+    cells[featureId] = {
+      status: cell.featureResult?.status ?? cell.result.status,
+      // A missing app version or suite hash stays absent in the facts, so it can never equal another
+      // context's absence and join on it (@cto c5ddabf3).
+      version: cell.run.subject.version || null,
+      suite: cell.run.probeHash || null,
+      runId: cell.run.runId,
+      ...(cell.reopened !== undefined && { reopened: true }),
+    }
+  }
+  return { key: summary.contextKey, cells }
+}
+
+/**
+ * Every chosen subject's cells, joined with the contexts that measured the same app version and the
+ * same probe suite (@cto d321729a). A context on another suite or version is history: it never joins,
+ * so it can never change a grade, an undecided label or a count.
+ *
+ * Keyed like `compatibilitySubjects`, whose primary pick this function leaves untouched.
+ */
+export function joinedAppCells(
+  projection: SelectedProjection,
+  subjects: ReadonlyMap<string, { contextKey: string }>,
+): Map<string, JoinedApp> {
+  const bySubject = new Map<string, SelectedContextSummary[]>()
+  for (const summary of Object.values(projection.contexts)) {
+    if (summary.contributingRunIds.length === 0) continue
+    if (!summary.subject) throw new Error(`Context ${summary.contextKey} has evidence without physical subject facts`)
+    const subjectKey = `${summary.subject.kind}:${summary.subject.id}`
+    const group = bySubject.get(subjectKey) ?? []
+    group.push(summary)
+    bySubject.set(subjectKey, group)
+  }
+  const joined = new Map<string, JoinedApp>()
+  for (const [key, result] of subjects) {
+    const primary = projection.contexts[result.contextKey]
+    if (!primary) throw new Error(`Selected context ${result.contextKey} for ${key} is absent from the projection`)
+    if (!primary.subject) throw new Error(`Selected context ${result.contextKey} has no physical subject`)
+    const subjectKey = `${primary.subject.kind}:${primary.subject.id}`
+    const others = (bySubject.get(subjectKey) ?? []).filter((summary) => summary.contextKey !== primary.contextKey)
+    joined.set(
+      key,
+      joinContextCells(
+        contextFacts(primary),
+        others.map(contextFacts),
+        primary.catalogIds,
+        scoredFeatureIds(primary.catalogIds),
+      ),
+    )
+  }
+  return joined
 }

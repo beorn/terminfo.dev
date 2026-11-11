@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "@terminfo/catalog"
-import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
+import { compatibilitySubjects, joinedAppCells, loadCurrentResults } from "./current-results.ts"
+import { DIFFERS_BY_CONTEXT, type AppCellStatus } from "./app-cells.ts"
 import {
   publicResults,
   type PublicProjection,
@@ -22,10 +23,11 @@ import {
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
 import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
-import type { ProbeStatus, FeatureResultStatus } from "@terminfo/probe-defs"
+import { FEATURE_RESULT_STATUSES, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
+  rollupInputs,
   hasCurrentSource,
   runDecidedNothing,
   staleCaption,
@@ -77,8 +79,8 @@ export interface ProbeData {
   features: FeatureResult[]
   /** category -> FeatureResult[] */
   categories: Record<string, FeatureResult[]>
-  /** Current terminal id -> feature id -> computed feature status. */
-  results: Record<string, Record<string, FeatureResultStatus>>
+  /** Current terminal id -> feature id -> the joined feature status, which may read differs-by-context. */
+  results: Record<string, Record<string, AppCellStatus>>
   /** backend name -> feature id -> published reason */
   notes: Record<string, Record<string, string>>
   /** Current scores use Supported/all positions, independently of completion. */
@@ -119,6 +121,8 @@ export interface ProbeData {
 interface CurrentStats {
   score: { supported: number; all: number }
   counts: CurrentAggregate["counts"]
+  /** Cells whose same-suite contexts disagree: decided, but never counted as Supported or Unsupported (@cto d321729a). */
+  differs: number
   /** Of `counts.unsupported`, the cells derived from a refused parent (#33019). */
   derived: number
   complete: boolean
@@ -197,7 +201,9 @@ export { data }
 export function loadFullProbes(): ProbeData {
   const categoryCatalog = loadCategories(contentDir)
   const { projection } = loadCurrentResults(contentDir)
-  const published = publicResults(projection, compatibilitySubjects(projection, contentDir))
+  const subjects = compatibilitySubjects(projection, contentDir)
+  const joined = joinedAppCells(projection, subjects)
+  const published = publicResults(projection, subjects, joined)
   const bySubject = new Map(Object.entries(published.selectedByBackend))
   const featureDescriptions = loadFeatureDescriptions()
   const features: FeatureResult[] = Object.entries(featureDescriptions)
@@ -238,24 +244,37 @@ export function loadFullProbes(): ProbeData {
       type: kind,
       ...(os && { platforms: [os] }),
     })
+    const app = joined.get(key)
     results[key] = Object.fromEntries(
-      selected.catalogIds.map((id) => [id, selected.featureResults[id]?.status ?? "probe-todo"]),
+      selected.catalogIds.map((id) => [
+        id,
+        app?.cells[id]?.status ?? selected.featureResults[id]?.status ?? "probe-todo",
+      ]),
     )
     notes[key] = Object.fromEntries(
       Object.values(selected.featureResults).flatMap((result) =>
         result.reason ? [[result.featureId, result.reason]] : [],
       ),
     )
+    // Counts are per app and probe (@cto d321729a rule 5): every joined context's grade counts in its
+    // bucket here, and a disagreement lands in `differs` instead of Supported or Unsupported.
+    const counts = app
+      ? (Object.fromEntries(
+          FEATURE_RESULT_STATUSES.map((status) => [status, app.counts[status]]),
+        ) as CurrentAggregate["counts"])
+      : selected.counts
+    const supported = app ? app.counts.supported : selected.score.supported
     stats[key] = {
-      score: { ...selected.score },
-      counts: { ...selected.counts },
+      score: { supported, all: selected.score.all },
+      counts: { ...counts },
+      differs: app?.counts[DIFFERS_BY_CONTEXT] ?? 0,
       derived: selected.derivedIds.length,
       complete: selected.complete,
       // #30784: a run that decided nothing has no percentage to print; every reader shows the
       // not-measured words instead of a measured-looking 0%.
-      pct: runDecidedNothing(selected.counts, selected.derivedIds.length)
+      pct: runDecidedNothing(counts, selected.derivedIds.length)
         ? null
-        : Math.round((100 * selected.score.supported) / selected.score.all),
+        : Math.round((100 * supported) / selected.score.all),
     }
   }
   backends.sort(
@@ -272,7 +291,7 @@ export function loadFullProbes(): ProbeData {
   const releaseStale: Record<string, string | null> = {}
   for (const [key, entry] of bySubject) {
     const { selected } = entry
-    const bar = aggregateCurrentResults(Object.values(selected.featureResults), selected.catalogIds)
+    const bar = aggregateCurrentResults(rollupInputs(key, selected), selected.catalogIds)
     releaseBars[key] = bar
     releaseShares[key] = currentSupportedShare(bar)
     const sources = Object.values(selected.sources)
@@ -381,12 +400,13 @@ function computeBaselines(data: ProbeData): void {
       if (!ids.length) continue
       const wanted = new Set(ids)
       const bar = aggregateCurrentResults(
-        Object.values(selected.featureResults).filter((result) => wanted.has(result.featureId)),
+        rollupInputs(backend.name, selected).filter((result) => wanted.has(result.featureId)),
         ids,
       )
       backendStats[bl] = {
         score: { supported: bar.supported, all: bar.denominator },
         counts: bar.counts,
+        differs: 0,
         derived: bar.derived,
         complete: bar.complete,
         pct: Math.round((100 * bar.supported) / bar.denominator),
