@@ -48,41 +48,55 @@ afterEach(() => {
 
 // 29595: injected runBuild fixtures bypass the real child process and miss its task declaration.
 // Both launch paths must expose the existing guard's identity and ceiling to the host observer.
-it.each(["code", "run"] as const)("declares the %s build as its own bounded task", async (reason) => {
-  const bin = join(dist, "bin")
-  const landing = join(dist, "landing")
-  const trace = join(dist, "build-argv.json")
-  mkdirSync(bin)
-  mkdirSync(landing)
-  writeFileSync(
-    join(bin, "bun"),
-    `#!${process.execPath}\nawait Bun.write(process.env.BUILD_ARGV_TRACE, JSON.stringify(process.argv.slice(2))); process.exit(17);\n`,
-    { mode: 0o755 },
-  )
-  vi.stubEnv("PATH", `${bin}:${process.env.PATH}`)
-  vi.stubEnv("TERMINFO_SITE_LANDING_ROOT", landing)
-  vi.stubEnv("TERMINFO_SITE_OUT_DIR", dist)
-  vi.stubEnv("BUILD_ARGV_TRACE", trace)
-  if (reason === "code") {
-    const child = spawnSync(process.execPath, [fileURLToPath(new URL("./landed-serve.ts", import.meta.url))], {
-      env: process.env,
-      encoding: "utf8",
-      timeout: 15_000,
-    })
-    expect(child.error).toBeUndefined()
-    expect(child.status).toBe(1)
-    expect(child.stderr).toContain("site build failed (exit 17)")
-  } else {
-    mkdirSync(join(dist, "dist"))
-    writeFileSync(join(dist, "dist", "build.json"), JSON.stringify({ sourceCommit: "code", workingRun: { id: "old" } }))
-    expect(await rebuildForRun({ outRoot: dist, target: "code", runId: "new" })).toBe(false)
-    expect(readServedStamp(join(dist, "dist")).workingRunId).toBe("old")
-  }
-  expect(JSON.parse(readFileSync(trace, "utf8"))).toEqual([
-    join(landing, "tools", "gate-task-guard.ts"),
-    "--task", "terminfo-site-build", "--max-rss-mib", "16384", "--", "bun", "run", "build",
-  ])
-}, 20_000)
+it.each(["code", "run"] as const)(
+  "declares the %s build as its own bounded task",
+  async (reason) => {
+    const bin = join(dist, "bin")
+    const landing = join(dist, "landing")
+    const trace = join(dist, "build-argv.json")
+    mkdirSync(bin)
+    mkdirSync(landing)
+    writeFileSync(
+      join(bin, "bun"),
+      `#!${process.execPath}\nawait Bun.write(process.env.BUILD_ARGV_TRACE, JSON.stringify(process.argv.slice(2))); process.exit(17);\n`,
+      { mode: 0o755 },
+    )
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`)
+    vi.stubEnv("TERMINFO_SITE_LANDING_ROOT", landing)
+    vi.stubEnv("TERMINFO_SITE_OUT_DIR", dist)
+    vi.stubEnv("BUILD_ARGV_TRACE", trace)
+    if (reason === "code") {
+      const child = spawnSync(process.execPath, [fileURLToPath(new URL("./landed-serve.ts", import.meta.url))], {
+        env: process.env,
+        encoding: "utf8",
+        timeout: 15_000,
+      })
+      expect(child.error).toBeUndefined()
+      expect(child.status).toBe(1)
+      expect(child.stderr).toContain("site build failed (exit 17)")
+    } else {
+      mkdirSync(join(dist, "dist"))
+      writeFileSync(
+        join(dist, "dist", "build.json"),
+        JSON.stringify({ sourceCommit: "code", workingRun: { id: "old" } }),
+      )
+      expect(await rebuildForRun({ outRoot: dist, target: "code", runId: "new" })).toBe(false)
+      expect(readServedStamp(join(dist, "dist")).workingRunId).toBe("old")
+    }
+    expect(JSON.parse(readFileSync(trace, "utf8"))).toEqual([
+      join(landing, "tools", "gate-task-guard.ts"),
+      "--task",
+      "terminfo-site-build",
+      "--max-rss-mib",
+      "16384",
+      "--",
+      "bun",
+      "run",
+      "build",
+    ])
+  },
+  20_000,
+)
 
 function get(path: string, init?: RequestInit): Response {
   return createPreviewHandler(dist)(new Request(`http://preview.test${path}`, init))
