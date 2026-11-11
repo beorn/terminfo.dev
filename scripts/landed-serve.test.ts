@@ -81,11 +81,14 @@ it.each(["code", "run"] as const)(
         JSON.stringify({ sourceCommit: "code", workingRun: { id: "old" } }),
       )
       const report = vi.spyOn(console, "error").mockImplementation(() => {})
+      const progress = vi.spyOn(console, "log").mockImplementation(() => {})
       try {
         expect(await rebuildForRun({ outRoot: dist, target: "code", runId: "new" })).toBe(false)
         expect(report).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("site build exit 17"))
+        expect(progress).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("hourly run new"))
         expect(readServedStamp(join(dist, "dist")).workingRunId).toBe("old")
       } finally {
+        progress.mockRestore()
         report.mockRestore()
       }
     }
