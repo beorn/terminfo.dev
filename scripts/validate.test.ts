@@ -22,7 +22,9 @@ test("validates retained runs through the canonical decoder and names rejected i
       symlinkSync(join(source, name), join(root, name), "dir")
     }
     const script = join(root, "scripts", "validate.ts")
-    const run = () => spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
+    // bun, as the scripts run (package.json, CI): a Node-launched vitest would hand validate.ts to Node, whose
+    // strip-only TypeScript refuses corpus-placement.ts's parameter property (33336).
+    const run = () => spawnSync("bun", [script], { encoding: "utf8", timeout: 10_000 })
     const baseline = run()
     expect(baseline.error).toBeUndefined()
     expect(baseline.status, baseline.stdout + baseline.stderr).toBe(0)
