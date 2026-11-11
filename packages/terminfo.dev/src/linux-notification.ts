@@ -17,6 +17,91 @@ export interface NotificationObserver {
   readSince(cursor: number): { readonly entries: readonly NotifyEntry[]; readonly problems: readonly string[] }
 }
 
+/**
+ * A control Notify sent from the terminal's OWN process environment (#33333, @cto a6fddd6e).
+ *
+ * The recorder-side control above proves the recorder can receive on its bus. This one proves the other
+ * direction: that a process carrying exactly the environment the terminal process carries can deliver to that
+ * same bus and be recorded. Only with both may a silent target write be read as "the terminal does not notify"
+ * rather than "we could not see it" — a control that misses its window leaves the row probe-invalid.
+ */
+export interface TerminalSideControl {
+  readonly nonce: string
+  readonly id: number
+  /** Milliseconds from the control write to the recorded sighting, so a slow bus is visible in the evidence. */
+  readonly latencyMs: number
+}
+
+export async function sendTerminalSideControl(options: {
+  readonly address: string
+  readonly recordPath: string
+  readonly environment: Readonly<Record<string, string>>
+  readonly deadlineMs: number
+}): Promise<TerminalSideControl> {
+  if (!Number.isSafeInteger(options.deadlineMs) || options.deadlineMs <= 0) {
+    throw new Error(`Terminal-side control requires a positive deadline; got ${String(options.deadlineMs)}`)
+  }
+  const before = parseNotifyRecord(readFileSync(options.recordPath, "utf8"), options.recordPath).length
+  const nonce = `terminfo-notify-terminal-control-${randomBytes(12).toString("hex")}`
+  const startedAt = Date.now()
+  const deadline = startedAt + options.deadlineMs
+  let reply: Buffer
+  try {
+    reply = await command(
+      "dbus-send",
+      [
+        `--bus=${options.address}`,
+        "--print-reply",
+        `--reply-timeout=${Math.max(1, options.deadlineMs)}`,
+        `--dest=${NOTIFICATIONS_NAME}`,
+        "/org/freedesktop/Notifications",
+        `${NOTIFICATIONS_NAME}.Notify`,
+        "string:terminfo-terminal-control",
+        "uint32:0",
+        "string:",
+        `string:${nonce}`,
+        `string:${nonce}`,
+        "array:string:",
+        "dict:string:variant:",
+        "int32:-1",
+      ],
+      undefined,
+      deadline,
+      undefined,
+      // Exactly the environment read from the terminal process: no merge with the collector's own.
+      options.environment,
+    )
+  } catch (error) {
+    throw new Error(
+      `Terminal-side control Notify could not be sent from the terminal's own environment: ${(error as Error).message}`,
+    )
+  }
+  const id = /^\s*uint32 (\d+)\s*$/m.exec(reply.toString("utf8"))?.[1]
+  if (id === undefined) {
+    throw new Error("Terminal-side control Notify returned no message id, so it cannot be matched to a record")
+  }
+  for (;;) {
+    const rows = parseNotifyRecord(readFileSync(options.recordPath, "utf8"), options.recordPath).slice(before)
+    const seen = rows.find(
+      (entry): entry is NotifyEntry =>
+        entry.kind === "notify" && entry.summary === nonce && entry.body === nonce && entry.id === Number(id),
+    )
+    if (seen !== undefined) {
+      return { nonce, id: seen.id, latencyMs: Date.now() - startedAt }
+    }
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) {
+      throw new Error(
+        `Terminal-side control Notify ${nonce} was not recorded within ${options.deadlineMs}ms; ` +
+          "the terminal's own environment reaches the bus but the owned recorder did not see the control",
+      )
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, Math.min(25, remaining))
+    })
+  }
+}
+
 /** Qualify the launch receipt with a Notify sent by the independent libdbus client. */
 export async function createNotificationObserver(options: {
   readonly receiptPath: string

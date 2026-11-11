@@ -9,13 +9,29 @@ import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
 import type { NotificationFixture, TermProbeSource } from "./types.ts"
 
-type Fault = "none" | "disabled" | "bus-unknown" | "profile-unknown" | "focused" | "unparsed" | "mux-no-outer"
+type Fault =
+  | "none"
+  | "disabled"
+  | "bus-unknown"
+  | "profile-unknown"
+  | "focused"
+  | "unparsed"
+  | "mux-no-outer"
+  | "control-missing"
+  | "control-late"
 
 function source(fault: Fault) {
   const writes: string[] = []
   const entries: Array<{ id: number; appName: string; summary: string; body: string }> = []
   const fixture: NotificationFixture = {
     control: { nonce: "independent-control", id: 1 },
+    // The terminal's own environment delivered a control nonce and the recorder saw it, unless this fault says
+    // the control never arrived (#33333). Without it a silent write may not be read as "not supported".
+    ...(fault === "control-missing"
+      ? {}
+      : fault === "control-late"
+        ? { terminalSideControlRefusal: "Terminal-side control Notify was recorded after its 1000ms window" }
+        : { terminalSideControl: { nonce: "terminal-control", id: 1, latencyMs: 12 } }),
     recordPath: "owned-notifications.jsonl",
     deadlineMs: 10,
     terminalBus: { state: fault === "bus-unknown" ? "unknown" : "same", reason: "measured terminal process env" },
@@ -39,7 +55,9 @@ function source(fault: Fault) {
         fault !== "bus-unknown" &&
         fault !== "profile-unknown" &&
         fault !== "focused" &&
-        fault !== "mux-no-outer"
+        fault !== "mux-no-outer" &&
+        fault !== "control-missing" &&
+        fault !== "control-late"
       ) {
         const nonce = text.match(/terminfo-notify-[a-zA-Z0-9-]+/)?.[0]
         if (!nonce) return
@@ -71,6 +89,8 @@ for (const id of ["extensions.notifications", "extensions.osc777-notify"]) {
       "focused",
       "unparsed",
       "mux-no-outer",
+      "control-missing",
+      "control-late",
     ] as const) {
       const { ctx, writes } = source(fault)
       const result = await callback(ctx)
