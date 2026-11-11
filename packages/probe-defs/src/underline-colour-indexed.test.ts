@@ -115,6 +115,7 @@ describe("indexed underline colour decision: five outcomes in the ruled order", 
     expect(decision.note).toContain(note)
     expect(decision.note).toContain("SGR 58:5:1 (colon form) and SGR 58:5:4 (colon form)")
     expect(decision.note).toContain("SGR 38:5:1 (colon form) and SGR 38:5:4 (colon form)")
+    expect(decision.note).toContain("two contrasting palette entries rule out a coincidental default-colour match")
   })
 
   test("a blind control wins over every later check", () => {

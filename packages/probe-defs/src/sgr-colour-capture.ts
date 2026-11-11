@@ -330,7 +330,7 @@ function colourEncoding(id: string): string | undefined {
   if (id === UNDERLINE_INDEXED_ID) {
     const targets = sgrColourEncoding(UNDERLINE_INDICES.map((index) => `\x1b[58:5:${index}m`).join(""))
     const controls = sgrColourEncoding(UNDERLINE_INDICES.map((index) => `\x1b[38:5:${index}m`).join(""))
-    return `${targets}; two palette indices test whether foreground-route controls ${controls} distinguish the requested colours`
+    return `${targets}; two contrasting palette entries rule out a coincidental default-colour match; foreground-route controls ${controls}`
   }
   const reset = id === "sgr.underline-color-reset"
   const sequence = reset ? RESET_FAMILY_CAPTURE[id]?.seed.match(/\x1b\[58[:;][\d:;]+m/)?.[0] : COLOUR_ROWS[id]?.sequence
