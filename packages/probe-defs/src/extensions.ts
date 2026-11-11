@@ -1541,12 +1541,7 @@ async function cursorColorSetupAppCapture(
     ctx.write("\x1b]112\x07")
     const resetReads: Array<typeof hidden> = []
     const takeReset = (label: string) => async () => {
-      // The frame after the reset is what this feature decides on, so it is a target frame - and the
-      // run parser enforces that the primary screenshotRef IS one (run-parser observations.ts:358).
-      // Captured as a control it still measured correctly and then cost the whole run: tmux 2026-11-11
-      // 07:51Z recorded every probe and was refused at parse time with
-      // "primary screenshotRef for extensions.osc112-reset-cursor must be a target frame".
-      const readback = await capture(label, "target")
+      const readback = await capture(label)
       resetReads.push(readback)
       return readback
     }
@@ -1582,7 +1577,9 @@ async function cursorColorSetupAppCapture(
       observation: {
         outcome: "supported" as const,
         assertionType: "screenshot" as const,
-        screenshotRef: reset.second.frame.ref,
+        // The primary names the frame this row decided on: the changed cursor cell. The reset reads
+        // are the control that proves it returned, and a screenshot row's primary is never a control.
+        screenshotRef: target.frame.ref,
         frames: [...frames, ...resetReads.map((entry) => entry.frame)],
         note,
       },

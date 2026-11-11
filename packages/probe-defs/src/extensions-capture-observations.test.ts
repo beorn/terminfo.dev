@@ -550,13 +550,12 @@ test("extensions.osc112-reset-cursor reads the cursor cell after the reset, not 
   expect(reset).toBeGreaterThan(coloured)
   expect(result.observation?.outcome).toBe("supported")
   expect(result.observation?.frames?.some((frame) => /reset after OSC 112/.test(frame.label))).toBe(true)
-  // The verdict was already right when this test was written, and the run still died: the primary
-  // screenshotRef named the reset frame while the reset pair was captured as a control, and the run
-  // parser refuses a non-target primary ref (observations.ts:358), costing the whole collection.
-  const observation = result.observation
-  const targetRefs = (observation?.frames ?? []).filter((frame) => frame.role === "target").map((frame) => frame.ref)
-  expect(targetRefs.length).toBeGreaterThan(0)
-  expect(targetRefs).toContain(observation?.screenshotRef)
+
+  // Run-parser refuses a whole run whose screenshot row cites a control frame as its primary, so the
+  // decided row must name the changed cursor cell — the one target frame — not the reset control.
+  const targets = result.observation?.frames?.filter((frame) => frame.role === "target") ?? []
+  expect(targets).toHaveLength(1)
+  expect(result.observation?.screenshotRef).toBe(targets[0]?.ref)
 })
 
 // The verdict can be right while the wire shape is refused, and that failure mode costs the WHOLE run:

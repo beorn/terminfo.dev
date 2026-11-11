@@ -74,10 +74,11 @@ export interface WindowRect {
 }
 
 /** A window's placed rectangle, parsed from xdotool getwindowgeometry --shell. */
-export function windowRectangle(geometry: string): WindowRect {
+export function windowRectangle(geometry: string, windowId?: string): WindowRect {
+  const window = windowId === undefined || windowId === "" ? "" : ` for window ${windowId}`
   const field = (name: string): number => {
     const match = new RegExp(`^${name}=(-?\\d+)$`, "m").exec(geometry)
-    if (match?.[1] === undefined) throw new Error(`getwindowgeometry has no ${name}: ${geometry.trim()}`)
+    if (match?.[1] === undefined) throw new Error(`getwindowgeometry${window} has no ${name}: ${geometry.trim()}`)
     return Number(match[1])
   }
   return { x: field("X"), y: field("Y"), ...windowPixels(geometry) }
@@ -224,8 +225,8 @@ export async function createLinuxCapture(
     const helperGeometry = (
       await command("xdotool", ["getwindowgeometry", "--shell", focusHelper.windowId], undefined, deadline)
     ).toString()
-    const owned = windowRectangle(ownedGeometry)
-    const helper = windowRectangle(helperGeometry)
+    const owned = windowRectangle(ownedGeometry, ownedWindowId)
+    const helper = windowRectangle(helperGeometry, focusHelper.windowId)
     const intersects =
       helper.x < owned.x + owned.width &&
       owned.x < helper.x + helper.width &&
