@@ -817,6 +817,80 @@ describe("frame-less container run", () => {
     expect(selected(["device.primary-da", "cursor.shape"], ["device.primary-da"], ["supported"]).status).not.toBe(0)
   })
 
+  // 33334: the receipt block ran against the run's first target frame as if its source were always an
+  // xwd, so a launch selecting only extensions.osc22-pointer (png-sourced, pointer-composited frames)
+  // exited 2 after its probe result was written. Runs the launcher's own block on an owned /out copy.
+  function receiptFor(frame: { sourceKind: "xwd" | "png" | "none" }) {
+    const source = readFileSync(launcher, "utf8")
+    const start = source.indexOf("  capture_frame=$(jq -c")
+    const end = source.indexOf("\n  fi\n", start)
+    if (start < 0 || end < 0) throw new Error("capture receipt block not found in scripts/linux-container-run.sh")
+    const out = join(dir, "out")
+    mkdirSync(join(out, "artifacts"), { recursive: true })
+    const write = (bytes: string, ext: string) => {
+      const sha = createHash("sha256").update(bytes).digest("hex")
+      writeFileSync(join(out, "artifacts", `${sha}.${ext}`), bytes)
+      return sha
+    }
+    const pngSha = write("frame png", "png")
+    const sourceSha =
+      frame.sourceKind === "none"
+        ? createHash("sha256").update("absent").digest("hex")
+        : write(`source ${frame.sourceKind}`, frame.sourceKind)
+    writeFileSync(
+      join(out, "v3-capture.json"),
+      JSON.stringify({
+        results: [
+          { featureId: "extensions.osc22-pointer", frames: [{ role: "control", ref: "sha256:x" }] },
+          {
+            featureId: "extensions.osc22-pointer",
+            frames: [{ role: "target", ref: `sha256:${pngSha}`, sourceRef: `sha256:${sourceSha}` }],
+          },
+        ],
+      }),
+    )
+    const bin = join(dir, "bin")
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(join(bin, "magick"), "#!/bin/sh\necho stub-identify\n")
+    chmodSync(join(bin, "magick"), 0o755)
+    const block = source.slice(start, end + "\n  fi\n".length).replaceAll("/out/", `${out}/`)
+    const result = spawnSync("bash", ["-c", `set -euo pipefail\n${block}\nprintf '%s' "$capture_receipt"`], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    })
+    return { result, pngSha, sourceSha }
+  }
+
+  it("carries an OSC 22 pointer-only run whose target frame has a png source (33334)", () => {
+    const { result, pngSha, sourceSha } = receiptFor({ sourceKind: "png" })
+    expect(result.status, result.stderr).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual({
+      sourcePng: `artifacts/${sourceSha}.png`,
+      sourcePngSha256: sourceSha,
+      png: `artifacts/${pngSha}.png`,
+      pngSha256: pngSha,
+    })
+  })
+
+  it("keeps the xwd receipt shape for an xwd-sourced target frame", () => {
+    const { result, pngSha, sourceSha } = receiptFor({ sourceKind: "xwd" })
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(result.stdout) as Record<string, string>
+    expect(Object.entries(receipt)).toEqual([
+      ["xwd", `artifacts/${sourceSha}.xwd`],
+      ["xwdSha256", sourceSha],
+      ["png", `artifacts/${pngSha}.png`],
+      ["pngSha256", pngSha],
+    ])
+  })
+
+  it("refuses by name when the target frame's source artifact is missing", () => {
+    const { result, sourceSha } = receiptFor({ sourceKind: "none" })
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain(`Callback capture artifacts are missing`)
+    expect(result.stderr).toContain(`artifacts/${sourceSha}.xwd or .png`)
+  })
+
   it("composes a frame-less run, whose container receipt carries no capture", () => {
     const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", null)
     expect(result.status).toBe(0)
