@@ -79,6 +79,44 @@ test("App focus tracking grades delivered set/reset input rather than DECRPM", a
   }
 })
 
+// Condition 2 of @cto 07d1c4d5 (#33305): the owned -> helper -> owned roundtrip IS the witness. An arm that
+// retains no witness is PROBE INVALID by name, so the reason names the helper step rather than a root window
+// the probe no longer visits (GTK reports no focus change to the display root).
+test("App focus tracking refuses a roundtrip that retained no X focus witness", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
+  const witness = {
+    ownedWindowId: "42",
+    helperWindowId: "543",
+    focusedWindowIds: ["42", "543", "42"] as [string, string, string],
+  }
+  let arm = 0
+  let bytes = ""
+  const input: NonNullable<TermProbeSource["input"]> = {
+    injectClick: async () => {
+      throw new Error("Focus fixture received a click")
+    },
+    focusRoundTrip: async () => (arm++ === 0 ? witness : (undefined as unknown as typeof witness)),
+    injectKey: async () => {
+      bytes += "a"
+    },
+  }
+  const source = replayTermProbeSource(new Map(), {
+    input,
+    readInput: async (pattern, _timeout, inject) => {
+      bytes = ""
+      await inject?.()
+      return pattern.exec(bytes)
+    },
+  })
+  const result = await definition.term!(source)
+  expect(arm, "both focus arms ran before the gate").toBe(2)
+  expect(result.tests).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("owned/helper/owned") }),
+    ]),
+  )
+})
+
 // Constructed pixel-equivalence planes are derived from the semantic parser's
 // cells and global reverse flag. They test callback wiring, not native App rendering.
 test.each([null, 0] as const)("App reverse video reads controlled pixels after DECRPM %s", async (ps) => {
