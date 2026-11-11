@@ -1139,6 +1139,16 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
 
   const answered = await run(position)
   expect(answered.pass, id).toBe(false)
+  if (id === "extensions.osc777-notify") {
+    // Delivery now needs the owned bus observer; CPR cannot substitute for that service.
+    expect(answered.tests).toMatchObject([
+      { status: "probe-todo", reason: "No owned desktop notification observer for OSC 777" },
+    ])
+    expect(answered.observation).toBeUndefined()
+    expect(answered.response).toBeUndefined()
+    expect(await run(null)).toEqual(answered)
+    return
+  }
   if (id === "extensions.osc555-flash") {
     // Flash now uses owned pixels; neither an answered nor a silent CPR supplies that reader.
     expect(answered.tests).toEqual([

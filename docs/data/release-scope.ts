@@ -514,7 +514,12 @@ export function classifyResultMethod(
         assertionType: onlyType,
       }
     }
-    if (onlyType === "input_bytes" || onlyType === "clipboard" || onlyType === "process_environment") {
+    if (
+      onlyType === "input_bytes" ||
+      onlyType === "clipboard" ||
+      onlyType === "process_environment" ||
+      onlyType === "notification"
+    ) {
       return {
         kind: "method",
         method: "end-to-end",
