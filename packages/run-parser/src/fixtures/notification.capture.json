@@ -1,0 +1,84 @@
+{
+  "suite": {
+    "schemaVersion": 4,
+    "probeHash": "notification-compatibility",
+    "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generatedAt": "2026-11-10T00:00:00.000Z",
+    "adapterVersion": "3.3.2",
+    "catalogIds": ["extensions.notifications"],
+    "probes": {
+      "term": ["extensions.notifications"],
+      "lib": [],
+      "mux": []
+    }
+  },
+  "run": {
+    "schemaVersion": 4,
+    "source": {
+      "kind": "live"
+    },
+    "runId": "notification-compatibility",
+    "suiteId": "notification-compatibility",
+    "probeHash": "notification-compatibility",
+    "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "intendedSubject": {
+      "kind": "term",
+      "id": "kitty"
+    },
+    "results": [
+      {
+        "featureId": "extensions.notifications",
+        "status": "supported",
+        "assertionType": "notification",
+        "attempt": {
+          "scope": "probe",
+          "startedAt": "2026-11-10T00:00:00.000Z"
+        },
+        "rawReplyRef": "extensions.notifications",
+        "tests": [
+          {
+            "id": "criterion",
+            "status": "supported",
+            "attempt": {
+              "scope": "probe",
+              "startedAt": "2026-11-10T00:00:00.000Z"
+            },
+            "assertionRefs": [0]
+          }
+        ]
+      }
+    ],
+    "rawReplies": {
+      "extensions.notifications": "{\"nonce\":\"fixture-notify-nonce\",\"notifications\":[{\"id\":2,\"summary\":\"fixture-notify-nonce\"}]}",
+      "device.primary-da": "\u001b[?62;52;c",
+      "device.xtversion": "kitty(0.49.2)"
+    },
+    "assertions": [
+      {
+        "featureId": "extensions.notifications",
+        "kind": "positive",
+        "assertionType": "notification",
+        "rawReplyRef": "extensions.notifications",
+        "expected": "Desktop Notify carries the target nonce",
+        "observed": "{\"nonce\":\"fixture-notify-nonce\",\"notifications\":[{\"id\":2,\"summary\":\"fixture-notify-nonce\"}]}"
+      }
+    ],
+    "screenshotRefs": [],
+    "subject": {
+      "kind": "term",
+      "id": "kitty",
+      "version": "0.49.2",
+      "os": "linux",
+      "osVersion": null,
+      "outerTerminal": null,
+      "mux": null,
+      "config": null,
+      "permissions": null
+    },
+    "identity": "verified",
+    "measuredAt": "2026-11-10T00:00:00.000Z",
+    "origin": {
+      "kind": "collector"
+    }
+  }
+}

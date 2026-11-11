@@ -95,14 +95,16 @@ export async function createLinuxInput(
     )
   }
 
-  async function focusRoundTrip(): Promise<{
+  async function focusRoundTrip(work?: (readFocus: () => Promise<string>) => Promise<void>): Promise<{
     ownedWindowId: string
     helperWindowId: string
     focusedWindowIds: [string, string, string]
   }> {
+    const readFocus = async (): Promise<string> =>
+      (await command("xdotool", ["getwindowfocus", "-f"])).toString().trim()
     const focus = async (target: string): Promise<string> => {
       await command("xdotool", ["windowfocus", target])
-      const focused = (await command("xdotool", ["getwindowfocus", "-f"])).toString().trim()
+      const focused = await readFocus()
       if (focused !== target) {
         throw new Error(`Owned focus roundtrip expected ${target}; getwindowfocus -f is ${focused}`)
       }
@@ -114,6 +116,7 @@ export async function createLinuxInput(
     let restoredFocus: string
     try {
       helperFocus = await focus(helperWindowId)
+      await work?.(readFocus)
     } finally {
       restoredFocus = await focus(ownedWindowId)
     }
