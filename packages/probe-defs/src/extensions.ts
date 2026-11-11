@@ -4870,7 +4870,6 @@ async function liveClipboardProbe(
           reason: "no-response",
           assertionType: "screenshot",
           screenshotRef: frame.ref,
-          frames: [frame],
           note: "No OSC 52 reply; the run does not interact with a possible prompt, so nothing it observes decides whether one appeared",
         },
       }
