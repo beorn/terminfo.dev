@@ -806,7 +806,10 @@ export async function runProbeBatch(
           injectMove: (x: number, y: number) => withTTYOperation(() => injectMove(x, y), out, verify),
         }),
         ...(injectDrag && { injectDrag: (button: 1) => withTTYOperation(() => injectDrag(button), out, verify) }),
-        ...(focusRoundTrip && { focusRoundTrip: () => withTTYOperation(focusRoundTrip, out, verify) }),
+        ...(focusRoundTrip && {
+          focusRoundTrip: (work?: (readFocus: () => Promise<string>) => Promise<void>) =>
+            withTTYOperation(() => focusRoundTrip(work), out, verify),
+        }),
         ...(resizeWindow && {
           resizeWindow: (width: number, height: number) =>
             withTTYOperation(() => resizeWindow(width, height, probe.id), out, verify),

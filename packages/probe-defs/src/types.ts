@@ -1086,8 +1086,8 @@ export interface ClipboardFixture {
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
 export interface InputFixture {
   injectKey(keys: string): Promise<void>
-  /** Move focus to the display root and back, verifying both owned X focus reads. */
-  focusRoundTrip?(): Promise<{
+  /** Move focus to the display root, await optional work there, then restore even if work fails. */
+  focusRoundTrip?(work?: (readFocus: () => Promise<string>) => Promise<void>): Promise<{
     ownedWindowId: string
     rootWindowId: string
     focusedWindowIds: [string, string, string]

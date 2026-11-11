@@ -36,7 +36,7 @@ export async function createLinuxInput(
   }
   const ownedWindowId: string = windowId
 
-  async function focusRoundTrip(): Promise<{
+  async function focusRoundTrip(work?: (readFocus: () => Promise<string>) => Promise<void>): Promise<{
     ownedWindowId: string
     rootWindowId: string
     focusedWindowIds: [string, string, string]
@@ -46,9 +46,11 @@ export async function createLinuxInput(
     const rootHex = section?.split(/screen #\d+:/)[0]?.match(/root window id:\s*(0x[0-9a-f]+)/i)?.[1]
     if (!rootHex) throw new Error("Owned DISPLAY xdpyinfo lacks its selected screen root window id")
     const rootWindowId = String(Number.parseInt(rootHex, 16))
+    const readFocus = async (): Promise<string> =>
+      (await command("xdotool", ["getwindowfocus", "-f"])).toString().trim()
     const focus = async (target: string): Promise<string> => {
       await command("xdotool", ["windowfocus", target])
-      const focused = (await command("xdotool", ["getwindowfocus", "-f"])).toString().trim()
+      const focused = await readFocus()
       if (focused !== target) {
         throw new Error(`Owned focus roundtrip expected ${target}; getwindowfocus -f is ${focused}`)
       }
@@ -59,6 +61,7 @@ export async function createLinuxInput(
     let restoredFocus: string
     try {
       rootFocus = await focus(rootWindowId)
+      await work?.(readFocus)
     } finally {
       restoredFocus = await focus(ownedWindowId)
     }

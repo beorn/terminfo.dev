@@ -372,6 +372,9 @@ App focus tracking uses the optional owned focus roundtrip fixture under both DE
 and DECRST1004. Separate key-terminated reads retain enable-time input and the enabled
 roundtrip; the first reader starts before enabling. The reset roundtrip has its own key-terminated read.
 The existing fixture returns its verified owned/root/owned X window IDs, retained in the assertion.
+Its optional work callback runs after root focus is verified and before restoration. The callback can
+read the current focus immediately around a target write and hold focus through its observation deadline.
+The same fixture restores the owned window in `finally`, including when that work fails.
 At most one enable-time focus report is retained separately; it does not satisfy the roundtrip.
 Ordered focus-out/in only while set is Supported; no roundtrip reports in either arm is Unsupported.
 A wrong read, missing key or focus report while reset is PROBE INVALID. DECRPM is retained as detail;
