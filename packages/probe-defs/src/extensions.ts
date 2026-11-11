@@ -1643,15 +1643,30 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
     return pending(`${id}: incoming text-cursor visibility cannot be restored`)
   }
   const { x, y } = coordinates
+  const pointerColumn = Math.floor(x / geometry.cellWidth) + 1
+  const pointerRow = Math.floor(y / geometry.cellHeight) + 1
+  const pointerCells = {
+    top: Math.max(1, pointerRow - 1),
+    left: Math.max(1, pointerColumn - 2),
+    bottom: Math.min(ctx.rows, pointerRow + 1),
+    right: Math.min(ctx.cols, pointerColumn + 2),
+  }
   // An actual motion event is needed even when the pointer is already at the requested position.
   const position = async () => {
     await move(x + 1, y)
     await move(x, y)
   }
+  let pointerRectangle: string | undefined
   const shoot = async (label: string, role: "control" | "target" = "control") => {
-    const frame = await capture({ role, label: `${id}: ${label}` })
-    const digest = frameDigests(frame).whole
-    if (frame.kind === "text-cells" || !digest) throw new Error(`${id}: capture has no decoded pointer pixel digest`)
+    const frame = await capture({ role, label: `${id}: ${label}`, cells: pointerCells, pixelGeometry: geometry })
+    const digest = frame.kind === "text-cells" ? undefined : frame.regionDigest
+    const rectangle = frame.kind === "text-cells" ? undefined : frame.regionRectangle
+    if (!digest || !rectangle) throw new Error(`${id}: capture has no decoded pointer-region pixels`)
+    const rectangleKey = JSON.stringify(rectangle)
+    if (pointerRectangle !== undefined && pointerRectangle !== rectangleKey) {
+      throw new Error(`${id}: pointer-region crop moved between frames`)
+    }
+    pointerRectangle = rectangleKey
     frames.push(frame)
     return { frame, pixelsDigest: digest }
   }

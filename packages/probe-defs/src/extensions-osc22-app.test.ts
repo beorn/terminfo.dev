@@ -202,11 +202,24 @@ function pointerImages(fault = "none") {
     await inject?.()
     return ["a"]
   }
-  source.capture = async ({ role, label }) => {
+  source.capture = async ({ role, label, cells, pixelGeometry }) => {
     const pixels = hidden ? "hidden" : shape
+    const regionPixels = fault === "outside-only" && pixels === "crosshair" ? "baseline" : pixels
+    events.push(`crop:${JSON.stringify({ cells, pixelGeometry })}`)
     events.push(`image:${pixels}`)
     const ref = `sha256:${Buffer.from(pixels).toString("hex").padEnd(64, "0")}`
-    return { kind: "pixels", role, label, capturedAt: events.length, ref, sourceRef: ref, pixelsDigest: ref }
+    const regionDigest = `sha256:${Buffer.from(regionPixels).toString("hex").padEnd(64, "0")}`
+    return {
+      kind: "pixels",
+      role,
+      label,
+      capturedAt: events.length,
+      ref,
+      sourceRef: ref,
+      pixelsDigest: ref,
+      regionDigest,
+      regionRectangle: { x: fault === "crop-moved" && pixels === "crosshair" ? 2 : 1, y: 1, width: 40, height: 48 },
+    }
   }
   return { source, events, modes }
 }
@@ -229,6 +242,26 @@ test.each([
   expect(input.events.filter((event) => event.startsWith("image:")).at(-1)).toBe("image:baseline")
   expect(input.modes.get(25)).toBe(true)
   for (const mode of [9, 1000, 1001, 1002, 1003]) expect(input.modes.get(mode)).toBe(false)
+})
+
+// @failure A whole-window change away from the pointer is misgraded as a pointer-shape change.
+// @level l1
+// @consumer OSC22 App image callback and its same-run pointer-region control.
+test("OSC22 image arm ignores a change outside the pointer region", async () => {
+  const input = pointerImages("outside-only")
+  const result = await definition().term!(input.source)
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(result.observation?.assertionType).toBe("screenshot")
+  expect(input.events).toContain(
+    'crop:{"cells":{"top":12,"left":39,"bottom":14,"right":43},"pixelGeometry":{"cellWidth":8,"cellHeight":16,"textWidth":640,"textHeight":384}}',
+  )
+})
+
+test("OSC22 image arm rejects a pointer crop that moved between frames", async () => {
+  const input = pointerImages("crop-moved")
+  const result = await definition().term!(input.source)
+  expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+  expect(result.observation?.outcome).toBeUndefined()
 })
 
 test.each(["unknown-changes", "restore-disabled", "nondefault"])(
