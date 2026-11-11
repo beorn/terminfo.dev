@@ -10,6 +10,7 @@ import { COLOUR_CAPTURE } from "./sgr-colour-capture.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { resetProbes } from "./reset.ts"
 import { finalizeVisualResult, sgrProbes } from "./sgr.ts"
+import { inertLibProbeSource } from "./testing/group-harness.ts"
 import type { ObservationFrame, ProbeCallbackResult, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 function timeout(): TerminalQueryOutcome {
@@ -80,6 +81,32 @@ function sgrTerm(id: string): (ctx: TermProbeSource) => Promise<ProbeCallbackRes
   if (!probe?.term) throw new Error(`missing term callback for ${id}`)
   return probe.term
 }
+
+// #33157: checking only normalized DECRQSS replies missed that the sent bytes still used semicolons.
+// Every existing underline row must send colon-form colour, including its library and capture setup.
+test.each([
+  ["sgr.underline.color", "58:2::255:0:128"],
+  ["sgr.underline-color-rgb", "58:2::255:0:128"],
+  ["sgr.underline-color-indexed", "58:5:1"],
+  ["sgr.underline-color-reset", "58:2::255:0:128"],
+])("%s sends the selected colon colour in every arm", async (id, parameters) => {
+  const definition = sgrProbes.find((entry) => entry.id === id)
+  if (!definition?.lib) throw new Error(`${id}: missing library arm`)
+  const fed: string[] = []
+  definition.lib({ ...inertLibProbeSource(), feed: (bytes) => fed.push(bytes) })
+  expect(fed.join(""), "library target").toContain(`\x1b[${parameters}m`)
+  expect(fed.join(""), "library must not send another colour encoding").not.toContain("\x1b[58;")
+  const { ctx, writes } = sgrReadbackSource(id === "sgr.underline-color-reset" ? ["0", "4;58:2::255:0:128", "4"] : null)
+  await sgrTerm(id)(ctx)
+  expect(writes.join(""), "terminal target or reset setup").toContain(`\x1b[${parameters}m`)
+  expect(writes.join(""), "terminal must not send another colour encoding").not.toContain("\x1b[58;")
+  if (id === "sgr.underline-color-reset") {
+    expect(RESET_FAMILY_CAPTURE[id]?.seed, "capture setup").toContain(`\x1b[${parameters}m`)
+    expect(RESET_FAMILY_CAPTURE[id]?.edit, "reset stays SGR 59").toContain("\x1b[59m")
+  } else if (id !== "sgr.underline-color-indexed") {
+    expect(COLOUR_CAPTURE[id]?.edit, "capture target").toContain(`\x1b[${parameters}m`)
+  }
+})
 
 /** Each sgr probe's DECRQSS reply, and the decision the probe must reach from it. */
 const DECIDED: ReadonlyArray<readonly [id: string, reply: string]> = [

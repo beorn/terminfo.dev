@@ -26,7 +26,8 @@ type Pen = { bold: boolean; dim: boolean; italic: boolean; underline: boolean; b
 
 /**
  * A small parser library. `knows58` consumes SGR 58's colour operands; otherwise 58, like 77, is an unknown
- * number whose operands run as their own commands. `dropsUnknown` ignores a whole SGR holding an unknown
+ * number whose operands run as their own commands, including a broken parser that walks colon
+ * subparameters. `dropsUnknown` ignores a whole SGR holding an unknown
  * number. The colour field is never exposed, as on the four libraries this route decides.
  */
 function parserLibrary(spec: { knows58?: boolean; dropsUnknown?: boolean; reports?: boolean }): LibProbeSource {
@@ -72,7 +73,10 @@ function parserLibrary(spec: { knows58?: boolean; dropsUnknown?: boolean; report
           col++
           continue
         }
-        const params = (match[1] ?? "").split(";").map((part) => Number(part || "0"))
+        const params = (match[1] ?? "")
+          .split(/[;:]/)
+          .filter((part) => part.length > 0)
+          .map(Number)
         if (match[2] === "m") sgrApply(params)
         if (match[2] === "H") {
           row = (params[0] || 1) - 1
@@ -92,7 +96,8 @@ describe("SGR 58 against the made-up SGR 77 in the same run", () => {
     (id) => {
       const result = sgr(id).lib!(parserLibrary({}))
       expect(result.observation?.outcome).toBe("unsupported")
-      expect(result.observation?.note).toBe(UNKNOWN_REASON)
+      expect(result.observation?.note).toContain(UNKNOWN_REASON)
+      expect(result.observation?.note).toContain("(colon form)")
       expect(JSON.parse(result.response!)).toMatchObject({ unknownControl: { equal: true } })
     },
   )

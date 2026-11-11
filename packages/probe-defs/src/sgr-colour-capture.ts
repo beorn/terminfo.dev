@@ -122,15 +122,15 @@ const COLOUR_ROWS: Record<string, ColourRow> = {
   // sequence itself needs no change: a walker's 0 resets the underline, which lands on the
   // no-attribute witness (@cto 30b12293, #33181).
   "sgr.underline.color": {
-    sequence: "\x1b[58;2;255;0;128m",
-    sibling: "\x1b[58;5;5;25m",
-    siblingLabel: "SGR 58;5;5, another underline colour",
+    sequence: "\x1b[58:2::255:0:128m",
+    sibling: "\x1b[58:5:5m",
+    siblingLabel: "SGR 58:5:5 (colon form), another underline colour",
     seed: "\x1b[4m",
   },
   "sgr.underline-color-rgb": {
-    sequence: "\x1b[58;2;255;0;128m",
-    sibling: "\x1b[58;2;255;0;135m",
-    siblingLabel: "the RGB 255;0;135, the nearest xterm-256 entry to 255;0;128",
+    sequence: "\x1b[58:2::255:0:128m",
+    sibling: "\x1b[58:2::255:0:135m",
+    siblingLabel: "SGR 58:2::255:0:135 (colon form), the nearest xterm-256 entry to RGB 255,0,128",
     seed: "\x1b[4m",
   },
 }

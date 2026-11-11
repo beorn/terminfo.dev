@@ -160,10 +160,11 @@ type Mode =
   | "collapse-bright"
   | "deferred-paint"
   | "ignore-58"
+  | "walk-58"
   | "frozen"
 
 /** A colour SGR, as opposed to a reset, a CUP or the SGR 4 underline seed the colour rows qualify. */
-const COLOUR_SGR = /\x1b\[(?:3[0-7]|4[0-7]|9[0-7]|10[0-7]|(?:38|48|58);[25];)/
+const COLOUR_SGR = /\x1b\[(?:3[0-7]|4[0-7]|9[0-7]|10[0-7]|(?:38|48|58)[;:][25][;:])/
 
 interface ColourRequest {
   family: "standard" | "bright" | "index" | "rgb"
@@ -367,7 +368,7 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
       index += 1
       continue
     }
-    if (param === 58 && mode === "ignore-58") {
+    if (param === 58 && (mode === "ignore-58" || mode === "walk-58")) {
       // This terminal does not know SGR 58, so it does not consume the sub-parameters: the walker
       // continues into them, reaches the literal 0 of `58;2;255;0;128`, and resets the rendition —
       // which drops the row's `\x1b[4m` seed and leaves plain text. Screen 5.0.2 behaves this way.
@@ -887,11 +888,12 @@ for (const { ids, mode, cause } of QUANTISATION) {
  * @consumer The capture arm of the three underline-colour rows on owned app contexts.
  * @testonly none
  */
-test("sgr.underline.color is unsupported when the seed shows the underline and plain text is what the sequence paints", async () => {
-  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+test("sgr.underline.color is unsupported when a broken colon walker drops the measured underline", async () => {
+  // This deliberately broken model walks colon subparameters too; it is not a new terminal measurement.
+  const { ctx } = colourTerminal("walk-58", PALETTES[0] as Palette)
   const result = await run("sgr.underline.color", ctx)
   expect(result.observation?.outcome).toBe("unsupported")
-  expect(result.observation?.note ?? "").toContain("painted nothing for SGR 58;2;255;0;128")
+  expect(result.observation?.note ?? "").toContain("painted nothing for SGR 58:2::255:0:128")
   expect(result.observation?.note ?? "").toContain("the underline was visible in the seed frame of this run")
   expect(result.pass).toBe(false)
   // #33054: the witness is the structured union member, not prose spread over expected/observed/note.
@@ -899,7 +901,7 @@ test("sgr.underline.color is unsupported when the seed shows the underline and p
   const witness = assertion?.witness
   if (witness?.kind !== "colour-no-attribute-witness") throw new Error("the negative carries no no-attribute witness")
   expect(witness.rowId).toBe("sgr.underline.color")
-  expect(witness.encoding).toBe("58;2;255;0;128")
+  expect(witness.encoding).toBe("58:2::255:0:128")
   expect(witness.frames.expected).toBe(witness.frames.noAttribute)
   expect(witness.frames.seed).not.toBe(witness.frames.noAttribute)
   expect(assertion?.observed).toBe(witness.frames.expected)
@@ -984,8 +986,8 @@ test("a walker paints every compared underline-colour frame static", async () =>
     ).toBe(false)
   }
   const result = await run("sgr.underline.color", colourTerminal("ignore-58", PALETTES[0] as Palette).ctx)
-  expect(result.criterionBranch).toBe("colour-no-attribute-witness")
-  expect(result.observation?.outcome).toBe("unsupported")
+  // An ignored colon group leaves the underline intact; the generic RGB controls cannot decide it.
+  expect(result.observation?.outcome).toBe("inconclusive")
 })
 
 /**

@@ -141,7 +141,12 @@ export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeo
   },
   "sgr.fg.default": row("\x1b[31m", "\x1b[39m", ""),
   "sgr.bg.default": row("\x1b[42m", "\x1b[49m", ""),
-  "sgr.underline-color-reset": row("\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m", "\x1b[58;2;255;0;128m\x1b[4m"),
+  "sgr.underline-color-reset": row(
+    "\x1b[4m\x1b[58:2::255:0:128m",
+    "\x1b[59m",
+    "\x1b[4m",
+    "\x1b[58:2::255:0:128m\x1b[4m",
+  ),
   "sgr.selective-reset.bold": {
     ...SAVED_SGR0_CAPTURE,
     seed: "\x1b[1;2;3m" + SAVED_SGR0_CAPTURE.expected,
