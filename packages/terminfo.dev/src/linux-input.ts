@@ -36,7 +36,7 @@ function focusHelperWindowId(): string {
 }
 
 async function windowRect(windowId: string): Promise<WindowRect> {
-  return windowRectangle((await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString())
+  return windowRectangle((await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString(), windowId)
 }
 
 /** Bind OS-level XTEST key/click/wheel injection to the owned Kitty window. */

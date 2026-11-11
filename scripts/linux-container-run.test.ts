@@ -1894,7 +1894,9 @@ describe("focus helper waits for its window instead of aborting the run (#33305)
     mkdirSync(bin)
     const counter = join(out, "search-count")
     writeFileSync(counter, "0")
-    writeFileSync(join(bin, "xterm"), "#!/usr/bin/env bash\nexec sleep 30\n", { mode: 0o755 })
+    writeFileSync(join(bin, "xterm"), '#!/usr/bin/env bash\necho $$ > "$HOME/xterm-pid"\nexec sleep 30\n', {
+      mode: 0o755,
+    })
     writeFileSync(
       join(bin, "xdotool"),
       `#!/usr/bin/env bash
@@ -1922,7 +1924,9 @@ exit 2
     const [label, helperWindow, helperPid] = result.stdout.trim().split(/\s+/)
     expect(label).toBe("HELPER")
     expect(helperWindow).toBe("4242")
-    expect(helperPid).toMatch(/^\d+$/)
+    // The exported PID must be the helper process itself, not merely a number: the capture gate
+    // refuses any helper window whose getwindowpid differs from it.
+    expect(helperPid).toBe(readFileSync(join(out, "xterm-pid"), "utf8").trim())
     expect(Number(readFileSync(counter, "utf8"))).toBe(3)
   })
 })
