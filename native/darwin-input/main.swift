@@ -291,9 +291,9 @@ case "front":
                 "in another window and its silence would be read as terminal behaviour")
         }
         out("frontmost=true key=true pid=\(pid) window=\(target)")
-        return
+    } else {
+        out("frontmost=true pid=\(pid)")
     }
-    out("frontmost=true pid=\(pid)")
 case "windows":
     guard arguments.count == 3 else { fail("usage: darwin-input-helper windows <pid>") }
     let pid = processId(arguments[2])
