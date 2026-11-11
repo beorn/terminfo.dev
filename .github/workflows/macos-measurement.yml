@@ -321,46 +321,11 @@ jobs:
           defaults write "$approvals" "$executable" -date "3024-01-01 00:00:00 +0000"
           defaults read "$approvals" "$executable"
 
-      # The CGEvent input helper needs the Accessibility grant: a posting to the HID event tap is
-      # refused without it, and a posting the app ignores must never be read as terminal behaviour
-      # (#33574). This step is the ONLY place a TCC write for input happens. The helper itself never
-      # writes TCC and never calls sudo, and the collector only reports what it observes. NEVER run
-      # this step on a fleet host or on a person's Mac: it is a hosted-runner measurement step.
-      - name: Build the input helper and grant Accessibility, read back
-        if: matrix.id == 'terminal-app'
-        run: |
-          set -euo pipefail
-          helper="$RUNNER_TEMP/darwin-input-helper"
-          swiftc -O -o "$helper" native/darwin-input/main.swift \
-            || { echo "input helper build refused: swiftc failed for native/darwin-input/main.swift" >&2; exit 1; }
-          echo "helper=$helper"
-          before="$("$helper" trust)"
-          echo "trust before grant: $before"
-          if [ "$before" != "trusted=true" ]; then
-            now="$(date +%s)"
-            grant() {
-              local client="$1" client_type="$2" db="${*: -1}"
-              "$@" "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$client',$client_type,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$now,NULL,NULL,'UNUSED',$now);"
-              granted="$("$@" "SELECT auth_value FROM access WHERE service='kTCCServiceAccessibility' AND client='$client';")"
-              test "$granted" = 2 || { echo "Accessibility grant for $client did not read back from $db (got '$granted')" >&2; exit 1; }
-              printf 'Accessibility granted to %s in %s\n' "$client" "$db"
-            }
-            grant "$helper" 1 sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db"
-            grant "$helper" 1 sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db"
-            grant /opt/hca/hosted-compute-agent 1 sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db"
-            grant /opt/hca/hosted-compute-agent 1 sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db"
-          fi
-          after="$("$helper" trust)"
-          echo "trust after grant: $after"
-          test "$after" = "trusted=true" \
-            || { echo "the Accessibility row read back but AXIsProcessTrusted is still false for $helper: stop and report, the input grid stays unmeasured" >&2; exit 1; }
-
       - name: Launch, emit the receipt, and collect as the last mutating step
         id: collect
         env:
           APP_ID: ${{ matrix.id }}
           APP_BUNDLE: ${{ matrix.bundle }}
-          TERMINFO_DARWIN_INPUT_HELPER: ${{ runner.temp }}/darwin-input-helper
         run: |
           set -euo pipefail
           OUT="$RUNNER_TEMP/measurement-artifacts"
