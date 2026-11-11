@@ -7,15 +7,18 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { createHash } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { parseProbeResults } from "@terminfo/run-parser"
 import { extensionsProbes } from "./extensions.ts"
 import { recordExecutedProbe } from "./helpers.ts"
-import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT, KITTY_REGION } from "./kitty-capture.ts"
+import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT, KITTY_REGION, KITTY_ROW_IMAGES } from "./kitty-capture.ts"
 import type { ObservationFrame, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 import { finishCapture } from "../../terminfo.dev/src/capture-core.ts"
+
+const sha = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
 
 const GEOMETRY = {
   geometry: { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 480 },
@@ -173,7 +176,7 @@ for (const featureId of ["extensions.kitty-graphics.animation", "extensions.kitt
 
 test("animation decides from two target frames with no write between them", async () => {
   const { context, captures } = surface({
-    region: ["blank", "red", "red", "red", "cursor", "cursor", "red", "blue", "red", "blue"],
+    region: ["blank", "red", "blue", "red", "red", "cursor", "cursor", "red", "blue", "red", "blue"],
     whole: ["before", "after"],
   })
   const result = await term("extensions.kitty-graphics.animation")(context)
@@ -197,7 +200,7 @@ test("animation decides from two target frames with no write between them", asyn
 // Exercise that boundary here; keep the existing playback-on/off cases as the feature's owner.
 test("animation whole-window redraw checkpoints satisfy the production capture finalizer", async () => {
   const { context } = surface({
-    region: ["blank", "red", "red", "red", "cursor", "cursor", "red", "blue", "red", "blue"],
+    region: ["blank", "red", "blue", "red", "red", "cursor", "cursor", "red", "blue", "red", "blue"],
     whole: ["before", "after"],
   })
   const capture = context.capture!
@@ -248,7 +251,20 @@ test.each([
   ["red", "selection-only-error", "probe-invalid"],
 ] as const)("equal animation pixels %s with %s replies record %s", async (playback, reply, status) => {
   const { context, writes, captures } = surface({
-    region: ["blank", "red", "red", "red", "cursor", "cursor", playback, playback, playback, playback, playback],
+    region: [
+      "blank",
+      "red",
+      "blue",
+      "red",
+      "red",
+      "cursor",
+      "cursor",
+      playback,
+      playback,
+      playback,
+      playback,
+      playback,
+    ],
     whole: ["before", "after"],
   })
   const query = context.queryWithSentinelOutcome
@@ -316,6 +332,50 @@ test.each([
   }
 })
 
+// @cto edab7573, WezTerm's retained shape: every reply OK, frame 2 painted the moment it was added,
+// and neither playback nor selecting frame 1 brought the first picture back. A pixel negative.
+test("a frame 2 that never gives way to frame 1 records unsupported from pixels", async () => {
+  const { context, captures } = surface({
+    // The parser reads these frames, so the digests take its sha256 shape.
+    region: ["blank", "red", "blue", "red", "red", "cursor", "cursor", "blue", "blue", "blue", "blue", "blue"].map(sha),
+    whole: ["before", "after"].map(sha),
+    ack: "ok",
+  })
+  const capture = context.capture!
+  context.capture = async (checkpoint) => {
+    const frame = await capture(checkpoint)
+    if (frame.pixelsDigest?.startsWith("sha256:")) return frame
+    return { ...frame, pixelsDigest: sha(String(frame.pixelsDigest)) } as ObservationFrame
+  }
+  const featureId = "extensions.kitty-graphics.animation"
+  const result = await term(featureId)(context)
+  const assertions = (result.assertions ?? []).map((assertion) => ({ ...assertion, featureId, rawReplyRef: featureId }))
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: new Date(0).toISOString() },
+    ...result,
+    observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
+    assertions,
+  })
+  expect(recorded.status).toBe("unsupported")
+  expect(result.observation?.note).toContain(
+    "Unsupported: the terminal accepted a second frame and showed it, but neither timed playback nor selecting the first frame brought the first picture back.",
+  )
+  expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "screenshot" }])
+  const [parsed] = parseProbeResults(
+    [recorded],
+    "animation callback",
+    new Set([featureId]),
+    { [featureId]: result.response! },
+    assertions,
+    captures.map(({ ref }) => ref),
+  )
+  expect(parsed).toMatchObject({ status: "unsupported", assertionType: "screenshot" })
+  expect(JSON.parse(result.response!)).toMatchObject({
+    digests: { reference: sha("red"), secondReference: sha("blue") },
+  })
+})
+
 test("placeholders decide from pixels, with a queried virtual transfer and an ordinary placement alive", async () => {
   const { context, writes, captures } = surface({
     // grid with image (twice), grid with the image deleted, blank, then the ordinary placement of the
@@ -343,7 +403,8 @@ test("placeholders decide from pixels, with a queried virtual transfer and an or
   expect(result.response).toContain('"guard"')
   const reference = captures.filter((capture) => capture.label.includes("SGR"))
   expect(reference).toMatchObject([{ role: "control", cells: true }])
-  expect(writes.slice(0, reference[0]!.writesBefore).join("")).toContain("\x1b[48;2;255;0;0m")
+  const placeholderRgb = KITTY_ROW_IMAGES["extensions.kitty-graphics.unicode-placeholders"].image
+  expect(writes.slice(0, reference[0]!.writesBefore).join("")).toContain(`\x1b[48;2;${placeholderRgb.join(";")}m`)
   expect(JSON.parse(result.response!)).toMatchObject({ digests: { reference: "with-image" } })
 })
 

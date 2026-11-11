@@ -14,6 +14,7 @@ import type { CensusContext } from "./full-census.ts"
 import { supplementOf, type ContextSupplement } from "./context-supplements.ts"
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
 import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
+import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -180,6 +181,11 @@ export interface SelectedContextCell {
    * same context: the feature result reads unsupported, while `result`, `run` and `origin` stay the child's own.
    */
   derived?: DerivedMarker
+  /**
+   * Set only when a held-negatives row (held-negatives.ts, #33034) found this negative unwitnessed: no run under the
+   * same suite reads the feature Supported, so the cell reads probe-invalid while `result` stays the original.
+   */
+  held?: HeldMarker
 }
 
 /** An initialized draft can retain intent even when no measured subject or result exists. */
@@ -604,6 +610,7 @@ function composeContextSummaries(
     if (!runsById.has(run.runId)) runsById.set(run.runId, run)
   }
   const runs = [...runsById.values()]
+  const heldWitnesses = supportedSuites(runs, HELD_NEGATIVES)
   const baselineIds = new Set(baselineRunIds)
   const workingIds = new Set(workingRuns.map((run) => run.runId))
   // Working inputs cannot rename an admitted key; see workingSubjectKey.
@@ -783,6 +790,8 @@ function composeContextSummaries(
       decided,
     )
     applyReopened(contextKey, cells, candidates[0]?.subject, reopened, reopenedApplied)
+    // Before derivation, so a held child can still read its parent's refusal (#33034, @cto edab7573).
+    applyHeld(cells, HELD_NEGATIVES, heldWitnesses)
     // After reopening, so a reopened parent reads probe-todo and entails nothing (#33019, @cto 6588ac5f).
     const derivedIds = applyDerived(contextKey, cells, derivedPairs)
     const contributing = new Set(
