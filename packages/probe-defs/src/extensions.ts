@@ -1526,12 +1526,58 @@ async function cursorColorSetupAppCapture(
         state,
       )
     }
-    return target.regionDigest === before
-      ? declaredUntestableResult(
-          "Untestable (no setup): OSC 12 left the visible steady cursor unchanged after shown/hidden/restored and made-up OSC controls; OSC112 has no changed cursor colour to reset.",
-          state,
-        )
-      : notTestedResult("Open: OSC 12 changed the visible cursor; OSC112 restoration remains unmeasured", state)
+    if (target.regionDigest === before) {
+      return declaredUntestableResult(
+        "Untestable (no setup): OSC 12 left the visible steady cursor unchanged after shown/hidden/restored and made-up OSC controls; OSC112 has no changed cursor colour to reset.",
+        state,
+      )
+    }
+    // 33102: the reset is written before the read that judges it. Written only in cleanup, every app that DID
+    // colour its cursor stopped at "restoration remains unmeasured" with the changed frame already in hand.
+    ctx.write("\x1b]112\x07")
+    const resetReads: Array<typeof hidden> = []
+    const takeReset = (label: string) => async () => {
+      const readback = await capture(label)
+      resetReads.push(readback)
+      return readback
+    }
+    const reset = await captureStabilityPair(
+      id,
+      "screenshot",
+      takeReset("reset after OSC 112 first"),
+      takeReset("reset after OSC 112 second"),
+    )
+    if (reset.refusal) return reset.refusal
+    const afterReset = { ...state, reset: { stability: reset.stability, digest: reset.second.regionDigest } }
+    if (reset.second.regionDigest !== before) {
+      return notTestedResult(
+        "OSC 112 left the cursor colour changed: the frame after the reset still differs from the pre-colour frame",
+        afterReset,
+      )
+    }
+    const response = JSON.stringify(afterReset)
+    const note = "OSC 112 restored the cursor cell to the frame it had before OSC 12 coloured it"
+    return {
+      pass: true,
+      note,
+      response,
+      tests: [{ id: "reset", status: "supported", assertionRefs: [0] }],
+      assertions: [
+        {
+          assertionType: "screenshot" as const,
+          kind: "positive" as const,
+          expected: "The cursor cell after OSC 112 matches the pre-colour frame, after OSC 12 provably changed it",
+          observed: response,
+        },
+      ],
+      observation: {
+        outcome: "supported" as const,
+        assertionType: "screenshot" as const,
+        screenshotRef: reset.second.frame.ref,
+        frames: [...frames, ...resetReads.map((entry) => entry.frame)],
+        note,
+      },
+    }
   } finally {
     ctx.write("\x1b]112\x07\x1b[0 q\x1b[?25h")
   }
