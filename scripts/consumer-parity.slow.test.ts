@@ -412,13 +412,20 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       const pages = terminalPaths.paths();
       const analyses = generateAnalysis();
       generateApi(out);
+      Bun.gc(true);
       const v3 = JSON.parse(readFileSync(join(out, "api/v3/data.json"), "utf8"));
       const keys = value => Object.keys(value).sort();
       const digest = bytes => createHash("sha256").update(bytes).digest("hex");
+      // 33549: re-reading every run document (here and for each published reference below) piled ~1 GB of buffers
+      // and parses onto the retained consumers and crossed the 3 GiB worker cap; collect as the reads go.
+      let reads = 0;
+      const collectEvery = () => { if (++reads % 5 === 0) Bun.gc(true) };
       const raw = new Set();
       for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
-        for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json")))
+        for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json"))) {
           raw.add(digest(readFileSync(join(content, dir, file))));
+          collectEvery();
+        }
       assert.deepEqual(keys(site.selected.contexts), keys(projection.contexts));
       assert.deepEqual(keys(v3.contexts), keys(projection.contexts));
       assert.equal(v3.contextCount, keys(projection.contexts).length);
@@ -443,6 +450,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
             const refs=api[group][key];
             for (const [i,version] of versions.entries()) {
               const bytes=readFileSync(join(out,refs[i].url.slice(1)));
+              collectEvery();
               assert.equal(digest(bytes),refs[i].documentSha256);
               assert.deepEqual(JSON.parse(bytes.toString()),version);
               assert.ok(raw.has(version.sha256));
@@ -452,6 +460,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         }
         for (const context of Object.values(api.contexts)) for (const source of Object.values(context.sources)) {
           const bytes=readFileSync(join(out,source.url.slice(1)));
+          collectEvery();
           assert.equal(digest(bytes),source.documentSha256);
           const original=JSON.parse(bytes.toString());
           assert.equal(original.runId,source.runId);

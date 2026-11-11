@@ -47,6 +47,18 @@ const RUN_DIRS: Record<ProbeSubject["kind"], string> = {
   mux: "probes-mux",
 }
 
+/**
+ * A full collection after a one-time corpus build. Bun collects late, so each build's garbage (a run document's parse,
+ * the projection, the matrix, the analysis) piled onto the next: three test processes crossed the 3 GiB worker cap on
+ * 2026-11-11 (33549). Node, which VitePress dev runs under, exposes no collection call and keeps its own heuristics.
+ */
+export function collectGarbage(): void {
+  if (typeof Bun !== "undefined") Bun.gc(true)
+}
+
+/** Over the 50-run corpus of 2026-11-11 the read peaked at 1.95 GB RSS, 1.29 GB collecting every 5 runs, same wall time. */
+const RUNS_PER_COLLECTION = 5
+
 /** One corpus read: LoadedRun.sha256 is parseRun's hash of the exact bytes read once here. */
 export function loadStoredRuns(contentDir: string, catalog: readonly string[]): LoadedRun[] {
   const suites = new Map<string, ProbeSuiteManifest>()
@@ -72,6 +84,7 @@ export function loadStoredRuns(contentDir: string, catalog: readonly string[]): 
       .sort()) {
       const runPath = join(path, file)
       runs.push(parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites))
+      if (runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
     }
   }
   return runs

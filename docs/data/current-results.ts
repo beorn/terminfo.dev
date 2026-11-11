@@ -2,6 +2,9 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { probeHash } from "../../packages/admin/versions.ts"
+import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
+// Scripts reach the collector through this module: an isolated script copy carries docs/ but not packages/admin.
+export { collectGarbage }
 import {
   loadSelectedResults,
   type SelectedProjection,
@@ -152,6 +155,7 @@ export function loadCurrentResults(
   const memoized = cache.get(key)
   if (memoized) return memoized
   const projection = loadSelectedResults(contentDir, probeHash(), options)
+  collectGarbage()
   const results: CurrentResults = { projection }
   cache.set(key, results)
   return results

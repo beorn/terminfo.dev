@@ -26,7 +26,7 @@ import {
 import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import { collectGarbage, compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
@@ -306,9 +306,12 @@ export function generateApi(
 
   // Original immutable run documents remain separate from composed context summaries.
   type CurrentVersion = (typeof published.projection.versions)[string][number]
+  // Each reference re-serializes a ~9 MB run document; collect as they go (33549: the build crossed the 3 GiB test cap).
+  let serialized = 0
   const currentRef = (version: CurrentVersion) => {
     const url = `/api/v3/runs/${version.sha256}.json`
     const bytes = Buffer.from(JSON.stringify(version) + "\n")
+    if (++serialized % 5 === 0) collectGarbage()
     const prior = runDocuments.get(url)
     if (prior && !prior.equals(bytes)) throw new Error(`Conflicting current run document ${url}`)
     runDocuments.set(url, bytes)

@@ -18,11 +18,20 @@ export type { ProbeData }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-let _cached: ProbeData | null = null
+/**
+ * Per-process memos, shared through `globalThis` like the results cache (current-results.ts): VitePress bundles each
+ * `*.paths.ts` loader separately, so a module-level memo rebuilt the matrix and the analysis once per BUNDLE. Measured
+ * 2026-11-11: VitePress resolveConfig peaked at 4.06 GB RSS and its test child crossed the 3 GiB worker cap (33549).
+ */
+const PROBES_CACHE = Symbol.for("terminfo.dev/loadProbes")
+const ANALYSIS_CACHE = Symbol.for("terminfo.dev/loadAnalysis")
+const memoHost = globalThis as unknown as {
+  [PROBES_CACHE]?: ProbeData
+  [ANALYSIS_CACHE]?: Record<string, AnalysisEntry>
+}
 
 export function loadProbes(): ProbeData {
-  if (!_cached) _cached = loadFullProbes()
-  return _cached
+  return (memoHost[PROBES_CACHE] ??= loadFullProbes())
 }
 
 /**
@@ -129,13 +138,11 @@ export function tagLabel(tag: string): string {
   return tagLabels[tag] ?? tag.charAt(0).toUpperCase() + tag.slice(1).replace(/-/g, " ")
 }
 
-let _analysisCached: Record<string, AnalysisEntry> | null = null
-
 /** Generate analysis from the same selected runs as the matrix. Never reads a snapshot file. */
 export function loadAnalysis(): Record<string, AnalysisEntry> {
-  if (!_analysisCached) _analysisCached = generateAnalysis()
-  if (!_analysisCached) throw new Error("Analysis failed to initialize")
-  return _analysisCached
+  const analysis = (memoHost[ANALYSIS_CACHE] ??= generateAnalysis())
+  if (!analysis) throw new Error("Analysis failed to initialize")
+  return analysis
 }
 
 export interface PlatformSource {
