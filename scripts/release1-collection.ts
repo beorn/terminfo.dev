@@ -36,7 +36,7 @@ import {
   type RunDraft,
 } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
-import { LINUX_SUPPLEMENTS, type ContextSupplement } from "../docs/data/context-supplements.ts"
+import { LINUX_SUPPLEMENTS, supplementOf, type ContextSupplement } from "../docs/data/context-supplements.ts"
 import { decodeCollectorDraft } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
@@ -1017,8 +1017,16 @@ function runSupplement(
     if (run.sourceRevision !== pass.sourceRevision) {
       throw new Error(`raw source ${run.sourceRevision} differs from pass source ${pass.sourceRevision}`)
     }
-    if (!run.subject.permissions) throw new Error(`${label} run records no permissions`)
-    row.permissions = run.subject.permissions
+    // A run names its supplement by the one field that supplement declares (@cto 4a546051): an App's recorded
+    // permissions or a mux's recorded config. A mux records no permissions, so none is required of it (33151).
+    if (supplementOf(run.subject)?.name !== supplement.name) {
+      throw new Error(
+        `${label} run records neither its declared permissions nor its declared config (permissions ${JSON.stringify(
+          run.subject.permissions,
+        )}, config ${JSON.stringify(run.subject.config)})`,
+      )
+    }
+    if (run.subject.permissions) row.permissions = run.subject.permissions
     row.classification = classifyDevelopmentRun(run)
     row.status = "classified"
   } catch (error) {
