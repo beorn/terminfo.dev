@@ -738,7 +738,8 @@ test.each([
         },
       ])
       expect(result.assertions ?? []).toEqual([])
-    } else if (ps === 3) {
+    } else if (ps !== 1) {
+      // This reader observed DECSET enabled the mode, so any non-set report disagrees.
       expect(result.observation?.outcome).toBe("inconclusive")
       expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
       expect(result.assertions ?? []).toEqual([])
