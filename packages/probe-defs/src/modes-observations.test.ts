@@ -2515,6 +2515,11 @@ test.each([
     assertions: (result.assertions ?? []).map((assertion) => ({ featureId: id, ...assertion })),
   })
   expect(recorded.status).toBe(expected)
+  if (id === "modes.altscreen-1047" && fault === "47-clears") {
+    expect(recorded.reason).toMatch(/capture route.*DECSET47/)
+    expect(recorded.reason).toMatch(/DECRST1047.*not measured/)
+    expect(captureLabels.some((label) => label.includes("clear-on-exit"))).toBe(false)
+  }
   if (fault === "retention-stale") {
     expect(recorded.reason).toMatch(/witness/)
     expect(captureLabels.some((label) => label.includes("clear-on-exit"))).toBe(false)
