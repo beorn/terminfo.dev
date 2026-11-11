@@ -5,6 +5,7 @@ import {
   type LibProbeSource,
   type TermProbeSource,
   type ObservationFrame,
+  type NotTestedCoverageResult,
 } from "./types.ts"
 import {
   probe,
@@ -645,14 +646,18 @@ export class ScrollbackReadingUnavailable extends Error {
   override name = "ScrollbackReadingUnavailable"
 }
 
+export function unavailableScrollbackReading(error: unknown): NotTestedCoverageResult {
+  if (!(error instanceof ScrollbackReadingUnavailable)) throw error
+  return notTestedResult(`owned scrollback history reader has no reading: ${error.message}`, {})
+}
+
 /** The App reader uses the existing library history criteria, with same-path controls. */
 async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCallbackResult> {
   if (!ctx.getScrollback) return notTestedResult("owned scrollback history reader", {})
   try {
     return await appHistoryReadings(ctx, ctx.getScrollback, total)
   } catch (error) {
-    if (!(error instanceof ScrollbackReadingUnavailable)) throw error
-    return notTestedResult(`owned scrollback history reader has no reading: ${error.message}`, {})
+    return unavailableScrollbackReading(error)
   }
 }
 
