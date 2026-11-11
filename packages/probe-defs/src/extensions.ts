@@ -1626,7 +1626,7 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
     response: JSON.stringify(state()),
     tests: [{ id: "criterion", status: invalid ? "probe-invalid" : "probe-todo", reason }],
   })
-  if (!capture || ctx.captureKind === "text-cells" || !input || !move || !readInput || !coordinates) {
+  if (!capture || ctx.captureKind === "text-cells" || !input || !move || !readInput || !geometry || !coordinates) {
     return pending(`${id}: owned pointer pixels, motion, raw key input and measured geometry are required`)
   }
   // DECRQM's unknown means this App does not recognize that mode. Silence cannot establish OFF.
