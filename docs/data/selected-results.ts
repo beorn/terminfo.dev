@@ -13,6 +13,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
 import { supplementOf, type ContextSupplement } from "./context-supplements.ts"
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
+import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -174,6 +175,11 @@ export interface SelectedContextCell {
    * probe-todo, while `result`, `run` and `origin` stay the witnessed original.
    */
   reopened?: ReopenedMarker
+  /**
+   * Set only when a declared pair (derived-cells.ts, #33019) read this cell from a decided-Unsupported parent in the
+   * same context: the feature result reads unsupported, while `result`, `run` and `origin` stay the child's own.
+   */
+  derived?: DerivedMarker
 }
 
 /** An initialized draft can retain intent even when no measured subject or result exists. */
@@ -203,6 +209,8 @@ export interface SelectedContextSummary {
   contributingRunIds: string[]
   attempts: SelectedContextAttempt[]
   counts: Record<FeatureResultStatus, number>
+  /** Cells counted in `counts.unsupported` only by derivation (#33019); never direct measurements. */
+  derivedIds: string[]
   score: { supported: number; all: number }
   /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
   complete: boolean
@@ -361,6 +369,8 @@ export function projectResults(
     log?: (line: string) => void
     /** Cells whose grade a ruling withdrew (content/reopened-cells.json); loadSelectedResults always passes them. */
     reopened?: readonly ReopenedCell[]
+    /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
+    derived?: readonly DerivedPair[]
   },
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
@@ -494,6 +504,7 @@ export function projectResults(
       policy.log,
       supplements,
       policy.reopened ?? [],
+      policy.derived ?? DERIVED_UNSUPPORTED,
     ),
   }
 }
@@ -583,6 +594,7 @@ function composeContextSummaries(
   log?: (line: string) => void,
   supplements: readonly SupplementInput[] = [],
   reopened: readonly ReopenedCell[] = [],
+  derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
 ): Record<string, SelectedContextSummary> {
   const reopenedApplied = new Set<ReopenedCell>()
   const runsById = new Map<string, LoadedRun>()
@@ -771,6 +783,8 @@ function composeContextSummaries(
       decided,
     )
     applyReopened(contextKey, cells, candidates[0]?.subject, reopened, reopenedApplied)
+    // After reopening, so a reopened parent reads probe-todo and entails nothing (#33019, @cto 6588ac5f).
+    const derivedIds = applyDerived(contextKey, cells, derivedPairs)
     const contributing = new Set(
       [...currentMethods.values()].flatMap(({ probes }) => [...probes.values()].map(({ run }) => run.runId)),
     )
@@ -786,6 +800,7 @@ function composeContextSummaries(
       viewIds.map((featureId) => ({
         featureId,
         status: cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo",
+        ...(cells[featureId]?.derived && { derived: cells[featureId]?.derived }),
       })),
       viewIds,
     )
@@ -809,6 +824,7 @@ function composeContextSummaries(
       contributingRunIds,
       attempts,
       counts: aggregate.counts,
+      derivedIds,
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
     }

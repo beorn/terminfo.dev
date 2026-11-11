@@ -40,8 +40,16 @@ const STORED_STATUS: Readonly<Record<FeatureResultStatus, EvidenceStatus>> = {
   "probe-conflict": { text: "PROBE CONFLICT", icon: "!", tone: "error" },
 }
 
-export function evidenceStatus(featureId: string, status: FeatureResultStatus | undefined): EvidenceStatus {
+/** What a cell derived from a refused parent wears (#33019): never the bare words of a direct measurement. */
+export const DERIVED_UNSUPPORTED_STATUS: EvidenceStatus = { text: "Unsupported, derived", icon: "✗", tone: "no" }
+
+export function evidenceStatus(
+  featureId: string,
+  status: FeatureResultStatus | undefined,
+  derived = false,
+): EvidenceStatus {
   if (status === undefined) return MISSING_STATUS
   if (status === "probe-todo" && isEnvironmentGroup(featureId)) return MANUAL_BY_DESIGN_STATUS
+  if (status === "unsupported" && derived) return DERIVED_UNSUPPORTED_STATUS
   return STORED_STATUS[status]
 }

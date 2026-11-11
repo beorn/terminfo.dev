@@ -418,7 +418,7 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
 
   it("gives the evidence cell the manual-by-design words only for a stored PROBE TODO", () => {
     const cell = source("docs/.vitepress/theme/ResultEvidenceCell.vue")
-    expect(cell).toContain("evidenceStatus(props.featureId, currentResult.value?.status)")
+    expect(cell).toContain("evidenceStatus(props.featureId, currentResult.value?.status, derived.value)")
   })
 
   it("renders a stored supported environment row as Supported, never NOT MEASURED (D1)", () => {
@@ -426,6 +426,9 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
     // environment override would publish "NOT MEASURED" over a real measurement.
     expect(evidenceStatus("device.env-term", "supported")).toEqual({ text: "Supported", icon: "✓", tone: "yes" })
     expect(evidenceStatus("device.env-term", "unsupported").text).toBe("Unsupported")
+    // #33019: only an Unsupported cell can wear the derived words.
+    expect(evidenceStatus("extensions.kitty-graphics.display", "unsupported", true).text).toBe("Unsupported, derived")
+    expect(evidenceStatus("extensions.kitty-graphics.display", "untestable", true).text).toBe("Untestable")
     expect(evidenceStatus("device.env-term", "probe-invalid").text).toBe("PROBE INVALID")
     // Only the catalogue's own PROBE TODO wears the manual-by-design words, and never the TODO label.
     expect(evidenceStatus("device.env-term", "probe-todo")).toEqual(MANUAL_BY_DESIGN_STATUS)
