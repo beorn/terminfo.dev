@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join } from "node:path"
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { readCallLog } from "viprobe"
+import { ANSI_REGEX } from "@silvery/ansi"
 import {
   sgrProbes,
   type AppSemanticReading,
@@ -11,6 +12,7 @@ import {
 } from "@terminfo/probe-defs"
 import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
+import { readWindowsWezTermRows } from "./windows-wezterm-text.ts"
 
 // Reviewed declarations match the exact App/mux version.
 // This is also the collector-side home for the owned semantic reader's App selection.
@@ -667,8 +669,7 @@ const declarations: readonly AppSemanticCapability[] = [
     version: "0-unstable-2026-10-10",
     os: "linux",
     featureId: "extensions.osc8",
-    reason:
-      "Untestable (no setup): WezTerm 0-unstable-2026-10-10 parses OSC 8 hyperlinks into CellAttributes and re-emits them via wezterm cli get-text --escapes, which is not yet wired into the collector's App semantic reader and emits no unknown-OSC log line. Read e2a98e1b8af1 wezterm-escape-parser/src/osc.rs:318,470,571-572, wezterm-escape-parser/src/hyperlink.rs:76-119, term/src/terminalstate/performer.rs:773-775, wezterm/src/cli/get_text.rs:34,86-87 and lua-api-crates/termwiz-funcs/src/lib.rs:247-303; wiring wezterm cli get-text --escapes with before/after App qualification is tracked in #33001.",
+    reader: "osc8",
   },
 ] as const
 
@@ -1245,23 +1246,41 @@ export async function readAppSemanticState(input: {
         }
       }
     }
-    if (!tmux || !pane) throw new Error("App state reader has no bound tmux command")
-    const command = tmux
-    const targetPane = pane
-    if (row.reader === "osc8") {
+    if (row.reader === "osc8" && ((tmux && pane) || subject.id === "wezterm")) {
+      const command = tmux
+      const targetPane = pane
+      const readRows = (escapes: boolean) => {
+        if (command && targetPane) {
+          return command("capture-pane", "-p", ...(escapes ? ["-e"] : []), "-t", targetPane)
+        }
+        const read = readWindowsWezTermRows({
+          executable: join(dirname(input.executable.path), "wezterm"),
+          pane: env.WEZTERM_PANE,
+          socket: env.WEZTERM_UNIX_SOCKET,
+          rows: 3,
+          escapes,
+        })
+        if (read.status === "refused") throw new Error(read.reason)
+        detail.phases.push({ wezterm: JSON.parse(read.receipt) })
+        // Keep hyperlink escapes and their params; only discard the serializer's presentation wrappers.
+        return read.rows
+          .join("\n")
+          .replace(ANSI_REGEX, (code) => (code.startsWith("\x1b]8;") || code.startsWith("\x9d8;") ? code : ""))
+          .replaceAll("\x1b(B", "")
+      }
       let serial = 0
       const sample = async (number: number, feed: string) => {
         const marker = `Q-${nonce}-${serial++}`
         input.write(`\x1b[${number};1H\x1b[2K${feed}${marker}`)
         await until(
-          () => command("capture-pane", "-p", "-t", targetPane),
+          () => readRows(false),
           (value) => value.split("\n")[number - 1]?.includes(marker) === true,
-          "tmux osc8 marker",
+          "OSC8 marker",
         )
-        const escaped = command("capture-pane", "-p", "-e", "-t", targetPane)
+        const escaped = readRows(true)
         const line = escaped.split("\n")[number - 1]
         const index = line?.lastIndexOf(marker) ?? -1
-        if (line === undefined || index < 0) throw new Error(`Unreadable tmux osc8 row${number}`)
+        if (line === undefined || index < 0) throw new Error(`Unreadable OSC8 row${number}`)
         const value = line.slice(0, index) + line.slice(index + marker.length)
         detail.phases.push({ number, feed, marker, line, escaped, value })
         return value
@@ -1296,6 +1315,9 @@ export async function readAppSemanticState(input: {
         input.write("\x1b]8;;\x07\x1b[2J\x1b[3J\x1b[H")
       }
     }
+    if (!tmux || !pane) throw new Error("App state reader has no bound tmux command")
+    const command = tmux
+    const targetPane = pane
     const format = () => {
       const fields = command("display-message", "-p", "-t", targetPane, "#{pane_command_status}\t#{pane_path}")
         .replace(/\n$/, "")

@@ -21,6 +21,8 @@ The owned App source may supply `getScrollback`, as an async `TerminalScrollback
 The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;
+a WezTerm OSC8 row uses the existing owned pane CLI with escaped attributes and the shared OSC8 span controls,
+including unknown/handled steps and unlinked text after close. OSC133 zones are outside that text/attribute route;
 a failed control is PROBE INVALID. Qualified state transitions can decide support. An exact-command
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
