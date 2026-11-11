@@ -705,7 +705,12 @@ describe("container run receipt composition", () => {
   it("records the window manager the container ran and the switch the host declared", () => {
     const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
       host: "openbox",
-      container: { name: "openbox", version: "3.6.1", argv: ["openbox", "--config-file", "/home/runner/wm-rc.xml"] },
+      container: {
+        name: "openbox",
+        version: "3.6.1",
+        argv: ["openbox", "--config-file", "/home/runner/wm-rc.xml"],
+        config: { path: "/home/runner/wm-rc.xml", sha256: "config-hash" },
+      },
     })
     expect(result.status, result.stderr).toBe(0)
     const receipt = JSON.parse(readFileSync(output, "utf8")) as { display: { wm: { name: string; version: string } } }
@@ -736,10 +741,30 @@ describe("container run receipt composition", () => {
   it("refuses a window manager named without the argv it was launched with", () => {
     const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
       host: "openbox",
-      container: { name: "openbox", version: "3.6.1" },
+      container: {
+        name: "openbox",
+        version: "3.6.1",
+        config: { path: "/home/runner/wm-rc.xml", sha256: "config-hash" },
+      },
     })
     expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain("named by name, version and argv")
+    expect(result.stderr).toContain("config hash")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  // @cto d10e47a6: the config the manager reads must be the run's own bytes, so its hash travels.
+  it("refuses a window manager whose config is named without the hash of its bytes", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: "openbox",
+      container: {
+        name: "openbox",
+        version: "3.6.1",
+        argv: ["openbox", "--config-file", "/home/runner/wm-rc.xml"],
+        config: { path: "/home/runner/wm-rc.xml" },
+      },
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("config hash")
     expect(existsSync(output)).toBe(false)
   })
 })
