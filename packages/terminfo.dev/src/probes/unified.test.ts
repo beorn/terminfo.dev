@@ -3217,12 +3217,14 @@ const defaultClipboardCases: Array<{
     eligible: false,
   },
   {
-    name: "Screen modes.bracketed-paste stays gated under default profile",
+    // #33058 (@cto d0e1a960): Screen answers no 2004 mode report, so the row is decided by the same
+    // disposable paste read as clipboard-paste.
+    name: "Screen modes.bracketed-paste decides by the disposable paste effect read",
     featureId: "modes.bracketed-paste",
     subject: { kind: "mux", id: "screen", os: "linux" },
     attachedMux: "screen",
     nullMode2004: true,
-    eligible: false,
+    eligible: true,
   },
   { name: "library subject", subject: { kind: "lib", id: "kitty", os: "linux" }, eligible: false },
   { name: "other OS", subject: { kind: "term", id: "kitty", os: "darwin" }, eligible: false },

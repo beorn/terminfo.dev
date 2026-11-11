@@ -833,12 +833,17 @@ export async function runProbeBatch(
             probe.id === "extensions.osc52-clipboard")) ||
         (isVerifiedLinuxMux &&
           (probe.id === "extensions.clipboard-paste" ||
+            probe.id === "modes.bracketed-paste" ||
             probe.id === "extensions.osc52-write" ||
             probe.id === "extensions.osc52-read" ||
             probe.id === "extensions.osc52-clipboard")))
     ) {
+      // #33058: Screen answers no 2004 mode report, so bracketed paste is decided by the same disposable
+      // paste read as clipboard-paste (@cto d0e1a960).
       const allowDisposablePasteSetup =
-        probe.id === "extensions.clipboard-paste" && isVerifiedLinuxMux && options.subject?.id === "screen"
+        (probe.id === "extensions.clipboard-paste" || probe.id === "modes.bracketed-paste") &&
+        isVerifiedLinuxMux &&
+        options.subject?.id === "screen"
       // A paste route only where it is reviewed: the direct App's own, or Kitty's for a mux, whose outer the
       // owned launch refuses to be anything but Kitty (linux-container-run.sh "Owned Linux mux outer must be Kitty").
       const pasteRoute =
