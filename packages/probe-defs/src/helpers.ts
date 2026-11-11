@@ -2970,21 +2970,33 @@ export function recordExecutedProbe(input: {
   // FrameUnavailable is this run's capture failing, not a terminal that has no capture route.
   const missingCapture = diagnostic?.kind === "collector-error" && diagnostic.name === "FrameUnavailable"
   const unfinishedCalls = diagnostic?.kind === "collector-error" && diagnostic.name === "IncompleteReplay"
+  // A harness outcome says the reading is unfinished, never that the terminal failed the feature
+  // (`ProbeResult.harnessOutcome`). A callback cut off at its wall has no observation to grade.
+  const harnessStopped = !diagnostic && input.harnessOutcome !== undefined
   const status = missingCapture
     ? "probe-todo"
     : diagnostic || observation?.outcome === "error"
       ? "probe-invalid"
-      : (fencedStatus ??
-        (observation?.outcome === "supported" || observation?.outcome === "unsupported"
-          ? observation.outcome
-          : coverage
-            ? "probe-todo"
-            : "probe-invalid"))
+      : harnessStopped
+        ? "probe-todo"
+        : (fencedStatus ??
+          (observation?.outcome === "supported" || observation?.outcome === "unsupported"
+            ? observation.outcome
+            : coverage
+              ? "probe-todo"
+              : "probe-invalid"))
   const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
   // A reason the writer supplied outranks the writer default, which fires only when nothing else names the cause.
   // The generic observation word names nothing: a recorded test's own sentence reaches the row through
   // finalizeProbeResult instead (@cto 32ad122f; #32058, #32060).
   const writerDefault = !input.tests && !diagnostic && !coverage && !fenced && observation?.outcome === "inconclusive"
+  // A probe cut off at its wall still needs a reason of its own when nothing else names one.
+  const harnessStoppedReason =
+    harnessStopped && input.tests === undefined && coverage === undefined && !observation?.note && !observation?.reason
+      ? input.harnessOutcome === "probe-exceeded"
+        ? "The callback exceeded its wall; the harness abandoned it before it recorded a result"
+        : "The harness did not finish this probe; no result was recorded"
+      : undefined
   const genericYieldsToTests =
     input.tests !== undefined &&
     !diagnostic &&
@@ -3001,7 +3013,8 @@ export function recordExecutedProbe(input: {
       ? "writer default: inconclusive observation without test rows; callback defect"
       : genericYieldsToTests
         ? undefined
-        : observation?.reason)
+        : observation?.reason) ??
+    harnessStoppedReason
   const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef ?? input.rawReplyRef
   return finalizeProbeResult({
     featureId,

@@ -5293,3 +5293,146 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     Object.assign(definition, original)
   }
 })
+
+/**
+ * @failure A callback that outlives its wall keeps its TTY lease, so its late write reaches the terminal
+ *   while the next probe runs; the timed-out row also loses the wall's own reason, the post-callback
+ *   geometry read, and the trace of what it wrote before the hang (#33431).
+ * @level l1
+ * @consumer runProbeBatch wall timeout -> abandoned callback, recorded row, geometry post, retained trace
+ * @testonly none
+ */
+it("a callback that outlives its wall cannot write while the next probe runs and keeps its wall evidence", async () => {
+  verifiedBatchFixture()
+  const slow = ALL_PROBES.find((probe) => probe.id === "reset.ris")!
+  const next = ALL_PROBES.find((probe) => probe.id === "reset.soft")!
+  const originalSlow = {
+    term: slow.term,
+    termWrites: slow.termWrites,
+    wallMs: slow.wallMs,
+    termNeedsDisposable: slow.termNeedsDisposable,
+  }
+  const originalNext = {
+    term: next.term,
+    termWrites: next.termWrites,
+    wallMs: next.wallMs,
+    termNeedsDisposable: next.termNeedsDisposable,
+  }
+  const ttyWrites: string[] = []
+  const order: string[] = []
+  let releaseTheWall!: () => void
+  const afterTheWall = new Promise<void>((resolve) => {
+    releaseTheWall = resolve
+  })
+  try {
+    slow.termWrites = "query"
+    slow.wallMs = 80
+    slow.term = async (source) => {
+      source.write("\x1b[c")
+      order.push("slow:before-hang")
+      await afterTheWall
+      order.push("slow:late-write")
+      source.write("\x1b[?1049h")
+      return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "late" }] }
+    }
+    next.termWrites = "query"
+    delete next.termNeedsDisposable
+    next.wallMs = 20_000
+    next.term = async (source) => {
+      order.push("next:started")
+      source.write("\x1b[5n")
+      return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "next ran after the wall" }] }
+    }
+    const batch = await runProbeBatch({
+      ids: [slow.id, next.id],
+      subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
+      out: { write: (text: string) => ttyWrites.push(text) } as unknown as NodeJS.WriteStream,
+      ownedTerminal: geometryOwner(measured(30, 100)),
+    })
+    const row = batch.results.find((result) => result.featureId === slow.id)!
+    const nextRow = batch.results.find((result) => result.featureId === next.id)!
+    expect.soft(nextRow.status).toBe("probe-todo")
+    const geometryReplies = JSON.parse(batch.rawReplies["collector.geometry"] ?? "{}") as {
+      checks?: Array<{ featureId: string; post?: unknown }>
+    }
+    const geometry = geometryReplies.checks?.find((check) => check.featureId === slow.id)
+    expect.soft(row.status).toBe("probe-todo")
+    expect.soft(row.reason).toBe("Probe exceeded 80ms")
+    expect
+      .soft(row.tests)
+      .toEqual([expect.objectContaining({ id: "criterion", status: "probe-todo", reason: "Probe exceeded 80ms" })])
+    expect.soft(geometry?.post).toBeDefined()
+    const trace = JSON.parse(batch.rawReplies[slow.id] ?? "{}") as { writes?: string[] }
+    expect.soft(trace.writes).toContain("\x1b[c")
+    releaseTheWall()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect.soft(order).toContain("next:started")
+    expect.soft(ttyWrites).not.toContain("\x1b[?1049h")
+  } finally {
+    Object.assign(slow, originalSlow)
+    Object.assign(next, originalNext)
+  }
+})
+
+/**
+ * @failure A callback that hangs inside its own query at the wall leaves the trace snapshot
+ *   unreadable, so the wall branch throws before it releases the TTY queue and the probe loses the
+ *   writes it settled before the hang (#33431).
+ * @level l1
+ * @consumer runProbeBatch wall timeout -> traceScope.abandon -> snapshot with a pending host call
+ * @testonly none
+ */
+it("keeps the wall's trace when the callback hangs inside its own pending query", async () => {
+  verifiedBatchFixture()
+  const slow = ALL_PROBES.find((probe) => probe.id === "reset.ris")!
+  const next = ALL_PROBES.find((probe) => probe.id === "reset.soft")!
+  const originalSlow = {
+    term: slow.term,
+    termWrites: slow.termWrites,
+    wallMs: slow.wallMs,
+    termNeedsDisposable: slow.termNeedsDisposable,
+  }
+  const originalNext = {
+    term: next.term,
+    termWrites: next.termWrites,
+    wallMs: next.wallMs,
+    termNeedsDisposable: next.termNeedsDisposable,
+  }
+  try {
+    slow.termWrites = "query"
+    slow.wallMs = 80
+    slow.term = async (source) => {
+      source.write("\x1b[c")
+      // The host records matchResponse, then the write its own callback makes, and only then hangs.
+      await source.query("\x1b[5n", /\x1b\[0n/, 400)
+      return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "query answered late" }] }
+    }
+    next.termWrites = "query"
+    delete next.termNeedsDisposable
+    next.wallMs = 20_000
+    next.term = async () => ({
+      pass: false,
+      tests: [{ id: "criterion", status: "probe-todo", reason: "next ran after the wall" }],
+    })
+    const batch = await runProbeBatch({
+      ids: [slow.id, next.id],
+      subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
+      out: { write: () => {} } as unknown as NodeJS.WriteStream,
+      ownedTerminal: geometryOwner(measured(30, 100)),
+    })
+    const row = batch.results.find((result) => result.featureId === slow.id)!
+    const nextRow = batch.results.find((result) => result.featureId === next.id)!
+    expect.soft(nextRow.status).toBe("probe-todo")
+    expect.soft(row.status).toBe("probe-todo")
+    expect.soft(row.reason).toBe("Probe exceeded 80ms")
+    // An abandon that threw would leave this row with a collector error and the queue behind the hang.
+    expect.soft(batch.ungradedDiagnostics[slow.id]).toBeUndefined()
+    const trace = JSON.parse(batch.rawReplies[slow.id] ?? "{}") as { writes?: string[] }
+    // A query's own write is projected as its query event, and an unsettled query has no event; the
+    // command write before the hang is what the trace can still measure.
+    expect.soft(trace.writes).toContain("\x1b[c")
+  } finally {
+    Object.assign(slow, originalSlow)
+    Object.assign(next, originalNext)
+  }
+})

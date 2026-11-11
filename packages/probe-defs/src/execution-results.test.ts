@@ -1399,6 +1399,23 @@ it("starts schema 4 drafts with explicit live source and rejects an unbound trac
   expect(() => initializeRunDraft({ ...input, source: { kind: "trace" } } as never)).toThrow(/trace/i)
 })
 
+// A wall cut off the callback, so the harness has no reading of the terminal; grading the row
+// probe-invalid would name a terminal failure that nobody measured (#33431).
+it("grades a callback abandoned at its wall as probe-todo with the wall as its reason", () => {
+  const result = recordExecutedProbe({
+    featureId: "reset.ris",
+    attempt: { scope: "probe", startedAt: "2026-11-11T06:00:00.000Z" },
+    harnessOutcome: "probe-exceeded",
+    assertions: [],
+  })
+  expect(result).toMatchObject({
+    status: "probe-todo",
+    harnessOutcome: "probe-exceeded",
+    reason: "The callback exceeded its wall; the harness abandoned it before it recorded a result",
+  })
+  expect(result.tests).toEqual([expect.objectContaining({ id: "criterion", status: "probe-todo" })])
+})
+
 it("records an IncompleteReplay diagnostic as unfinished-calls", () => {
   const result = recordExecutedProbe({
     featureId: "sgr.reset",

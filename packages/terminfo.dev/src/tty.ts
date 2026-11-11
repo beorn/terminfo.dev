@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
-import { createCallLog, withCallLog, readCallLog, IncompleteReplay, type CallLog } from "viprobe"
+import { createCallLog, withCallLog, readCallLog, snapshotCallLog, IncompleteReplay, type CallLog } from "viprobe"
 import type { TerminalQueryOutcome, Utf8DecodingReading, RenderedWidthResult } from "@terminfo/probe-defs"
 import {
   decrpmReplyPattern,
@@ -116,10 +116,10 @@ function projectedQuery(value: unknown): QueryOutcome {
 }
 
 /** The generic reader owns decoding; this host only projects its own operation contract. */
-function projectTTYLog(log: CallLog): { queries: TTYQueryTrace[]; events: TTYTraceEvent[] } {
+function projectTTYLog(artifact: unknown): { queries: TTYQueryTrace[]; events: TTYTraceEvent[] } {
   const rows: Array<{ at: number; index: number; event: TTYTraceEvent }> = []
   let index = 0
-  readCallLog(JSON.parse(JSON.stringify(log)), {
+  readCallLog(artifact, {
     onOperation(operation) {
       const position = index++
       if (operation.path === "context.write") {
@@ -165,12 +165,26 @@ function projectTTYLog(log: CallLog): { queries: TTYQueryTrace[]; events: TTYTra
   return { events, queries }
 }
 
+/**
+ * A live trace's only handle out of its scope: the wall timeout needs to stop an abandoned
+ * callback from writing before the next probe runs, and to keep what it measured before the wall.
+ */
+export interface TTYTraceScope {
+  /** Refuse this scope's later terminal I/O, and project the evidence settled before the wall. */
+  abandon(): void
+}
+
 /** Scope all direct and helper queries to the probe that initiated them. */
 export async function withTTYQueryTrace<T>(
   queries: TTYQueryTrace[],
   events: TTYTraceEvent[],
   fn: () => Promise<T>,
-  options?: { mode?: "record" | "replay"; log?: CallLog; onLog?: (log: CallLog) => void },
+  options?: {
+    mode?: "record" | "replay"
+    log?: CallLog
+    onLog?: (log: CallLog) => void
+    onScope?: (scope: TTYTraceScope) => void
+  },
 ): Promise<T> {
   const mode = options?.mode ?? "record"
   if (mode === "replay" && !options?.log) throw new IncompleteReplay("TTY replay requires a validated call log")
@@ -181,6 +195,25 @@ export async function withTTYQueryTrace<T>(
       : withCallLog<typeof nativeTTYHost>(null, { mode, log })
   let scopeFailure: unknown
   let scopeFailed = false
+  let abandoned = false
+  let projected = false
+  // An abandoned callback's finally still runs, whenever it wakes. Projection happens once, so the
+  // wall's snapshot is the trace and the late wake cannot append a second copy.
+  const project = (artifact: unknown) => {
+    if (projected) return
+    const rows = projectTTYLog(artifact)
+    queries.push(...rows.queries)
+    events.push(...rows.events)
+    projected = true
+  }
+  options?.onScope?.({
+    abandon() {
+      if (abandoned) return
+      abandoned = true
+      session.abandon()
+      project(snapshotCallLog(log))
+    },
+  })
   try {
     return await queryTraceContext.run({ host: session.context }, fn)
   } catch (error) {
@@ -198,10 +231,10 @@ export async function withTTYQueryTrace<T>(
       }
       throw error
     }
-    const projected = projectTTYLog(log)
-    queries.push(...projected.queries)
-    events.push(...projected.events)
-    if (!scopeFailed) options?.onLog?.(log)
+    // An abandoned log is incomplete: `toJSON` refuses it, so the wall's snapshot stays the trace.
+    if (!abandoned) project(JSON.parse(JSON.stringify(log)))
+    // An abandoned log is incomplete; naming it as this probe's call log would throw on stringify.
+    if (!scopeFailed && !abandoned) options?.onLog?.(log)
   }
 }
 

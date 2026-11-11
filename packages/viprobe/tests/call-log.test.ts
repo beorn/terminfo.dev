@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { createCallLog, IncompleteReplay, readCallLog, withCallLog } from "../src/index.ts"
+import { createCallLog, IncompleteReplay, readCallLog, snapshotCallLog, withCallLog } from "../src/index.ts"
 
 // Source queries return the inner TTY recorder's matched array directly. Single-recorder
 // fixtures miss a foreign array proxy retained after both recording lifetimes finish.
@@ -499,6 +499,37 @@ test("an abandoned recording can finish while a call is still pending", () => {
   expect(() => capture.finish()).not.toThrow()
   // The runner must not stringify this log. toJSON refuses an incomplete recording (#33047).
   expect(() => JSON.stringify(log)).toThrow(/recording has not completed/)
+})
+
+// The wall can fire while matchResponse is still pending, and the write its own callback made has
+// already settled. The reader requires every id to equal its position, so a snapshot renumbers the
+// settled calls instead of leaving a hole (#33431).
+test.each([
+  ["a settled write inside the pending call", true],
+  ["a pending call behind every settled one", false],
+])("snapshots a recording abandoned with %s as a readable artifact", (_name, writeInside) => {
+  const log = createCallLog()
+  const subject = {
+    write(_sequence: string): void {},
+    matchResponse(write: () => void): Promise<never> {
+      if (writeInside) write()
+      return new Promise(() => {})
+    },
+  }
+  const capture = withCallLog(subject, { mode: "record", log })
+  capture.context.write("\x1b[c")
+  void capture.context.matchResponse(() => capture.context.write("\x1b[5n"))
+  capture.abandon()
+  const snapshot = snapshotCallLog(log)
+  const paths: string[] = []
+  readCallLog(snapshot, { onOperation: (operation) => paths.push(operation.path) })
+  // The unfinished call has no outcome to read, so it is absent; the writes that settled around it
+  // are the evidence and both survive, in order.
+  expect(paths).toEqual(writeInside ? ["context.write", "context.write"] : ["context.write"])
+  // The settled write that followed the hole keeps its place, so the evidence survives the renumber.
+  expect((snapshot as { calls: Array<{ id: number }> }).calls.map((call) => call.id)).toEqual(
+    writeInside ? [0, 1] : [0],
+  )
 })
 
 test("unfinished logs cannot be serialized as complete artifacts", async () => {
