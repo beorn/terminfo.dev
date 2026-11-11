@@ -196,9 +196,9 @@ it.each([
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.semantic-prompts" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc133-d" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc133-a" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc133-p" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-d" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-a" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-a" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc-633-vscode" },
@@ -233,13 +233,13 @@ it.each([
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc710-font-normal" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc633-e" },
-  // #32948: 6 Linux App and mux OSC 8 hyperlink declarations.
+  // #32948: Linux App and mux OSC 8 hyperlink declarations. WezTerm's is no longer one: c0651cbe8 (33001)
+  // reads its owned OSC 8 link spans, so its declarations drop to 8 and omit extensions.osc8 (33455).
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc8" },
   { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc8" },
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc8" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc8" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc8" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc8" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
