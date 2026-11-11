@@ -1092,6 +1092,38 @@ it.each(
   else expect(reads.length).toBeGreaterThan(1)
 })
 
+// #33375: the OSC 7 title reader installs from the owned run, never from a subject name. The first assertion
+// is the installation itself: an App that used to fall through now reads its own title. Only Ghostty, whose
+// deciding negative is established, reads Unsupported when the title carries no path.
+it.each([
+  { subject: { kind: "term", id: "alacritty", os: "linux" }, expected: "probe-todo" },
+  { subject: { kind: "term", id: "kitty", os: "linux" }, expected: "probe-todo" },
+  { subject: { kind: "term", id: "wezterm", os: "linux" }, expected: "probe-todo" },
+  { subject: { kind: "term", id: "ghostty", os: "linux" }, expected: "unsupported" },
+] as const)("installs the OSC 7 title reader on $subject.id without a name gate", async ({ subject, expected }) => {
+  verifiedBatchFixture()
+  let title = "incoming App title"
+  process.stdout.write = ((bytes: string) => {
+    const match = /^\x1b\]2;([^\x07]*)\x07$/.exec(bytes)
+    if (match) title = match[1]!
+    return true
+  }) as typeof process.stdout.write
+  const id = "extensions.osc7-cwd"
+  const batch = await runProbeBatch({
+    ids: [id],
+    subject,
+    ownedTerminal: { ...geometryOwner(noGeometry), readTitle: async () => title },
+  })
+  const row = batch.results.find((result) => result.featureId === id)!
+  const trace = JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }
+  expect(trace.titleReads.length).toBeGreaterThan(1)
+  expect({ status: row.status, reason: row.reason }).toMatchObject(
+    expected === "probe-todo"
+      ? { status: "probe-todo", reason: expect.stringMatching(/carried neither OSC 7 path/) }
+      : { status: "unsupported" },
+  )
+})
+
 // #32573: direct callback cases cannot detect a collector that drops or exposes a foreign title reader.
 it.each([false, true])("binds the title reader and its raw readings only to the owned run: %s", async (owned) => {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(owned)

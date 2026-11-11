@@ -1068,9 +1068,16 @@ Failed App controls are PROBE INVALID; an absent reader leaves the terminal unto
 Screen's unqualified `screen -Q title` or failed title controls retain a named missing-reader
 cause, without reading the outer window. OSC 0 uses title state only for its title clause;
 title success still needs independent icon evidence for the conjunction.
-The Linux Ghostty OSC 7 arm uses that same reader after empty OSC 2, reads two
+Every App's OSC 7 arm uses that same reader after empty OSC 2, reads two
 `file://localhost` paths exactly, checks an inert made-up OSC, then clears OSC 7 and
-restores the prior title. Other Apps keep their existing unbound-CWD result.
+restores the prior title. The reader installs wherever the owned run supplies one, and the
+arm's own OSC 2 controls qualify it; no subject name chooses it. The reading is one-sided
+(#33375): both paths on the title is Supported, and a title that carries neither leaves the
+row PROBE TODO with a sentence naming this run's title, because the title is the only surface
+that route reads. Ghostty alone keeps a deciding negative; another App reads Unsupported for
+an absent title only through its own ask with a same-run control. A failed OSC 2 control keeps
+its PROBE INVALID meaning where the title decides (Ghostty) and names the control with an open
+row everywhere else.
 
 The app exit/1047/insert-mode rows declare character readback and use that same region oracle.
 Exit and 1047 paint primary then alternate markers; leaving the alternate is compared with a plainly
