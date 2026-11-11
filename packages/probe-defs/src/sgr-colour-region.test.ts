@@ -596,19 +596,20 @@ test.each([
   ["insufficient-evidence", "the ignored-attribute frame and the expected frame read the same cells"],
   ["timeout", "witness cell 1,1 unchanged for 5000 ms after the target while the frame changed"],
 ] as const)("inconclusive indexed colour publishes pending for %s", (reason, note) => {
+  const featureId = "sgr.underline-color-indexed"
   const frames: ObservationFrame[] = [
     { kind: "pixels", role: "target", label: "target", capturedAt: 1, ref: "sha256:abc", pixelsDigest: "d" },
   ]
-  const result = colourCaptureCallbackResult("sgr.underline-color-indexed", {
+  const result = colourCaptureCallbackResult(featureId, {
     pass: false,
     response: "retained capture",
     observation: { outcome: "inconclusive", reason, assertionType: "screenshot", note, frames },
   })
   const published = recordExecutedProbe({
-    featureId: "sgr.underline-color-indexed",
+    featureId,
     attempt: { scope: "probe", startedAt: "2026-11-11T01:43:09.619Z" },
-    observation: result.observation,
-    assertions: result.assertions ?? [],
+    observation: result.observation === undefined ? undefined : { ...result.observation, featureId },
+    assertions: [],
     ...(result.tests === undefined ? {} : { tests: result.tests }),
   })
   expect(published.tests[0]).toMatchObject({ id: "review", status: "probe-todo", reason: note })
