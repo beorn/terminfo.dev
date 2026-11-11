@@ -1920,9 +1920,14 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
       }
       const priorRefusal = "calibration refused before probes"
       const finalRefusal = "qualification refused after probes"
+      const checkpointTraces: string[] = []
       const batch = await runProbeBatch({
         ids: [id],
         ownedTerminal: geometryOwner(measured(24, 80)),
+        onCheckpoint: (checkpoint) => {
+          const trace = checkpoint.rawReplies["collector.textQualification.trace"]
+          if (trace) checkpointTraces.push(trace)
+        },
         prepareCapture: async ({ source: probeSource, featureId }) => {
           expect(featureId).toBe("collector.captureCalibration")
           probeOrder.push("calibrate")
@@ -1951,6 +1956,7 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
         writes: ["qualification:paint"],
         ...(state !== "geometry" ? { refusal: finalRefusal } : {}),
       })
+      expect(checkpointTraces).toContain(batch.rawReplies["collector.textQualification.trace"])
     },
   )
 
@@ -1959,12 +1965,15 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
       runProbeBatch({
         ids: [id],
         ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async () => {
+          probeOrder.push("calibrate")
+        },
         finishCapture: async () => {
           throw new Error("qualification fixture failed after probes")
         },
       }),
     ).rejects.toThrow("qualification fixture failed after probes")
-    expect(probeOrder).toEqual(["callback"])
+    expect(probeOrder).toEqual(["calibrate", "callback"])
   })
 })
 
