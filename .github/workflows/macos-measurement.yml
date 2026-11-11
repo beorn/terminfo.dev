@@ -39,6 +39,11 @@ on:
         type: string
         required: false
         default: ""
+      timeout_minutes:
+        description: "Job wall-clock cap; a granted run names its own cap"
+        type: string
+        required: false
+        default: "35"
 
 permissions:
   contents: read
@@ -53,7 +58,7 @@ jobs:
     name: macOS ${{ matrix.id }}
     if: ${{ toJSON(fromJSON(inputs.context_matrix).include) != '[]' && toJSON(fromJSON(inputs.probe_ids)) != '[]' }}
     runs-on: macos-latest
-    timeout-minutes: 35
+    timeout-minutes: ${{ fromJSON(inputs.timeout_minutes || '35') }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.context_matrix) }}
