@@ -56,6 +56,7 @@ import {
 import { measureAlternateReflow } from "./modes.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import { unavailableScrollbackReading } from "./scrollback.ts"
+import { COLOUR_UMBRELLAS } from "./sgr-colour-capture.ts"
 import {
   awaitPaintWitness,
   beginCaptureLifecycle,
@@ -5866,8 +5867,10 @@ const extensionDefinitions: ProbeDefinition[] = [
         }
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
-      // The row's claim is the one sgr.fg.truecolor states: the cell stores the exact RGB values.
-      // DECRQSS SGR is therefore its oracle, not a pixel comparison of rendered glyphs.
+      // The row's claim is the one sgr.fg.truecolor states: the exact RGB is kept. A state read
+      // decides where the terminal answers one; otherwise the row runs sgr.fg.truecolor's own pixel
+      // arm, found by id through COLOUR_UMBRELLAS, with its controls, multiplexer demotion and
+      // sibling witness (@cto a7fb82cc and e9641d54, #33104). This fallback runs only with no capture.
       sgrTermReadback(
         "extensions.truecolor",
         "\x1b[38;2;255;128;0m",
@@ -9407,10 +9410,6 @@ const DEC_COLOUR_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSeq
     feed: "\x1b[48;2;17;97;201m",
     codes: ["48m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
   },
-  "extensions.truecolor": {
-    feed: "\x1b[38;2;17;97;201m",
-    codes: ["38m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
-  },
   "extensions.osc633-p": { feed: "\x1b]633;P;Cwd=/terminfo-633-cwd-A\x07", code: { kind: "osc", code: "633" } },
 }
 
@@ -9448,7 +9447,8 @@ const LIBVTERM_R1_NEGATIVES: Readonly<Record<string, { readonly feed: string; re
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
   const decClipboard = definition.id === "extensions.osc52-clipboard" || definition.id === "extensions.osc52-write"
-  const decTarget = DEC_COLOUR_REPORTS[definition.id]
+  // An umbrella reads its component's entry, never a copy (#33104).
+  const decTarget = DEC_COLOUR_REPORTS[COLOUR_UMBRELLAS[definition.id] ?? definition.id]
   const decSetup = DEC_SETUP_REPORTS[definition.id]
   const decsace = definition.id === "editing.decsace"
   const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]
