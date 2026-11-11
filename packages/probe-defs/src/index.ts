@@ -25,6 +25,7 @@ export type {
   RenderedWidthResult,
   TerminalQueryOutcome,
   ClipboardFixture,
+  PasteRoute,
   InputFixture,
   Utf8Decoding,
   Utf8DecodingReading,
