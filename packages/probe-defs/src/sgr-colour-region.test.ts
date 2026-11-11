@@ -18,7 +18,8 @@
  */
 import { expect, test, vi } from "vitest"
 import { sgrProbes } from "./sgr.ts"
-import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
+import { extensionsProbes } from "./extensions.ts"
+import { COLOUR_CAPTURE, COLOUR_UMBRELLAS, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
 import { captureRegionCallbackResult } from "./region-readback.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import type {
@@ -590,6 +591,40 @@ async function run(id: string, ctx: TermProbeSource) {
   if (!definition?.term) throw new Error(`${id}: no term arm in sgrProbes`)
   return definition.term(ctx)
 }
+
+/**
+ * @failure extensions.truecolor read open on Alacritty, tmux and WezTerm while sgr.fg.truecolor
+ *   decided from pixels in the same run: the umbrella had no colour row, so it fell to a cursor reply
+ *   (#33104). It now points at the foreground row's own entries (@cto a7fb82cc and e9641d54): same
+ *   objects, never copies, and in one run it never reads Supported or Unsupported where the
+ *   foreground row reads something else.
+ * @level l1
+ * @consumer extensions.truecolor App callback on owned capture contexts and multiplexers.
+ * @testonly none
+ */
+test("the truecolor umbrella shares the foreground row's entries and never decides differently", async () => {
+  expect(COLOUR_UMBRELLAS["extensions.truecolor"]).toBe("sgr.fg.truecolor")
+  expect(COLOUR_CAPTURE["extensions.truecolor"]).toBe(COLOUR_CAPTURE["sgr.fg.truecolor"])
+  const umbrella = extensionsProbes.find((probe) => probe.id === "extensions.truecolor")
+  if (!umbrella?.term) throw new Error("extensions.truecolor has no term arm")
+  const modes = ["render", "ignore", "collapse", "quantize-truecolor", "quantize-256", "deferred-paint"] as const
+  for (const mode of modes) {
+    for (const mux of [undefined, "tmux", "screen"] as const) {
+      const label = `${mode}${mux ? ` via ${mux}` : ""}`
+      const fgContext = colourTerminal(mode, PALETTES[0] as Palette).ctx
+      const umbrellaContext = colourTerminal(mode, PALETTES[0] as Palette).ctx
+      const fg = await run("sgr.fg.truecolor", mux ? { ...fgContext, mux } : fgContext)
+      const own = await umbrella.term(mux ? { ...umbrellaContext, mux } : umbrellaContext)
+      expect(own.observation?.outcome, label).toBe(fg.observation?.outcome)
+      expect(own.criterionBranch, label).toBe(fg.criterionBranch)
+      // The pair agreeing on "open" proves nothing; the render case must reach a pixel decision.
+      if (mode === "render" && mux === undefined) {
+        expect(own.observation?.outcome, label).toBe("supported")
+        expect(own.observation?.assertionType, label).toBe("screenshot")
+      }
+    }
+  }
+}, 60000)
 
 // A protocol reply cannot replace these same-run neutral/sibling pixel controls. Existing cases
 // only exercised silent DECRQSS, so they missed the early return that bypassed the colour oracle.
