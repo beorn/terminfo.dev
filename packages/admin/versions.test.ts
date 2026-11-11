@@ -94,6 +94,7 @@ test("suite identity changes with executable collection, ownership, capture and 
     "packages/terminfo.dev/src/probes/unified.ts",
     "packages/terminfo.dev/src/tty.ts",
     "packages/terminfo.dev/src/linux-clipboard.ts",
+    "packages/terminfo.dev/src/linux-notify-recorder.ts",
     "packages/terminfo.dev/src/owned-terminal.ts",
     "packages/terminfo.dev/src/disposable-receipt.ts",
     "packages/terminfo.dev/src/linux-capture.ts",

@@ -80,9 +80,23 @@ export const KITTY_LOOP_FOREVER = 1
 
 export const KITTY_CLEAR = "\x1b[0m\x1b[2J\x1b[H"
 
-/** Frame colours: one solid red frame and one solid blue frame, so the pair cannot be confused. */
-export const KITTY_FRAME_RED = [255, 0, 0] as const
-export const KITTY_FRAME_BLUE = [0, 0, 255] as const
+export type KittyRgb = readonly [number, number, number]
+
+/**
+ * Every row that transmits an image owns its bytes (#33034, @cto edab7573): no colour here appears in two rows.
+ * A terminal that caches image data by content and grows an animation in place (WezTerm
+ * term/src/terminalstate/image.rs:285-299, kitty.rs:620-668) would otherwise hand one row the image another row
+ * changed. Each pixel row paints its SGR reference in its own image colour; the animation's two frames differ so
+ * the pair cannot be confused.
+ */
+export const KITTY_ROW_IMAGES = {
+  "extensions.kitty-graphics.transmit": { image: [255, 255, 0] },
+  "extensions.kitty-graphics.display": { image: [0, 255, 255] },
+  "extensions.kitty-graphics.animation": { image: [255, 0, 0], second: [0, 0, 255] },
+  "extensions.kitty-graphics.unicode-placeholders": { image: [0, 192, 0] },
+} as const satisfies Record<string, { readonly image: KittyRgb; readonly second?: KittyRgb }>
+
+export type KittyImageRow = keyof typeof KITTY_ROW_IMAGES
 
 /** A fresh image number for the animation arms: any value the terminal will allocate. */
 export function kittyImageNumber(): number {
@@ -275,6 +289,17 @@ export function kittyPlaceholderText(imageId: number): string {
   return `${below}${rows.join("")}${kittyPark()}`
 }
 
+/** The decidedBy of the frame-two-only negative; the publication gate keys on it (@cto edab7573). */
+export const KITTY_FRAME_TWO_ONLY =
+  "a frame 2 that was shown while timed playback and frame selection never brought frame 1 back"
+
+/** The criterionBranch that negative records; docs/data/held-negatives.ts gates publication on it. */
+export const KITTY_FRAME_TWO_ONLY_BRANCH = "kitty-frame-two-only"
+
+/** The @cto-approved criterion text for that negative; generic, names no terminal. */
+export const KITTY_FRAME_TWO_ONLY_CRITERION =
+  "Unsupported: the terminal accepted a second frame and showed it, but neither timed playback nor selecting the first frame brought the first picture back."
+
 /** The same-comparison rule both rows share: byte inequality of the region digest, never a tolerance. */
 export type KittyDigestPair = readonly [string | undefined, string | undefined]
 
@@ -290,6 +315,8 @@ export interface KittyAnimationEvidence {
   readonly still: KittyDigestPair
   readonly blank: string | undefined
   readonly reference: string | undefined
+  /** Independent SGR reference painted in the second frame's own colour, same rectangle. */
+  readonly secondReference: string | undefined
   /** Arm 4, cursor-only control inside the compared rectangle: must be equal. */
   readonly cursorOnly: KittyDigestPair
   /** Arm 5, whole-window capture across one ordinary glyph outside the rectangle: must differ. */
@@ -323,6 +350,7 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCap
       ["client-frame", evidence.clientFrame],
       ["still", evidence.still],
       ["static-reference", [evidence.blank, evidence.reference]],
+      ["second-frame-reference", [evidence.secondReference, evidence.reference]],
       ["cursor-only", evidence.cursorOnly],
       ["redraw", evidence.redraw],
       ...(evidence.retry === null ? [] : ([["retry", evidence.retry]] as const)),
@@ -391,10 +419,41 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCap
     }
   }
   if (evidence.playback[0] !== evidence.still[0]) {
+    // @cto edab7573: the frame-two-only negative. The still qualified above; it holds only when adding
+    // frame 2 showed frame 2, timed playback never brought frame 1 back, and hand selection of frame 1
+    // and frame 2 painted the same picture. A frame 2 that was never shown is failed setup, not absence.
+    const showedFrameTwo =
+      evidence.secondReference !== evidence.reference &&
+      evidence.secondReference !== evidence.blank &&
+      evidence.playback[0] === evidence.secondReference
+    if (!showedFrameTwo) {
+      return {
+        outcome: "inconclusive",
+        note: `Kitty animation: the playback image did not paint the verified one-frame image (playback ${evidence.playback[0]}, still ${evidence.still[0]}) and did not match the frame-2 reference either (${evidence.secondReference}), so failed image setup cannot establish an animation negative`,
+        decidedBy: "the playback image setup",
+      }
+    }
+    // Timed playback never brought frame 1 back: both playback pairs are equal by this point, and
+    // each starts on the frame-2 picture, so neither can hold the still's.
+    if (evidence.clientFrame[0] !== evidence.clientFrame[1]) {
+      return {
+        outcome: "inconclusive",
+        note: `Kitty animation: frame 2 was shown after it was added, but selecting frame 1 and frame 2 painted different pictures (${pairNames(evidence.clientFrame)}); the readings disagree`,
+        decidedBy: "the frame-two-only controls",
+      }
+    }
+    // Hand selection must paint frame 2 itself; blank or a third picture disagrees (@cto 413dbac4).
+    if (evidence.clientFrame[0] !== evidence.secondReference) {
+      return {
+        outcome: "inconclusive",
+        note: `Kitty animation: frame 2 was shown after it was added, but selecting either frame painted ${evidence.clientFrame[0]}, not the frame-2 reference ${evidence.secondReference}; the readings disagree`,
+        decidedBy: "the frame-two-only controls",
+      }
+    }
     return {
-      outcome: "inconclusive",
-      note: `Kitty animation: the playback image did not paint the verified one-frame image (playback ${evidence.playback[0]}, still ${evidence.still[0]}), so failed image setup cannot establish an animation negative`,
-      decidedBy: "the playback image setup",
+      outcome: "unsupported",
+      note: `${KITTY_FRAME_TWO_ONLY_CRITERION} (still ${evidence.still[0]}, frame-2 reference ${evidence.secondReference}, playback ${pairNames(evidence.playback)}, retry ${pairNames(evidence.retry)}, hand selection ${pairNames(evidence.clientFrame)})`,
+      decidedBy: KITTY_FRAME_TWO_ONLY,
     }
   }
   if (!evidence.refusal) {

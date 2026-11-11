@@ -1,1 +1,1 @@
-export { createCallLog, IncompleteReplay, readCallLog, withCallLog, type CallLog } from "./call-log.ts"
+export { createCallLog, IncompleteReplay, readCallLog, snapshotCallLog, withCallLog, type CallLog } from "./call-log.ts"

@@ -92,10 +92,28 @@ export function rebuildReason(target: string, stamp: ServedStamp, newestRunId: s
 
 type RunBuild = (env: NodeJS.ProcessEnv) => Promise<number | null>
 
+/** Hosted builds carry the existing task declaration so the host judges their own memory ceiling. */
+function siteBuildArgs(env: NodeJS.ProcessEnv): string[] {
+  const landingRoot = env["TERMINFO_SITE_LANDING_ROOT"]
+  return landingRoot === undefined
+    ? ["run", "build"]
+    : [
+        join(landingRoot, "tools", "gate-task-guard.ts"),
+        "--task",
+        "terminfo-site-build",
+        "--max-rss-mib",
+        "16384",
+        "--",
+        "bun",
+        "run",
+        "build",
+      ]
+}
+
 /** The real site build, run asynchronously so the previous build keeps serving while it runs. */
 const siteBuild: RunBuild = (env) =>
   new Promise((resolve) => {
-    const child = spawn("bun", ["run", "build"], { cwd: repoRoot, stdio: "inherit", env })
+    const child = spawn("bun", siteBuildArgs(env), { cwd: repoRoot, stdio: "inherit", env })
     child.on("error", (error) => {
       console.error(`terminfo-site: cannot run the site build: ${error.message}`)
       resolve(null)
@@ -206,7 +224,7 @@ function build(target: string): void {
   // The build records the CODE gitlink it was made from into the dist's stamp, so the health probe can read which
   // CODE pin the served corpus belongs to straight from /build.json with no walk of the CODE root (28620). This
   // checkout's HEAD is that pin, and `target` is it; the build has no other way to know a landing is the caller.
-  const result = spawnSync("bun", ["run", "build"], {
+  const result = spawnSync("bun", siteBuildArgs(process.env), {
     cwd: repoRoot,
     stdio: "inherit",
     env: { ...process.env, TERMINFO_SITE_CODE_GITLINK: target },

@@ -5,12 +5,12 @@
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
-import { NO_SAME_PATH_CONTROL, recordExecutedProbe } from "./helpers.ts"
+import { NO_SAME_PATH_CONTROL, recordExecutedProbe, sgrReadbackDecision } from "./helpers.ts"
 import { COLOUR_CAPTURE } from "./sgr-colour-capture.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { resetProbes } from "./reset.ts"
-import { sgrProbes } from "./sgr.ts"
-import type { ProbeCallbackResult, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
+import { finalizeVisualResult, sgrProbes } from "./sgr.ts"
+import type { ObservationFrame, ProbeCallbackResult, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 function timeout(): TerminalQueryOutcome {
   return { match: null, reason: "timeout", raw: "", rawBase64: "" }
@@ -516,4 +516,76 @@ test.each(["baseline", "setup", "final"] as const)("a throwing %s readback propa
   }
   await expect(sgrTerm("sgr.selective-reset.bold")(ctx)).rejects.toThrow(`${phase} query failed`)
   expect(writes.at(-1)).toBe("\x1b[0m")
+})
+
+// #33165 (@cto f2adcbf3, ruling 4): on a paint row a DECRQSS reply never decides the cell. With a capture, the pixels
+// decide and the reply rides along as a note; with none, the recorded cell is not decided and says why, verbatim.
+const PAINT_ROW_REASON = "graded from a status reply only; this row is decided by what is painted"
+const paintAttempt = { scope: "probe", startedAt: "2026-11-10T22:00:00.000Z" } as const
+
+function recordTerm(id: string, result: ProbeCallbackResult, frames: readonly ObservationFrame[] = []) {
+  const assertions = (result.assertions ?? []).map((assertion) => ({ featureId: id, ...assertion, rawReplyRef: id }))
+  const recorded = recordExecutedProbe({
+    featureId: id,
+    attempt: paintAttempt,
+    observation: result.observation && { ...result.observation, featureId: id, rawReplyRef: id },
+    coverage: result.notTested && { ...result.notTested, featureId: id, rawReplyRef: id },
+    assertions,
+    tests: result.tests,
+    criterionBranch: result.criterionBranch,
+    rawReplyRef: id,
+  })
+  return finalizeVisualResult(recorded, { kind: "term" }, frames)
+}
+
+test("a paint row's DECRQSS reply alone records PROBE TODO with the paint-row reason", async () => {
+  for (const [id, reply] of PLAIN_STYLE_REPLIES) {
+    const { ctx } = sgrReadbackSource(reply)
+    const recorded = recordTerm(id, await sgrTerm(id)(ctx))
+    expect(recorded.status, id).toBe("probe-todo")
+    expect(recorded.reason, id).toBe(PAINT_ROW_REASON)
+  }
+  // A DECRQSS negative is not a grade either.
+  const { ctx } = qualifiedSgrReadbackSource("sgr.fg.256", "0;38;5;68")
+  ctx.capture = undefined
+  const negative = recordTerm("sgr.fg.256", await sgrTerm("sgr.fg.256")(ctx))
+  expect(negative.status).toBe("probe-todo")
+  expect(negative.reason).toBe(PAINT_ROW_REASON)
+})
+
+test("a capture decides a paint row against a contradicting DECRQSS reply, which stays a note", async () => {
+  const frame: ObservationFrame = { role: "target", ref: "frame-target", capturedAt: 1, label: "blinking sample" }
+  const { ctx } = sgrReadbackSource("0", true)
+  // DECRQSS reports no SGR 5 active (a negative reading); the pixel series shows the blink.
+  const decided = await sgrReadbackDecision(
+    ctx,
+    "sgr.blink",
+    "\x1b[5m",
+    { require: [5], forbid: [] },
+    undefined,
+    async () => ({
+      pass: true,
+      response: JSON.stringify({ frames: [frame.ref] }),
+      observation: { outcome: "supported", assertionType: "screenshot", screenshotRef: frame.ref, frames: [frame] },
+      assertions: [
+        { assertionType: "screenshot", kind: "positive", expected: "styled text blinks", observed: frame.ref },
+      ],
+    }),
+  )
+  if (!decided) throw new Error("the capture oracle did not decide")
+  expect(decided.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+  expect(decided.observation?.note).toMatch(/DECRQSS \{"sgr":"0"\}$/)
+  const recorded = recordTerm("sgr.blink", decided, [frame])
+  expect(recorded.status).toBe("supported")
+  expect(recorded.assertionType).toBe("screenshot")
+  expect(recorded.reason).toMatch(/DECRQSS \{"sgr":"0"\}$/)
+})
+
+test("every sgr term arm that reads DECRQSS declares the capture as its deciding observable", () => {
+  const readbackRows = DECIDED.map(([id]) => id).filter((id) => id !== "sgr.reset")
+  for (const id of readbackRows) {
+    const probe = [...sgrProbes].find((value) => value.id === id)
+    if (!probe) throw new Error(`missing ${id}`)
+    expect(probe.termAssertionType, id).not.toBe("query_reply")
+  }
 })

@@ -16,7 +16,9 @@ import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { validateObservationOutcome } from "@terminfo/run-parser"
 import {
   ALL_PROBES,
+  fencedSilenceStatus,
   initializeRunDraft,
+  isFencedSilence,
   type CallbackHostRecipeCause,
   type ProbeDefinition,
   type TermProbeSource,
@@ -555,7 +557,11 @@ test.each(ARM_CASES)(
         expect(headless.notTested?.noObservable).toContain("stored the image")
         // CTO87a56285: the App's two controlled silent windows decide its transmit negative;
         // the Library effect criterion remains open on these identical reply windows.
-        expect(live.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+        expect(live.observation).toMatchObject({
+          outcome: "inconclusive",
+          reason: "fenced-silence",
+          assertionType: "query_reply",
+        })
         expect(live.assertions).toMatchObject([{ kind: "negative" }, { kind: "negative" }])
       }
       const plain = lib(queryOnly(sourceOf(scripted(() => ""))))
@@ -572,7 +578,11 @@ test.each(ARM_CASES)(
       expect(headless.tests, id).toMatchObject([{ status: outcome }])
       expect(headless.replyFailureTestIds, id).toEqual(["criterion"])
       expect(headless.observation, id).toBeUndefined()
-    } else expect(headless.observation?.outcome, id).toBe(outcome)
+    } else {
+      // A fenced silence is marked, and the recorder grades it through the row's rule; these rows declare none.
+      const graded = isFencedSilence(headless.observation) ? fencedSilenceStatus() : headless.observation?.outcome
+      expect(graded, id).toBe(outcome)
+    }
     if (outcome === "unsupported") {
       expect(headless.observation?.note, id).toMatch(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/)
     }
@@ -633,7 +643,8 @@ test("extensions.kitty-keyboard: once detection answers, a silent flags query re
   // Detection stays the DA1-qualified capture both collectors already share; the flags query takes the member.
   expect(fed).toEqual(["\x1b[?u\x1b[c", "\x1b[>1u", "\x1b[?u", DA1_QUERY, "\x1b[<u"])
   expect(headless.observation).toMatchObject({
-    outcome: "unsupported",
+    outcome: "inconclusive",
+    reason: "fenced-silence",
     note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
   })
   const answered: TerminalQueryOutcome = {
@@ -730,15 +741,17 @@ test("G1: a silent proven engine publishes the sentinel negative once the grace 
   expect(batch.observations).toStrictEqual([
     {
       featureId: "device.xtversion",
-      outcome: "unsupported",
+      outcome: "inconclusive",
+      reason: "fenced-silence",
       assertionType: "query_reply",
       note: explanation,
       rawReplyRef: "device.xtversion",
     },
   ])
-  // Recorded conclusive observations must survive the actual parser, which forbids unknown-cause reasons.
+  // The marked observation must survive the actual parser, and the recorder grades it Unsupported (#33165).
   const recorded = JSON.parse(JSON.stringify(batch.observations[0])) as Record<string, unknown>
   validateObservationOutcome(recorded, "sentinel negative observation", "device.xtversion", 4)
+  expect(batch.results.find((result) => result.featureId === "device.xtversion")?.status).toBe("unsupported")
   expect(batch.assertions).toMatchObject([
     {
       kind: "negative",
@@ -776,7 +789,7 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
   expect(batch.ungradedDiagnostics["device.xtversion"]).toMatchObject({
     kind: "collector-error",
     message: expect.stringMatching(
-      /^headless xtermjs probe device\.xtversion: late reply after sentinel: 10 bytes "\\u001bP>\|late\\u001b\\\\" at \+\d+ms; refused observation\(outcome=unsupported, assertionType=query_reply, .*\) and assertion\(kind=negative, .*\)$/,
+      /^headless xtermjs probe device\.xtversion: late reply after sentinel: 10 bytes "\\u001bP>\|late\\u001b\\\\" at \+\d+ms; refused observation\(outcome=inconclusive, reason=fenced-silence, assertionType=query_reply, .*\) and assertion\(kind=negative, .*\)$/,
     ),
   })
   expect(batch.results.find((result) => result.featureId === "device.xtversion")).toMatchObject({

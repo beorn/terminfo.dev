@@ -11,10 +11,12 @@ interface WezTermTextOptions {
   readonly rows: number
   /** Negative start includes retained history; omitted reads only the visible grid. */
   readonly startLine?: number
+  /** Retain attributes such as OSC8 for semantic reads; plain text remains the default. */
+  readonly escapes?: boolean
 }
 
 export function readWindowsWezTermRows(
-  options: WezTermTextOptions,
+  options: Omit<WezTermTextOptions, "cols"> & { readonly cols?: number },
 ):
   | { readonly status: "read"; readonly rows: readonly string[]; readonly receipt: string }
   | { readonly status: "refused"; readonly reason: string } {
@@ -36,6 +38,7 @@ export function readWindowsWezTermRows(
       String(options.startLine ?? 0),
       "--end-line",
       String(options.rows - 1),
+      ...(options.escapes ? ["--escapes"] : []),
     ],
     {
       stdio: ["pipe", "pipe", "pipe"],
@@ -48,6 +51,7 @@ export function readWindowsWezTermRows(
     executable: options.executable,
     pane: options.pane,
     socket: options.socket,
+    ...(options.escapes && { escapes: true }),
     status: result.status,
     signal: result.signal,
     error: result.error?.message,
@@ -63,8 +67,9 @@ export function readWindowsWezTermRows(
   } catch {
     return { status: "refused", reason: `WezTerm owned get-text did not return UTF-8: ${retained}` }
   }
-  // get-text prints one newline per physical row. Remove that one terminator, never trim blank
-  // rows or manufacture missing rows. Native qualification decides whether this mapping is usable.
+  // With --escapes, termwiz ends each physical row with CRLF and the CLI println adds one LF.
+  // Remove only that distinct outer LF, then the final row terminator; never trim physical blanks.
+  if (options.escapes && text.endsWith("\r\n\n")) text = text.slice(0, -1)
   if (!text.endsWith("\n")) {
     return { status: "refused", reason: `WezTerm get-text returned no complete row terminator: ${retained}` }
   }
@@ -78,7 +83,7 @@ export function readWindowsWezTermRows(
   return { status: "read", rows, receipt: retained }
 }
 
-export function readWindowsWezTermText(options: Omit<WezTermTextOptions, "startLine">): TerminalTextRead {
+export function readWindowsWezTermText(options: Omit<WezTermTextOptions, "startLine" | "escapes">): TerminalTextRead {
   const read = readWindowsWezTermRows(options)
   if (read.status === "refused") return read
   const cells = mapSnapshotToCells(read.rows, options.cols, options.rows, 0)

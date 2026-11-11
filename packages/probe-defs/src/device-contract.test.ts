@@ -12,6 +12,7 @@ import { deviceProbes } from "./device.ts"
 import {
   contractGaps,
   inertLibProbeSource,
+  gradedOutcome,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -223,7 +224,7 @@ test.each(DEVICE_SEMANTIC_SURFACE_CONTROLS)(
           "Open: no control in this run showed that our test can read this feature, so the observations do not decide the result.",
       })
       expect(negativeResult.criterionBranch).toBeUndefined()
-    } else expect(negativeResult.observation?.outcome).toBe(negativeOutcome)
+    } else expect(gradedOutcome(negativeResult)).toBe(negativeOutcome)
     if (negativeOutcome === "unsupported") {
       expect(negativeResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "negative" }))
     }

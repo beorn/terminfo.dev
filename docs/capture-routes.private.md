@@ -31,7 +31,7 @@ for verified owned Linux runs matching one of these routes:
 
 - **Direct Linux apps (`term/<id>/linux` with matching `app/<id>/linux` disposable target and no `muxAttachmentProof`)**:
   - `extensions.osc52-write` on all five apps (`kitty`, `ghostty`, `alacritty`, `wezterm`, `xterm`).
-  - `extensions.clipboard-paste` on apps whose default keymap binds `Ctrl+Shift+V` to `CLIPBOARD` (`kitty`, `ghostty`, `alacritty`, `wezterm`). Default `xterm` 411 binds `Shift+Insert` / `Button2` to `PRIMARY` (`SELECT`) rather than `Ctrl+Shift+V` / `CLIPBOARD` (`charproc.c:15021-15061`) and is declared Untestable naming that unbuilt route.
+  - `extensions.clipboard-paste` through each app's default paste action, from the selection that action reads (`LINUX_PASTE_ROUTES` in `unified.ts`, each entry citing its source binding at the pinned version): `Ctrl+Shift+V` from `CLIPBOARD` on `kitty`, `ghostty`, `alacritty` and `wezterm`; `Shift+Insert` from `PRIMARY` on `xterm` 411 (`charproc.c:15024`), whose run alone also owns, restores and verifies a `PRIMARY` baseline. The launch refuses any resource that could rebind it.
   - All ten desktop `extensions.osc52-read` and `extensions.osc52-clipboard` cells remain gated outside the default profile so unattended runs never trigger ask-first read prompts.
 - **Verified Linux multiplexers (`mux/{tmux,screen}/linux` with matching `mux/<id>/linux` disposable target and matching `muxAttachmentProof`)**:
   - `extensions.clipboard-paste`, `extensions.osc52-write`, `extensions.osc52-read`, and `extensions.osc52-clipboard`.
@@ -156,7 +156,7 @@ These describe workflow and launcher code, not measured results.
 
 - The default matrix declares nine rows: Terminal, iTerm2, Ghostty, Alacritty, WezTerm,
   Cursor, VS Code, Warp and cmux. The workflow exposes `context_matrix` and `probe_ids` inputs;
-  each job's `timeout-minutes` is 25.
+  each job's `timeout-minutes` is 35.
 - The explicit iTerm2, editor, Warp and cmux installer downloads compare SHA-256 with
   declared pins. A mismatch reports expected and actual values and fails the job.
 - Before launching iTerm2 3.6.11, the job configures remembered consent for terminal-initiated
@@ -209,6 +209,54 @@ The helper rejects another recognized hosted-terminal name and uses `findLast` t
 the last matching `comm` basename: the outermost matching ancestor in that order. cmux
 additionally requires the exact GUI executable path. Warp's recognized name is `stable`.
 The rows are unchanged; this selection alone proves neither window ownership nor launch causation.
+
+### Proving a setup change before submit
+
+A hosted Mac setup change is any change to the workflow or to a file a job loads before its first
+probe: `.github/workflows/macos-measurement.yml`, the launcher
+[app launcher](../packages/admin/src/app.ts), the [mux wrapper](../packages/admin/src/mux.ts),
+the collector entry [serve.ts](../packages/terminfo.dev/src/serve.ts), and the checks it runs
+before spawning anything — [clipboard-config.ts](../packages/terminfo.dev/src/clipboard-config.ts),
+[identity-guard.ts](../packages/terminfo.dev/src/identity-guard.ts),
+[capture-calibration.ts](../packages/terminfo.dev/src/capture-calibration.ts),
+[darwin-capture.ts](../packages/terminfo.dev/src/darwin-capture.ts) and
+[detect.ts](../packages/terminfo.dev/src/detect.ts) — including anything those import at startup.
+A change outside that set needs no hosted run. A change inside it is shown only by a run: the
+workflow is `workflow_dispatch` only, and nothing starts it on a pull request.
+
+Run one engine on the branch, before submit, through the workflow's own matrix input:
+
+```sh
+gh workflow run macos-measurement.yml --ref <branch> \
+  -f context_matrix='{"include":[{"id":"iterm2","bundle":"/Applications/iTerm.app"}]}'
+```
+
+Take the row's `id` and `bundle` from the default matrix above; its job is named `macOS <id>`.
+One row costs one engine's runtime instead of nine — run `42495897885` ran the single `iterm2`
+row on branch `task/32731-iterm-third-diagnostic-trial` in 87 seconds. Leave `sha` unset so the
+run measures the branch head; when it is set, the run refuses a checkout that differs.
+
+Read the outcome from the artifact, not from the job's exit status alone:
+
+```sh
+gh run view <run_id> --log-failed
+gh run download <run_id> -n macos-<id>-<run_id>-<attempt> -D <dir>
+```
+
+The artifact unpacks the contents of `measurement-artifacts/` at its own root: `collector.log`,
+`collector-exit`, `run.json`, `host-measured.json`, `job-start.json`, `launcher.log`, and
+`artifacts/` with the capture's own files. `collector.log` carries the collector's stderr and this
+command's phase markers — `phase=entry utc=… pid=… tty=…` first, then `phase=receipt-ready`,
+`phase=run-id-parsed` and `phase=collector-invoked`, with `phase=collector-exited status=<n>`
+last; `collector-exit` holds that same status as one line. Probe replies are written to stdout by
+design (the owned-terminal arm binds stdout to the PTY), so they are not in this log. A run that
+refused before its first probe leaves a non-zero `collector-exit`, the refusal text in
+`collector.log`, and no probe replies in `run.json`. Reading the artifact this way shows what the
+run did; it does not establish the engine's captured capability. Run `42927177306` (the single
+`iterm2` row on branch `task/33013`) is the read of this path: `collector.log` went
+`phase=entry utc=… pid=… tty=/dev/ttys000` → `phase=receipt-ready` → `phase=run-id-parsed` →
+`phase=collector-invoked` → `phase=collector-exited status=0`, `collector-exit` held `0`, and the
+log's last line named the raw run id, its SHA-256 and `identity unverified`.
 
 ## Retained macOS capture observations
 

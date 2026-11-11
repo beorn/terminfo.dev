@@ -40,6 +40,7 @@ import {
   auditedAdapterSources,
   sameFrame,
   sameRgb as sameRgbCells,
+  fencedSilenceResult,
   sentinelNegativeResult,
   sentinelSilenceResult,
   sgrCaptureTooSmall,
@@ -54,6 +55,8 @@ import {
 } from "./helpers.ts"
 import { measureAlternateReflow } from "./modes.ts"
 import { sgrTermReadback } from "./sgr.ts"
+import { unavailableScrollbackReading } from "./scrollback.ts"
+import { COLOUR_UMBRELLAS } from "./sgr-colour-capture.ts"
 import {
   awaitPaintWitness,
   beginCaptureLifecycle,
@@ -67,8 +70,11 @@ import {
 import {
   KITTY_BOUNDS,
   KITTY_CLEAR,
-  KITTY_FRAME_BLUE,
-  KITTY_FRAME_RED,
+  KITTY_FRAME_TWO_ONLY,
+  KITTY_FRAME_TWO_ONLY_BRANCH,
+  KITTY_ROW_IMAGES,
+  type KittyImageRow,
+  type KittyRgb,
   KITTY_GAP_MS,
   KITTY_GUARD_REGION,
   KITTY_GUARD_TEXT,
@@ -1524,12 +1530,74 @@ async function cursorColorSetupAppCapture(
         state,
       )
     }
-    return target.regionDigest === before
-      ? declaredUntestableResult(
-          "Untestable (no setup): OSC 12 left the visible steady cursor unchanged after shown/hidden/restored and made-up OSC controls; OSC112 has no changed cursor colour to reset.",
-          state,
-        )
-      : notTestedResult("Open: OSC 12 changed the visible cursor; OSC112 restoration remains unmeasured", state)
+    if (target.regionDigest === before) {
+      return declaredUntestableResult(
+        "Untestable (no setup): OSC 12 left the visible steady cursor unchanged after shown/hidden/restored and made-up OSC controls; OSC112 has no changed cursor colour to reset.",
+        state,
+      )
+    }
+    // 33102: the reset is written before the read that judges it. Written only in cleanup, every app that DID
+    // colour its cursor stopped at "restoration remains unmeasured" with the changed frame already in hand.
+    ctx.write("\x1b]112\x07")
+    const resetReads: Array<typeof hidden> = []
+    const takeReset = (label: string) => async () => {
+      const readback = await capture(label)
+      resetReads.push(readback)
+      return readback
+    }
+    const reset = await captureStabilityPair(
+      id,
+      "screenshot",
+      takeReset("reset after OSC 112 first"),
+      takeReset("reset after OSC 112 second"),
+    )
+    if (reset.refusal) return reset.refusal
+    const afterReset = { ...state, reset: { stability: reset.stability, digest: reset.second.regionDigest } }
+    // 33442: the reset reads are compared with `before`, so they must have been cropped from the same cells as the
+    // pre-colour frames. A digest taken over another screen position is not the same measurement, whatever it says.
+    const comparedFrames = [...frames, ...resetReads.map((entry) => entry.frame)]
+    const resetCropped = cropPositionRefusal({
+      id,
+      compared: comparedFrames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+      response: JSON.stringify(afterReset),
+      frames: comparedFrames,
+      screenshotRef: target.frame.ref,
+    })
+    if (resetCropped) return resetCropped
+    if (comparedFrames.some((frame) => !frame.regionRectangle)) {
+      return notTestedResult("OSC 112 reset capture lacks registered crop rectangles", afterReset)
+    }
+    if (reset.second.regionDigest !== before) {
+      return notTestedResult(
+        "OSC 112 left the cursor colour changed: the frame after the reset still differs from the pre-colour frame",
+        afterReset,
+      )
+    }
+    const response = JSON.stringify(afterReset)
+    const note = "OSC 112 restored the cursor cell to the frame it had before OSC 12 coloured it"
+    return {
+      pass: true,
+      note,
+      response,
+      tests: [{ id: "reset", status: "supported", assertionRefs: [0] }],
+      assertions: [
+        {
+          assertionType: "screenshot" as const,
+          kind: "positive" as const,
+          expected: "The cursor cell after OSC 112 matches the pre-colour frame, after OSC 12 provably changed it",
+          observed: response,
+        },
+      ],
+      observation: {
+        outcome: "supported" as const,
+        assertionType: "screenshot" as const,
+        // The primary names the frame this row decided on: the changed cursor cell. The reset reads
+        // are the control that proves it returned, and a screenshot row's primary is never a control.
+        screenshotRef: target.frame.ref,
+        frames: [...frames, ...resetReads.map((entry) => entry.frame)],
+        note,
+      },
+    }
   } finally {
     ctx.write("\x1b]112\x07\x1b[0 q\x1b[?25h")
   }
@@ -1681,6 +1749,13 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
   return result
 }
 
+/**
+ * The OSC 9;4 App arms' cause (#33171, @cto e1aa0710): the observer is missing, not the setup. A multiplexer arm keeps
+ * #32604's sentence, and finalizeVisualResult (sgr.ts) appends its hop suffix there.
+ */
+export const OSC9_PROGRESS_APP_NO_OBSERVER =
+  "Untestable (no observer): OSC 9;4 progress is shown outside the text area (title bar, tab bar or taskbar); this run captures only the window and saw no change after clear/set-50/clear, which a made-up subcommand also produced, so it cannot tell ignored from consumed."
+
 /** Original whole-window recipes: qualify capture sensitivity before progress/flash no-change. */
 async function wholeWindowOscAppCapture(
   ctx: TermProbeSource,
@@ -1749,7 +1824,9 @@ async function wholeWindowOscAppCapture(
     }
     return declaredUntestableResult(
       kind === "progress"
-        ? "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
+        ? ctx.mux === undefined
+          ? OSC9_PROGRESS_APP_NO_OBSERVER
+          : "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
         : "Untestable (no way to tell): OSC555 left all nine whole-window samples unchanged after plain paint/restore and made-up OSC controls; finite sampling can miss a flash and cannot prove Unsupported.",
       state(),
     )
@@ -3344,22 +3421,22 @@ function kittyDetection(raw: string): KittyDetection {
   return { kind: "inconclusive", reason: "no-response" }
 }
 
+/**
+ * A DA1 answer that is the whole capture: the marked fenced silence, graded by the row's rule in recordExecutedProbe
+ * like every other DA1-fenced query (#33165, @cto 767c9bcd). The default rule records Unsupported with this note and
+ * assertion, the same result this function decided itself before.
+ */
 function kittyProtocolAbsent(response: string): ProbeCallbackResult {
   const note =
     "DA1 answered without any Kitty keyboard flags reply; the protocol is not supported (necessary-condition negative; key-event conformance was not tested)"
   return {
-    pass: false,
-    response,
+    ...fencedSilenceResult(
+      response,
+      note,
+      "A complete Kitty keyboard flags reply answers before the DA1 reply",
+      response,
+    ),
     note,
-    observation: { outcome: "unsupported", assertionType: "query_reply", note },
-    assertions: [
-      {
-        assertionType: "query_reply" as const,
-        kind: "negative",
-        expected: "A complete Kitty keyboard flags reply answers before the DA1 reply",
-        observed: response,
-      },
-    ],
   }
 }
 
@@ -3611,9 +3688,11 @@ function allocationReply(imageNumber: number): RegExp {
   return kittyReplyFrame({ I: String(imageNumber), i: "\\d+" })
 }
 
-function imageTransferRequest(imageNumber: number): string {
-  // I requests a new image; a fixed i would overwrite somebody else's image.
-  return `\x1b_Ga=t,f=24,s=1,v=1,t=d,I=${imageNumber};/wAA\x1b\\`
+function imageTransferRequest(imageNumber: number, row: KittyImageRow): string {
+  // I requests a new image; a fixed i would overwrite somebody else's image. One pixel in the row's own colour
+  // (#33034), so no two rows ever send a terminal the same image bytes.
+  const pixel = Buffer.from(KITTY_ROW_IMAGES[row].image).toString("base64")
+  return `\x1b_Ga=t,f=24,s=1,v=1,t=d,I=${imageNumber};${pixel}\x1b\\`
 }
 
 function allocatedImageResult(
@@ -3728,9 +3807,12 @@ function kittyDisplayWithoutTransmit(code: string | null, imageNumber: number): 
 }
 
 /** Same-run image prerequisite for the two pixel rows; successful allocation is released immediately. */
-async function kittyPixelPrerequisite(ctx: TermProbeSource): Promise<ProbeCallbackResult | null> {
+async function kittyPixelPrerequisite(ctx: TermProbeSource, row: KittyImageRow): Promise<ProbeCallbackResult | null> {
   const imageNumber = kittyImageNumber()
-  const transfer = await ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber))
+  const transfer = await ctx.queryWithSentinelOutcome(
+    imageTransferRequest(imageNumber, row),
+    allocationReply(imageNumber),
+  )
   const uploaded = allocationOutcomeResult(transfer, imageNumber)
   if (uploaded.silent) {
     const query = await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)
@@ -3747,10 +3829,10 @@ async function kittyPixelPrerequisite(ctx: TermProbeSource): Promise<ProbeCallba
   return null
 }
 
-/** Both pixel rows qualify opaque red against the same independently painted cell rectangle. */
-function kittyPaintReference(ctx: TermProbeSource): void {
+/** Each pixel row qualifies its own opaque image colour against an independently painted cell rectangle. */
+function kittyPaintReference(ctx: TermProbeSource, rgb: KittyRgb): void {
   ctx.write(KITTY_CLEAR)
-  ctx.write(`\x1b[48;2;${KITTY_FRAME_RED.join(";")}m`)
+  ctx.write(`\x1b[48;2;${rgb.join(";")}m`)
   for (let row = KITTY_REGION.top; row <= KITTY_REGION.bottom; row++) {
     ctx.write(`\x1b[${row};${KITTY_REGION.left}H${" ".repeat(KITTY_REGION.right - KITTY_REGION.left + 1)}`)
   }
@@ -3872,7 +3954,7 @@ function kittyUnobservableResult(id: string, note: string): ProbeCallbackResult 
   }
 }
 
-function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition {
+function kittyImageTransferProbe(id: KittyImageRow, display: boolean): ProbeDefinition {
   const newNumber = () => (Number.parseInt(globalThis.crypto.randomUUID().slice(0, 8), 16) % 0xfffffffe) + 1
   return {
     ...probe(
@@ -3886,7 +3968,7 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
             // silent on it. When that silent read decides nothing, one same-run canonical query asks
             // whether graphics is refused at all: an ERROR frame decides, continued silence does not.
             const uploaded = allocationOutcomeResult(
-              ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber)),
+              ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber, id), allocationReply(imageNumber)),
               imageNumber,
             )
             imageId = uploaded.imageId
@@ -3928,7 +4010,7 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
               cells && readImages ? { ...cells, after: readImages(cells.row, cells.col) } : undefined,
             )
           }
-          const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber)), imageNumber)
+          const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber, id)), imageNumber)
           imageId = uploaded.imageId
           if (!imageId || !display) return uploaded.result
           const response = ctx.feedCapture(placementRequest(imageId))
@@ -3942,7 +4024,7 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         let imageId: number | null = null
         try {
           const transfer = await ctx.queryWithSentinelOutcome(
-            imageTransferRequest(imageNumber),
+            imageTransferRequest(imageNumber, id),
             allocationReply(imageNumber),
           )
           const uploaded = allocationOutcomeResult(transfer, imageNumber)
@@ -4295,7 +4377,67 @@ function liveClipboardNotTested(): ProbeCallbackResult {
 
 const osc52Reply = /\x1b\]52;c;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/
 
-function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult {
+/**
+ * The decoded text of a well-formed canonical OSC 52 c reply; undefined for anything else, which
+ * clipboardQueryResult then grades by name (no reply, invalid reply).
+ */
+function decodedOsc52Reply(outcome: TerminalQueryOutcome): string | undefined {
+  const encoded = outcome.reason === "reply" && outcome.match ? osc52Reply.exec(outcome.raw)?.[1] : undefined
+  // A base64 alphabet and length check first, so atob cannot throw and no catch hides a reply.
+  if (encoded === undefined || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) return undefined
+  const decoded = atob(encoded)
+  return btoa(decoded) === encoded ? decoded : undefined
+}
+
+interface SettledClipboardReply {
+  readonly outcome: TerminalQueryOutcome
+  readonly ownEarlierNonce?: string
+  readonly requeries: number
+  readonly elapsedMs: number
+  /** Each reply in order: ms since the first query and whether it carried the probe's own earlier nonce. */
+  readonly replies: readonly { atMs: number; own: boolean }[]
+}
+
+/**
+ * #33145 (@cto 7fd99ad2): a terminal may answer OSC 52 read from its own earlier write for a moment after another
+ * client takes the selection (Ghostty 1.4.0, under 0.5 s). Re-query only while the reply is well-formed and equals
+ * the probe's OWN earlier nonce, on the write leg's deadline and poll; any other reply decides at once.
+ */
+async function settledClipboardReply(
+  query: () => Promise<TerminalQueryOutcome>,
+  options: { readonly ownEarlierNonce?: string; readonly deadlineMs: number; readonly pollMs: number },
+): Promise<SettledClipboardReply> {
+  const own = options.ownEarlierNonce
+  const startedAt = Date.now()
+  const replies: { atMs: number; own: boolean }[] = []
+  let outcome = await query()
+  let isOwn = own !== undefined && decodedOsc52Reply(outcome) === own
+  replies.push({ atMs: 0, own: isOwn })
+  let requeries = 0
+  while (isOwn && Date.now() - startedAt < options.deadlineMs) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, options.pollMs)
+    })
+    const atMs = Date.now() - startedAt
+    outcome = await query()
+    requeries += 1
+    isOwn = decodedOsc52Reply(outcome) === own
+    replies.push({ atMs, own: isOwn })
+  }
+  return {
+    outcome,
+    ...(own !== undefined && { ownEarlierNonce: own }),
+    requeries,
+    elapsedMs: replies.at(-1)?.atMs ?? 0,
+    replies,
+  }
+}
+
+function clipboardQueryResult(
+  outcome: TerminalQueryOutcome,
+  expected: string,
+  settled?: SettledClipboardReply,
+): ProbeCallbackResult {
   const frame = osc52Reply.exec(outcome.raw)
   if (!frame || outcome.reason !== "reply" || !outcome.match) {
     const reason = outcome.raw ? "invalid-reply" : "no-response"
@@ -4324,25 +4466,220 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
     }
   }
   const pass = decoded === expected
+  if (!pass) {
+    const requeries = settled?.requeries ?? 0
+    const note =
+      settled?.ownEarlierNonce !== undefined && decoded === settled.ownEarlierNonce
+        ? `OSC 52 reply carried own earlier nonce for ${settled.elapsedMs} ms (${requeries} re-queries)`
+        : `OSC 52 reply carried a value other than the independently written nonce (length=${Buffer.byteLength(decoded)}, sha256=${createHash("sha256").update(decoded).digest("hex")})`
+    return {
+      pass: false,
+      response: frame[0],
+      note,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "query_reply", note },
+      // Undecided, not broken: the fixture verified by independent read that the selection held the nonce before
+      // this query, so neither a stale own write nor a foreign value means the test failed (#33145, @cto 0fc1f5db).
+      tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+    }
+  }
+  const settleNote =
+    settled && settled.requeries > 0
+      ? `OSC 52 read returned the probe's own earlier write nonce for ${settled.elapsedMs} ms before the independently written nonce (${settled.requeries} re-queries; replies at ${settled.replies.map((reply) => `+${reply.atMs}ms ${reply.own ? "own" : "written"}`).join(", ")})`
+      : undefined
   return {
-    pass,
+    pass: true,
     response: frame[0],
     observation: {
-      outcome: pass ? "supported" : "inconclusive",
-      ...(!pass && { reason: "insufficient-evidence" as const }),
+      outcome: "supported",
       assertionType: "query_reply",
+      ...(settleNote && { note: settleNote }),
     },
-    ...(pass && {
-      assertions: [
-        {
-          assertionType: "query_reply" as const,
-          kind: "positive" as const,
-          expected: "OSC 52 c returns the independently written nonce",
-          observed: frame[0],
-        },
-      ],
-    }),
+    assertions: [
+      {
+        assertionType: "query_reply" as const,
+        kind: "positive" as const,
+        expected: "OSC 52 c returns the independently written nonce",
+        observed: frame[0],
+      },
+    ],
   }
+}
+
+async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"): Promise<ProbeCallbackResult> {
+  if (!ctx.withNotificationObserver) {
+    const note = `No owned desktop notification observer for OSC ${selector}`
+    return { pass: false, note, tests: [{ id: "criterion", status: "probe-todo", reason: note }] }
+  }
+  return ctx.withNotificationObserver(async (fixture): Promise<ProbeCallbackResult> => {
+    const nonce = `terminfo-notify-${randomUUID()}`
+    const sequence = selector === "9" ? `\x1b]9;${nonce}\x07` : `\x1b]777;notify;${nonce};${nonce}\x07`
+    const deadlineMs = Math.min(fixture.deadlineMs, 2000)
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+      throw new Error("Notification observation needs a positive deadline")
+    }
+    let focusedBefore: string | undefined
+    let focusedAfter: string | undefined
+    let ownedWindowId: string | undefined
+    let helperWindowId: string | undefined
+    let focusError: string | undefined
+    let wrote = false
+    let observed: ReturnType<typeof fixture.readSince> = { entries: [], problems: [] }
+    const observe = async (readFocus?: () => Promise<string>): Promise<void> => {
+      const cursor = fixture.cursor()
+      focusedBefore = await readFocus?.()
+      ctx.write(sequence)
+      wrote = true
+      focusedAfter = await readFocus?.()
+      const deadline = Date.now() + deadlineMs
+      for (;;) {
+        observed = fixture.readSince(cursor)
+        const remaining = deadline - Date.now()
+        if (remaining <= 0) break
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, Math.min(25, remaining))
+        })
+      }
+    }
+    if (ctx.input?.focusRoundTrip) {
+      try {
+        const focus = await ctx.input.focusRoundTrip(observe)
+        ownedWindowId = focus.ownedWindowId
+        helperWindowId = focus.helperWindowId
+      } catch (error) {
+        focusError = error instanceof Error ? error.message : String(error)
+        // A failed move may still permit positive delivery; never repeat a target write.
+        if (!wrote) await observe()
+      }
+    } else {
+      await observe()
+      focusError = "No owned fixture can hold the terminal unfocused"
+    }
+    const matches = observed.entries.filter((entry) => entry.body.includes(nonce) || entry.summary.includes(nonce))
+    const unfocusedAtWrite =
+      helperWindowId !== undefined &&
+      helperWindowId !== ownedWindowId &&
+      focusedBefore === helperWindowId &&
+      focusedAfter === helperWindowId
+    const missing = [
+      ...(fixture.terminalSideControl === undefined
+        ? [
+            fixture.terminalSideControlRefusal ??
+              "No control Notify sent from the terminal's own process environment was recorded in this window",
+          ]
+        : []),
+      ...(fixture.terminalBus.state !== "same" ? [fixture.terminalBus.reason] : []),
+      ...(fixture.profile.state !== "default" ? [fixture.profile.reason] : []),
+      ...(!unfocusedAtWrite
+        ? [focusError ?? "Terminal was not proven unfocused immediately before and after the target write"]
+        : []),
+      ...(ctx.mux && !fixture.outerTerminalRecord
+        ? [fixture.outerTerminalRecordRefusal ?? "No matching outer-terminal record for this multiplexer"]
+        : []),
+      ...observed.problems,
+    ]
+    // A parse loss makes notification rows Open even if another recorded call happens to match.
+    const supported = matches.length > 0 && observed.problems.length === 0
+    const unsupported = matches.length === 0 && missing.length === 0
+    const outcome = supported ? "supported" : unsupported ? "unsupported" : "inconclusive"
+    const response = JSON.stringify({
+      selector,
+      nonce,
+      sequence,
+      deadlineMs,
+      recordPath: fixture.recordPath,
+      busInTerminalEnvironment: fixture.terminalBus,
+      controlRecorded: fixture.control,
+      terminalSideControl: fixture.terminalSideControl,
+      defaultProfile: fixture.profile,
+      noNonceCallByDeadline: matches.length === 0,
+      unfocusedAtWrite: {
+        verified: unfocusedAtWrite,
+        ownedWindowId,
+        helperWindowId,
+        focusedBefore,
+        focusedAfter,
+        error: focusError,
+      },
+      outerTerminalRecord: fixture.outerTerminalRecord,
+      notifications: observed.entries,
+      problems: observed.problems,
+      missing,
+    })
+    const note = supported
+      ? `OSC ${selector} delivered the run nonce to the owned desktop service`
+      : unsupported
+        ? `OSC ${selector} sent no nonce Notify within ${deadlineMs}ms on the qualified default, unfocused run`
+        : `OSC ${selector} delivery remains open: ${missing.join("; ")}`
+    if (
+      !supported &&
+      matches.length === 0 &&
+      ownedWindowId !== undefined &&
+      (focusedBefore === ownedWindowId || focusedAfter === ownedWindowId)
+    ) {
+      const reason = "Notification negative trial invalid: the terminal was focused at the target write"
+      return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-invalid", reason }] }
+    }
+    return {
+      pass: supported,
+      response,
+      note,
+      observation: {
+        outcome,
+        assertionType: "notification",
+        note,
+        ...(outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+      },
+      ...(supported || unsupported
+        ? {
+            assertions: [
+              {
+                assertionType: "notification" as const,
+                kind: supported ? ("positive" as const) : ("negative" as const),
+                expected: "The terminal sends a Notify carrying the target OSC nonce to the owned desktop service",
+                observed: response,
+              },
+            ],
+          }
+        : {}),
+    }
+  })
+}
+
+/** PTY bytes seen this long after the press refuse the sample; a bare shift sends none in any default key mode. */
+const REAL_KEY_SILENCE_MS = 200
+
+/**
+ * #33145 (@cto 70645b74): the owned X display gives the terminal one real key event before an OSC 52 write, as
+ * on any used terminal, because its selection claim carries its last input-event time. The press must reach the
+ * application as zero bytes (a report-all-keys keyboard mode would send one for shift), so it runs inside a PTY
+ * read and anything that arrives refuses the sample by name.
+ */
+async function realKeyEventBeforeWrite(
+  ctx: TermProbeSource,
+  press: () => Promise<void>,
+): Promise<ProbeCallbackResult | undefined> {
+  const invalid = (note: string): ProbeCallbackResult => ({
+    pass: false,
+    note,
+    tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
+  })
+  if (!ctx.readInjected) {
+    return invalid(
+      "Real key event before the OSC 52 write needs the PTY read that proves it sent the application no bytes; this source has none",
+    )
+  }
+  let outcome: TerminalQueryOutcome
+  try {
+    outcome = await ctx.readInjected(/[\s\S]/, REAL_KEY_SILENCE_MS, press)
+  } catch (error) {
+    return invalid(error instanceof Error ? error.message : String(error))
+  }
+  if (outcome.match || outcome.raw.length > 0) {
+    return invalid(
+      `Real key event before the OSC 52 write put ${Buffer.byteLength(outcome.raw)} bytes into the application (base64 ${outcome.rawBase64}); sample refused`,
+    )
+  }
+  return undefined
 }
 
 async function liveClipboardProbe(
@@ -4361,8 +4698,16 @@ async function liveClipboardProbe(
     const muxContextNote =
       mux === "tmux" ? `tmux set-clipboard=${fixture.tmuxSetClipboard}` : mux === "screen" ? "mux=screen" : undefined
     const muxDefaultNegativeEligible = mux === "screen" || (mux === "tmux" && fixture.tmuxSetClipboard === "external")
+    const deadlineMs = Math.min(Math.max(fixture.writeDeadlineMs ?? 1000, 0), 2000)
+    const pollMs = Math.max(fixture.writePollMs ?? 25, 1)
+    let ownWriteNonce: string | undefined
     if (kind !== "read") {
+      if (fixture.realKeyEvent) {
+        const refused = await realKeyEventBeforeWrite(ctx, fixture.realKeyEvent)
+        if (refused) return refused
+      }
       const nonce = `terminfo-osc52-${randomUUID()}`
+      ownWriteNonce = nonce
       ctx.write(`\x1b]52;c;${btoa(nonce)}\x07`)
       // A reply on the same TTY confirms the terminal processed the preceding write.
       // The independent clipboard read below is still the evidence of its effect.
@@ -4373,8 +4718,6 @@ async function liveClipboardProbe(
         )
       }
       const baseline = fixture.baseline
-      const deadlineMs = Math.min(Math.max(fixture.writeDeadlineMs ?? 1000, 0), 2000)
-      const pollMs = Math.max(fixture.writePollMs ?? 25, 1)
       const startedAt = Date.now()
       let measured = await fixture.readText()
       let allBaseline = typeof baseline === "string" && baseline.length > 0 && measured === baseline
@@ -4460,10 +4803,15 @@ async function liveClipboardProbe(
     }
     const nonce = `terminfo-osc52-${randomUUID()}`
     await fixture.writeText(nonce)
+    const settleOptions = { ownEarlierNonce: ownWriteNonce, deadlineMs, pollMs }
     if (mux) {
-      const outcome = await ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
+      const settled = await settledClipboardReply(
+        async () => ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply),
+        settleOptions,
+      )
+      const outcome = settled.outcome
       if (outcome.match && outcome.reason === "reply") {
-        const result = clipboardQueryResult(outcome, nonce)
+        const result = clipboardQueryResult(outcome, nonce, settled)
         if (result.observation && muxContextNote) {
           result.observation = {
             ...result.observation,
@@ -4507,10 +4855,11 @@ async function liveClipboardProbe(
           },
         }
       }
-      return clipboardQueryResult(outcome, nonce)
+      return clipboardQueryResult(outcome, nonce, settled)
     }
-    const outcome = await ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply)
-    const result = clipboardQueryResult(outcome, nonce)
+    const settled = await settledClipboardReply(() => ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply), settleOptions)
+    const outcome = settled.outcome
+    const result = clipboardQueryResult(outcome, nonce, settled)
     if (!outcome.raw && ctx.capture) {
       const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
       return {
@@ -4699,7 +5048,11 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   return result
 }
 
-/** OS clipboard → app via ctrl+shift+v. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */
+/**
+ * OS selection → app through the App's default paste action. The collector chooses the route (the selection that
+ * action reads and its key; xterm's Shift+Insert reads PRIMARY), so the probe stays blind to which App it runs in.
+ * Distinct from OSC 52 (app → clipboard) and DECRPM 2004.
+ */
 async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
@@ -4708,6 +5061,9 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
   }
   if (!ctx.withClipboardFixture) return notTestedResult("owned disposable clipboard paste", { clipboard: false })
   return ctx.withClipboardFixture(async (fixture) => {
+    const route = fixture.paste
+    if (!route) return notTestedResult("a reviewed default paste route for this App", { paste: false })
+    const action = `clipboard-paste:${route.selection}:${route.key}`
     const incomingMode = await ctx.queryMode(2004)
     const blindDisposableReset = incomingMode === null && fixture.disposableSession === true
     if (!blindDisposableReset && incomingMode !== "set" && incomingMode !== "reset") {
@@ -4720,16 +5076,17 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
     const readPaste = async (enabled: boolean) => {
       ctx.write(enabled ? "\x1b[?2004h" : "\x1b[?2004l")
       const arrival = new RegExp(`\\x1b\\[200~[\\s\\S]*?\\x1b\\[201~|${escapeRegex(nonce)}`)
-      const report = (await readInput(arrival, 1000, () => input.injectKey("ctrl+shift+v")))?.[0]
+      const report = (await readInput(arrival, 1000, () => input.injectKey(route.key)))?.[0]
       if (!report) {
-        throw new Error("XTEST clipboard paste ctrl+shift+v did not reach the app after a successful delivery control")
+        throw new Error(
+          `XTEST ${route.selection} paste ${route.key} did not reach the app after a successful delivery control`,
+        )
       }
       return report
     }
     let failed = false
     let primary: unknown
     try {
-      // The owned fixture seeds CLIPBOARD; Shift+Insert reads X11 PRIMARY instead.
       const reset = await readPaste(false)
       const report = await readPaste(true)
       const resetAgain = await readPaste(false)
@@ -4741,6 +5098,9 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       }
       const observed = {
         mode: "clipboard-paste",
+        selection: route.selection,
+        key: route.key,
+        binding: route.binding,
         control,
         reset,
         report,
@@ -4750,8 +5110,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       const blindModeNote = blindDisposableReset
         ? "DECRPM 2004 returned null; mode 2004 was set blind on the verified disposable session and restored with CSI ? 2004 l"
         : undefined
-      const expected =
-        "OS XTEST ctrl+shift+v paste of clipboard nonce as CSI 200~nonce201~ after plain-a delivery control"
+      const expected = `OS XTEST ${route.key} paste of ${route.selection} nonce as CSI 200~nonce201~ after plain-a delivery control`
       const encoding = new RegExp(`\\x1b\\[200~${escapeRegex(nonce)}\\x1b\\[201~`)
       if (encoding.test(report)) {
         return {
@@ -4769,7 +5128,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
               kind: "positive" as const,
               expected,
               observed: JSON.stringify(observed),
-              action: "clipboard-paste:ctrl+shift+v",
+              action,
             },
           ],
         }
@@ -4789,7 +5148,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
             kind: "negative" as const,
             expected,
             observed: JSON.stringify(observed),
-            action: "clipboard-paste:ctrl+shift+v",
+            action,
           },
         ],
       }
@@ -5402,6 +5761,13 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
 }
 
 const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
+/** A terminal that does not answer the OSC 22 query form, in the criterion's terms (@cto a7fb82cc). */
+export const OSC22_SILENT_TERMINAL =
+  "Open: the terminal gave no OSC 22 selected-shape reply, and silence on the query form is not unsupported, because a terminal can set pointer shapes without answering the query; with no reply, a cursor query cannot show the shape, and the visible pointer is outside this run's evidence."
+/** A multiplexer stays open by design: the pointer is the outer terminal's (@cto a7fb82cc). */
+export function osc22SilentMultiplexer(mux: "tmux" | "screen"): string {
+  return `Open by design: the mouse pointer belongs to the outer terminal, not ${mux}, so anything seen would grade the outer terminal; ${mux} gave no OSC 22 selected-shape reply.`
+}
 const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
 
 function readOsc22Shape(raw: string) {
@@ -5447,6 +5813,23 @@ function osc22QueryResult(controlShape: string, evidence: Osc22QueryEvidence, no
     "query_reply",
   )
 }
+
+/**
+ * The positive witness the OSC 7 title path looks for: both written paths, unchanged, on this run's public title.
+ */
+const OSC7_TITLE_EXPECTED =
+  "OSC 7 localhost targets appear as their exact raw paths on the qualified public title surface"
+
+/**
+ * A run whose public title carried neither OSC 7 path. The title is the only surface this route reads, so a title
+ * without the path cannot show the terminal lacks anything: the row stays open (#33375, @cto 04:36Z step 3).
+ */
+const OSC7_TITLE_ABSENT_OPEN =
+  "Open: this run's public title carried neither OSC 7 path, and the title is the only surface this route reads, so the observation does not decide the result."
+
+/** A run whose public title did not hold the arm's own OSC 2 controls: nothing here witnessed OSC 7. */
+const OSC7_TITLE_CONTROL_OPEN =
+  "Open: this run's public title did not hold the OSC 2 control titles, so the title could not witness OSC 7 and the observation does not decide the result."
 
 const extensionDefinitions: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
@@ -5509,8 +5892,10 @@ const extensionDefinitions: ProbeDefinition[] = [
         }
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
-      // The row's claim is the one sgr.fg.truecolor states: the cell stores the exact RGB values.
-      // DECRQSS SGR is therefore its oracle, not a pixel comparison of rendered glyphs.
+      // The row's claim is the one sgr.fg.truecolor states: the exact RGB is kept. A state read
+      // decides where the terminal answers one; otherwise the row runs sgr.fg.truecolor's own pixel
+      // arm, found by id through COLOUR_UMBRELLAS, with its controls, multiplexer demotion and
+      // sibling witness (@cto a7fb82cc and e9641d54, #33104). This fallback runs only with no capture.
       sgrTermReadback(
         "extensions.truecolor",
         "\x1b[38;2;255;128;0m",
@@ -5811,7 +6196,8 @@ const extensionDefinitions: ProbeDefinition[] = [
       },
       async (ctx) => {
         const id = "extensions.kitty-graphics.animation"
-        const prerequisite = await kittyPixelPrerequisite(ctx)
+        const colours = KITTY_ROW_IMAGES[id]
+        const prerequisite = await kittyPixelPrerequisite(ctx, id)
         if (prerequisite) return prerequisite
         const capture = ctx.capture
         if (!capture) {
@@ -5856,14 +6242,22 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
           const blank = await shoot("control", "Blank rectangle before the static image control")
-          kittyPaintReference(ctx)
-          const reference = await shoot("control", "Independent SGR opaque-red reference in the same rectangle")
+          kittyPaintReference(ctx, colours.image)
+          const reference = await shoot(
+            "control",
+            "Independent SGR reference in the row's own image colour, same rectangle",
+          )
+          kittyPaintReference(ctx, colours.second)
+          const secondReference = await shoot(
+            "control",
+            "Independent SGR reference in the second frame's own colour, same rectangle",
+          )
           // Arm 3 — a one-frame image over the same intervals must hold still.
           const stillId = kittyImageNumber()
           ids.push(stillId)
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
-          ctx.write(kittyFrameTransfer(stillId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+          ctx.write(kittyFrameTransfer(stillId, { ...size, rgb: colours.image }, { root: true }))
           ctx.write(kittyBlockOrigin())
           await ctx.queryWithSentinelOutcome(kittyPlace(stillId), kittyReplyFrame({ i: String(stillId) }))
           ctx.write(kittyPark())
@@ -5896,8 +6290,8 @@ const extensionDefinitions: ProbeDefinition[] = [
             const readback = await ctx.queryWithSentinelOutcome(bytes, kittyReplyFrame({ i: String(playbackId) }))
             replies.push({ label, readback })
           }
-          await command("base image", kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
-          await command("second frame", kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
+          await command("base image", kittyFrameTransfer(playbackId, { ...size, rgb: colours.image }, { root: true }))
+          await command("second frame", kittyFrameTransfer(playbackId, { ...size, rgb: colours.second }))
           // The root frame carries no gap at transfer time; its gap is set by the control code.
           await command("root frame gap", kittyRootGap(playbackId))
           ctx.write(kittyBlockOrigin())
@@ -5954,6 +6348,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             still: [stillFirst.regionDigest, stillSecond.regionDigest],
             blank: blank.regionDigest,
             reference: reference.regionDigest,
+            secondReference: secondReference.regionDigest,
             cursorOnly: [cursorFirst.regionDigest, cursorSecond.regionDigest],
             redraw: [redrawFirst.pixelsDigest, redrawSecond.pixelsDigest],
             playbackElapsedMs,
@@ -5966,8 +6361,11 @@ const extensionDefinitions: ProbeDefinition[] = [
             )
             .join("; ")
           const note = `${captureDecision.note}; observed replies: ${replyNotes}`
+          // A refusal decides from the terminal's reply; the frame-two-only negative decides from pixels.
           const assertionType =
-            captureDecision.outcome === "unsupported" ? ("query_reply" as const) : ("screenshot" as const)
+            captureDecision.outcome === "unsupported" && captureDecision.decidedBy !== KITTY_FRAME_TWO_ONLY
+              ? ("query_reply" as const)
+              : ("screenshot" as const)
           const observed = JSON.stringify({
             id,
             region: KITTY_REGION,
@@ -5980,6 +6378,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             digests: {
               blank: blank.regionDigest,
               reference: reference.regionDigest,
+              secondReference: secondReference.regionDigest,
               still: [stillFirst.regionDigest, stillSecond.regionDigest],
               playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
               retry,
@@ -5998,6 +6397,10 @@ const extensionDefinitions: ProbeDefinition[] = [
               ...(assertionType === "screenshot" ? { frames } : {}),
               note,
             },
+            // The publication gate keys on this branch (docs/data/held-negatives.ts, @cto edab7573).
+            ...(captureDecision.decidedBy === KITTY_FRAME_TWO_ONLY
+              ? { criterionBranch: KITTY_FRAME_TWO_ONLY_BRANCH }
+              : {}),
             ...(captureDecision.decidedBy === "a missing region digest"
               ? {
                   criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
@@ -6012,7 +6415,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                       assertionType,
                       kind: captureDecision.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                       expected:
-                        "The static image matches the independent nonblank reference and holds still; the cursor-only pair is equal and redraw differs. Moving playback requires differing hand-selected frames. A negative requires an exact animation-command refusal, an equal retry and initial playback matching the static image",
+                        "The static image matches the independent nonblank reference and holds still; the cursor-only pair is equal and redraw differs. Moving playback requires differing hand-selected frames. A negative requires either an exact animation-command refusal, an equal retry and initial playback matching the static image, or frame 2 matching its own reference with neither timed playback nor hand selection bringing frame 1 back",
                       observed,
                       note: `decided by ${captureDecision.decidedBy}`,
                     },
@@ -6041,7 +6444,8 @@ const extensionDefinitions: ProbeDefinition[] = [
       },
       async (ctx) => {
         const id = "extensions.kitty-graphics.unicode-placeholders"
-        const prerequisite = await kittyPixelPrerequisite(ctx)
+        const colours = KITTY_ROW_IMAGES[id]
+        const prerequisite = await kittyPixelPrerequisite(ctx, id)
         if (prerequisite) return prerequisite
         const capture = ctx.capture
         if (!capture) {
@@ -6103,11 +6507,16 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(KITTY_CLEAR)
           const placeholderId = kittyPlaceholderNumber()
           ids.push(placeholderId)
+          // Text FIRST, then the virtual placement (#33033, @cto fd7747d9). The protocol's own order is
+          // placement then text, but in Kitty 0.49.2 on our Linux container that order is a paint race:
+          // placement q=0 then text painted 0 of 8, q=2 4 of 6, q=1 2 of 4, and Kitty's own
+          // `kitten icat --unicode-placeholder` bytes 0 of 2. Text first painted 14 of 14. The q=0 reply
+          // is kept so a refusal still reads as one.
+          ctx.write(kittyPlaceholderText(placeholderId))
           const virtualPlacement = await ctx.queryWithSentinelOutcome(
-            kittyVirtualPlacement(placeholderId, { ...size, rgb: KITTY_FRAME_RED }),
+            kittyVirtualPlacement(placeholderId, { ...size, rgb: colours.image }),
             kittyReplyFrame({ i: String(placeholderId) }),
           )
-          ctx.write(kittyPlaceholderText(placeholderId))
           const withImageFirst = await shoot(
             "target",
             `Placeholder grid with image ${String(placeholderId)} composited over U+10EEEE cells`,
@@ -6147,7 +6556,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           const ordinaryId = kittyPlaceholderNumber()
           ids.push(ordinaryId)
           const blank = await shoot("control", "Blank rectangle captured before the ordinary placement")
-          ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+          ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: colours.image }, { root: true }))
           ctx.write(kittyBlockOrigin())
           const placement = await ctx.queryWithSentinelOutcome(
             kittyPlace(ordinaryId),
@@ -6156,8 +6565,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(kittyPark())
           const ordinary = await shoot("control", "Ordinary a=p placement of the same pixels in the same rectangle")
           ctx.write(kittyDeleteImage(ordinaryId))
-          kittyPaintReference(ctx)
-          const reference = await shoot("control", "Independent SGR opaque-red reference in the same rectangle")
+          kittyPaintReference(ctx, colours.image)
+          const reference = await shoot(
+            "control",
+            "Independent SGR reference in the row's own image colour, same rectangle",
+          )
           const virtualMessage = virtualPlacement.match?.[2]
           const captureDecision = decideKittyPlaceholders({
             withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
@@ -6518,7 +6930,12 @@ const extensionDefinitions: ProbeDefinition[] = [
   {
     ...probe("extensions.reflow", mainScreenReflow, async (ctx): Promise<ProbeCallbackResult> => {
       if (ctx.mux === "tmux" || ctx.mux === "screen") {
-        const note = "tmux and GNU Screen remain PROBE TODO on this arm"
+        // #33363: the mux arm declined with a sentence that restated its status and named no blocker.
+        // The capability is not missing — an owned-outer mux run carries pixel frames, and its
+        // `resizeWindow` moves the pane's columns (run aedd2f5a recorded 61 -> 107). What is missing is
+        // our own step: this arm returns before it attempts the resize-and-read path on a mux subject,
+        // so the pane's own re-wrap is never read. The row names that unbuilt step, not the subject.
+        const note = `Reflow through ${ctx.mux} is not yet measured: this arm returns before it attempts a resize, so the ${ctx.mux} pane's own re-wrap stays unread`
         return {
           pass: false,
           note,
@@ -7289,7 +7706,13 @@ const extensionDefinitions: ProbeDefinition[] = [
               controlReadings.push(await read())
             }
             if (controlReadings[0] !== controls[0] || controlReadings[1] !== controls[1]) {
-              result = replyFailure("OSC 7 public title reader failed its handled OSC 2 controls")
+              // #33375: the run's own OSC 2 controls are what qualify this title surface. Where an absent title
+              // decides (Ghostty), a failed control still means this reader broke. Everywhere else the title may
+              // simply not be holdable on this route, so the cell stays open naming the control it could not
+              // hold (@cto 2026-11-11 04:46Z condition A).
+              result = ctx.readTitleAbsenceDecides
+                ? replyFailure("OSC 7 public title reader failed its handled OSC 2 controls")
+                : reviewResult("app-title-control", OSC7_TITLE_CONTROL_OPEN, OSC7_TITLE_CONTROL_OPEN, state)
             } else {
               ctx.write("\x1b]2;\x07")
               state.empty = await read()
@@ -7302,14 +7725,17 @@ const extensionDefinitions: ProbeDefinition[] = [
               const unexpected = readings.some(
                 (value, index) => value !== paths[index] && value !== (index === 0 ? state.empty : readings[index - 1]),
               )
+              const carried = readings[0] === paths[0] && readings[1] === paths[1]
+              // #33375: this path is one-sided. A title that does not carry the path decides nothing, and only a
+              // subject with an established negative (Ghostty, through readTitleAbsenceDecides) reads Unsupported.
               result =
                 state.negative !== readings[1] || unexpected
                   ? replyFailure("Made-up OSC changed the OSC 7 public title surface")
-                  : parserStateResult(
-                      readings[0] === paths[0] && readings[1] === paths[1],
-                      "OSC 7 localhost targets appear as their exact raw paths on the qualified public title surface",
-                      state,
-                    )
+                  : carried
+                    ? parserStateResult(true, OSC7_TITLE_EXPECTED, state)
+                    : ctx.readTitleAbsenceDecides
+                      ? parserStateResult(false, OSC7_TITLE_EXPECTED, state)
+                      : notTestedResult(OSC7_TITLE_ABSENT_OPEN, state)
             }
           } finally {
             ctx.write("\x1b]7;\x07")
@@ -7578,14 +8004,8 @@ const extensionDefinitions: ProbeDefinition[] = [
           "Measures the parser notification sink, not OS notification delivery or OSC 9;4 progress",
         )
       },
-      () => {
-        const note = "No desktop notification delivery readback for OSC 9"
-        return Promise.resolve<ProbeCallbackResult>({
-          pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
-        })
-      },
+      (ctx) => liveNotificationProbe(ctx, "9"),
+      "notification",
     ),
     libAssertionType: "buffer_state",
   },
@@ -8121,9 +8541,12 @@ const extensionDefinitions: ProbeDefinition[] = [
         }
         const initial = await read()
         if (initial.shape === undefined) {
+          // @cto a7fb82cc (#33100): silence on the query form is never Unsupported, and an answered OSC
+          // colour query is no control for OSC 22. Each subject says why it stays open.
+          const reason = ctx.mux === undefined ? OSC22_SILENT_TERMINAL : osc22SilentMultiplexer(ctx.mux)
           return {
-            ...notTestedResult(NO_SAME_PATH_CONTROL, { query, initial }),
-            note: "No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read",
+            ...notTestedResult(reason, { query, initial }),
+            note: `No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read; ${reason}`,
           }
         }
         const controlShape = initial.shape === "text" ? "wait" : "text"
@@ -8255,13 +8678,8 @@ const extensionDefinitions: ProbeDefinition[] = [
           "Measures the parser OSC 777 sink, not OS notification delivery",
         )
       },
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]777;notify;test;body\x07")
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "OSC 777 notification delivery")
-      },
-      null,
+      (ctx) => liveNotificationProbe(ctx, "777"),
+      "notification",
     ),
     libAssertionType: "buffer_state",
   },
@@ -8415,7 +8833,13 @@ const extensionDefinitions: ProbeDefinition[] = [
 
   // OSC 720 — rxvt-unicode scroll view up
   {
-    ...probe("extensions.osc720-scroll-up", osc720ScrollProbe(), osc720ScrollUpApp),
+    ...probe("extensions.osc720-scroll-up", osc720ScrollProbe(), async (ctx) => {
+      try {
+        return await osc720ScrollUpApp(ctx)
+      } catch (error) {
+        return unavailableScrollbackReading(error)
+      }
+    }),
     libAssertionType: "buffer_state",
     termNeedsGeometry: true,
   },
@@ -9016,10 +9440,6 @@ const DEC_COLOUR_REPORTS: Readonly<Record<string, Parameters<typeof unhandledSeq
     feed: "\x1b[48;2;17;97;201m",
     codes: ["48m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
   },
-  "extensions.truecolor": {
-    feed: "\x1b[38;2;17;97;201m",
-    codes: ["38m", "2m", "17m", "97m", "201m"].map((code) => ({ kind: "csi", code })),
-  },
   "extensions.osc633-p": { feed: "\x1b]633;P;Cwd=/terminfo-633-cwd-A\x07", code: { kind: "osc", code: "633" } },
 }
 
@@ -9043,15 +9463,22 @@ const LIBVTERM_R1_ABSENCES: Readonly<Record<string, string>> = Object.fromEntrie
 )
 const LIBVTERM_R1_NEGATIVES: Readonly<Record<string, { readonly feed: string; readonly code: UnhandledSequence }>> = {
   "modes.decsscls": { feed: "\x1b[9 p", code: { kind: "csi", code: " 9p" } },
-  "extensions.kitty-graphics.display": { feed: imageTransferRequest(1), code: { kind: "apc", code: "G" } },
-  "extensions.kitty-graphics.transmit": { feed: imageTransferRequest(1), code: { kind: "apc", code: "G" } },
+  "extensions.kitty-graphics.display": {
+    feed: imageTransferRequest(1, "extensions.kitty-graphics.display"),
+    code: { kind: "apc", code: "G" },
+  },
+  "extensions.kitty-graphics.transmit": {
+    feed: imageTransferRequest(1, "extensions.kitty-graphics.transmit"),
+    code: { kind: "apc", code: "G" },
+  },
 }
 
 /** One registry consumer; other subjects and decided results retain their existing path. */
 export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefinition {
   const lib = definition.lib
   const decClipboard = definition.id === "extensions.osc52-clipboard" || definition.id === "extensions.osc52-write"
-  const decTarget = DEC_COLOUR_REPORTS[definition.id]
+  // An umbrella reads its component's entry, never a copy (#33104).
+  const decTarget = DEC_COLOUR_REPORTS[COLOUR_UMBRELLAS[definition.id] ?? definition.id]
   const decSetup = DEC_SETUP_REPORTS[definition.id]
   const decsace = definition.id === "editing.decsace"
   const vt100Target = VT100_RUST_D2_NEGATIVES[definition.id]

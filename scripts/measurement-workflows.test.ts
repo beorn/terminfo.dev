@@ -30,6 +30,27 @@ const BUN = process.versions.bun
 
 const root = join(import.meta.dirname, "..")
 
+// #33321: macOS Bash 3.2 failed on unmatched apostrophes in command-substitution JS comments.
+// Paired quotes in ITERM_STARTUP already worked; this checks comment-local imbalance, not all quotes.
+// Local Bash 5 accepts the broken comments, so syntax-only checks here missed the hosted failure.
+test("hosted Mac scripts parse and keep command-substitution comments compatible with Bash 3.2", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const steps = workflow.jobs["measure-macos"].steps as { name: string; run?: string }[]
+  let checkedBodies = 0
+  for (const step of steps) {
+    if (!step.run) continue
+    const result = spawnSync("/bin/bash", ["-n"], { input: step.run, encoding: "utf8" })
+    expect(result.status, `${step.name}: ${result.stderr}`).toBe(0)
+    for (const body of step.run.matchAll(/\$\(cat <<'([^']+)'\n([\s\S]*?)\n\1\n\s*\)/gu)) {
+      checkedBodies++
+      const comments = body[2]!.split("\n").filter((line) => /^\s*\/\//u.test(line))
+      const unmatchedComments = comments.filter((line) => (line.match(/'/gu)?.length ?? 0) % 2 !== 0)
+      expect(unmatchedComments, `${step.name}: Bash 3.2 unmatched comment quotes`).toEqual([])
+    }
+  }
+  expect(checkedBodies).toBeGreaterThan(0)
+})
+
 test("hosted collector build runs at background priority", () => {
   const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
   const build = workflow.jobs["measure-macos"].steps.find(
@@ -695,12 +716,82 @@ test("hosted Terminal launch owns its window and closes only it before upload", 
   expect(close?.if).toContain("matrix.id == 'terminal-app'")
   expect(close?.run).toContain("closeOwnedTerminalWindow")
   expect(close?.run).toContain("terminal-window-disposal.json")
+  // #33152 (@cto 088a3204): the close's own returned proof is kept, and a failed close leaves its reason by name.
+  expect(close?.run).toContain("const closeProof = JSON.parse(closeOwnedTerminalWindow(terminalWindow))")
+  expect(close?.run).toContain("remaining, closeProof")
+  expect(close?.run).toContain("terminal-window-close-failure.json")
   // A launch that ran and recorded nothing must fail loudly, never read as "no launch happened".
   expect(close?.run).toContain("launcher.log")
   expect(close?.run).toContain("recorded no owned window")
   const upload = steps.find((step) => step.uses === "actions/upload-artifact@v4")
   expect(upload).toBeDefined()
   expect(steps.indexOf(close!)).toBeLessThan(steps.indexOf(upload!))
+})
+
+// #33152: the close step's side files never reached run.json, so a placed Terminal.app record could
+// not show its owned window was opened by this run and is gone. Run the finalise step the way the
+// runner does: it must refuse by name with ::error:: and exit 1, or carry both entries into run.json.
+test("hosted Terminal finalise step carries launch and disposal into run.json or fails the job by name", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const steps = workflow.jobs["measure-macos"].steps as Array<{
+    name?: string
+    if?: string
+    run?: string
+    uses?: string
+  }>
+  const collect = steps.find((step) => step.name === "Launch, emit the receipt, and collect as the last mutating step")
+  expect(collect?.run).toContain("launchTerminalWindowCensus")
+  const close = steps.find((step) => step.name === "Close the owned Terminal window before upload")
+  const finalise = steps.find((step) => step.name === "Finalise the run record with the owned Terminal window")
+  const upload = steps.find((step) => step.uses === "actions/upload-artifact@v4")
+  expect(finalise?.if).toBe("always() && matrix.id == 'terminal-app'")
+  expect(steps.indexOf(close!)).toBe(steps.indexOf(finalise!) - 1)
+  expect(steps.indexOf(finalise!)).toBeLessThan(steps.indexOf(upload!))
+
+  const temp = mkdtempSync(join(tmpdir(), "terminal-finalise-"))
+  try {
+    const out = join(temp, "measurement-artifacts")
+    mkdirSync(out)
+    writeFileSync(join(out, "run.json"), JSON.stringify({ runId: "hosted-1", rawReplies: {} }))
+    const step = () =>
+      spawnSync("bash", ["-e", "-c", finalise!.run!], {
+        cwd: root,
+        env: { ...process.env, RUNNER_TEMP: temp },
+        encoding: "utf8",
+      })
+    const refused = step()
+    expect(refused.status).toBe(1)
+    expect(refused.stdout).toContain(
+      "::error::owned Terminal window: terminal-launch.json is absent, so this run opened no window it can name",
+    )
+    const tty = "/dev/ttys003"
+    writeFileSync(
+      join(out, "terminal-launch.json"),
+      JSON.stringify({
+        appId: "terminal-app",
+        terminalWindow: { provider: "terminal-app", windowId: 14, tty },
+        beforeIds: [],
+        afterIds: [14],
+        newIds: [{ windowId: 14, tabCount: 1, tty }],
+      }),
+    )
+    writeFileSync(
+      join(out, "terminal-window-disposal.json"),
+      JSON.stringify({ appId: "terminal-app", windowId: 14, tty, remaining: 0 }),
+    )
+    const carried = step()
+    expect(carried.stderr).toBe("")
+    expect(carried.status).toBe(0)
+    const run = JSON.parse(readFileSync(join(out, "run.json"), "utf8")) as {
+      runId: string
+      rawReplies: Record<string, string>
+    }
+    expect(run.runId).toBe("hosted-1")
+    expect(Object.keys(run.rawReplies).sort()).toEqual(["collector.windowDisposal", "collector.windowLaunchProof"])
+  } finally {
+    // raw-delete-allow: temp is this test's own mkdtemp scratch root
+    rmSync(temp, { recursive: true, force: true })
+  }
 })
 
 // 30729 P0: the terminal-app arm read COMMAND_PATH from a bun --eval child while the shell never
@@ -738,7 +829,7 @@ test("the hosted terminal-app arm hands the collector command path to its child"
     // Red on 6c6def1e2: the child inherited no COMMAND_PATH at all.
     expect(readFileSync(join(directory, "child-env"), "utf8")).toContain(`COMMAND_PATH=${commandPath}\n`)
     expect(readFileSync(join(directory, "child-body"), "utf8")).toContain(
-      "launchTerminalWindow(process.env.COMMAND_PATH)",
+      "launchTerminalWindowCensus(process.env.COMMAND_PATH)",
     )
   } finally {
     rmSync(directory, { recursive: true, force: true })

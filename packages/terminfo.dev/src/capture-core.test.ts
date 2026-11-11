@@ -10,7 +10,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { command, finishCapture, retain } from "./capture-core.ts"
+import { command, finishCapture, locateColour, retain } from "./capture-core.ts"
 
 const directories: string[] = []
 afterEach(() => {
@@ -102,6 +102,67 @@ test("capture finalizer crops the same-shot control region from the same decoded
   expect(result.trace.reproduceControlRegion).toContain("-crop 2x1+1+0 +repage -depth 8 rgba:- | sha256sum")
   const expectedRegion = Buffer.from([20, 21, 22, 23, 24, 25, 26, 27, 36, 37, 38, 39, 40, 41, 42, 43])
   expect(result.frame.regionDigest).toBe(`sha256:${digest(expectedRegion)}`)
+})
+
+/** A 6x4 black frame with the given pixels painted one colour. */
+function paintedFrame(painted: Array<[number, number]>, rgb: [number, number, number] = [255, 136, 255]) {
+  const rgba = new Uint8Array(6 * 4 * 4)
+  for (let offset = 3; offset < rgba.length; offset += 4) rgba[offset] = 255
+  for (const [x, y] of painted) rgba.set([...rgb, 255], (y * 6 + x) * 4)
+  return { width: 6, height: 4, rgba }
+}
+
+test("locate answers the bounding box and count of one exact colour, or null when it is absent (33000)", () => {
+  const block = paintedFrame([
+    [2, 1],
+    [3, 1],
+    [2, 2],
+    [3, 2],
+  ])
+  expect(locateColour(block, [255, 136, 255])).toEqual({ box: { x: 2, y: 1, width: 2, height: 2 }, pixels: 4 })
+  // Two separate pixels: the box spans both and the count says the box is not solid.
+  expect(
+    locateColour(
+      paintedFrame([
+        [0, 0],
+        [5, 3],
+      ]),
+      [255, 136, 255],
+    ),
+  ).toEqual({
+    box: { x: 0, y: 0, width: 6, height: 4 },
+    pixels: 2,
+  })
+  // One channel off is a different colour.
+  expect(locateColour(block, [255, 136, 254])).toBeNull()
+  expect(() => locateColour(block, [256, 0, 0])).toThrow(/integer RGB colour/)
+})
+
+test("a capture request with locate answers located; one without it is the previous frame and trace exactly (33000)", async () => {
+  const decoded = paintedFrame([
+    [4, 2],
+    [5, 2],
+  ])
+  const input = {
+    directory: directory(),
+    onRetained: () => {},
+    source: { bytes: PNG_STUB, format: "png" as const, width: 6, height: 4, capturedAt: 1 },
+    png: PNG_STUB,
+    decoded,
+    origin: { origin: { x: 0, y: 0 }, basis: "measured fixture" },
+    trace: { arm: "fixture" },
+  }
+  const checkpoint = { featureId: "locate-fixture", role: "control" as const, label: "layout check" }
+  const plain = await finishCapture({ ...input, checkpoint })
+  expect(plain.frame).not.toHaveProperty("located")
+  expect(plain.trace).toEqual({ arm: "fixture" })
+  const located = await finishCapture({ ...input, checkpoint: { ...checkpoint, locate: { rgb: [255, 136, 255] } } })
+  expect(located.frame.located).toEqual({ box: { x: 4, y: 2, width: 2, height: 1 }, pixels: 2 })
+  expect(located.trace.locate).toEqual({ rgb: [255, 136, 255], located: located.frame.located })
+  const { located: _answer, ...rest } = located.frame
+  expect(rest).toEqual(plain.frame)
+  const absent = await finishCapture({ ...input, checkpoint: { ...checkpoint, locate: { rgb: [1, 2, 3] } } })
+  expect(absent.frame.located).toBeNull()
 })
 
 test.each([

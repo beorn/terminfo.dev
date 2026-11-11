@@ -1,0 +1,327 @@
+{
+  "issue": "33164",
+  "generatedBy": "@dev/15 issue 33164 packet: generate-reopened-cells.ts",
+  "rows": [
+    {
+      "kind": "mux",
+      "id": "screen",
+      "os": "linux",
+      "featureId": "editing.decrqcra",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "710c32a219ae534789db62418220ee62a4c144b49b11cfcc59a239a7ec586419"
+      },
+      "witnesses": [
+        {
+          "runId": "0e8cba22ab70bee4199764afc304b87a",
+          "assertionIndex": 127
+        },
+        {
+          "runId": "ff1d93308fe7f5044d692f7da0fcfe2b",
+          "assertionIndex": 88
+        },
+        {
+          "runId": "38fe936ce745c9906840a50b8ea25138",
+          "assertionIndex": 72
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "screen",
+      "os": "linux",
+      "featureId": "extensions.kitty-graphics",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "a7680a23a9d40c9a807c2c62baca847dd807e84423a78f1e45e5d0d72dbf8fb7"
+      },
+      "witnesses": [
+        {
+          "runId": "0e8cba22ab70bee4199764afc304b87a",
+          "assertionIndex": 6
+        },
+        {
+          "runId": "ff1d93308fe7f5044d692f7da0fcfe2b",
+          "assertionIndex": 7
+        },
+        {
+          "runId": "38fe936ce745c9906840a50b8ea25138",
+          "assertionIndex": 6
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "screen",
+      "os": "linux",
+      "featureId": "extensions.osc702-version",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "28f17cfa552f47d2c8abfa1985c422ff2739e8bd63d1d3a51797ddfc83b49c25"
+      },
+      "witnesses": [
+        {
+          "runId": "0e8cba22ab70bee4199764afc304b87a",
+          "assertionIndex": 26
+        },
+        {
+          "runId": "ff1d93308fe7f5044d692f7da0fcfe2b",
+          "assertionIndex": 34
+        },
+        {
+          "runId": "38fe936ce745c9906840a50b8ea25138",
+          "assertionIndex": 32
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "tmux",
+      "os": "linux",
+      "featureId": "editing.decrqcra",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "710c32a219ae534789db62418220ee62a4c144b49b11cfcc59a239a7ec586419"
+      },
+      "witnesses": [
+        {
+          "runId": "ea920f3547c0e7f0ced0f80b277f2939",
+          "assertionIndex": 134
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "tmux",
+      "os": "linux",
+      "featureId": "extensions.kitty-graphics",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "a7680a23a9d40c9a807c2c62baca847dd807e84423a78f1e45e5d0d72dbf8fb7"
+      },
+      "witnesses": [
+        {
+          "runId": "ea920f3547c0e7f0ced0f80b277f2939",
+          "assertionIndex": 7
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "tmux",
+      "os": "linux",
+      "featureId": "extensions.osc702-version",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "28f17cfa552f47d2c8abfa1985c422ff2739e8bd63d1d3a51797ddfc83b49c25"
+      },
+      "witnesses": [
+        {
+          "runId": "ea920f3547c0e7f0ced0f80b277f2939",
+          "assertionIndex": 36
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "screen",
+      "os": "linux",
+      "featureId": "extensions.osc701-locale",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "702492f750ae14a35efe9fae6bb0afd9425aefd3af5f87592a37fdcc3b239d52"
+      },
+      "witnesses": [
+        {
+          "runId": "0e8cba22ab70bee4199764afc304b87a",
+          "assertionIndex": 25
+        },
+        {
+          "runId": "ff1d93308fe7f5044d692f7da0fcfe2b",
+          "assertionIndex": 33
+        },
+        {
+          "runId": "38fe936ce745c9906840a50b8ea25138",
+          "assertionIndex": 31
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "screen",
+      "os": "linux",
+      "featureId": "extensions.osc776-cell-size",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "b9dc47693facacdeeb7de0349cc96300f85ceef8282ae428b07b80e74688bf4b"
+      },
+      "witnesses": [
+        {
+          "runId": "0e8cba22ab70bee4199764afc304b87a",
+          "assertionIndex": 27
+        },
+        {
+          "runId": "ff1d93308fe7f5044d692f7da0fcfe2b",
+          "assertionIndex": 35
+        },
+        {
+          "runId": "38fe936ce745c9906840a50b8ea25138",
+          "assertionIndex": 33
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "screen",
+      "os": "linux",
+      "featureId": "extensions.osc7770-font-size",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "4fc6e7f284defa02907b1900809685fd277e6d9105548158084e7bc572e6ee0d"
+      },
+      "witnesses": [
+        {
+          "runId": "0e8cba22ab70bee4199764afc304b87a",
+          "assertionIndex": 23
+        },
+        {
+          "runId": "ff1d93308fe7f5044d692f7da0fcfe2b",
+          "assertionIndex": 31
+        },
+        {
+          "runId": "38fe936ce745c9906840a50b8ea25138",
+          "assertionIndex": 29
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "tmux",
+      "os": "linux",
+      "featureId": "extensions.osc701-locale",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "702492f750ae14a35efe9fae6bb0afd9425aefd3af5f87592a37fdcc3b239d52"
+      },
+      "witnesses": [
+        {
+          "runId": "ea920f3547c0e7f0ced0f80b277f2939",
+          "assertionIndex": 35
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "tmux",
+      "os": "linux",
+      "featureId": "extensions.osc776-cell-size",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "b9dc47693facacdeeb7de0349cc96300f85ceef8282ae428b07b80e74688bf4b"
+      },
+      "witnesses": [
+        {
+          "runId": "ea920f3547c0e7f0ced0f80b277f2939",
+          "assertionIndex": 37
+        }
+      ]
+    },
+    {
+      "kind": "mux",
+      "id": "tmux",
+      "os": "linux",
+      "featureId": "extensions.osc7770-font-size",
+      "graded": "unsupported",
+      "reason": "multiplexer: silence may have stopped at the hop",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "exit": {
+        "kind": "criterion-text",
+        "criterionSha256": "4fc6e7f284defa02907b1900809685fd277e6d9105548158084e7bc572e6ee0d"
+      },
+      "witnesses": [
+        {
+          "runId": "ea920f3547c0e7f0ced0f80b277f2939",
+          "assertionIndex": 33
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "iterm2",
+      "os": "macos",
+      "featureId": "sgr.blink",
+      "graded": "supported",
+      "reason": "blink is decided by what the terminal paints, and this grade rests only on a reply to a query, so it is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-10",
+      "ruling": "@cto 2026-11-10 12:56 PST (f2adcbf3), issue 33164",
+      "evidence": "@cpo/term request 5af9e33d: the only Supported evidence is the query reply; the pixel series could not decide",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": ["8533e1c9630b"]
+      },
+      "witnesses": [
+        {
+          "runId": "baafb08bace3486d4f97bacbae912412",
+          "assertionIndex": 47
+        }
+      ]
+    }
+  ]
+}

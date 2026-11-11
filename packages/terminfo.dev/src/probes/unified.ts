@@ -21,10 +21,12 @@ import {
   type ProbeSubject,
   type RunDraft,
   type CaptureCells,
+  type CaptureRequest,
   type CapturePixelGeometry,
   type ConsoleBufferOwner,
   type InputFixture,
   type NotTestedCoverage,
+  type PasteRoute,
   type Observation,
   type ObservationFrame,
   type ProbeAssertion,
@@ -51,8 +53,11 @@ import {
   writeTTY,
   type TTYQueryTrace,
   type TTYTraceEvent,
+  type TTYTraceScope,
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
+import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
+import { qualifyNotificationDefaults, qualifyOuterTerminalRecord } from "../notification-defaults.ts"
 import { createCallLog, withCallLog } from "viprobe"
 import {
   ownedTerminalVerifiedFor,
@@ -164,6 +169,8 @@ export type ProbeCapture = (checkpoint: {
   controlCells?: CaptureCells
   /** The terminal's own pixel report, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
+  /** An exact colour to find in the whole decoded frame; the frame answers `located`. */
+  locate?: CaptureRequest["locate"]
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
@@ -284,14 +291,65 @@ export function captureAdapterEligible(
   return captureKind === "text-cells" ? probe.cellReadback === true : !captureGeometryRefusal
 }
 
-/** Direct Linux Apps whose default-profile clipboard-paste route is reviewed (@cto 73d66ae2); any other App stays gated. */
-const LINUX_DEFAULT_PASTE_APPS: ReadonlySet<string> = new Set(["kitty", "ghostty", "alacritty", "wezterm"])
+/** Probes that press the App's paste key: clipboard-paste, and bracketed-paste, whose App effect reuses it. */
+const PASTE_PROBE_IDS: ReadonlySet<string> = new Set(["extensions.clipboard-paste", "modes.bracketed-paste"])
+
+/**
+ * Direct Linux Apps whose default paste action is reviewed (@cto 73d66ae2, a4ec8fe2); any other App stays gated.
+ * Each route is evidence: the App's own source or manual, at the pinned version, binds the key to paste that
+ * selection, and the owned launch passes no config or resource that rebinds it (#32164).
+ */
+const LINUX_PASTE_ROUTES: Readonly<Record<string, PasteRoute>> = {
+  kitty: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "kitty 0.49.2 (tag v0.49.2): kitty/options/definition.py:3811 maps kitty_mod+v to paste_from_clipboard, and kitty_mod defaults to ctrl+shift (definition.py:3648-3651)",
+  },
+  ghostty: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "ghostty 1.4.0 (tag v1.4.0): src/config/Config.zig:6698-6716 binds ctrl+shift+v to paste_from_clipboard on Linux",
+  },
+  alacritty: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "alacritty 0.17.0 (tag v0.17.0): alacritty/src/config/bindings.rs:544-549 binds Ctrl+Shift+V to Paste (CLIPBOARD)",
+  },
+  wezterm: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "wezterm 0-unstable-2026-10-10 (rev e2a98e1b8af1): wezterm-gui/src/commands.rs:665-670 declares PasteFrom(Clipboard) on SUPER+v and :126-131 derives CTRL+SHIFT+v from it; docs default-keys.md:19",
+  },
+  xterm: {
+    selection: "primary",
+    key: "shift+Insert",
+    binding:
+      "xterm 411 (xterm-411.tgz SHA256 969be283): charproc.c:15024, in VTInitTranslations, binds Shift<KeyPress>Insert to insert-selection(SELECT, CUT_BUFFER0); SELECT is PRIMARY under the default selectToClipboard false (xterm.man:5458)",
+  },
+}
+
+/**
+ * The one subject whose absent title decides: a run that does not show the OSC 7 path on its public title reads
+ * Unsupported there, and stays open on every other subject (#33375, @cto 2026-11-11 04:36Z step 4). Ghostty is
+ * the exception because its deciding negative is already established; a second subject needs its own ask with a
+ * same-run control, never a row here. This predicate never gates installing a reader — the run's own OSC 2
+ * controls do that.
+ */
+function titleAbsenceDecides(subject: { kind: "term" | "lib" | "mux"; id: string; os: string } | undefined): boolean {
+  return subject?.kind === "term" && subject.id === "ghostty" && subject.os === "linux"
+}
 
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
 export async function runProbeBatch(
   options: {
     ids?: string[]
     capture?: ProbeCapture
+    /** The pixel adapter's fixed wait before it reads the screen, when it declares one (#33032). */
+    captureSettleMs?: number
     /** What the installed adapter reads; a text adapter is honest even where pixel geometry was
      * refused, so it is installed regardless of `captureGeometryRefusal`. */
     captureKind?: "pixels" | "text-cells"
@@ -301,8 +359,16 @@ export async function runProbeBatch(
       featureId: string
       recordCapture: (result: CapturedProbeFrame) => void
     }) => Promise<void>
-    /** Default preparation precedes probes; the owned Terminal text arm finishes TTY work last. */
-    prepareCapturePhase?: "before-probes" | "after-probes"
+    /**
+     * The one after-probes call point: runs once after every probe callback and the final ownership
+     * check, through the same query trace and frame recorder. The caller decides what belongs before
+     * probes and what after; an owner that closes and proves its window qualifies text here (32670).
+     */
+    finishCapture?: (input: {
+      source: TermProbeSource
+      featureId: string
+      recordCapture: (result: CapturedProbeFrame) => void
+    }) => Promise<void>
     /**
      * The named cause when this run's owned capture pre-flight refused to map the terminal's own
      * cell-to-pixel geometry (28785): it reaches each row's context so a refused row NAMES the
@@ -463,7 +529,7 @@ export async function runProbeBatch(
     }
     return decodingAttempt
   }
-  // Prepare once in the selected phase; default callers still prepare before their first callback.
+  // Prepare once before the first callback, and finish once after the last when the caller asks.
   // The same measured geometry reaches later contexts; a query callback grants no paint authority.
   let capturePrepared = false
   let captureGeometry: TermProbeSource["captureGeometry"]
@@ -486,11 +552,15 @@ export async function runProbeBatch(
     const refs = result.frame.kind === "text-cells" ? batch.textSnapshotRefs : batch.screenshotRefs
     if (!refs.includes(result.frame.ref)) refs.push(result.frame.ref)
   }
-  const prepareCaptureOnce = async (probe: ProbeDefinition, preGeometry?: GeometryMeasurement): Promise<void> => {
-    const prepareCapture = options.prepareCapture
-    if (prepareCapture && !capturePrepared) {
+  const prepareCaptureWith = async (
+    prepareCapture: typeof options.prepareCapture,
+    probe: ProbeDefinition,
+    preGeometry?: GeometryMeasurement,
+  ): Promise<void> => {
+    if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
-      const calibrationId = "collector.captureCalibration"
+      // A finish after a before-probes preparation keeps its own trace beside the calibration trace.
+      const calibrationId = capturePrepared ? "collector.textQualification" : "collector.captureCalibration"
       const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       const reported = options.geometryCorroboration
       let preparationGrid: { rows: number; cols: number } | undefined
@@ -725,11 +795,9 @@ export async function runProbeBatch(
         : undefined)
     if (subjectMux) probeSource.mux = subjectMux
     const readTitle = ownsTerminal ? options.ownedTerminal?.readTitle : undefined
-    if (
-      readTitle &&
-      (probe.id !== "extensions.osc7-cwd" ||
-        (options.subject?.kind === "term" && options.subject.id === "ghostty" && options.subject.os === "linux"))
-    ) {
+    if (readTitle) {
+      // #33375: the reader installs wherever the owned run has one, for every probe that reads a title. No
+      // subject name chooses whether the OSC 7 arm gets this surface; its own OSC 2 controls qualify the reading.
       probeSource.readTitle = async () => {
         try {
           const title = await withTTYOperation(readTitle, out, verify)
@@ -740,6 +808,9 @@ export async function runProbeBatch(
           throw error
         }
       }
+      if (probe.id === "extensions.osc7-cwd" && titleAbsenceDecides(options.subject)) {
+        probeSource.readTitleAbsenceDecides = true
+      }
     }
     if (captureGeometry) probeSource.captureGeometry = captureGeometry
     const isDirectLinuxApp =
@@ -749,8 +820,7 @@ export async function runProbeBatch(
       disposable.declaredTarget.id === options.subject.id &&
       disposable.declaredTarget.os === "linux" &&
       !clipboard?.muxAttachmentProof
-    const isDirectLinuxPasteApp =
-      isDirectLinuxApp && options.subject !== undefined && LINUX_DEFAULT_PASTE_APPS.has(options.subject.id)
+    const directLinuxPasteRoute = isDirectLinuxApp ? LINUX_PASTE_ROUTES[options.subject?.id ?? ""] : undefined
     const isVerifiedLinuxMux =
       options.subject?.kind === "mux" &&
       (options.subject.id === "tmux" || options.subject.id === "screen") &&
@@ -773,22 +843,46 @@ export async function runProbeBatch(
       verify &&
       (clipboard.profile !== "default" ||
         (isDirectLinuxApp && probe.id === "extensions.osc52-write") ||
-        (isDirectLinuxPasteApp && probe.id === "extensions.clipboard-paste") ||
+        (directLinuxPasteRoute && probe.id === "extensions.clipboard-paste") ||
         (isDirectDarwinApp &&
           (probe.id === "extensions.osc52-write" ||
             probe.id === "extensions.osc52-read" ||
             probe.id === "extensions.osc52-clipboard")) ||
         (isVerifiedLinuxMux &&
           (probe.id === "extensions.clipboard-paste" ||
+            probe.id === "modes.bracketed-paste" ||
             probe.id === "extensions.osc52-write" ||
             probe.id === "extensions.osc52-read" ||
             probe.id === "extensions.osc52-clipboard")))
     ) {
+      // #33058: Screen answers no 2004 mode report, so bracketed paste is decided by the same disposable
+      // paste read as clipboard-paste (@cto d0e1a960).
       const allowDisposablePasteSetup =
-        probe.id === "extensions.clipboard-paste" && isVerifiedLinuxMux && options.subject?.id === "screen"
+        (probe.id === "extensions.clipboard-paste" || probe.id === "modes.bracketed-paste") &&
+        isVerifiedLinuxMux &&
+        options.subject?.id === "screen"
+      // A paste route only where it is reviewed: the direct App's own, or Kitty's for a mux, whose outer the
+      // owned launch refuses to be anything but Kitty (linux-container-run.sh "Owned Linux mux outer must be Kitty").
+      const pasteRoute =
+        !PASTE_PROBE_IDS.has(probe.id) || clipboard.pasteboard === "darwin"
+          ? undefined
+          : isVerifiedLinuxMux
+            ? LINUX_PASTE_ROUTES.kitty
+            : LINUX_PASTE_ROUTES[options.subject?.id ?? ""]
+      const missingPrimary = (): Promise<never> =>
+        Promise.reject(new Error("Owned PRIMARY selection is absent from this run's clipboard receipt"))
+      const transaction: typeof clipboard.withClipboardFixture =
+        pasteRoute?.selection === "primary"
+          ? (clipboard.withPrimaryFixture ?? missingPrimary)
+          : clipboard.withClipboardFixture
       probeSource.withClipboardFixture = (work) =>
-        clipboard.withClipboardFixture(
-          (fixture) => work(allowDisposablePasteSetup ? { ...fixture, disposableSession: true } : fixture),
+        transaction(
+          (fixture) =>
+            work({
+              ...fixture,
+              ...(allowDisposablePasteSetup && { disposableSession: true }),
+              ...(pasteRoute && { paste: pasteRoute }),
+            }),
           (event) => clipboardEvents.push(event),
           verify,
         )
@@ -806,14 +900,98 @@ export async function runProbeBatch(
           injectMove: (x: number, y: number) => withTTYOperation(() => injectMove(x, y), out, verify),
         }),
         ...(injectDrag && { injectDrag: (button: 1) => withTTYOperation(() => injectDrag(button), out, verify) }),
-        ...(focusRoundTrip && { focusRoundTrip: () => withTTYOperation(focusRoundTrip, out, verify) }),
+        ...(focusRoundTrip && {
+          focusRoundTrip: (work?: (readFocus: () => Promise<string>) => Promise<void>) =>
+            withTTYOperation(() => focusRoundTrip(work), out, verify),
+        }),
         ...(resizeWindow && {
           resizeWindow: (width: number, height: number) =>
             withTTYOperation(() => resizeWindow(width, height, probe.id), out, verify),
         }),
       }
     }
+    const notificationReceiptPath = process.env.TERMINFO_NOTIFICATION_FIXTURE_RECEIPT
+    if (
+      notificationReceiptPath &&
+      verify &&
+      (isDirectLinuxApp || isVerifiedLinuxMux) &&
+      (probe.id === "extensions.notifications" || probe.id === "extensions.osc777-notify")
+    ) {
+      probeSource.withNotificationObserver = async (work) => {
+        await verify()
+        const address = process.env.DBUS_SESSION_BUS_ADDRESS
+        if (!address) throw new Error("Owned notification recorder declared without DBUS_SESSION_BUS_ADDRESS")
+        const observer = await createNotificationObserver({ receiptPath: notificationReceiptPath, address })
+        // The terminal's own bus and a control sent from its own environment (#33333): without both, silence
+        // is unreadable, and a row may not claim the terminal does not notify.
+        const terminalEnvironment = options.ownedTerminal?.readNotificationEnvironment?.()
+        const measured =
+          terminalEnvironment?.status === "measured" && terminalEnvironment.bus !== undefined
+            ? terminalEnvironment
+            : undefined
+        const terminalBus = measured?.bus ?? {
+          state: "unknown" as const,
+          reason:
+            terminalEnvironment?.reason ??
+            "The terminal process environment was not independently read: this run has no owned reader for it",
+        }
+        // Default configuration, stated only from what this run controls: its own launch line, and tmux's
+        // live allow-passthrough (#33333 condition 4). A user's dotfiles are never read, so never claimed.
+        const allowPassthrough =
+          options.subject?.kind === "mux" && options.subject.id === "tmux" && clipboard?.readAllowPassthrough
+            ? await clipboard.readAllowPassthrough()
+            : undefined
+        const notificationDefaults = qualifyNotificationDefaults({
+          ...(clipboard?.config ? { launchLine: clipboard.config } : {}),
+          ...(allowPassthrough === undefined ? {} : { passthrough: allowPassthrough }),
+        })
+        // A mux may carry a negative only when the terminal that hosted this very run measured the same row as
+        // supported (#33333 condition 3); the record is this run's own outer-terminal record.
+        const outerReading =
+          options.subject?.kind === "mux"
+            ? qualifyOuterTerminalRecord({ record: options.colourControl?.outer, probeId: probe.id })
+            : undefined
+        let terminalSideControl: { nonce: string; id: number; latencyMs: number } | undefined
+        let terminalSideControlRefusal: string | undefined
+        // The control goes to the bus named in the TERMINAL's own environment, in memory, not to the
+        // collector's: an explicit address overrides the environment's, so using ours would prove only that
+        // the recorder's bus accepts us (peer review, @dev/8 14:30Z).
+        const terminalAddress = measured?.environment?.DBUS_SESSION_BUS_ADDRESS
+        if (measured?.environment !== undefined && terminalAddress !== undefined && terminalAddress !== "") {
+          try {
+            terminalSideControl = await sendTerminalSideControl({
+              address: terminalAddress,
+              recordPath: observer.receipt.recordPath,
+              environment: measured.environment,
+              deadlineMs: 1000,
+            })
+          } catch (controlError) {
+            terminalSideControlRefusal = (controlError as Error).message
+          }
+        } else {
+          terminalSideControlRefusal = terminalBus.reason
+        }
+        const result = await work({
+          control: observer.control,
+          recordPath: observer.receipt.recordPath,
+          deadlineMs: 1000,
+          terminalBus,
+          ...(terminalSideControl === undefined ? {} : { terminalSideControl }),
+          ...(terminalSideControlRefusal === undefined ? {} : { terminalSideControlRefusal }),
+          ...(outerReading?.record === undefined ? {} : { outerTerminalRecord: outerReading.record }),
+          ...(outerReading?.refusal === undefined ? {} : { outerTerminalRecordRefusal: outerReading.refusal }),
+          profile: notificationDefaults,
+          cursor: () => observer.cursor(),
+          readSince: (cursor) => observer.readSince(cursor),
+        })
+        await verify()
+        return result
+      }
+    }
     const capture = options.capture
+    // A run-level fact, set for every row whether or not this row gets the adapter: a row may state
+    // what no capture in this run can see (#33032).
+    if (options.captureSettleMs !== undefined) probeSource.captureSettleMs = options.captureSettleMs
     // A text run hands its adapter to the region readback alone: it is the one consumer whose
     // verdict is about cells. Every other probe reads pixels, so it gets no adapter here and takes
     // its own named no-capture branch — an error row where a named refusal belongs is exactly what
@@ -847,8 +1025,8 @@ export async function runProbeBatch(
         }
       }
     }
-    if (options.prepareCapturePhase !== "after-probes" && options.prepareCapture && !capturePrepared) {
-      await prepareCaptureOnce(probe, preGeometry)
+    if (options.prepareCapture && !capturePrepared) {
+      await prepareCaptureWith(options.prepareCapture, probe, preGeometry)
       if (captureGeometry) probeSource.captureGeometry = captureGeometry
       if (captureGeometryRefusal) probeSource.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) probeSource.capture = undefined
@@ -892,6 +1070,7 @@ export async function runProbeBatch(
         // font-ligatures, reset.sgr and modes.xtrestore at that default.
         const wallMs = probe.wallMs ?? 30_000
         let wall: ReturnType<typeof setTimeout> | undefined
+        let traceScope: TTYTraceScope | undefined
         const operation = withTTYOperation(
           () =>
             withTTYQueryTrace(
@@ -901,6 +1080,9 @@ export async function runProbeBatch(
                 return callback(sourceSession?.context ?? probeSource)
               },
               {
+                onScope(scope) {
+                  traceScope = scope
+                },
                 onLog(log) {
                   if (!sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
                 },
@@ -917,13 +1099,26 @@ export async function runProbeBatch(
         ])
         clearTimeout(wall)
         if (raced.timedOut) {
-          // The callback did not return. Drop its call log and release the TTY queue so the
-          // next probe is not left with unfinished calls (#33017).
+          // The callback did not return. Abandon its trace before the queue moves on: the scope
+          // keeps the writes it settled before the wall and refuses every later one, so the
+          // abandoned callback cannot reach the terminal while the next probe runs (#33431).
+          // The wall's own flags and the queue release cannot wait on that projection: an abandon
+          // that failed would otherwise leave 33017's chained queue behind the hung callback.
           operation.catch(() => {})
-          sourceSession?.abandon()
-          releaseTTYQueue()
           probeWallExceeded = true
           wallFired = true
+          try {
+            traceScope?.abandon()
+          } catch (error) {
+            batch.ungradedDiagnostics[probe.id] = {
+              kind: "collector-error",
+              name: "Error",
+              message: `Wall timeout trace snapshot failed for ${probe.id}: ${error instanceof Error ? error.message : String(error)}`,
+            }
+          } finally {
+            sourceSession?.abandon()
+            releaseTTYQueue()
+          }
           result = {
             pass: false,
             tests: [{ id: "criterion", status: "probe-todo", reason: `Probe exceeded ${wallMs}ms` }],
@@ -956,7 +1151,9 @@ export async function runProbeBatch(
         if (sourceLog && !probeWallExceeded) {
           batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(sourceLog)
         }
-        if (geometryCheck && !probeWallExceeded) geometryCheck.post = await readGeometry()
+        // The wall ends the callback's hold on the terminal, not the measurement: the geometry
+        // after it is what the timed-out row is judged against (#33431).
+        if (geometryCheck) geometryCheck.post = await readGeometry()
       }
       result = withReplyFailureEvidence(probe.id, result, {
         producer: "TTY",
@@ -1088,11 +1285,16 @@ export async function runProbeBatch(
             : {}),
           ...(rawReplyRef ? { rawReplyRef } : {}),
         })
-        for (const assertion of result.assertions ?? []) {
+        for (const { witness, ...assertion } of result.assertions ?? []) {
           batch.assertions.push({
             featureId: probe.id,
             ...assertion,
-            ...(resized ? { note: `${assertion.note ? `${assertion.note}; ` : ""}Geometry resized during probe` } : {}),
+            // A resized row is re-labelled resized-capture, so a branch's witness no longer stands for it (#33054).
+            ...(resized
+              ? { note: `${assertion.note ? `${assertion.note}; ` : ""}Geometry resized during probe` }
+              : witness === undefined
+                ? {}
+                : { witness }),
             ...(rawReplyRef ? { rawReplyRef } : {}),
           })
         }
@@ -1271,10 +1473,10 @@ export async function runProbeBatch(
       options.onCheckpoint?.(batch)
     }
   }
-  if (options.prepareCapturePhase === "after-probes") {
+  if (options.finishCapture) {
     await verify?.()
     const probe = selected[0]
-    if (probe) await prepareCaptureOnce(probe)
+    if (probe) await prepareCaptureWith(options.finishCapture, probe)
   }
   if (ownsTerminal && options.ownedTerminal) {
     batch.rawReplies["collector.geometry"] = JSON.stringify({
@@ -1290,7 +1492,7 @@ export async function runProbeBatch(
   batch.suiteComplete =
     expected.every((probe) => observed.has(probe.id) || namedNotTested.has(probe.id)) &&
     Object.keys(batch.ungradedDiagnostics).length === 0
-  if (options.prepareCapturePhase !== "after-probes") await verify?.()
+  if (!options.finishCapture) await verify?.()
   const runMux =
     options.ownedTerminal?.muxAttachmentProof?.mux ??
     (options.subject?.kind === "mux" && (options.subject.id === "tmux" || options.subject.id === "screen")
@@ -1299,7 +1501,61 @@ export async function runProbeBatch(
   if (runMux && options.colourControl) {
     applyColourSiblingSeparation(batch, { mux: runMux, runId: options.captureRunId, ...options.colourControl })
   }
+  applyUnreachedSteps(batch)
   return batch
+}
+
+/** A step that can only be measured after its entry, as data: no terminal is named (#32785). */
+export interface UnreachedStepPair {
+  readonly step: string
+  readonly entry: string
+  /** The entry as a reader knows it, for the step's reason. */
+  readonly entryName: string
+}
+
+export const UNREACHED_STEPS: readonly UnreachedStepPair[] = [
+  {
+    step: "modes.alt-screen.exit",
+    entry: "modes.alt-screen.enter",
+    entryName: "switching to the alternate screen (modes.alt-screen.enter)",
+  },
+]
+
+/**
+ * The unreached-step pass (#32785). It runs after every row exists, because the step's result depends on a second
+ * row's result. A step still open while the same run reads its entry Unsupported was never reached: it reads
+ * Untestable through the one declared form, and its reason names the entry step and that result (operator yes on
+ * card terminfo-untestable-1110, Nov 10 2026 20:11 PST; @cto record terminfo-untestable-prerequisite-ruling-2026-11-10).
+ * The entry keeps its own result. Any other entry result, an entry absent from this run, a step this run did not
+ * attempt, or a step already decided is left exactly as it reads. The step keeps its own frames and raw reference: they are this run's attempt.
+ */
+export function applyUnreachedSteps(
+  batch: Pick<ProbeBatch, "results">,
+  pairs: readonly UnreachedStepPair[] = UNREACHED_STEPS,
+): void {
+  for (const pair of pairs) {
+    const index = batch.results.findIndex((result) => result.featureId === pair.step)
+    const step = batch.results[index]
+    const entry = batch.results.find((result) => result.featureId === pair.entry)
+    // A step this run never attempted (not selected) is not "never reached": it keeps its own Probe to-do.
+    if (step === undefined || step.status !== "probe-todo" || step.attempt.scope === "none") continue
+    if (entry?.status !== "unsupported") continue
+    const reason = `Untestable (no setup): this run reads ${pair.entryName} Unsupported, so this step was never reached and was not measured.`
+    const declared = declaredUntestableResult(reason, { entry: pair.entry, entryStatus: entry.status })
+    const { status: _status, reason: _reason, ...kept } = step
+    batch.results[index] = finalizeProbeResult({
+      ...kept,
+      criterionBranch: declared.criterionBranch,
+      reason,
+      tests: (declared.tests ?? []).map((test) => ({
+        ...test,
+        // A decided test carries the attempt that produced it: the step's own attempt in this run.
+        attempt: step.attempt,
+        assertionRefs: [],
+        ...(step.rawReplyRef === undefined ? {} : { rawReplyRef: step.rawReplyRef }),
+      })),
+    })
+  }
 }
 
 /**

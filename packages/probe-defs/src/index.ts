@@ -25,6 +25,7 @@ export type {
   RenderedWidthResult,
   TerminalQueryOutcome,
   ClipboardFixture,
+  PasteRoute,
   InputFixture,
   Utf8Decoding,
   Utf8DecodingReading,
@@ -32,8 +33,19 @@ export type {
   CapturePixelGeometry,
   CaptureRectangle,
   CaptureRequest,
+  CaptureLocated,
+  CalibrationSentinel,
 } from "./types.ts"
-export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, ASSERTION_TYPES, HOST_INPUT_NAMES, frameDigests } from "./types.ts"
+export {
+  OBSERVATION_OUTCOMES,
+  OBSERVATION_REASONS,
+  ASSERTION_TYPES,
+  HOST_INPUT_NAMES,
+  SILENCE_RULES,
+  frameDigests,
+  type SilenceDeclaration,
+  type SilenceRule,
+} from "./types.ts"
 export type {
   ObservationOutcome,
   ObservationReason,
@@ -57,6 +69,7 @@ export type {
   ProbeAssertion,
   ProbeWitness,
   ColourSiblingSeparationWitness,
+  ColourNoAttributeWitness,
   UngradedDiagnostic,
   NotTestedCoverage,
   HeadlessRuntimeIdentity,
@@ -78,8 +91,12 @@ export {
   HEADLESS_OBSERVABLE_REVIEW,
   UNTESTABLE_ONLY_REVIEW_BRANCHES,
   DECLARED_UNTESTABLE_TEST,
+  FENCED_SILENCE,
   declaredUntestableResult,
+  fencedSilenceResult,
+  fencedSilenceStatus,
   isDeclaredUntestable,
+  isFencedSilence,
   SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES,
   sgrProbe,
   cursorProbe,
@@ -122,7 +139,11 @@ export {
   type RegionRead,
   type RegionReadback,
 } from "./region-readback.ts"
-export { assertCalibratedCaptureGeometry, type CalibratedGeometrySource } from "./calibrated-capture-geometry.ts"
+export {
+  assertCalibratedCaptureGeometry,
+  CALIBRATION_SOLID_PAINT,
+  type CalibratedGeometrySource,
+} from "./calibrated-capture-geometry.ts"
 
 // The kind tables, so a real-backend test (packages/probes) can run every kind row's parser arm
 // against a terminal that actually implements the sequences (@cto 28450 must-fix 1, 2026-10-12).
@@ -135,7 +156,7 @@ export { editingReadbackRows } from "./editing.ts"
 export { eraseReadbackRows } from "./erase.ts"
 export { modesReadbackRows } from "./modes.ts"
 export { textReadbackRows } from "./text.ts"
-export { scrollbackReadbackRows } from "./scrollback.ts"
+export { scrollbackReadbackRows, ScrollbackReadingUnavailable } from "./scrollback.ts"
 
 import { sgrProbes } from "./sgr.ts"
 import { cursorProbes } from "./cursor.ts"

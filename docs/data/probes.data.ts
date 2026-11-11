@@ -118,6 +118,8 @@ export interface ProbeData {
 interface CurrentStats {
   score: { supported: number; all: number }
   counts: CurrentAggregate["counts"]
+  /** Of `counts.unsupported`, the cells derived from a refused parent (#33019). */
+  derived: number
   complete: boolean
   pct: number | null
 }
@@ -246,10 +248,11 @@ export function loadFullProbes(): ProbeData {
     stats[key] = {
       score: { ...selected.score },
       counts: { ...selected.counts },
+      derived: selected.derivedIds.length,
       complete: selected.complete,
       // #30784: a run that decided nothing has no percentage to print; every reader shows the
       // not-measured words instead of a measured-looking 0%.
-      pct: runDecidedNothing(selected.counts)
+      pct: runDecidedNothing(selected.counts, selected.derivedIds.length)
         ? null
         : Math.round((100 * selected.score.supported) / selected.score.all),
     }
@@ -382,6 +385,7 @@ function computeBaselines(data: ProbeData): void {
       backendStats[bl] = {
         score: { supported: bar.supported, all: bar.denominator },
         counts: bar.counts,
+        derived: bar.derived,
         complete: bar.complete,
         pct: Math.round((100 * bar.supported) / bar.denominator),
       }

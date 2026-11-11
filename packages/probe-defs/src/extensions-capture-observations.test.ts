@@ -7,7 +7,8 @@
 import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
-import { extensionsProbes } from "./extensions.ts"
+import { extensionsProbes, OSC9_PROGRESS_APP_NO_OBSERVER } from "./extensions.ts"
+import { ScrollbackReadingUnavailable } from "./scrollback.ts"
 import { DECLARED_UNTESTABLE_TEST, HEADLESS_OBSERVABLE_REVIEW, recordExecutedProbe } from "./helpers.ts"
 import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
 import { assertCalibratedCaptureGeometry } from "./calibrated-capture-geometry.ts"
@@ -69,9 +70,17 @@ function calibratedIterm2Arm(
     target?: "red" | "blank" | "printed" | "third"
     truecolor?: boolean
     captureKind?: "pixels" | "text-cells"
-    colour?: { applies?: boolean; unknownApplies?: boolean; sentinel?: boolean }
+    colour?: { applies?: boolean; unknownApplies?: boolean; sentinel?: boolean; resetRestores?: boolean }
     effect?: "cursor" | "progress" | "flash"
     blind?: boolean
+    /** Shift only the OSC 112 post-reset reads, to model a capture whose crop moved after the reset. */
+    resetRegionShift?: { x: number; y: number }
+    /**
+     * Drop the crop rectangle from the OSC 112 post-reset reads, to model a capture producer that recorded a digest
+     * without the rectangle it was taken over (33448). `cropPositionRefusal` abstains when a compared frame carries no
+     * rectangle, so this is the only shape that reaches the arm's explicit rectangle check.
+     */
+    resetRegionMissing?: boolean
   } = {},
 ) {
   const writes: string[] = []
@@ -102,6 +111,10 @@ function calibratedIterm2Arm(
       if (options.colour) {
         if (bytes.includes("\x1b]7110") && options.colour.unknownApplies) defaultColour = "wrong"
         if (/\x1b\](?:4;0|10);rgb:12\/34\/56/.test(bytes) && options.colour.applies) defaultColour = "requested"
+        // OSC 12 colours the cursor and OSC 112 puts it back. `resetRestores: false` models a terminal that accepts the
+        // reset sequence and keeps the colour -- the shape this arm must name, never call Unsupported (33102).
+        if (bytes.includes("\x1b]12;rgb:12/34/56\x07") && options.colour.applies) defaultColour = "requested"
+        if (bytes.includes("\x1b]112\x07") && options.colour.resetRestores !== false) defaultColour = "initial"
         if (bytes.includes("\x1b[3;2HXX")) plane = defaultColour
         if (bytes.includes("\x1b[38;5;12mXX")) plane = "requested"
       }
@@ -115,6 +128,9 @@ function calibratedIterm2Arm(
     }) => {
       assertCalibratedCaptureGeometry(context.captureGeometry, request)
       const { role, label, cells } = request
+      const resetShift =
+        options.resetRegionShift && /reset after OSC 112/.test(label) ? options.resetRegionShift : { x: 0, y: 0 }
+      const resetRegionMissing = options.resetRegionMissing === true && /reset after OSC 112/.test(label)
       const frame: ObservationFrame = {
         kind: "pixels",
         role,
@@ -128,14 +144,15 @@ function calibratedIterm2Arm(
               ? `cursor:${options.blind ? true : cursorShown}:${defaultColour}`
               : `plane:${plane}`,
         pixelsDigest: `window:${plane}:${glyph}`,
-        ...(cells && {
-          regionRectangle: {
-            x: (cells.left - 1) * 8,
-            y: (cells.top - 1) * 17,
-            width: (cells.right - cells.left + 1) * 8,
-            height: (cells.bottom - cells.top + 1) * 17,
-          },
-        }),
+        ...(cells &&
+          !resetRegionMissing && {
+            regionRectangle: {
+              x: (cells.left - 1) * 8 + (resetShift.x ?? 0),
+              y: (cells.top - 1) * 17 + (resetShift.y ?? 0),
+              width: (cells.right - cells.left + 1) * 8,
+              height: (cells.bottom - cells.top + 1) * 17,
+            },
+          }),
       }
       frames.push(frame)
       return frame
@@ -482,7 +499,7 @@ test.each([
 // Whole-window effects and a visible cursor need their own sensitivity control, not CPR credit.
 test.each([
   { id: "extensions.osc112-reset-cursor", effect: "cursor" as const, cause: "no setup" },
-  { id: "extensions.osc9-progress", effect: "progress" as const, cause: "no setup" },
+  { id: "extensions.osc9-progress", effect: "progress" as const, cause: "no observer" },
   { id: "extensions.osc555-flash", effect: "flash" as const, cause: "no way" },
 ])("$id qualifies its original no-change ending", async ({ id, effect, cause }) => {
   const { context } = calibratedIterm2Arm({ colour: {}, effect })
@@ -491,6 +508,39 @@ test.each([
     expect.objectContaining({ id: "declared-untestable", status: "untestable" }),
   )
   expect(result.note).toContain(cause)
+})
+
+// #33171 (@cto e1aa0710): the App arms' observer is missing, so they read "no observer" verbatim; a multiplexer arm
+// shares this callback and must keep #32604's sentence plus its hop suffix. A blanket reword would miss that split.
+test("OSC 9;4 says no observer on an App arm and keeps the no-setup sentence with its hop suffix on a mux arm", async () => {
+  const app = calibratedIterm2Arm({ colour: {}, effect: "progress" }).context
+  const appResult = await find("extensions.osc9-progress").term!(app)
+  expect(appResult.note).toBe(OSC9_PROGRESS_APP_NO_OBSERVER)
+  expect(appResult.tests).toContainEqual(
+    expect.objectContaining({ id: "declared-untestable", status: "untestable", reason: OSC9_PROGRESS_APP_NO_OBSERVER }),
+  )
+
+  const mux = { ...calibratedIterm2Arm({ colour: {}, effect: "progress" }).context, mux: "screen" as const }
+  const muxResult = await find("extensions.osc9-progress").term!(mux)
+  const sentence =
+    "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
+  expect(muxResult.note).toBe(sentence)
+  const featureId = "extensions.osc9-progress"
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: "2026-11-10T00:00:00.000Z" },
+    coverage: muxResult.notTested && { featureId, ...muxResult.notTested, rawReplyRef: featureId },
+    assertions: [],
+    tests: muxResult.tests,
+    rawReplyRef: featureId,
+    criterionBranch: muxResult.criterionBranch,
+  })
+  // The same subject shape the mux no-setup test above passes: the finalizer names the mux by its id.
+  const screen = { kind: "mux" as const, id: "screen", outerTerminal: "kitty" }
+  const finalized = finalizeVisualResult(recorded, screen, [])
+  expect(finalized.reason).toBe(
+    `${sentence}; unchanged effect could have stopped at screen or its outer terminal kitty`,
+  )
 })
 
 test.each([
@@ -503,6 +553,196 @@ test.each([
   expect(result.tests?.some((entry) => entry.status === "untestable")).not.toBe(true)
 })
 
+test("extensions.osc112-reset-cursor reads the cursor cell after the reset, not only in cleanup", async () => {
+  const { context, writes } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  const coloured = writes.findIndex((bytes) => bytes.includes("\x1b]12;rgb:12/34/56\x07"))
+  const reset = writes.findIndex((bytes) => bytes.includes("\x1b]112\x07"))
+  expect(coloured).toBeGreaterThan(-1)
+  expect(reset).toBeGreaterThan(coloured)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(result.observation?.frames?.some((frame) => /reset after OSC 112/.test(frame.label))).toBe(true)
+
+  // Run-parser refuses a whole run whose screenshot row cites a control frame as its primary, so the
+  // decided row must name the changed cursor cell — the one target frame — not the reset control.
+  const targets = result.observation?.frames?.filter((frame) => frame.role === "target") ?? []
+  expect(targets).toHaveLength(1)
+  expect(result.observation?.screenshotRef).toBe(targets[0]?.ref)
+})
+
+// The verdict can be right while the wire shape is refused, and that failure mode costs the WHOLE run:
+// tmux 2026-11-11 07:51Z recorded every probe as supported and the collector then threw
+// "primary screenshotRef for extensions.osc112-reset-cursor must be a target frame". So this test parses
+// the supported observation through the same run parser the collector uses, at the rule that failed.
+test("extensions.osc112-reset-cursor's supported observation survives the run parser", async () => {
+  const featureId = "extensions.osc112-reset-cursor"
+  const { context } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
+  const result = await find(featureId).term!(context)
+  expect(result.observation?.outcome).toBe("supported")
+  const assertions = (result.assertions ?? []).map((entry) => ({ ...entry, featureId, rawReplyRef: featureId }))
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: "2026-11-11T08:00:00.000Z" },
+    rawReplyRef: featureId,
+    observation: result.observation ? { ...result.observation, featureId, rawReplyRef: featureId } : undefined,
+    assertions,
+    tests: result.tests,
+  })
+  // This arm's fixture digests are labels (`sha256:frame3`, `cursor:true:...`), which the parser rejects
+  // as digests before it reaches the rule under test. Rewriting them deterministically keeps the rules
+  // honest - equal fixture values stay equal, so the equality the arm relies on survives - instead of
+  // relaxing the parser or skipping it.
+  const digestOf = (value: string) =>
+    /^sha256:[0-9a-f]{64}$/.test(value) ? value : `sha256:${createHash("sha256").update(value).digest("hex")}`
+  const rewrites = new Map<string, string>()
+  for (const frame of recorded.frames ?? []) {
+    for (const [key, value] of Object.entries(frame)) {
+      if (typeof value === "string" && (key === "ref" || key.endsWith("Digest"))) rewrites.set(value, digestOf(value))
+    }
+  }
+  const rewriteText = (text: string) => {
+    let out = text
+    for (const [from, to] of rewrites) out = out.split(from).join(to)
+    return out
+  }
+  const recordedWithDigests = {
+    ...recorded,
+    ...(recorded.screenshotRef ? { screenshotRef: rewriteText(recorded.screenshotRef) } : {}),
+    ...(recorded.reason ? { reason: rewriteText(recorded.reason) } : {}),
+    frames: (recorded.frames ?? []).map((frame) => ({
+      ...frame,
+      ...Object.fromEntries(
+        Object.entries(frame)
+          .filter(([key, value]) => typeof value === "string" && (key === "ref" || key.endsWith("Digest")))
+          .map(([key, value]) => [key, rewriteText(value as string)]),
+      ),
+      ...(frame.sourceRef ? { sourceRef: rewriteText(frame.sourceRef) } : {}),
+    })),
+  }
+  const suite = "c".repeat(64)
+  const manifest: ProbeSuiteManifest = {
+    schemaVersion: 4,
+    probeHash: suite,
+    adapterVersion: "3.3.1",
+    generatedAt: "2026-11-11T08:00:00.000Z",
+    catalogIds: [featureId],
+    probes: { term: [featureId], lib: [], mux: [] },
+  }
+  const run = {
+    schemaVersion: 4,
+    source: { kind: "live" },
+    runId: "osc112-parse",
+    suiteId: suite,
+    probeHash: suite,
+    sourceRevision: "5".repeat(40),
+    intendedSubject: { kind: "term", id: "tmux" },
+    subject: {
+      kind: "term",
+      id: "tmux",
+      version: "3.5a",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: "2026-11-11T08:01:00.000Z",
+    origin: { kind: "collector" },
+    sealedAt: "2026-11-11T08:02:00.000Z",
+    rawReplies: {
+      [featureId]: JSON.stringify({ writes: [], queries: [], events: [] }),
+      ...(result.response ? { [`${featureId}.callbackResponse`]: result.response } : {}),
+    },
+    assertions: assertions.map((entry) => ({
+      ...entry,
+      expected: rewriteText(entry.expected),
+      observed: rewriteText(entry.observed),
+    })),
+    screenshotRefs: [...new Set((recordedWithDigests.frames ?? []).map((frame) => frame.ref))],
+    results: [recordedWithDigests],
+  }
+  const parsed = parseRun("osc112-parse.json", JSON.stringify(run), [featureId], new Map([[suite, manifest]]))
+  expect(parsed.results?.[0]?.status).toBe("supported")
+  expect(() =>
+    parseObservationFrames(
+      parsed.results?.[0]?.frames,
+      "osc112-parse.json",
+      featureId,
+      parsed.screenshotRefs,
+      parsed.textSnapshotRefs,
+      parsed.results?.[0]?.screenshotRef,
+      parsed.results?.[0]?.assertionType,
+    ),
+  ).not.toThrow()
+})
+
+test("extensions.osc112-reset-cursor names a reset that did not restore the cursor colour", async () => {
+  const { context } = calibratedIterm2Arm({ colour: { applies: true, resetRestores: false }, effect: "cursor" })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  expect(result.pass).not.toBe(true)
+  expect(result.note).toContain("the frame after the reset still differs")
+  expect(result.observation?.outcome).not.toBe("supported")
+})
+
+test("extensions.osc112-reset-cursor refuses reset reads cropped away from the pre-colour frames", async () => {
+  // 33442: the reset digests are compared with the pre-colour frame, so a moved crop must read probe-invalid
+  // rather than be compared as if the same cells had been measured twice.
+  const { context, frames } = calibratedIterm2Arm({
+    colour: { applies: true },
+    effect: "cursor",
+    resetRegionShift: { x: 8, y: 0 },
+  })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  expect(result.pass).not.toBe(true)
+  expect(result.criterionBranch).toBe("same-crop-comparison")
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "comparison", status: "probe-invalid" }))
+  expect(result.observation?.note).toContain("cropped from different screen positions")
+  const resetReads = frames.filter((frame) => /reset after OSC 112/.test(frame.label))
+  expect(resetReads).toHaveLength(2)
+  const preColour = frames.find((frame) => frame.role === "target")
+  expect(resetReads.every((frame) => frame.regionRectangle?.x === preColour?.regionRectangle?.x)).toBe(false)
+  expect(resetReads.map((frame) => frame.regionRectangle?.x)).toEqual([
+    (preColour?.regionRectangle?.x ?? 0) + 8,
+    (preColour?.regionRectangle?.x ?? 0) + 8,
+  ])
+})
+
+// 33448: the crop refusal above needs every compared frame to carry a rectangle before it can compare them, and it
+// deliberately abstains when one carries none, because a digest without a rectangle is a hand-built read rather than
+// an owned capture. The arm therefore needs its own check: without it, a reset read with no rectangle reaches the
+// digest equality and a missing measurement could be graded as support.
+test("extensions.osc112-reset-cursor keeps the row open when a reset read carries no crop rectangle", async () => {
+  const { context, frames } = calibratedIterm2Arm({
+    colour: { applies: true },
+    effect: "cursor",
+    resetRegionMissing: true,
+  })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  // The digests do agree in this capture: the reset really did restore the cursor colour, which is exactly why the
+  // rectangle check has to run first, or this shape would read supported without ever naming where it was read.
+  const resetReads = frames.filter((frame) => /reset after OSC 112/.test(frame.label))
+  expect(resetReads).toHaveLength(2)
+  expect(resetReads.every((frame) => frame.regionRectangle === undefined)).toBe(true)
+
+  expect(result.pass).not.toBe(true)
+  expect(result.note).toBe("OSC 112 reset capture lacks registered crop rectangles")
+  expect(result.notTested?.noObservable).toBe("OSC 112 reset capture lacks registered crop rectangles")
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions ?? []).toHaveLength(0)
+})
+
+test("extensions.osc112-reset-cursor still reads supported when the reset reads carry aligned rectangles", async () => {
+  const { context, frames } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  const resetReads = frames.filter((frame) => /reset after OSC 112/.test(frame.label))
+  expect(resetReads).toHaveLength(2)
+  expect(resetReads.every((frame) => frame.regionRectangle !== undefined)).toBe(true)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(result.note).toContain("OSC 112 restored the cursor cell")
+})
+
 test("extensions.font-ligatures records mux declared-untestable coverage and leaves a native subject on its own path", () => {
   // D160 (#32762, @cto bf695ddc): the multiplexer only emits text cells, so ligature shaping is the
   // host terminal's observable. A mux subject emits the declared-untestable test and rolls up as
@@ -511,15 +751,19 @@ test("extensions.font-ligatures records mux declared-untestable coverage and lea
   const coverage = fontLigatureMuxCoverage({ kind: "mux" }, state)
   expect(coverage?.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+    noObservable:
+      "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
   })
-  expect(coverage?.note).toBe("ligature shaping is done by the host terminal; the multiplexer only emits text cells")
+  expect(coverage?.note).toBe(
+    "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+  )
   expect(coverage?.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
   expect(coverage?.tests).toEqual([
     {
       id: DECLARED_UNTESTABLE_TEST,
       status: "untestable",
-      reason: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+      reason:
+        "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
     },
   ])
   expect(coverage?.response).toBe(JSON.stringify(state))
@@ -543,7 +787,8 @@ test("extensions.font-ligatures records mux declared-untestable coverage and lea
     expect.objectContaining({
       id: DECLARED_UNTESTABLE_TEST,
       status: "untestable",
-      reason: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+      reason:
+        "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
     }),
   ])
   expect(fontLigatureMuxCoverage({ kind: "term" }, state)).toBeUndefined()
@@ -759,6 +1004,38 @@ test("extensions.osc720-scroll-up excludes tmux and screen so their cells keep t
     reason: "no-semantic-observable",
     noObservable: "terminal reports no viewport offset",
   })
+})
+
+test("OSC 720 retains unavailable history as unmeasured while unexpected reader errors still fail", async () => {
+  const featureId = "extensions.osc720-scroll-up"
+  const definition = find(featureId)
+  // Hosted Terminal.app run 355f60ec: the owned reader refused before its marker control.
+  const reason =
+    "Terminal.app history holds a line of 310 characters on a 120-column grid, so it wrapped and its lines are not rows"
+  for (const mux of [undefined, "tmux", "screen"] as const) {
+    const { context } = captureApp(30, 120)
+    if (mux !== undefined) context.mux = mux
+    context.getScrollback = async () => {
+      throw new ScrollbackReadingUnavailable(reason)
+    }
+    const result = await definition.term!(context)
+    expect(result.notTested?.noObservable).toContain(reason)
+    expect(
+      recordExecutedProbe({
+        featureId,
+        attempt: { scope: "probe", startedAt: "2026-11-11T01:33:28.453Z" },
+        assertions: [],
+        coverage: result.notTested && { featureId, ...result.notTested, rawReplyRef: featureId },
+      }).status,
+    ).toBe("probe-todo")
+  }
+
+  const { context } = captureApp(30, 120)
+  const unexpected = new Error("owned history transport failed")
+  context.getScrollback = async () => {
+    throw unexpected
+  }
+  await expect(definition.term!(context)).rejects.toBe(unexpected)
 })
 
 test.each([
@@ -1208,15 +1485,16 @@ test.each([
 )
 
 test.each(["tmux", "screen"] as const)(
-  "extensions.reflow keeps %s as PROBE TODO on the terminal-app arm",
+  "extensions.reflow names the unbuilt mux step behind its %s row (#33363)",
   async (mux) => {
     const app = captureApp(24, 80)
     app.context.mux = mux
+    const reason = `Reflow through ${mux} is not yet measured: this arm returns before it attempts a resize, so the ${mux} pane's own re-wrap stays unread`
     const result = await find("extensions.reflow").term!(app.context)
     expect(result).toEqual({
       pass: false,
-      note: "tmux and GNU Screen remain PROBE TODO on this arm",
-      tests: [{ id: "criterion", status: "probe-todo", reason: "tmux and GNU Screen remain PROBE TODO on this arm" }],
+      note: reason,
+      tests: [{ id: "criterion", status: "probe-todo", reason }],
     })
     expect(app.writes).toEqual([])
   },

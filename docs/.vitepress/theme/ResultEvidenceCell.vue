@@ -72,7 +72,9 @@ const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATION
 // Composed and original-run views both retain the cell's recorded status.
 // The rule itself is evidence-status.ts, where it is testable; only a stored PROBE TODO on an
 // environment position becomes the manual-by-design words (@cto 98cd142b D1).
-const status = computed(() => evidenceStatus(props.featureId, currentResult.value?.status))
+// #33019: a cell derived from a refused parent says so in its label.
+const derived = computed(() => currentResult.value !== undefined && "derived" in currentResult.value)
+const status = computed(() => evidenceStatus(props.featureId, currentResult.value?.status, derived.value))
 const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>
   props.cell?.assertionType === "query_reply" ? "Terminal query" : (props.cell?.assertionType ?? ""),

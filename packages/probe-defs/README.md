@@ -14,13 +14,15 @@ This describes the implemented system. Callbacks still perform live I/O and eval
 - **Assertion**: one expected-versus-observed comparison. `ProbeAssertion` carries positive/negative polarity independently of its `assertionType`.
 - **Probe result**: one probe on one subject, with its status, tests, assertions and retained evidence. Stored `ProbeResult` and callback `ProbeCallbackResult` are separate shapes.
 
-The six assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard; `process_environment` reads a terminal child's allowlisted export with its same-run launch, PID and TTY controls. Probe setup and feed writes retain their existing order and bytes; they are not assertion types.
+The seven assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard; `process_environment` reads a terminal child's allowlisted export with its same-run launch, PID and TTY controls; `notification` reads an independent desktop service Notify carrying the App run nonce. Probe setup and feed writes retain their existing order and bytes; they are not assertion types.
 
 The owned App source may supply `getScrollback`, as an async `TerminalScrollbackReading` (total lines, optional screen rows and top-relative viewport offset; unreported fields are absent), and an optional `resetScrollback` hook returning `TerminalScrollbackReset` (`{ status: "reset", capacity }`) when the owned multiplexer can empty its window history back to the run's configured capacity after the baseline clear fence and before the baseline read; `appHistory` retains `historyReset` in evidence and refuses with `owned history reset left N lines` when post-reset baseline history is non-zero. Its history callbacks use rows from run geometry and require an unchanged no-overflow count and a changed overflow count before applying the existing history criteria. Without a complete owned reading, the existing named observation gaps remain.
 
 The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;
+a WezTerm OSC8 row uses the existing owned pane CLI with escaped attributes and the shared OSC8 span controls,
+including unknown/handled steps and unlinked text after close. OSC133 zones are outside that text/attribute route;
 a failed control is PROBE INVALID. Qualified state transitions can decide support. An exact-command
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
@@ -98,7 +100,7 @@ The [writer and finalizer](src/helpers.ts) fold explicit tests and diagnostics i
 a supported observation can still have a failed or pending required test; an inconclusive observation alone
 does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named
 missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
-to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclaredUntestable` is the only form the finalizer and run reader admit. Its reason names the cause: **passed to the app**, **no way**, or **no setup** (and the more specific **no way to tell** or **app** where applicable). The operator's per-kind declarations remain, including OSC720 on libvterm and WezTerm, whose libraries keep history without their own scrolling window. Any other untestable test folds to PROBE TODO.
+to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclaredUntestable` is the only form the finalizer and run reader admit. Its reason names the cause: **passed to the app**, **no way**, **no setup**, or **no observer** (and the more specific **no way to tell** or **app** where applicable). **No observer** means the effect shows outside what the run captures, such as App OSC 9;4 progress in a title bar, tab bar or taskbar when the run captures only the window. The operator's per-kind declarations remain, including OSC720 on libvterm and WezTerm, whose libraries keep history without their own scrolling window. A step never reached because the step it depends on read Unsupported in the same run is Untestable (**no setup**), and its reason names that entry step and its result (operator, Nov 10 2026); the entry keeps its own result, and another run or source never counts. The run's tail pass `applyUnreachedSteps` writes it from the `UNREACHED_STEPS` pairs, through `declaredUntestableResult`. Any other untestable test folds to PROBE TODO.
 
 The collector also selects the specifically reviewed OSC133/633, OSC176/440/3008 and OSC666 App/mux declarations from
 `app-semantic-state.ts`, matching kind, id, exact version and OS. The native batch uses that
@@ -136,10 +138,13 @@ The same decision helper serves the App OSC 113/114/117/119 reset fallbacks, wit
 cause. After a sentinel-qualified silent initial query, App OSC 104/110 and the foreground colour
 stack can instead qualify unchanged colour setup through the existing pixel-region oracle, with a
 made-up OSC control and a distinct independent SGR reference. OSC 112 uses a visible steady cursor,
-CPR, shown/hidden/restored pixels and the made-up control. Only unchanged setup declares Untestable
-(no setup); a changed setter does not itself establish a positive reset or stack result. App OSC 9;4
-uses stable whole-window clear/set-50/clear captures, plain paint/restore and a made-up subcommand;
-qualified no-change declares Untestable (no setup). OSC 555 uses the same whole-window controls and
+CPR, shown/hidden/restored pixels and the made-up control, and both post-reset reads must be cropped
+from the same rectangle as the frames they are compared with; a moved crop is probe-invalid. Only
+unchanged setup declares Untestable (no setup); a changed setter does not itself establish a positive
+reset or stack result. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
+paint/restore and a made-up subcommand; qualified no-change declares Untestable (no observer), because
+the progress shows outside the window the run captures. The same no-change on a tmux or Screen arm
+keeps Untestable (no setup). OSC 555 uses the same whole-window controls and
 nine finite samples; missed flash declares Untestable (no way to tell), never Unsupported. Missing
 or broken controls keep these rows open. Real colour replies and qualified exact-command reports
 retain precedence. For the original ten tmux/Screen positions, finalization names both the actual mux
@@ -351,6 +356,11 @@ Terminal-query timeouts and apparatus errors without a native capture-command ca
 - `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
 
+The SGR colour capture owner supplies an explicit pending review test when its observation is
+inconclusive, including equal references and a witness timeout. It retains the observation's reason,
+frames and response; the result writer publishes PROBE TODO without changing its global status ladder.
+Existing decided witness negatives and broken-measurement errors keep their prior handling.
+
 OSC22's Library query arm and App arm share query text, reply parsing and controlled
 evaluation. The App reads the incoming selected shape before any mutation, checks
 a distinct control and `pointer`, then restores and reads the incoming shape in
@@ -371,7 +381,10 @@ not a reset state or a terminal-support result. Callbacks retain it explicitly.
 App focus tracking uses the optional owned focus roundtrip fixture under both DECSET1004
 and DECRST1004. Separate key-terminated reads retain enable-time input and the enabled
 roundtrip; the first reader starts before enabling. The reset roundtrip has its own key-terminated read.
-The existing fixture returns its verified owned/root/owned X window IDs, retained in the assertion.
+The existing fixture returns its verified owned/helper/owned X window IDs, retained in the assertion.
+Its optional work callback runs after helper focus is verified and before restoration. The callback can
+read the current focus immediately around a target write and hold focus through its observation deadline.
+The same fixture restores the owned window in `finally`, including when that work fails.
 At most one enable-time focus report is retained separately; it does not satisfy the roundtrip.
 Ordered focus-out/in only while set is Supported; no roundtrip reports in either arm is Unsupported.
 A wrong read, missing key or focus report while reset is PROBE INVALID. DECRPM is retained as detail;
@@ -605,7 +618,7 @@ and require two distinct OSC 9 messages to append in order without changing
 that prefix. The collector gives each probe its own disposable backend, so
 notification messages cannot leak into another probe. These are `buffer_state`
 observations of parser metadata, not a filesystem operation, OS notification
-or OSC 9;4 progress measurement. Missing readers keep the existing
+or OSC 9;4 progress measurement. App desktop readback uses the separate `notification` class. Missing readers keep the existing
 `headless-observable-review` tool gap; getter errors propagate. Notifications
 instead use the operator's declared Untestable route when neither notification
 nor toast reader exists and the measured source matches the audited VT100.js
@@ -825,7 +838,7 @@ This does not change earlier captures or xterm's rendering pin.
 
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
 
-The six `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes`, `clipboard` and `process_environment`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action. Process environment is an App end-to-end method and remains unmapped for Library subjects.
+The seven `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes`, `clipboard`, `process_environment` and `notification`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action. Process environment is an App end-to-end method and remains unmapped for Library subjects.
 
 The XTEST key criterion requires the ctrl+a modified-key encoding after its plain-a delivery
 control; a bare control byte or another modified key does not meet it. Pixel mouse reporting
@@ -1060,9 +1073,16 @@ Failed App controls are PROBE INVALID; an absent reader leaves the terminal unto
 Screen's unqualified `screen -Q title` or failed title controls retain a named missing-reader
 cause, without reading the outer window. OSC 0 uses title state only for its title clause;
 title success still needs independent icon evidence for the conjunction.
-The Linux Ghostty OSC 7 arm uses that same reader after empty OSC 2, reads two
+Every App's OSC 7 arm uses that same reader after empty OSC 2, reads two
 `file://localhost` paths exactly, checks an inert made-up OSC, then clears OSC 7 and
-restores the prior title. Other Apps keep their existing unbound-CWD result.
+restores the prior title. The reader installs wherever the owned run supplies one, and the
+arm's own OSC 2 controls qualify it; no subject name chooses it. The reading is one-sided
+(#33375): both paths on the title is Supported, and a title that carries neither leaves the
+row PROBE TODO with a sentence naming this run's title, because the title is the only surface
+that route reads. Ghostty alone keeps a deciding negative; another App reads Unsupported for
+an absent title only through its own ask with a same-run control. A failed OSC 2 control keeps
+its PROBE INVALID meaning where the title decides (Ghostty) and names the control with an open
+row everywhere else.
 
 The app exit/1047/insert-mode rows declare character readback and use that same region oracle.
 Exit and 1047 paint primary then alternate markers; leaving the alternate is compared with a plainly
@@ -1104,12 +1124,20 @@ independently of the human explanation. Conclusive observations carry no unknown
 
 Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded probe statuses are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`.
 
+A marked fenced silence defaults to Unsupported. The optional `switchable` silence rule maps it to PROBE INVALID;
+the catalog refuses declarations until a collector route carries them. A silence rule cannot declare Untestable.
+
 [recordExecutedProbe](src/helpers.ts) uses explicit callback tests when valid. Diagnostics and errors retain precedence. Otherwise its default criterion preserves supported/unsupported observations and maps the other cases:
 
 - Missing capture reported as `FrameUnavailable` becomes `probe-todo`.
 - Diagnostics and error observations become `probe-invalid`.
 - Coverage becomes `probe-todo`. Refusal and consumption without a deciding observation explicitly supply PROBE TODO tests; unanswered queries and errors explicitly supply PROBE INVALID tests. No reply, clipboard value or frame is invented to satisfy a type.
 - A measured inconclusive observation stays typed and defaults to `probe-invalid` unless an existing explicit criterion test selects a different status.
+
+SGR colour captures, including indexed underline and its reset's independent-reference capture,
+share one mux callback owner. An inconclusive capture through a mux reads PROBE TODO and names
+the missing outer-terminal control; the same frames cannot attribute the result to that hop.
+Non-mux decisions, measured positives and broken-measurement errors retain their existing results.
 
 `finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, unsupported, then supported. A test marked untestable folds to PROBE TODO unless the result is the declared form (`isDeclaredUntestable`), which reads Untestable. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as PROBE TODO (see above); content validation uses that same reader.
 
@@ -1136,6 +1164,11 @@ remain outside it. The rewrite preserves positive capture tests and screenshot e
 the concrete observation reason with its row, and adds the outer-terminal ambiguity or missing
 identity reason. Mux positives, libraries and unselected branches retain their original results.
 The collector supplies the existing full draft subject when available, not new callback metadata.
+Reverse video is the one row where a mux negative can decide without the outer command trace:
+when tmux's own DECRPM 0 (its DA1 parameters beside the 0 in the same reply, recorded by the
+probe as its `decrpm-zero-witness` test) accompanies the same run's no-change pixel read, the
+finalizer keeps Unsupported with that reason; an outer terminal's DA, no DA beside the 0, or no
+pixel read leaves the negative pending exactly as before (#33036).
 Library SGR results retain their existing cell-state criterion results, including through headless checkpointing
 and library replay. They describe the effect on observed cells; they do not establish a rendered pixel effect.
 Ghostty web 0.4.0's canvas draws double, curly, dotted and dashed underline styles as a single line.
@@ -1319,3 +1352,15 @@ Other missing observers keep their existing coverage result.
 The Vterm input source wrapper retains raw state as PROBE TODO, without a deciding
 input observation or assertion: the callback performs no input event and supplies no measured input negative.
 Terminal criteria are unchanged.
+
+App OSC9 and OSC777 delivery uses the owned private-bus notification observer. The observer validates its
+launch receipt and an independent dbus-send control, then reads records after the target-write cursor.
+A recorded Notify carrying the run nonce establishes Supported. Unparsed or fatal records keep the row Open.
+Unsupported requires all five recorded facts: terminal environment bound to that bus, the recorded control,
+qualified default notification configuration, no nonce Notify by the numeric deadline (1000ms in the
+collector), and focus read immediately before and after the write showing the non-terminal window.
+The existing focus fixture holds that state through the deadline and restores in finally. A terminal-focused
+negative trial is PROBE INVALID; unavailable focus evidence stays Open. Multiplexer negatives additionally
+require the outer-terminal record. Collector bus presence and the clipboard default profile do not prove
+those notification facts: the current adapter retains both as unknown until independently qualified.
+Headless parser notification stores keep their existing buffer_state criteria; historical runs are untouched.

@@ -178,10 +178,18 @@ function fixture() {
     ;;
   getwindowpid)
     if [ "${"$"}TEST_CAPTURE_FAIL" = owner ]; then printf 'owner lookup failed\\n' >&2; exit 17; fi
-    printf '%s\\n' "$TEST_CAPTURE_OWNER_PID"
+    if [ -n "\${TEST_CAPTURE_HELPER_WINDOW:-}" ] && [ "$2" = "$TEST_CAPTURE_HELPER_WINDOW" ]; then
+      printf '%s\\n' "\${TEST_CAPTURE_HELPER_OWNER_PID:-$TEST_CAPTURE_OWNER_PID}"
+    else
+      printf '%s\\n' "$TEST_CAPTURE_OWNER_PID"
+    fi
     ;;
   getwindowgeometry)
-    if [ "\${TEST_CAPTURE_GEOMETRY_SHELL:-0}" = 1 ]; then
+    if [ -n "\${TEST_CAPTURE_HELPER_WINDOW:-}" ] && [ "$3" = "$TEST_CAPTURE_HELPER_WINDOW" ]; then
+      printf 'X=%s\\nY=%s\\nWIDTH=%s\\nHEIGHT=%s\\n' \\
+        "\${TEST_CAPTURE_HELPER_X:-1400}" "\${TEST_CAPTURE_HELPER_Y:-800}" \\
+        "\${TEST_CAPTURE_HELPER_WIDTH:-160}" "\${TEST_CAPTURE_HELPER_HEIGHT:-40}"
+    elif [ "\${TEST_CAPTURE_GEOMETRY_SHELL:-0}" = 1 ]; then
       printf 'WINDOW=%s\\nX=%s\\nY=%s\\nWIDTH=%s\\nHEIGHT=%s\\nSCREEN=%s\\n' \\
         "\${TEST_CAPTURE_GEOMETRY_WINDOW:-42}" "\${TEST_CAPTURE_X:-0}" "\${TEST_CAPTURE_Y:-0}" \\
         "\${TEST_CAPTURE_WIDTH:-640}" "\${TEST_CAPTURE_HEIGHT:-480}" "\${TEST_CAPTURE_SCREEN:-0}"
@@ -329,6 +337,14 @@ afterEach(() => {
     "TEST_CAPTURE_SCREEN",
     "TEST_CAPTURE_GEOMETRY_SHELL",
     "TEST_CAPTURE_GEOMETRY_WINDOW",
+    "TEST_CAPTURE_HELPER_WINDOW",
+    "TEST_CAPTURE_HELPER_OWNER_PID",
+    "TEST_CAPTURE_HELPER_X",
+    "TEST_CAPTURE_HELPER_Y",
+    "TEST_CAPTURE_HELPER_WIDTH",
+    "TEST_CAPTURE_HELPER_HEIGHT",
+    "TERMINFO_FOCUS_HELPER_WINDOW",
+    "TERMINFO_FOCUS_HELPER_PID",
     "TEST_CAPTURE_SCREEN_WIDTH",
     "TEST_CAPTURE_SCREEN_HEIGHT",
     "TEST_CAPTURE_FORCE_CAPTURE",
@@ -362,6 +378,27 @@ test.runIf(process.platform === "linux")(
     const { result } = await pending
     expect(result.frame.ref).toMatch(/^sha256:[a-f0-9]{64}$/)
     expect(readFileSync(stdin, "utf8")).toBe("xwd-window-42")
+  },
+)
+
+// The installed Linux arm, not a fake: its raw path carries the locate request to the finalizer (33000).
+test.runIf(process.platform === "linux")(
+  "the Linux capture installer answers a locate request from its decoded frame",
+  async () => {
+    const { directory, release } = fixture()
+    writeFileSync(release, "continue")
+    // The stub converter paints the top chrome rows RGB 1,1,1 and the rest black.
+    process.env.TEST_CAPTURE_CHROME_ROWS = "3"
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
+    const checkpoint = { featureId: "fixture", role: "control" as const, label: "layout check" }
+    const found = await captureRaw({ ...checkpoint, locate: { rgb: [1, 1, 1] } })
+    const width = found.decoded.width
+    expect(found.result.frame.located).toEqual({ box: { x: 0, y: 0, width, height: 3 }, pixels: width * 3 })
+    const absent = await captureRaw({ ...checkpoint, locate: { rgb: [9, 9, 9] } })
+    expect(absent.result.frame.located).toBeNull()
+    const plain = await captureRaw(checkpoint)
+    expect(plain.result.frame).not.toHaveProperty("located")
+    expect(plain.result.trace).not.toHaveProperty("locate")
   },
 )
 
@@ -468,6 +505,105 @@ test.runIf(process.platform === "linux").each(["before", "during"] as const)(
       await rejected
     }
     expect(existsSync(frames) ? readdirSync(frames) : []).toEqual([])
+  },
+)
+
+function recordFocusHelper(windowId: string, pid: string = String(process.pid)): void {
+  process.env.TERMINFO_FOCUS_HELPER_WINDOW = windowId
+  process.env.TERMINFO_FOCUS_HELPER_PID = pid
+  process.env.TEST_CAPTURE_HELPER_WINDOW = windowId
+  process.env.TEST_CAPTURE_HELPER_OWNER_PID = pid
+}
+
+// #33305: the run's focus witness is a second visible top-level window, so capture must exclude the
+// exact helper it recorded while every other extra window stays the refusal it always was.
+test.runIf(process.platform === "linux")(
+  "a recorded focus helper beside the owned window is excluded from the capture census",
+  async () => {
+    const { directory, release } = fixture()
+    writeFileSync(release, "continue")
+    process.env.TEST_CAPTURE_VISIBLE_WINDOWS = "543 42 99"
+    recordFocusHelper("99")
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
+    const { result } = await captureRaw({ featureId: "fixture", role: "target", label: "helper frame" })
+    expect(result.trace.windowId).toBe("42")
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "a recorded focus helper overlapping the owned window refuses the capture with both rectangles",
+  async () => {
+    const { directory, release } = fixture()
+    writeFileSync(release, "continue")
+    process.env.TEST_CAPTURE_VISIBLE_WINDOWS = "543 42 99"
+    process.env.TEST_CAPTURE_HELPER_X = "10"
+    process.env.TEST_CAPTURE_HELPER_Y = "10"
+    recordFocusHelper("99")
+    const frames = join(directory, "frames")
+    const { captureRaw } = await createLinuxCapture(frames, liveExecutable(), () => {})
+    await expect(captureRaw({ featureId: "fixture", role: "target", label: "overlapped frame" })).rejects.toThrow(
+      /focus helper window 99 \(160x40 at 10,10\) intersects .*42 \(640x480 at 0,0\)/,
+    )
+    expect(readdirSync(frames)).toEqual([])
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "a recorded focus helper that is not in the census refuses the capture and names it",
+  async () => {
+    const { directory } = fixture()
+    recordFocusHelper("99")
+    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})).rejects.toThrow(
+      /focus helper window 99 is not a visible top-level window during capture; found 42/,
+    )
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "a focus helper whose owner differs from the receipt's PID cannot be excluded from the census",
+  async () => {
+    const { directory } = fixture()
+    process.env.TEST_CAPTURE_VISIBLE_WINDOWS = "543 42 99"
+    recordFocusHelper("99")
+    process.env.TERMINFO_FOCUS_HELPER_PID = String(process.pid + 1)
+    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})).rejects.toThrow(
+      /focus helper window 99 belongs to PID \d+, not the recorded PID \d+/,
+    )
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "a recorded helper does not excuse an unrelated third visible top-level window",
+  async () => {
+    const { directory } = fixture()
+    process.env.TEST_CAPTURE_VISIBLE_WINDOWS = "543 42 99 100"
+    recordFocusHelper("99")
+    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})).rejects.toThrow(
+      /Capture requires only its owned visible top-level window; found 42, 99, 100$/,
+    )
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "without a recorded helper id a second visible window still refuses even when a helper PID is set",
+  async () => {
+    const { directory } = fixture()
+    process.env.TEST_CAPTURE_VISIBLE_WINDOWS = "543 42 99"
+    process.env.TERMINFO_FOCUS_HELPER_PID = String(process.pid)
+    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})).rejects.toThrow(
+      /Capture requires only its owned visible top-level window; found 42, 99$/,
+    )
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "a helper window id without the PID its receipt records refuses instead of excluding any window",
+  async () => {
+    const { directory } = fixture()
+    process.env.TERMINFO_FOCUS_HELPER_WINDOW = "99"
+    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})).rejects.toThrow(
+      /TERMINFO_FOCUS_HELPER_PID must/,
+    )
   },
 )
 

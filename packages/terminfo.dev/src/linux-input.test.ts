@@ -26,6 +26,7 @@ function fixture() {
   temporary.push(directory)
   const log = join(directory, "xdotool.log")
   writeFileSync(log, "")
+  process.env.TERMINFO_FOCUS_HELPER_WINDOW = "543"
   writeFileSync(`${log}.focus`, "42\n")
   executable(
     join(directory, "xdotool"),
@@ -38,14 +39,10 @@ case "$1" in
   getwindowpid) printf '%s\\n' "$TEST_INPUT_OWNER_PID" ;;
   getwindowfocus)
     if [ "$TEST_INPUT_ACTIVE_WINDOW" = 42 ]; then
-      if [ "$(cat "$TEST_INPUT_LOG.focus")" = 543 ] && [ "\${TEST_INPUT_ROOT_FOCUS:-543}" != 543 ]; then
-        printf '%s\\n' "$TEST_INPUT_ROOT_FOCUS"
+      if [ "$(cat "$TEST_INPUT_LOG.focus")" = 543 ] && [ "\${TEST_INPUT_HELPER_FOCUS:-543}" != 543 ]; then
+        printf '%s\\n' "$TEST_INPUT_HELPER_FOCUS"
       else cat "$TEST_INPUT_LOG.focus"; fi
     else printf '%s\\n' "$TEST_INPUT_ACTIVE_WINDOW"; fi
-    ;;
-  getactivewindow|windowactivate)
-    printf '%s\\n' "Your windowmanager claims not to support _NET_ACTIVE_WINDOW, so the attempt to activate the window was aborted." >&2
-    exit 1
     ;;
   windowfocus|mousemove)
     if [ "$1" = windowfocus ]; then printf '%s\\n' "$2" > "$TEST_INPUT_LOG.focus"; fi
@@ -56,10 +53,14 @@ case "$1" in
     fi
     ;;
   getwindowgeometry)
+    if [ "$3" = 543 ]; then
+      printf 'WINDOW=543\\nX=1600\\nY=900\\nWIDTH=160\\nHEIGHT=60\\n'
+      exit 0
+    fi
     if [ -f "$TEST_INPUT_LOG.size" ]; then
       read -r width height < "$TEST_INPUT_LOG.size"
-      printf 'WIDTH=%s\\nHEIGHT=%s\\n' "$width" "$height"
-    else printf 'WIDTH=800\\nHEIGHT=600\\n'; fi
+      printf 'WINDOW=42\\nX=0\\nY=0\\nWIDTH=%s\\nHEIGHT=%s\\n' "$width" "$height"
+    else printf 'WINDOW=42\\nX=0\\nY=0\\nWIDTH=800\\nHEIGHT=600\\n'; fi
     ;;
   getmouselocation) printf 'X=400\\nY=300\\nSCREEN=0\\nWINDOW=%s\\n' "\${TEST_INPUT_POINTER_WINDOW:-42}" ;;
   windowsize)
@@ -124,12 +125,13 @@ afterEach(() => {
     "TEST_INPUT_WINDOWS",
     "TEST_INPUT_VISIBLE_WINDOWS",
     "TEST_INPUT_ACTIVE_WINDOW",
-    "TEST_INPUT_ROOT_FOCUS",
+    "TEST_INPUT_HELPER_FOCUS",
     "TEST_INPUT_XTEST",
     "TEST_INPUT_FOCUS_HANG",
     "TEST_INPUT_FAIL_WINDOWSIZE",
     "TEST_INPUT_POINTER_WINDOW",
     "TEST_INPUT_STALE_GEOMETRY",
+    "TERMINFO_FOCUS_HELPER_WINDOW",
   ]) {
     delete process.env[key]
   }
@@ -166,17 +168,25 @@ test.runIf(process.platform === "linux")("createLinuxInput refuses when xdpyinfo
   await expect(createLinuxInput(liveExecutable())).rejects.toThrow(/XTEST/)
 })
 
-// Input ownership is distinct from the probe's byte grading: verify actual root
-// and owned focus IDs and restoration even if the root read is wrong.
+// Input ownership is distinct from the probe's byte grading: verify actual helper
+// and owned focus IDs and restoration even if the helper read is wrong.
 test.runIf(process.platform === "linux")(
-  "focus roundtrip verifies root and owned focus, restoring after a wrong read",
+  "focus roundtrip verifies helper and owned focus, restoring after a wrong read",
   async () => {
     const { log } = fixture()
     const input = await createLinuxInput(liveExecutable())
     if (!input.focusRoundTrip) throw new Error("Missing owned focus roundtrip")
-    expect(await input.focusRoundTrip()).toEqual({
+    const writeFocus: string[] = []
+    expect(
+      await input.focusRoundTrip(async (readFocus) => {
+        writeFocus.push(await readFocus())
+        // This marker stands for the target write; both reads must precede restoration.
+        writeFileSync(`${log}.target-write`, "written while unfocused")
+        writeFocus.push(await readFocus())
+      }),
+    ).toEqual({
       ownedWindowId: "42",
-      rootWindowId: "543",
+      helperWindowId: "543",
       focusedWindowIds: ["42", "543", "42"],
     })
     expect(argvLines(log).filter((line) => line.startsWith("windowfocus "))).toEqual([
@@ -184,10 +194,47 @@ test.runIf(process.platform === "linux")(
       "windowfocus 543",
       "windowfocus 42",
     ])
-    expect(argvLines(log).filter((line) => line === "getwindowfocus -f")).toHaveLength(3)
-    process.env.TEST_INPUT_ROOT_FOCUS = "99"
+    expect(writeFocus).toEqual(["543", "543"])
+    expect(readFileSync(`${log}.target-write`, "utf8")).toBe("written while unfocused")
+    expect(argvLines(log).filter((line) => line === "getwindowfocus -f")).toHaveLength(5)
+    await expect(
+      input.focusRoundTrip(async () => {
+        throw new Error("target work failed")
+      }),
+    ).rejects.toThrow("target work failed")
+    expect(argvLines(log).at(-2)).toBe("windowfocus 42")
+    process.env.TEST_INPUT_HELPER_FOCUS = "99"
     await expect(input.focusRoundTrip()).rejects.toThrow(/focus/)
     expect(argvLines(log).at(-2)).toBe("windowfocus 42")
+  },
+)
+
+// #33305: GTK reports no focus change when focus moves to the display root, so the witness
+// must name an owned helper window. A run without one is refused rather than proving nothing.
+test.runIf(process.platform === "linux")(
+  "createLinuxInput refuses when the owned focus helper window is not declared",
+  async () => {
+    fixture()
+    delete process.env.TERMINFO_FOCUS_HELPER_WINDOW
+    await expect(createLinuxInput(liveExecutable())).rejects.toThrow(/focus helper window/)
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "createLinuxInput refuses when the focus helper is the owned window itself",
+  async () => {
+    fixture()
+    process.env.TERMINFO_FOCUS_HELPER_WINDOW = "42"
+    await expect(createLinuxInput(liveExecutable())).rejects.toThrow(/needs two/)
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "createLinuxInput refuses a focus helper that overlaps the owned window",
+  async () => {
+    const { log } = fixture()
+    writeFileSync(`${log}.size`, "1800 1000\n")
+    await expect(createLinuxInput(liveExecutable())).rejects.toThrow(/obscured|overlaps/)
   },
 )
 
@@ -255,7 +302,11 @@ test.runIf(process.platform === "linux")(
     process.env.TEST_INPUT_POINTER_WINDOW = "1"
     const before = argvLines(log).length
     await expect(input.injectClick(1)).rejects.toThrow(/pointer is not on the owned window/)
-    expect(argvLines(log).slice(before).some((line) => line.startsWith("click "))).toBe(false)
+    expect(
+      argvLines(log)
+        .slice(before)
+        .some((line) => line.startsWith("click ")),
+    ).toBe(false)
   },
 )
 

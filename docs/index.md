@@ -19,7 +19,8 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { currentCoverageSentence, NOT_MEASURED_TEXT, notMeasuredReadout, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
+import { currentCoverageSentence, NOT_MEASURED_TEXT, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
+import { homeBaselineRow } from './data/baseline-readouts.ts'
 // The deep source path, not the package root: the root re-exports probe extensions that import
 // node:crypto, which Vite's browser build cannot resolve (measured 2026-10-23 on this branch).
 import { isEnvironmentGroup } from '../packages/probe-defs/src/environment-groups.ts'
@@ -184,10 +185,8 @@ function coverageLabel(backendName) {
 function baselineRow(backendName, baseline) {
   const stats = data.baselineStats[backendName]?.[baseline]
   if (!stats) return { text: '', title: undefined }
-  return notMeasuredReadout(stats.counts) ?? {
-    text: `${stats.pct}% · ${stats.score.supported}/${stats.score.all} supported / all`,
-    title: undefined,
-  }
+  // #33441: the derived count travel with the counts, or a derived-only row prints a measured-looking 0%.
+  return homeBaselineRow(stats)
 }
 
 // Slug helpers for SEO page links — use slug from features.json if available

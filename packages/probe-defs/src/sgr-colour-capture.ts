@@ -25,8 +25,9 @@
  *   the screen untouched", "the sequence matched the sibling") cannot separate a terminal that
  *   ignores the colour from one that paints it identically to the reference it was compared
  *   against, so both read inconclusive BY NAME. Unsupported is decided only by a named branch with
- *   its own witness: colour-no-attribute-witness (region-readback) and colour-sibling-separation
- *   (colourSiblingSeparation below, run at the batch tail because it reads a second row).
+ *   its own witness: colour-no-attribute-witness and colour-walked-parameters (region-readback)
+ *   and colour-sibling-separation (colourSiblingSeparation below, run at the batch tail because it
+ *   reads a second row).
  */
 import { HEADLESS_OBSERVABLE_REVIEW } from "./helpers.ts"
 import {
@@ -62,6 +63,25 @@ interface ColourRow {
   siblingLabel: string
   /** A setup painted before the sample in every frame — the underline the colour rows qualify. */
   seed?: string
+  /** The static attribute a terminal lacking the sequence reaches by walking its parameters. */
+  walked?: { paint: string; attribute: string }
+}
+
+/**
+ * Umbrella rows whose claim is exactly a component's (@cto a7fb82cc and e9641d54, #33104): every table
+ * keyed by row id points the umbrella at the component's own entry, never a copy, so the umbrella
+ * runs the same pixel arm with the same controls, multiplexer demotion and sibling witness.
+ */
+export const COLOUR_UMBRELLAS: Readonly<Record<string, string>> = { "extensions.truecolor": "sgr.fg.truecolor" }
+
+/** Point each umbrella at its component's entry in an id-keyed table; a missing component is a bug. */
+function withUmbrellas<T>(table: Record<string, T>, name: string): Record<string, T> {
+  for (const [umbrella, component] of Object.entries(COLOUR_UMBRELLAS)) {
+    const entry = table[component]
+    if (entry === undefined) throw new Error(`${name}: umbrella ${umbrella} names ${component}, which has no entry`)
+    table[umbrella] = entry
+  }
+  return table
 }
 
 const COLOUR_ROWS: Record<string, ColourRow> = {
@@ -97,9 +117,13 @@ const COLOUR_ROWS: Record<string, ColourRow> = {
     sibling: "\x1b[48;2;0;255;135m",
     siblingLabel: "the RGB 0;255;135, the nearest xterm-256 entry to 0;255;128",
   },
+  // A walker of the sibling turns blink on with its 5 and off again with the trailing 25, so the
+  // frame holds still and equals the seed; a terminal with 58 reads index 5 and 25 is a no-op. The
+  // sequence itself needs no change: a walker's 0 resets the underline, which lands on the
+  // no-attribute witness (@cto 30b12293, #33181).
   "sgr.underline.color": {
     sequence: "\x1b[58;2;255;0;128m",
-    sibling: "\x1b[58;5;5m",
+    sibling: "\x1b[58;5;5;25m",
     siblingLabel: "SGR 58;5;5, another underline colour",
     seed: "\x1b[4m",
   },
@@ -325,6 +349,15 @@ export const COLOUR_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry"
             // attribute it should have decorated was painting. @cto 4ed6bddf.
             noAttributeNegative: { sequence: sgrParameters(row.sequence) },
           }),
+      ...(row.walked === undefined
+        ? {}
+        : {
+            walkedAttribute: {
+              frame: frame(row, row.walked.paint),
+              sequence: sgrParameters(row.sequence),
+              attribute: row.walked.attribute,
+            },
+          }),
       timeoutMs: 5000,
       pollMs: 250,
       minRows: CURSOR_ROW,
@@ -332,6 +365,8 @@ export const COLOUR_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry"
     },
   ]),
 )
+withUmbrellas(COLOUR_CAPTURE, "COLOUR_CAPTURE")
+withUmbrellas(COLOUR_ROWS, "COLOUR_ROWS")
 
 /** What this decision compared, and what it did not. */
 export function colourCaptureNote(id: string): string | undefined {
@@ -351,13 +386,25 @@ export function colourCaptureCallbackResult(
   verdict: ProbeCallbackResult,
   options?: { mux?: "tmux" | "screen" },
 ): ProbeCallbackResult {
-  const note = colourCaptureNote(id)
   const observation = verdict.observation
+  const note =
+    colourCaptureNote(id) ??
+    (id === UNDERLINE_INDEXED_ID || (options?.mux !== undefined && id === "sgr.underline-color-reset")
+      ? observation?.note
+      : undefined)
   if (note === undefined || observation === undefined) return verdict
-  // The witness negative is this arm's own decision and carries its own reason: the seed frame is a
-  // positive witness that the attributed sample was painting, and the expected frame equals plain
-  // text. It is not one of the oracle's untouched negatives, so the downgrade below does not apply.
-  if (verdict.criterionBranch === "colour-no-attribute-witness") {
+  // A non-mux witness negative is this arm's own decision: the seed showed the attribute painting,
+  // and the expected frame equals plain text. The walked negative is the same kind: the expected
+  // frame equals the frame that sets the walked attribute on purpose, which differs from the seed.
+  // Neither is one of the oracle's untouched negatives, so the downgrade below does not apply. A mux
+  // cannot attribute either negative, or an inconclusive capture, to its own hop without an outer
+  // control. Broken captures stay errors.
+  if (
+    verdict.criterionBranch === "colour-no-attribute-witness" ||
+    verdict.criterionBranch === "colour-walked-parameters" ||
+    verdict.criterionBranch === UNDERLINE_INDEXED_BRANCH ||
+    (options?.mux !== undefined && observation.outcome === "inconclusive")
+  ) {
     // A multiplexer has no outer control in this arm, so the same frames cannot single out whether
     // the mux or its outer terminal dropped the sequence (@cto 4ed6bddf). Keep it undecided until an
     // outer control exists rather than blaming the mux on evidence that does not name it.
@@ -404,11 +451,31 @@ export function colourCaptureCallbackResult(
       },
     }
   }
+  if (observation.outcome === "inconclusive") {
+    return {
+      ...verdict,
+      pass: false,
+      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+      tests: [
+        { id: "review", status: "probe-todo", reason: observation.note ?? `${id}: capture did not decide the colour` },
+      ],
+    }
+  }
   if (observation.outcome === "supported") {
     return { ...verdict, observation: { ...observation, note } }
   }
   return verdict
 }
+
+/**
+ * Why Screen's base run paints 24-bit colour as the default (#33150, @cto 918fccd1): display.c:1349 and :1386
+ * emit 38;2 only `&& hastruecolor`, which is false (screen.c:144) until the `truecolor on` command
+ * (doc/screen.1:3572-3582, read from screen-5.0.2.tar.gz). The corpus config is the launcher's one line
+ * (scripts/linux-container-run.sh, `defscrollback 1000`); the run does not record it, so the reason names the
+ * harness config, never "this run's config".
+ */
+export const SCREEN_TRUECOLOR_CAUSE =
+  "GNU Screen 5.0.2 emits 24-bit colour only with its truecolor option on; default is off; corpus config is defscrollback 1000"
 
 /**
  * The two Screen truecolour rows and their same-channel sibling (#33041, @cto acd2e579 amended 16:05Z).
@@ -417,20 +484,23 @@ export function colourCaptureCallbackResult(
  */
 const SIBLING_SEPARATION: Readonly<
   Record<string, { channel: "fg" | "bg"; siblingRowId: string; colour: string; assumption: string }>
-> = {
-  "sgr.fg.truecolor": {
-    channel: "fg",
-    siblingRowId: "sgr.fg.256",
-    colour: "#ff8000",
-    assumption: "the run's default foreground is not (255,128,0)",
+> = withUmbrellas(
+  {
+    "sgr.fg.truecolor": {
+      channel: "fg",
+      siblingRowId: "sgr.fg.256",
+      colour: "#ff8000",
+      assumption: "the run's default foreground is not (255,128,0)",
+    },
+    "sgr.bg.truecolor": {
+      channel: "bg",
+      siblingRowId: "sgr.bg.256",
+      colour: "#00ff80",
+      assumption: "the run's default background is not (0,255,128)",
+    },
   },
-  "sgr.bg.truecolor": {
-    channel: "bg",
-    siblingRowId: "sgr.bg.256",
-    colour: "#00ff80",
-    assumption: "the run's default background is not (0,255,128)",
-  },
-}
+  "SIBLING_SEPARATION",
+)
 
 /** The four region frames of a colour row, by the step label region-readback records verbatim. */
 const COLOUR_FRAME_STEPS = {
@@ -593,7 +663,7 @@ export function colourSiblingSeparation(input: {
       recordRunId: record.recordRunId,
     },
   }
-  const reason = `${id}: painted SGR ${requestedEncoding} as the default colour: this row's seed, target and expected frames are equal while sibling ${siblingId} separated in the same rectangle of run ${input.runId}, and the outer terminal ${record.id} ${record.version} reads supported in ${record.recordPath}`
+  const reason = `${id}: painted SGR ${requestedEncoding} as the default colour: this row's seed, target and expected frames are equal while sibling ${siblingId} separated in the same rectangle of run ${input.runId}, and the outer terminal ${record.id} ${record.version} reads supported in ${record.recordPath}. ${SCREEN_TRUECOLOR_CAUSE}`
   const { reason: _reason, ...settled } = own
   const { featureId: _featureId, ...observation } = settled
   return {

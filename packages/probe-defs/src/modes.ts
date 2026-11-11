@@ -235,7 +235,7 @@ async function primaryRestoreCapture(
   let last = retention
   if (mode === 1047 && retention.observation?.outcome === "unsupported") {
     return declaredUntestableResult(
-      "Untestable (no setup): this run does not retain alternate content through DECSET47, so its cleared reading cannot establish whether DECRST1047 cleared the buffer.",
+      "Untestable (no setup): this capture route does not retain alternate content through DECSET47, so DECRST1047 clearing was not measured.",
       {
         primary: result.response,
         retention: retention.response,
@@ -2093,17 +2093,22 @@ const reverseVideoProtocol = decrpmModeProbe(
 )
 
 async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
-  const reading: { firstReply?: string[] | null } = {}
+  const reading: { firstReply?: string[] | null; firstRaw?: string } = {}
   // Keep the existing Ps2 set/query/restore path exactly; observe its initial
   // reply through the existing query primitive instead of issuing a second query.
+  // The outcome form also retains the raw bytes: the DA1 sentinel answers in the
+  // same reply as a Ps 0, so whose 0 it was is readable from that one reply (#33036).
   const protocolArm = reverseVideoProtocol.term
   if (!protocolArm) throw new Error("Reverse-video protocol definition has no App arm")
   const protocol = await protocolArm({
     ...ctx,
     queryWithSentinel: async (sequence, pattern, timeout) => {
-      const reply = await ctx.queryWithSentinel(sequence, pattern, timeout)
-      if (reading.firstReply === undefined) reading.firstReply = reply
-      return reply
+      const outcome = await ctx.queryWithSentinelOutcome(sequence, pattern, timeout)
+      if (reading.firstReply === undefined) {
+        reading.firstReply = outcome.match
+        reading.firstRaw = outcome.raw
+      }
+      return outcome.match
     },
   })
   const ps = decrpmPs(reading.firstReply?.[1])
@@ -2143,6 +2148,28 @@ async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   const note = `${ps === 0 ? "DECRPM mode 5 returned Ps 0" : "No usable DECRPM reply for mode 5"}; controlled reverse-video pixel read${detail ? `; ${detail}` : ""}`
   result.note = note
   if (result.observation) result.observation.note = note
+  const missingFreshPixel = result.tests?.find(
+    (test) => test.id === "review" && test.status === "probe-todo" && test.reason === "no freshness witness",
+  )
+  if (ps === 0 && missingFreshPixel) {
+    missingFreshPixel.reason =
+      "Open: DECRPM mode 5 returned Ps 0, but the DECSCNM pixel arm has no fresh capture; App capture must complete a same-crop sentinel roundtrip before a no-change verdict."
+  }
+  // #33036 (@cto case 3): beside a no-change pixel read, record whose Ps 0 it was. The DA1
+  // sentinel answered in the same raw reply as the 0; its parameters name the answering
+  // device, and the subject-aware finalizer decides attribution from them. No DA bytes in
+  // that reply, no witness — the negative stays open exactly as before.
+  const da = ps === 0 ? reading.firstRaw?.match(/\x1b\[\?([0-9;]+)c/)?.[1] : undefined
+  if (da !== undefined && result.observation?.outcome === "unsupported") {
+    result.tests = [
+      ...(result.tests ?? []),
+      {
+        id: "decrpm-zero-witness",
+        status: "unsupported",
+        reason: `DECRPM mode 5 returned Ps 0 with device attributes ?${da}c beside it`,
+      },
+    ]
+  }
   return result
 }
 
@@ -2360,7 +2387,21 @@ const modeDefinitions: ProbeDefinition[] = [
     ...decrpmModeProbe(
       "modes.synchronized-output",
       2026,
-      headlessDecrpmArm(2026, "syncOutput", { requireReadback: true, stateReadback: true }),
+      (ctx) => {
+        const result = headlessDecrpmArm(2026, "syncOutput", { requireReadback: true, stateReadback: true })(ctx)
+        if (
+          result.observation?.outcome === "unsupported" &&
+          hasAuditedOscInterfaceAbsence(ctx, "wezterm-d2") &&
+          ctx.runtimeIdentity?.kind === "native" &&
+          ctx.runtimeIdentity.provenance.sourceCommit === "17d0ee52ebdfdfc4589d453cd6bed8a8af96fa2e"
+        ) {
+          // This native build's set/reset handlers explicitly leave this to the application mux.
+          const note = `${result.note}; standalone WezTerm terminal library does not apply synchronized output; handled by WezTerm's mux`
+          result.note = note
+          result.observation.note = note
+        }
+        return result
+      },
       true,
     ),
     libAssertionType: undefined,

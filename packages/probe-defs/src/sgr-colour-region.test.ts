@@ -18,8 +18,16 @@
  */
 import { expect, test, vi } from "vitest"
 import { sgrProbes } from "./sgr.ts"
-import { COLOUR_CAPTURE, colourCaptureCallbackResult } from "./sgr-colour-capture.ts"
+import { extensionsProbes } from "./extensions.ts"
+import {
+  COLOUR_CAPTURE,
+  COLOUR_UMBRELLAS,
+  UNDERLINE_INDEXED_PHASES,
+  UNDERLINE_INDEXED_BRANCH,
+  colourCaptureCallbackResult,
+} from "./sgr-colour-capture.ts"
 import { captureRegionCallbackResult } from "./region-readback.ts"
+import { recordExecutedProbe } from "./helpers.ts"
 import type {
   CaptureCells,
   CapturePixelGeometry,
@@ -169,6 +177,7 @@ interface Ink {
   underlineColour: string
   underline: boolean
   blink: boolean
+  strike: boolean
 }
 
 interface Cell extends Ink {
@@ -293,11 +302,23 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
       next.underlineColour = "default"
       next.underline = false
       next.blink = false
+      next.strike = false
       index += 1
       continue
     }
     if (param === 5) {
       next.blink = true
+      index += 1
+      continue
+    }
+    // xterm's crossed-out and blink-off: a walker of `58;5;9;25` ends on a static strike line (#33181).
+    if (param === 9 || param === 29) {
+      next.strike = param === 9
+      index += 1
+      continue
+    }
+    if (param === 25) {
+      next.blink = false
       index += 1
       continue
     }
@@ -401,7 +422,15 @@ interface Screen {
 }
 
 function blankCell(): Cell {
-  return { char: " ", fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false }
+  return {
+    char: " ",
+    fg: "default",
+    bg: "default",
+    underlineColour: "default",
+    underline: false,
+    blink: false,
+    strike: false,
+  }
 }
 
 function blankScreen(): Screen {
@@ -409,7 +438,7 @@ function blankScreen(): Screen {
     grid: Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => blankCell())),
     row: 0,
     col: 0,
-    ink: { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false },
+    ink: { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false, strike: false },
   }
 }
 
@@ -423,7 +452,9 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
     const control = CONTROL.exec(rest)
     if (control) {
       const params = (control[1] ?? "")
-        .split(/[;:]/)
+        .split(";")
+        // An unknown colon group is one SGR parameter; only the semicolon form walks into 5/N.
+        .flatMap((part) => (mode === "ignore-58" && part.startsWith("58:") ? [] : part.split(":")))
         .filter((part) => part.length > 0)
         .map(Number)
       const final = control[2]
@@ -432,7 +463,14 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
         screen.col = Math.max(0, (params[1] ?? 1) - 1)
       } else if (final === "J" && (params[0] ?? 0) === 2) {
         for (const row of screen.grid) row.fill(blankCell())
-        screen.ink = { fg: "default", bg: "default", underlineColour: "default", underline: false, blink: false }
+        screen.ink = {
+          fg: "default",
+          bg: "default",
+          underlineColour: "default",
+          underline: false,
+          blink: false,
+          strike: false,
+        }
         screen.row = 0
         screen.col = 0
       } else if (final === "m") {
@@ -463,7 +501,9 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
 
 function cellText(cell: Cell | undefined): string {
   if (!cell) return "outside"
-  return `${cell.char}${cell.fg}${cell.bg}${cell.underlineColour}${cell.underline ? "u" : ""}${cell.blink ? "k" : ""}`
+  // Pixel samples of spaces show no foreground glyph. A default underline follows the foreground.
+  const underlineColour = cell.underline && cell.underlineColour === "default" ? cell.fg : cell.underlineColour
+  return `${cell.char}${cell.char === " " ? "" : cell.fg}${cell.bg}${underlineColour}${cell.underline ? "u" : ""}${cell.blink ? "k" : ""}${cell.strike ? "s" : ""}`
 }
 
 function regionDigest(grid: Cell[][], region: CaptureCells): string {
@@ -485,6 +525,7 @@ function wholeDigest(grid: Cell[][]): string {
 interface ColourTerminal {
   ctx: TermProbeSource
   writes: string[]
+  screen: Screen
 }
 
 /**
@@ -554,7 +595,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => null,
   }
-  return { ctx, writes }
+  return { ctx, writes, screen }
 }
 
 async function run(id: string, ctx: TermProbeSource) {
@@ -562,6 +603,40 @@ async function run(id: string, ctx: TermProbeSource) {
   if (!definition?.term) throw new Error(`${id}: no term arm in sgrProbes`)
   return definition.term(ctx)
 }
+
+/**
+ * @failure extensions.truecolor read open on Alacritty, tmux and WezTerm while sgr.fg.truecolor
+ *   decided from pixels in the same run: the umbrella had no colour row, so it fell to a cursor reply
+ *   (#33104). It now points at the foreground row's own entries (@cto a7fb82cc and e9641d54): same
+ *   objects, never copies, and in one run it never reads Supported or Unsupported where the
+ *   foreground row reads something else.
+ * @level l1
+ * @consumer extensions.truecolor App callback on owned capture contexts and multiplexers.
+ * @testonly none
+ */
+test("the truecolor umbrella shares the foreground row's entries and never decides differently", async () => {
+  expect(COLOUR_UMBRELLAS["extensions.truecolor"]).toBe("sgr.fg.truecolor")
+  expect(COLOUR_CAPTURE["extensions.truecolor"]).toBe(COLOUR_CAPTURE["sgr.fg.truecolor"])
+  const umbrella = extensionsProbes.find((probe) => probe.id === "extensions.truecolor")
+  if (!umbrella?.term) throw new Error("extensions.truecolor has no term arm")
+  const modes = ["render", "ignore", "collapse", "quantize-truecolor", "quantize-256", "deferred-paint"] as const
+  for (const mode of modes) {
+    for (const mux of [undefined, "tmux", "screen"] as const) {
+      const label = `${mode}${mux ? ` via ${mux}` : ""}`
+      const fgContext = colourTerminal(mode, PALETTES[0] as Palette).ctx
+      const umbrellaContext = colourTerminal(mode, PALETTES[0] as Palette).ctx
+      const fg = await run("sgr.fg.truecolor", mux ? { ...fgContext, mux } : fgContext)
+      const own = await umbrella.term(mux ? { ...umbrellaContext, mux } : umbrellaContext)
+      expect(own.observation?.outcome, label).toBe(fg.observation?.outcome)
+      expect(own.criterionBranch, label).toBe(fg.criterionBranch)
+      // The pair agreeing on "open" proves nothing; the render case must reach a pixel decision.
+      if (mode === "render" && mux === undefined) {
+        expect(own.observation?.outcome, label).toBe("supported")
+        expect(own.observation?.assertionType, label).toBe("screenshot")
+      }
+    }
+  }
+}, 60000)
 
 // A protocol reply cannot replace these same-run neutral/sibling pixel controls. Existing cases
 // only exercised silent DECRQSS, so they missed the early return that bypassed the colour oracle.
@@ -585,6 +660,38 @@ test.each(["0", "0;38;2;255;128;0", "0;38;2;255;128;1"])(
     }
   },
 )
+
+/**
+ * @failure Xterm's equal-reference and witness-timeout captures return inconclusive without
+ *   explicit tests, so the writer publishes PROBE INVALID. Neither observation decided support.
+ * @level l1
+ * @consumer Indexed underline colour through its callback owner and the real result writer.
+ * @testonly none
+ */
+test.each([
+  ["insufficient-evidence", "the ignored-attribute frame and the expected frame read the same cells"],
+  ["timeout", "witness cell 1,1 unchanged for 5000 ms after the target while the frame changed"],
+] as const)("inconclusive indexed colour publishes pending for %s", (reason, note) => {
+  const featureId = "sgr.underline-color-indexed"
+  const frames: ObservationFrame[] = [
+    { kind: "pixels", role: "target", label: "target", capturedAt: 1, ref: "sha256:abc", pixelsDigest: "d" },
+  ]
+  const result = colourCaptureCallbackResult(featureId, {
+    pass: false,
+    response: "retained capture",
+    observation: { outcome: "inconclusive", reason, assertionType: "screenshot", note, frames },
+  })
+  const published = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: "2026-11-11T01:43:09.619Z" },
+    observation: result.observation === undefined ? undefined : { ...result.observation, featureId },
+    assertions: [],
+    ...(result.tests === undefined ? {} : { tests: result.tests }),
+  })
+  expect(published.tests[0]).toMatchObject({ id: "review", status: "probe-todo", reason: note })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason, note, frames })
+  expect(result.response).toBe("retained capture")
+})
 
 for (const id of COLOUR_IDS) {
   for (const palette of PALETTES) {
@@ -787,6 +894,18 @@ test("sgr.underline.color is unsupported when the seed shows the underline and p
   expect(result.observation?.note ?? "").toContain("painted nothing for SGR 58;2;255;0;128")
   expect(result.observation?.note ?? "").toContain("the underline was visible in the seed frame of this run")
   expect(result.pass).toBe(false)
+  // #33054: the witness is the structured union member, not prose spread over expected/observed/note.
+  const assertion = result.assertions?.[0]
+  const witness = assertion?.witness
+  if (witness?.kind !== "colour-no-attribute-witness") throw new Error("the negative carries no no-attribute witness")
+  expect(witness.rowId).toBe("sgr.underline.color")
+  expect(witness.encoding).toBe("58;2;255;0;128")
+  expect(witness.frames.expected).toBe(witness.frames.noAttribute)
+  expect(witness.frames.seed).not.toBe(witness.frames.noAttribute)
+  expect(assertion?.observed).toBe(witness.frames.expected)
+  const compared = (result.observation?.frames ?? []).filter((frame) => frame.regionDigest === witness.frames.seed)
+  expect(compared.length).toBeGreaterThan(0)
+  for (const frame of compared) expect(frame.regionRectangle).toEqual(witness.rectangle)
 })
 
 /**
@@ -808,19 +927,81 @@ test("a stale capture reads inconclusive, never unsupported, on the underline-co
 }, 30000)
 
 /**
- * @failure A terminal that paints a DIFFERENT attribute for the underline-colour sequence (here
- *   blink, the shape screen produces) must not read as support, and must not read as the witness
- *   negative either: the frames separate, but nothing in them says the colour was painted. It stays
- *   inconclusive, which is what it reads today.
+ * @failure A terminal that ignores colon-form SGR 58 must be measured on the preserved underline,
+ *   not blink/strike parameters from the retired semicolon sequence (#33146). The foreground route
+ *   proves both palette entries are visible before the same-run witness publishes a negative.
  * @level l1
  * @consumer sgr.underline-color-indexed on owned app contexts.
  * @testonly none
  */
-test("a terminal that paints blink for the underline-colour sequence stays inconclusive", async () => {
+test("a terminal that ignores indexed colon colour reads unsupported from the preserved underline", async () => {
   const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
   const result = await run("sgr.underline-color-indexed", ctx)
-  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.criterionBranch).toBe(UNDERLINE_INDEXED_BRANCH)
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(result.observation?.note).toContain("colour ignored, decoration kept")
+  expect(result.tests).toEqual([{ id: "attribute", status: "unsupported", assertionRefs: [0] }])
+  expect(result.assertions).toHaveLength(1)
   expect(result.pass).toBe(false)
+})
+
+/**
+ * @failure A frame a code-by-code walker paints with blink on is sampled at whatever blink phase
+ *   each capture lands, so the same terminal reads differently run to run (#33181: xterm turned the
+ *   5 of `58;5;5` into blink). Every frame the two underline-colour rows compare must hold still on
+ *   a walker: each sibling ends with blink-off (25), and `58;2;255;0;128` reaches its own 0, which
+ *   resets the underline onto the no-attribute witness (@cto 30b12293).
+ * @level l1
+ * @consumer sgr.underline.color and sgr.underline-color-indexed on owned app contexts.
+ * @testonly none
+ */
+test("a walker paints every compared underline-colour frame static", async () => {
+  for (const id of ["sgr.underline.color"]) {
+    const spec = COLOUR_CAPTURE[id]
+    if (!spec) throw new Error(`${id}: no colour capture row`)
+    const writes = [
+      spec.seed,
+      `${spec.seed}${spec.edit}`,
+      spec.expected,
+      spec.ignored,
+      spec.noAttribute,
+      spec.walkedAttribute?.frame,
+    ].filter((write): write is string => write !== undefined)
+    expect(writes.length, id).toBeGreaterThanOrEqual(5)
+    for (const write of writes) {
+      const { ctx, screen } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+      ctx.write(write)
+      const blinking = screen.grid.flat().filter((cell) => cell.blink && cell.char !== " ")
+      expect(blinking.map((cell) => cell.char).join(""), `${id}: ${JSON.stringify(write)}`).toBe("")
+    }
+  }
+  for (const phase of UNDERLINE_INDEXED_PHASES) {
+    const { ctx, screen } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+    ctx.write(`${phase.sequence}${phase.sample}`)
+    expect(
+      screen.grid.flat().some((cell) => cell.blink),
+      phase.name,
+    ).toBe(false)
+  }
+  const result = await run("sgr.underline.color", colourTerminal("ignore-58", PALETTES[0] as Palette).ctx)
+  expect(result.criterionBranch).toBe("colour-no-attribute-witness")
+  expect(result.observation?.outcome).toBe("unsupported")
+})
+
+/**
+ * @failure The indexed same-run negative is decided from frames captured through a multiplexer's outer
+ *   terminal, which cannot say which of the two walked the parameters; like the witness negative it
+ *   must stay open there (@cto 4ed6bddf), never publish Unsupported against the mux.
+ * @level l1
+ * @consumer sgr.underline-color-indexed on owned multiplexer contexts.
+ * @testonly none
+ */
+test("a multiplexer stays inconclusive on the indexed same-run negative and says why", async () => {
+  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+  const result = await run("sgr.underline-color-indexed", { ...ctx, mux: "screen" as const })
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
+  expect(result.tests).toEqual([expect.objectContaining({ id: "review", status: "probe-todo" })])
 })
 
 /**
@@ -829,17 +1010,54 @@ test("a terminal that paints blink for the underline-colour sequence stays incon
  *   arm has no outer control (@cto 4ed6bddf): the row stays inconclusive and its note names the
  *   multiplexer and the missing control, and no cross-run lookup stands in for one.
  * @level l1
- * @consumer The three underline-colour rows on owned multiplexer contexts.
+ *   The indexed/reset pair must reach the same owner, including reset's independent-reference
+ *   capture; an inconclusive observation without explicit pending tests publishes probe-invalid.
+ * @consumer The underline-colour family on owned multiplexer contexts.
  * @testonly none
  */
-test("a multiplexer stays inconclusive on the witness negative and says why", async () => {
-  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
-  const result = await run("sgr.underline.color", { ...ctx, mux: "screen" as const })
-  expect(result.observation?.outcome).toBe("inconclusive")
-  expect(result.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
-  expect(result.pass).toBe(false)
-  expect(result.tests?.some((test) => test.status === "unsupported")).toBe(false)
-  expect(result.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo" })
+test.each([
+  "sgr.underline.color",
+  "sgr.underline-color-rgb",
+  "sgr.underline-color-indexed",
+  "sgr.underline-color-reset",
+])("a multiplexer stays inconclusive on %s and says why", async (id) => {
+  for (const mux of ["screen", "tmux"] as const) {
+    const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+    const result = await run(id, { ...ctx, mux })
+    expect(result.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo" })
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
+    expect(result.pass).toBe(false)
+    expect(result.tests?.some((test) => test.status === "unsupported")).toBe(false)
+  }
+})
+
+/**
+ * @failure Routing reset captures through the colour owner must preserve non-mux negatives and
+ *   broken mux captures, rather than converting either to a pending colour comparison.
+ * @level l1
+ * @consumer The reset capture callback's shared colour result boundary.
+ * @testonly none
+ */
+test("the colour owner preserves non-mux reset negatives and broken mux captures", () => {
+  for (const mux of [undefined, "screen"] as const) {
+    const broken = mux !== undefined
+    const result = colourCaptureCallbackResult(
+      "sgr.underline-color-reset",
+      {
+        pass: false,
+        observation: {
+          outcome: broken ? "error" : "unsupported",
+          assertionType: "screenshot",
+          note: broken ? "capture failed" : "reset left the coloured underline unchanged",
+        },
+        tests: [{ id: "criterion", status: broken ? "probe-invalid" : "unsupported" }],
+      },
+      { mux },
+    )
+    expect(result.observation?.outcome).toBe(broken ? "error" : "unsupported")
+    expect(result.tests?.[0]?.status).toBe(broken ? "probe-invalid" : "unsupported")
+  }
 })
 
 for (const id of REVIEW_IDS) {

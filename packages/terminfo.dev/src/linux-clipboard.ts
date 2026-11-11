@@ -1,3 +1,4 @@
+import { readMuxAllowPassthrough } from "./notification-defaults.ts"
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from "node:fs"
@@ -38,6 +39,8 @@ interface ClipboardReceipt {
     baselinePath: string
     baselineSha256: string
     initialReadSha256: string
+    /** X11 PRIMARY, owned by a second helper only when a paste route reads it (xterm Shift+Insert, #32164). */
+    primary?: { helperPid: number; baselinePath: string; baselineSha256: string; initialReadSha256: string }
   }
   config: string
   permissions: string
@@ -45,12 +48,18 @@ interface ClipboardReceipt {
 }
 
 export interface ClipboardTraceEvent {
-  kind: "clipboard-read" | "clipboard-write" | "clipboard-restore" | "clipboard-verify"
+  kind: "clipboard-read" | "clipboard-write" | "clipboard-restore" | "clipboard-verify" | "clipboard-key"
   at: string
   sha256?: string
   length?: number
   status?: "error"
   helperPid?: number
+  /** clipboard-key: the keysym pressed and released through XTEST. */
+  key?: string
+  /** clipboard-key: the focused window read back before the press. */
+  windowId?: string
+  /** clipboard-key: X server time bracketing the press, ms mod 2^32. */
+  xTimeMs?: [number, number]
 }
 
 export interface LinuxClipboardAdapter {
@@ -63,6 +72,11 @@ export interface LinuxClipboardAdapter {
   readonly permissions: string
   readonly summary: string
   readonly muxAttachmentProof?: LinuxMuxAttachmentProof
+  /**
+   * tmux's live `allow-passthrough`, the option that decides whether anything an application writes inside a
+   * pane reaches the outer terminal at all (#33333). Absent unless this run owns a tmux server.
+   */
+  readonly readAllowPassthrough?: () => Promise<{ readonly value: string } | { readonly reason: string }>
   assertOwned(): Promise<void>
   /** The same receipt owns the App window or the mux's own title, never the outer window for a mux. */
   readTitle(): Promise<string>
@@ -76,10 +90,66 @@ export interface LinuxClipboardAdapter {
     trace: (event: ClipboardTraceEvent) => void,
     verify: () => Promise<void>,
   ): Promise<ProbeCallbackResult>
+  /** The same transaction over X11 PRIMARY; present only when the receipt owns a PRIMARY baseline. */
+  withPrimaryFixture?: LinuxClipboardAdapter["withClipboardFixture"]
   dispose(): Promise<void>
 }
 
 type Trace = (event: ClipboardTraceEvent) => void
+
+/** /proc/uptime counts centiseconds: a read of t means the clock is in [t, t + 10 ms). */
+const UPTIME_RESOLUTION_MS = 10
+
+/**
+ * The X server's clock in ms mod 2^32. Xorg's GetTimeInMillis reads CLOCK_MONOTONIC; /proc/uptime is the same
+ * kernel clock on a host that never suspends. Measured on the xterm image (#33145): xterm's claim TIMESTAMP
+ * 3979146112 fell inside the press's uptime bracket 3979146100..3979146120.
+ */
+function xServerTimeMs(): number {
+  const seconds = Number(readFileSync("/proc/uptime", "utf8").split(" ")[0])
+  if (!Number.isFinite(seconds)) throw new Error("/proc/uptime has no readable seconds field")
+  return Math.floor(seconds * 1000) % 2 ** 32
+}
+
+/**
+ * One real XTEST key event (shift press and release) on the owned window before an OSC 52 write (#33145,
+ * @cto 70645b74). xterm and Alacritty stamp their selection claim with their last input-event time, and X
+ * ignores a claim older than the current owner's (ICCCM), so a terminal that never saw input loses to the
+ * fixture's own xclip writer. A focus or XTEST failure throws by name; the probe refuses the sample.
+ */
+export async function pressRealKey(
+  windowId: string,
+  run: (file: string, args: string[]) => Promise<string>,
+  clock: () => number,
+  trace: Trace,
+  verify: () => Promise<void>,
+): Promise<void> {
+  const at = new Date().toISOString()
+  try {
+    await verify()
+    // Xvfb has no window manager: XSetInputFocus then getwindowfocus, as linux-input.ts focusOwnedWindow.
+    await run("xdotool", ["windowfocus", windowId])
+    const focused = (await run("xdotool", ["getwindowfocus"])).trim()
+    if (focused !== windowId) {
+      throw new Error(`owned window ${windowId} is not focused; getwindowfocus is ${focused || "empty"}`)
+    }
+    const before = clock()
+    await run("xdotool", ["key", "--window", "0", "--clearmodifiers", "shift"])
+    const after = clock()
+    trace({
+      kind: "clipboard-key",
+      at,
+      key: "shift",
+      windowId: focused,
+      xTimeMs: [before, after + UPTIME_RESOLUTION_MS],
+    })
+  } catch (error) {
+    trace({ kind: "clipboard-key", at, status: "error" })
+    throw new Error(
+      `Real key event before the OSC 52 write failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
 
 /** Single flight includes the finally restoration; failure there overrides the callback. */
 export function createClipboardTransaction(
@@ -87,6 +157,8 @@ export function createClipboardTransaction(
   io: {
     readText(trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<string>
     writeText(text: string, trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<void>
+    /** X selection fixtures: the real key event the OSC 52 write probes call first (#33145). */
+    realKeyEvent?(trace: Trace, verify: () => Promise<void>): Promise<void>
   },
   options?: {
     readonly writeDeadlineMs?: number
@@ -112,6 +184,7 @@ export function createClipboardTransaction(
       if (options?.muxState) {
         muxSnapshot = await options.muxState.snapshot()
       }
+      const realKeyEvent = io.realKeyEvent
       const fixture: ClipboardFixture = {
         baseline,
         ...(muxSnapshot?.tmuxSetClipboard !== undefined && { tmuxSetClipboard: muxSnapshot.tmuxSetClipboard }),
@@ -119,6 +192,7 @@ export function createClipboardTransaction(
         ...(options?.writePollMs !== undefined && { writePollMs: options.writePollMs }),
         readText: () => io.readText(trace, "clipboard-read", verify),
         writeText: (text) => io.writeText(text, trace, "clipboard-write", verify),
+        ...(realKeyEvent && { realKeyEvent: () => realKeyEvent(trace, verify) }),
       }
       result = await work(fixture)
     } catch (error) {
@@ -273,6 +347,21 @@ export function parseLinuxClipboardReceipt(value: unknown): ClipboardReceipt {
     r.selection.initialReadSha256 !== r.selection.baselineSha256
   ) {
     throw new Error("Owned clipboard receipt has invalid display, window, or digest")
+  }
+  const primary = r.selection.primary
+  if (
+    primary !== undefined &&
+    (!primary ||
+      typeof primary !== "object" ||
+      !Number.isSafeInteger(primary.helperPid) ||
+      primary.helperPid < 2 ||
+      primary.helperPid === r.selection.helperPid ||
+      typeof primary.baselinePath !== "string" ||
+      !primary.baselinePath.startsWith("/") ||
+      !/^[0-9a-f]{64}$/.test(primary.baselineSha256 ?? "") ||
+      primary.initialReadSha256 !== primary.baselineSha256)
+  ) {
+    throw new Error("Owned clipboard receipt has an invalid PRIMARY selection")
   }
   // Absent target is the existing direct-app receipt. A supplied discriminant is exhaustive.
   if (r.target !== undefined) {
@@ -601,6 +690,15 @@ export async function createLinuxClipboardAdapter(
   ) {
     throw new Error("Owned clipboard baseline is not this collector's generated nonce")
   }
+  const primaryReceipt = receipt.selection.primary
+  const primaryBaseline = primaryReceipt && readFileSync(ownedFile(primaryReceipt.baselinePath), "utf8")
+  if (
+    primaryReceipt &&
+    (primaryBaseline !== `terminfo-owned-primary-${receipt.runId}` ||
+      digest(primaryBaseline) !== primaryReceipt.baselineSha256)
+  ) {
+    throw new Error("Owned PRIMARY baseline is not this collector's generated nonce")
+  }
   const helperExe = realpathSync(receipt.selection.helperExecutable.path)
   if (digest(readFileSync(helperExe)) !== receipt.selection.helperExecutable.sha256) {
     throw new Error("Owned xclip executable digest mismatch")
@@ -683,6 +781,9 @@ export async function createLinuxClipboardAdapter(
   if (processExecutable(receipt.selection.helperPid) !== helperExe) {
     throw new Error("Owned clipboard selection helper executable differs from receipt")
   }
+  if (primaryReceipt && processExecutable(primaryReceipt.helperPid) !== helperExe) {
+    throw new Error("Owned PRIMARY selection helper executable differs from receipt")
+  }
   const children = new Set<ChildProcess>()
   const log = (trace: Trace, kind: ClipboardTraceEvent["kind"], text: string, helperPid?: number) =>
     trace({
@@ -692,15 +793,17 @@ export async function createLinuxClipboardAdapter(
       length: Buffer.byteLength(text),
       ...(helperPid && { helperPid }),
     })
+  type Selection = "clipboard" | "primary"
   async function readText(
     trace: Trace,
     kind: ClipboardTraceEvent["kind"],
     verify: () => Promise<void>,
+    selection: Selection = "clipboard",
   ): Promise<string> {
     const at = new Date().toISOString()
     try {
       await verify()
-      const text = await command(helperExe, ["-quiet", "-selection", "clipboard", "-o"], env)
+      const text = await command(helperExe, ["-quiet", "-selection", selection, "-o"], env)
       trace({ kind, at, sha256: digest(text), length: Buffer.byteLength(text) })
       return text
     } catch (error) {
@@ -713,6 +816,7 @@ export async function createLinuxClipboardAdapter(
     trace: Trace,
     kind: ClipboardTraceEvent["kind"],
     verify: () => Promise<void>,
+    selection: Selection = "clipboard",
   ): Promise<void> {
     const at = new Date().toISOString()
     try {
@@ -721,7 +825,7 @@ export async function createLinuxClipboardAdapter(
       trace({ kind, at, status: "error" })
       throw error
     }
-    const child = spawn(helperExe, ["-quiet", "-selection", "clipboard", "-i"], {
+    const child = spawn(helperExe, ["-quiet", "-selection", selection, "-i"], {
       env,
       stdio: ["pipe", "ignore", "ignore"],
     })
@@ -743,7 +847,7 @@ export async function createLinuxClipboardAdapter(
     for (let attempt = 0; attempt < 30; attempt++) {
       if (childError) throw childError
       try {
-        if ((await readText(trace, "clipboard-read", verify)) === text) return
+        if ((await readText(trace, "clipboard-read", verify, selection)) === text) return
       } catch (error) {
         if (attempt === 29) throw error
       }
@@ -751,11 +855,20 @@ export async function createLinuxClipboardAdapter(
         setTimeout(resolve, 20)
       })
     }
-    throw new Error("Owned xclip writer did not acquire the clipboard selection")
+    throw new Error(`Owned xclip writer did not acquire the ${selection} selection`)
   }
   if ((await readText(() => {}, "clipboard-read", assertOwned)) !== baseline) {
     throw new Error("Initial owned clipboard readback differs from generated baseline")
   }
+  if (primaryBaseline && (await readText(() => {}, "clipboard-read", assertOwned, "primary")) !== primaryBaseline) {
+    throw new Error("Initial owned PRIMARY readback differs from generated baseline")
+  }
+  const withPrimaryFixture =
+    primaryBaseline &&
+    createClipboardTransaction(primaryBaseline, {
+      readText: (trace, kind, verify) => readText(trace, kind, verify, "primary"),
+      writeText: (text, trace, kind, verify) => writeText(text, trace, kind, verify, "primary"),
+    })
   const tmuxTarget = receipt.target?.kind === "mux" && receipt.target.mux === "tmux" ? receipt.target : undefined
   const listTmuxBuffers = async (target: MuxReceiptTarget): Promise<string[]> => {
     await assertOwned()
@@ -772,7 +885,12 @@ export async function createLinuxClipboardAdapter(
   }
   const withClipboardFixture = createClipboardTransaction(
     baseline,
-    { readText, writeText },
+    {
+      readText,
+      writeText,
+      realKeyEvent: (trace, verify) =>
+        pressRealKey(receipt.terminal.windowId, (file, args) => command(file, args, env), xServerTimeMs, trace, verify),
+    },
     tmuxTarget
       ? {
           muxState: {
@@ -817,6 +935,13 @@ export async function createLinuxClipboardAdapter(
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
     config: receipt.config,
+    ...(tmuxTarget && {
+      readAllowPassthrough: () =>
+        readMuxAllowPassthrough({
+          run: async (args) =>
+            (await command(tmuxTarget.executable.path, ["-S", tmuxTarget.socketPath, ...args], env)).toString(),
+        }),
+    }),
     permissions: receipt.permissions,
     assertOwned,
     async withIconNameFixture(write, work, verify = () => adapter.assertOwned()) {
@@ -899,7 +1024,9 @@ export async function createLinuxClipboardAdapter(
             const deadline = Date.now() + 2000
             let seen = await title()
             while (seen !== originalTitle && Date.now() < deadline) {
-              await new Promise((resolve) => setTimeout(resolve, 25))
+              await new Promise<void>((resolve) => {
+                setTimeout(resolve, 25)
+              })
               seen = await title()
             }
             return seen
@@ -1067,9 +1194,11 @@ export async function createLinuxClipboardAdapter(
         helperExecutableSha256: receipt.selection.helperExecutable.sha256,
         baselineSha256: receipt.selection.baselineSha256,
         initialReadSha256: receipt.selection.initialReadSha256,
+        ...(primaryReceipt && { primary: primaryReceipt }),
       },
     }),
     withClipboardFixture,
+    ...(withPrimaryFixture && { withPrimaryFixture }),
     async dispose() {
       await Promise.all(
         [...children].map(

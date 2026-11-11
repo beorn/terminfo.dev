@@ -1,6 +1,6 @@
-import { PROBE_STATUSES } from "./types.ts"
+import { PROBE_STATUSES, SILENCE_RULES } from "./types.ts"
 import { createHash } from "node:crypto"
-import type { NotTestedCoverageResult, ProbeTestInput } from "./types.ts"
+import type { NotTestedCoverageResult, ProbeTestInput, SilenceDeclaration } from "./types.ts"
 import type {
   ProbeAttempt,
   Observation,
@@ -523,10 +523,18 @@ export const UNHANDLED_OSC_CONTROL_TITLE = "terminfo-unhandled-report-control"
  * True when a library result already carries a decided outcome. Only an undecided result may be
  * replaced by the unhandled report, so no Supported or Unsupported answer changes because of it
  * (@cto 2026-11-05 07:25 appendix, condition 5). A pass without an observation counts as decided.
+ * A marked fenced silence counts as decided too: the row's silence rule decides it in the recorder,
+ * and no later fallback may replace that measurement (#33165).
  */
 export function reportsDecidedOutcome(result: ProbeCallbackResult): boolean {
   const outcome = result.observation?.outcome
-  return result.pass === true || outcome === "supported" || outcome === "unsupported" || outcome === "error"
+  return (
+    result.pass === true ||
+    outcome === "supported" ||
+    outcome === "unsupported" ||
+    outcome === "error" ||
+    isFencedSilence(result.observation)
+  )
 }
 
 /**
@@ -1388,7 +1396,8 @@ export function sgrProbe(
   const definition: ProbeDefinition = {
     id,
     termNeedsGeometry: true,
-    termAssertionType: readback ? "query_reply" : null,
+    // #33165 (@cto f2adcbf3): the capture decides a paint row; a DECRQSS readback is supporting detail only.
+    termAssertionType: readback ? "screenshot" : null,
     lib(ctx) {
       const targetInput = sequence + "X"
       ctx.feed(targetInput)
@@ -1767,6 +1776,15 @@ export function cursorProbe(
   }
 }
 
+/** A reset DECRPM reply after DECSET 2026, with no capture fact to measure the effect against. */
+export const SYNC_OUTPUT_RESET_UNMEASURED =
+  "synchronized-output set-state control unobservable: DECRPM reset reply after DECSET cannot establish enabled update; rendered effect unmeasured"
+
+/** The same reply where the run's capture declares its fixed wait: the effect is out of this collector's reach. */
+export function syncOutputCaptureTooSlow(settleMs: number): string {
+  return `synchronized-output set-state control unobservable: a DECRPM reset reply after DECSET is not a refusal, and the rendered effect cannot be read in this run: the capture waits at least ${settleMs} ms before it reads the screen, so an update held for a shorter time cannot be seen`
+}
+
 /**
  * DECRPM mode probe. Responsiveness after enabling a mode does not prove that mode,
  * and blindly disabling it could change a mode the user already had enabled.
@@ -1804,8 +1822,13 @@ export function decrpmModeProbe(
         }
       }
       if (modeNum === 2026 && snapshot === 2 && ps === 2) {
+        // A reset reply after DECSET is not a refusal: a terminal may treat synchronized output as a
+        // render directive with no stored state. Where this run's capture declares its fixed wait, the
+        // reason states from that number why the effect cannot be read here (@cto e9641d54, #33032).
         const reason =
-          "synchronized-output set-state control unobservable: DECRPM reset reply after DECSET cannot establish enabled update; rendered effect unmeasured"
+          ctx.captureSettleMs === undefined
+            ? SYNC_OUTPUT_RESET_UNMEASURED
+            : syncOutputCaptureTooSlow(ctx.captureSettleMs)
         return {
           pass: false,
           response,
@@ -1910,7 +1933,9 @@ export function headlessDecrpmArm(
             ],
           }
         }
-        if (setPs === 0 || setPs === 2 || setPs === 4) {
+        // A present negative cannot decide engine absence when the same set was observed enabled.
+        // Let that disagreement reach the strict report/readback criterion below.
+        if ((setPs === 0 || setPs === 2 || setPs === 4) && setMode !== true) {
           const note = `DECRPM mode ${modeNum} after DECSET: ${decrpmReading(setPs)}${presentation}`
           return {
             pass: false,
@@ -2650,9 +2675,13 @@ export function sentinelAnswer(raw: string): { start: number; end: number } | nu
 
 /**
  * F1 (27832): a DA1 sentinel answered on time with nothing else said through the grace window is a
- * measured negative, not an unknown — the terminal was alive and did not answer the query. `sentinel`
+ * measured fact, not an unknown — the terminal was alive and did not answer the query. `sentinel`
  * carries the measured ordering (its arrival and the window that followed), which the negative cites
  * so a reader can tell it from an explicit negative reply without a new evidence member.
+ *
+ * #33165 (@cto be3fb080): this marks the fenced silence and decides nothing. The observation is
+ * `inconclusive` with reason `fenced-silence`; `recordExecutedProbe` maps it once, through the feature
+ * row's declared silence rule (absent: Unsupported, with this negative assertion).
  *
  * Returns null when the collector measured no sentinel, when any byte precedes the sentinel's own
  * answer (a DA1-shaped reply included: the terminal said something, #30559), or when anything but
@@ -2672,19 +2701,53 @@ export function sentinelNegativeResult(
       ? "no reply at control; no grace wait"
       : `no reply through the ${String(sentinel.graceMs)} ms window`
   const observed = `${cpr ? "CPR brackets" : "DA1"} answered at +${String(sentinel.atMs)}ms; ${silence}`
+  return fencedSilenceResult(raw, observed, expected, observed)
+}
+
+/**
+ * The one shape of a marked fenced silence (#33165, @cto be3fb080 and 767c9bcd): a DA1 answer with no feature reply
+ * before it. It decides nothing; `recordExecutedProbe` grades it through the row's rule. `sentinelNegativeResult`
+ * builds it from a measured sentinel window; a probe that reads the same DA1-only capture by its own parser (Kitty
+ * keyboard detection) builds it here, with its own note, so both reach the recorder by one path.
+ */
+export function fencedSilenceResult(
+  response: string,
+  note: string,
+  expected: string,
+  observed: string,
+): ProbeCallbackResult & { pass: false } {
   return {
     pass: false,
-    response: raw,
-    observation: { outcome: "unsupported", assertionType: "query_reply", note: observed },
+    response,
+    observation: { outcome: "inconclusive", reason: FENCED_SILENCE, assertionType: "query_reply", note },
     assertions: [{ assertionType: "query_reply" as const, kind: "negative", expected, observed }],
   }
+}
+
+/** The observation reason a fenced silence carries until the recorder applies the row's rule (#33165). */
+export const FENCED_SILENCE = "fenced-silence" as const
+
+/** True for an observation that is a marked fenced silence (`sentinelNegativeResult`). */
+export function isFencedSilence(observation: Pick<Observation, "outcome" | "reason"> | undefined): boolean {
+  return observation?.outcome === "inconclusive" && observation.reason === FENCED_SILENCE
+}
+
+/**
+ * The one mapping from a marked fenced silence to a status, by the row's declared rule (#33165, @cto be3fb080):
+ * no rule is the default, Unsupported; `switchable` is PROBE INVALID.
+ */
+export function fencedSilenceStatus(): "unsupported"
+export function fencedSilenceStatus(silence?: SilenceDeclaration): "unsupported" | "probe-invalid"
+export function fencedSilenceStatus(silence?: SilenceDeclaration): "unsupported" | "probe-invalid" {
+  if (silence === undefined) return "unsupported"
+  return "probe-invalid"
 }
 
 /**
  * F4 (#30699): a hand-written probe's headless arm reads a bare capture, so on a proven engine a query
  * the terminal ignores looks the same as one the collector never delivered. Ask the sentinel member
- * first: an answered DA1 with no matching frame is the measured negative the criterion names, graded
- * exactly as live grades it. Every other outcome returns null and the probe keeps its own capture
+ * first: an answered DA1 with no matching frame is the marked fenced silence, graded exactly as live
+ * grades it, through the row's rule in `recordExecutedProbe` (#33165). Every other outcome returns null and the probe keeps its own capture
  * reading, so an engine off the proven list is unchanged.
  */
 export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult | null {
@@ -2862,7 +2925,14 @@ function assertCurrentSource(source: unknown): asserts source is RunDraft["sourc
   }
 }
 
-/** Execute the declared callback's proposition once; readers consume this recorded result. */
+/**
+ * Execute the declared callback's proposition once; readers consume this recorded result.
+ *
+ * #33165 (@cto be3fb080): a marked fenced silence (`isFencedSilence`) is mapped here and nowhere else, through
+ * `silence`, the feature row's declared rule from content/features.json. Absent is the default: Unsupported, with
+ * the callback's negative assertion, exactly as the helpers graded it before. `switchable` is PROBE INVALID with
+ * the row's reason.
+ */
 export function recordExecutedProbe(input: {
   featureId: string
   attempt: Exclude<ProbeAttempt, { scope: "none" }>
@@ -2874,8 +2944,20 @@ export function recordExecutedProbe(input: {
   tests?: ProbeTestInput[]
   criterionBranch?: string
   harnessOutcome?: ProbeResult["harnessOutcome"]
+  /** The row's declared silence rule; absent is the default rule. */
+  silence?: SilenceDeclaration
 }): ProbeResult {
-  const { featureId, attempt, observation, diagnostic, coverage } = input
+  const { featureId, attempt, observation, diagnostic, coverage, silence } = input
+  if (silence !== undefined && (!SILENCE_RULES.includes(silence.rule) || !silence.reason.trim())) {
+    throw new Error(`${featureId} declares an invalid silence rule ${JSON.stringify(silence)}`)
+  }
+  const fenced = !diagnostic && isFencedSilence(observation)
+  if (fenced && silence !== undefined && input.tests) {
+    throw new Error(
+      `${featureId}: a fenced silence arrived with callback tests, so the row's ${silence.rule} rule cannot be applied`,
+    )
+  }
+  const fencedStatus = fenced ? fencedSilenceStatus(silence) : undefined
   if (!observation && !coverage && input.tests && !diagnostic) {
     if (
       input.tests.length === 0 ||
@@ -2888,34 +2970,51 @@ export function recordExecutedProbe(input: {
   // FrameUnavailable is this run's capture failing, not a terminal that has no capture route.
   const missingCapture = diagnostic?.kind === "collector-error" && diagnostic.name === "FrameUnavailable"
   const unfinishedCalls = diagnostic?.kind === "collector-error" && diagnostic.name === "IncompleteReplay"
+  // A harness outcome says the reading is unfinished, never that the terminal failed the feature
+  // (`ProbeResult.harnessOutcome`). A callback cut off at its wall has no observation to grade.
+  const harnessStopped = !diagnostic && input.harnessOutcome !== undefined
   const status = missingCapture
     ? "probe-todo"
     : diagnostic || observation?.outcome === "error"
       ? "probe-invalid"
-      : observation?.outcome === "supported" || observation?.outcome === "unsupported"
-        ? observation.outcome
-        : coverage
-          ? "probe-todo"
-          : "probe-invalid"
+      : harnessStopped
+        ? "probe-todo"
+        : (fencedStatus ??
+          (observation?.outcome === "supported" || observation?.outcome === "unsupported"
+            ? observation.outcome
+            : coverage
+              ? "probe-todo"
+              : "probe-invalid"))
   const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
   // A reason the writer supplied outranks the writer default, which fires only when nothing else names the cause.
   // The generic observation word names nothing: a recorded test's own sentence reaches the row through
   // finalizeProbeResult instead (@cto 32ad122f; #32058, #32060).
-  const writerDefault = !input.tests && !diagnostic && !coverage && observation?.outcome === "inconclusive"
+  const writerDefault = !input.tests && !diagnostic && !coverage && !fenced && observation?.outcome === "inconclusive"
+  // A probe cut off at its wall still needs a reason of its own when nothing else names one.
+  const harnessStoppedReason =
+    harnessStopped && input.tests === undefined && coverage === undefined && !observation?.note && !observation?.reason
+      ? input.harnessOutcome === "probe-exceeded"
+        ? "The callback exceeded its wall; the harness abandoned it before it recorded a result"
+        : "The harness did not finish this probe; no result was recorded"
+      : undefined
   const genericYieldsToTests =
     input.tests !== undefined &&
     !diagnostic &&
     observation?.outcome === "inconclusive" &&
     observation.reason === "insufficient-evidence"
+  const silenceReason =
+    fenced && silence !== undefined ? `${silence.reason}; ${observation?.note ?? "fenced silence"}` : undefined
   const reason =
     diagnosticReason ??
+    silenceReason ??
     observation?.note ??
     coverage?.noObservable ??
     (writerDefault
       ? "writer default: inconclusive observation without test rows; callback defect"
       : genericYieldsToTests
         ? undefined
-        : observation?.reason)
+        : observation?.reason) ??
+    harnessStoppedReason
   const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef ?? input.rawReplyRef
   return finalizeProbeResult({
     featureId,

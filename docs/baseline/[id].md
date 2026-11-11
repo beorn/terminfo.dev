@@ -7,7 +7,8 @@ next: false
 <script setup>
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
-import { currentCoverageSentence, notMeasuredReadout, publicResultFor } from '../data/release-scope'
+import { currentCoverageSentence, publicResultFor } from '../data/release-scope'
+import { baselineShareRow } from '../data/baseline-readouts.ts'
 import { isEnvironmentGroup } from '../../packages/probe-defs/src/environment-groups.ts'
 const { params } = useData()
 const p = params.value
@@ -79,10 +80,8 @@ function coverageLabel(s) {
 // #30763: only a row that decided nothing changes; a decided row keeps this page's own text, which
 // it printed before the fix.
 function shareRow(s) {
-  return notMeasuredReadout(s.counts) ?? {
-    text: `${s.score.supported}/${s.score.all} supported (${s.pct ?? 0}%)`,
-    title: undefined,
-  }
+  // #33441: same derived count as the Home card, so the two pages agree with runDecidedNothing.
+  return baselineShareRow(s)
 }
 
 function platformIcon(os) {
@@ -130,7 +129,7 @@ function platformIcons(b) {
 
 ## Coverage and results
 
-Untestable reasons name the cause: **passed to the app**, **no way**, or **no setup**. A generic OSC hook handing an app-job command to the app does not establish Supported; a reading of the library's own state or typed notification store can. A missing control or undeclared tap identity stays PROBE TODO. [Result meanings](/how-it-works/how-to-read-a-result#untestable-probe-todo-and-probe-invalid).
+Untestable reasons name the cause: **passed to the app**, **no way**, **no setup**, or **no observer** (the effect shows outside what the run captures). A generic OSC hook handing an app-job command to the app does not establish Supported; a reading of the library's own state or typed notification store can. A missing control or undeclared tap identity stays PROBE TODO. [Result meanings](/how-it-works/how-to-read-a-result#untestable-probe-todo-and-probe-invalid).
 
 ### Terminal Applications
 

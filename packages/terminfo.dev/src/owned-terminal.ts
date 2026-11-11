@@ -8,6 +8,7 @@ import type {
   MuxAttachmentProof,
   OuterAppProof,
   ProbeSubject,
+  TerminalScrollbackReading,
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
@@ -21,12 +22,19 @@ import {
   parseMuxAttachmentProof,
   HOSTED_IDENTITY_SOURCES,
 } from "./disposable-receipt.ts"
-import type { LiveExecutable } from "./linux-capture.ts"
+import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
+import {
+  findAncestorComm,
+  readProcessEnvironment,
+  terminalBusState,
+  type TerminalBusReading,
+} from "./terminal-environment.ts"
 import { createDarwinClipboardAdapter } from "./darwin-clipboard.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 import {
+  ScrollbackReadingUnavailable,
   TEXT_QUALIFICATION_OWNERSHIP_CELL,
   type TextQualificationOwnership,
   type TextQualificationRecipe,
@@ -44,7 +52,11 @@ import {
 import { kernelExecPath } from "./darwin-kernel-exec.ts"
 import {
   mapSnapshotToCells,
+  type OsascriptReply,
+  readTerminalAppHistory,
   readTerminalTextSnapshot,
+  terminalAppHistoryReader,
+  type TerminalHistoryControl,
   type TerminalTextApp,
   type TerminalTextRead,
 } from "./darwin-terminal-text.ts"
@@ -243,12 +255,28 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
   }
 }
 
+/** One process's own environment and bus state; the environment itself never leaves the collector in a record. */
+export interface NotificationEnvironmentReading {
+  readonly status: "measured" | "refused"
+  readonly reason: string
+  readonly pid?: number
+  readonly environment?: Readonly<Record<string, string>>
+  readonly bus?: TerminalBusReading
+}
+
 export interface OwnedTerminal {
   readonly getScrollback?: TermProbeSource["getScrollback"]
+  /** Terminal.app history reader's per-run control, once it has run (31741). */
+  readonly historyControl?: () => TerminalHistoryControl | undefined
   readonly resetScrollback?: TermProbeSource["resetScrollback"]
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
   readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
+  /**
+   * The terminal process's own session bus, read from /proc rather than assumed from the collector's
+   * environment (#33333). A mux reads the outer terminal, which is the process that would emit a Notify.
+   */
+  readonly readNotificationEnvironment?: () => NotificationEnvironmentReading
   readonly geometryAtGrant: GeometryMeasurement
   readonly geometrySource: Exclude<GeometrySource, "unavailable: no verified output device">
   readonly summary: string
@@ -1254,6 +1282,34 @@ export async function createOwnedTerminal(options: {
     const kittySocket = process.env.KITTY_LISTEN_ON
     const kittyWindow = process.env.KITTY_WINDOW_ID
     const resetScrollback = clipboard?.resetScrollback?.bind(clipboard)
+    // Terminal.app keeps its history on the owned tab: the same JXA read as its screen text (31741).
+    let historyControl: TerminalHistoryControl | undefined
+    let terminalAppHistory: (() => Promise<TerminalScrollbackReading>) | undefined
+    const readTerminalAppHistoryReading =
+      darwinTextApp === "terminal-app" && darwinTextTty !== undefined
+        ? async () => {
+            if (!terminalAppHistory) {
+              const geometry = await readBoundGeometry(binding, windowsKernel)
+              if (geometry.status !== "measured") {
+                throw new ScrollbackReadingUnavailable(
+                  `Terminal.app history needs a measured grid: ${geometry.diagnostic}`,
+                )
+              }
+              terminalAppHistory = terminalAppHistoryReader({
+                read: () => readTerminalAppHistory({ tty: darwinTextTty, cols: geometry.cols, rows: geometry.rows }),
+                write: (text) => {
+                  out.write(text)
+                },
+                rows: geometry.rows,
+                nonce: captureRunId,
+                onControl: (control) => {
+                  historyControl = control
+                },
+              })
+            }
+            return terminalAppHistory()
+          }
+        : undefined
     const readScrollback =
       clipboard?.getScrollback?.bind(clipboard) ??
       (linux && appClipboard
@@ -1288,7 +1344,8 @@ export async function createOwnedTerminal(options: {
             if (read.status === "refused") throw new Error(read.reason)
             return { totalLines: read.totalLines, screenLines: read.screenLines }
           }
-        : undefined)
+        : undefined) ??
+      readTerminalAppHistoryReading
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
     const summary = JSON.stringify({
@@ -1376,6 +1433,7 @@ export async function createOwnedTerminal(options: {
           return readTitle()
         },
       }),
+      ...(readTerminalAppHistoryReading && { historyControl: () => historyControl }),
       ...(readScrollback && {
         async getScrollback() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned history read has no live bound capture")
@@ -1404,6 +1462,26 @@ export async function createOwnedTerminal(options: {
         },
       }),
       ...(linux && {
+        readNotificationEnvironment(): NotificationEnvironmentReading {
+          if (!verifiedTerminalOwners.has(owner)) {
+            return { status: "refused", reason: "Notification environment read has no live owned terminal" }
+          }
+          try {
+            // A mux run's Notify would come from the outer terminal, which the owned Linux mux launch
+            // refuses to be anything but Kitty; a direct app is its own process.
+            const pid = muxAttachmentProof ? findAncestorComm("kitty") : kittyAncestor(linux.executable)
+            const environment = readProcessEnvironment(pid)
+            return {
+              status: "measured",
+              reason: "Terminal process environment read from /proc",
+              pid,
+              environment,
+              bus: terminalBusState(environment, process.env),
+            }
+          } catch (error) {
+            return { status: "refused", reason: `Terminal process environment unreadable: ${(error as Error).message}` }
+          }
+        },
         async readAppSemanticState(featureId: string, write: (text: string) => void) {
           if (!verifiedTerminalOwners.has(owner)) {
             return { status: "invalid" as const, reason: "App semantic read has no live owned terminal" }
@@ -1590,30 +1668,32 @@ export async function createOwnedTerminal(options: {
               }
               return { status: "read", app: "kitty", cells }
             }
+            // Each app's raw reply is kept with its checkpoint, so a refused read keeps what the app returned.
+            const retainReply =
+              checkpoint &&
+              ((bytes: Uint8Array) => {
+                const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
+                retain(
+                  checkpoint.directory,
+                  Buffer.from(
+                    JSON.stringify({
+                      captureRunId,
+                      checkpoint: checkpoint.label,
+                      tty: darwinTextTty,
+                      grid: { rows: geometry.rows, cols: geometry.cols },
+                      reply,
+                    }),
+                  ),
+                  "json",
+                  checkpoint.onRetained,
+                )
+              })
             if (darwinTextApp === "iterm2") {
               return readITermCells({
                 tty: darwinTextTty,
                 cols: geometry.cols,
                 rows: geometry.rows,
-                ...(checkpoint && {
-                  onReply: (bytes: Uint8Array) => {
-                    const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
-                    retain(
-                      checkpoint.directory,
-                      Buffer.from(
-                        JSON.stringify({
-                          captureRunId,
-                          checkpoint: checkpoint.label,
-                          tty: darwinTextTty,
-                          grid: { rows: geometry.rows, cols: geometry.cols },
-                          reply,
-                        }),
-                      ),
-                      "json",
-                      checkpoint.onRetained,
-                    )
-                  },
-                }),
+                ...(retainReply && { onReply: retainReply }),
               })
             }
             return readTerminalTextSnapshot({
@@ -1621,6 +1701,7 @@ export async function createOwnedTerminal(options: {
               tty: darwinTextTty,
               cols: geometry.cols,
               rows: geometry.rows,
+              ...(retainReply && { onReply: (reply: OsascriptReply) => retainReply(Buffer.from(reply.stdout)) }),
             })
           },
         }),

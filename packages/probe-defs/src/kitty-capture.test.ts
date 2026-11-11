@@ -14,12 +14,15 @@ import {
   KITTY_CLEAR,
   KITTY_DIACRITIC_0,
   KITTY_DIACRITIC_1,
+  KITTY_FRAME_TWO_ONLY,
+  KITTY_FRAME_TWO_ONLY_CRITERION,
   KITTY_GAP_MS,
   KITTY_GUARD_REGION,
   KITTY_GUARD_TEXT,
   KITTY_LOOP_FOREVER,
   KITTY_PLACEHOLDER,
   KITTY_PLACEHOLDER_BOUNDS,
+  KITTY_ROW_IMAGES,
   decideKittyAnimation,
   decideKittyPlaceholders,
   kittyBlockPixels,
@@ -36,6 +39,7 @@ import {
   kittyStopPlayback,
   kittyVirtualPlacement,
   type KittyAnimationEvidence,
+  type KittyRgb,
   type KittyPlaceholderEvidence,
 } from "./kitty-capture.ts"
 
@@ -174,6 +178,7 @@ function evidence(overrides: Partial<KittyAnimationEvidence> = {}): KittyAnimati
     still: ["a", "a"],
     blank: "blank",
     reference: "a",
+    secondReference: "b",
     cursorOnly: ["f", "f"],
     redraw: ["g", "h"],
     playbackElapsedMs: 400,
@@ -227,6 +232,61 @@ test("each failed control names itself instead of becoming a negative", () => {
   ]) {
     expect(decideKittyAnimation(evidence(overrides)).outcome).toBe("inconclusive")
   }
+})
+
+// @cto edab7573: WezTerm's shape. Frame 2 shows as soon as it is added, playback holds it, and hand
+// selection of frame 1 paints frame 2 too: a negative from pixels, with no refusal needed.
+test("a frame 2 that shows while neither playback nor selection brings frame 1 back is Unsupported", () => {
+  const frameTwoOnly = { playback: ["b", "b"], retry: ["b", "b"], clientFrame: ["b", "b"] } as const
+  const verdict = decideKittyAnimation(evidence(frameTwoOnly))
+  expect(verdict).toMatchObject({ outcome: "unsupported", decidedBy: KITTY_FRAME_TWO_ONLY })
+  expect(verdict.note.startsWith(KITTY_FRAME_TWO_ONLY_CRITERION)).toBe(true)
+  expect(KITTY_FRAME_TWO_ONLY_CRITERION).toBe(
+    "Unsupported: the terminal accepted a second frame and showed it, but neither timed playback nor selecting the first frame brought the first picture back.",
+  )
+  // (a) An unqualified still is invalid, never this negative.
+  expect(decideKittyAnimation(evidence({ ...frameTwoOnly, still: ["a", "z"] })).decidedBy).toBe("the still control")
+  // (b) A picture that is neither frame is failed setup.
+  for (const overrides of [{ secondReference: "c" }, { secondReference: "a" }, { secondReference: "blank" }]) {
+    expect(decideKittyAnimation(evidence({ ...frameTwoOnly, ...overrides })).decidedBy).toBe("the playback image setup")
+  }
+  // (c) Playback that brings frame 1 back is never this negative: support with live hand selection,
+  // otherwise the readings disagree.
+  expect(decideKittyAnimation(evidence({ ...frameTwoOnly, retry: ["b", "a"], clientFrame: ["a", "b"] })).outcome).toBe(
+    "supported",
+  )
+  expect(decideKittyAnimation(evidence({ ...frameTwoOnly, retry: ["b", "a"] })).decidedBy).toBe(
+    "the client-driven update control",
+  )
+  // Pins the branch's premise: a first playback pair that changes never reaches the negative either.
+  expect(decideKittyAnimation(evidence({ ...frameTwoOnly, playback: ["b", "a"] })).outcome).not.toBe("unsupported")
+  // (d) Hand selection that paints two pictures disagrees with frozen playback.
+  const selected = decideKittyAnimation(evidence({ ...frameTwoOnly, clientFrame: ["a", "b"] }))
+  expect(selected).toMatchObject({ outcome: "inconclusive", decidedBy: "the frame-two-only controls" })
+  // (d) An equal hand-selection pair that painted blank or a third picture disagrees too.
+  for (const clientFrame of [
+    ["blank", "blank"],
+    ["z", "z"],
+  ] as const) {
+    const other = decideKittyAnimation(evidence({ ...frameTwoOnly, clientFrame }))
+    expect(other).toMatchObject({ outcome: "inconclusive", decidedBy: "the frame-two-only controls" })
+    expect(other.note).toContain(`painted ${clientFrame[0]}, not the frame-2 reference b`)
+  }
+})
+
+// @cto edab7573: an image cache keyed on content made one row's frame paint another row's picture.
+test("no two Kitty rows transmit the same image bytes", () => {
+  const colours = Object.values(KITTY_ROW_IMAGES).flatMap((row): KittyRgb[] =>
+    "second" in row ? [row.image, row.second] : [row.image],
+  )
+  const keys = colours.map((rgb) => kittyPixelPayload(1, 1, rgb))
+  expect(new Set(keys).size).toBe(keys.length)
+  expect(Object.keys(KITTY_ROW_IMAGES).sort()).toEqual([
+    "extensions.kitty-graphics.animation",
+    "extensions.kitty-graphics.display",
+    "extensions.kitty-graphics.transmit",
+    "extensions.kitty-graphics.unicode-placeholders",
+  ])
 })
 
 function placeholders(overrides: Partial<KittyPlaceholderEvidence> = {}): KittyPlaceholderEvidence {

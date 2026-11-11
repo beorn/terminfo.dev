@@ -38,6 +38,7 @@
  * Empty text is a VALUE. A blank row and a blank screen are rows of spaces, never "could not read".
  */
 import { spawnSync } from "node:child_process"
+import { ScrollbackReadingUnavailable, type TerminalScrollbackReading } from "@terminfo/probe-defs"
 
 /** The two macOS terminals this arm can read, with the bundle name JXA addresses. */
 export const TERMINAL_TEXT_APPS = {
@@ -88,7 +89,15 @@ export interface OsascriptReply {
  * terminator is popped once, here), the app's own grid so the caller can refuse a snapshot that is
  * not the measured screen, and the count of scrollback rows it left behind.
  */
-export function terminalTextScript(app: TerminalTextApp, tty: string, cols: number, rows: number): string {
+export function terminalTextScript(
+  app: TerminalTextApp,
+  tty: string,
+  cols: number,
+  rows: number,
+  /** Terminal.app only: also read the tab's history() in the SAME script, so screen and history are one snapshot. */
+  history = false,
+): string {
+  if (history && app !== "terminal-app") throw new Error("Only Terminal.app exposes a tab history() to read")
   const { application, label } = TERMINAL_TEXT_APPS[app]
   const select =
     app === "terminal-app"
@@ -128,7 +137,7 @@ ${select}
     if (matches.length === 0) return refused("has no session on the owned TTY")
     if (matches.length > 1) return refused("has more than one session on the owned TTY")
     var match = matches[0]
-    var text = String(match.contents())
+    var text = String(match.contents())${history ? "\n    var historyText = String(match.history())" : ""}
     var readTty = String(match.tty())
     if (readTty !== ${JSON.stringify(tty)}) {
       return refused("changed the session's TTY while its text was read")
@@ -140,13 +149,12 @@ ${geometry}
     if (terminatorRemoved) lines.pop()
     var dropped = lines.length - ${String(rows)}
     if (dropped < 0) {
-      return refused("returned " + lines.length + " rows where the measured screen has ${String(rows)}", ${
-        app === "iterm2"
-          ? `{
+      // What the app returned stays in the refusal: whether a missing row is a wrapped logical line is
+      // read from these lengths, never inferred (33512).
+      return refused("returned " + lines.length + " rows where the measured screen has ${String(rows)}", {
         contents: text, tty: readTty, appCols: appCols, appRows: appRows,
-        splitRows: splitRows, terminatorRemoved: terminatorRemoved, rowsAfterPop: lines.length
-      }`
-          : "undefined"
+        splitRows: splitRows, terminatorRemoved: terminatorRemoved, rowsAfterPop: lines.length,
+        lineLengths: lines.map(function (line) { return line.length })
       })
     }
     return JSON.stringify({
@@ -154,7 +162,7 @@ ${geometry}
       lines: lines.slice(dropped),
       droppedLines: dropped,
       appCols: appCols,
-      appRows: appRows,
+      appRows: appRows,${history ? "\n      history: historyText," : ""}
     })
   } catch (error) {
     // The app can raise INSIDE the script (a denied Apple event arrives here with its own number),
@@ -384,11 +392,22 @@ export interface TerminalTextReadOptions {
 const stringArray = (value: unknown): readonly string[] | undefined =>
   Array.isArray(value) && value.every((entry): entry is string => typeof entry === "string") ? value : undefined
 
-/** Read the owned macOS session's text and map it onto cells, or refuse with the reason. */
-export function readTerminalTextSnapshot(options: TerminalTextReadOptions): TerminalTextRead {
+type SnapshotReply =
+  | { readonly status: "refused"; readonly reason: string }
+  | {
+      readonly status: "read"
+      readonly lines: readonly string[]
+      readonly appCols: number
+      readonly appRows: number
+      readonly droppedLines: number
+      readonly history?: string
+    }
+
+/** One owned-session script run and its reply checks, shared by the screen and history reads. */
+function readSnapshotReply(options: TerminalTextReadOptions, history: boolean): SnapshotReply {
   const { label } = TERMINAL_TEXT_APPS[options.app]
   const run = options.run ?? ((script: string) => defaultRun(script, options.timeoutMs ?? 5_000))
-  const reply = run(terminalTextScript(options.app, options.tty, options.cols, options.rows))
+  const reply = run(terminalTextScript(options.app, options.tty, options.cols, options.rows, history))
   options.onReply?.(reply)
   if (reply.timedOut || reply.status !== 0) {
     return { status: "refused", reason: classifyOsascriptFailure(reply, options.app) }
@@ -436,7 +455,167 @@ export function readTerminalTextSnapshot(options: TerminalTextReadOptions): Term
       reason: `${label} reports ${String(appRows)}x${String(appCols)} where the measured grid is ${String(options.rows)}x${String(options.cols)}, so its contents are not the measured screen`,
     }
   }
-  const cells = mapSnapshotToCells(lines, appCols, appRows, droppedLines)
+  const historyText = "history" in parsed && typeof parsed.history === "string" ? parsed.history : undefined
+  if (history && historyText === undefined) {
+    return { status: "refused", reason: `${label} returned a snapshot without the history it was asked for` }
+  }
+  return {
+    status: "read",
+    lines,
+    appCols,
+    appRows,
+    droppedLines,
+    ...(historyText !== undefined && { history: historyText }),
+  }
+}
+
+/** Read the owned macOS session's text and map it onto cells, or refuse with the reason. */
+export function readTerminalTextSnapshot(options: TerminalTextReadOptions): TerminalTextRead {
+  const snapshot = readSnapshotReply(options, false)
+  if (snapshot.status === "refused") return snapshot
+  const cells = mapSnapshotToCells(snapshot.lines, snapshot.appCols, snapshot.appRows, snapshot.droppedLines)
   if (typeof cells === "string") return { status: "refused", reason: cells }
   return { status: "read", app: options.app, cells }
+}
+
+export type TerminalHistoryRead =
+  | {
+      readonly status: "read"
+      /** Terminal.app's history() text lines, one terminator removed, trailing empty lines removed. */
+      readonly historyLines: readonly string[]
+      readonly reading: TerminalScrollbackReading
+    }
+  | { readonly status: "refused"; readonly reason: string }
+
+const trimTrailingEmpty = (lines: readonly string[]): readonly string[] => {
+  let end = lines.length
+  while (end > 0 && lines[end - 1] === "") end--
+  return lines.slice(0, end)
+}
+
+/**
+ * Terminal.app's retained history, read with its screen in ONE script (31741). A row is one text
+ * line of the tab's history(), which runs from the oldest retained line through the screen; one line
+ * terminator and then every trailing empty line are removed from both history and screen, so blank
+ * rows under the last written line count nowhere. totalLines = (history lines - screen lines) +
+ * screen rows: the retained lines above the screen plus the measured screen, so the screen rows are
+ * inside the count and an empty history reads exactly `rows`. screenLines = rows. Capacity is never
+ * set: Terminal.app does not report it, and a count that stopped growing is not one. Refused, so no
+ * reading, when a line is longer than the grid (it wrapped, so lines are not rows) or when the
+ * history does not end with the screen's lines.
+ */
+export function readTerminalAppHistory(options: Omit<TerminalTextReadOptions, "app">): TerminalHistoryRead {
+  const label = TERMINAL_TEXT_APPS["terminal-app"].label
+  const snapshot = readSnapshotReply({ ...options, app: "terminal-app" }, true)
+  // The shared reply check has already refused a grid that is not the measured one.
+  if (snapshot.status === "refused") return snapshot
+  const raw = (snapshot.history ?? "").split(/\r?\n/)
+  if (raw.length > 0 && raw[raw.length - 1] === "") raw.pop()
+  const historyLines = trimTrailingEmpty(raw)
+  const screen = trimTrailingEmpty(snapshot.lines)
+  const wrapped = [...historyLines, ...screen].find((line) => line.length > options.cols)
+  if (wrapped !== undefined) {
+    return {
+      status: "refused",
+      reason: `${label} history holds a line of ${String(wrapped.length)} characters on a ${String(options.cols)}-column grid, so it wrapped and its lines are not rows`,
+    }
+  }
+  const tail = historyLines.slice(historyLines.length - screen.length)
+  if (screen.length > historyLines.length || tail.some((line, index) => line !== screen[index])) {
+    return {
+      status: "refused",
+      reason: `${label} history does not end with the screen's ${String(screen.length)} lines, so its count cannot be placed above this screen`,
+    }
+  }
+  return {
+    status: "read",
+    historyLines,
+    reading: { totalLines: historyLines.length - screen.length + options.rows, screenLines: options.rows },
+  }
+}
+
+/** The per-run control's numbers, retained with the run so the packet can show them (31741). */
+export interface TerminalHistoryControl {
+  readonly markers: number
+  readonly before: number
+  readonly after: number
+  readonly status: "passed" | "failed"
+  readonly reason?: string
+}
+
+/**
+ * Terminal.app's history reader for one run. Before its first reading it proves itself on the live
+ * tab: it clears the screen, writes `rows + 5` numbered marker lines (past one screen), and the
+ * history must then hold every marker, first and last included, with its line count grown by exactly
+ * that many. Only then, after clearing the screen again, does it return readings. A failed control,
+ * a refused read or a read that never settles is no reading, by name, for every later call too: it
+ * never reads as 0 lines.
+ */
+export function terminalAppHistoryReader(options: {
+  read: () => TerminalHistoryRead
+  write: (text: string) => void
+  rows: number
+  nonce: string
+  timeoutMs?: number
+  pollMs?: number
+  onControl?: (control: TerminalHistoryControl) => void
+}): () => Promise<TerminalScrollbackReading> {
+  const { read, write, rows, nonce, onControl } = options
+  const timeoutMs = options.timeoutMs ?? 5_000
+  const pollMs = options.pollMs ?? 100
+  let control: Promise<void> | undefined
+  const unavailable = (reason: string) => new ScrollbackReadingUnavailable(`Terminal.app history: ${reason}`)
+  const once = (): TerminalHistoryRead & { status: "read" } => {
+    const reading = read()
+    if (reading.status === "refused") throw unavailable(reading.reason)
+    return reading
+  }
+  /** Reads until `accept` holds or the deadline passes; the last reading either way. */
+  const until = async (accept: (reading: TerminalHistoryRead & { status: "read" }) => boolean) => {
+    const deadline = Date.now() + timeoutMs
+    for (;;) {
+      const reading = once()
+      if (accept(reading) || Date.now() >= deadline) return reading
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, pollMs)
+      })
+    }
+  }
+  const settled = async () => {
+    let previous: number | undefined
+    return until((reading) => {
+      const same = previous === reading.historyLines.length
+      previous = reading.historyLines.length
+      return same
+    })
+  }
+  const prove = async () => {
+    write("\x1b[0m\x1b[2J\x1b[H")
+    const before = (await settled()).historyLines.length
+    const markers = Array.from({ length: rows + 5 }, (_unused, index) => `terminfo history control ${nonce} ${index}`)
+    write(markers.map((marker) => `${marker}\r\n`).join(""))
+    const reading = await until((candidate) => candidate.historyLines.length >= before + markers.length)
+    const after = reading.historyLines.length
+    const written = reading.historyLines.slice(before, before + markers.length)
+    const reason =
+      after !== before + markers.length
+        ? `the control wrote ${String(markers.length)} marker lines and the history grew by ${String(after - before)}`
+        : written.some((line, index) => line !== markers[index])
+          ? `the history grew by ${String(markers.length)} lines but does not hold the control's markers in order, first ${JSON.stringify(written[0])}, last ${JSON.stringify(written.at(-1))}`
+          : undefined
+    onControl?.({
+      markers: markers.length,
+      before,
+      after,
+      status: reason === undefined ? "passed" : "failed",
+      ...(reason !== undefined && { reason }),
+    })
+    write("\x1b[0m\x1b[2J\x1b[H")
+    if (reason !== undefined) throw unavailable(reason)
+  }
+  return async () => {
+    control ??= prove()
+    await control
+    return (await settled()).reading
+  }
 }

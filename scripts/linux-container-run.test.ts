@@ -23,7 +23,7 @@ import {
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { initializeRunDraft } from "@terminfo/probe-defs"
@@ -31,6 +31,8 @@ import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/vers
 import { OWNED_LAYOUT } from "../packages/probes/fixtures/owned-layout.fixture.ts"
 import type { LinuxMuxAttachmentProof, CapturedRunDraft } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
+import { MUX_DEFAULT_CONFIG, SCREEN_TRUECOLOR_CONFIG, TRUECOLOR_ON } from "../docs/data/context-supplements.ts"
+import { MUX_PROFILE_CONFIG_FILES } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
@@ -72,12 +74,20 @@ it.each(["ghostty", "wezterm"])(
   },
 )
 
+/** The owned focus helper window the display receipt must name (#33305). */
+const DEFAULT_FOCUS_HELPER = {
+  pid: 4321,
+  window: "6291468",
+  geometry: "Window 6291468 Position: 1600,900 Geometry: 160x60",
+}
+
 function compose(
   containerRunId = "a".repeat(32),
   writeContainer = true,
   containerRunnerSha = "runner-hash",
   containerProfile = "default",
   capture: unknown = { xwdSha256: "xwd-hash", pngSha256: "png-hash" },
+  focusHelper: { container?: unknown; omitContainerDisplay?: boolean } = { container: DEFAULT_FOCUS_HELPER },
 ) {
   const host = join(dir, "host.json")
   const container = join(dir, "container.json")
@@ -102,8 +112,13 @@ function compose(
         sourceArtifact: { path: "/kitty-source/kitty.txz", sha256: "archive-hash" },
         collector: { frozenRunnerSha256: containerRunnerSha, buildReceiptSha256: "receipt-hash" },
         probeRun: { path: "v3-capture.json", runId: "b".repeat(32), sha256: "probe-hash" },
-        display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
+        display: {
+          glxinfo: "llvmpipe",
+          geometry: "WIDTH=800",
+          ...(focusHelper.omitContainerDisplay === true ? {} : { focusHelper: focusHelper.container ?? null }),
+        },
         clipboardFixture: { runId: containerRunId, profile: containerProfile, sha256: "fixture-hash" },
+        sessionBus: { path: "session-bus.json", sha256: "session-bus-hash" },
         capture,
       }),
     )
@@ -575,6 +590,7 @@ describe("container run receipt composition", () => {
       collector: { frozenRunnerSha256: string }
       probeRun: { runId: string; sha256: string }
       clipboardFixture: { profile: string; sha256: string }
+      sessionBus: { path: string; sha256: string }
     }
     expect(receipt.runtime.imageId).toBe("sha256:image")
     expect(receipt.executable.sha256).toBe("elf-hash")
@@ -589,6 +605,7 @@ describe("container run receipt composition", () => {
     expect(receipt.collector.frozenRunnerSha256).toBe("runner-hash")
     expect(receipt.probeRun).toEqual({ path: "v3-capture.json", runId: "b".repeat(32), sha256: "probe-hash" })
     expect(receipt.clipboardFixture).toEqual({ runId: "a".repeat(32), profile: "default", sha256: "fixture-hash" })
+    expect(receipt.sessionBus).toEqual({ path: "session-bus.json", sha256: "session-bus-hash" })
   })
 
   // Accepted: a completed capture binds the final bytes and original container receipt.
@@ -693,6 +710,37 @@ describe("container run receipt composition", () => {
     expect(result.stderr).toContain("container clipboard fixture disagrees")
     expect(existsSync(output)).toBe(false)
   })
+
+  // #33305: the focus witness needs a second window, so the receipt must name the owned helper by
+  // pid, window id and geometry - a run whose receipt omits it cannot be read as a focused run.
+  it("records the owned focus helper window and its geometry", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      container: DEFAULT_FOCUS_HELPER,
+    })
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(output, "utf8")) as {
+      display: { focusHelper: { pid: number; window: string; geometry: string } }
+    }
+    expect(receipt.display.focusHelper).toEqual(DEFAULT_FOCUS_HELPER)
+  })
+
+  it("refuses a display receipt that never names the owned focus helper window", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      omitContainerDisplay: true,
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("focus helper")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  it("refuses a focus helper named without the window id it was mapped as", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      container: { pid: 4321, geometry: "Window 6291468 Position: 1600,900 Geometry: 160x60" },
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("focus helper")
+    expect(existsSync(output)).toBe(false)
+  })
 })
 
 /** The receipt authorizes writing to a terminal, so the container judged by it must not be able
@@ -768,6 +816,80 @@ describe("frame-less container run", () => {
   })
   it("refuses a changed selection without deriving feature status from it", () => {
     expect(selected(["device.primary-da", "cursor.shape"], ["device.primary-da"], ["supported"]).status).not.toBe(0)
+  })
+
+  // 33334: the receipt block ran against the run's first target frame as if its source were always an
+  // xwd, so a launch selecting only extensions.osc22-pointer (png-sourced, pointer-composited frames)
+  // exited 2 after its probe result was written. Runs the launcher's own block on an owned /out copy.
+  function receiptFor(frame: { sourceKind: "xwd" | "png" | "none" }) {
+    const source = readFileSync(launcher, "utf8")
+    const start = source.indexOf("  capture_frame=$(jq -c")
+    const end = source.indexOf("\n  fi\n", start)
+    if (start < 0 || end < 0) throw new Error("capture receipt block not found in scripts/linux-container-run.sh")
+    const out = join(dir, "out")
+    mkdirSync(join(out, "artifacts"), { recursive: true })
+    const write = (bytes: string, ext: string) => {
+      const sha = createHash("sha256").update(bytes).digest("hex")
+      writeFileSync(join(out, "artifacts", `${sha}.${ext}`), bytes)
+      return sha
+    }
+    const pngSha = write("frame png", "png")
+    const sourceSha =
+      frame.sourceKind === "none"
+        ? createHash("sha256").update("absent").digest("hex")
+        : write(`source ${frame.sourceKind}`, frame.sourceKind)
+    writeFileSync(
+      join(out, "v3-capture.json"),
+      JSON.stringify({
+        results: [
+          { featureId: "extensions.osc22-pointer", frames: [{ role: "control", ref: "sha256:x" }] },
+          {
+            featureId: "extensions.osc22-pointer",
+            frames: [{ role: "target", ref: `sha256:${pngSha}`, sourceRef: `sha256:${sourceSha}` }],
+          },
+        ],
+      }),
+    )
+    const bin = join(dir, "bin")
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(join(bin, "magick"), "#!/bin/sh\necho stub-identify\n")
+    chmodSync(join(bin, "magick"), 0o755)
+    const block = source.slice(start, end + "\n  fi\n".length).replaceAll("/out/", `${out}/`)
+    const result = spawnSync("bash", ["-c", `set -euo pipefail\n${block}\nprintf '%s' "$capture_receipt"`], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    })
+    return { result, pngSha, sourceSha }
+  }
+
+  it("carries an OSC 22 pointer-only run whose target frame has a png source (33334)", () => {
+    const { result, pngSha, sourceSha } = receiptFor({ sourceKind: "png" })
+    expect(result.status, result.stderr).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual({
+      sourcePng: `artifacts/${sourceSha}.png`,
+      sourcePngSha256: sourceSha,
+      png: `artifacts/${pngSha}.png`,
+      pngSha256: pngSha,
+    })
+  })
+
+  it("keeps the xwd receipt shape for an xwd-sourced target frame", () => {
+    const { result, pngSha, sourceSha } = receiptFor({ sourceKind: "xwd" })
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(result.stdout) as Record<string, string>
+    expect(Object.entries(receipt)).toEqual([
+      ["xwd", `artifacts/${sourceSha}.xwd`],
+      ["xwdSha256", sourceSha],
+      ["png", `artifacts/${pngSha}.png`],
+      ["pngSha256", pngSha],
+    ])
+  })
+
+  it("refuses by name when the target frame's source artifact is missing", () => {
+    const { result, sourceSha } = receiptFor({ sourceKind: "none" })
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain(`Callback capture artifacts are missing`)
+    expect(result.stderr).toContain(`artifacts/${sourceSha}.xwd or .png`)
   })
 
   it("composes a frame-less run, whose container receipt carries no capture", () => {
@@ -863,12 +985,15 @@ describe("explicit Linux image selection", () => {
     const scripts = join(root, "vendor/terminfo.dev/scripts")
     const dist = join(root, "vendor/terminfo.dev/packages/terminfo.dev/dist")
     const cliBin = join(root, "vendor/terminfo.dev/packages/terminfo.dev/bin")
+    const source = join(root, "vendor/terminfo.dev/packages/terminfo.dev/src")
     const bins = join(dir, "bin")
     const output = join(dir, "runs")
     const calls = join(dir, "calls.log")
-    for (const path of [scripts, dist, cliBin, bins]) mkdirSync(path, { recursive: true })
+    for (const path of [scripts, dist, cliBin, source, bins]) mkdirSync(path, { recursive: true })
     writeFileSync(join(root, "flake.nix"), "{}")
     writeFileSync(join(root, "bun.lock"), "{}")
+    // The image input must carry the Notify recorder the --inside run starts (#33053); the nix double compares it.
+    writeFileSync(join(source, "linux-notify-recorder.ts"), "// notify recorder fixture bytes\n")
     writeFileSync(
       join(root, "flake.lock"),
       JSON.stringify({ nodes: { nixpkgs: { locked: { rev: "fixture-nixpkgs" } } } }),
@@ -939,6 +1064,7 @@ fi`,
        "$4" == "$(cat "$FIXTURE_HOME/build-attribute")" &&
        "$4" == '.#kitty-visual-current-image' ]]
     cmp "$TERMINFO_LINUX_RUNNER_DIR/index.js" "$FIXTURE_ROOT/vendor/terminfo.dev/packages/terminfo.dev/dist/terminfo.bundle.mjs"
+    cmp "$TERMINFO_LINUX_RUNNER_DIR/linux-notify-recorder.ts" "$FIXTURE_ROOT/vendor/terminfo.dev/packages/terminfo.dev/src/linux-notify-recorder.ts"
     echo '${freshReference}';;
   build)
     printf '%s' "$TERMINFO_LINUX_RUNNER_DIR" > "$FIXTURE_HOME/build-runner-dir"
@@ -1077,6 +1203,45 @@ exit 0
   })
 })
 
+/** One target's clipboard-profile arguments, from the launcher's own profile case, parsed by bash. */
+function clipboardProfileArgs(profile: string, app: string): string[] {
+  const source = readFileSync(launcher, "utf8")
+  const arm = new RegExp(`\\n {4}${profile}\\)\\n([\\s\\S]*?)\\n {6};;\\n`).exec(source)?.[1]
+  const words = new RegExp(`^ {8}${app}\\) target_clipboard_args=\\((.*)\\) ;;$`, "m").exec(arm ?? "")?.[1]
+  if (words === undefined) throw new Error(`${profile} ${app} clipboard arguments are missing`)
+  const result = spawnSync("bash", ["-c", `args=(${words}); printf '%s\\0' "\${args[@]}"`], { encoding: "utf8" })
+  expect(result.status, result.stderr).toBe(0)
+  return result.stdout.split("\0").filter(Boolean)
+}
+
+/** Runs the launcher's own xterm paste-rebinding check on these arguments: the argument it refuses, or null. */
+function pasteRebinding(args: readonly string[]): string | null {
+  const result = spawnSync(
+    "bash",
+    ["-c", 'source "$1"; shift; xterm_paste_rebinding_arg "$@"', "_", launcher, ...args],
+    {
+      encoding: "utf8",
+    },
+  )
+  return result.status === 0 ? result.stdout.trim() : null
+}
+
+// #32164 (@cto 8b9eb7c0): an xterm run owns PRIMARY for Shift+Insert, so the launcher refuses any argument that
+// could rebind that paste. The default launch and 33119's read-allowed -xrm must pass the same check they run under.
+describe("xterm paste route launch arguments", () => {
+  it("passes xterm's default launch and its read-allowed profile, and refuses a rebinding resource", () => {
+    const launch = launchArgs("xterm")
+    const allow = clipboardProfileArgs("allow", "xterm")
+    expect(allow).toEqual(["-xrm", "*disallowedWindowOps: GetChecksum,GetIconTitle,GetWinTitle,SetXprop"])
+    expect(pasteRebinding(launch)).toBeNull()
+    expect(pasteRebinding([...launch, ...allow])).toBeNull()
+    expect(
+      pasteRebinding([...launch, ...allow, "-xrm", "*VT100.translations: #override Shift<Key>Insert: string(x)"]),
+    ).toBe("*VT100.translations: #override Shift<Key>Insert: string(x)")
+    expect(pasteRebinding(["-xrm", "*selectToClipboard: true"])).toBe("*selectToClipboard: true")
+  })
+})
+
 describe("private finite launch arguments", () => {
   it("refuses an unknown flag before preparing or building", () => {
     const result = spawnSync(
@@ -1104,6 +1269,122 @@ describe("private finite launch arguments", () => {
     expect(result.status).toBe(2)
     expect(result.stderr).toContain(message)
     expect(readdirSync(dir)).toEqual([])
+  })
+})
+
+/**
+ * @failure The terminal starts before the private bus and Notify recorder are ready, or without the bus in its
+ *   environment, or the run leaves the bus or recorder running: notification rows then read from a missing or
+ *   foreign observer, or a standing process outlives the run (@cto c6ba9dbb + 7b8360fe).
+ * @level l3 — runs the launcher's own session-bus block and cleanup with a real dbus-daemon and the real recorder.
+ * @consumer scripts/linux-container-run.sh --inside private session bus (#33053 step 2)
+ */
+describe("private session bus is held before the terminal starts (#33053)", () => {
+  const recorderDirectory = fileURLToPath(new URL("../packages/terminfo.dev/src/", import.meta.url))
+  const bun = process.versions.bun !== undefined ? process.execPath : "bun"
+
+  /** The production block from the bus start to the collector exports, with /out and the socket made private. */
+  function sessionBusHarness(out: string, socket: string): string {
+    const source = readFileSync(launcher, "utf8")
+    const cleanupStart = source.indexOf("\n  cleanup() {")
+    const cleanupEnd = source.indexOf("\n  trap cleanup EXIT", cleanupStart)
+    const start = source.indexOf("\n  # One private session bus per run")
+    const end = source.indexOf("\n  export TERMINFO_CAPTURE_DIRECTORY", start)
+    const socketLine = "session_bus_socket=/tmp/terminfo-session-bus\n"
+    if (cleanupStart < 0 || cleanupEnd < 0 || start < 0 || end < 0 || !source.slice(start, end).includes(socketLine)) {
+      throw new Error("session bus block or cleanup not found in scripts/linux-container-run.sh")
+    }
+    const block = source
+      .slice(start, end)
+      .replace(socketLine, `session_bus_socket=${socket}\n`)
+      .replaceAll("/out/", `${out}/`)
+    return `source "$1"
+set -euo pipefail
+runner_dir=$2
+xvfb_pid= focus_helper_pid= helper_pid= primary_helper_pid= session_bus_pid= notify_recorder_pid= daemon_pid= collector_pid=
+target_id=kitty
+${source.slice(cleanupStart, cleanupEnd)}
+trap cleanup EXIT
+${block}
+printf 'PIDS %s %s\\n' "$session_bus_pid" "$notify_recorder_pid"
+# Stands in for the terminal launch: a child of this shell, so it inherits exactly what the terminal would.
+dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \\
+  org.freedesktop.DBus.GetNameOwner string:org.freedesktop.Notifications
+echo TERMINAL_STARTED
+`
+  }
+
+  function run(runnerDirectory: string) {
+    for (const tool of ["dbus-daemon", "dbus-send"]) {
+      const probe = spawnSync(tool, ["--version"], { encoding: "utf8" })
+      if (probe.error) throw new Error(`${tool} is required on PATH (D-Bus package): ${probe.error.message}`)
+    }
+    const out = join(dir, "out")
+    mkdirSync(out)
+    const result = spawnSync("bash", ["-c", sessionBusHarness(out, join(dir, "bus")), "_", launcher, runnerDirectory], {
+      encoding: "utf8",
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: dir,
+        PATH: `${dirname(bun)}:${process.env.PATH ?? ""}`,
+        TERMINFO_RUN_ID: "a".repeat(32),
+        DBUS_SESSION_BUS_ADDRESS: "",
+      },
+    })
+    return { out, result }
+  }
+
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  it("holds org.freedesktop.Notifications, exports the bus to the child, records both PIDs, and stops both", () => {
+    const { out, result } = run(recorderDirectory)
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout).toContain("TERMINAL_STARTED")
+    const [, busPid, recorderPid] = /^PIDS (\d+) (\d+)$/m.exec(result.stdout)!.map(Number)
+    const receiptPath = join(out, "notification-fixture.json")
+    const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as { uniqueName: string; pid: number }
+    // The child found the name owner through the inherited address, and that owner is our recorder.
+    expect(result.stdout).toContain(`string "${receipt.uniqueName}"`)
+    expect(receipt.pid).toBe(recorderPid)
+    const record = JSON.parse(readFileSync(join(out, "session-bus.json"), "utf8")) as { address: string }
+    const sha = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex")
+    expect(record).toMatchObject({
+      runId: "a".repeat(32),
+      daemon: { pid: busPid },
+      recorder: {
+        pid: recorderPid,
+        script: { sha256: sha(join(recorderDirectory, "linux-notify-recorder.ts")) },
+        receipt: { path: receiptPath, sha256: sha(receiptPath) },
+        record: join(out, "notifications.jsonl"),
+      },
+      nameHeldBeforeTerminal: true,
+    })
+    expect(record.address).toMatch(new RegExp(`^unix:path=${join(dir, "bus")},`))
+    expect(alive(busPid!)).toBe(false)
+    expect(alive(recorderPid!)).toBe(false)
+  })
+
+  it("never reaches the terminal launch when the recorder exits before holding the name", () => {
+    const fake = join(dir, "fake-runner")
+    mkdirSync(fake)
+    writeFileSync(
+      join(fake, "linux-notify-recorder.ts"),
+      'console.error("fixture recorder: name already owned"); process.exit(1)\n',
+    )
+    const { out, result } = run(fake)
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Notify recorder exited before holding org.freedesktop.Notifications")
+    expect(result.stderr).toContain("fixture recorder: name already owned")
+    expect(result.stdout).not.toContain("TERMINAL_STARTED")
+    expect(existsSync(join(out, "session-bus.json"))).toBe(false)
   })
 })
 
@@ -1389,7 +1670,7 @@ it.each([false, true])("writes a Linux completion receipt for captured bytes, pe
         .update(readFileSync(join(dir, "v3-capture.json")))
         .digest("hex"),
     },
-    display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
+    display: { glxinfo: "llvmpipe", geometry: "WIDTH=800", focusHelper: DEFAULT_FOCUS_HELPER },
     clipboardFixture: { runId: capture.runId, profile: "default", sha256: "fixture-hash" },
     capture: null,
   }
@@ -1555,3 +1836,106 @@ ${admission}`,
     }
   },
 )
+
+/** The launcher's own mux-profile function, sourced: the config it records, or its refusal. */
+function muxProfileConfig(mux: string, profile: string): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync("bash", ["-c", 'source "$1"; mux_profile_config "$2" "$3"', "_", launcher, mux, profile], {
+    encoding: "utf8",
+  })
+  return { status: result.status, stdout: result.stdout.trim(), stderr: result.stderr.trim() }
+}
+
+// #33151 (@cto a2cb755c, 4a546051): the supplement keys a placed Screen run on the config the launcher records, so the
+// two values live in the launcher and in context-supplements.ts and must stay equal; truecolor elsewhere is refused.
+describe("mux profile configs", () => {
+  it("records the default config and Screen's truecolor config exactly as the selection keys them", () => {
+    expect(muxProfileConfig("screen", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
+    expect(muxProfileConfig("tmux", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
+    expect(muxProfileConfig("screen", "truecolor")).toMatchObject({ status: 0, stdout: SCREEN_TRUECOLOR_CONFIG })
+    expect(TRUECOLOR_ON.config).toEqual({ screen: SCREEN_TRUECOLOR_CONFIG })
+  })
+
+  it("refuses truecolor on any mux but Screen, naming the mux and the profile", () => {
+    expect(muxProfileConfig("tmux", "truecolor")).toMatchObject({
+      status: 2,
+      stderr: "mux profile truecolor has no declared option on mux tmux",
+    })
+    expect(muxProfileConfig("", "truecolor")).toMatchObject({
+      status: 2,
+      stderr: "mux profile truecolor has no declared option on mux (none)",
+    })
+  })
+
+  // The placement check accepts Screen's truecolor label only when the receipt's config hash matches the declared
+  // bytes, so the bytes the launcher writes and MUX_PROFILE_CONFIG_FILES must be the same.
+  it("writes truecolor on after the unchanged default line, exactly the bytes the receipt check declares", () => {
+    const content = (profile: string) =>
+      spawnSync("bash", ["-c", 'source "$1"; screen_config_content "$2"', "_", launcher, profile], { encoding: "utf8" })
+    expect(content("default")).toMatchObject({ status: 0, stdout: "defscrollback 1000\n" })
+    expect(content("truecolor")).toMatchObject({
+      status: 0,
+      stdout: MUX_PROFILE_CONFIG_FILES[SCREEN_TRUECOLOR_CONFIG]?.content,
+    })
+    expect(MUX_PROFILE_CONFIG_FILES[SCREEN_TRUECOLOR_CONFIG]?.mux).toBe("screen")
+    expect(readFileSync(launcher, "utf8")).toContain(
+      'screen_config_content "${TERMINFO_MUX_PROFILE:-default}" > "$mux_config"',
+    )
+  })
+})
+
+/**
+ * @failure The owned focus helper's mapping wait aborts the run on its first unmapped read: `xdotool search`
+ *   exits 1 until the window exists, and a bare assignment from that pipeline ends the launcher under `set -e`,
+ *   so the App run exits 1 with an empty helper log instead of waiting for the window (33305 App run
+ *   2026-11-11T05-48Z stopped exactly there).
+ * @level l3 — runs the launcher's own focus-helper block with real bash, a stub xterm and a stub xdotool that
+ *   reports no window twice before it maps one.
+ * @consumer scripts/linux-container-run.sh --inside focus helper mapping (#33305)
+ */
+describe("focus helper waits for its window instead of aborting the run (#33305)", () => {
+  it("retries while xdotool reports no window yet, then exports the mapped window", () => {
+    const source = readFileSync(launcher, "utf8")
+    const start = source.indexOf("\n  xterm -geometry 20x3-0-0 -e sleep 36000")
+    const end = source.indexOf("\n  baseline_path=", start)
+    if (start < 0 || end < 0) throw new Error("focus helper block not found in scripts/linux-container-run.sh")
+    const out = mkdtempSync(join(tmpdir(), "focus-helper-"))
+    const bin = join(out, "bin")
+    mkdirSync(bin)
+    const counter = join(out, "search-count")
+    writeFileSync(counter, "0")
+    writeFileSync(join(bin, "xterm"), '#!/usr/bin/env bash\necho $$ > "$HOME/xterm-pid"\nexec sleep 30\n', {
+      mode: 0o755,
+    })
+    writeFileSync(
+      join(bin, "xdotool"),
+      `#!/usr/bin/env bash
+if [[ "$1" == "search" ]]; then
+  n=$(cat "${counter}")
+  n=$((n + 1))
+  echo "$n" > "${counter}"
+  if (( n < 3 )); then exit 1; fi
+  echo 4242
+  exit 0
+fi
+if [[ "$1" == "getwindowgeometry" ]]; then echo "WIDTH=160"; echo "HEIGHT=40"; exit 0; fi
+exit 2
+`,
+      { mode: 0o755 },
+    )
+    const block = source.slice(start, end).replaceAll("/out/", `${out}/`)
+    const script = `set -euo pipefail\n${block}\nprintf 'HELPER %s %s\\n' "$TERMINFO_FOCUS_HELPER_WINDOW" "$TERMINFO_FOCUS_HELPER_PID"\n`
+    const result = spawnSync("bash", ["-c", script], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}`, HOME: out },
+    })
+    expect(result.stderr).toBe("")
+    expect(result.status).toBe(0)
+    const [label, helperWindow, helperPid] = result.stdout.trim().split(/\s+/)
+    expect(label).toBe("HELPER")
+    expect(helperWindow).toBe("4242")
+    // The exported PID must be the helper process itself, not merely a number: the capture gate
+    // refuses any helper window whose getwindowpid differs from it.
+    expect(helperPid).toBe(readFileSync(join(out, "xterm-pid"), "utf8").trim())
+    expect(Number(readFileSync(counter, "utf8"))).toBe(3)
+  })
+})

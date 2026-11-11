@@ -116,7 +116,11 @@ export function textQualificationFixtures(rows: number, cols: number): TextQuali
   const history = (start: number): string[] => Array.from({ length: rows }, (_, index) => pad(`H${start + index}`))
   const initialHistory = history(0)
   const overflowWrites = `\r\nH${rows}\r\nH${rows + 1}`
-  const historyWrites = paint(empty()) + initialHistory.map((_, index) => `H${index}`).join("\r\n")
+  // Scroll every earlier row off with lines shorter than the grid, never overwrite it: overwriting
+  // keeps an earlier shape's soft-wrap join in a logical-line reader (Terminal.app read 29 rows of 30
+  // after soft-wrap, 33512, @cto 55b3c9d3). The history lines are short, so wrap stays out of this shape.
+  const historyWrites =
+    cup(rows) + "\r\n".repeat(rows) + cup(1) + initialHistory.map((_, index) => `H${index}`).join("\r\n")
   return [
     {
       shape: "mid-line-gap",

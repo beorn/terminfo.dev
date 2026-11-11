@@ -1,0 +1,2728 @@
+{
+  "schemaVersion": 4,
+  "source": {
+    "kind": "live"
+  },
+  "runId": "aa76d7a3-11e8-4f2d-b772-761e69b8d38b",
+  "suiteId": "4f6ae11671a5",
+  "probeHash": "4f6ae11671a5",
+  "sourceRevision": "870cd13df4dae4122247160a4ea15f13f0b30223",
+  "intendedSubject": {
+    "kind": "lib",
+    "id": "kitty",
+    "os": "linux"
+  },
+  "results": [
+    {
+      "featureId": "charsets.dec-line-drawing",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "charsets.dec-special",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "charsets.g0-g1-switching",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "charsets.utf8",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.ansi-restore",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.ansi-save",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.cpl",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.cud-past-bottom",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.cup-boundaries",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.cup-scroll-region",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.cuu-past-top",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.hide",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.horizontal-absolute",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.hpa",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.move.absolute",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.move.back",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.move.down",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.move.forward",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.move.home",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.move.up",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.next-line",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.position-report",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.reverse-wrap",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.save-restore",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.shape",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "cursor.vpa",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.decrpm",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.decrqss",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.dsr-996-color-scheme",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.env-colorterm",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.env-kitty",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.env-lc-terminal",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.env-no-color",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.env-term",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.env-term-program",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.env-vte-version",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.env-wezterm",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.env-wt-session",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.primary-da",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.secondary-da",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.status-report",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.term-features",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.tertiary-da",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtgettcap",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtgetxres",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtreportcolors",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtversion",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtwinops-14",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtwinops-16",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtwinops-18",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtwinops-20",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtwinops-21",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtwinops-22",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "device.xtwinops-23",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.deccara",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.deccra",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.decdc",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.decera",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.decfra",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.decic",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.decrara",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.decrqcra",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.decsace",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.decsera",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.delete-chars",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.delete-lines",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.insert-chars",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.insert-lines",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.repeat-char",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.sl",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "editing.sr",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.character",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.ed-scroll-region",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.el-with-attrs",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.line.all",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.line.left",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.line.right",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.screen.above",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.screen.all",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.screen.below",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.screen.scrollback",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "erase.selective",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.clipboard-paste",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.font-ligatures",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.iterm2-images",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-graphics",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-graphics.animation",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-graphics.display",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-graphics.transmit",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-graphics.unicode-placeholders",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-keyboard",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.disambiguate",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-all-keys",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-alternate",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-events",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-text",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.notifications",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc-633-vscode",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc0-icon-title",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc1-icon",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc10-fg-color",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc104-reset-palette",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc11-bg-color",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc110-reset-fg",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc111-reset-bg",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc112-reset-cursor",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc113-reset-pointer-fg",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc114-reset-pointer-bg",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc117-reset-highlight-bg",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc119-reset-highlight-fg",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc12-cursor-color",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc133-a",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc133-b",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc133-c",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc133-d",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc133-p",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc1337-capabilities",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc1337-cellsize",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc17-highlight-bg",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc176-app-id",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc19-highlight-fg",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc2-title",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc21-kitty-color",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc22-pointer",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc30001-color-stack-push",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc3008-context",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc30101-color-stack-pop",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc4-palette",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc440-audio",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc5-special-color",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc52-clipboard",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc52-write",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc5522-clipboard",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc555-flash",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc633-a",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc633-b",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc633-c",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc633-d",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc633-e",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc633-p",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc66-text-sizing",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc666-termprop",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc7-cwd",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc701-locale",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc702-version",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc710-font-normal",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc720-scroll-up",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc776-cell-size",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc777-notify",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc7770-font-size",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc7777-font-window-size",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc8",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc9-progress",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.osc99-kitty-notify",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.reflow",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.semantic-prompts",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.sixel",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.sixel-da1",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.sixel-geometry-report",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "extensions.truecolor",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.button-event-mouse",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.csi-u",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.kitty-click-events",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.modify-other-keys",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.modify-other-keys-3",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.pixel-mouse",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.urxvt-mouse",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.x10-mouse",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.xtest-click",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.xtest-key",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "input.xtest-wheel",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.alt-screen.enter",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.alt-screen.exit",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.alt-scroll-1007",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-11T05:34:28.272Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "unsupported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-11T05:34:28.272Z"
+          },
+          "assertionRefs": [
+            2
+          ],
+          "rawReplyRef": "modes.alt-scroll-1007",
+          "reason": "DECRPM mode 1007 after DECSET: not recognized (Ps 0); wheel-to-cursor-key translation unmeasured; protocol measured"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "modes.alt-scroll-1007",
+      "reason": "DECRPM mode 1007 after DECSET: not recognized (Ps 0); wheel-to-cursor-key translation unmeasured; protocol measured",
+      "status": "unsupported"
+    },
+    {
+      "featureId": "modes.altscreen-1047",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.altscreen-1048",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.altscreen-47",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.application-cursor",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.application-keypad",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-11T05:34:27.702Z"
+      },
+      "tests": [
+        {
+          "id": "declared-untestable",
+          "status": "untestable",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-11T05:34:27.702Z"
+          },
+          "assertionRefs": [],
+          "rawReplyRef": "modes.application-keypad",
+          "reason": "Untestable (no way): Kitty 0.49.2 handles DECKPAM/DECKPNM only in the GUI; its public Screen has no keypad-state reader, and encode_key_for_tty has no keypad input."
+        }
+      ],
+      "criterionBranch": "headless-observable-review",
+      "rawReplyRef": "modes.application-keypad",
+      "reason": "Untestable (no way): Kitty 0.49.2 handles DECKPAM/DECKPNM only in the GUI; its public Screen has no keypad-state reader, and encode_key_for_tty has no keypad input.",
+      "status": "untestable"
+    },
+    {
+      "featureId": "modes.auto-wrap",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.bracketed-paste",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.color-scheme-reporting",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-11T05:34:29.591Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-11T05:34:29.591Z"
+          },
+          "assertionRefs": [
+            4
+          ],
+          "rawReplyRef": "modes.color-scheme-reporting",
+          "reason": "DECRPM mode 2031: set/reset replies and getMode agree; scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "modes.color-scheme-reporting",
+      "reason": "DECRPM mode 2031: set/reset replies and getMode agree; scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured",
+      "status": "supported"
+    },
+    {
+      "featureId": "modes.deccolm",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.decsclm",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-11T05:34:28.888Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "unsupported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-11T05:34:28.888Z"
+          },
+          "assertionRefs": [
+            3
+          ],
+          "rawReplyRef": "modes.decsclm",
+          "reason": "DECRPM mode 4 after DECSET: not recognized (Ps 0); smooth-scroll presentation unmeasured in lib arm"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "modes.decsclm",
+      "reason": "DECRPM mode 4 after DECSET: not recognized (Ps 0); smooth-scroll presentation unmeasured in lib arm",
+      "status": "unsupported"
+    },
+    {
+      "featureId": "modes.decsscls",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-11T05:34:30.375Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "unsupported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-11T05:34:30.375Z"
+          },
+          "assertionRefs": [
+            5
+          ],
+          "rawReplyRef": "modes.decsscls",
+          "reason": "library reported this sequence as unhandled"
+        }
+      ],
+      "assertionType": "buffer_state",
+      "rawReplyRef": "modes.decsscls",
+      "reason": "library reported this sequence as unhandled",
+      "status": "unsupported"
+    },
+    {
+      "featureId": "modes.focus-tracking",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.insert-replace",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.left-right-margin",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.mouse-all",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.mouse-sgr",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.mouse-tracking",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.origin",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.reverse-video",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-11T05:34:26.304Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-11T05:34:26.304Z"
+          },
+          "assertionRefs": [
+            0
+          ],
+          "rawReplyRef": "modes.reverse-video",
+          "reason": "DECRPM mode 5: set/reset replies and getMode agree; presentation (inverted frame) unmeasured; protocol measured"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "modes.reverse-video",
+      "reason": "DECRPM mode 5: set/reset replies and getMode agree; presentation (inverted frame) unmeasured; protocol measured",
+      "status": "supported"
+    },
+    {
+      "featureId": "modes.synchronized-output",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-11T05:34:27.026Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-11T05:34:27.026Z"
+          },
+          "assertionRefs": [
+            1
+          ],
+          "rawReplyRef": "modes.synchronized-output",
+          "reason": "DECRPM mode 2026: set/reset replies and getMode agree; presentation (tearing, scroll cadence) unmeasured; protocol measured"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "modes.synchronized-output",
+      "reason": "DECRPM mode 2026: set/reset replies and getMode agree; presentation (tearing, scroll cadence) unmeasured; protocol measured",
+      "status": "supported"
+    },
+    {
+      "featureId": "modes.utf8-mouse-1005",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.xtpopcolors",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.xtpopsgr",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.xtpushcolors",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.xtpushsgr",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.xtrestore",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "modes.xtsave",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "reset.decaln",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "reset.method",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "reset.ris",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "reset.sgr",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "reset.soft",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.accumulate",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.alt-screen",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.decstbm",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.decstbm-reset",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.reverse-index",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.scroll-down",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.scroll-up",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.set-region",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.total-lines",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "scrollback.viewport-hold-output",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.bg.256",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.bg.bright",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.bg.default",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.bg.standard",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.bg.truecolor",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.blink",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.bold",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.faint",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.fg.256",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.fg.bright",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.fg.default",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.fg.standard",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.fg.truecolor",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.hidden",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.inverse",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.italic",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.overline",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.reset",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.selective-reset.bold",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.selective-reset.inverse",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.selective-reset.italic",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.selective-reset.underline",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.strikethrough",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.underline-color-indexed",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.underline-color-reset",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.underline-color-rgb",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.underline.color",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.underline.curly",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.underline.dashed",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.underline.dotted",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.underline.double",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "sgr.underline.single",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.backspace",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.basic",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.cbt",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.cht",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.combining",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.cr",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.hts",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.index",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.newline",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.next-line",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.overwrite",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.reverse-index-scroll",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.tab",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.tbc",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.wide.cjk",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.wide.emoji",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.wide.emoji-flags",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.wide.emoji-vs16",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.wide.emoji-zwj",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "text.wrap",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "unicode.east-asian-ambiguous",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "unicode.grapheme-cursor",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "unicode.tab-stops",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    },
+    {
+      "featureId": "unicode.wrap-boundary",
+      "status": "probe-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Not selected for this collection; no test was attempted."
+    }
+  ],
+  "rawReplies": {
+    "collector.selection": "{\"ids\":[\"modes.alt-scroll-1007\",\"modes.application-keypad\",\"modes.reverse-video\",\"modes.synchronized-output\",\"modes.color-scheme-reporting\",\"modes.decsclm\",\"modes.decsscls\"]}",
+    "collector.collectionAttempt": "{\"ids\":[\"modes.alt-scroll-1007\",\"modes.application-keypad\",\"modes.reverse-video\",\"modes.synchronized-output\",\"modes.color-scheme-reporting\",\"modes.decsclm\",\"modes.decsscls\"],\"startedAt\":\"2026-11-11T05:34:25.836Z\",\"hostInputs\":{\"foreground-rgb\":\"not-supplied\",\"background-rgb\":\"not-supplied\",\"cursor-rgb\":\"not-supplied\",\"palette-entry-rgb\":\"not-supplied\",\"pixel-geometry\":\"{\\\"cellWidth\\\":10,\\\"cellHeight\\\":20}\",\"clipboard-read-permission\":\"clipboard_control write-clipboard write-primary read-clipboard read-primary\"},\"result\":\"completed\"}",
+    "collector.replyPath": "{\"backend\":\"kitty\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.11.0\",\"termlessRevision\":\"343c2e5df74d918fc625943203ba521c48a3d1d6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"f8c227b927b805a3415efcc64968577848115033\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"473d25a335c4e739f915a254625607f617ed9d1e\"},{\"path\":\"packages/kitty/build/layout.c\",\"blobOid\":\"f58c0e943ad60daf20d54360184e039e16ff3826\"},{\"path\":\"packages/kitty/build/native-mode-layout.json\",\"blobOid\":\"20b976ba87de032248a787fcb8b5adc64c640f07\"},{\"path\":\"packages/kitty/build/native-mode-layout.receipt.json\",\"blobOid\":\"1e1e450aa08538ffb2d7ba80d45015aae4d86921\"}]},\"decisions\":{\"modes.reverse-video\":{\"member\":true,\"reason\":\"same-run CPR path control answered\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.11.0\",\"termlessRevision\":\"343c2e5df74d918fc625943203ba521c48a3d1d6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"f8c227b927b805a3415efcc64968577848115033\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"473d25a335c4e739f915a254625607f617ed9d1e\"},{\"path\":\"packages/kitty/build/layout.c\",\"blobOid\":\"f58c0e943ad60daf20d54360184e039e16ff3826\"},{\"path\":\"packages/kitty/build/native-mode-layout.json\",\"blobOid\":\"20b976ba87de032248a787fcb8b5adc64c640f07\"},{\"path\":\"packages/kitty/build/native-mode-layout.receipt.json\",\"blobOid\":\"1e1e450aa08538ffb2d7ba80d45015aae4d86921\"}]},\"hostRecipes\":[]},\"modes.synchronized-output\":{\"member\":true,\"reason\":\"same-run CPR path control answered\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.11.0\",\"termlessRevision\":\"343c2e5df74d918fc625943203ba521c48a3d1d6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"f8c227b927b805a3415efcc64968577848115033\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"473d25a335c4e739f915a254625607f617ed9d1e\"},{\"path\":\"packages/kitty/build/layout.c\",\"blobOid\":\"f58c0e943ad60daf20d54360184e039e16ff3826\"},{\"path\":\"packages/kitty/build/native-mode-layout.json\",\"blobOid\":\"20b976ba87de032248a787fcb8b5adc64c640f07\"},{\"path\":\"packages/kitty/build/native-mode-layout.receipt.json\",\"blobOid\":\"1e1e450aa08538ffb2d7ba80d45015aae4d86921\"}]},\"hostRecipes\":[]},\"modes.application-keypad\":{\"member\":true,\"reason\":\"same-run CPR path control answered\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.11.0\",\"termlessRevision\":\"343c2e5df74d918fc625943203ba521c48a3d1d6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"f8c227b927b805a3415efcc64968577848115033\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"473d25a335c4e739f915a254625607f617ed9d1e\"},{\"path\":\"packages/kitty/build/layout.c\",\"blobOid\":\"f58c0e943ad60daf20d54360184e039e16ff3826\"},{\"path\":\"packages/kitty/build/native-mode-layout.json\",\"blobOid\":\"20b976ba87de032248a787fcb8b5adc64c640f07\"},{\"path\":\"packages/kitty/build/native-mode-layout.receipt.json\",\"blobOid\":\"1e1e450aa08538ffb2d7ba80d45015aae4d86921\"}]},\"hostRecipes\":[]},\"modes.alt-scroll-1007\":{\"member\":true,\"reason\":\"same-run CPR path control answered\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.11.0\",\"termlessRevision\":\"343c2e5df74d918fc625943203ba521c48a3d1d6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"f8c227b927b805a3415efcc64968577848115033\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"473d25a335c4e739f915a254625607f617ed9d1e\"},{\"path\":\"packages/kitty/build/layout.c\",\"blobOid\":\"f58c0e943ad60daf20d54360184e039e16ff3826\"},{\"path\":\"packages/kitty/build/native-mode-layout.json\",\"blobOid\":\"20b976ba87de032248a787fcb8b5adc64c640f07\"},{\"path\":\"packages/kitty/build/native-mode-layout.receipt.json\",\"blobOid\":\"1e1e450aa08538ffb2d7ba80d45015aae4d86921\"}]},\"hostRecipes\":[]},\"modes.decsclm\":{\"member\":true,\"reason\":\"same-run CPR path control answered\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.11.0\",\"termlessRevision\":\"343c2e5df74d918fc625943203ba521c48a3d1d6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"f8c227b927b805a3415efcc64968577848115033\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"473d25a335c4e739f915a254625607f617ed9d1e\"},{\"path\":\"packages/kitty/build/layout.c\",\"blobOid\":\"f58c0e943ad60daf20d54360184e039e16ff3826\"},{\"path\":\"packages/kitty/build/native-mode-layout.json\",\"blobOid\":\"20b976ba87de032248a787fcb8b5adc64c640f07\"},{\"path\":\"packages/kitty/build/native-mode-layout.receipt.json\",\"blobOid\":\"1e1e450aa08538ffb2d7ba80d45015aae4d86921\"}]},\"hostRecipes\":[]},\"modes.color-scheme-reporting\":{\"member\":true,\"reason\":\"same-run CPR path control answered\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.11.0\",\"termlessRevision\":\"343c2e5df74d918fc625943203ba521c48a3d1d6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"f8c227b927b805a3415efcc64968577848115033\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"473d25a335c4e739f915a254625607f617ed9d1e\"},{\"path\":\"packages/kitty/build/layout.c\",\"blobOid\":\"f58c0e943ad60daf20d54360184e039e16ff3826\"},{\"path\":\"packages/kitty/build/native-mode-layout.json\",\"blobOid\":\"20b976ba87de032248a787fcb8b5adc64c640f07\"},{\"path\":\"packages/kitty/build/native-mode-layout.receipt.json\",\"blobOid\":\"1e1e450aa08538ffb2d7ba80d45015aae4d86921\"}]},\"hostRecipes\":[]},\"modes.decsscls\":{\"member\":true,\"reason\":\"same-run CPR path control answered\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.11.0\",\"termlessRevision\":\"343c2e5df74d918fc625943203ba521c48a3d1d6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"f8c227b927b805a3415efcc64968577848115033\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"473d25a335c4e739f915a254625607f617ed9d1e\"},{\"path\":\"packages/kitty/build/layout.c\",\"blobOid\":\"f58c0e943ad60daf20d54360184e039e16ff3826\"},{\"path\":\"packages/kitty/build/native-mode-layout.json\",\"blobOid\":\"20b976ba87de032248a787fcb8b5adc64c640f07\"},{\"path\":\"packages/kitty/build/native-mode-layout.receipt.json\",\"blobOid\":\"1e1e450aa08538ffb2d7ba80d45015aae4d86921\"}]},\"hostRecipes\":[]}}}",
+    "collector.hostRecipes.modes.reverse-video": "{\"runId\":\"aa76d7a3-11e8-4f2d-b772-761e69b8d38b\",\"captures\":[{\"query\":\"\\u001b[?5$p\",\"response\":\"\\u001b[?5;1$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?5$p\",\"response\":\"\\u001b[?5;2$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}],\"causes\":[]}",
+    "modes.reverse-video": "{\"setReply\":\"\\u001b[?5;1$y\\u001b[?62;52;c\",\"resetReply\":\"\\u001b[?5;2$y\\u001b[?62;52;c\",\"setMode\":true,\"resetMode\":false}",
+    "collector.queryCaptures.modes.reverse-video": "{\"queries\":[{\"sequence\":\"\\u001b[?5$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false},{\"sequence\":\"\\u001b[?5$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false}],\"captures\":[{\"query\":\"\\u001b[?5$p\",\"response\":\"\\u001b[?5;1$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?5$p\",\"response\":\"\\u001b[?5;2$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}]}",
+    "collector.hostRecipes.modes.synchronized-output": "{\"runId\":\"aa76d7a3-11e8-4f2d-b772-761e69b8d38b\",\"captures\":[{\"query\":\"\\u001b[?2026$p\",\"response\":\"\\u001b[?2026;1$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?2026$p\",\"response\":\"\\u001b[?2026;2$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}],\"causes\":[]}",
+    "modes.synchronized-output": "{\"setReply\":\"\\u001b[?2026;1$y\\u001b[?62;52;c\",\"resetReply\":\"\\u001b[?2026;2$y\\u001b[?62;52;c\",\"setMode\":true,\"resetMode\":false}",
+    "collector.queryCaptures.modes.synchronized-output": "{\"queries\":[{\"sequence\":\"\\u001b[?2026$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false},{\"sequence\":\"\\u001b[?2026$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false}],\"captures\":[{\"query\":\"\\u001b[?2026$p\",\"response\":\"\\u001b[?2026;1$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?2026$p\",\"response\":\"\\u001b[?2026;2$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}]}",
+    "collector.hostRecipes.modes.application-keypad": "{\"runId\":\"aa76d7a3-11e8-4f2d-b772-761e69b8d38b\",\"captures\":[],\"causes\":[]}",
+    "modes.application-keypad": "{\"setMode\":null,\"resetMode\":null}",
+    "collector.queryCaptures.modes.application-keypad": "{\"queries\":[],\"captures\":[]}",
+    "collector.hostRecipes.modes.alt-scroll-1007": "{\"runId\":\"aa76d7a3-11e8-4f2d-b772-761e69b8d38b\",\"captures\":[{\"query\":\"\\u001b[?1007$p\",\"response\":\"\\u001b[?1007;0$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?1007$p\",\"response\":\"\\u001b[?1007;0$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}],\"causes\":[]}",
+    "modes.alt-scroll-1007": "{\"setReply\":\"\\u001b[?1007;0$y\\u001b[?62;52;c\",\"resetReply\":\"\\u001b[?1007;0$y\\u001b[?62;52;c\",\"setMode\":null,\"resetMode\":null}",
+    "collector.queryCaptures.modes.alt-scroll-1007": "{\"queries\":[{\"sequence\":\"\\u001b[?1007$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false},{\"sequence\":\"\\u001b[?1007$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false}],\"captures\":[{\"query\":\"\\u001b[?1007$p\",\"response\":\"\\u001b[?1007;0$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?1007$p\",\"response\":\"\\u001b[?1007;0$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}]}",
+    "collector.hostRecipes.modes.decsclm": "{\"runId\":\"aa76d7a3-11e8-4f2d-b772-761e69b8d38b\",\"captures\":[{\"query\":\"\\u001b[?4$p\",\"response\":\"\\u001b[?4;0$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?4$p\",\"response\":\"\\u001b[?4;0$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}],\"causes\":[]}",
+    "modes.decsclm": "{\"setReply\":\"\\u001b[?4;0$y\\u001b[?62;52;c\",\"resetReply\":\"\\u001b[?4;0$y\\u001b[?62;52;c\",\"setMode\":null,\"resetMode\":null,\"insertBefore\":null,\"insertAfter\":null}",
+    "collector.queryCaptures.modes.decsclm": "{\"queries\":[{\"sequence\":\"\\u001b[?4$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false},{\"sequence\":\"\\u001b[?4$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false}],\"captures\":[{\"query\":\"\\u001b[?4$p\",\"response\":\"\\u001b[?4;0$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?4$p\",\"response\":\"\\u001b[?4;0$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}]}",
+    "collector.hostRecipes.modes.color-scheme-reporting": "{\"runId\":\"aa76d7a3-11e8-4f2d-b772-761e69b8d38b\",\"captures\":[{\"query\":\"\\u001b[?2031$p\",\"response\":\"\\u001b[?2031;1$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?2031$p\",\"response\":\"\\u001b[?2031;2$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}],\"causes\":[]}",
+    "modes.color-scheme-reporting": "{\"setReply\":\"\\u001b[?2031;1$y\\u001b[?62;52;c\",\"resetReply\":\"\\u001b[?2031;2$y\\u001b[?62;52;c\",\"setMode\":true,\"resetMode\":false}",
+    "collector.queryCaptures.modes.color-scheme-reporting": "{\"queries\":[{\"sequence\":\"\\u001b[?2031$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false},{\"sequence\":\"\\u001b[?2031$p\",\"reason\":\"reply\",\"matched\":true,\"empty\":false}],\"captures\":[{\"query\":\"\\u001b[?2031$p\",\"response\":\"\\u001b[?2031;1$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null},{\"query\":\"\\u001b[?2031$p\",\"response\":\"\\u001b[?2031;2$y\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}]}",
+    "collector.hostRecipes.modes.decsscls": "{\"runId\":\"aa76d7a3-11e8-4f2d-b772-761e69b8d38b\",\"captures\":[],\"causes\":[]}",
+    "modes.decsscls": "{\"evidence\":{\"featureId\":\"modes.decsscls\",\"body\":\"{\\\"text\\\":\\\"Q\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\",\\\"cursor\\\":{\\\"col\\\":1,\\\"row\\\":0,\\\"x\\\":1,\\\"y\\\":0,\\\"visible\\\":true,\\\"style\\\":\\\"block\\\"}}\"},\"unhandled\":{\"control\":\"\\u001b[0m\\u001b[1mC\",\"target\":{\"kind\":\"csi\",\"code\":\" p\"},\"added\":[{\"kind\":\"csi\",\"code\":\" p\"}]}}",
+    "collector.queryCaptures.modes.decsscls": "{\"queries\":[],\"captures\":[]}",
+    "collector.replyControl": "{\"answered\":true,\"captures\":[{\"query\":\"\\u001b[3;7H\\u001b[6n\",\"response\":\"\\u001b[3;7R\",\"error\":null}]}"
+  },
+  "assertions": [
+    {
+      "featureId": "modes.reverse-video",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "DECRPM mode 5 Ps1/Ps2 with agreeing getMode",
+      "observed": "{\"setReply\":\"\\u001b[?5;1$y\\u001b[?62;52;c\",\"resetReply\":\"\\u001b[?5;2$y\\u001b[?62;52;c\",\"setMode\":true,\"resetMode\":false}",
+      "rawReplyRef": "modes.reverse-video"
+    },
+    {
+      "featureId": "modes.synchronized-output",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "DECRPM mode 2026 Ps1/Ps2 with agreeing getMode",
+      "observed": "{\"setReply\":\"\\u001b[?2026;1$y\\u001b[?62;52;c\",\"resetReply\":\"\\u001b[?2026;2$y\\u001b[?62;52;c\",\"setMode\":true,\"resetMode\":false}",
+      "rawReplyRef": "modes.synchronized-output"
+    },
+    {
+      "featureId": "modes.alt-scroll-1007",
+      "assertionType": "query_reply",
+      "kind": "negative",
+      "expected": "DECRPM mode 1007 set after DECSET",
+      "observed": "\u001b[?1007;0$y\u001b[?62;52;c",
+      "rawReplyRef": "modes.alt-scroll-1007"
+    },
+    {
+      "featureId": "modes.decsclm",
+      "assertionType": "query_reply",
+      "kind": "negative",
+      "expected": "DECRPM mode 4 set after DECSET",
+      "observed": "\u001b[?4;0$y\u001b[?62;52;c",
+      "rawReplyRef": "modes.decsclm"
+    },
+    {
+      "featureId": "modes.color-scheme-reporting",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "DECRPM mode 2031 Ps1/Ps2 with agreeing getMode",
+      "observed": "{\"setReply\":\"\\u001b[?2031;1$y\\u001b[?62;52;c\",\"resetReply\":\"\\u001b[?2031;2$y\\u001b[?62;52;c\",\"setMode\":true,\"resetMode\":false}",
+      "rawReplyRef": "modes.color-scheme-reporting"
+    },
+    {
+      "featureId": "modes.decsscls",
+      "assertionType": "buffer_state",
+      "kind": "negative",
+      "expected": "CSI  p: the library's own report carries this exact code, with both same-run controls qualified",
+      "observed": "{\"evidence\":{\"featureId\":\"modes.decsscls\",\"body\":\"{\\\"text\\\":\\\"Q\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\",\\\"cursor\\\":{\\\"col\\\":1,\\\"row\\\":0,\\\"x\\\":1,\\\"y\\\":0,\\\"visible\\\":true,\\\"style\\\":\\\"block\\\"}}\"},\"unhandled\":{\"control\":\"\\u001b[0m\\u001b[1mC\",\"target\":{\"kind\":\"csi\",\"code\":\" p\"},\"added\":[{\"kind\":\"csi\",\"code\":\" p\"}]}}",
+      "rawReplyRef": "modes.decsscls"
+    }
+  ],
+  "screenshotRefs": [],
+  "runtimeIdentity": {
+    "kind": "native",
+    "engineVersion": "0.49.2",
+    "adapterVersion": "0.11.0",
+    "termlessRevision": "343c2e5df74d918fc625943203ba521c48a3d1d6",
+    "loadedBinary": {
+      "path": "/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty",
+      "sha256": "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+    },
+    "provenance": {
+      "sha256": "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+      "sourceCommit": "b2cb871254fbdac19a085188813c8dfb258b95cd",
+      "buildHash": "e7292713c85f982a965986a1fc6f762088fe5e16778b87405aaded96d7f4014e",
+      "toolchain": "Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy",
+      "lockSha256": "af40f83f49b3a4c6cd6946fbd7ac49232f3767de4693a6b4545b44d233386eef"
+    },
+    "adapterSources": [
+      {
+        "path": "packages/kitty/src/index.ts",
+        "blobOid": "3f207f911646613cdc3d8b04f155f0686a96a077"
+      },
+      {
+        "path": "packages/kitty/src/backend.ts",
+        "blobOid": "f8c227b927b805a3415efcc64968577848115033"
+      },
+      {
+        "path": "packages/kitty/build/bridge.py",
+        "blobOid": "473d25a335c4e739f915a254625607f617ed9d1e"
+      },
+      {
+        "path": "packages/kitty/build/layout.c",
+        "blobOid": "f58c0e943ad60daf20d54360184e039e16ff3826"
+      },
+      {
+        "path": "packages/kitty/build/native-mode-layout.json",
+        "blobOid": "20b976ba87de032248a787fcb8b5adc64c640f07"
+      },
+      {
+        "path": "packages/kitty/build/native-mode-layout.receipt.json",
+        "blobOid": "1e1e450aa08538ffb2d7ba80d45015aae4d86921"
+      }
+    ]
+  },
+  "subject": {
+    "kind": "lib",
+    "id": "kitty",
+    "version": "0.49.2",
+    "os": "linux",
+    "osVersion": "7.0.0-34-generic",
+    "outerTerminal": null,
+    "mux": null,
+    "config": "80x24 default Termless backend",
+    "permissions": null
+  },
+  "identity": "unverified",
+  "measuredAt": "2026-11-11T05:34:31.033Z",
+  "origin": {
+    "kind": "collector"
+  }
+}

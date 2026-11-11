@@ -590,15 +590,13 @@ test("extensions.truecolor grades unexposed RGB targets against the independent 
   expect(monochrome.assertions).toBeUndefined()
 })
 
-test("extensions.truecolor keeps its DECRQSS state criterion when capture is available", async () => {
+// #33104 (@cto a7fb82cc): the state read decides where the terminal answers one; with a capture the
+// row runs sgr.fg.truecolor's own pixel arm, covered in sgr-colour-region.test.ts. This run has no capture.
+test("extensions.truecolor decides from its DECRQSS state read where the terminal answers one", async () => {
   const definition = callback("extensions.truecolor")
   const sgrQuery = "\x1bP$qm\x1b\\"
   const answering = (raw: string) =>
-    replayTermProbeSource(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]), {
-      capture: async () => {
-        throw new Error("This state-only criterion has no visual oracle")
-      },
-    })
+    replayTermProbeSource(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]))
   const supported = await definition.term!(answering("\x1bP1$r0;38;2;255;128;0m\x1b\\"))
   expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   // A reported RGB selector with a different value is an observed negative; an absent selector
@@ -1139,6 +1137,16 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
 
   const answered = await run(position)
   expect(answered.pass, id).toBe(false)
+  if (id === "extensions.osc777-notify") {
+    // Delivery now needs the owned bus observer; CPR cannot substitute for that service.
+    expect(answered.tests).toMatchObject([
+      { status: "probe-todo", reason: "No owned desktop notification observer for OSC 777" },
+    ])
+    expect(answered.observation).toBeUndefined()
+    expect(answered.response).toBeUndefined()
+    expect(await run(null)).toEqual(answered)
+    return
+  }
   if (id === "extensions.osc555-flash") {
     // Flash now uses owned pixels; neither an answered nor a silent CPR supplies that reader.
     expect(answered.tests).toEqual([
@@ -1191,7 +1199,8 @@ test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grad
 
   const silent = await app(da1, { atMs: 7, graceMs: 250 })
   expect(silent.observation).toMatchObject({
-    outcome: "unsupported",
+    outcome: "inconclusive",
+    reason: "fenced-silence",
     assertionType: "query_reply",
     note: "DA1 answered at +7ms; no reply through the 250 ms window",
   })
@@ -1235,7 +1244,8 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
     sentinel: { atMs: 5, graceMs: 250 },
   })
   expect(silent.observation).toMatchObject({
-    outcome: "unsupported",
+    outcome: "inconclusive",
+    reason: "fenced-silence",
     assertionType: "query_reply",
     note: "DA1 answered at +5ms; no reply through the 250 ms window",
   })
@@ -1462,7 +1472,11 @@ test.each([
           expect(result.tests?.[0]?.reason).toMatch(/^Untestable \(no setup\): .*transmit/u)
           expect(JSON.stringify(result)).not.toMatch(/does not display/u)
         } else {
-          expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+          expect(result.observation).toMatchObject({
+            outcome: "inconclusive",
+            reason: "fenced-silence",
+            assertionType: "query_reply",
+          })
           expect(result.assertions).toMatchObject([{ kind: "negative" }, { kind: "negative" }])
           expect(JSON.parse(result.response!)).toMatchObject({
             transfer: { raw: "\x1b[?62;22c" },

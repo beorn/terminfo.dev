@@ -115,6 +115,13 @@ test("the real flat refusal with a separating sibling and a supported outer reco
     expect(decision.criterionBranch).toBe("colour-sibling-separation")
     expect(decision.observation.outcome).toBe("unsupported")
     expect(decision.observation).not.toHaveProperty("reason")
+    // #33150 (@cto 918fccd1): a bare Unsupported is wrong by omission; the reason names Screen's default-off option
+    // and the harness config, on the observation, the assertion and the test alike.
+    const cause =
+      "GNU Screen 5.0.2 emits 24-bit colour only with its truecolor option on; default is off; corpus config is defscrollback 1000"
+    expect(decision.observation.note).toContain(cause)
+    expect(decision.assertion.note).toContain(cause)
+    expect(decision.test.reason).toContain(cause)
     expect(decision.test).toMatchObject({ id: "criterion", status: "unsupported", assertionRefs: [0] })
     expect(decision.assertion).toMatchObject({ kind: "negative", assertionType: "screenshot", observed: sha("951e") })
     expect(decision.assertion.witness).toEqual({

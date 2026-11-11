@@ -401,9 +401,14 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
     const baseline = source("docs/baseline/[id].md")
     expect(baseline).toContain("if (isEnvironmentGroup(f.id)) continue")
     expect(baseline).toContain("manual by design (catalogue)")
-    // The bar width and the printed share read the projection's single denominator.
+    // The bar width and the printed share read the projection's single denominator. #33441: the printed share moved
+    // to the one row readout, which also carries the derived count, so the page delegates and the helper owns the words.
     expect(baseline).toContain("s.counts[segment] / s.score.all")
-    expect(baseline).toContain("${s.score.supported}/${s.score.all} supported")
+    expect(baseline).toContain("return baselineShareRow(s)")
+    const readouts = source("docs/data/baseline-readouts.ts")
+    expect(readouts).toContain("${s.score.supported}/${s.score.all} supported")
+    expect(readouts).toContain("notMeasuredReadout(s.counts, s.derived)")
+    expect(readouts).toContain("notMeasuredReadout(stats.counts, stats.derived)")
   })
 
   it("wires the terminal page's coverage sentence to the run's own catalogue", () => {
@@ -418,7 +423,7 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
 
   it("gives the evidence cell the manual-by-design words only for a stored PROBE TODO", () => {
     const cell = source("docs/.vitepress/theme/ResultEvidenceCell.vue")
-    expect(cell).toContain("evidenceStatus(props.featureId, currentResult.value?.status)")
+    expect(cell).toContain("evidenceStatus(props.featureId, currentResult.value?.status, derived.value)")
   })
 
   it("renders a stored supported environment row as Supported, never NOT MEASURED (D1)", () => {
@@ -426,6 +431,9 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
     // environment override would publish "NOT MEASURED" over a real measurement.
     expect(evidenceStatus("device.env-term", "supported")).toEqual({ text: "Supported", icon: "✓", tone: "yes" })
     expect(evidenceStatus("device.env-term", "unsupported").text).toBe("Unsupported")
+    // #33019: only an Unsupported cell can wear the derived words.
+    expect(evidenceStatus("extensions.kitty-graphics.display", "unsupported", true).text).toBe("Unsupported, derived")
+    expect(evidenceStatus("extensions.kitty-graphics.display", "untestable", true).text).toBe("Untestable")
     expect(evidenceStatus("device.env-term", "probe-invalid").text).toBe("PROBE INVALID")
     // Only the catalogue's own PROBE TODO wears the manual-by-design words, and never the TODO label.
     expect(evidenceStatus("device.env-term", "probe-todo")).toEqual(MANUAL_BY_DESIGN_STATUS)

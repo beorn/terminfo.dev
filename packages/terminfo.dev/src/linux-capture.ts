@@ -66,6 +66,43 @@ export function windowPixels(geometry: string): { width: number; height: number 
   return parsed
 }
 
+export interface WindowRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** A window's placed rectangle, parsed from xdotool getwindowgeometry --shell. */
+export function windowRectangle(geometry: string, windowId?: string): WindowRect {
+  const window = windowId === undefined || windowId === "" ? "" : ` for window ${windowId}`
+  const field = (name: string): number => {
+    const match = new RegExp(`^${name}=(-?\\d+)$`, "m").exec(geometry)
+    if (match?.[1] === undefined) throw new Error(`getwindowgeometry${window} has no ${name}: ${geometry.trim()}`)
+    return Number(match[1])
+  }
+  return { x: field("X"), y: field("Y"), ...windowPixels(geometry) }
+}
+
+/**
+ * The owned focus helper a run records (#33305), or null when the run has none. The helper is a second
+ * visible top-level window, so the capture census must know it by exact id: an unrecorded second window
+ * stays a refusal, and a helper named without the PID its receipt records cannot be told from one.
+ */
+export function recordedFocusHelper(env: NodeJS.ProcessEnv = process.env): { windowId: string; pid: string } | null {
+  const windowId = env.TERMINFO_FOCUS_HELPER_WINDOW?.trim()
+  if (windowId === undefined || windowId === "") return null
+  if (!/^\d+$/.test(windowId)) throw new Error(`TERMINFO_FOCUS_HELPER_WINDOW is not an X window id: ${windowId}`)
+  const pid = env.TERMINFO_FOCUS_HELPER_PID?.trim()
+  if (pid === undefined || !/^\d+$/.test(pid)) {
+    throw new Error(
+      `The recorded focus helper window ${windowId} names no owning PID: TERMINFO_FOCUS_HELPER_PID must ` +
+        "carry the PID its receipt records, so an unrelated window with the same id cannot be excluded",
+    )
+  }
+  return { windowId, pid }
+}
+
 function withWindowPixels(geometry: string, width: number, height: number): string {
   windowPixels(geometry)
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
@@ -131,6 +168,13 @@ export function kittyAncestor(executable: LiveExecutable): number {
 }
 
 /** Optional Linux adapter. Once configured, every ownership/capture failure is loud. */
+/**
+ * The fixed wait before every Linux capture reads the screen (static-frame settling). Exported so a
+ * probe can state what this collector cannot see: an update held for less than this is never read
+ * (#33032, @cto e9641d54).
+ */
+export const LINUX_CAPTURE_SETTLE_MS = 150
+
 export async function createLinuxCapture(
   directory: string,
   executable: LiveExecutable,
@@ -139,6 +183,10 @@ export async function createLinuxCapture(
   if (process.platform !== "linux" || !process.env.DISPLAY) {
     throw new Error("Linux capture requires Linux and the owned DISPLAY")
   }
+  // The run's own focus witness is a second visible top-level window (#33305). Only the exact id it
+  // recorded is excluded, and only while that id still belongs to the PID its receipt names: any
+  // other extra window stays today's refusal, byte for byte.
+  const focusHelper = recordedFocusHelper()
   const kittyPid = kittyAncestor(executable)
   const windows = (await command("xdotool", ["search", "--onlyvisible", "--pid", String(kittyPid)]))
     .toString()
@@ -160,6 +208,38 @@ export async function createLinuxCapture(
   if (roots.length === 0 || roots.some((root) => !Number.isSafeInteger(root))) {
     throw new Error("Cannot identify DISPLAY root windows for capture")
   }
+  async function assertFocusHelperIdentity(deadline?: number) {
+    if (focusHelper === null) return
+    const owner = (await command("xdotool", ["getwindowpid", focusHelper.windowId], undefined, deadline))
+      .toString()
+      .trim()
+    if (owner !== focusHelper.pid) {
+      throw new Error(
+        `Recorded focus helper window ${focusHelper.windowId} belongs to PID ${owner}, not the recorded PID ${focusHelper.pid}`,
+      )
+    }
+  }
+  /** Refuse a capture whose owned window and recorded helper overlap: same pixels, no witness. */
+  async function assertFocusHelperClear(ownedGeometry: string, deadline?: number) {
+    if (focusHelper === null) return
+    const helperGeometry = (
+      await command("xdotool", ["getwindowgeometry", "--shell", focusHelper.windowId], undefined, deadline)
+    ).toString()
+    const owned = windowRectangle(ownedGeometry, ownedWindowId)
+    const helper = windowRectangle(helperGeometry, focusHelper.windowId)
+    const intersects =
+      helper.x < owned.x + owned.width &&
+      owned.x < helper.x + helper.width &&
+      helper.y < owned.y + owned.height &&
+      owned.y < helper.y + helper.height
+    if (intersects) {
+      const place = (rect: WindowRect) => `${rect.width}x${rect.height} at ${rect.x},${rect.y}`
+      throw new Error(
+        `Capture refused: the recorded focus helper window ${focusHelper.windowId} (${place(helper)}) intersects ` +
+          `the owned capture window ${ownedWindowId} (${place(owned)})`,
+      )
+    }
+  }
   async function assertOwned(deadline?: number) {
     if (kittyAncestor(executable) !== kittyPid) throw new Error("Collector terminal process changed during capture")
     const owner = (await command("xdotool", ["getwindowpid", ownedWindowId], undefined, deadline)).toString().trim()
@@ -174,11 +254,28 @@ export async function createLinuxCapture(
       throw new Error("Invalid visible top-level window census for capture")
     }
     const topLevel = visible.filter((id) => !roots.includes(Number(id)))
-    if (topLevel.length !== 1 || topLevel[0] !== ownedWindowId) {
+    if (focusHelper === null) {
+      if (topLevel.length !== 1 || topLevel[0] !== ownedWindowId) {
+        throw new Error(`Capture requires only its owned visible top-level window; found ${topLevel.join(", ")}`)
+      }
+      return
+    }
+    if (!topLevel.includes(focusHelper.windowId)) {
+      throw new Error(
+        `Recorded focus helper window ${focusHelper.windowId} is not a visible top-level window during capture; ` +
+          `found ${topLevel.join(", ") || "none"}`,
+      )
+    }
+    if (!topLevel.includes(ownedWindowId)) {
+      throw new Error(`Capture requires only its owned visible top-level window; found ${topLevel.join(", ")}`)
+    }
+    const unexpected = topLevel.filter((id) => id !== ownedWindowId && id !== focusHelper.windowId)
+    if (unexpected.length > 0) {
       throw new Error(`Capture requires only its owned visible top-level window; found ${topLevel.join(", ")}`)
     }
   }
   await assertOwned()
+  await assertFocusHelperIdentity()
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const converter = (await command("magick", ["-version"])).toString().trim()
   const startupGeometry = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
@@ -217,13 +314,15 @@ export async function createLinuxCapture(
     }
     // Static-frame settling is recorded; callbacks own any temporal schedule.
     await new Promise<void>((resolve) => {
-      setTimeout(resolve, 150)
+      setTimeout(resolve, LINUX_CAPTURE_SETTLE_MS)
     })
     await assertOwned(deadline)
+    await assertFocusHelperIdentity(deadline)
     const before = (
       await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)
     ).toString()
     if (before !== expectedGeometry) throw geometryChangedError(windowId, featureId, expectedGeometry, before)
+    await assertFocusHelperClear(before, deadline)
     const observedWindow = windowPixels(before)
     if (observedWindow.width > screen.width || observedWindow.height > screen.height) {
       throw new Error(
@@ -307,5 +406,5 @@ export async function createLinuxCapture(
     })
     return { decoded, result }
   }
-  return { capture, captureRaw, declareWindowSize }
+  return { capture, captureRaw, declareWindowSize, settleMs: LINUX_CAPTURE_SETTLE_MS }
 }

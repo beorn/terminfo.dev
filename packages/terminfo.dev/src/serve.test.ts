@@ -805,6 +805,116 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
   return { stderr: result.stderr, observed: JSON.parse(line) as unknown }
 }
 
+/**
+ * #33013: the clipboard-config check lives in the collector, not in its helper, and a hosted Mac
+ * run presents one of two provenance shapes beside a null adapter config: no provenance at all, or
+ * a provenance whose fixture config is the launcher string. On 2026-11-10 a fix for this check
+ * merged without either shape being driven through `collectProbeRun`, so every hosted Mac run
+ * still refused at the check before measuring. These cases drive the caller, not the helper.
+ */
+it.each([
+  ["absent", ""],
+  ["a launcher string", "--config NONE"],
+])(
+  "a hosted Darwin run reaches its batch when the provenance is %s and the adapter config is null",
+  (_shape, launcherConfig) => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-clipboard-"))
+    const provenancePath = join(home, "runtime.json")
+    if (launcherConfig !== "") {
+      writeFileSync(
+        provenancePath,
+        JSON.stringify({
+          executable: { path: "/fixture/ghostty", sha256: "cd".repeat(32), version: "ghostty 1.3.1" },
+          sourceArtifact: { url: "https://example.invalid/ghostty.tar", sha256: "de".repeat(32) },
+          runtime: {
+            imageId: "sha256:" + "ef".repeat(32),
+            imageTarSha256: "12".repeat(32),
+            arch: "arm64",
+            nixLockRevision: "c".repeat(40),
+            sourceRevision: "b".repeat(40),
+            cleanTree: true,
+            suiteHash: "a".repeat(12),
+          },
+          fixture: {
+            definition: "callbacks",
+            config: launcherConfig,
+            font: "fixture",
+            geometry: "80x24",
+            display: "fixture",
+            gl: "fixture",
+          },
+        }),
+      )
+    }
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        [
+          'import { mock } from "bun:test"',
+          'Object.defineProperty(process, "platform", { value: "darwin" })',
+          'const tty = await import("./packages/terminfo.dev/src/tty.ts")',
+          'const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")',
+          'const geometry = { status: "measured", rows: 24, cols: 80 }',
+          'mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => ({ name: "ghostty", version: "1.3.1", os: "macos", osVersion: "fixture" }) }))',
+          'mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,',
+          "  ownedTerminalVerifiedFor: () => true,",
+          '  createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", appPid: process.pid,',
+          '    summary: JSON.stringify({ preflightIdentity: { pid: process.pid, startedAtEpochSeconds: 1792698257, launchRunId: "a".repeat(32) } }),',
+          "    readGeometry: async () => geometry,",
+          '    clipboard: { profile: "default", config: null, summary: "{}", assertOwned: async () => {} },',
+          "    dispose: async () => {} })",
+          "}))",
+          'mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,',
+          "  withRawMode: async callback => callback(), drainStdin: async () => {},",
+          "  queryWithSentinelOutcome: async (sequence, pattern) => {",
+          '    const raw = sequence.includes("[18t") ? "\\u001b[8;24;80t"',
+          '      : sequence.includes("[16t") ? "\\u001b[6;17;8t"',
+          '      : sequence.includes("[14t") ? "\\u001b[4;408;640t"',
+          '      : "\\u001bP>|ghostty 1.3.1\\u001b\\\\"',
+          '    return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: "reply" }',
+          "  }",
+          "}))",
+          'mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({ createDarwinCapture: async () => ({ capture: async () => { throw new Error("this fixture requests no frame") }, captureRaw: async () => { throw new Error("this fixture requests no frame") } }) }))',
+          'mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => ({ origin: { x: 0, y: 0 }, basis: "fixture", pixelGeometry: { scale: 1, rows: 24, cols: 80, width: 640, height: 408 } }) }))',
+          'const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")',
+          "globalThis.__TERMINFO_BUNDLED_SUITE__ = {",
+          '  manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },',
+          '  collectorRevision: "b".repeat(40)',
+          "}",
+          'const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")',
+          "let refusal, reached = false",
+          "try {",
+          '  await collectProbeRun({ ids: ["device.primary-da"], processOwner: { provider: "ghostty" } })',
+          "  reached = true",
+          "} catch (error) {",
+          "  refusal = error instanceof Error ? error.message : String(error)",
+          "}",
+          'console.log("RESULT " + JSON.stringify({ reached, refusal }))',
+        ].join("\n"),
+      ],
+      {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          HOME: home,
+          TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+          TERMINFO_DISPOSABLE_RECEIPT: "",
+          TERMINFO_RUNTIME_PROVENANCE: launcherConfig === "" ? "" : provenancePath,
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        },
+        encoding: "utf8",
+        timeout: 15_000,
+      },
+    )
+    const line = /RESULT (\{.*\})/.exec(result.stdout)?.[1]
+    if (!line) throw new Error(`clipboard fixture printed no RESULT line; stderr: ${result.stderr}`)
+    const observed = JSON.parse(line) as { reached: boolean; refusal?: string }
+    expect(observed.refusal ?? "").not.toMatch(/differs from runtime provenance/)
+    expect(observed.refusal ?? "").not.toMatch(/reading 'config'/)
+    expect(observed).toEqual({ reached: true })
+  },
+)
 describe("private finite daemon startup", () => {
   // @cto D5 (#30518): the owned-process arm captures through the SAME Darwin pixel install as the
   // hosted arm, for the pid its owner proof verified, and refuses by name when there is none.
@@ -1483,7 +1593,7 @@ describe("private finite daemon startup", () => {
           summary: "owned fixture",
           ...(arm !== "windowsHosted" && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => {
-            if (arm === "terminalApp") assert.equal(drains, 1, "Terminal qualification must drain before its first cell read")
+            if (app === "terminal-app") assert.equal(drains, 1, "Terminal qualification must drain before its first cell read")
             reads += 1
             return { status: "refused", reason: "text read refused by route fixture" }
           },
@@ -1523,17 +1633,25 @@ describe("private finite daemon startup", () => {
             await assert.rejects(options.capture({ role: "witness", label: "route fixture" }), /pixel frame fixture/)
           }
           if (retained) {
-            assert.equal(typeof options.prepareCapture, "function", "macOS text needs once-per-run preparation")
-            assert.equal(options.prepareCapturePhase, arm === "terminalApp" ? "after-probes" : undefined)
-            await options.prepareCapture({
-              source: {
-                rows: 4, cols: 12, queryMode: async () => "unknown",
-                queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-                write: () => { throw new Error("Paint before known mode state") }
-              },
-              featureId: "collector.captureCalibration",
-              recordCapture: () => { throw new Error("Capture before known mode state") }
-            })
+            // Only an owner that closes and proves its window qualifies after probes (32670); hosted
+            // iTerm2 and Kitty still qualify before probes, and the hosted pixel arm still calibrates first.
+            const ownerCloses = app === "terminal-app"
+            assert.equal(typeof options.finishCapture, ownerCloses ? "function" : "undefined")
+            assert.equal(typeof options.prepareCapture, arm === "terminalApp" ? "undefined" : "function")
+            for (const [prepare, featureId] of [
+              [options.prepareCapture, "collector.captureCalibration"],
+              [options.finishCapture, "collector.textQualification"],
+            ]) {
+              await prepare?.({
+                source: {
+                  rows: 4, cols: 12, queryMode: async () => "unknown",
+                  queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+                  write: () => { throw new Error("Paint before known mode state") }
+                },
+                featureId,
+                recordCapture: () => { throw new Error("Capture before known mode state") }
+              })
+            }
           }
           return {
             results: options.draft.results, rawReplies: {},
@@ -1561,13 +1679,13 @@ describe("private finite daemon startup", () => {
         process.exit(0)
       }
       const run = await collect()
-      if (arm === "terminalApp" && retained) {
-        assert.match(run.rawReplies["collector.windowDisposal"], /pending launcher/)
+      if (app === "terminal-app" && retained) {
+        assert.match(run.rawReplies["collector.windowDisposal"], arm === "terminalApp" ? /pending launcher/ : /pending the hosted workflow's/)
         assert.equal(run.rawReplies["collector.collectionStatus"], "Collected selected probe results; draft " + run.runId + " awaits final writer")
       } else assert.equal(run.rawReplies["collector.windowDisposal"], undefined)
       assert.equal(typeof capture, retained ? "function" : "undefined")
       assert.equal(captureKind, route === "text-cells" ? "text-cells" : "absent")
-      assert.equal(reads, arm === "terminalApp" && retained ? 1 : 0)
+      assert.equal(reads, app === "terminal-app" && retained ? 1 : 0)
       assert.equal(drains, 1, "Each completed collection drains once, never after Terminal qualification")
       assert.equal(pixelFrames, route === "pixels" ? 1 : 0)
       assert.equal(calibrations, route === "pixels" ? 1 : 0)

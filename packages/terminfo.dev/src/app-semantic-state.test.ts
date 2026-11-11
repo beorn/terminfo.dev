@@ -20,7 +20,8 @@ import {
   readAppSemanticState,
 } from "./app-semantic-state.ts"
 
-vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }))
+const weztermCli = vi.hoisted(() => vi.fn())
+vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), spawnSync: weztermCli }))
 vi.mock("./linux-capture.ts", async (original) => ({
   ...(await original<typeof import("./linux-capture.ts")>()),
   kittyAncestor: vi.fn(() => 123),
@@ -115,6 +116,100 @@ test("Screen never borrows the outer Kitty reader and mismatched attachments are
     reason: expect.stringContaining("attachment"),
   })
   expect(write).not.toHaveBeenCalled()
+})
+
+// #33001: exercise the collector's real owned CLI boundary and the shared OSC8 controls.
+// The native serializer emits ST plus charset/SGR prefixes (Luna's retained pinned-version byte excerpt).
+// Generic state-grader tests cannot catch this reader dropping link attributes or the post-close span.
+test("owned WezTerm OSC8 reads exact hyperlink spans, loses support with the feature, and rejects broken controls", async () => {
+  const runId = "a".repeat(32)
+  vi.stubEnv("TERMINFO_RUN_ID", runId)
+  vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+  vi.stubEnv("TERMINFO_TARGET_ID", "wezterm")
+  vi.stubEnv("TERMINFO_TARGET_VERSION", "0-unstable-2026-10-10")
+  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", "/owned/artifacts")
+  vi.stubEnv("WEZTERM_PANE", "17")
+  vi.stubEnv("WEZTERM_UNIX_SOCKET", "/owned/wezterm.sock")
+  vi.mocked(execFileSync).mockReturnValue("wezterm 0-unstable-2026-10-10\n")
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc8")!
+  for (const mode of [
+    "works",
+    "target-absent",
+    "unknown-applied",
+    "handled-absent",
+    "post-close-linked",
+    "wrong-pane",
+  ] as const) {
+    weztermCli.mockClear()
+    const rows = ["", "", ""]
+    const source = replayTermProbeSource(new Map())
+    source.write = (bytes) => {
+      const sample = /^\x1b\[(\d+);1H\x1b\[2K([\s\S]*)$/.exec(bytes)
+      if (!sample) return
+      const number = Number(sample[1])
+      let feed = sample[2]!
+      feed = feed.replace(/\x1b\]888;([^\x07]*)\x07/g, (_whole, body: string) =>
+        mode === "unknown-applied" ? `\x1b]8;${body}\x07` : "",
+      )
+      if ((mode === "target-absent" && number === 3) || (mode === "handled-absent" && number === 2)) {
+        feed = feed.replace(/\x1b\]8;[^\x07]*\x07/g, "")
+      }
+      if (mode === "post-close-linked" && number === 3) feed = feed.replace("\x1b]8;;\x07", "")
+      rows[number - 1] = "\x1b(B\x1b[0m" + feed.replaceAll("\x07", "\x1b\\")
+    }
+    weztermCli.mockImplementation((_file: string, args: readonly string[]) => {
+      const escaped = args?.includes("--escapes")
+      const text =
+        mode === "wrong-pane"
+          ? ["old foreign pane", "", ""]
+          : rows.map((row) =>
+              escaped ? row : row.replace(/\x1b\]8;[^\x1b]*\x1b\\/g, "").replaceAll("\x1b(B\x1b[0m", ""),
+            )
+      return {
+        status: 0,
+        signal: null,
+        stdout: Buffer.from(text.join("\r\n") + "\r\n"),
+        stderr: Buffer.alloc(0),
+      }
+    })
+    source.readAppSemanticState = (featureId, write) =>
+      readAppSemanticState({
+        featureId,
+        write,
+        runId,
+        executable: { path: "/owned/wezterm-gui", sha256: "b".repeat(64) },
+      })
+    const clock = mode === "wrong-pane" ? vi.spyOn(Date, "now").mockReturnValueOnce(0).mockReturnValue(6001) : undefined
+    const result = await definition.term!(source)
+    clock?.mockRestore()
+    if (mode === "unknown-applied" || mode === "handled-absent" || mode === "wrong-pane") {
+      expect(result.tests, mode).toMatchObject([{ status: "probe-invalid" }])
+      if (mode === "wrong-pane") expect(result.tests?.[0]?.reason).toContain("OSC8 marker")
+    } else if (mode === "post-close-linked") {
+      // A changed but wrong span stays pending under the shared state criterion, never Supported.
+      expect(result.tests, mode).toMatchObject([{ status: "probe-todo" }])
+    } else {
+      expect(result.observation, mode).toMatchObject({ outcome: mode === "works" ? "supported" : "unsupported" })
+    }
+    if (mode !== "wrong-pane") {
+      expect(
+        weztermCli.mock.calls.map(([file, args, options]) => ({
+          file,
+          args,
+          socket: options.env.WEZTERM_UNIX_SOCKET,
+          pane: options.env.WEZTERM_PANE,
+        })),
+      ).toContainEqual({
+        file: "/owned/wezterm",
+        args: expect.arrayContaining(["--pane-id", "17", "--escapes", "--end-line", "2"]),
+        socket: "/owned/wezterm.sock",
+        pane: "17",
+      })
+    }
+  }
+  expect(
+    appSemanticDeclarations({ kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", os: "linux" }),
+  ).not.toHaveProperty("extensions.osc8")
 })
 
 test("reader capability rows do not become declarations or lend their identity to another version", () => {
@@ -663,12 +758,34 @@ test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audi
   )
 })
 
-test("xterm 411 declares extensions.clipboard-paste untestable naming the unbuilt Shift+Insert PRIMARY route", () => {
-  const declared = appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
-  expect(declared["extensions.clipboard-paste"]).toMatch(
-    /^Untestable \(unbuilt Shift\+Insert\/PRIMARY route\): default xterm 411 has no Ctrl\+Shift\+V or CLIPBOARD paste binding, and its own default paste route \(Shift\+Insert or Button2 from X11 PRIMARY\) is not built in this probe\..*charproc\.c:15021-15061.*xterm\.man:5452,5481/,
-  )
-  expect(appSemanticDeclarations({ kind: "term", id: "xterm", version: "412", os: "linux" })).toEqual({})
+test("Ghostty 1.4.0 declares osc133-d and semantic-prompts untestable from the shipped default, not a missing bus (#33529)", () => {
+  const subject = { kind: "term" as const, id: "ghostty", version: "1.4.0", os: "linux" }
+  const present = appSemanticDeclarations(subject, {
+    observedAt: "2026-11-11T00:00:00.000Z",
+    address: "present" as const,
+    socket: { path: "/run/user/3001/bus", outcome: "present" as const },
+  })
+  const absent = appSemanticDeclarations(subject, {
+    observedAt: "2026-11-11T00:00:00.000Z",
+    address: "absent" as const,
+    socket: { path: "/run/user/3001/bus", outcome: "absent" as const, code: "ENOENT" },
+  })
+  for (const id of ["extensions.osc133-d", "extensions.semantic-prompts"] as const) {
+    // The declaration is a fact about the shipped configuration, so a live session bus cannot remove it: the
+    // per-run bus made both rows fall to "No reviewed App semantic reader" and read probe-todo (ghostty
+    // 2026-11-11T07-15-34-288Z-169c5c86d456).
+    expect(present[id]).toBe(absent[id])
+    expect(present[id]).toMatch(/^Untestable \(no setup\): Ghostty 1\.4\.0 at its shipped default configuration/)
+    for (const citation of [
+      "Config.zig:1214",
+      "1228-1231",
+      "Config.zig:1265",
+      "surface.zig:1192-1218",
+      "Terminal.zig:2266-2271",
+    ]) {
+      expect(present[id]).toContain(citation)
+    }
+  }
 })
 
 test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestable with source citations and routes not taken (#32947)", () => {

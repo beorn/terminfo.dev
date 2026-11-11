@@ -258,13 +258,13 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     !!focusBefore &&
     !!focusAfter &&
     focusBefore.ownedWindowId.length > 0 &&
-    focusBefore.rootWindowId.length > 0 &&
+    focusBefore.helperWindowId.length > 0 &&
     focusBefore.ownedWindowId === focusAfter.ownedWindowId &&
-    focusBefore.rootWindowId === focusAfter.rootWindowId &&
+    focusBefore.helperWindowId === focusAfter.helperWindowId &&
     [focusBefore, focusAfter].every(
       (reading) =>
         reading.focusedWindowIds[0] === reading.ownedWindowId &&
-        reading.focusedWindowIds[1] === reading.rootWindowId &&
+        reading.focusedWindowIds[1] === reading.helperWindowId &&
         reading.focusedWindowIds[2] === reading.ownedWindowId,
     )
   const styledFrames = samples.map((entry) => entry.styled)
@@ -634,7 +634,7 @@ export function sgrTermReadback(
       if (region) {
         const { savedRendition: _savedRendition, ...queryFallback } = region
         const verdict = await captureRegionCallbackResult(ctx, id, referenceFirst ? queryFallback : region, true)
-        if (verdict) return retainReference(verdict)
+        if (verdict) return retainReference(colourCaptureCallbackResult(id, verdict, { mux: ctx.mux }))
       }
       if (colour) {
         const verdict = await captureRegionCallbackResult(ctx, id, colour, true)
@@ -819,9 +819,9 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         const refusal = sgrPlainFixtureTooSmall(ctx)
         return refusal ?? (await armed(ctx))
       },
-      // Unchanged from the sgrProbe this replaced: an exception in this arm is recorded as query
-      // evidence, because the arm asks DECRQSS before any capture falls back.
-      "query_reply",
+      // #33165 (@cto f2adcbf3): a paint row is decided by its capture; the DECRQSS reply this arm asks
+      // first is supporting detail and never decides the cell (finalizeVisualResult).
+      "screenshot",
     ),
     termNeedsGeometry: true,
     libAssertionType: "buffer_state",
@@ -1469,7 +1469,7 @@ export const sgrProbes: ProbeDefinition[] = [
           const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
           if (refusal) return refusal
           const captured = await underlineColourIndexedCaptureResult(ctx)
-          if (captured) return captured
+          if (captured) return colourCaptureCallbackResult("sgr.underline-color-indexed", captured, { mux: ctx.mux })
         }
         return consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58:5:5m")
       },
@@ -1601,6 +1601,9 @@ export const sgrProbes: ProbeDefinition[] = [
 ]
 
 const visualSgrIds = new Set(sgrProbes.map(({ id }) => id))
+
+/** Why a paint row graded from a DECRQSS status reply alone is not decided (#33165, ruling 4, verbatim). */
+export const SGR_STATUS_REPLY_ONLY = "graded from a status reply only; this row is decided by what is painted"
 const muxVisualTests = new Map<string, { featureId: string | null; testId: string }>([
   ["sgr-blink-flat", { featureId: "sgr.blink", testId: "blink" }],
   ["sgr-attribute-same-run", { featureId: null, testId: "attribute" }],
@@ -1622,7 +1625,7 @@ const muxVisualTests = new Map<string, { featureId: string | null; testId: strin
  * existing path.
  */
 export const MUX_FONT_LIGATURE_NO_OBSERVABLE =
-  "ligature shaping is done by the host terminal; the multiplexer only emits text cells"
+  "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells"
 
 export function fontLigatureMuxCoverage(
   target: Pick<ProbeSubject, "kind">,
@@ -1689,6 +1692,21 @@ export function finalizeVisualResult(
     recorded.status === "unsupported" &&
     hasScreenshot
   ) {
+    // #33036 (@cto case 3): when the multiplexer's own DECRPM 0 accompanies the no-change
+    // pixels, attribution no longer needs the outer command trace. The probe records the
+    // DA1 parameters that answered beside the 0; tmux answers DA1 in the VT100 class
+    // (measured ?1;2;4c beside ?5;0$y, 2026-11-10 tmux 3.8 run), while an outer terminal's
+    // DA attributes the 0 to the outer terminal and the negative stays open below.
+    const muxId = "id" in target && typeof target.id === "string" ? target.id : undefined
+    const witness = recorded.tests.find((entry) => entry.id === "decrpm-zero-witness")
+    const da = witness?.reason?.match(/device attributes \?([0-9;]+)c beside it/)?.[1]
+    if (muxId === "tmux" && da !== undefined && da.split(";")[0] === "1") {
+      return finalizeProbeResult({
+        ...recorded,
+        reason:
+          "tmux reports DEC mode 5 not recognized (DECRPM 0, its own reply) and the frame did not change when it was set.",
+      })
+    }
     const reason =
       "Open: reverse-video pixels did not change through the mux and its outer terminal. Needed: the outer terminal command trace (the named Kitty --dump-commands reader)."
     return finalizeProbeResult({
@@ -1716,7 +1734,10 @@ export function finalizeVisualResult(
   }
   if (target.kind === "lib") return recorded
   if (hasScreenshot) return finalizeMuxVisualNegative(recorded, target)
-  const reason = "visual effect not observed in this run"
+  // #33165 (@cto f2adcbf3): a paint row is decided by what is painted. A DECRQSS status reply alone never
+  // decides it; the reply stays in the record and the cell is not decided.
+  const reason =
+    recorded.assertionType === "query_reply" ? SGR_STATUS_REPLY_ONLY : "visual effect not observed in this run"
   return finalizeProbeResult({
     ...recorded,
     reason,

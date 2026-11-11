@@ -243,7 +243,8 @@ describe("device query observations", () => {
       const result = await callback(item.id).terminal(terminal(da1, "sentinel", { atMs: 9, graceMs: 250 }))
       expect(result.response, item.id).toBe(da1)
       expect(result.observation, item.id).toMatchObject({
-        outcome: "unsupported",
+        outcome: "inconclusive",
+        reason: "fenced-silence",
         assertionType: "query_reply",
         note: "DA1 answered at +9ms; no reply through the 250 ms window",
       })
@@ -597,7 +598,8 @@ describe("device query observations", () => {
     const result = await callback("device.decrqss").terminal(script.ctx)
     expect(script.queries).toEqual([DECRQSS_SGR_QUERY])
     expect(result.observation).toMatchObject({
-      outcome: "unsupported",
+      outcome: "inconclusive",
+      reason: "fenced-silence",
       assertionType: "query_reply",
       note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
     })
@@ -916,6 +918,52 @@ describe("window-operation qualification", () => {
       await expect(callback(id).terminal(source)).rejects.toThrow("injected App title read error")
       expect(fixture.title()).toBe("incoming-title")
       expect(fixture.depth()).toBe(0)
+    }
+  })
+
+  /**
+   * @failure A terminal that shows the icon title (OSC 1) in preference to the OSC 2 title hid every
+   *   title control once device.xtwinops-20 left "test-icon" set: both title-stack rows read
+   *   "Owned title reader failed the OSC 2 controls" on WezTerm, whatever the push/pop behaviour
+   *   (#33035). xtwinops-20 now clears what it set, and the fixture clears any icon title before
+   *   its controls, so the controls read and push/pop are decided against them (@cto e9641d54).
+   * @level l1
+   * @consumer device.xtwinops-20/22/23 App callbacks on an icon-preferring title surface.
+   * @testonly none
+   */
+  test("an icon title never hides the title-stack controls", async () => {
+    const surface = () => {
+      let title = "incoming-title"
+      let icon: string | undefined
+      const source = {
+        write(bytes: string) {
+          for (const [, code, text] of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07/g)) {
+            if (code === "1") icon = text === "" ? undefined : text
+            else if (code === "2") title = text ?? ""
+            else if (code === "0") {
+              title = text ?? ""
+              icon = undefined
+            }
+          }
+          // XTWINOPS 22/23 are ignored: this surface keeps no title stack.
+        },
+        readTitle: async () => icon ?? title,
+        queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      } as unknown as TermProbeSource
+      return { source, icon: () => icon, title: () => title }
+    }
+    // In probe order: xtwinops-20 leaves no icon title behind.
+    const ordered = surface()
+    await callback("device.xtwinops-20").terminal(ordered.source)
+    expect(ordered.icon()).toBeUndefined()
+    // Out of order: an icon title left by anything else is cleared by the fixture itself.
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+      const leaked = surface()
+      leaked.source.write("\x1b]1;test-icon\x07")
+      const result = await callback(id).terminal(leaked.source)
+      expect(result.criterionBranch, id).not.toBe("app-title-control")
+      expect(result.observation?.outcome, id).toBe("unsupported")
+      expect(leaked.title(), id).toBe("test-icon")
     }
   })
 

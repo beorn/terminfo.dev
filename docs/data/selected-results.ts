@@ -11,7 +11,10 @@ import {
 } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
-import { supplementOf, type ContextSupplement } from "./context-supplements.ts"
+import { MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement } from "./context-supplements.ts"
+import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
+import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
+import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -70,7 +73,6 @@ export interface SelectedCell extends ReadObservation {
     runSha256: string
     rawReplyRef?: string
     screenshotRef?: string
-    correctionId?: string
     sources?: string[]
   }
 }
@@ -162,13 +164,31 @@ export interface SelectedContextCell {
   /** Environment groups are retained run metadata, outside the feature-result catalogue. */
   featureResult?: FeatureResult
   /**
-   * Set only when a context supplement (context-supplements.ts) read this open cell. `filled`: the cell is the
+   * Set only when a context supplement (context-supplements.ts) read this cell. `filled`: the cell is the
    * supplement's own result and run. `open`: the supplement gave no proof, so the default cell stays, with this reason.
+   * `noted`: a decided default cell keeps its status, reason and tests; the supplement's decided status is only a note
+   * (#33151, a supplement that declares notesDecided).
    */
   supplement?: { name: string; qualifier: string; runId: string; declaredDefault?: string } & (
     | { filled: true }
     | { filled: false; open: string }
+    | { filled: false; noted: ProbeResult["status"] }
   )
+  /**
+   * Set only when a reopened-cells row (reopened-cells.ts, #33164) withdrew this cell's grade: the feature result reads
+   * probe-todo, while `result`, `run` and `origin` stay the witnessed original.
+   */
+  reopened?: ReopenedMarker
+  /**
+   * Set only when a declared pair (derived-cells.ts, #33019) read this cell from a decided-Unsupported parent in the
+   * same context: the feature result reads unsupported, while `result`, `run` and `origin` stay the child's own.
+   */
+  derived?: DerivedMarker
+  /**
+   * Set only when a held-negatives row (held-negatives.ts, #33034) found this negative unwitnessed: no run under the
+   * same suite reads the feature Supported, so the cell reads probe-invalid while `result` stays the original.
+   */
+  held?: HeldMarker
 }
 
 /** An initialized draft can retain intent even when no measured subject or result exists. */
@@ -198,6 +218,8 @@ export interface SelectedContextSummary {
   contributingRunIds: string[]
   attempts: SelectedContextAttempt[]
   counts: Record<FeatureResultStatus, number>
+  /** Cells counted in `counts.unsupported` only by derivation (#33019); never direct measurements. */
+  derivedIds: string[]
   score: { supported: number; all: number }
   /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
   complete: boolean
@@ -327,10 +349,15 @@ interface SupplementInput {
   contextKey: string
 }
 
-/** A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions. */
+/**
+ * A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions, not a
+ * declared supplement, and for a mux the launcher's one default config (#33151, @cto 4a546051).
+ */
 function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): boolean {
   return (
     candidate.permissions === null &&
+    supplementOf(candidate) === undefined &&
+    (candidate.kind !== "mux" || candidate.config === MUX_DEFAULT_CONFIG) &&
     candidate.kind === supplement.kind &&
     candidate.id === supplement.id &&
     candidate.os === supplement.os &&
@@ -354,15 +381,30 @@ export function projectResults(
     workingRuns?: readonly LoadedRun[]
     workingAttempts?: readonly SelectedAttemptInput[]
     log?: (line: string) => void
+    /** Cells whose grade a ruling withdrew (content/reopened-cells.json); loadSelectedResults always passes them. */
+    reopened?: readonly ReopenedCell[]
+    /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
+    derived?: readonly DerivedPair[]
   },
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
+  checkReopenedWitnesses(policy.reopened ?? [], runs)
   // 30661: the context count is per target across every run the projection read, so a context key is
   // qualified exactly as the runs measured it rather than as whichever runs are current today.
   // 33119: a context supplement is never a context, so it is set aside before any context is counted or keyed.
   const supplementRuns = runs.filter((run) => supplementOf(run.subject) !== undefined)
   const contextRuns = runs.filter((run) => supplementOf(run.subject) === undefined)
+  // #33151: a Linux mux run is the launcher's default config or a declared supplement; any third config would read as
+  // a default context, so it is refused by name.
+  for (const run of contextRuns) {
+    const { kind, id, os, config } = run.subject
+    if (kind === "mux" && os === "linux" && config !== MUX_DEFAULT_CONFIG) {
+      throw new Error(
+        `${run.runId}: mux ${id} records config ${JSON.stringify(config)}, which is neither the default ${MUX_DEFAULT_CONFIG} nor a declared context supplement`,
+      )
+    }
+  }
   const contexts = countContexts(contextRuns)
   const currentRuns = contextRuns.filter((run) => run.schemaVersion === 3 || run.schemaVersion === 4)
   const ids = new Set<string>()
@@ -485,7 +527,60 @@ export function projectResults(
       admittedContextKeys(projection.versions),
       policy.log,
       supplements,
+      policy.reopened ?? [],
+      policy.derived ?? DERIVED_UNSUPPORTED,
     ),
+  }
+}
+
+/** Every witness of a reopened row is a run the projection read, citing the row's feature at that assertion index. */
+function checkReopenedWitnesses(rows: readonly ReopenedCell[], runs: readonly LoadedRun[]): void {
+  const byId = new Map(runs.map((run) => [run.runId, run]))
+  for (const row of rows) {
+    for (const { runId, assertionIndex } of row.witnesses) {
+      const run = byId.get(runId)
+      if (!run) throw new Error(`Reopened cell ${cellLabel(row)} cites witness run ${runId}, which is not placed`)
+      const assertion = run.assertions[assertionIndex]
+      if (assertion?.featureId !== row.featureId) {
+        throw new Error(
+          `Reopened cell ${cellLabel(row)} cites ${runId} assertion ${assertionIndex}, which is ${
+            assertion ? `for ${assertion.featureId}` : "absent"
+          }`,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Read the reopened rows into one context's cells (#33164). A row whose cell this context grades as the row's withdrawn
+ * grade reopens it: the feature result reads probe-todo with the row's words; result, run and origin stay. A
+ * remeasured row whose cell is graded under a suite it does not name is stale and throws.
+ */
+function applyReopened(
+  contextKey: string,
+  cells: Record<string, SelectedContextCell>,
+  subject: ProbeSubject | undefined,
+  rows: readonly ReopenedCell[],
+  applied: Set<ReopenedCell>,
+): void {
+  if (!subject) return
+  for (const row of rows) {
+    if (row.kind !== subject.kind || row.id !== subject.id || row.os !== subject.os) continue
+    const cell = cells[row.featureId]
+    const featureResult = cell?.featureResult
+    if (!cell || featureResult?.status !== row.graded) continue
+    if (row.exit.kind === "remeasured" && !row.exit.suiteIds.includes(cell.run.suiteId)) {
+      throw new Error(
+        `Reopened cell ${cellLabel(row)} is graded ${row.graded} in ${contextKey} by run ${cell.run.runId} under suite ${cell.run.suiteId}, which the row does not name; it was re-measured, so delete the row`,
+      )
+    }
+    cells[row.featureId] = {
+      ...cell,
+      featureResult: { ...featureResult, status: "probe-todo", strength: null },
+      reopened: { reason: row.reason, reopenedOn: row.reopenedOn, exit: row.exit.kind },
+    }
+    applied.add(row)
   }
 }
 
@@ -522,7 +617,10 @@ function composeContextSummaries(
   contextKeys: ReadonlyMap<string, string>,
   log?: (line: string) => void,
   supplements: readonly SupplementInput[] = [],
+  reopened: readonly ReopenedCell[] = [],
+  derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
 ): Record<string, SelectedContextSummary> {
+  const reopenedApplied = new Set<ReopenedCell>()
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
     // A pass may cite its original draft and its sealed admitted snapshot: one run, different
@@ -530,6 +628,7 @@ function composeContextSummaries(
     if (!runsById.has(run.runId)) runsById.set(run.runId, run)
   }
   const runs = [...runsById.values()]
+  const heldWitnesses = supportedSuites(runs, HELD_NEGATIVES)
   const baselineIds = new Set(baselineRunIds)
   const workingIds = new Set(workingRuns.map((run) => run.runId))
   // Working inputs cannot rename an admitted key; see workingSubjectKey.
@@ -708,6 +807,11 @@ function composeContextSummaries(
       supplements.filter((input) => input.contextKey === contextKey),
       decided,
     )
+    applyReopened(contextKey, cells, candidates[0]?.subject, reopened, reopenedApplied)
+    // Before derivation, so a held child can still read its parent's refusal (#33034, @cto edab7573).
+    applyHeld(cells, HELD_NEGATIVES, heldWitnesses)
+    // After reopening, so a reopened parent reads probe-todo and entails nothing (#33019, @cto 6588ac5f).
+    const derivedIds = applyDerived(contextKey, cells, derivedPairs)
     const contributing = new Set(
       [...currentMethods.values()].flatMap(({ probes }) => [...probes.values()].map(({ run }) => run.runId)),
     )
@@ -723,6 +827,7 @@ function composeContextSummaries(
       viewIds.map((featureId) => ({
         featureId,
         status: cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo",
+        ...(cells[featureId]?.derived && { derived: cells[featureId]?.derived }),
       })),
       viewIds,
     )
@@ -746,9 +851,19 @@ function composeContextSummaries(
       contributingRunIds,
       attempts,
       counts: aggregate.counts,
+      derivedIds,
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
     }
+  }
+  // No silent no-match: a row that reopened nothing names a cell no context grades that way any more.
+  const unmatched = reopened.filter((row) => !reopenedApplied.has(row))
+  if (unmatched.length > 0) {
+    throw new Error(
+      `${unmatched.length} reopened row(s) match no context cell graded as withdrawn; delete or re-confirm: ${unmatched
+        .map((row) => `${cellLabel(row)} (${row.graded})`)
+        .join(", ")}`,
+    )
   }
   return summaries
 }
@@ -771,7 +886,13 @@ function applySupplements(
   for (const id of ids) {
     const prior = cells[id]
     const priorStatus = prior?.featureResult?.status ?? prior?.result.status
-    if (priorStatus !== undefined && decided.has(priorStatus)) continue
+    const priorDecided = priorStatus !== undefined && decided.has(priorStatus)
+    if (
+      priorDecided &&
+      !newestFirst.some(({ supplement }) => supplement.notesDecided && supplement.featureIds.includes(id))
+    ) {
+      continue
+    }
     const source = newestFirst.find(
       ({ run, supplement }) =>
         supplement.featureIds.includes(id) &&
@@ -779,8 +900,14 @@ function applySupplements(
         run.results?.some((result) => result.featureId === id && result.attempt.scope !== "none"),
     )
     const result = source?.run.results?.find((entry) => entry.featureId === id)
-    if (!source || !result || !decided.has(result.status)) continue
+    if (!source || !result) continue
     const { run, supplement } = source
+    const ignoresInSilence = supplement.silentIgnore.includes(run.subject.id)
+    // A non-mux no-reply publishes probe-invalid (probe-defs extensions.ts, `no-response`). On an app that may ignore
+    // the setting without a word, that is the very case `notInForce` names, so it reaches the branch below (33324).
+    if (!decided.has(result.status) && !(ignoresInSilence && result.status === "probe-invalid" && !priorDecided)) {
+      continue
+    }
     const declaredDefault = supplement.declaredDefaults[run.subject.id]
     const marker = {
       name: supplement.name,
@@ -788,7 +915,14 @@ function applySupplements(
       runId: run.runId,
       ...(declaredDefault && { declaredDefault }),
     }
-    if (result.status !== "supported" && supplement.silentIgnore.includes(run.subject.id)) {
+    if (priorDecided) {
+      // A decided default cell keeps its status, reason and tests: the supplement's decided status is a note only.
+      if (prior && supplement.notesDecided) {
+        cells[id] = { ...prior, supplement: { ...marker, filled: false, noted: result.status } }
+      }
+      continue
+    }
+    if (result.status !== "supported" && ignoresInSilence) {
       // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open. A
       // schema-4 default run records every catalog id, so a prior cell is present; were one absent, there is no cell
       // to mark and the id stays absent, which every reader already reads as probe-todo (statesFor).
@@ -901,7 +1035,8 @@ export function loadSelectedResults(
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
-  const catalog = Object.keys(loadFeatures(contentDir))
+  const features = loadFeatures(contentDir)
+  const catalog = Object.keys(features)
   const runs = loadStoredRuns(contentDir, catalog)
   const verifiedArtifacts = new Set<string>()
   const textSnapshots = new Map<string, Uint8Array>()
@@ -926,6 +1061,7 @@ export function loadSelectedResults(
       workingRuns: options.workingRuns,
       workingAttempts: options.workingAttempts,
       log: (line) => console.log(line),
+      reopened: loadReopenedCells(contentDir, features),
     },
     loadArchivedExclusions(contentDir),
   )

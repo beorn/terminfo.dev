@@ -121,6 +121,45 @@ it("keeps mux reverse-video pixel negatives pending without changing query or ba
   expect(finalizeVisualResult(query, { kind: "mux" }, [])).toEqual(query)
 })
 
+// #33036 (@cto case 3): on tmux, its own DECRPM 0 answers the attribution question the outer
+// command trace was needed for, so 0 and the same-run no-change pixel read decide together.
+it("decides tmux reverse video from its own DECRPM 0 beside the no-change pixels; an outer DA or no pixel read stays open", () => {
+  const ref = `sha256:${"f".repeat(64)}`
+  const frame: ObservationFrame = { kind: "pixels", role: "target", ref, capturedAt: 1, label: "Owned target pixels" }
+  const witnessed = (da: string): ProbeResult => ({
+    featureId: "modes.reverse-video",
+    status: "unsupported",
+    attempt,
+    tests: [
+      { id: "criterion", status: "unsupported", attempt },
+      {
+        id: "decrpm-zero-witness",
+        status: "unsupported",
+        attempt,
+        reason: `DECRPM mode 5 returned Ps 0 with device attributes ?${da}c beside it`,
+      },
+    ],
+    screenshotRef: ref,
+  })
+  const tmux = { kind: "mux", id: "tmux", outerTerminal: "kitty" } as const
+  const decided = finalizeVisualResult(witnessed("1;2;4"), tmux, [frame])
+  expect(decided.status).toBe("unsupported")
+  expect(decided.reason).toBe(
+    "tmux reports DEC mode 5 not recognized (DECRPM 0, its own reply) and the frame did not change when it was set.",
+  )
+  expect(decided.tests.some((entry) => entry.id === "outer-command-reader")).toBe(false)
+  // The outer terminal's own device attributes attribute the 0 to the outer terminal, not tmux.
+  const outer = finalizeVisualResult(witnessed("62;4;22"), tmux, [frame])
+  expect(outer.status).toBe("probe-todo")
+  expect(outer.tests.some((entry) => entry.id === "outer-command-reader")).toBe(true)
+  // No pixel read in the run: the witness alone never decides here (the probe itself refuses a
+  // Ps 0 without owned pixel readback as probe-invalid, covered in modes-observations).
+  const noPixels = finalizeVisualResult({ ...witnessed("1;2;4"), screenshotRef: undefined }, tmux, [])
+  expect(noPixels.reason).not.toBe(
+    "tmux reports DEC mode 5 not recognized (DECRPM 0, its own reply) and the frame did not change when it was set.",
+  )
+})
+
 // One shared owner covers the whole registry and status fold. Native tests retain only the
 // distinct capture-transport binding; headless tests retain manifest-to-checkpoint delivery.
 it("requires app and mux visual evidence while preserving library cell and non-SGR results", () => {
@@ -1358,6 +1397,23 @@ it("starts schema 4 drafts with explicit live source and rejects an unbound trac
     intendedSubject: { kind: "term", id: "kitty" },
   })
   expect(() => initializeRunDraft({ ...input, source: { kind: "trace" } } as never)).toThrow(/trace/i)
+})
+
+// A wall cut off the callback, so the harness has no reading of the terminal; grading the row
+// probe-invalid would name a terminal failure that nobody measured (#33431).
+it("grades a callback abandoned at its wall as probe-todo with the wall as its reason", () => {
+  const result = recordExecutedProbe({
+    featureId: "reset.ris",
+    attempt: { scope: "probe", startedAt: "2026-11-11T06:00:00.000Z" },
+    harnessOutcome: "probe-exceeded",
+    assertions: [],
+  })
+  expect(result).toMatchObject({
+    status: "probe-todo",
+    harnessOutcome: "probe-exceeded",
+    reason: "The callback exceeded its wall; the harness abandoned it before it recorded a result",
+  })
+  expect(result.tests).toEqual([expect.objectContaining({ id: "criterion", status: "probe-todo" })])
 })
 
 it("records an IncompleteReplay diagnostic as unfinished-calls", () => {

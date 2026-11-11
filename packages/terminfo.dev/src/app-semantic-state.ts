@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join } from "node:path"
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { readCallLog } from "viprobe"
+import { ANSI_REGEX } from "@silvery/ansi"
 import {
   sgrProbes,
   type AppSemanticReading,
@@ -11,6 +12,7 @@ import {
 } from "@terminfo/probe-defs"
 import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
+import { readWindowsWezTermRows } from "./windows-wezterm-text.ts"
 
 // Reviewed declarations match the exact App/mux version.
 // This is also the collector-side home for the owned semantic reader's App selection.
@@ -239,15 +241,17 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Ghostty 1.4.0 has no OSC 633 parser or corresponding stored command-line/Cwd reader. Read tag v1.4.0 src/terminal/osc.zig:485 and src/input/Binding.zig; opening a new tab is not this probe's Cwd reader.",
   })),
+  // #33529 (@chief 2026-11-11T15:18Z): no readback at ghostty's SHIPPED default, which is what every App run is
+  // launched at. The notification that carries the exit code needs three deviations from that default, and a
+  // launch naming a notification setting is refused as non-default, so that route can never grade this row.
   ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
     kind: "term",
     id: "ghostty",
     version: "1.4.0",
     os: "linux",
     featureId,
-    requiresMissingSessionBus: true as const,
     reason:
-      "Untestable (no setup): Ghostty 1.4.0 exposes the end mark, but the exit number reaches a desktop notification. Read tag v1.4.0 src/terminal/Terminal.zig:2266-2271 and src/apprt/gtk/class/surface.zig:1204-1218. A mark alone cannot observe D or the complete A/C/D cycle.",
+      "Untestable (no setup): Ghostty 1.4.0 at its shipped default configuration exposes no readback of OSC 133;D. notify-on-command-finish defaults to never and its action to bell without notify (src/config/Config.zig:1214, 1228-1231), a notification also needs a command longer than five seconds (src/config/Config.zig:1265), and the path reaching sendDesktopNotification is gated on all three (src/apprt/gtk/class/surface.zig:1192-1218). OSC 133;D itself only sets internal row content (src/terminal/Terminal.zig:2266-2271). The run is at that default by construction: a launch naming any notification setting is refused as non-default, so a notification read cannot grade this row.",
   })),
   {
     kind: "term",
@@ -552,15 +556,6 @@ const declarations: readonly AppSemanticCapability[] = [
     featureId,
     reason: `Untestable (no way): tmux 3.8 has no OSC ${code} handler and drops it in the unknown-OSC default of its input parser. Read from source, not measured. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699 dispatches only 0, 2, 4, 7, 8, 9, 10, 11, 12, 52, 104, 110, 111, 112 and 133, and every other option reaches the default at input.c:2775-2777, which only logs at debug level and returns. The file's only pass-through is DCS (input_exit_dcs, the allow-passthrough option), which does not carry OSC. A debug-only drop with no state, reply or readback is not a command-specific refusal, and the run image's tmux 3.8 keeps no verbose log to read it from.`,
   })),
-  {
-    kind: "term",
-    id: "xterm",
-    version: "411",
-    os: "linux",
-    featureId: "extensions.clipboard-paste",
-    reason:
-      "Untestable (unbuilt Shift+Insert/PRIMARY route): default xterm 411 has no Ctrl+Shift+V or CLIPBOARD paste binding, and its own default paste route (Shift+Insert or Button2 from X11 PRIMARY) is not built in this probe. In xterm-411.tgz (SHA256 969be283), VTInitTranslations in charproc.c:15021-15061 and xterm.man:5452,5481 bind Shift<KeyPress>Insert and <Btn2Up> to insert-selection(SELECT, CUT_BUFFER0) under default selectToClipboard=false, while Ctrl+Shift+V falls through ~Meta<KeyPress>:insert-seven-bit() and emits 0x16 instead of pasting.",
-  },
   // #32947 (@cto 8ca3f1d9): remaining 19 Linux App semantic-prompt rows at their exact pinned versions.
   ...[
     "extensions.osc633-a",
@@ -676,8 +671,7 @@ const declarations: readonly AppSemanticCapability[] = [
     version: "0-unstable-2026-10-10",
     os: "linux",
     featureId: "extensions.osc8",
-    reason:
-      "Untestable (no setup): WezTerm 0-unstable-2026-10-10 parses OSC 8 hyperlinks into CellAttributes and re-emits them via wezterm cli get-text --escapes, which is not yet wired into the collector's App semantic reader and emits no unknown-OSC log line. Read e2a98e1b8af1 wezterm-escape-parser/src/osc.rs:318,470,571-572, wezterm-escape-parser/src/hyperlink.rs:76-119, term/src/terminalstate/performer.rs:773-775, wezterm/src/cli/get_text.rs:34,86-87 and lua-api-crates/termwiz-funcs/src/lib.rs:247-303; wiring wezterm cli get-text --escapes with before/after App qualification is tracked in #33001.",
+    reader: "osc8",
   },
 ] as const
 
@@ -1254,23 +1248,41 @@ export async function readAppSemanticState(input: {
         }
       }
     }
-    if (!tmux || !pane) throw new Error("App state reader has no bound tmux command")
-    const command = tmux
-    const targetPane = pane
-    if (row.reader === "osc8") {
+    if (row.reader === "osc8" && ((tmux && pane) || subject.id === "wezterm")) {
+      const command = tmux
+      const targetPane = pane
+      const readRows = (escapes: boolean) => {
+        if (command && targetPane) {
+          return command("capture-pane", "-p", ...(escapes ? ["-e"] : []), "-t", targetPane)
+        }
+        const read = readWindowsWezTermRows({
+          executable: join(dirname(input.executable.path), "wezterm"),
+          pane: env.WEZTERM_PANE,
+          socket: env.WEZTERM_UNIX_SOCKET,
+          rows: 3,
+          escapes,
+        })
+        if (read.status === "refused") throw new Error(read.reason)
+        detail.phases.push({ wezterm: JSON.parse(read.receipt) })
+        // Keep hyperlink escapes and their params; only discard the serializer's presentation wrappers.
+        return read.rows
+          .join("\n")
+          .replace(ANSI_REGEX, (code) => (code.startsWith("\x1b]8;") || code.startsWith("\x9d8;") ? code : ""))
+          .replaceAll("\x1b(B", "")
+      }
       let serial = 0
       const sample = async (number: number, feed: string) => {
         const marker = `Q-${nonce}-${serial++}`
         input.write(`\x1b[${number};1H\x1b[2K${feed}${marker}`)
         await until(
-          () => command("capture-pane", "-p", "-t", targetPane),
+          () => readRows(false),
           (value) => value.split("\n")[number - 1]?.includes(marker) === true,
-          "tmux osc8 marker",
+          "OSC8 marker",
         )
-        const escaped = command("capture-pane", "-p", "-e", "-t", targetPane)
+        const escaped = readRows(true)
         const line = escaped.split("\n")[number - 1]
         const index = line?.lastIndexOf(marker) ?? -1
-        if (line === undefined || index < 0) throw new Error(`Unreadable tmux osc8 row${number}`)
+        if (line === undefined || index < 0) throw new Error(`Unreadable OSC8 row${number}`)
         const value = line.slice(0, index) + line.slice(index + marker.length)
         detail.phases.push({ number, feed, marker, line, escaped, value })
         return value
@@ -1305,6 +1317,9 @@ export async function readAppSemanticState(input: {
         input.write("\x1b]8;;\x07\x1b[2J\x1b[3J\x1b[H")
       }
     }
+    if (!tmux || !pane) throw new Error("App state reader has no bound tmux command")
+    const command = tmux
+    const targetPane = pane
     const format = () => {
       const fields = command("display-message", "-p", "-t", targetPane, "#{pane_command_status}\t#{pane_path}")
         .replace(/\n$/, "")

@@ -11,7 +11,7 @@ import * as nodeFs from "node:fs"
 import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { afterEach, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createCallLog, readCallLog, withCallLog } from "viprobe"
 import {
   ALL_PROBES,
@@ -186,19 +186,19 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc7-cwd" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "modes.decsclm" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc633-e" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-b" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-p" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.semantic-prompts" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc133-d" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc133-a" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc133-p" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-d" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-a" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-a" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc-633-vscode" },
@@ -206,19 +206,18 @@ it.each([
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc440-audio" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc3008-context" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc176-app-id" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc440-audio" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc555-flash" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc710-font-normal" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.clipboard-paste" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc555-flash" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc710-font-normal" },
   // #32601: existing subjects cannot catch a missing Alacritty audit or identity leakage from its one-cell declaration.
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc710-font-normal" },
   // #32918: Alacritty implements no OSC 133/633, so its thirteen prompt cells are declarations, not runs.
@@ -234,13 +233,13 @@ it.each([
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc710-font-normal" },
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc633-e" },
-  // #32948: 6 Linux App and mux OSC 8 hyperlink declarations.
+  // #32948: Linux App and mux OSC 8 hyperlink declarations. WezTerm's is no longer one: c0651cbe8 (33001)
+  // reads its owned OSC 8 link spans, so its declarations drop to 8 and omit extensions.osc8 (33455).
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc8" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc8" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc8" },
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc8" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc8" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc8" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 9, feature: "extensions.osc8" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
@@ -329,6 +328,10 @@ it.each([
 })
 
 // @failure An unreadable socket or a present address is mistaken for a missing current-run bus.
+// #33529 (@chief Option A 2026-11-11T15:18Z) took `extensions.osc133-d` and `extensions.semantic-prompts` off
+// `requiresMissingSessionBus`: their no-setup sentence now comes from Ghostty's shipped default and must therefore
+// appear in EVERY arm, whatever the bus records. The @failure subject is preserved on the two rows that still declare
+// the requirement -- `extensions.notifications` and `extensions.osc777-notify` -- which is what this test selects on.
 it.each(["address present", "socket present", "socket unreadable", "both absent", "not a directory"] as const)(
   "selects Ghostty no-setup only from current-run absence: %s",
   (state) => {
@@ -358,9 +361,21 @@ it.each(["address present", "socket present", "socket unreadable", "both absent"
       expect(JSON.stringify(record)).not.toContain("secret-address-never-retained")
       const selected = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" }, record)
       const absent = state === "both absent" || state === "not a directory"
-      expect(Object.keys(selected)).toHaveLength(absent ? 22 : 18)
-      if (absent) expect(selected["extensions.osc133-d"]).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
-      else expect(selected["extensions.osc133-d"]).toBeUndefined()
+      expect(Object.keys(selected)).toHaveLength(absent ? 22 : 20)
+      for (const featureId of ["extensions.notifications", "extensions.osc777-notify"] as const) {
+        if (absent) {
+          expect(selected[featureId], state).toContain(
+            "Untestable (no setup): ghostty 1.4.0 desktop notification delivery requires a session bus.",
+          )
+          expect(selected[featureId], state).toContain("This run has no DBUS_SESSION_BUS_ADDRESS")
+        } else expect(selected[featureId], state).toBeUndefined()
+      }
+      const shippedDefault = "at its shipped default configuration exposes no readback of OSC 133;D"
+      for (const featureId of ["extensions.osc133-d", "extensions.semantic-prompts"] as const) {
+        expect(selected[featureId], state).toContain(shippedDefault)
+        expect(selected[featureId], state).not.toContain("session bus")
+      }
+      expect(selected["extensions.semantic-prompts"], state).toBe(selected["extensions.osc133-d"])
       if (state === "socket unreadable") expect(record.socket.code).toBe("EACCES")
       stat.mockClear()
       readSessionBus({})
@@ -887,13 +902,16 @@ it("projects Terminal.app identity replies without mistaking the DA1 sentinel fo
   expect(batch.observations).toMatchObject([
     { featureId: "device.primary-da", outcome: "supported" },
     { featureId: "device.secondary-da", outcome: "supported" },
+    // #33165: the sentinel helper marks a fenced silence inconclusive and decides nothing; the recorder grades it
+    // once from the row's silence rule, and the default rule is Unsupported (asserted on the result row below).
     {
       featureId: "device.xtversion",
-      outcome: "unsupported",
+      outcome: "inconclusive",
       assertionType: "query_reply",
       note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
     },
   ])
+  expect(batch.results.find((result) => result.featureId === "device.xtversion")?.status).toBe("unsupported")
   expect(batch.assertions).toContainEqual({
     featureId: "device.xtversion",
     kind: "negative",
@@ -973,7 +991,7 @@ it("retains the focus report emitted while enabling 1004", async () => {
         if (enabled) process.stdin.emit("data", Buffer.from("\x1b[O\x1b[I"))
         return {
           ownedWindowId: "42",
-          rootWindowId: "543",
+          helperWindowId: "543",
           focusedWindowIds: ["42", "543", "42"] as [string, string, string],
         }
       },
@@ -987,8 +1005,8 @@ it("retains the focus report emitted while enabling 1004", async () => {
     enableTimeReport: "\x1b[I",
     roundTrip: "\x1b[O\x1b[I",
     focus: {
-      enabled: { ownedWindowId: "42", rootWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
-      reset: { ownedWindowId: "42", rootWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
+      enabled: { ownedWindowId: "42", helperWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
+      reset: { ownedWindowId: "42", helperWindowId: "543", focusedWindowIds: ["42", "543", "42"] },
     },
   })
 })
@@ -1090,6 +1108,38 @@ it.each(
   else expect(reads.length).toBeGreaterThan(1)
 })
 
+// #33375: the OSC 7 title reader installs from the owned run, never from a subject name. The first assertion
+// is the installation itself: an App that used to fall through now reads its own title. Only Ghostty, whose
+// deciding negative is established, reads Unsupported when the title carries no path.
+it.each([
+  { subject: { kind: "term", id: "alacritty", os: "linux" }, expected: "probe-todo" },
+  { subject: { kind: "term", id: "kitty", os: "linux" }, expected: "probe-todo" },
+  { subject: { kind: "term", id: "wezterm", os: "linux" }, expected: "probe-todo" },
+  { subject: { kind: "term", id: "ghostty", os: "linux" }, expected: "unsupported" },
+] as const)("installs the OSC 7 title reader on $subject.id without a name gate", async ({ subject, expected }) => {
+  verifiedBatchFixture()
+  let title = "incoming App title"
+  process.stdout.write = ((bytes: string) => {
+    const match = /^\x1b\]2;([^\x07]*)\x07$/.exec(bytes)
+    if (match) title = match[1]!
+    return true
+  }) as typeof process.stdout.write
+  const id = "extensions.osc7-cwd"
+  const batch = await runProbeBatch({
+    ids: [id],
+    subject,
+    ownedTerminal: { ...geometryOwner(noGeometry), readTitle: async () => title },
+  })
+  const row = batch.results.find((result) => result.featureId === id)!
+  const trace = JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }
+  expect(trace.titleReads.length).toBeGreaterThan(1)
+  expect({ status: row.status, reason: row.reason }).toMatchObject(
+    expected === "probe-todo"
+      ? { status: "probe-todo", reason: expect.stringMatching(/carried neither OSC 7 path/) }
+      : { status: "unsupported" },
+  )
+})
+
 // #32573: direct callback cases cannot detect a collector that drops or exposes a foreign title reader.
 it.each([false, true])("binds the title reader and its raw readings only to the owned run: %s", async (owned) => {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(owned)
@@ -1185,7 +1235,14 @@ it.each([
     const row = batch.results.find((result) => result.featureId === id)!
     expect(row.status).toBe(expected)
     if (expected === "probe-todo") {
-      expect(row.reason).toBe("visual effect not observed in this run")
+      // #33165 (@cto f2adcbf3): a status reply alone never decides a paint row and says so; a screenshot
+      // assertion without this feature's own frame keeps the visual-not-observed reason.
+      const statusReplyOnly = evidence === "foreign-captured" || evidence === "none"
+      expect(row.reason).toBe(
+        statusReplyOnly
+          ? "graded from a status reply only; this row is decided by what is painted"
+          : "visual effect not observed in this run",
+      )
       expect(row.tests).toContainEqual(expect.objectContaining({ status: "probe-todo", reason: row.reason }))
       expect(batch.observations.find((observation) => observation.featureId === id)?.outcome).toBe(outcome)
     }
@@ -1780,6 +1837,8 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   })
 })
 
+type CapturePreparation = NonNullable<NonNullable<Parameters<typeof runProbeBatch>[0]>["prepareCapture"]>
+
 it.each([undefined, "after-probes"] as const)(
   "prepares capture once with the full retained trace (phase: %s)",
   async (phase) => {
@@ -1823,28 +1882,28 @@ it.each([undefined, "after-probes"] as const)(
           }
         }
       }
+      const prepare: CapturePreparation = async ({ source: probeSource, featureId, recordCapture }) => {
+        expect(featureId).toBe("collector.captureCalibration")
+        expect(prepared).toBe(false)
+        order.push("prepare")
+        expect(await probeSource.queryMode(25)).toBe("set")
+        probeSource.write("calibration:paint-witness")
+        prepared = true
+        Object.assign(probeSource, {
+          captureGeometry: {
+            geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+            source: "measured by complete raster calibration",
+          },
+        })
+        recordCapture({
+          frame: { role: "control", ref: captureRef, capturedAt: 1, label: "origin calibration" },
+          trace: { captureCommand: "fixture-capture" },
+        })
+      }
       const batch = await runProbeBatch({
         ids,
-        ...(phase && { prepareCapturePhase: phase }),
         ownedTerminal: geometryOwner(measured(24, 80)),
-        prepareCapture: async ({ source: probeSource, featureId, recordCapture }) => {
-          expect(featureId).toBe("collector.captureCalibration")
-          expect(prepared).toBe(false)
-          order.push("prepare")
-          expect(await probeSource.queryMode(25)).toBe("set")
-          probeSource.write("calibration:paint-witness")
-          prepared = true
-          Object.assign(probeSource, {
-            captureGeometry: {
-              geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
-              source: "measured by complete raster calibration",
-            },
-          })
-          recordCapture({
-            frame: { role: "control", ref: captureRef, capturedAt: 1, label: "origin calibration" },
-            trace: { captureCommand: "fixture-capture" },
-          })
-        },
+        ...(phase === undefined ? { prepareCapture: prepare } : { finishCapture: prepare }),
       })
       expect(order).toEqual(
         phase === undefined
@@ -1874,6 +1933,106 @@ it.each([undefined, "after-probes"] as const)(
     }
   },
 )
+
+describe("an after-probes finish beside a before-probes preparation (32670)", () => {
+  const id = "reset.ris"
+  const probeOrder: string[] = []
+  let callbackSource: TermProbeSource | undefined
+  let restore: () => void = () => {}
+  beforeEach(() => {
+    verifiedBatchFixture()
+    probeOrder.length = 0
+    callbackSource = undefined
+    const definition = ALL_PROBES.find((item) => item.id === id)!
+    const original = {
+      term: definition.term,
+      termNeedsGeometry: definition.termNeedsGeometry,
+      termWrites: definition.termWrites,
+    }
+    restore = () => Object.assign(definition, original)
+    delete definition.termNeedsGeometry
+    definition.termWrites = "query"
+    definition.term = async (probeSource) => {
+      callbackSource = probeSource
+      probeOrder.push("callback")
+      probeSource.write("fixture:reset.ris")
+      return {
+        pass: false,
+        tests: [
+          { id: "criterion", status: "probe-todo", reason: "Lifecycle fixture does not measure terminal support" },
+        ],
+      }
+    }
+    process.stdout.write = (() => true) as typeof process.stdout.write
+  })
+  afterEach(() => restore())
+
+  // CTO26812ffa: phase order alone misses a second preparation rewriting state already handed to rows.
+  it.each(["geometry", "refusal", "late-refusal"] as const)(
+    "preserves handed %s through the finish and retains its separate trace",
+    async (state) => {
+      const geometry = {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration" as const,
+      }
+      const priorRefusal = "calibration refused before probes"
+      const finalRefusal = "qualification refused after probes"
+      const checkpointTraces: string[] = []
+      const batch = await runProbeBatch({
+        ids: [id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        onCheckpoint: (checkpoint) => {
+          const trace = checkpoint.rawReplies["collector.textQualification.trace"]
+          if (trace) checkpointTraces.push(trace)
+        },
+        prepareCapture: async ({ source: probeSource, featureId }) => {
+          expect(featureId).toBe("collector.captureCalibration")
+          probeOrder.push("calibrate")
+          probeSource.write("calibration:paint")
+          if (state === "refusal") throw Object.assign(new Error(priorRefusal), { name: "CaptureCalibrationRefused" })
+          probeSource.captureGeometry = geometry
+        },
+        finishCapture: async ({ source: probeSource, featureId }) => {
+          expect(featureId).toBe("collector.textQualification")
+          probeOrder.push("qualify")
+          probeSource.write("qualification:paint")
+          expect(callbackSource?.captureGeometry).toEqual(state !== "refusal" ? geometry : undefined)
+          expect(callbackSource?.captureGeometryRefusal).toBe(state === "refusal" ? priorRefusal : undefined)
+          if (state !== "geometry") throw Object.assign(new Error(finalRefusal), { name: "CaptureCalibrationRefused" })
+          probeSource.captureGeometry = { ...geometry, geometry: { ...geometry.geometry, cellWidth: 16 } }
+        },
+      })
+      expect(probeOrder).toEqual(["calibrate", "callback", "qualify"])
+      expect(callbackSource?.captureGeometry).toEqual(state !== "refusal" ? geometry : undefined)
+      expect(callbackSource?.captureGeometryRefusal).toBe(state === "refusal" ? priorRefusal : undefined)
+      expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+        writes: ["calibration:paint"],
+        ...(state === "refusal" ? { refusal: priorRefusal } : {}),
+      })
+      expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
+        writes: ["qualification:paint"],
+        ...(state !== "geometry" ? { refusal: finalRefusal } : {}),
+      })
+      expect(checkpointTraces).toContain(batch.rawReplies["collector.textQualification.trace"])
+    },
+  )
+
+  it("fails the whole run, returning no batch, when the after-probes qualification fails", async () => {
+    await expect(
+      runProbeBatch({
+        ids: [id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async () => {
+          probeOrder.push("calibrate")
+        },
+        finishCapture: async () => {
+          throw new Error("qualification fixture failed after probes")
+        },
+      }),
+    ).rejects.toThrow("qualification fixture failed after probes")
+    expect(probeOrder).toEqual(["calibrate", "callback"])
+  })
+})
 
 it("keeps query-only and nongeometry callbacks runnable when owned size is unavailable", async () => {
   verifiedBatchFixture()
@@ -1989,6 +2148,64 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
     )
   } finally {
     definition.termNeedsGeometry = original
+  }
+})
+
+// #33054: a resize re-labels the row resized-capture, so a branch witness on its negative would disagree with the
+// row's branch and the parser would refuse the whole run. The collector keeps the assertion and drops the witness.
+it("drops a branch witness from a negative whose capture resized, so the run still parses", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const original = { needs: definition.termNeedsGeometry, term: definition.term }
+  definition.termNeedsGeometry = true
+  const digest = (text: string) => `sha256:${text.repeat(64).slice(0, 64)}`
+  // The real callback runs its DA query, so the row keeps its retained raw payload; its result is replaced.
+  definition.term = async (...args: Parameters<NonNullable<typeof original.term>>) => {
+    await original.term!(...args)
+    return {
+      pass: false,
+      criterionBranch: "colour-no-attribute-witness",
+      response: "\x1b[?62;4c",
+      tests: [{ id: "criterion", status: "unsupported", assertionRefs: [0] }],
+      observation: { outcome: "unsupported", assertionType: "query_reply", note: "painted nothing" },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: "negative",
+          expected: "paints something other than plain text",
+          observed: digest("b"),
+          witness: {
+            kind: "colour-no-attribute-witness",
+            rowId: definition.id,
+            encoding: "58;2;255;0;128",
+            rectangle: { x: 1, y: 2, width: 3, height: 4 },
+            frames: { seed: digest("a"), expected: digest("b"), noAttribute: digest("b") },
+          },
+        },
+      ],
+    }
+  }
+  let reads = 0
+  process.stdout.write = ((text: string) => {
+    if (text === "\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?62;4c"))
+    return true
+  }) as typeof process.stdout.write
+  try {
+    const batch = await runProbeBatch({
+      ids: [definition.id],
+      ownedTerminal: geometryOwner(measured(24, 61), async () => (++reads === 1 ? measured(24, 61) : measured(31, 73))),
+    })
+    expect(batch.results.find((result) => result.featureId === definition.id)).toMatchObject({
+      criterionBranch: "resized-capture",
+    })
+    expect(batch.assertions).toHaveLength(1)
+    expect(batch.assertions[0]).toMatchObject({ kind: "negative", note: expect.stringContaining("resized") })
+    expect(batch.assertions[0]).not.toHaveProperty("witness")
+    const decoded = decodeCollectorDraft("resized-witness.json", JSON.stringify(asRun(batch)), manifest, sourceRevision)
+    expect(decoded.run.assertions).toEqual(batch.assertions)
+  } finally {
+    definition.termNeedsGeometry = original.needs
+    definition.term = original.term
   }
 })
 
@@ -2915,6 +3132,8 @@ const defaultClipboardCases: Array<{
   refuseWrite?: boolean
   nullMode2004?: boolean
   pasteboard?: "darwin"
+  /** The receipt owns no PRIMARY baseline, so a PRIMARY route must refuse loudly. */
+  noPrimary?: boolean
   eligible: boolean
 }> = [
   { name: "direct Kitty default paste", eligible: true },
@@ -2934,8 +3153,14 @@ const defaultClipboardCases: Array<{
     eligible: true,
   },
   {
-    name: "direct xterm default paste stays gated",
+    name: "direct xterm default paste through owned PRIMARY and Shift+Insert",
     subject: { kind: "term", id: "xterm", os: "linux" },
+    eligible: true,
+  },
+  {
+    name: "direct xterm default paste refuses when the receipt owns no PRIMARY",
+    subject: { kind: "term", id: "xterm", os: "linux" },
+    noPrimary: true,
     eligible: false,
   },
   {
@@ -3050,12 +3275,14 @@ const defaultClipboardCases: Array<{
     eligible: false,
   },
   {
-    name: "Screen modes.bracketed-paste stays gated under default profile",
+    // #33058 (@cto d0e1a960): Screen answers no 2004 mode report, so the row is decided by the same
+    // disposable paste read as clipboard-paste.
+    name: "Screen modes.bracketed-paste decides by the disposable paste effect read",
     featureId: "modes.bracketed-paste",
     subject: { kind: "mux", id: "screen", os: "linux" },
     attachedMux: "screen",
     nullMode2004: true,
-    eligible: false,
+    eligible: true,
   },
   { name: "library subject", subject: { kind: "lib", id: "kitty", os: "linux" }, eligible: false },
   { name: "other OS", subject: { kind: "term", id: "kitty", os: "darwin" }, eligible: false },
@@ -3141,6 +3368,26 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     },
     { writeDeadlineMs: 25, writePollMs: 5 },
   )
+  const isXtermPaste =
+    (scenario.featureId ?? "extensions.clipboard-paste") === "extensions.clipboard-paste" &&
+    subject.kind === "term" &&
+    subject.id === "xterm" &&
+    subject.os === "linux"
+  const primaryBaseline = "owned primary baseline"
+  let primaryText = primaryBaseline
+  const primaryTransaction = createClipboardTransaction(primaryBaseline, {
+    async readText(trace, kind, verify) {
+      await verify()
+      trace({ kind, at: new Date().toISOString(), length: primaryText.length })
+      return primaryText
+    },
+    async writeText(text, trace, kind, verify) {
+      await verify()
+      primaryText = text
+      trace({ kind, at: new Date().toISOString(), length: text.length })
+    },
+  })
+  const withPrimaryFixture = vi.fn(primaryTransaction)
   const withClipboardFixture = vi.fn(((work, trace, verify) =>
     baseTransaction(
       (fixture) => work(attachedMux === "tmux" ? { ...fixture, tmuxSetClipboard: "external" } : fixture),
@@ -3184,24 +3431,23 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     },
     dispose: async () => {},
     withClipboardFixture,
+    ...(!scenario.noPrimary && { withPrimaryFixture }),
     ...(muxAttachmentProof && { muxAttachmentProof }),
   }
+  // Each key pastes the selection its real binding reads: Shift+Insert PRIMARY, Ctrl+Shift+V CLIPBOARD.
   const injectKey = vi.fn(async (keys: string) => {
-    const text = keys === "a" ? "a" : bracketedPaste ? `\x1b[200~${clipboardText}\x1b[201~` : clipboardText
+    const pasted = keys === "shift+Insert" ? primaryText : clipboardText
+    const text = keys === "a" ? "a" : bracketedPaste ? `\x1b[200~${pasted}\x1b[201~` : pasted
     process.stdin.emit("data", Buffer.from(text))
   })
   const featureId = scenario.featureId ?? "extensions.clipboard-paste"
   const isOsc52 = featureId.startsWith("extensions.osc52-")
   const isOsc52WriteOrRoundtrip = featureId === "extensions.osc52-write" || featureId === "extensions.osc52-clipboard"
   const isOsc52Read = featureId === "extensions.osc52-read"
-  const isXtermPaste =
-    featureId === "extensions.clipboard-paste" &&
-    subject.kind === "term" &&
-    subject.id === "xterm" &&
-    subject.os === "linux"
-  const appDeclarations = isXtermPaste
-    ? appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
-    : undefined
+  const appDeclarations =
+    subject.kind === "term" && subject.id === "xterm"
+      ? appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
+      : undefined
   const collected = runProbeBatch({
     ids: [featureId],
     subject,
@@ -3212,6 +3458,11 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
   })
   if (scenario.mismatched) {
     await expect(collected).rejects.toThrow(/disagree/)
+  } else if (scenario.noPrimary) {
+    const batch = await collected
+    expect(JSON.stringify(batch.results.find((result) => result.featureId === featureId))).toContain(
+      "Owned PRIMARY selection is absent from this run's clipboard receipt",
+    )
   } else {
     const batch = await collected
     const expectedOutcome = scenario.refuseWrite ? "unsupported" : "supported"
@@ -3219,9 +3470,7 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
       ? expectedOutcome
       : featureId === "modes.bracketed-paste"
         ? "probe-invalid"
-        : isXtermPaste
-          ? "untestable"
-          : "probe-todo"
+        : "probe-todo"
     expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(expectedStatus)
     if (scenario.eligible) {
       const expectedAssertionType = isOsc52Read ? "query_reply" : isOsc52WriteOrRoundtrip ? "clipboard" : "input_bytes"
@@ -3232,6 +3481,18 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
           assertionType: expectedAssertionType,
         }),
       )
+      if (featureId === "extensions.clipboard-paste") {
+        // The row says how it was measured: selection and key are in its evidence (@cto a4ec8fe2 condition 2).
+        const route = isXtermPaste
+          ? { selection: "primary", key: "shift+Insert" }
+          : { selection: "clipboard", key: "ctrl+shift+v" }
+        expect(batch.assertions.find((assertion) => assertion.featureId === featureId)).toMatchObject({
+          action: `clipboard-paste:${route.selection}:${route.key}`,
+        })
+        expect(batch.assertions.find((assertion) => assertion.featureId === featureId)?.observed).toContain(
+          `"selection":"${route.selection}","key":"${route.key}"`,
+        )
+      }
       if (scenario.nullMode2004 && featureId === "extensions.clipboard-paste") {
         expect(batch.observations.find((obs) => obs.featureId === featureId)?.note).toContain("set blind")
       }
@@ -3286,11 +3547,14 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
       expect(batch.assertions).toEqual([])
     }
   }
-  expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible ? 1 : 0)
+  expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible && !isXtermPaste ? 1 : 0)
+  expect(withPrimaryFixture).toHaveBeenCalledTimes(scenario.eligible && isXtermPaste ? 1 : 0)
+  const pasteKey = isXtermPaste ? "shift+Insert" : "ctrl+shift+v"
   expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(
-    scenario.eligible && !isOsc52 ? ["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"] : [],
+    scenario.eligible && !isOsc52 ? ["a", pasteKey, pasteKey, pasteKey] : [],
   )
   expect(clipboardText).toBe(baseline)
+  expect(primaryText).toBe(primaryBaseline)
   if (scenario.eligible && isOsc52) {
     expect(writes.join("")).toContain("\x1b]52;c;")
   } else {
@@ -4983,7 +5247,8 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     })
     expect(mux.notTested?.find((item) => item.featureId === id)).toMatchObject({
       reason: "no-semantic-observable",
-      noObservable: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+      noObservable:
+        "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
       rawReplyRef: id,
     })
     expect(mux.results.find((result) => result.featureId === id)).toMatchObject({
@@ -4993,7 +5258,8 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
         expect.objectContaining({
           id: "declared-untestable",
           status: "untestable",
-          reason: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+          reason:
+            "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
         }),
       ],
     })
@@ -5043,5 +5309,148 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     expect(native.notTested?.find((item) => item.featureId === id)?.noObservable).toMatch(/rendered pixels/i)
   } finally {
     Object.assign(definition, original)
+  }
+})
+
+/**
+ * @failure A callback that outlives its wall keeps its TTY lease, so its late write reaches the terminal
+ *   while the next probe runs; the timed-out row also loses the wall's own reason, the post-callback
+ *   geometry read, and the trace of what it wrote before the hang (#33431).
+ * @level l1
+ * @consumer runProbeBatch wall timeout -> abandoned callback, recorded row, geometry post, retained trace
+ * @testonly none
+ */
+it("a callback that outlives its wall cannot write while the next probe runs and keeps its wall evidence", async () => {
+  verifiedBatchFixture()
+  const slow = ALL_PROBES.find((probe) => probe.id === "reset.ris")!
+  const next = ALL_PROBES.find((probe) => probe.id === "reset.soft")!
+  const originalSlow = {
+    term: slow.term,
+    termWrites: slow.termWrites,
+    wallMs: slow.wallMs,
+    termNeedsDisposable: slow.termNeedsDisposable,
+  }
+  const originalNext = {
+    term: next.term,
+    termWrites: next.termWrites,
+    wallMs: next.wallMs,
+    termNeedsDisposable: next.termNeedsDisposable,
+  }
+  const ttyWrites: string[] = []
+  const order: string[] = []
+  let releaseTheWall!: () => void
+  const afterTheWall = new Promise<void>((resolve) => {
+    releaseTheWall = resolve
+  })
+  try {
+    slow.termWrites = "query"
+    slow.wallMs = 80
+    slow.term = async (source) => {
+      source.write("\x1b[c")
+      order.push("slow:before-hang")
+      await afterTheWall
+      order.push("slow:late-write")
+      source.write("\x1b[?1049h")
+      return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "late" }] }
+    }
+    next.termWrites = "query"
+    delete next.termNeedsDisposable
+    next.wallMs = 20_000
+    next.term = async (source) => {
+      order.push("next:started")
+      source.write("\x1b[5n")
+      return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "next ran after the wall" }] }
+    }
+    const batch = await runProbeBatch({
+      ids: [slow.id, next.id],
+      subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
+      out: { write: (text: string) => ttyWrites.push(text) } as unknown as NodeJS.WriteStream,
+      ownedTerminal: geometryOwner(measured(30, 100)),
+    })
+    const row = batch.results.find((result) => result.featureId === slow.id)!
+    const nextRow = batch.results.find((result) => result.featureId === next.id)!
+    expect.soft(nextRow.status).toBe("probe-todo")
+    const geometryReplies = JSON.parse(batch.rawReplies["collector.geometry"] ?? "{}") as {
+      checks?: Array<{ featureId: string; post?: unknown }>
+    }
+    const geometry = geometryReplies.checks?.find((check) => check.featureId === slow.id)
+    expect.soft(row.status).toBe("probe-todo")
+    expect.soft(row.reason).toBe("Probe exceeded 80ms")
+    expect
+      .soft(row.tests)
+      .toEqual([expect.objectContaining({ id: "criterion", status: "probe-todo", reason: "Probe exceeded 80ms" })])
+    expect.soft(geometry?.post).toBeDefined()
+    const trace = JSON.parse(batch.rawReplies[slow.id] ?? "{}") as { writes?: string[] }
+    expect.soft(trace.writes).toContain("\x1b[c")
+    releaseTheWall()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect.soft(order).toContain("next:started")
+    expect.soft(ttyWrites).not.toContain("\x1b[?1049h")
+  } finally {
+    Object.assign(slow, originalSlow)
+    Object.assign(next, originalNext)
+  }
+})
+
+/**
+ * @failure A callback that hangs inside its own query at the wall leaves the trace snapshot
+ *   unreadable, so the wall branch throws before it releases the TTY queue and the probe loses the
+ *   writes it settled before the hang (#33431).
+ * @level l1
+ * @consumer runProbeBatch wall timeout -> traceScope.abandon -> snapshot with a pending host call
+ * @testonly none
+ */
+it("keeps the wall's trace when the callback hangs inside its own pending query", async () => {
+  verifiedBatchFixture()
+  const slow = ALL_PROBES.find((probe) => probe.id === "reset.ris")!
+  const next = ALL_PROBES.find((probe) => probe.id === "reset.soft")!
+  const originalSlow = {
+    term: slow.term,
+    termWrites: slow.termWrites,
+    wallMs: slow.wallMs,
+    termNeedsDisposable: slow.termNeedsDisposable,
+  }
+  const originalNext = {
+    term: next.term,
+    termWrites: next.termWrites,
+    wallMs: next.wallMs,
+    termNeedsDisposable: next.termNeedsDisposable,
+  }
+  try {
+    slow.termWrites = "query"
+    slow.wallMs = 80
+    slow.term = async (source) => {
+      source.write("\x1b[c")
+      // The host records matchResponse, then the write its own callback makes, and only then hangs.
+      await source.query("\x1b[5n", /\x1b\[0n/, 400)
+      return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "query answered late" }] }
+    }
+    next.termWrites = "query"
+    delete next.termNeedsDisposable
+    next.wallMs = 20_000
+    next.term = async () => ({
+      pass: false,
+      tests: [{ id: "criterion", status: "probe-todo", reason: "next ran after the wall" }],
+    })
+    const batch = await runProbeBatch({
+      ids: [slow.id, next.id],
+      subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
+      out: { write: () => {} } as unknown as NodeJS.WriteStream,
+      ownedTerminal: geometryOwner(measured(30, 100)),
+    })
+    const row = batch.results.find((result) => result.featureId === slow.id)!
+    const nextRow = batch.results.find((result) => result.featureId === next.id)!
+    expect.soft(nextRow.status).toBe("probe-todo")
+    expect.soft(row.status).toBe("probe-todo")
+    expect.soft(row.reason).toBe("Probe exceeded 80ms")
+    // An abandon that threw would leave this row with a collector error and the queue behind the hang.
+    expect.soft(batch.ungradedDiagnostics[slow.id]).toBeUndefined()
+    const trace = JSON.parse(batch.rawReplies[slow.id] ?? "{}") as { writes?: string[] }
+    // A query's own write is projected as its query event, and an unsettled query has no event; the
+    // command write before the hang is what the trace can still measure.
+    expect.soft(trace.writes).toContain("\x1b[c")
+  } finally {
+    Object.assign(slow, originalSlow)
+    Object.assign(next, originalNext)
   }
 })

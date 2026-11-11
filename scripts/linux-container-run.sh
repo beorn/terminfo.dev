@@ -127,6 +127,11 @@ compose_receipt() {
       error("host/container probe selection mismatch")
     elif ($c.display.glxinfo | type) != "string" or ($c.display.geometry | type) != "string" then
       error("container display receipt is missing")
+    elif ($c.display | has("focusHelper") | not) then
+      error("container display receipt does not name the owned focus helper window (#33305)")
+    elif ($c.display.focusHelper.pid | type) != "number" or ($c.display.focusHelper.window | type) != "string" or
+         ($c.display.focusHelper.window | length) == 0 or ($c.display.focusHelper.geometry | type) != "string" then
+      error("container display receipt focus helper is not named by pid, window id and geometry")
     elif $c.clipboardFixture.runId != $h.runId or $c.clipboardFixture.profile != $h.clipboardProfile or
          ($c.clipboardFixture.sha256 | type) != "string" then
       error("container clipboard fixture disagrees with host run or profile")
@@ -140,6 +145,7 @@ compose_receipt() {
         probeRun:(if $finalRun == null then $c.probeRun else $finalRun end),
         display:$c.display,
         clipboardFixture:$c.clipboardFixture,
+        sessionBus:$c.sessionBus,
         capture:$c.capture,
         receiptInputs:{hostSha256:$hostSha,containerSha256:$containerSha}
       }
@@ -368,6 +374,48 @@ await_owned_daemon() {
   return 2
 }
 
+# A mux profile is a documented user option of the multiplexer, measured as a context supplement (#33151, @cto
+# 918fccd1 rule 2). Prints the subject.config the run records for MUX and PROFILE: the default is the empty-config
+# path every default mux run records; Screen truecolor names exactly what its config file says. Any other pair is
+# refused by name. docs/data/context-supplements.ts holds the same two values; the launcher test keeps them equal.
+mux_profile_config() {
+  local mux=$1 profile=$2
+  case "$profile" in
+    default) printf '%s\n' /out/mux-empty.conf ;;
+    truecolor)
+      if [[ "$mux" != screen ]]; then
+        echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
+        return 2
+      fi
+      printf '%s\n' 'screen: defscrollback 1000; truecolor on'
+      ;;
+    *) echo "Unknown mux profile $profile on mux ${mux:-(none)}" >&2; return 2 ;;
+  esac
+}
+
+# The exact bytes Screen starts with for PROFILE: the unchanged default line, then truecolor's documented option
+# (#33151). The mux receipt hashes this file, and the placement check (MUX_PROFILE_CONFIG_FILES in
+# disposable-receipt.ts) accepts a profile's recorded config only when that hash matches these bytes; the launcher
+# test keeps the two equal.
+screen_config_content() {
+  printf 'defscrollback 1000\n'
+  if [[ "$1" == truecolor ]]; then printf 'truecolor on\n'; fi
+}
+
+# xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,
+# selectToClipboard or insert-selection resource anywhere on its command line could rebind it, so the
+# launcher refuses one. Prints the first such argument and succeeds; fails when there is none.
+xterm_paste_rebinding_arg() {
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" =~ [Tt]ranslations|selectToClipboard|insert-selection ]]; then
+      printf '%s\n' "$arg"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -412,7 +460,7 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       wait "$mux_server"
       ;;
     screen)
-      printf 'defscrollback 1000\n' > "$mux_config"
+      screen_config_content "${TERMINFO_MUX_PROFILE:-default}" > "$mux_config"
       export SCREENDIR="$HOME/.screen"
       mkdir -m 700 "$SCREENDIR"
       screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner
@@ -665,13 +713,19 @@ if [[ "${1:-}" == "--inside" ]]; then
   esac
 
   xvfb_pid=
+  focus_helper_pid=
   helper_pid=
+  session_bus_pid=
+  notify_recorder_pid=
+  primary_helper_pid=
   daemon_pid=
   collector_pid=
   cleanup() {
     local status=$?
     trap - EXIT
-    stop_owned_processes "$daemon_pid" "$helper_pid" "$xvfb_pid" "$collector_pid"
+    stop_owned_processes "$daemon_pid" "$focus_helper_pid" "$helper_pid" "$primary_helper_pid" "$notify_recorder_pid" "$xvfb_pid" "$collector_pid"
+    # The bus stops after its recorder, so a recorder stopped by SIGTERM never reads a closed bus as fatal.
+    stop_owned_processes "$session_bus_pid"
     exit "$status"
   }
   trap cleanup EXIT
@@ -702,6 +756,39 @@ if [[ "${1:-}" == "--inside" ]]; then
     exit 2
   }
 
+  # The focus witness needs a second window (#33305): a GTK terminal reports no focus change when
+  # focus moves to the display root, so the arm moves focus to this owned helper and back. It is
+  # mapped here, before the app under test, in the bottom-right corner of the screen, and it dies
+  # with the display. Its pid and window id are in the receipt, and the input adapter refuses the
+  # run if its rectangle ever intersects the owned window's.
+  focus_helper_pid=
+  focus_helper_window=
+  focus_helper_geometry=
+  xterm -geometry 20x3-0-0 -e sleep 36000 > /out/focus-helper.log 2>&1 &
+  focus_helper_pid=$!
+  for _ in $(seq 1 100); do
+    kill -0 "$focus_helper_pid" 2>/dev/null || {
+      echo "Owned focus helper exited before it mapped" >&2
+      cat /out/focus-helper.log >&2
+      exit 2
+    }
+    # `xdotool search` exits 1 until the window exists; under `set -e` a bare assignment from that
+    # pipeline killed the run on its first attempt (33305 App run 2026-11-11T05-48Z, exit 1 with an
+    # empty helper log). The loop is the wait: swallow "not mapped yet" and let it retry.
+    focus_helper_window=$(xdotool search --onlyvisible --pid "$focus_helper_pid" 2>/dev/null | tail -n 1 || true)
+    [[ -n "$focus_helper_window" ]] && break
+    sleep 0.1
+  done
+  if [[ -z "$focus_helper_window" ]]; then
+    echo "Owned focus helper window never mapped; the focus witness has no second window" >&2
+    cat /out/focus-helper.log >&2
+    exit 2
+  fi
+  focus_helper_geometry=$(xdotool getwindowgeometry "$focus_helper_window" | tr '\n' ' ')
+  chmod 600 /out/focus-helper.log
+  export TERMINFO_FOCUS_HELPER_WINDOW="$focus_helper_window"
+  export TERMINFO_FOCUS_HELPER_PID="$focus_helper_pid"
+
   baseline_path="$HOME/clipboard-baseline.txt"
   printf 'terminfo-owned-clipboard-%s' "$TERMINFO_RUN_ID" > "$baseline_path"
   chmod 600 "$baseline_path"
@@ -725,6 +812,135 @@ if [[ "${1:-}" == "--inside" ]]; then
     exit 2
   }
   initial_read_sha=$(sha256sum "$HOME/clipboard-initial-read.txt" | cut -d ' ' -f 1)
+
+  # One private session bus per run (#33053, @cto c6ba9dbb + 7b8360fe): this run starts and stops it as a child,
+  # and the Notify recorder holds org.freedesktop.Notifications and writes its receipt BEFORE the terminal starts.
+  # The config is named explicitly from the loaded dbus package: Nixpkgs' `dbus-daemon --session` reads the compiled
+  # path /etc/dbus-1/session.conf, outside the package. The terminal inherits DBUS_SESSION_BUS_ADDRESS, which the collector records as
+  # collector.sessionBus (readSessionBus, app-semantic-state.ts).
+  session_bus_socket=/tmp/terminfo-session-bus
+  session_bus_binary=$(readlink -f "$(command -v dbus-daemon)")
+  session_bus_config="${session_bus_binary%/bin/dbus-daemon}/share/dbus-1/session.conf"
+  [[ -r "$session_bus_config" ]] || {
+    echo "dbus-daemon $session_bus_binary has no session config at $session_bus_config" >&2; exit 2;
+  }
+  [[ ! -e "$session_bus_socket" ]] || {
+    echo "Session bus socket $session_bus_socket already exists; this run did not start it" >&2; exit 2;
+  }
+  "$session_bus_binary" --config-file="$session_bus_config" --nofork --address="unix:path=$session_bus_socket" \
+    --print-address=3 3>"$HOME/session-bus-address" </dev/null >/out/dbus-daemon.log 2>&1 &
+  session_bus_pid=$!
+  for _ in $(seq 1 100); do
+    [[ -s "$HOME/session-bus-address" && -z "$(tail -c 1 "$HOME/session-bus-address")" ]] && break
+    kill -0 "$session_bus_pid" 2>/dev/null || {
+      echo "dbus-daemon exited before printing its address" >&2; cat /out/dbus-daemon.log >&2; exit 2;
+    }
+    sleep 0.1
+  done
+  [[ -s "$HOME/session-bus-address" && -z "$(tail -c 1 "$HOME/session-bus-address")" ]] || {
+    echo "dbus-daemon did not print its address within 10s" >&2; cat /out/dbus-daemon.log >&2; exit 2;
+  }
+  read -r session_bus_address <"$HOME/session-bus-address"
+  [[ "$session_bus_address" == "unix:path=$session_bus_socket,"* ]] || {
+    echo "dbus-daemon printed $session_bus_address, not the requested unix:path=$session_bus_socket" >&2; exit 2;
+  }
+  notify_recorder="$runner_dir/linux-notify-recorder.ts"
+  [[ -r "$notify_recorder" ]] || { echo "Frozen runner lacks the Notify recorder $notify_recorder" >&2; exit 2; }
+  notification_record=/out/notifications.jsonl
+  export TERMINFO_NOTIFICATION_FIXTURE_RECEIPT=/out/notification-fixture.json
+  [[ ! -e "$notification_record" && ! -e "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" ]] || {
+    echo "Notify record or receipt already exists before this run's recorder started" >&2; exit 2;
+  }
+  bun --no-env-file "$notify_recorder" --address "$session_bus_address" --record "$notification_record" \
+    --receipt "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" </dev/null >/out/notify-recorder.log 2>&1 &
+  notify_recorder_pid=$!
+  for _ in $(seq 1 100); do
+    [[ -s "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" ]] && break
+    kill -0 "$notify_recorder_pid" 2>/dev/null || {
+      echo "Notify recorder exited before holding org.freedesktop.Notifications" >&2
+      cat /out/notify-recorder.log >&2
+      exit 2
+    }
+    sleep 0.1
+  done
+  [[ -s "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" ]] || {
+    echo "Notify recorder wrote no receipt within 10s; the terminal is not started" >&2
+    cat /out/notify-recorder.log >&2
+    exit 2
+  }
+  jq -e --arg address "$session_bus_address" --argjson pid "$notify_recorder_pid" --arg record "$notification_record" \
+    '.schema == "terminfo-notify-recorder-receipt/1" and .owned == true and
+     .name == "org.freedesktop.Notifications" and .address == $address and .pid == $pid and .recordPath == $record' \
+    "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" >/dev/null || {
+    echo "Notify recorder receipt does not name this run's bus, recorder PID and record" >&2
+    cat "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" >&2
+    exit 2
+  }
+  export DBUS_SESSION_BUS_ADDRESS="$session_bus_address"
+  # Written here, before the terminal launch below: the name is held and the receipt verified, so the record says so.
+  jq -n --arg run "$TERMINFO_RUN_ID" --arg address "$session_bus_address" --arg verifiedAt "$(date -u +%FT%T.%3NZ)" \
+    --argjson daemonPid "$session_bus_pid" --arg daemonPath "$session_bus_binary" \
+    --arg daemonSha "$(sha256sum "$session_bus_binary" | cut -d ' ' -f 1)" \
+    --arg configPath "$session_bus_config" --arg configSha "$(sha256sum "$session_bus_config" | cut -d ' ' -f 1)" \
+    --argjson recorderPid "$notify_recorder_pid" --arg recorderPath "$notify_recorder" \
+    --arg recorderSha "$(sha256sum "$notify_recorder" | cut -d ' ' -f 1)" \
+    --arg receiptPath "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" \
+    --arg receiptSha "$(sha256sum "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" | cut -d ' ' -f 1)" \
+    --arg record "$notification_record" \
+    '{schemaVersion:1,runId:$run,address:$address,
+      daemon:{pid:$daemonPid,executable:{path:$daemonPath,sha256:$daemonSha},config:{path:$configPath,sha256:$configSha}},
+      recorder:{pid:$recorderPid,script:{path:$recorderPath,sha256:$recorderSha},
+        receipt:{path:$receiptPath,sha256:$receiptSha},record:$record},
+      nameHeldBeforeTerminal:true,verifiedAt:$verifiedAt}' > /out/session-bus.json
+  chmod 600 /out/session-bus.json
+
+  # xterm's default paste (Shift+Insert) reads X11 PRIMARY, not CLIPBOARD (#32164, @cto a4ec8fe2), so an
+  # xterm run also owns a PRIMARY baseline; every other target owns CLIPBOARD alone. The route is believed
+  # only while nothing rebinds it: the launch must carry no translation or selectToClipboard resource, and
+  # the display, environment and private HOME no resource database. Refused, never recorded and continued.
+  primary_receipt=null
+  if [[ "$target_id" == xterm ]]; then
+    # Every argument xterm is launched with: its own and the clipboard profile's (33119's read-allowed -xrm).
+    if rebinding=$(xterm_paste_rebinding_arg "${target_launch_args[@]}" "${target_clipboard_args[@]}"); then
+      echo "xterm launch argument rebinds paste: $rebinding" >&2
+      exit 2
+    fi
+    resource_manager=$(xprop -root RESOURCE_MANAGER 2>&1)
+    [[ "$resource_manager" == "RESOURCE_MANAGER:  not found." ]] || {
+      echo "Owned display carries a resource database: $resource_manager" >&2
+      exit 2
+    }
+    for name in XENVIRONMENT XAPPLRESDIR XUSERFILESEARCHPATH XFILESEARCHPATH; do
+      [[ -z "${!name:-}" ]] || { echo "xterm resource search variable is set: $name" >&2; exit 2; }
+    done
+    for file in "$HOME/.Xdefaults" "$HOME/.Xresources" "$HOME/.Xdefaults-$(uname -n)"; do
+      [[ ! -e "$file" ]] || { echo "Private HOME carries an X resource file: $file" >&2; exit 2; }
+    done
+    primary_path="$HOME/primary-baseline.txt"
+    printf 'terminfo-owned-primary-%s' "$TERMINFO_RUN_ID" > "$primary_path"
+    chmod 600 "$primary_path"
+    primary_sha=$(sha256sum "$primary_path" | cut -d ' ' -f 1)
+    xclip -quiet -selection primary -in "$primary_path" </dev/null >/out/xclip-primary-owner.log 2>&1 &
+    primary_helper_pid=$!
+    for _ in $(seq 1 100); do
+      kill -0 "$primary_helper_pid" 2>/dev/null || { cat /out/xclip-primary-owner.log >&2; exit 2; }
+      if timeout 1 xclip -selection primary -out > "$HOME/primary-initial-read.txt" 2>/out/xclip-primary-read.err &&
+         cmp -s "$primary_path" "$HOME/primary-initial-read.txt"; then
+        break
+      fi
+      sleep 0.1
+    done
+    [[ -r "$HOME/primary-initial-read.txt" &&
+       "$(sha256sum "$HOME/primary-initial-read.txt" | cut -d ' ' -f 1)" == "$primary_sha" ]] || {
+      echo "Owned xclip PRIMARY baseline did not survive independent selection read" >&2
+      cat /out/xclip-primary-owner.log /out/xclip-primary-read.err >&2
+      exit 2
+    }
+    primary_receipt=$(jq -n --argjson helperPid "$primary_helper_pid" --arg baselinePath "$primary_path" \
+      --arg baselineSha "$primary_sha" \
+      --arg initialSha "$(sha256sum "$HOME/primary-initial-read.txt" | cut -d ' ' -f 1)" \
+      '{helperPid:$helperPid,baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha}')
+  fi
 
   export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
   export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
@@ -858,12 +1074,14 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg windowId "$window_id" --argjson windowPid "$window_pid" \
     --argjson helperPid "$helper_pid" --arg helperPath "$xclip_binary" --arg helperSha "$xclip_sha" \
     --arg baselinePath "$baseline_path" --arg baselineSha "$baseline_sha" --arg initialSha "$initial_read_sha" \
+    --argjson primary "$primary_receipt" \
     --arg config "$target_config" --arg permissions "$clipboard_permissions" --argjson target "$fixture_target" \
     '{schemaVersion:1,runId:$run,profile:$profile,target:$target,
       display:{name:$display,number:$number,displayFdPath:$displayFdPath,xvfbPid:$xvfbPid},
       terminal:{pid:$terminalPid,collectorPid:$collectorPid,windowId:$windowId,windowPid:$windowPid},
       selection:{helperPid:$helperPid,helperExecutable:{path:$helperPath,sha256:$helperSha},
-        baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha},
+        baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha}
+        + (if $primary == null then {} else {primary:$primary} end),
       config:$config,permissions:$permissions}' > "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
   chmod 600 "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
   clipboard_fixture_sha=$(sha256sum "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT" | cut -d ' ' -f 1)
@@ -892,7 +1110,8 @@ if [[ "${1:-}" == "--inside" ]]; then
     jq -n --slurpfile provenance "$TERMINFO_RUNTIME_PROVENANCE" --slurpfile info /out/info.json \
       --slurpfile da1 /out/da1-observation.json --slurpfile xtversion /out/xtversion-observation.json \
       --slurpfile preflight /out/preflight-identity.json --arg app "$target_id" --arg appVersion "$target_version" \
-      --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" --arg muxConfig /out/mux-empty.conf \
+      --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" \
+      --arg muxConfig "$(mux_profile_config "$TERMINFO_MUX_KIND" "${TERMINFO_MUX_PROFILE:-default}")" \
       --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg permissions "$clipboard_permissions" '
       (if $profile == "default" then null else $permissions end) as $permissions |
       {subject:{kind:"mux",id:$mux,version:$muxVersion,os:$info[0].os,osVersion:$info[0].osVersion,
@@ -956,19 +1175,28 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "no frame captured: no selected probe called ctx.capture" >&2
     capture_receipt=null
   else
+    # The frame is checked against the source its capture route wrote, never assumed to be an xwd
+    # (33334): the shared window grab keeps an xwd source, the OSC 22 pointer-composited capture a
+    # png one, and a selection of only extensions.osc22-pointer has no xwd-sourced frame at all.
     png_sha=$(jq -er '.ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
-    xwd_sha=$(jq -er '.sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
-    [[ -r "/out/artifacts/$png_sha.png" && -r "/out/artifacts/$xwd_sha.xwd" ]] || {
-      echo "Callback capture artifacts are missing" >&2; exit 2;
+    source_sha=$(jq -er '.sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
+    if [[ -r "/out/artifacts/$source_sha.xwd" ]]; then source_kind=xwd
+    elif [[ -r "/out/artifacts/$source_sha.png" ]]; then source_kind=png
+    else source_kind=""; fi
+    [[ -r "/out/artifacts/$png_sha.png" && -n "$source_kind" ]] || {
+      echo "Callback capture artifacts are missing: frame artifacts/$png_sha.png, source artifacts/$source_sha.xwd or .png" >&2
+      exit 2
     }
+    source_file="artifacts/$source_sha.$source_kind"
     [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
-       "$(sha256sum "/out/artifacts/$xwd_sha.xwd" | cut -d ' ' -f 1)" == "$xwd_sha" ]] || {
+       "$(sha256sum "/out/$source_file" | cut -d ' ' -f 1)" == "$source_sha" ]] || {
       echo "Callback capture digest mismatch" >&2; exit 2;
     }
     magick identify "/out/artifacts/$png_sha.png" > /out/image-info.txt
-    capture_receipt=$(jq -n --arg xwd "artifacts/$xwd_sha.xwd" --arg xwdSha "$xwd_sha" \
+    capture_receipt=$(jq -n --arg kind "$source_kind" --arg source "$source_file" --arg sourceSha "$source_sha" \
       --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" \
-      '{xwd:$xwd,xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}')
+      '(if $kind == "xwd" then {xwd:$source,xwdSha256:$sourceSha} else {sourcePng:$source,sourcePngSha256:$sourceSha} end)
+        + {png:$png,pngSha256:$pngSha}')
   fi
   if compgen -G "/out/artifacts/*" >/dev/null; then
     sha256sum /out/artifacts/* > /out/capture-hashes.txt
@@ -997,23 +1225,28 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
     --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" --argjson capture "$capture_receipt" \
     --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg clipboardSha "$clipboard_fixture_sha" \
+    --arg sessionBusSha "$(sha256sum /out/session-bus.json | cut -d ' ' -f 1)" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
+    --argjson focusHelperPid "$focus_helper_pid" --arg focusHelperWindow "$focus_helper_window" \
+    --arg focusHelperGeometry "$focus_helper_geometry" \
     '{runId:$run,
       executable:{path:$executablePath,version:$executableVersion,sha256:$executableSha},
       invocation:{path:$invocationPath,sha256:$invocationSha},
       sourceArtifact:{path:$sourcePath,sha256:$sourceSha},
       collector:{frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha},
       probeRun:{path:"v3-capture.json",runId:$probeRun,sha256:$probeSha},
-      display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
+      display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry,
+        focusHelper:{pid:$focusHelperPid,window:$focusHelperWindow,geometry:$focusHelperGeometry}},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
+      sessionBus:{path:"session-bus.json",sha256:$sessionBusSha},
       capture:$capture} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
     > /out/container-receipt.json
   exit 0
 fi
 
 usage() {
-  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--mux-profile default|truecolor] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
@@ -1026,6 +1259,7 @@ preset=default
 clipboard_profile=
 probe_ids=null
 mux_kind=
+mux_profile=default
 output_parent=
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -1033,6 +1267,11 @@ while [[ "$#" -gt 0 ]]; do
       [[ "$#" -ge 2 && -z "$mux_kind" ]] || usage
       mux_kind=$2
       case "$mux_kind" in tmux|screen) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
+      shift 2
+      ;;
+    --mux-profile)
+      [[ "$#" -ge 2 && -n "${2:-}" && "${2:-}" != --* ]] || usage
+      mux_profile=$2
       shift 2
       ;;
     --target)
@@ -1069,6 +1308,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 [[ -n "$target_id" && -n "$clipboard_profile" && -n "$output_parent" ]] || usage
 [[ -z "$mux_kind" || "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
+mux_profile_config "$mux_kind" "$mux_profile" >/dev/null || exit 2
 case "$target_id" in
   kitty|xterm|ghostty|wezterm|alacritty) ;;
   *) echo "Unknown target: $target_id" >&2; exit 2 ;;
@@ -1133,6 +1373,13 @@ cp "$cli_receipt" "$prep/bundle/terminfo.bundle.receipt.json"
 frozen_runner_sha=$(sha256sum "$prep/bundle/index.js" | cut -d ' ' -f 1)
 build_receipt_sha=$(sha256sum "$prep/bundle/terminfo.bundle.receipt.json" | cut -d ' ' -f 1)
 cp "$script_dir/linux-container-run.sh" "$prep/bundle/linux-container-run.sh"
+# The Notify recorder runs under the image's Bun beside the runner (#33053). It imports only node builtins, so its
+# committed source is the frozen input; the bundle NAR and tar hashes in the host receipt cover its bytes.
+notify_recorder_source="$vendor_root/packages/terminfo.dev/src/linux-notify-recorder.ts"
+[[ -s "$notify_recorder_source" ]] || {
+  echo "Notify recorder source is missing: $notify_recorder_source; preserved at $run_dir" >&2; exit 2;
+}
+cp "$notify_recorder_source" "$prep/bundle/linux-notify-recorder.ts"
 (
   cd "$prep"
   tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf runner-bundle.tar -C bundle .
@@ -1306,7 +1553,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "LC_ALL=C.UTF-8" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_CAPTURE_RUN_ID=${TERMINFO_CAPTURE_RUN_ID:-}" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
-  --env "TERMINFO_MUX_KIND=$mux_kind" \
+  --env "TERMINFO_MUX_KIND=$mux_kind" --env "TERMINFO_MUX_PROFILE=$mux_profile" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
   --env "TERMINFO_TARGET_BINARY=$target_binary" --env "TERMINFO_TARGET_VERSION=$target_version" \
   --env "TERMINFO_TARGET_SOURCE_URL=$source_url" --env "TERMINFO_TARGET_SOURCE_SRI=$source_sri" \

@@ -531,6 +531,58 @@ function decodeValue(value: Encoded, projection = false): unknown {
   }
 }
 
+/**
+ * The evidence a live recording has settled so far, as an artifact `readCallLog` accepts.
+ *
+ * A callback abandoned at its wall never reaches `finish`, so its log stays incomplete and
+ * `toJSON` refuses it. The calls that settled before the wall are still real measurements, so
+ * project those. A live log can hold an unfinished call *before* settled ones: `matchResponse`
+ * records itself, then runs the write callback that belongs to the same operation. The reader
+ * requires every id to equal its position and every `#<id>` reference to name an earlier call,
+ * so the settled calls are renumbered and their references rewritten; a call whose parent did not
+ * settle is dropped with it.
+ */
+export function snapshotCallLog(log: CallLog): unknown {
+  const state = handles.get(log)
+  if (!state) throw new IncompleteReplay("call log handle required; persisted data must be validated first")
+  const settled = canonicalValue(state.data) as {
+    calls: Array<
+      {
+        path: string
+        finished: boolean
+        callbacks: Array<{ path: string; finished: boolean }>
+      } & Record<string, unknown>
+    >
+  }
+  const renumbered = new Map<number, number>()
+  const kept: Array<{ call: (typeof settled.calls)[number]; index: number }> = []
+  settled.calls.forEach((call, index) => {
+    if (!call.finished || !call.callbacks.every((callback) => callback.finished)) return
+    const parents = [...call.path.matchAll(/#([0-9]+)/g)].map((reference) => Number(reference[1]))
+    if (parents.some((parent) => !renumbered.has(parent))) return
+    renumbered.set(index, kept.length)
+    kept.push({ call, index })
+  })
+  const rewrite = (path: string) =>
+    path.replace(/#([0-9]+)/g, (match, id: string) => {
+      const mapped = renumbered.get(Number(id))
+      return mapped === undefined ? match : "#" + mapped
+    })
+  const calls = kept.map(({ call, index }) => {
+    const id = renumbered.get(index)
+    if (id === undefined) {
+      throw new IncompleteReplay("call log calls[" + index + "]: a settled call has no projected position")
+    }
+    return {
+      ...call,
+      id,
+      path: rewrite(call.path),
+      callbacks: call.callbacks.map((callback) => ({ ...callback, path: rewrite(callback.path) })),
+    }
+  })
+  return { ...settled, calls }
+}
+
 export function withCallLog<Subject extends object>(
   subject: Subject,
   options: { mode: "record"; log: CallLog },

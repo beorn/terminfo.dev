@@ -72,8 +72,8 @@ function app(opts: {
               focusReads.push(Date.now())
               return {
                 ownedWindowId: "owned",
-                rootWindowId: "root",
-                focusedWindowIds: ["owned", "root", "owned"] as [string, string, string],
+                helperWindowId: "helper",
+                focusedWindowIds: ["owned", "helper", "owned"] as [string, string, string],
               }
             },
           },
@@ -412,8 +412,8 @@ test.each([
       let reads = 0
       ctx.input!.focusRoundTrip = async () => ({
         ownedWindowId: ++reads === 1 ? "owned" : "other",
-        rootWindowId: "root",
-        focusedWindowIds: ["owned", "root", "owned"],
+        helperWindowId: "helper",
+        focusedWindowIds: ["owned", "helper", "owned"],
       })
     },
   },

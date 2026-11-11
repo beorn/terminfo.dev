@@ -243,8 +243,27 @@ export const OBSERVATION_REASONS = [
   "invalid-reply",
   /** A valid consumption or state was observed, but it cannot establish the tested result. */
   "insufficient-evidence",
+  /**
+   * The DA1 fence answered with nothing before it (#33165). The callback decides nothing: the recorder maps it
+   * through the feature row's declared silence rule (`SilenceDeclaration`; absent means Unsupported).
+   */
+  "fenced-silence",
 ] as const
 export type ObservationReason = (typeof OBSERVATION_REASONS)[number]
+
+/**
+ * The non-default silence rules a content/features.json row may declare (#33165, @cto be3fb080). A row that
+ * declares none takes the default: a fenced silence is Unsupported.
+ * - `switchable`: the terminal can answer once something is enabled, so silence is PROBE INVALID; the reason names it.
+ */
+export const SILENCE_RULES = ["switchable"] as const
+export type SilenceRule = (typeof SILENCE_RULES)[number]
+
+/** A row's declared silence rule, `"silence": { "rule", "reason" }` on its content/features.json entry. */
+export interface SilenceDeclaration {
+  readonly rule: SilenceRule
+  readonly reason: string
+}
 
 /** Class of the retained deciding observation, independent of assertion polarity and capture payload kind. */
 export const ASSERTION_TYPES = [
@@ -254,6 +273,7 @@ export const ASSERTION_TYPES = [
   "input_bytes",
   "clipboard",
   "process_environment",
+  "notification",
 ] as const
 export type AssertionType = (typeof ASSERTION_TYPES)[number]
 /** Source identity is retained by schema 4 without changing historical run formats. */
@@ -338,6 +358,13 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * `regionDigest`. Present exactly when `controlRegionDigest` is.
    */
   controlRegionRectangle?: CaptureRectangle
+  /**
+   * Where the request's `locate` colour sits in this decoded frame: the bounding box of every pixel
+   * of exactly that colour, in the captured window's own pixels, and how many pixels matched.
+   * `null` means the colour is absent from the whole frame. Absent (undefined) when the request
+   * named no colour, or when the arm could not decode its frame; undefined is never read as null.
+   */
+  located?: CaptureLocated | null
 }
 
 /**
@@ -353,6 +380,7 @@ export interface TextCellsObservationFrame extends ObservationFrameBase {
   regionRectangle?: never
   controlRegionDigest?: never
   controlRegionRectangle?: never
+  located?: never
   /** Digest over the named cells' characters, and their attributes where the arm reports them. */
   cellDigest: string
   /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
@@ -459,6 +487,23 @@ export interface CaptureRequest {
   controlCells?: CaptureCells
   /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
+  /**
+   * An exact RGB colour to find in the whole decoded frame; the frame answers `located`. Optional:
+   * a request without it is byte for byte the previous path. Needs no `cells`.
+   */
+  locate?: { rgb: readonly [number, number, number] }
+}
+
+/** Calibration's witnessed solid paint: which SGR form painted it and the exact colour it measured. */
+export interface CalibrationSentinel {
+  form: "basic" | "reverse"
+  rgb: readonly [number, number, number]
+}
+
+/** One colour's footprint in a decoded frame: its bounding box and its matching-pixel count. */
+export interface CaptureLocated {
+  box: CaptureRectangle
+  pixels: number
 }
 
 export interface ProbeSubject {
@@ -599,7 +644,22 @@ export interface ProbeSuiteManifest {
 /** Proof a negative assertion was decided on. A union on `kind`, so the next witness adds a member
  * rather than a field on ProbeAssertion. Added 2026-11-10 (#33041); optional and additive, so
  * schemaVersion stays 4 and runs written before this parse unchanged. */
-export type ProbeWitness = ColourSiblingSeparationWitness
+export type ProbeWitness = ColourSiblingSeparationWitness | ColourNoAttributeWitness
+
+/**
+ * The underline-colour negative witnessed by this row's own frames (#33054, moved from prose): the
+ * seed frame shows the underline, and the expected frame equals the no-attribute (plain text)
+ * frame after the sequence ran. The parser checks the three digests are this row's frames, that
+ * expected equals noAttribute while the seed differs, and the rectangle against those frames.
+ */
+export interface ColourNoAttributeWitness {
+  kind: "colour-no-attribute-witness"
+  rowId: string
+  /** The SGR parameters under test, e.g. `58;2;255;0;128`. */
+  encoding: string
+  rectangle: { x: number; y: number; width: number; height: number }
+  frames: { seed: string; expected: string; noAttribute: string }
+}
 
 /**
  * The same-channel sibling that proves this capture can show a colour in this rectangle.
@@ -1067,6 +1127,14 @@ export interface LibMouseEvent {
   alt?: boolean
 }
 
+/** A terminal's default paste action: the X11 selection it reads, the key that triggers it, and where that is defined. */
+export interface PasteRoute {
+  readonly selection: "clipboard" | "primary"
+  readonly key: string
+  /** The terminal's own source or manual, at the pinned version, that binds `key` to paste `selection`. */
+  readonly binding: string
+}
+
 /** Independently observed text selection in an owned disposable display. */
 export interface ClipboardFixture {
   /** Owned transaction baseline verified before the callback starts. */
@@ -1079,17 +1147,66 @@ export interface ClipboardFixture {
   readonly writeDeadlineMs?: number
   /** Polling interval in ms for post-CPR OSC 52 write selection settlement (default 25). */
   readonly writePollMs?: number
+  /**
+   * The App's default paste action, chosen by the collector (#32164, @cto a4ec8fe2): readText/writeText act on
+   * `selection`, and `key` is the keypress that pastes it. Present only on a clipboard-paste fixture.
+   */
+  readonly paste?: PasteRoute
   readText(): Promise<string>
   writeText(text: string): Promise<void>
+  /**
+   * X selection fixtures only: one real key event (shift press and release) on the owned window, recorded in the
+   * clipboard trace. A terminal stamps its OSC 52 selection claim with its last input-event time, and X ignores a
+   * claim older than the current owner's, so a terminal that never saw input loses to the fixture's own writer
+   * (#33145). The OSC 52 write and roundtrip probes call it before their write, inside a PTY read.
+   */
+  realKeyEvent?(): Promise<void>
+}
+
+/** Independent desktop delivery readback on an owned private notification bus. */
+export interface NotificationFixture {
+  readonly control: { readonly nonce: string; readonly id: number }
+  readonly recordPath: string
+  readonly deadlineMs: number
+  readonly terminalBus: { readonly state: "same" | "different" | "unknown"; readonly reason: string }
+  /**
+   * A control Notify sent from the terminal's OWN process environment and recorded inside the same window
+   * (#33333, @cto a6fddd6e). Absent means the path from the terminal's side was never proven, so a silent
+   * target write stays inconclusive and never becomes a "not supported" for that terminal.
+   */
+  readonly terminalSideControl?: { readonly nonce: string; readonly id: number; readonly latencyMs: number }
+  /** Why the terminal-side control is absent, when the run tried and failed: named, never silent. */
+  readonly terminalSideControlRefusal?: string
+  readonly profile: { readonly state: "default" | "non-default" | "unknown"; readonly reason: string }
+  /**
+   * The hosting terminal's own measurement of this row, named, when it reads supported (#33333 condition 3).
+   * Absent means the mux may not carry a negative; `outerTerminalRecordRefusal` says which fact is missing.
+   */
+  readonly outerTerminalRecord?: string
+  readonly outerTerminalRecordRefusal?: string
+  cursor(): number
+  readSince(cursor: number): {
+    readonly entries: readonly {
+      readonly id: number
+      readonly appName: string
+      readonly summary: string
+      readonly body: string
+    }[]
+    readonly problems: readonly string[]
+  }
 }
 
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
 export interface InputFixture {
   injectKey(keys: string): Promise<void>
-  /** Move focus to the display root and back, verifying both owned X focus reads. */
-  focusRoundTrip?(): Promise<{
+  /**
+   * Move focus to the owned helper window and back, verifying every X focus read. The middle read
+   * must be the helper: GTK reports no focus change to the display root (#33305). Await optional
+   * work while the helper has focus, then restore the owned window even if the work fails.
+   */
+  focusRoundTrip?(work?: (readFocus: () => Promise<string>) => Promise<void>): Promise<{
     ownedWindowId: string
-    rootWindowId: string
+    helperWindowId: string
     focusedWindowIds: [string, string, string]
   }>
   injectClick(button: 1 | 4 | 5, position?: { x: number; y: number }): Promise<void>
@@ -1164,6 +1281,13 @@ export interface TermProbeSource {
   resetScrollback?: () => Promise<TerminalScrollbackReset>
   /** This run's owned public title surface; empty is a title, and a failed read throws its cause. */
   readTitle?: () => Promise<string>
+  /**
+   * True only for a subject whose title route has an established deciding negative: a title that does not carry
+   * the OSC 7 path then reads Unsupported instead of leaving the row open (#33375, @cto 2026-11-11 04:36Z step 4).
+   * The title path is one-sided everywhere else, and installing a reader never depends on this flag — the run's
+   * own OSC 2 controls qualify it.
+   */
+  readTitleAbsenceDecides?: boolean
   /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */
   readTermFeatures?: () => Promise<TermFeaturesReading>
   /** Writes use the callback's recorder; reads bind to this run's verified App or mux. */
@@ -1172,6 +1296,12 @@ export interface TermProbeSource {
   captureGeometry?: {
     geometry: CapturePixelGeometry
     source: "measured by complete raster calibration"
+    /**
+     * The solid paint calibration witnessed, and the exact colour it measured for it. A later
+     * layout check repaints with this form and looks for this colour; absent on a run calibrated
+     * before the check existed.
+     */
+    sentinel?: CalibrationSentinel
   }
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>
@@ -1205,8 +1335,18 @@ export interface TermProbeSource {
   withClipboardFixture?: (
     work: (fixture: ClipboardFixture) => Promise<ProbeCallbackResult>,
   ) => Promise<ProbeCallbackResult>
+  /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
+  withNotificationObserver?: (
+    work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,
+  ) => Promise<ProbeCallbackResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: CaptureRequest) => Promise<ObservationFrame>
+  /**
+   * The run's pixel capture waits this many ms before it reads the screen (the collector's own number,
+   * #33032). Set for every row of a run whose adapter declares a fixed wait, whether or not the row
+   * itself is handed the adapter; absent where the adapter declares none.
+   */
+  captureSettleMs?: number
   /** The terminal's OWN CELLS, on a text arm. Separate from `capture` because only the region
    * readback can decide a row from cells: every other consumer reads pixels, so a text run hands it
    * no adapter and the consumer takes its own named no-capture branch. */
