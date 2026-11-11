@@ -186,10 +186,10 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc7-cwd" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "modes.decsclm" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc633-e" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-b" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-p" },
@@ -206,19 +206,18 @@ it.each([
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc440-audio" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc3008-context" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc176-app-id" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc440-audio" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc555-flash" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc710-font-normal" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.clipboard-paste" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc555-flash" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc710-font-normal" },
   // #32601: existing subjects cannot catch a missing Alacritty audit or identity leakage from its one-cell declaration.
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc710-font-normal" },
   // #32918: Alacritty implements no OSC 133/633, so its thirteen prompt cells are declarations, not runs.
@@ -236,7 +235,7 @@ it.each([
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc633-e" },
   // #32948: 6 Linux App and mux OSC 8 hyperlink declarations.
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc8" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc8" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc8" },
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc8" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc8" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc8" },
@@ -1880,10 +1879,12 @@ it.each([undefined, "after-probes"] as const)(
 describe("an after-probes finish beside a before-probes preparation (32670)", () => {
   const id = "reset.ris"
   const probeOrder: string[] = []
+  let callbackSource: TermProbeSource | undefined
   let restore: () => void = () => {}
   beforeEach(() => {
     verifiedBatchFixture()
     probeOrder.length = 0
+    callbackSource = undefined
     const definition = ALL_PROBES.find((item) => item.id === id)!
     const original = {
       term: definition.term,
@@ -1894,6 +1895,7 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
     delete definition.termNeedsGeometry
     definition.termWrites = "query"
     definition.term = async (probeSource) => {
+      callbackSource = probeSource
       probeOrder.push("callback")
       probeSource.write("fixture:reset.ris")
       return {
@@ -1907,41 +1909,70 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
   })
   afterEach(() => restore())
 
-  it("calibrates before every probe and qualifies after the last, each under its own trace", async () => {
-    const batch = await runProbeBatch({
-      ids: [id],
-      ownedTerminal: geometryOwner(measured(24, 80)),
-      prepareCapture: async ({ source: probeSource, featureId }) => {
-        expect(featureId).toBe("collector.captureCalibration")
-        probeOrder.push("calibrate")
-        probeSource.write("calibration:paint")
-      },
-      finishCapture: async ({ source: probeSource, featureId }) => {
-        expect(featureId).toBe("collector.textQualification")
-        probeOrder.push("qualify")
-        probeSource.write("qualification:paint")
-      },
-    })
-    expect(probeOrder).toEqual(["calibrate", "callback", "qualify"])
-    expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
-      writes: ["calibration:paint"],
-    })
-    expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
-      writes: ["qualification:paint"],
-    })
-  })
+  // CTO26812ffa: phase order alone misses a second preparation rewriting state already handed to rows.
+  it.each(["geometry", "refusal", "late-refusal"] as const)(
+    "preserves handed %s through the finish and retains its separate trace",
+    async (state) => {
+      const geometry = {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration" as const,
+      }
+      const priorRefusal = "calibration refused before probes"
+      const finalRefusal = "qualification refused after probes"
+      const checkpointTraces: string[] = []
+      const batch = await runProbeBatch({
+        ids: [id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        onCheckpoint: (checkpoint) => {
+          const trace = checkpoint.rawReplies["collector.textQualification.trace"]
+          if (trace) checkpointTraces.push(trace)
+        },
+        prepareCapture: async ({ source: probeSource, featureId }) => {
+          expect(featureId).toBe("collector.captureCalibration")
+          probeOrder.push("calibrate")
+          probeSource.write("calibration:paint")
+          if (state === "refusal") throw Object.assign(new Error(priorRefusal), { name: "CaptureCalibrationRefused" })
+          probeSource.captureGeometry = geometry
+        },
+        finishCapture: async ({ source: probeSource, featureId }) => {
+          expect(featureId).toBe("collector.textQualification")
+          probeOrder.push("qualify")
+          probeSource.write("qualification:paint")
+          expect(callbackSource?.captureGeometry).toEqual(state !== "refusal" ? geometry : undefined)
+          expect(callbackSource?.captureGeometryRefusal).toBe(state === "refusal" ? priorRefusal : undefined)
+          if (state !== "geometry") throw Object.assign(new Error(finalRefusal), { name: "CaptureCalibrationRefused" })
+          probeSource.captureGeometry = { ...geometry, geometry: { ...geometry.geometry, cellWidth: 16 } }
+        },
+      })
+      expect(probeOrder).toEqual(["calibrate", "callback", "qualify"])
+      expect(callbackSource?.captureGeometry).toEqual(state !== "refusal" ? geometry : undefined)
+      expect(callbackSource?.captureGeometryRefusal).toBe(state === "refusal" ? priorRefusal : undefined)
+      expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+        writes: ["calibration:paint"],
+        ...(state === "refusal" ? { refusal: priorRefusal } : {}),
+      })
+      expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
+        writes: ["qualification:paint"],
+        ...(state !== "geometry" ? { refusal: finalRefusal } : {}),
+      })
+      expect(checkpointTraces).toContain(batch.rawReplies["collector.textQualification.trace"])
+    },
+  )
 
   it("fails the whole run, returning no batch, when the after-probes qualification fails", async () => {
     await expect(
       runProbeBatch({
         ids: [id],
         ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async () => {
+          probeOrder.push("calibrate")
+        },
         finishCapture: async () => {
           throw new Error("qualification fixture failed after probes")
         },
       }),
     ).rejects.toThrow("qualification fixture failed after probes")
-    expect(probeOrder).toEqual(["callback"])
+    expect(probeOrder).toEqual(["calibrate", "callback"])
   })
 })
 
@@ -3043,6 +3074,8 @@ const defaultClipboardCases: Array<{
   refuseWrite?: boolean
   nullMode2004?: boolean
   pasteboard?: "darwin"
+  /** The receipt owns no PRIMARY baseline, so a PRIMARY route must refuse loudly. */
+  noPrimary?: boolean
   eligible: boolean
 }> = [
   { name: "direct Kitty default paste", eligible: true },
@@ -3062,8 +3095,14 @@ const defaultClipboardCases: Array<{
     eligible: true,
   },
   {
-    name: "direct xterm default paste stays gated",
+    name: "direct xterm default paste through owned PRIMARY and Shift+Insert",
     subject: { kind: "term", id: "xterm", os: "linux" },
+    eligible: true,
+  },
+  {
+    name: "direct xterm default paste refuses when the receipt owns no PRIMARY",
+    subject: { kind: "term", id: "xterm", os: "linux" },
+    noPrimary: true,
     eligible: false,
   },
   {
@@ -3269,6 +3308,26 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     },
     { writeDeadlineMs: 25, writePollMs: 5 },
   )
+  const isXtermPaste =
+    (scenario.featureId ?? "extensions.clipboard-paste") === "extensions.clipboard-paste" &&
+    subject.kind === "term" &&
+    subject.id === "xterm" &&
+    subject.os === "linux"
+  const primaryBaseline = "owned primary baseline"
+  let primaryText = primaryBaseline
+  const primaryTransaction = createClipboardTransaction(primaryBaseline, {
+    async readText(trace, kind, verify) {
+      await verify()
+      trace({ kind, at: new Date().toISOString(), length: primaryText.length })
+      return primaryText
+    },
+    async writeText(text, trace, kind, verify) {
+      await verify()
+      primaryText = text
+      trace({ kind, at: new Date().toISOString(), length: text.length })
+    },
+  })
+  const withPrimaryFixture = vi.fn(primaryTransaction)
   const withClipboardFixture = vi.fn(((work, trace, verify) =>
     baseTransaction(
       (fixture) => work(attachedMux === "tmux" ? { ...fixture, tmuxSetClipboard: "external" } : fixture),
@@ -3312,24 +3371,23 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     },
     dispose: async () => {},
     withClipboardFixture,
+    ...(!scenario.noPrimary && { withPrimaryFixture }),
     ...(muxAttachmentProof && { muxAttachmentProof }),
   }
+  // Each key pastes the selection its real binding reads: Shift+Insert PRIMARY, Ctrl+Shift+V CLIPBOARD.
   const injectKey = vi.fn(async (keys: string) => {
-    const text = keys === "a" ? "a" : bracketedPaste ? `\x1b[200~${clipboardText}\x1b[201~` : clipboardText
+    const pasted = keys === "shift+Insert" ? primaryText : clipboardText
+    const text = keys === "a" ? "a" : bracketedPaste ? `\x1b[200~${pasted}\x1b[201~` : pasted
     process.stdin.emit("data", Buffer.from(text))
   })
   const featureId = scenario.featureId ?? "extensions.clipboard-paste"
   const isOsc52 = featureId.startsWith("extensions.osc52-")
   const isOsc52WriteOrRoundtrip = featureId === "extensions.osc52-write" || featureId === "extensions.osc52-clipboard"
   const isOsc52Read = featureId === "extensions.osc52-read"
-  const isXtermPaste =
-    featureId === "extensions.clipboard-paste" &&
-    subject.kind === "term" &&
-    subject.id === "xterm" &&
-    subject.os === "linux"
-  const appDeclarations = isXtermPaste
-    ? appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
-    : undefined
+  const appDeclarations =
+    subject.kind === "term" && subject.id === "xterm"
+      ? appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
+      : undefined
   const collected = runProbeBatch({
     ids: [featureId],
     subject,
@@ -3340,6 +3398,11 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
   })
   if (scenario.mismatched) {
     await expect(collected).rejects.toThrow(/disagree/)
+  } else if (scenario.noPrimary) {
+    const batch = await collected
+    expect(JSON.stringify(batch.results.find((result) => result.featureId === featureId))).toContain(
+      "Owned PRIMARY selection is absent from this run's clipboard receipt",
+    )
   } else {
     const batch = await collected
     const expectedOutcome = scenario.refuseWrite ? "unsupported" : "supported"
@@ -3347,9 +3410,7 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
       ? expectedOutcome
       : featureId === "modes.bracketed-paste"
         ? "probe-invalid"
-        : isXtermPaste
-          ? "untestable"
-          : "probe-todo"
+        : "probe-todo"
     expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(expectedStatus)
     if (scenario.eligible) {
       const expectedAssertionType = isOsc52Read ? "query_reply" : isOsc52WriteOrRoundtrip ? "clipboard" : "input_bytes"
@@ -3360,6 +3421,18 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
           assertionType: expectedAssertionType,
         }),
       )
+      if (featureId === "extensions.clipboard-paste") {
+        // The row says how it was measured: selection and key are in its evidence (@cto a4ec8fe2 condition 2).
+        const route = isXtermPaste
+          ? { selection: "primary", key: "shift+Insert" }
+          : { selection: "clipboard", key: "ctrl+shift+v" }
+        expect(batch.assertions.find((assertion) => assertion.featureId === featureId)).toMatchObject({
+          action: `clipboard-paste:${route.selection}:${route.key}`,
+        })
+        expect(batch.assertions.find((assertion) => assertion.featureId === featureId)?.observed).toContain(
+          `"selection":"${route.selection}","key":"${route.key}"`,
+        )
+      }
       if (scenario.nullMode2004 && featureId === "extensions.clipboard-paste") {
         expect(batch.observations.find((obs) => obs.featureId === featureId)?.note).toContain("set blind")
       }
@@ -3414,11 +3487,14 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
       expect(batch.assertions).toEqual([])
     }
   }
-  expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible ? 1 : 0)
+  expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible && !isXtermPaste ? 1 : 0)
+  expect(withPrimaryFixture).toHaveBeenCalledTimes(scenario.eligible && isXtermPaste ? 1 : 0)
+  const pasteKey = isXtermPaste ? "shift+Insert" : "ctrl+shift+v"
   expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(
-    scenario.eligible && !isOsc52 ? ["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"] : [],
+    scenario.eligible && !isOsc52 ? ["a", pasteKey, pasteKey, pasteKey] : [],
   )
   expect(clipboardText).toBe(baseline)
+  expect(primaryText).toBe(primaryBaseline)
   if (scenario.eligible && isOsc52) {
     expect(writes.join("")).toContain("\x1b]52;c;")
   } else {

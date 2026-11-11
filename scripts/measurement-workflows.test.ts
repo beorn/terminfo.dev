@@ -30,6 +30,27 @@ const BUN = process.versions.bun
 
 const root = join(import.meta.dirname, "..")
 
+// #33321: macOS Bash 3.2 failed on unmatched apostrophes in command-substitution JS comments.
+// Paired quotes in ITERM_STARTUP already worked; this checks comment-local imbalance, not all quotes.
+// Local Bash 5 accepts the broken comments, so syntax-only checks here missed the hosted failure.
+test("hosted Mac scripts parse and keep command-substitution comments compatible with Bash 3.2", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const steps = workflow.jobs["measure-macos"].steps as { name: string; run?: string }[]
+  let checkedBodies = 0
+  for (const step of steps) {
+    if (!step.run) continue
+    const result = spawnSync("/bin/bash", ["-n"], { input: step.run, encoding: "utf8" })
+    expect(result.status, `${step.name}: ${result.stderr}`).toBe(0)
+    for (const body of step.run.matchAll(/\$\(cat <<'([^']+)'\n([\s\S]*?)\n\1\n\s*\)/gu)) {
+      checkedBodies++
+      const comments = body[2]!.split("\n").filter((line) => /^\s*\/\//u.test(line))
+      const unmatchedComments = comments.filter((line) => (line.match(/'/gu)?.length ?? 0) % 2 !== 0)
+      expect(unmatchedComments, `${step.name}: Bash 3.2 unmatched comment quotes`).toEqual([])
+    }
+  }
+  expect(checkedBodies).toBeGreaterThan(0)
+})
+
 test("hosted collector build runs at background priority", () => {
   const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
   const build = workflow.jobs["measure-macos"].steps.find(

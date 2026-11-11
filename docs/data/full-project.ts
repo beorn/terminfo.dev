@@ -79,9 +79,16 @@ export interface FullProjectRows {
   recordedPositions: number
 }
 
-/** The note beside a cell a context supplement read: its qualifier or open reason, then the declared default. */
+/**
+ * The note beside a cell a context supplement read: its qualifier, open reason, or (on a decided default cell) the
+ * supplement's own status, then the declared default.
+ */
 function supplementNote(supplement: NonNullable<SelectedContextCell["supplement"]>): string {
-  const head = supplement.filled ? supplement.qualifier : `${supplement.qualifier}: ${supplement.open}`
+  const head = supplement.filled
+    ? supplement.qualifier
+    : "noted" in supplement
+      ? `${supplement.noted} ${supplement.qualifier}`
+      : `${supplement.qualifier}: ${supplement.open}`
   return supplement.declaredDefault ? `${head}; declared, ${supplement.declaredDefault}` : head
 }
 

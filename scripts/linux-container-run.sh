@@ -379,6 +379,39 @@ await_owned_daemon() {
   return 2
 }
 
+# A mux profile is a documented user option of the multiplexer, measured as a context supplement (#33151, @cto
+# 918fccd1 rule 2). Prints the subject.config the run records for MUX and PROFILE: the default is the empty-config
+# path every default mux run records; Screen truecolor names exactly what its config file says. Any other pair is
+# refused by name. docs/data/context-supplements.ts holds the same two values; the launcher test keeps them equal.
+mux_profile_config() {
+  local mux=$1 profile=$2
+  case "$profile" in
+    default) printf '%s\n' /out/mux-empty.conf ;;
+    truecolor)
+      if [[ "$mux" != screen ]]; then
+        echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
+        return 2
+      fi
+      printf '%s\n' 'screen: defscrollback 1000; truecolor on'
+      ;;
+    *) echo "Unknown mux profile $profile on mux ${mux:-(none)}" >&2; return 2 ;;
+  esac
+}
+
+# xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,
+# selectToClipboard or insert-selection resource anywhere on its command line could rebind it, so the
+# launcher refuses one. Prints the first such argument and succeeds; fails when there is none.
+xterm_paste_rebinding_arg() {
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" =~ [Tt]ranslations|selectToClipboard|insert-selection ]]; then
+      printf '%s\n' "$arg"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -424,6 +457,8 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       ;;
     screen)
       printf 'defscrollback 1000\n' > "$mux_config"
+      # The truecolor-on supplement (#33151): the documented option, after the unchanged default line.
+      if [[ "${TERMINFO_MUX_PROFILE:-default}" == truecolor ]]; then printf 'truecolor on\n' >> "$mux_config"; fi
       export SCREENDIR="$HOME/.screen"
       mkdir -m 700 "$SCREENDIR"
       screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner
@@ -678,12 +713,13 @@ if [[ "${1:-}" == "--inside" ]]; then
   xvfb_pid=
   wm_pid=
   helper_pid=
+  primary_helper_pid=
   daemon_pid=
   collector_pid=
   cleanup() {
     local status=$?
     trap - EXIT
-    stop_owned_processes "$daemon_pid" "$wm_pid" "$helper_pid" "$xvfb_pid" "$collector_pid"
+    stop_owned_processes "$daemon_pid" "$wm_pid" "$helper_pid" "$primary_helper_pid" "$xvfb_pid" "$collector_pid"
     exit "$status"
   }
   trap cleanup EXIT
@@ -805,6 +841,54 @@ TERMINFO_WM_RC
     exit 2
   }
   initial_read_sha=$(sha256sum "$HOME/clipboard-initial-read.txt" | cut -d ' ' -f 1)
+
+  # xterm's default paste (Shift+Insert) reads X11 PRIMARY, not CLIPBOARD (#32164, @cto a4ec8fe2), so an
+  # xterm run also owns a PRIMARY baseline; every other target owns CLIPBOARD alone. The route is believed
+  # only while nothing rebinds it: the launch must carry no translation or selectToClipboard resource, and
+  # the display, environment and private HOME no resource database. Refused, never recorded and continued.
+  primary_receipt=null
+  if [[ "$target_id" == xterm ]]; then
+    # Every argument xterm is launched with: its own and the clipboard profile's (33119's read-allowed -xrm).
+    if rebinding=$(xterm_paste_rebinding_arg "${target_launch_args[@]}" "${target_clipboard_args[@]}"); then
+      echo "xterm launch argument rebinds paste: $rebinding" >&2
+      exit 2
+    fi
+    resource_manager=$(xprop -root RESOURCE_MANAGER 2>&1)
+    [[ "$resource_manager" == "RESOURCE_MANAGER:  not found." ]] || {
+      echo "Owned display carries a resource database: $resource_manager" >&2
+      exit 2
+    }
+    for name in XENVIRONMENT XAPPLRESDIR XUSERFILESEARCHPATH XFILESEARCHPATH; do
+      [[ -z "${!name:-}" ]] || { echo "xterm resource search variable is set: $name" >&2; exit 2; }
+    done
+    for file in "$HOME/.Xdefaults" "$HOME/.Xresources" "$HOME/.Xdefaults-$(uname -n)"; do
+      [[ ! -e "$file" ]] || { echo "Private HOME carries an X resource file: $file" >&2; exit 2; }
+    done
+    primary_path="$HOME/primary-baseline.txt"
+    printf 'terminfo-owned-primary-%s' "$TERMINFO_RUN_ID" > "$primary_path"
+    chmod 600 "$primary_path"
+    primary_sha=$(sha256sum "$primary_path" | cut -d ' ' -f 1)
+    xclip -quiet -selection primary -in "$primary_path" </dev/null >/out/xclip-primary-owner.log 2>&1 &
+    primary_helper_pid=$!
+    for _ in $(seq 1 100); do
+      kill -0 "$primary_helper_pid" 2>/dev/null || { cat /out/xclip-primary-owner.log >&2; exit 2; }
+      if timeout 1 xclip -selection primary -out > "$HOME/primary-initial-read.txt" 2>/out/xclip-primary-read.err &&
+         cmp -s "$primary_path" "$HOME/primary-initial-read.txt"; then
+        break
+      fi
+      sleep 0.1
+    done
+    [[ -r "$HOME/primary-initial-read.txt" &&
+       "$(sha256sum "$HOME/primary-initial-read.txt" | cut -d ' ' -f 1)" == "$primary_sha" ]] || {
+      echo "Owned xclip PRIMARY baseline did not survive independent selection read" >&2
+      cat /out/xclip-primary-owner.log /out/xclip-primary-read.err >&2
+      exit 2
+    }
+    primary_receipt=$(jq -n --argjson helperPid "$primary_helper_pid" --arg baselinePath "$primary_path" \
+      --arg baselineSha "$primary_sha" \
+      --arg initialSha "$(sha256sum "$HOME/primary-initial-read.txt" | cut -d ' ' -f 1)" \
+      '{helperPid:$helperPid,baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha}')
+  fi
 
   export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
   export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
@@ -938,12 +1022,14 @@ TERMINFO_WM_RC
     --arg windowId "$window_id" --argjson windowPid "$window_pid" \
     --argjson helperPid "$helper_pid" --arg helperPath "$xclip_binary" --arg helperSha "$xclip_sha" \
     --arg baselinePath "$baseline_path" --arg baselineSha "$baseline_sha" --arg initialSha "$initial_read_sha" \
+    --argjson primary "$primary_receipt" \
     --arg config "$target_config" --arg permissions "$clipboard_permissions" --argjson target "$fixture_target" \
     '{schemaVersion:1,runId:$run,profile:$profile,target:$target,
       display:{name:$display,number:$number,displayFdPath:$displayFdPath,xvfbPid:$xvfbPid},
       terminal:{pid:$terminalPid,collectorPid:$collectorPid,windowId:$windowId,windowPid:$windowPid},
       selection:{helperPid:$helperPid,helperExecutable:{path:$helperPath,sha256:$helperSha},
-        baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha},
+        baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha}
+        + (if $primary == null then {} else {primary:$primary} end),
       config:$config,permissions:$permissions}' > "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
   chmod 600 "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
   clipboard_fixture_sha=$(sha256sum "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT" | cut -d ' ' -f 1)
@@ -972,7 +1058,8 @@ TERMINFO_WM_RC
     jq -n --slurpfile provenance "$TERMINFO_RUNTIME_PROVENANCE" --slurpfile info /out/info.json \
       --slurpfile da1 /out/da1-observation.json --slurpfile xtversion /out/xtversion-observation.json \
       --slurpfile preflight /out/preflight-identity.json --arg app "$target_id" --arg appVersion "$target_version" \
-      --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" --arg muxConfig /out/mux-empty.conf \
+      --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" \
+      --arg muxConfig "$(mux_profile_config "$TERMINFO_MUX_KIND" "${TERMINFO_MUX_PROFILE:-default}")" \
       --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg permissions "$clipboard_permissions" '
       (if $profile == "default" then null else $permissions end) as $permissions |
       {subject:{kind:"mux",id:$mux,version:$muxVersion,os:$info[0].os,osVersion:$info[0].osVersion,
@@ -1098,7 +1185,7 @@ TERMINFO_WM_RC
 fi
 
 usage() {
-  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--mux-profile default|truecolor] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
@@ -1112,6 +1199,7 @@ preset=default
 clipboard_profile=
 probe_ids=null
 mux_kind=
+mux_profile=default
 output_parent=
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -1119,6 +1207,11 @@ while [[ "$#" -gt 0 ]]; do
       [[ "$#" -ge 2 && -z "$mux_kind" ]] || usage
       mux_kind=$2
       case "$mux_kind" in tmux|screen) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
+      shift 2
+      ;;
+    --mux-profile)
+      [[ "$#" -ge 2 && -n "${2:-}" && "${2:-}" != --* ]] || usage
+      mux_profile=$2
       shift 2
       ;;
     --target)
@@ -1155,6 +1248,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 [[ -n "$target_id" && -n "$clipboard_profile" && -n "$output_parent" ]] || usage
 [[ -z "$mux_kind" || "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
+mux_profile_config "$mux_kind" "$mux_profile" >/dev/null || exit 2
 case "$target_id" in
   kitty|xterm|ghostty|wezterm|alacritty) ;;
   *) echo "Unknown target: $target_id" >&2; exit 2 ;;
@@ -1396,7 +1490,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "LC_ALL=C.UTF-8" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_CAPTURE_RUN_ID=${TERMINFO_CAPTURE_RUN_ID:-}" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
-  --env "TERMINFO_MUX_KIND=$mux_kind" \
+  --env "TERMINFO_MUX_KIND=$mux_kind" --env "TERMINFO_MUX_PROFILE=$mux_profile" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
   --env "TERMINFO_TARGET_BINARY=$target_binary" --env "TERMINFO_TARGET_VERSION=$target_version" \
   --env "TERMINFO_TARGET_SOURCE_URL=$source_url" --env "TERMINFO_TARGET_SOURCE_SRI=$source_sri" \
