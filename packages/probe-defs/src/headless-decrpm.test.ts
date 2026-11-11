@@ -225,7 +225,10 @@ test("synchronized-output names the qualified standalone WezTerm library boundar
       buildHash: "10d2930241d0f0c080bf3974b280b42454ea66e8b1ff3b9ab4d37bdc8049090f",
       toolchain: "retained native identity fixture",
     },
-    adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.weztermPixelMouse).map(([path, blobOid]) => ({ path, blobOid })),
+    adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.weztermPixelMouse).map(([path, blobOid]) => ({
+      path,
+      blobOid,
+    })),
   }
   for (const qualified of [true, false]) {
     const { source } = readbackContext(2026, { setPs: 2, setMode: null, resetMode: null })
