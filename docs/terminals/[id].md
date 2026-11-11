@@ -9,6 +9,7 @@ import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
 import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, staleCaption, currentSupportedShare, publicResultFor } from '../data/release-scope.ts'
+import { environmentGroupIds } from '../../packages/probe-defs/src/environment-groups.ts'
 const { params } = useData()
 const p = params.value
 
@@ -27,6 +28,7 @@ const measuredBar = computed(() => {
   return aggregateCurrentResults('featureResults' in selection ? Object.values(selection.featureResults) : selection.results, selection.catalogIds)
 })
 const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
+const manualEnvironmentCount = computed(() => selectedRun.value ? environmentGroupIds(selectedRun.value.catalogIds).length : 0)
 function featureNote(id) {
   const result = publicResultFor(selectedRun.value, id)
   return result?.reason || ''
@@ -170,7 +172,8 @@ const breadcrumbParent = (() => {
     <span v-if="measuredBar.counts['probe-invalid']" class="result-share-error" :style="{ width: `${measuredBar.counts['probe-invalid'] / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts['probe-conflict']" class="result-share-error" title="PROBE CONFLICT" :style="{ width: `${measuredBar.counts['probe-conflict'] / measuredBar.denominator * 100}%` }"></span>
   </div>
-  <p>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
+  <p v-if="measuredBar.complete && manualEnvironmentCount > 0">Every graded feature has a result. {{ manualEnvironmentCount }} environment {{ manualEnvironmentCount === 1 ? 'feature is' : 'features are' }} manual by design and not graded. See each row for whether it is supported.</p>
+  <p v-else>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
 </div>
 
 <details v-if="selectedRun" class="run-context">
