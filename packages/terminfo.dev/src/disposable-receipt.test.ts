@@ -18,6 +18,8 @@ import {
   sampleOwnedHostIdentity,
   parseMuxAttachmentProof,
   parseLstart,
+  muxAttachmentConfigMatches,
+  SCREEN_TRUECOLOR_CONFIG,
 } from "./disposable-receipt.ts"
 
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
@@ -55,6 +57,21 @@ const linuxProof = () => {
     session: "owned",
   }
 }
+
+// #33151: a Screen truecolor run records a config label, not the file path, so a path comparison refused every
+// such run ("Mux target differs from the verified mux attachment"). The label matches only the declared bytes.
+test("a mux profile config matches only its declared file bytes on its own mux; a default run matches its path", () => {
+  const screen = (content: string) => {
+    const proof = linuxProof()
+    return { ...proof, mux: "screen" as const, config: { path: "/out/mux-empty.conf", sha256: digest(content) } }
+  }
+  const truecolor = screen("defscrollback 1000\ntruecolor on\n")
+  expect(muxAttachmentConfigMatches(truecolor, SCREEN_TRUECOLOR_CONFIG)).toBe(true)
+  expect(muxAttachmentConfigMatches(screen("defscrollback 1000\n"), SCREEN_TRUECOLOR_CONFIG)).toBe(false)
+  expect(muxAttachmentConfigMatches({ ...truecolor, mux: "tmux" }, SCREEN_TRUECOLOR_CONFIG)).toBe(false)
+  expect(muxAttachmentConfigMatches(truecolor, "screen: something else")).toBe(false)
+  expect(muxAttachmentConfigMatches(truecolor, null)).toBe(false)
+})
 
 // A retained process snapshot is historical data, never a reason to query the current /proc tree.
 // The existing host-receipt cases cannot catch silently discarded mux custody fields.

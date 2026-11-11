@@ -9,13 +9,15 @@
  * `truecolor on`). A configuration is never recorded as a permission.
  */
 
+import { SCREEN_TRUECOLOR_CONFIG } from "../../packages/terminfo.dev/src/disposable-receipt.ts"
+
 /**
  * The config a default mux run records: the launcher's `--arg muxConfig` (scripts/linux-container-run.sh). The
  * launcher test keeps the two equal. A mux run with any other config is a declared supplement or is refused.
  */
 export const MUX_DEFAULT_CONFIG = "/out/mux-empty.conf"
-/** The config a Screen `--mux-profile truecolor` run records: what the launcher wrote into its screen config. */
-export const SCREEN_TRUECOLOR_CONFIG = "screen: defscrollback 1000; truecolor on"
+/** The config a Screen `--mux-profile truecolor` run records; its one home is the receipt check that verifies it. */
+export { SCREEN_TRUECOLOR_CONFIG }
 
 export interface ContextSupplement {
   /** The supplement's name in the pass, its output directory and its cell marker. */

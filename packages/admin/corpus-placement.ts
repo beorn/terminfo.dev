@@ -32,6 +32,7 @@ import {
   HOSTED_IDENTITY_SOURCES,
   parseDisposableReceipt,
   parseMuxAttachmentProof,
+  muxAttachmentConfigMatches,
   muxAttachmentVersionMatches,
   type ReceiptTarget,
 } from "../terminfo.dev/src/disposable-receipt.ts"
@@ -420,7 +421,7 @@ function provenanceDecision(run: LoadedRun): PlacementRefusalCode | null {
         attachment.captureRunId !== run.runId ||
         attachment.mux !== run.subject.id ||
         attachment.mux !== run.subject.mux ||
-        attachment.config.path !== run.subject.config ||
+        !muxAttachmentConfigMatches(attachment, run.subject.config) ||
         !muxAttachmentVersionMatches(attachment, run.subject.version) ||
         !muxFixtureMatches(run, attachment)
       ) {

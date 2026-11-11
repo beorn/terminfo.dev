@@ -393,6 +393,15 @@ mux_profile_config() {
   esac
 }
 
+# The exact bytes Screen starts with for PROFILE: the unchanged default line, then truecolor's documented option
+# (#33151). The mux receipt hashes this file, and the placement check (MUX_PROFILE_CONFIG_FILES in
+# disposable-receipt.ts) accepts a profile's recorded config only when that hash matches these bytes; the launcher
+# test keeps the two equal.
+screen_config_content() {
+  printf 'defscrollback 1000\n'
+  if [[ "$1" == truecolor ]]; then printf 'truecolor on\n'; fi
+}
+
 # xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,
 # selectToClipboard or insert-selection resource anywhere on its command line could rebind it, so the
 # launcher refuses one. Prints the first such argument and succeeds; fails when there is none.
@@ -451,9 +460,7 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       wait "$mux_server"
       ;;
     screen)
-      printf 'defscrollback 1000\n' > "$mux_config"
-      # The truecolor-on supplement (#33151): the documented option, after the unchanged default line.
-      if [[ "${TERMINFO_MUX_PROFILE:-default}" == truecolor ]]; then printf 'truecolor on\n' >> "$mux_config"; fi
+      screen_config_content "${TERMINFO_MUX_PROFILE:-default}" > "$mux_config"
       export SCREENDIR="$HOME/.screen"
       mkdir -m 700 "$SCREENDIR"
       screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner

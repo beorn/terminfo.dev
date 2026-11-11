@@ -62,7 +62,7 @@ import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.
 import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
-import { muxAttachmentVersionMatches } from "./disposable-receipt.ts"
+import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
   createOwnedTerminal,
@@ -939,7 +939,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           attachment.mux !== muxSubject.id ||
           attachment.mux !== muxSubject.mux ||
           !muxAttachmentVersionMatches(attachment, muxSubject.version) ||
-          attachment.config.path !== muxSubject.config)
+          !muxAttachmentConfigMatches(attachment, muxSubject.config))
       ) {
         throw new Error("Mux target differs from the verified mux attachment")
       }

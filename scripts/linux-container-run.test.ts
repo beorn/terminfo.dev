@@ -32,6 +32,7 @@ import { OWNED_LAYOUT } from "../packages/probes/fixtures/owned-layout.fixture.t
 import type { LinuxMuxAttachmentProof, CapturedRunDraft } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import { MUX_DEFAULT_CONFIG, SCREEN_TRUECOLOR_CONFIG, TRUECOLOR_ON } from "../docs/data/context-supplements.ts"
+import { MUX_PROFILE_CONFIG_FILES } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
@@ -1865,11 +1866,19 @@ describe("mux profile configs", () => {
     })
   })
 
-  it("writes truecolor on after the unchanged default line, only under the truecolor profile", () => {
-    const source = readFileSync(launcher, "utf8")
-    expect(source).toContain("printf 'defscrollback 1000\\n' > \"$mux_config\"")
-    expect(source).toContain(
-      'if [[ "${TERMINFO_MUX_PROFILE:-default}" == truecolor ]]; then printf \'truecolor on\\n\' >> "$mux_config"; fi',
+  // The placement check accepts Screen's truecolor label only when the receipt's config hash matches the declared
+  // bytes, so the bytes the launcher writes and MUX_PROFILE_CONFIG_FILES must be the same.
+  it("writes truecolor on after the unchanged default line, exactly the bytes the receipt check declares", () => {
+    const content = (profile: string) =>
+      spawnSync("bash", ["-c", 'source "$1"; screen_config_content "$2"', "_", launcher, profile], { encoding: "utf8" })
+    expect(content("default")).toMatchObject({ status: 0, stdout: "defscrollback 1000\n" })
+    expect(content("truecolor")).toMatchObject({
+      status: 0,
+      stdout: MUX_PROFILE_CONFIG_FILES[SCREEN_TRUECOLOR_CONFIG]?.content,
+    })
+    expect(MUX_PROFILE_CONFIG_FILES[SCREEN_TRUECOLOR_CONFIG]?.mux).toBe("screen")
+    expect(readFileSync(launcher, "utf8")).toContain(
+      'screen_config_content "${TERMINFO_MUX_PROFILE:-default}" > "$mux_config"',
     )
   })
 })

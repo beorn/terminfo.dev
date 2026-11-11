@@ -705,6 +705,34 @@ export function muxAttachmentVersionMatches(attachment: MuxAttachmentProof, subj
   )
 }
 
+/** The config a Screen `--mux-profile truecolor` run records as subject.config (#33151, @cto 4a546051). */
+export const SCREEN_TRUECOLOR_CONFIG = "screen: defscrollback 1000; truecolor on"
+
+/**
+ * Per recorded mux profile config, the mux it belongs to and the exact bytes the launcher starts that mux with
+ * (`mux_config_content` in scripts/linux-container-run.sh; the launcher test keeps the two equal). A default run
+ * records the config file's own path, so it needs no row here.
+ */
+export const MUX_PROFILE_CONFIG_FILES: Readonly<Record<string, { readonly mux: string; readonly content: string }>> = {
+  [SCREEN_TRUECOLOR_CONFIG]: { mux: "screen", content: "defscrollback 1000\ntruecolor on\n" },
+}
+
+/**
+ * Does the attachment's verified config file match the subject's recorded config (#33151)? A default run records the
+ * file's path, so the two are equal. A profile run records a label instead; it matches only when the file the
+ * launcher hashed holds exactly that profile's declared bytes on that profile's mux.
+ */
+export function muxAttachmentConfigMatches(attachment: MuxAttachmentProof, subjectConfig: string | null): boolean {
+  if (subjectConfig === null) return false
+  if (attachment.config.path === subjectConfig) return true
+  const profile = MUX_PROFILE_CONFIG_FILES[subjectConfig]
+  return (
+    profile !== undefined &&
+    profile.mux === attachment.mux &&
+    attachment.config.sha256 === createHash("sha256").update(profile.content).digest("hex")
+  )
+}
+
 /** The pane login's kernel path (R1/R2). argv0 is bare `login` on Darwin, so this path is the only
  * evidence that the uid-0 hop below the mux is the login program and not something renamed to it. */
 const SCREEN_PANE_LOGIN = "/usr/bin/login"
