@@ -66,6 +66,7 @@ const gaps = computed(() => props.history.flatMap(view => view.unmeasured).filte
   <p>{{ history.length }} retained collection entries, including entries with unreadable inputs. Oldest {{ history[0]?.run.startedAt }}, newest {{ history.at(-1)?.run.startedAt }}. Times are UTC.</p>
   <template v-if="selected">
     <p>Collection <code>{{ selected.run.id }}</code>; started {{ selected.run.startedAt }}; newest capture {{ selected.run.newestCaptureAt }}.</p>
+    <p v-if="selected.unapplied" class="warning custom-block">{{ selected.unapplied }}</p>
     <div v-if="selected.unreadable" class="danger custom-block">
       <p><strong>{{ selected.unreadable.banner }}</strong></p>
       <p>{{ selected.unreadable.reason }}</p>

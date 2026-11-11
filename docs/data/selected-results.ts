@@ -11,7 +11,7 @@ import {
 } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
-import { MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement } from "./context-supplements.ts"
+import { isDefaultOf, MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement } from "./context-supplements.ts"
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
 import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
 import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
@@ -347,24 +347,6 @@ interface SupplementInput {
   supplement: ContextSupplement
   /** The default context's projected key: the only context this supplement may read into. */
   contextKey: string
-}
-
-/**
- * A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions, not a
- * declared supplement, and for a mux the launcher's one default config (#33151, @cto 4a546051).
- */
-function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): boolean {
-  return (
-    candidate.permissions === null &&
-    supplementOf(candidate) === undefined &&
-    (candidate.kind !== "mux" || candidate.config === MUX_DEFAULT_CONFIG) &&
-    candidate.kind === supplement.kind &&
-    candidate.id === supplement.id &&
-    candidate.os === supplement.os &&
-    candidate.osVersion === supplement.osVersion &&
-    candidate.outerTerminal === supplement.outerTerminal &&
-    candidate.mux === supplement.mux
-  )
 }
 
 /**

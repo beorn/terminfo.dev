@@ -62,6 +62,11 @@ export interface LoadedWorkingRun extends WorkingRunSelection {
    * says so loudly; `runs` is then empty. Every other read failure throws.
    */
   unreadable?: { suiteId: string; treeSuiteId: string; reason: string; banner: string }
+  /**
+   * The pass's context supplements (33119) this preview does not apply, in one line. A supplement's answers reach a
+   * cell only once placed beside its default run (33550, @cto 2c2f2394), so the preview says what it leaves out.
+   */
+  unapplied?: string
 }
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -415,6 +420,7 @@ export interface WorkingView {
   run: { id: string; startedAt: string; newestCaptureAt: string; suites: string[] }
   /** A suite or retained-input gap is visible without inventing context counts. */
   unreadable?: Pick<NonNullable<LoadedWorkingRun["unreadable"]>, "reason" | "banner">
+  unapplied?: string
   contexts: WorkingContext[]
   unmeasured: LoadedWorkingRun["unmeasured"]
 }
@@ -516,6 +522,7 @@ export function composeWorkingView(
     contexts,
     unmeasured: working.unmeasured,
     ...(working.unreadable && { unreadable: working.unreadable }),
+    ...(working.unapplied !== undefined && { unapplied: working.unapplied }),
   }
 }
 
@@ -595,7 +602,22 @@ function loadAppWorkingRun(
   if (run.subject.id !== context.terminalId || run.subject.kind !== context.kind || run.subject.os !== context.os) {
     throw new Error(`${rawPath}: captured subject disagrees with ${context.context}`)
   }
-  return { ...selection, runs: [run], unmeasured: [] }
+  const unapplied = unappliedSupplements(row.supplements)
+  return { ...selection, runs: [run], unmeasured: [], ...(unapplied !== undefined && { unapplied }) }
+}
+
+/** One line naming the pass row's supplements, which this preview reads no answer from. */
+function unappliedSupplements(supplements: unknown): string | undefined {
+  if (supplements === undefined) return undefined
+  if (!Array.isArray(supplements)) throw new Error("pass row supplements must be a list")
+  const named = supplements.map((entry) => {
+    if (!record(entry) || typeof entry.name !== "string" || !Array.isArray(entry.featureIds)) {
+      throw new Error("pass row supplement must carry its name and featureIds")
+    }
+    return `${entry.name} (${entry.featureIds.join(", ")})`
+  })
+  if (named.length === 0) return undefined
+  return `Not applied in this preview: the ${named.join("; ")} supplement run of this pass. Its answers reach a cell only once it is placed beside the default run.`
 }
 
 /** Private page history uses the same raw reader and view; public API generation remains newest-only. */

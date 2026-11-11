@@ -152,7 +152,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // App passes use a different envelope; the library-only fixtures cannot catch dropping them,
   // conflating OS contexts, inventing comparable pairs, or letting app stores alter newest-only output.
-  function appCollection(instrument: string, os: string, name = OLD) {
+  function appCollection(instrument: string, os: string, name = OLD, supplements?: unknown[]) {
     const parent = join(instrument, "apps", "ghostty", os, "runs")
     mkdirSync(parent, { recursive: true })
     const dir = run(parent, name, { complete: true })
@@ -172,7 +172,14 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
         complete: true,
         probeHash: original.probeHash,
         sourceRevision: original.sourceRevision,
-        contexts: [{ context: { id: "ghostty", kind: "term", os }, status: "classified", rawRun: rawPath }],
+        contexts: [
+          {
+            context: { id: "ghostty", kind: "term", os },
+            status: "classified",
+            rawRun: rawPath,
+            ...(supplements !== undefined && { supplements }),
+          },
+        ],
         errors: [],
       }),
     )
@@ -208,7 +215,9 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       collection(libraries)
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
       const before = JSON.stringify(siteWorkingView(join(root, "content")))
-      const linux = appCollection(instrument, "linux")
+      const linux = appCollection(instrument, "linux", OLD, [
+        { name: "read-allowed", featureIds: ["extensions.osc52-read", "extensions.osc52-clipboard"] },
+      ])
       appCollection(instrument, "linux", PARTIAL)
       appCollection(instrument, "macos")
       const history = siteWorkingHistory(join(root, "content"))!
@@ -235,6 +244,15 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
           ),
       ).toBe(true)
       expect(JSON.stringify(siteWorkingView(join(root, "content")))).toBe(before)
+      // Accepted (33550, @cto 2c2f2394 condition 4): the preview reads only the default row, so it names the
+      // pass's supplements it did not apply, and only on the collection whose pass declares one. Asserted on
+      // this case's one history read: a second live-content read would cost the worker its RSS headroom.
+      const withSupplement = history.find((view) => view.run.id === `apps/ghostty/linux/${OLD}`)
+      expect(withSupplement?.unapplied).toBe(
+        "Not applied in this preview: the read-allowed (extensions.osc52-read, extensions.osc52-clipboard) " +
+          "supplement run of this pass. Its answers reach a cell only once it is placed beside the default run.",
+      )
+      expect(history.filter((view) => view !== withSupplement).every((view) => view.unapplied === undefined)).toBe(true)
     },
   )
 
