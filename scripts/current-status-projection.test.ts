@@ -13,7 +13,12 @@ import { join } from "node:path"
 import { publicResults } from "../docs/data/public-results.ts"
 import type { ProbeResult, ProbeSuiteManifest, TextQualification } from "@terminfo/probe-defs"
 import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
-import { projectResults, maskRunnerStorePath, projectedContextKey } from "../docs/data/selected-results.ts"
+import {
+  countContexts,
+  projectResults,
+  maskRunnerStorePath,
+  projectedContextKey,
+} from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
 
@@ -779,6 +784,63 @@ it("normalizes historical reviewed context keys without rewriting arbitrary conf
     'lib:xtermjs@["lib","xtermjs","linux",null,null,null,null,null]',
   )
   expect(maskRunnerStorePath("app:keep-this-config")).toBe("app:keep-this-config")
+})
+
+// #33543 (@cto 22819c2f): the container runner names Kitty's remote-control socket after the run id, so each run
+// opened a new context. The four real Kitty App launch lines from content/probes-apps, verbatim.
+describe("a --listen-on unix socket address is apparatus, never part of a capture context", () => {
+  const kitty = "/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty"
+  const window = "-o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600"
+  const socketRun = (socket: string, runner: string) =>
+    `nice -n 10 ${kitty} --config NONE --class terminfo-kitty-container-daemon ${window} -o font_family=JetBrains\\ Mono -o font_size=16 -o allow_remote_control=socket-only --listen-on unix:/out/kitty-${socket}.sock bun --no-env-file /nix/store/${runner}-terminfo-linux-runner/index.js test --serve `
+  const configs = {
+    b09e6e5c: socketRun("b32e22351ce84b920a5d1dbdef213c65", "mp6i8lffn8mk6xm9x9zji034qkmm1mgg"),
+    ce4f24d2: socketRun("28f464bf2d550fca0742c115f86a30dd", "d0j2dq9gk7lqd32wzkrrlq52n7s62k8m"),
+    "0f6a17be": `${kitty} --config NONE --class terminfo-kitty-container-daemon ${window} -o font_family=DejaVu\\ Sans\\ Mono -o font_size=16 bun /nix/store/8db54vnccvl7lk60lagzz4cqdig01sz5-terminfo-linux-runner/index.js test --serve `,
+    "8a04af6f": `${kitty} --config NONE --class terminfo-kitty-container-daemon ${window} -o font_family=JetBrains\\ Mono -o font_size=16 bun /nix/store/5cvph5vml2r9fr827zxbn3s4j3cd0ymj-terminfo-linux-runner/index.js test --serve `,
+  }
+  const contextsOf = (configsToCount: readonly string[]) =>
+    countContexts(
+      configsToCount.map(
+        (config) =>
+          ({
+            subject: {
+              kind: "term",
+              id: "kitty",
+              version: "0.49.2",
+              os: "linux",
+              osVersion: "7.0.0-34-generic",
+              outerTerminal: null,
+              mux: null,
+              config,
+              permissions: null,
+            },
+          }) as never,
+      ),
+    ).get("term:kitty")?.size
+
+  it("collapses the two real Kitty runs that differ only by socket name, and keeps the no-socket runs apart", () => {
+    expect(contextsOf([configs.b09e6e5c, configs.ce4f24d2])).toBe(1)
+    expect(contextsOf(Object.values(configs))).toBe(3)
+    expect(contextsOf([configs["0f6a17be"], configs["8a04af6f"]])).toBe(2)
+    // A socket listen is behaviour: the same line without it is another context.
+    expect(contextsOf([configs.ce4f24d2, configs.ce4f24d2.replace(/ --listen-on unix:\S+/u, "")])).toBe(2)
+    expect(
+      contextsOf([
+        configs.ce4f24d2,
+        configs.ce4f24d2.replace("allow_remote_control=socket-only", "allow_remote_control=yes"),
+      ]),
+    ).toBe(2)
+  })
+
+  it.each([
+    ["--listen-on unix:/out/kitty-a.sock", "--listen-on unix:<socket>"],
+    ["--listen-on=unix:/run/user/1000/kitty-b.sock", "--listen-on=unix:<socket>"],
+    ["--listen-on unix:@kitty-abstract", "--listen-on unix:<socket>"],
+    ["--listen-on tcp:localhost:12345", "--listen-on tcp:localhost:12345"],
+  ])("masks %s as %s", (config, masked) => {
+    expect(maskRunnerStorePath(`kitty ${config} bun`)).toBe(`kitty ${masked} bun`)
+  })
 })
 
 it("retains the recorded live source on selected current metadata", () => {

@@ -262,6 +262,10 @@ export function classifyDevelopmentRun(run: LoadedRun): {
  * it replaces (27929 D5: three xterm/linux runs differed ONLY in this path). Mask it wherever a
  * config string enters a context key — it is apparatus, not a difference in how the row was measured.
  * The same normalization is used for original and working subject configurations.
+ *
+ * A unix socket address given to `--listen-on` is apparatus in the same way (#33543, @cto 22819c2f): the container
+ * runner names Kitty's socket after the run id, so each run opened a new context. That a terminal listens on a unix
+ * socket stays in the key (it changes behaviour); where it listens does not. A `tcp:` address is left as recorded.
  */
 export function maskRunnerStorePath(config: string | null): string | null
 export function maskRunnerStorePath(config: unknown): unknown
@@ -269,6 +273,7 @@ export function maskRunnerStorePath(config: unknown): unknown {
   return typeof config === "string"
     ? config
         .replace(/\/nix\/store\/[a-z0-9]+-terminfo-linux-runner\/index\.js/g, "<terminfo-linux-runner>")
+        .replace(/(--listen-on[ =]unix:)\S+/g, "$1<socket>")
         // Only the kind positions of an actual reviewed context key are historical vocabulary.
         .replace(/^(app|headless):([^@]+)@\["\1",/, (_prefix, kind: string, id: string) => {
           const canonical = kind === "app" ? "term" : "lib"
