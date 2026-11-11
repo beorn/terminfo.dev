@@ -846,9 +846,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       // The launcher writes the receipt beside its artifact directory, and retired layouts write it
       // inside it; both are checked, and absence is not a refusal (a run without a launch receipt
       // keeps the largest-window behaviour).
-      const receipt = [join(dirname(captureDirectory), "terminal-launch.json"), join(captureDirectory, "terminal-launch.json")].find(
-        (candidate) => existsSync(candidate),
-      )
+      const receipt = [
+        join(dirname(captureDirectory), "terminal-launch.json"),
+        join(captureDirectory, "terminal-launch.json"),
+      ].find((candidate) => existsSync(candidate))
       if (!receipt) return undefined
       try {
         const parsed: unknown = JSON.parse(readFileSync(receipt, "utf8"))

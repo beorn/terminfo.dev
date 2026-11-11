@@ -6,7 +6,7 @@ import {
   type InputButton,
   type InputMechanism,
   type OwnedFrame,
-} from "./input-fixture.ts"
+} from "../input-fixture.ts"
 
 /** One platform operation the adapter asked the mechanism to perform, in order. */
 export interface RecordedInputCall {

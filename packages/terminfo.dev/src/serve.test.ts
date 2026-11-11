@@ -12,6 +12,19 @@ import { join } from "node:path"
 import { createHash } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+/**
+ * These darwinHosted arms run against a fake macOS runtime with no compiled helper, so the input
+ * adapter refuses by name on every collection and says so on stderr - collector.log - exactly as a
+ * real run without a helper does (#33574). That line is a claimed fact, not noise: this keeps each
+ * arm's stderr assertion loud by naming the ONE line it may carry, so any other line still fails.
+ */
+const INPUT_INSTALL_REFUSAL =
+  "collector.inputInstall refused: macOS input requires the built helper: TERMINFO_DARWIN_INPUT_HELPER is unset and no helper path was given"
+
+function stderrWithoutInputInstall(stderr: string): string[] {
+  return stderr.split("\n").filter((line) => line.length > 0 && line !== INPUT_INSTALL_REFUSAL)
+}
+
 let child: ChildProcess | undefined
 let home: string | undefined
 const packageRoot = join(import.meta.dirname, "../../..")
@@ -1015,7 +1028,7 @@ describe("private finite daemon startup", () => {
         timeout: 5000,
       },
     )
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
   })
 
@@ -1113,7 +1126,7 @@ describe("private finite daemon startup", () => {
       // where a reader needs to know which window the app owned before anything was asked.
       assert.deepEqual(fact.installCensus, installCensus)
     `)
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
   })
 
@@ -1263,7 +1276,7 @@ describe("private finite daemon startup", () => {
     `,
       360_000,
     )
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
     // GitHub killed this child at 90s on 875c2bc. A local run then took 129s.
     // Keep the child's limit below the outer test so a wedged child leaves its diagnostic result.
@@ -1398,7 +1411,7 @@ describe("private finite daemon startup", () => {
       assert.equal(frames, 0)
       assert.equal(calibrations, shapes.filter(s => s.expect === "refused").length)
     `)
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
   })
 
@@ -1527,7 +1540,7 @@ describe("private finite daemon startup", () => {
       ],
       { cwd: packageRoot, env: { ...process.env, HOME: home }, encoding: "utf8", timeout: 5000 },
     )
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
   })
 
@@ -1720,7 +1733,7 @@ describe("private finite daemon startup", () => {
           timeout: 10_000,
         },
       )
-      const lines = result.stderr.split("\n").filter(Boolean)
+      const lines = stderrWithoutInputInstall(result.stderr)
       expect(result.status, result.stderr).toBe(0)
       expect(lines).toHaveLength(retained ? 0 : 1)
       if (!retained) {
@@ -2042,7 +2055,7 @@ describe("private finite daemon startup", () => {
       },
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
   })
 
   // Extend the existing hosted consumer journey: its Windows-only case never exercised
@@ -2149,7 +2162,7 @@ describe("private finite daemon startup", () => {
         },
       )
       expect(result.status, result.stderr).toBe(0)
-      expect(result.stderr).toBe("")
+      expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     },
   )
 

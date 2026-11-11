@@ -10,6 +10,13 @@ export const DARWIN_INPUT_HELPER_ENV = "TERMINFO_DARWIN_INPUT_HELPER"
 /** The keysym the install self-test posts before any probe may use the adapter (#33574 C3). */
 export const DARWIN_INPUT_SELF_TEST_KEYSYM = "z"
 
+/**
+ * The same key posted the other way, for the diagnostic run: virtual keycode 6 (the ANSI z key) with
+ * NO unicode payload. The plain keysym sends virtual keycode 0 WITH a unicode payload, so a null
+ * first probe and an echoing second one name the defect as the unicode payload rather than delivery.
+ */
+export const DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM = "code:6"
+
 export interface DarwinWindowFrame extends OwnedFrame {
   readonly id: number
 }
@@ -170,17 +177,28 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
     })
   }
   const input = createInjectedInput(mechanism, "CGEvent")
-  const echoed = await options.selfTest(() => input.injectKey(DARWIN_INPUT_SELF_TEST_KEYSYM))
-  if (echoed === null || !echoed.includes(DARWIN_INPUT_SELF_TEST_KEYSYM)) {
+  const delivered = (echoed: string | null): boolean =>
+    echoed !== null && echoed.includes(DARWIN_INPUT_SELF_TEST_KEYSYM)
+  const echoOf = (echoed: string | null): string => (echoed === null ? "nothing" : JSON.stringify(echoed))
+  const unicodeEcho = await options.selfTest(() => input.injectKey(DARWIN_INPUT_SELF_TEST_KEYSYM))
+  if (!delivered(unicodeEcho)) {
+    // Second, independent probe: same key by virtual keycode with no unicode payload. Its echo moves
+    // the refusal from "the runner delivers nothing" to "this app drops unicode-only postings" - a
+    // different defect with a different cure - and it is stated either way, never silently dropped.
+    const keycodeEcho = await options.selfTest(() => input.injectKey(DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM))
+    const keycodeRoute = delivered(keycodeEcho)
+      ? `the virtual-keycode route ("${DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM}", which delivered ${echoOf(keycodeEcho)})`
+      : `the virtual-keycode route ("${DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM}", which echoed ${echoOf(keycodeEcho)}) also delivered nothing`
     throw new Error(
       `input not delivered to ${options.appName}: the CGEvent helper posted keysym ` +
-        `"${DARWIN_INPUT_SELF_TEST_KEYSYM}" to pid ${options.appPid} and the app's TTY echoed ` +
-        `${echoed === null ? "nothing" : JSON.stringify(echoed)}; refusing to measure input rows through it`,
+        `"${DARWIN_INPUT_SELF_TEST_KEYSYM}" (virtual keycode 0 with a unicode payload) to pid ${options.appPid} ` +
+        `and the app's TTY echoed ${echoOf(unicodeEcho)}; ${keycodeRoute}; ` +
+        `refusing to measure input rows through it`,
     )
   }
   options.report?.(
     `darwin input installed: pid ${options.appPid}, window ${options.windowId ?? "largest"}, ` +
-      `tty ${options.windowTty ?? "unrecorded"}, self-test echoed ${JSON.stringify(echoed)}`,
+      `tty ${options.windowTty ?? "unrecorded"}, self-test echoed ${JSON.stringify(unicodeEcho)}`,
   )
   return input
 }

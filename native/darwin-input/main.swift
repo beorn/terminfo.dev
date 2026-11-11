@@ -78,6 +78,15 @@ func keysym(_ text: String) -> Keysym {
         let numericPad: CGEventFlags = name.hasPrefix("KP_") ? .maskNumericPad : []
         return Keysym(keyCode: keyCode, flags: flags.union(numericPad), unicode: [])
     }
+    // "code:<n>" posts virtual keycode n with NO unicode payload. The plain-character form below
+    // posts virtual keycode 0 WITH one, so the two routes are separable: an app that takes the
+    // keycode route and drops the unicode one is a different defect from an app that takes neither.
+    if name.hasPrefix("code:") {
+        guard let keyCode = UInt16(name.dropFirst("code:".count)), keyCode > 0 else {
+            fail("code: takes a positive virtual keycode, as in code:6 for the ANSI z key; got \(text)")
+        }
+        return Keysym(keyCode: CGKeyCode(keyCode), flags: flags, unicode: [])
+    }
     let scalars = Array(name.unicodeScalars)
     guard scalars.count == 1, let scalar = scalars.first else {
         fail("unknown keysym \(text): expected one printable character, a named key, or ctrl+/shift+ modifiers")
@@ -92,6 +101,49 @@ func currentPointer() -> CGPoint {
         fail("the WindowServer returned no event source for the pointer location")
     }
     return event.location
+}
+
+/// The element behind an accessibility attribute, or nil when the attribute is not an element.
+func axElement(_ raw: CFTypeRef?) -> AXUIElement? {
+    guard let raw, CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
+    return unsafeBitCast(raw, to: AXUIElement.self)
+}
+
+func axValue(_ raw: CFTypeRef?) -> AXValue? {
+    guard let raw, CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+    return unsafeBitCast(raw, to: AXValue.self)
+}
+
+/// The window the accessibility layer says holds keyboard focus for this pid. The WindowServer's
+/// frontmost application is NOT this: an app can be frontmost with a different window focused, and a
+/// posting then lands in a window the run never launched (#33574, run 43106790420).
+func focusedWindowFrame(_ pid: pid_t) -> CGRect? {
+    let application = AXUIElementCreateApplication(pid)
+    var raw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute as CFString, &raw) == .success,
+          let window = axElement(raw) else { return nil }
+    var positionRaw: CFTypeRef?
+    var sizeRaw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionRaw) == .success,
+          AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeRaw) == .success,
+          let position = axValue(positionRaw), let size = axValue(sizeRaw) else { return nil }
+    var point = CGPoint.zero
+    var extent = CGSize.zero
+    guard AXValueGetValue(position, .cgPoint, &point), AXValueGetValue(size, .cgSize, &extent) else { return nil }
+    return CGRect(origin: point, size: extent)
+}
+
+func describe(_ rect: CGRect) -> String {
+    return "\(Int(rect.origin.x)),\(Int(rect.origin.y)) \(Int(rect.width))x\(Int(rect.height))"
+}
+
+/// Same window, by geometry: one point of slack absorbs rounding between the two APIs, and a
+/// different window the app placed on the same rectangle is accepted, which the front-window check
+/// above has already excluded for the launch window.
+func sameWindow(_ left: CGRect, _ right: CGRect) -> Bool {
+    let tolerance = 1.0
+    return abs(left.origin.x - right.origin.x) <= tolerance && abs(left.origin.y - right.origin.y) <= tolerance &&
+        abs(left.width - right.width) <= tolerance && abs(left.height - right.height) <= tolerance
 }
 
 func postKey(_ keysym: Keysym) {
@@ -220,7 +272,25 @@ case "front":
             fail("the run's own window \(target) is not the app front window; the app front window is \(front), " +
                 "so a posting would land in another window and its silence would be read as terminal behaviour")
         }
-        out("frontmost=true pid=\(pid) window=\(target)")
+        // Front is not key: an app can be frontmost with a different one of its windows focused, and a
+        // posting then lands there. Refuse by name rather than let that silence be read as the app's.
+        guard let targetRow = windowRows(pid).first(where: { $0["id"] == target }) else {
+            fail("window \(target) of pid \(pid) disappeared between the census and the key-window check")
+        }
+        let targetFrame = CGRect(
+            x: targetRow["x"] ?? 0, y: targetRow["y"] ?? 0,
+            width: targetRow["width"] ?? 0, height: targetRow["height"] ?? 0)
+        guard let keyFrame = focusedWindowFrame(pid) else {
+            fail("pid \(pid) reported no focused window through the accessibility layer, so the helper cannot " +
+                "prove the run's own window \(target) is the key window; refusing to post into a window it " +
+                "cannot verify")
+        }
+        if !sameWindow(keyFrame, targetFrame) {
+            fail("the run's own window \(target) at \(describe(targetFrame)) is not the key window of pid \(pid): " +
+                "the accessibility layer reports the key window at \(describe(keyFrame)), so a posting would land " +
+                "in another window and its silence would be read as terminal behaviour")
+        }
+        out("frontmost=true key=true pid=\(pid) window=\(target)")
         return
     }
     out("frontmost=true pid=\(pid)")
@@ -232,8 +302,9 @@ case "key":
     guard arguments.count == 4 else { fail("usage: darwin-input-helper key <pid> <keysym>") }
     requireTrust()
     _ = processId(arguments[2])
-    postKey(keysym(arguments[3]))
-    out("posted=key")
+    let posted = keysym(arguments[3])
+    postKey(posted)
+    out("posted=key code=\(posted.keyCode) unicode=\(posted.unicode.count)")
 case "mouse":
     guard arguments.count >= 4 else { fail("usage: darwin-input-helper mouse <move|press|release|click> ...") }
     requireTrust()

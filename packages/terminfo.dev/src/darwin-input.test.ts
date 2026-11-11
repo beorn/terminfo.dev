@@ -8,11 +8,12 @@
 import { describe, expect, it } from "vitest"
 import {
   createDarwinInput,
+  DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM,
   DARWIN_INPUT_SELF_TEST_KEYSYM,
   selectDarwinInputWindow,
   type DarwinInputOptions,
 } from "./darwin-input.ts"
-import { describeInputContract, fakeInputMechanism } from "./input-contract.ts"
+import { describeInputContract, fakeInputMechanism } from "./testing/input-contract.ts"
 import type { InputMechanism } from "./input-fixture.ts"
 
 function options(overrides: Partial<DarwinInputOptions> = {}): DarwinInputOptions {
@@ -47,10 +48,32 @@ describe("macOS input install", () => {
     expect(selfTested).toBe(false)
   })
 
-  it("refuses the install when the app echoes nothing back", async () => {
+  it("refuses the install when the app echoes nothing back, naming both posting routes", async () => {
     await expect(createDarwinInput(options({ selfTest: async () => null }))).rejects.toThrow(
-      /input not delivered to Terminal\.app: the CGEvent helper posted keysym "z" to pid 4242 and the app's TTY echoed nothing/,
+      /input not delivered to Terminal\.app: the CGEvent helper posted keysym "z" \(virtual keycode 0 with a unicode payload\) to pid 4242 and the app's TTY echoed nothing; the virtual-keycode route \("code:6", which echoed nothing\) also delivered nothing; refusing to measure input rows through it/,
     )
+  })
+
+  it("names the unicode payload as the defect when the keycode route delivers and the unicode route does not", async () => {
+    const fake = fakeInputMechanism()
+    const probes: string[] = []
+    await expect(
+      createDarwinInput(
+        options({
+          mechanism: fake.mechanism,
+          selfTest: async (inject) => {
+            const before = fake.calls.filter((call) => call.op === "key").length
+            await inject()
+            const posted = fake.calls.filter((call) => call.op === "key")[before]
+            probes.push(String(posted?.args[0]))
+            return posted?.args[0] === DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM ? DARWIN_INPUT_SELF_TEST_KEYSYM : null
+          },
+        }),
+      ),
+    ).rejects.toThrow(
+      /echoed nothing; the virtual-keycode route \("code:6", which delivered "z"\); refusing to measure input rows through it/,
+    )
+    expect(probes).toEqual([DARWIN_INPUT_SELF_TEST_KEYSYM, DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM])
   })
 
   it("refuses the install when the echo is not the injected keysym", async () => {
