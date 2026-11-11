@@ -1,7 +1,7 @@
 /**
  * @failure A colour row's capture arm compares a control frame and a target frame from two paint
  *   contexts and grades "the frames differ" as support: any repaint, including one the terminal
- *   produced for an unrelated reason, then reads as a colour feature. The eleven sgr.* colour
+ *   produced for an unrelated reason, then reads as a colour feature. The ten sgr.* colour
  *   rows therefore declare one capture-region fixture each, painted in the same run, and the
  *   decision rests on the catalogue's own discriminator: the styled sample must differ from the
  *   neutral sample AND from a named sibling that a terminal LACKING exactly the claimed feature
@@ -29,8 +29,15 @@
  *   and colour-sibling-separation (colourSiblingSeparation below, run at the batch tail because it
  *   reads a second row).
  */
-import { HEADLESS_OBSERVABLE_REVIEW } from "./helpers.ts"
-import { SENTINEL, type RegionReadback } from "./region-readback.ts"
+import { HEADLESS_OBSERVABLE_REVIEW, sgrColourEncoding } from "./helpers.ts"
+import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
+import {
+  SENTINEL,
+  captureSameRunPhases,
+  type RegionReadback,
+  type SameRunCapture,
+  type SameRunPhase,
+} from "./region-readback.ts"
 import type {
   ColourSiblingSeparationWitness,
   Observation,
@@ -38,11 +45,15 @@ import type {
   ProbeAssertion,
   ProbeCallbackResult,
   ProbeTestInput,
+  TermProbeSource,
 } from "./types.ts"
 
 const SAMPLE = "AaBb"
 const REGION = { top: 3, left: 3, bottom: 3, right: 3 + SAMPLE.length - 1 } as const
 const CURSOR_ROW = 5
+
+/** The same-run branch of the indexed underline-colour witness; sgr.ts maps it for the mux finalizer. */
+export const UNDERLINE_INDEXED_BRANCH = "underline-colour-indexed-same-run"
 
 interface ColourRow {
   /** The sequence under test, painted on the sample in the target and expected frames. */
@@ -107,33 +118,191 @@ const COLOUR_ROWS: Record<string, ColourRow> = {
     sibling: "\x1b[48;2;0;255;135m",
     siblingLabel: "the RGB 0;255;135, the nearest xterm-256 entry to 0;255;128",
   },
-  // A walker of the sibling turns blink on with its 5 and off again with the trailing 25, so the
-  // frame holds still and equals the seed; a terminal with 58 reads index 5 and 25 is a no-op. The
-  // sequence itself needs no change: a walker's 0 resets the underline, which lands on the
-  // no-attribute witness (@cto 30b12293, #33181).
+  // The indexed sibling uses a different underline colour from the RGB target. Both are colon
+  // groups: a parser that skips an unknown group retains the plain underline; a parser that walks
+  // the RGB operands can reach 0 and remove it, which the no-attribute witness separates.
   "sgr.underline.color": {
-    sequence: "\x1b[58;2;255;0;128m",
-    sibling: "\x1b[58;5;5;25m",
-    siblingLabel: "SGR 58;5;5, another underline colour",
+    sequence: "\x1b[58:2::255:0:128m",
+    sibling: "\x1b[58:5:5m",
+    siblingLabel: "SGR 58:5:5 (colon form), another underline colour",
     seed: "\x1b[4m",
   },
   "sgr.underline-color-rgb": {
-    sequence: "\x1b[58;2;255;0;128m",
-    sibling: "\x1b[58;2;255;0;135m",
-    siblingLabel: "the RGB 255;0;135, the nearest xterm-256 entry to 255;0;128",
+    sequence: "\x1b[58:2::255:0:128m",
+    sibling: "\x1b[58:2::255:0:135m",
+    siblingLabel: "SGR 58:2::255:0:135 (colon form), the nearest xterm-256 entry to RGB 255,0,128",
     seed: "\x1b[4m",
   },
-  // A terminal without SGR 58 walks the parameters code by code. Index 9 is the crossed-out code, so
-  // the walk paints a strike line a crop can see; the trailing 25 turns off the blink the walk's 5
-  // turned on, so every frame holds still. A terminal with 58 takes exactly 5;9 as the colour and 25
-  // is a no-op (@cto b6db70c8, #33181: xterm read 58;5;5 as blink and each crop was a blink phase).
-  "sgr.underline-color-indexed": {
-    sequence: "\x1b[58;5;9;25m",
-    sibling: "\x1b[58;5;4;25m",
-    siblingLabel: "index 4, blue: its nearest 16-colour entry is 4, distinct from index 9's entry 9",
-    seed: "\x1b[4m",
-    walked: { paint: "\x1b[9m", attribute: "crossed-out (SGR 9)" },
-  },
+}
+
+/**
+ * #33146 (@cto 075685d5, d2f24294, b3d7680f): indexed underline colour, decided digest-exact from one
+ * same-run capture. The sample is spaces, so the cells hold only the underline. Per palette index N:
+ * A no underline, B the plain underline, C the underline plus 58:5:N, D' the underline plus foreground
+ * 38:5:N and no 58 — the underline takes its colour from the foreground, so D' paints palette entry N by
+ * a route that is not 58. Colon form only; DECRQSS decides nothing here. Equality only, no tolerance.
+ */
+const UNDERLINE_INDEXED_ID = "sgr.underline-color-indexed"
+const UNDERLINE_INDICES = [1, 4] as const
+const UNDERLINE_SAMPLE = " ".repeat(8)
+
+const UNDERLINE_PHASE = {
+  blank: "A no underline",
+  underline: "B plain underline",
+  colour: (index: number) => `C underline 58:5:${index}`,
+  route: (index: number) => `D' underline 38:5:${index}`,
+} as const
+
+export const UNDERLINE_INDEXED_PHASES: readonly SameRunPhase[] = [
+  { name: UNDERLINE_PHASE.blank, sequence: "", sample: UNDERLINE_SAMPLE },
+  { name: UNDERLINE_PHASE.underline, sequence: "\x1b[4m", sample: UNDERLINE_SAMPLE },
+  ...UNDERLINE_INDICES.flatMap((index): SameRunPhase[] => [
+    {
+      name: UNDERLINE_PHASE.colour(index),
+      sequence: `\x1b[4m\x1b[58:5:${index}m`,
+      sample: UNDERLINE_SAMPLE,
+      role: index === UNDERLINE_INDICES[0] ? "target" : "control",
+    },
+    { name: UNDERLINE_PHASE.route(index), sequence: `\x1b[4m\x1b[38:5:${index}m`, sample: UNDERLINE_SAMPLE },
+  ]),
+]
+
+export interface UnderlineIndexedDecision {
+  status: "supported" | "unsupported" | "probe-todo"
+  note: string
+  /** All four digests per index (@cto b3d7680f 1), keyed by index. */
+  evidence: Record<string, { A: string; B: string; C: string; "D'": string }>
+}
+
+/** The five outcomes, in the ruled order. Only exact digest equality between phases is read. */
+export function underlineColourIndexedDecision(digest: (name: string) => string): UnderlineIndexedDecision {
+  const id = UNDERLINE_INDEXED_ID
+  const blank = digest(UNDERLINE_PHASE.blank)
+  const plain = digest(UNDERLINE_PHASE.underline)
+  const rows = UNDERLINE_INDICES.map((index) => ({
+    index,
+    colour: digest(UNDERLINE_PHASE.colour(index)),
+    route: digest(UNDERLINE_PHASE.route(index)),
+  }))
+  const evidence = Object.fromEntries(
+    rows.map(({ index, colour, route }) => [String(index), { A: blank, B: plain, C: colour, "D'": route }]),
+  )
+  const decide = (status: UnderlineIndexedDecision["status"], note: string): UnderlineIndexedDecision => ({
+    status,
+    note: `${colourEncoding(id)}; ${note}`,
+    evidence,
+  })
+  // The order is the ruling (@cto b3d7680f 1): controls first, so a blind control never becomes a verdict on 58.
+  if (plain === blank) {
+    return decide(
+      "probe-todo",
+      `${id}: the plain underline drew nothing on these cells, so this row is not applicable here; the underline itself is decided by sgr.underline.single`,
+    )
+  }
+  for (const { index, route } of rows) {
+    if (route === plain) {
+      return decide(
+        "probe-todo",
+        `${id}: the underline under foreground 38:5:${index} painted like the default underline, so palette entry ${index} cannot be told apart on the foreground route; a terminal whose underline does not follow the foreground stays undecided by this probe, and this says nothing about 58`,
+      )
+    }
+  }
+  const [first, second] = rows
+  if (first && second && first.route === second.route) {
+    return decide(
+      "probe-todo",
+      `${id}: the two palette entries render alike here: the foreground-route underlines for indices ${first.index} and ${second.index} are identical`,
+    )
+  }
+  const outcomes = rows.map((row) => ({
+    ...row,
+    outcome: row.colour === plain ? "ignored" : row.colour === row.route ? "matched" : "neither",
+  }))
+  const neither = outcomes.find(({ outcome }) => outcome === "neither")
+  if (neither) {
+    return decide(
+      "probe-todo",
+      `${id}: 58:5:${neither.index} changed the underline but matched neither the default underline nor the foreground-route underline (58:5:${neither.index} sample ${neither.colour}, 38:5:${neither.index} sample ${neither.route})`,
+    )
+  }
+  if (outcomes.every(({ outcome }) => outcome === "matched")) {
+    return decide(
+      "supported",
+      `${id}: 58:5:N paints the underline as palette entry N, matched exactly against an underline coloured by the foreground route (N = ${UNDERLINE_INDICES.join(" and ")})`,
+    )
+  }
+  if (outcomes.every(({ outcome }) => outcome === "ignored")) {
+    return decide(
+      "unsupported",
+      `${id}: 58:5:N left the underline in its default colour while the same underline took palette entry N by the foreground route (N = ${UNDERLINE_INDICES.join(" and ")}): colour ignored, decoration kept`,
+    )
+  }
+  return decide(
+    "probe-todo",
+    `${id}: the indices disagree: ${outcomes.map(({ index, outcome }) => `index ${index} ${outcome === "matched" ? "matched the foreground route" : "kept the default colour"}`).join(", ")}`,
+  )
+}
+
+/** The callback result for a decision, on the same-run branch the mux finalizer knows. */
+export function underlineColourIndexedResult(
+  run: SameRunCapture,
+  decision: UnderlineIndexedDecision,
+): ProbeCallbackResult {
+  const { status, note } = decision
+  const decided = status !== "probe-todo"
+  const target = run.measured.find(({ name }) => name === UNDERLINE_PHASE.colour(UNDERLINE_INDICES[0]))?.capture.frame
+  const response = JSON.stringify({
+    region: run.region,
+    pixelGeometry: run.pixelGeometry,
+    geometrySource: run.geometrySource,
+    stability: run.stability,
+    samples: Object.fromEntries(run.measured.map(({ name, capture }) => [name, capture.regionDigest])),
+    evidence: decision.evidence,
+  })
+  return {
+    pass: status === "supported",
+    note,
+    response,
+    criterionBranch: UNDERLINE_INDEXED_BRANCH,
+    tests: [{ id: "attribute", status, ...(decided ? { assertionRefs: [0] } : { reason: note }) }],
+    observation: {
+      outcome: decided ? status : "inconclusive",
+      assertionType: "screenshot",
+      ...(decided ? {} : { reason: "insufficient-evidence" as const }),
+      screenshotRef: target?.ref ?? run.frames.at(-1)?.ref,
+      frames: run.frames,
+      note,
+    },
+    ...(decided
+      ? {
+          assertions: [
+            {
+              assertionType: "screenshot" as const,
+              kind: status === "supported" ? ("positive" as const) : ("negative" as const),
+              expected: `${UNDERLINE_INDEXED_ID}: 58:5:N matches the foreground-route underline exactly at every index`,
+              observed: response,
+            },
+          ],
+        }
+      : {}),
+  }
+}
+
+/** The capture arm: null when this run has no owned pixel capture. */
+export async function underlineColourIndexedCaptureResult(ctx: TermProbeSource): Promise<ProbeCallbackResult | null> {
+  return captureSameRunPhases(
+    ctx,
+    UNDERLINE_INDEXED_ID,
+    UNDERLINE_SAMPLE.length,
+    UNDERLINE_INDEXED_PHASES,
+    (run, note) =>
+      underlineColourIndexedResult(run, {
+        status: "probe-todo",
+        note: `${colourEncoding(UNDERLINE_INDEXED_ID)}; ${note}`,
+        evidence: {},
+      }),
+    (run, digest) => underlineColourIndexedResult(run, underlineColourIndexedDecision(digest)),
+  )
 }
 
 /** One frame of the fixture: a clean screen, the row's seed, then the paint and the sample. */
@@ -156,8 +325,20 @@ function sgrParameters(sequence: string): string {
   return sequence.replace(/^\x1b\[/, "").replace(/m$/, "")
 }
 
+/** Display the selected encoding from the existing fixture declarations, never a second row table. */
+function colourEncoding(id: string): string | undefined {
+  if (id === UNDERLINE_INDEXED_ID) {
+    return `SGR ${UNDERLINE_INDICES.map((index) => `58:5:${index}`).join(" and ")} (colon form); two palette indices test whether foreground-route controls ${UNDERLINE_INDICES.map((index) => `38:5:${index}`).join(" and ")} (colon form) distinguish the requested colours`
+  }
+  const reset = id === "sgr.underline-color-reset"
+  const sequence = reset ? RESET_FAMILY_CAPTURE[id]?.seed.match(/\x1b\[58[:;][\d:;]+m/)?.[0] : COLOUR_ROWS[id]?.sequence
+  if (sequence === undefined) return undefined
+  const encoding = sgrColourEncoding(sequence)
+  return encoding ? `${reset ? "SGR 59 after setup " : ""}${encoding}` : undefined
+}
+
 /**
- * The eleven colour rows, keyed by the probe id that owns each claim. The target and the expected
+ * The ten colour rows (sgr.underline-color-indexed has its own witness, #33146), keyed by the probe id that owns each claim. The target and the expected
  * frames paint the sequence under test; the ignored frame paints the sibling. The two degenerate
  * tests the oracle performs on those frames — expected differs from seed, expected differs from
  * ignored — are the whole claim: the colour value itself is never interpreted.
@@ -208,7 +389,8 @@ withUmbrellas(COLOUR_ROWS, "COLOUR_ROWS")
 export function colourCaptureNote(id: string): string | undefined {
   const row = COLOUR_ROWS[id]
   if (!row) return undefined
-  return `${id}: the styled sample differs from the neutral sample and from sibling ${row.siblingLabel}, and two paints of the same sequence agree; the rendered colour value is not interpreted`
+  const encoding = colourEncoding(id)
+  return `${id}:${encoding === undefined ? "" : ` ${encoding};`} the styled sample differs from the neutral sample and from sibling ${row.siblingLabel}, and two paints of the same sequence agree; the rendered colour value is not interpreted`
 }
 
 /**
@@ -222,10 +404,53 @@ export function colourCaptureCallbackResult(
   verdict: ProbeCallbackResult,
   options?: { mux?: "tmux" | "screen" },
 ): ProbeCallbackResult {
+  const encoding = colourEncoding(id)
+  if (encoding !== undefined) {
+    // "Selected" covers refusals before target bytes as well as measured outcomes. The existing
+    // reason still says which phases actually ran; this prefix makes no new measurement claim.
+    const context = `Selected ${encoding}`
+    verdict = { ...verdict, note: `${context}${verdict.note === undefined ? "" : `; ${verdict.note}`}` }
+    if (verdict.observation !== undefined) {
+      verdict = {
+        ...verdict,
+        observation: {
+          ...verdict.observation,
+          note: `${context}${verdict.observation.note === undefined ? "" : `; ${verdict.observation.note}`}`,
+        },
+        ...(verdict.tests && {
+          tests: verdict.tests.map((test) =>
+            test.reason === undefined ? test : { ...test, reason: `${context}; ${test.reason}` },
+          ),
+        }),
+      }
+    } else if (verdict.notTested !== undefined) {
+      verdict = {
+        ...verdict,
+        notTested: { ...verdict.notTested, noObservable: `${context}; ${verdict.notTested.noObservable}` },
+        ...(verdict.tests && {
+          tests: verdict.tests.map((test) =>
+            test.reason === undefined ? test : { ...test, reason: `${context}; ${test.reason}` },
+          ),
+        }),
+      }
+    } else {
+      // Keep the execution-only carrier's nonempty pending/invalid tuple; only its prose changes.
+      const [first, ...rest] = verdict.tests
+      verdict = {
+        ...verdict,
+        tests: [
+          { ...first, reason: `${context}; ${first.reason}` },
+          ...rest.map((test) => ({ ...test, reason: `${context}; ${test.reason}` })),
+        ],
+      }
+    }
+  }
   const observation = verdict.observation
   const note =
     colourCaptureNote(id) ??
-    (options?.mux !== undefined && id === "sgr.underline-color-reset" ? observation?.note : undefined)
+    (id === UNDERLINE_INDEXED_ID || (options?.mux !== undefined && id === "sgr.underline-color-reset")
+      ? observation?.note
+      : undefined)
   if (note === undefined || observation === undefined) return verdict
   // A non-mux witness negative is this arm's own decision: the seed showed the attribute painting,
   // and the expected frame equals plain text. The walked negative is the same kind: the expected
@@ -236,6 +461,7 @@ export function colourCaptureCallbackResult(
   if (
     verdict.criterionBranch === "colour-no-attribute-witness" ||
     verdict.criterionBranch === "colour-walked-parameters" ||
+    verdict.criterionBranch === UNDERLINE_INDEXED_BRANCH ||
     (options?.mux !== undefined && observation.outcome === "inconclusive")
   ) {
     // A multiplexer has no outer control in this arm, so the same frames cannot single out whether
@@ -273,14 +499,14 @@ export function colourCaptureCallbackResult(
         {
           id: "review",
           status: "probe-todo",
-          reason: "colour oracle cannot distinguish ignored from identical paint against the current reference",
+          reason: `${encoding === undefined ? "" : `${encoding}; `}colour oracle cannot distinguish ignored from identical paint against the current reference`,
         },
       ],
       observation: {
         ...observation,
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        note: `${id}: the sequence left the sample in the neutral or the sibling frame; these frames alone do not decide unsupported, because they cannot separate a terminal that ignores the colour from one that paints it identically to the reference it was compared against`,
+        note: `${id}:${encoding === undefined ? "" : ` ${encoding};`} the sequence left the sample in the neutral or the sibling frame; these frames alone do not decide unsupported, because they cannot separate a terminal that ignores the colour from one that paints it identically to the reference it was compared against`,
       },
     }
   }
@@ -420,7 +646,7 @@ export function colourSiblingSeparation(input: {
   if (seed.regionDigest !== target.regionDigest || seed.regionDigest !== expected.regionDigest) return undefined
   const open = (reason: string): ColourSiblingDecision => ({
     kind: "open",
-    reason: `${id}: no colour-sibling-separation decision: ${reason}`,
+    reason: `${id}: ${colourEncoding(id)}; no colour-sibling-separation decision: ${reason}`,
   })
   const rectangle = seed.regionRectangle
   if (![target, expected, ignored].every((frame) => sameRectangle(frame.regionRectangle, rectangle))) {
@@ -496,7 +722,7 @@ export function colourSiblingSeparation(input: {
       recordRunId: record.recordRunId,
     },
   }
-  const reason = `${id}: painted SGR ${requestedEncoding} as the default colour: this row's seed, target and expected frames are equal while sibling ${siblingId} separated in the same rectangle of run ${input.runId}, and the outer terminal ${record.id} ${record.version} reads supported in ${record.recordPath}. ${SCREEN_TRUECOLOR_CAUSE}`
+  const reason = `${id}: painted ${colourEncoding(id)} as the default colour: this row's seed, target and expected frames are equal while sibling ${siblingId} separated in the same rectangle of run ${input.runId}, and the outer terminal ${record.id} ${record.version} reads supported in ${record.recordPath}. ${SCREEN_TRUECOLOR_CAUSE}`
   const { reason: _reason, ...settled } = own
   const { featureId: _featureId, ...observation } = settled
   return {

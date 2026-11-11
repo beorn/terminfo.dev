@@ -153,6 +153,7 @@ test("the row stays open, naming why, when the outer terminal's record is missin
     outer: { missing: "no placed outer-terminal record matches content/probes-apps/kitty-0.49.2-linux-*.json" },
   })
   expect(decision).toEqual({ kind: "open", reason: expect.stringContaining("no outer-terminal control: no placed") })
+  expect(decision?.kind === "open" ? decision.reason : undefined).toContain("38;2;255;128;0 (semicolon form)")
 })
 
 test("the row stays open when the sibling's seed and target hashes are equal", () => {
