@@ -6443,11 +6443,16 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(KITTY_CLEAR)
           const placeholderId = kittyPlaceholderNumber()
           ids.push(placeholderId)
+          // Text FIRST, then the virtual placement (#33033, @cto fd7747d9). The protocol's own order is
+          // placement then text, but in Kitty 0.49.2 on our Linux container that order is a paint race:
+          // placement q=0 then text painted 0 of 8, q=2 4 of 6, q=1 2 of 4, and Kitty's own
+          // `kitten icat --unicode-placeholder` bytes 0 of 2. Text first painted 14 of 14. The q=0 reply
+          // is kept so a refusal still reads as one.
+          ctx.write(kittyPlaceholderText(placeholderId))
           const virtualPlacement = await ctx.queryWithSentinelOutcome(
             kittyVirtualPlacement(placeholderId, { ...size, rgb: KITTY_FRAME_RED }),
             kittyReplyFrame({ i: String(placeholderId) }),
           )
-          ctx.write(kittyPlaceholderText(placeholderId))
           const withImageFirst = await shoot(
             "target",
             `Placeholder grid with image ${String(placeholderId)} composited over U+10EEEE cells`,
