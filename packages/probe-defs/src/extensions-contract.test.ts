@@ -129,43 +129,66 @@ test("App OSC 2 does not call an unexpected changed title Unsupported", async ()
 
 // Ghostty's public title fallback is distinct from library getCwd; this models that surface,
 // including the explicit-title override, rather than returning canned expected readings.
-test.each(["working", "no-cwd", "bad-control", "bad-negative", "bad-restore"] as const)(
-  "App OSC 7 measures the public title fallback and restores it: %s",
-  async (behavior) => {
-    let explicitTitle = "incoming App title"
-    let cwd = ""
-    const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
-    const operation = definition.term!({
-      write: (bytes: string) => {
-        const match = /^\x1b\](2|7|7654);([^\x07]*)\x07$/.exec(bytes)
-        if (!match) throw new Error(`Unexpected title fixture write ${JSON.stringify(bytes)}`)
-        if (match[1] === "2" && behavior !== "bad-control") {
-          if (!(behavior === "bad-restore" && match[2] === "incoming App title")) explicitTitle = match[2]!
-        }
-        if (match[1] === "7" && behavior !== "no-cwd") {
-          cwd = match[2] === "" ? "" : new URL(match[2]!).pathname
-        }
-        if (match[1] === "7654" && behavior === "bad-negative") cwd = "/unexpected-path"
-      },
-      readTitle: async () => explicitTitle || cwd,
-    } as unknown as TermProbeSource)
-    if (behavior === "bad-restore") await expect(operation).rejects.toThrow(/restor/i)
-    else {
-      const result = await operation
-      if (behavior === "working" || behavior === "no-cwd") {
-        expect(result.observation).toMatchObject({
-          assertionType: "buffer_state",
-          outcome: behavior === "working" ? "supported" : "unsupported",
-        })
-      } else {
-        expect(result.observation).toBeUndefined()
-        expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+// #33375: the title path is one-sided. A title that does not carry the OSC 7 path cannot prove the terminal
+// lacks OSC 7, so only a subject with an established negative (Ghostty, readTitleAbsenceDecides) reads Unsupported.
+test.each([
+  "working",
+  "no-cwd",
+  "no-cwd-decides",
+  "bad-control",
+  "bad-control-decides",
+  "bad-negative",
+  "bad-restore",
+] as const)("App OSC 7 reads the public title one-sidedly and restores it: %s", async (behavior) => {
+  let explicitTitle = "incoming App title"
+  let cwd = ""
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
+  const operation = definition.term!({
+    write: (bytes: string) => {
+      const match = /^\x1b\](2|7|7654);([^\x07]*)\x07$/.exec(bytes)
+      if (!match) throw new Error(`Unexpected title fixture write ${JSON.stringify(bytes)}`)
+      if (match[1] === "2" && !behavior.startsWith("bad-control")) {
+        if (!(behavior === "bad-restore" && match[2] === "incoming App title")) explicitTitle = match[2]!
       }
-      expect(explicitTitle).toBe("incoming App title")
-      expect(cwd).toBe("")
+      if (match[1] === "7" && !behavior.startsWith("no-cwd")) {
+        cwd = match[2] === "" ? "" : new URL(match[2]!).pathname
+      }
+      if (match[1] === "7654" && behavior === "bad-negative") cwd = "/unexpected-path"
+    },
+    readTitle: async () => explicitTitle || cwd,
+    ...(behavior.endsWith("-decides") && { readTitleAbsenceDecides: true }),
+  } as unknown as TermProbeSource)
+  if (behavior === "bad-restore") await expect(operation).rejects.toThrow(/restor/i)
+  else {
+    const result = await operation
+    if (behavior === "working") {
+      expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "supported" })
+    } else if (behavior === "no-cwd-decides") {
+      expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "unsupported" })
+    } else if (behavior === "no-cwd") {
+      // The deciding path is withheld: the row keeps its raw state and a true sentence, not a grade.
+      expect(result.observation).toBeUndefined()
+      expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      expect(result.note).toMatch(/carried neither OSC 7 path, and the title is the only surface/)
+    } else if (behavior === "bad-control") {
+      // A route whose title cannot be held stays open with the control it failed named.
+      expect(result.observation).toBeUndefined()
+      expect(result.criterionBranch).toBe("app-title-control")
+      expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
+      expect(result.note).toMatch(/did not hold the OSC 2 control titles/)
+    } else if (behavior === "bad-control-decides") {
+      // Where the title decides (Ghostty), a failed control is still our reader breaking.
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+      expect(result.note).toMatch(/failed its handled OSC 2 controls/)
+    } else {
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
     }
-  },
-)
+    expect(explicitTitle).toBe("incoming App title")
+    expect(cwd).toBe("")
+  }
+})
 
 // #32451: Kitty's absent B needs its working A reader, while the lifecycle requires A/C/D
 // and an inert unknown letter. Generic opposite-namespace controls miss this reader shape.

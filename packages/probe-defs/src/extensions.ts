@@ -5640,6 +5640,23 @@ function osc22QueryResult(controlShape: string, evidence: Osc22QueryEvidence, no
   )
 }
 
+/**
+ * The positive witness the OSC 7 title path looks for: both written paths, unchanged, on this run's public title.
+ */
+const OSC7_TITLE_EXPECTED =
+  "OSC 7 localhost targets appear as their exact raw paths on the qualified public title surface"
+
+/**
+ * A run whose public title carried neither OSC 7 path. The title is the only surface this route reads, so a title
+ * without the path cannot show the terminal lacks anything: the row stays open (#33375, @cto 04:36Z step 3).
+ */
+const OSC7_TITLE_ABSENT_OPEN =
+  "Open: this run's public title carried neither OSC 7 path, and the title is the only surface this route reads, so the observation does not decide the result."
+
+/** A run whose public title did not hold the arm's own OSC 2 controls: nothing here witnessed OSC 7. */
+const OSC7_TITLE_CONTROL_OPEN =
+  "Open: this run's public title did not hold the OSC 2 control titles, so the title could not witness OSC 7 and the observation does not decide the result."
+
 const extensionDefinitions: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   {
@@ -7481,7 +7498,13 @@ const extensionDefinitions: ProbeDefinition[] = [
               controlReadings.push(await read())
             }
             if (controlReadings[0] !== controls[0] || controlReadings[1] !== controls[1]) {
-              result = replyFailure("OSC 7 public title reader failed its handled OSC 2 controls")
+              // #33375: the run's own OSC 2 controls are what qualify this title surface. Where an absent title
+              // decides (Ghostty), a failed control still means this reader broke. Everywhere else the title may
+              // simply not be holdable on this route, so the cell stays open naming the control it could not
+              // hold (@cto 2026-11-11 04:46Z condition A).
+              result = ctx.readTitleAbsenceDecides
+                ? replyFailure("OSC 7 public title reader failed its handled OSC 2 controls")
+                : reviewResult("app-title-control", OSC7_TITLE_CONTROL_OPEN, OSC7_TITLE_CONTROL_OPEN, state)
             } else {
               ctx.write("\x1b]2;\x07")
               state.empty = await read()
@@ -7494,14 +7517,17 @@ const extensionDefinitions: ProbeDefinition[] = [
               const unexpected = readings.some(
                 (value, index) => value !== paths[index] && value !== (index === 0 ? state.empty : readings[index - 1]),
               )
+              const carried = readings[0] === paths[0] && readings[1] === paths[1]
+              // #33375: this path is one-sided. A title that does not carry the path decides nothing, and only a
+              // subject with an established negative (Ghostty, through readTitleAbsenceDecides) reads Unsupported.
               result =
                 state.negative !== readings[1] || unexpected
                   ? replyFailure("Made-up OSC changed the OSC 7 public title surface")
-                  : parserStateResult(
-                      readings[0] === paths[0] && readings[1] === paths[1],
-                      "OSC 7 localhost targets appear as their exact raw paths on the qualified public title surface",
-                      state,
-                    )
+                  : carried
+                    ? parserStateResult(true, OSC7_TITLE_EXPECTED, state)
+                    : ctx.readTitleAbsenceDecides
+                      ? parserStateResult(false, OSC7_TITLE_EXPECTED, state)
+                      : notTestedResult(OSC7_TITLE_ABSENT_OPEN, state)
             }
           } finally {
             ctx.write("\x1b]7;\x07")

@@ -329,6 +329,17 @@ const LINUX_PASTE_ROUTES: Readonly<Record<string, PasteRoute>> = {
   },
 }
 
+/**
+ * The one subject whose absent title decides: a run that does not show the OSC 7 path on its public title reads
+ * Unsupported there, and stays open on every other subject (#33375, @cto 2026-11-11 04:36Z step 4). Ghostty is
+ * the exception because its deciding negative is already established; a second subject needs its own ask with a
+ * same-run control, never a row here. This predicate never gates installing a reader — the run's own OSC 2
+ * controls do that.
+ */
+function titleAbsenceDecides(subject: { kind: "term" | "lib" | "mux"; id: string; os: string } | undefined): boolean {
+  return subject?.kind === "term" && subject.id === "ghostty" && subject.os === "linux"
+}
+
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
 export async function runProbeBatch(
   options: {
@@ -779,11 +790,9 @@ export async function runProbeBatch(
         : undefined)
     if (subjectMux) probeSource.mux = subjectMux
     const readTitle = ownsTerminal ? options.ownedTerminal?.readTitle : undefined
-    if (
-      readTitle &&
-      (probe.id !== "extensions.osc7-cwd" ||
-        (options.subject?.kind === "term" && options.subject.id === "ghostty" && options.subject.os === "linux"))
-    ) {
+    if (readTitle) {
+      // #33375: the reader installs wherever the owned run has one, for every probe that reads a title. No
+      // subject name chooses whether the OSC 7 arm gets this surface; its own OSC 2 controls qualify the reading.
       probeSource.readTitle = async () => {
         try {
           const title = await withTTYOperation(readTitle, out, verify)
@@ -793,6 +802,9 @@ export async function runProbeBatch(
           titleReads.push({ error: error instanceof Error ? error.message : String(error) })
           throw error
         }
+      }
+      if (probe.id === "extensions.osc7-cwd" && titleAbsenceDecides(options.subject)) {
+        probeSource.readTitleAbsenceDecides = true
       }
     }
     if (captureGeometry) probeSource.captureGeometry = captureGeometry

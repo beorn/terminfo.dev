@@ -1247,6 +1247,13 @@ export interface TermProbeSource {
   resetScrollback?: () => Promise<TerminalScrollbackReset>
   /** This run's owned public title surface; empty is a title, and a failed read throws its cause. */
   readTitle?: () => Promise<string>
+  /**
+   * True only for a subject whose title route has an established deciding negative: a title that does not carry
+   * the OSC 7 path then reads Unsupported instead of leaving the row open (#33375, @cto 2026-11-11 04:36Z step 4).
+   * The title path is one-sided everywhere else, and installing a reader never depends on this flag — the run's
+   * own OSC 2 controls qualify it.
+   */
+  readTitleAbsenceDecides?: boolean
   /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */
   readTermFeatures?: () => Promise<TermFeaturesReading>
   /** Writes use the callback's recorder; reads bind to this run's verified App or mux. */
