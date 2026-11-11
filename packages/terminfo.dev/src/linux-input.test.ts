@@ -176,7 +176,15 @@ test.runIf(process.platform === "linux")(
     const { log } = fixture()
     const input = await createLinuxInput(liveExecutable())
     if (!input.focusRoundTrip) throw new Error("Missing owned focus roundtrip")
-    expect(await input.focusRoundTrip()).toEqual({
+    const writeFocus: string[] = []
+    expect(
+      await input.focusRoundTrip(async (readFocus) => {
+        writeFocus.push(await readFocus())
+        // This marker stands for the target write; both reads must precede restoration.
+        writeFileSync(`${log}.target-write`, "written while unfocused")
+        writeFocus.push(await readFocus())
+      }),
+    ).toEqual({
       ownedWindowId: "42",
       helperWindowId: "543",
       focusedWindowIds: ["42", "543", "42"],
@@ -186,7 +194,15 @@ test.runIf(process.platform === "linux")(
       "windowfocus 543",
       "windowfocus 42",
     ])
-    expect(argvLines(log).filter((line) => line === "getwindowfocus -f")).toHaveLength(3)
+    expect(writeFocus).toEqual(["543", "543"])
+    expect(readFileSync(`${log}.target-write`, "utf8")).toBe("written while unfocused")
+    expect(argvLines(log).filter((line) => line === "getwindowfocus -f")).toHaveLength(5)
+    await expect(
+      input.focusRoundTrip(async () => {
+        throw new Error("target work failed")
+      }),
+    ).rejects.toThrow("target work failed")
+    expect(argvLines(log).at(-2)).toBe("windowfocus 42")
     process.env.TEST_INPUT_HELPER_FOCUS = "99"
     await expect(input.focusRoundTrip()).rejects.toThrow(/focus/)
     expect(argvLines(log).at(-2)).toBe("windowfocus 42")

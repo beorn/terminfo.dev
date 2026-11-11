@@ -39,6 +39,8 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/clipboard-config.ts",
   "packages/terminfo.dev/src/darwin-clipboard.ts",
   "packages/terminfo.dev/src/linux-clipboard.ts",
+  "packages/terminfo.dev/src/linux-notify-recorder.ts",
+  "packages/terminfo.dev/src/linux-notification.ts",
   "packages/terminfo.dev/src/linux-screen-text.ts",
   "packages/terminfo.dev/src/linux-kitty-text.ts",
   "packages/terminfo.dev/src/owned-terminal.ts",

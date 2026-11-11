@@ -55,6 +55,7 @@ import {
   type TTYTraceEvent,
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
+import { createNotificationObserver } from "../linux-notification.ts"
 import { createCallLog, withCallLog } from "viprobe"
 import {
   ownedTerminalVerifiedFor,
@@ -883,11 +884,47 @@ export async function runProbeBatch(
           injectMove: (x: number, y: number) => withTTYOperation(() => injectMove(x, y), out, verify),
         }),
         ...(injectDrag && { injectDrag: (button: 1) => withTTYOperation(() => injectDrag(button), out, verify) }),
-        ...(focusRoundTrip && { focusRoundTrip: () => withTTYOperation(focusRoundTrip, out, verify) }),
+        ...(focusRoundTrip && {
+          focusRoundTrip: (work?: (readFocus: () => Promise<string>) => Promise<void>) =>
+            withTTYOperation(() => focusRoundTrip(work), out, verify),
+        }),
         ...(resizeWindow && {
           resizeWindow: (width: number, height: number) =>
             withTTYOperation(() => resizeWindow(width, height, probe.id), out, verify),
         }),
+      }
+    }
+    const notificationReceiptPath = process.env.TERMINFO_NOTIFICATION_FIXTURE_RECEIPT
+    if (
+      notificationReceiptPath &&
+      verify &&
+      (isDirectLinuxApp || isVerifiedLinuxMux) &&
+      (probe.id === "extensions.notifications" || probe.id === "extensions.osc777-notify")
+    ) {
+      probeSource.withNotificationObserver = async (work) => {
+        await verify()
+        const address = process.env.DBUS_SESSION_BUS_ADDRESS
+        if (!address) throw new Error("Owned notification recorder declared without DBUS_SESSION_BUS_ADDRESS")
+        const observer = await createNotificationObserver({ receiptPath: notificationReceiptPath, address })
+        const result = await work({
+          control: observer.control,
+          recordPath: observer.receipt.recordPath,
+          deadlineMs: 1000,
+          terminalBus: {
+            state: "unknown",
+            reason:
+              "Collector and recorder share the private bus; the terminal process environment was not independently read",
+          },
+          profile: {
+            state: "unknown",
+            reason:
+              "The launch receipt qualifies clipboard permissions, not the terminal's effective notification defaults",
+          },
+          cursor: () => observer.cursor(),
+          readSince: (cursor) => observer.readSince(cursor),
+        })
+        await verify()
+        return result
       }
     }
     const capture = options.capture
