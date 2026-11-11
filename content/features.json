@@ -918,8 +918,8 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
     "tags": ["dec-private-modes", "xterm-extensions"],
     "group": "alt-screen",
-    "body": "DECRST 1049 exits the alternate screen buffer and restores the cursor position. The sequence is <code>ESC [ ? 1049 l</code>. Restores the main screen buffer, including all scrollback content that was present before the application entered the alternate screen.",
-    "probe": "Enter then exit alt screen via <code>\\x1b[?1049h</code> / <code>\\x1b[?1049l</code>, verify <code>altScreen</code> mode is off.",
+    "body": "DECRST 1049 exits the alternate screen buffer and restores the cursor position. The sequence is <code>ESC [ ? 1049 l</code>. Restores the main screen buffer, including all scrollback content that was present before the application entered the alternate screen.\n\nExiting can only be measured after entering. Where the same run reads switching to the alternate screen (DECSET 1049) Unsupported, the exit is never reached: this row reads Untestable (no setup) and names that entry result, while the entry keeps its own result.",
+    "probe": "Enter then exit alt screen via <code>\\x1b[?1049h</code> / <code>\\x1b[?1049l</code>, verify <code>altScreen</code> mode is off. If the same run reads the entry (modes.alt-screen.enter) Unsupported, the exit was not reached and reads Untestable (no setup), naming that entry result.",
     "baseline": "core",
     "sequence": "ESC [ ? 1049 l"
   },

@@ -1402,10 +1402,12 @@ export const UNREACHED_STEPS: readonly UnreachedStepPair[] = [
 ]
 
 /**
- * The unreached-step pass (#32785, @cto aed8cf7c ruling B). It runs after every row exists, because the step's reason
- * is a second row's result. A step still open while the same run reads its entry Unsupported stays Probe to-do, and
- * its reason now says the step was never reached. Any other entry result, or a step already decided, is left as it
- * reads. Whether such a step may read Untestable instead waits on the operator (ruling A).
+ * The unreached-step pass (#32785). It runs after every row exists, because the step's result depends on a second
+ * row's result. A step still open while the same run reads its entry Unsupported was never reached: it reads
+ * Untestable through the one declared form, and its reason names the entry step and that result (operator yes on
+ * card terminfo-untestable-1110, Nov 10 2026 20:11 PST; @cto record terminfo-untestable-prerequisite-ruling-2026-11-10).
+ * The entry keeps its own result. Any other entry result, an entry absent from this run, a step this run did not
+ * attempt, or a step already decided is left exactly as it reads. The step keeps its own frames and raw reference: they are this run's attempt.
  */
 export function applyUnreachedSteps(
   batch: Pick<ProbeBatch, "results">,
@@ -1415,14 +1417,24 @@ export function applyUnreachedSteps(
     const index = batch.results.findIndex((result) => result.featureId === pair.step)
     const step = batch.results[index]
     const entry = batch.results.find((result) => result.featureId === pair.entry)
-    if (step === undefined || step.status !== "probe-todo" || entry?.status !== "unsupported") continue
-    const reason = `this run reads ${pair.entryName} Unsupported, so this step was never reached`
-    const joined = (earlier: string | undefined) => (earlier ? `${earlier.replace(/\.$/u, "")}; ${reason}` : reason)
-    batch.results[index] = {
-      ...step,
-      ...(step.reason === undefined ? {} : { reason: joined(step.reason) }),
-      tests: step.tests.map((test) => (test.status === "probe-todo" ? { ...test, reason: joined(test.reason) } : test)),
-    }
+    // A step this run never attempted (not selected) is not "never reached": it keeps its own Probe to-do.
+    if (step === undefined || step.status !== "probe-todo" || step.attempt.scope === "none") continue
+    if (entry?.status !== "unsupported") continue
+    const reason = `Untestable (no setup): this run reads ${pair.entryName} Unsupported, so this step was never reached and was not measured.`
+    const declared = declaredUntestableResult(reason, { entry: pair.entry, entryStatus: entry.status })
+    const { status: _status, reason: _reason, ...kept } = step
+    batch.results[index] = finalizeProbeResult({
+      ...kept,
+      criterionBranch: declared.criterionBranch,
+      reason,
+      tests: (declared.tests ?? []).map((test) => ({
+        ...test,
+        // A decided test carries the attempt that produced it: the step's own attempt in this run.
+        attempt: step.attempt,
+        assertionRefs: [],
+        ...(step.rawReplyRef === undefined ? {} : { rawReplyRef: step.rawReplyRef }),
+      })),
+    })
   }
 }
 
