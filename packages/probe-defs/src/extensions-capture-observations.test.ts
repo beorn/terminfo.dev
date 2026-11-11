@@ -472,9 +472,12 @@ test.each([
   })
   // 33345: the hop suffix is on screen AND tmux; before, tmux kept the bare sentence for these four rows.
   for (const mux of ["screen", "tmux"]) {
-    const finalized = finalizeVisualResult(recorded, { kind: "mux" as const, id: mux, outerTerminal: "kitty" }, [])
+    const subject = { kind: "mux" as const, id: mux, outerTerminal: "kitty" }
+    const finalized = finalizeVisualResult(recorded, subject, [])
     expect(finalized.status).toBe("untestable")
-    expect(finalized.reason).toBe(`${sentence}; unchanged effect could have stopped at ${mux} or its outer terminal kitty`)
+    expect(finalized.reason).toBe(
+      `${sentence}; unchanged effect could have stopped at ${mux} or its outer terminal kitty`,
+    )
   }
   expect(finalizeVisualResult(recorded, { kind: "term" }, [])).toEqual(recorded)
 })
@@ -495,7 +498,8 @@ test.each(["modes.xtpushcolors", "modes.xtpopcolors"])("%s gains the hop suffix 
   })
   expect(recorded.status).toBe("untestable")
   for (const mux of ["screen", "tmux"]) {
-    expect(finalizeVisualResult(recorded, { kind: "mux" as const, id: mux, outerTerminal: "kitty" }, []).reason).toBe(
+    const subject = { kind: "mux" as const, id: mux, outerTerminal: "kitty" }
+    expect(finalizeVisualResult(recorded, subject, []).reason).toBe(
       `${XT_COLORS_NO_SETUP}; unchanged effect could have stopped at ${mux} or its outer terminal kitty`,
     )
   }
