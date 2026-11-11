@@ -663,14 +663,6 @@ test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audi
   )
 })
 
-test("xterm 411 declares extensions.clipboard-paste untestable naming the unbuilt Shift+Insert PRIMARY route", () => {
-  const declared = appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
-  expect(declared["extensions.clipboard-paste"]).toMatch(
-    /^Untestable \(unbuilt Shift\+Insert\/PRIMARY route\): default xterm 411 has no Ctrl\+Shift\+V or CLIPBOARD paste binding, and its own default paste route \(Shift\+Insert or Button2 from X11 PRIMARY\) is not built in this probe\..*charproc\.c:15021-15061.*xterm\.man:5452,5481/,
-  )
-  expect(appSemanticDeclarations({ kind: "term", id: "xterm", version: "412", os: "linux" })).toEqual({})
-})
-
 test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestable with source citations and routes not taken (#32947)", () => {
   const ghostty = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
   for (const id of [

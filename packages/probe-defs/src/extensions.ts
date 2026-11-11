@@ -4827,7 +4827,11 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   return result
 }
 
-/** OS clipboard → app via ctrl+shift+v. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */
+/**
+ * OS selection → app through the App's default paste action. The collector chooses the route (the selection that
+ * action reads and its key; xterm's Shift+Insert reads PRIMARY), so the probe stays blind to which App it runs in.
+ * Distinct from OSC 52 (app → clipboard) and DECRPM 2004.
+ */
 async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
@@ -4836,6 +4840,9 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
   }
   if (!ctx.withClipboardFixture) return notTestedResult("owned disposable clipboard paste", { clipboard: false })
   return ctx.withClipboardFixture(async (fixture) => {
+    const route = fixture.paste
+    if (!route) return notTestedResult("a reviewed default paste route for this App", { paste: false })
+    const action = `clipboard-paste:${route.selection}:${route.key}`
     const incomingMode = await ctx.queryMode(2004)
     const blindDisposableReset = incomingMode === null && fixture.disposableSession === true
     if (!blindDisposableReset && incomingMode !== "set" && incomingMode !== "reset") {
@@ -4848,16 +4855,17 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
     const readPaste = async (enabled: boolean) => {
       ctx.write(enabled ? "\x1b[?2004h" : "\x1b[?2004l")
       const arrival = new RegExp(`\\x1b\\[200~[\\s\\S]*?\\x1b\\[201~|${escapeRegex(nonce)}`)
-      const report = (await readInput(arrival, 1000, () => input.injectKey("ctrl+shift+v")))?.[0]
+      const report = (await readInput(arrival, 1000, () => input.injectKey(route.key)))?.[0]
       if (!report) {
-        throw new Error("XTEST clipboard paste ctrl+shift+v did not reach the app after a successful delivery control")
+        throw new Error(
+          `XTEST ${route.selection} paste ${route.key} did not reach the app after a successful delivery control`,
+        )
       }
       return report
     }
     let failed = false
     let primary: unknown
     try {
-      // The owned fixture seeds CLIPBOARD; Shift+Insert reads X11 PRIMARY instead.
       const reset = await readPaste(false)
       const report = await readPaste(true)
       const resetAgain = await readPaste(false)
@@ -4869,6 +4877,9 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       }
       const observed = {
         mode: "clipboard-paste",
+        selection: route.selection,
+        key: route.key,
+        binding: route.binding,
         control,
         reset,
         report,
@@ -4878,8 +4889,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       const blindModeNote = blindDisposableReset
         ? "DECRPM 2004 returned null; mode 2004 was set blind on the verified disposable session and restored with CSI ? 2004 l"
         : undefined
-      const expected =
-        "OS XTEST ctrl+shift+v paste of clipboard nonce as CSI 200~nonce201~ after plain-a delivery control"
+      const expected = `OS XTEST ${route.key} paste of ${route.selection} nonce as CSI 200~nonce201~ after plain-a delivery control`
       const encoding = new RegExp(`\\x1b\\[200~${escapeRegex(nonce)}\\x1b\\[201~`)
       if (encoding.test(report)) {
         return {
@@ -4897,7 +4907,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
               kind: "positive" as const,
               expected,
               observed: JSON.stringify(observed),
-              action: "clipboard-paste:ctrl+shift+v",
+              action,
             },
           ],
         }
@@ -4917,7 +4927,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
             kind: "negative" as const,
             expected,
             observed: JSON.stringify(observed),
-            action: "clipboard-paste:ctrl+shift+v",
+            action,
           },
         ],
       }
