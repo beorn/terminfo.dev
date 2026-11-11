@@ -218,7 +218,8 @@ test("app resets require measured effects and declare the backend-only reset met
     tests: [
       expect.objectContaining({
         status: "untestable",
-        reason: "The app context has no reset() method or equivalent state readback",
+        reason:
+          "Untestable (no way): reset.method is a method of the Termless backend, not a terminal sequence, and a running terminal has no such method to call. The terminal's own reset is measured by reset.ris.",
       }),
     ],
   })

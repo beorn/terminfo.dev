@@ -5231,7 +5231,8 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
     })
     expect(mux.notTested?.find((item) => item.featureId === id)).toMatchObject({
       reason: "no-semantic-observable",
-      noObservable: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+      noObservable:
+        "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
       rawReplyRef: id,
     })
     expect(mux.results.find((result) => result.featureId === id)).toMatchObject({
@@ -5241,7 +5242,8 @@ it("records mux coverage for extensions.font-ligatures and leaves a native subje
         expect.objectContaining({
           id: "declared-untestable",
           status: "untestable",
-          reason: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+          reason:
+            "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
         }),
       ],
     })

@@ -751,15 +751,19 @@ test("extensions.font-ligatures records mux declared-untestable coverage and lea
   const coverage = fontLigatureMuxCoverage({ kind: "mux" }, state)
   expect(coverage?.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+    noObservable:
+      "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
   })
-  expect(coverage?.note).toBe("ligature shaping is done by the host terminal; the multiplexer only emits text cells")
+  expect(coverage?.note).toBe(
+    "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+  )
   expect(coverage?.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
   expect(coverage?.tests).toEqual([
     {
       id: DECLARED_UNTESTABLE_TEST,
       status: "untestable",
-      reason: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+      reason:
+        "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
     },
   ])
   expect(coverage?.response).toBe(JSON.stringify(state))
@@ -783,7 +787,8 @@ test("extensions.font-ligatures records mux declared-untestable coverage and lea
     expect.objectContaining({
       id: DECLARED_UNTESTABLE_TEST,
       status: "untestable",
-      reason: "ligature shaping is done by the host terminal; the multiplexer only emits text cells",
+      reason:
+        "Untestable (no way): ligature shaping is done by the host terminal; the multiplexer only emits text cells",
     }),
   ])
   expect(fontLigatureMuxCoverage({ kind: "term" }, state)).toBeUndefined()
