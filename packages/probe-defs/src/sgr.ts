@@ -865,13 +865,14 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
             `${encoding}: default underline already matches the requested colour`,
           )
         }
-        if (sameRgb(target.underlineColor, requestedUnderlineColor))
+        if (sameRgb(target.underlineColor, requestedUnderlineColor)) {
           return parserStateResult(
             true,
             expected,
             state,
             `${encoding}: target underline matches RGB(255,0,128); foreground controls 38;2;0;0;255 and 38;2;0;255;0 (semicolon form) distinguish the default underline`,
           )
+        }
         if (
           blueControl.fg &&
           greenControl.fg &&
@@ -1239,13 +1240,14 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
             `direct RGB ${channel} readback matching the fed value (SGR ${sgr};2 reference cells A and B)`,
           )
         }
-        if (x && y && sameRgb(x, a) && sameRgb(y, b))
+        if (x && y && sameRgb(x, a) && sameRgb(y, b)) {
           return parserStateResult(
             true,
             expected,
             state,
             `${encoding}: both samples matched their independently exact direct-RGB references`,
           )
+        }
         return parserStateResult(
           null,
           expected,
@@ -1306,13 +1308,14 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         if (!x || !y) {
           // #30701, @cto ruling C: a target that reads no color is a measured ignore while the
           // independent controls show two distinct colors; without them the channel is not shown.
-          if (calibrated)
+          if (calibrated) {
             return parserStateResult(
               false,
               expected,
               state,
               `${encoding}: target colour was absent while independent named-colour controls calibrated the channel`,
             )
+          }
           return parserStateResult(
             null,
             expected,
@@ -1330,20 +1333,22 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
             `${encoding}: the preceding colour can mimic an ignored first RGB request`,
           )
         }
-        if (sameRgb(x, first) && sameRgb(y, second))
+        if (sameRgb(x, first) && sameRgb(y, second)) {
           return parserStateResult(
             true,
             expected,
             state,
             `${encoding}: both target cells matched their exact requested RGB values`,
           )
-        if (calibrated)
+        }
+        if (calibrated) {
           return parserStateResult(
             false,
             expected,
             state,
             `${encoding}: target RGB did not match the requested values while independent named-colour controls calibrated the channel`,
           )
+        }
         return parserStateResult(
           null,
           expected,
@@ -1604,13 +1609,14 @@ export const sgrProbes: ProbeDefinition[] = [
           sameRgb(default4.fg, target4.underlineColor) &&
           (!default4.underlineColor || !sameRgb(default4.underlineColor, target1.underlineColor)) &&
           (!default1.underlineColor || !sameRgb(default1.underlineColor, target4.underlineColor))
-        if (matches)
+        if (matches) {
           return parserStateResult(
             true,
             expected,
             state,
             `${encoding}: both underline colours matched the opposite foreground-route palette controls`,
           )
+        }
         if (
           default4.underlineColor &&
           default1.underlineColor &&
@@ -1721,13 +1727,14 @@ export const sgrProbes: ProbeDefinition[] = [
           )
         }
         if (baseline.underlineColor === null || after.underlineColor === null) {
-          if (baseline.underlineColor === after.underlineColor)
+          if (baseline.underlineColor === after.underlineColor) {
             return parserStateResult(
               true,
               expected,
               state,
               `${encoding}: reset returned to the same null/default colour representation`,
             )
+          }
           return parserStateResult(
             null,
             expected,

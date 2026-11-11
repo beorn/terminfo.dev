@@ -968,7 +968,9 @@ const SGR_CODE_ALIASES: Readonly<Record<string, number>> = { "4:1": 4, "4:2": 21
 
 /** Internal fixture wording; retain the transmitted separators rather than a normalized reply token. */
 export function sgrColourEncoding(sequence: string): string {
-  return [...new Set([...sequence.matchAll(/\x1b\[((?:38|48|58)[;:][0-9;:]*)m/g)].map((match) => match[1]!))]
+  return [
+    ...new Set([...sequence.matchAll(/\x1b\[(?:38|48|58)[;:][0-9;:]*m/g)].map(([encoded]) => encoded.slice(2, -1))),
+  ]
     .map((parameters) => `SGR ${parameters} (${parameters.includes(":") ? "colon" : "semicolon"} form)`)
     .join(" and ")
 }
@@ -1088,10 +1090,11 @@ function evaluateSgrReadback(
     (readback.requireTokens ?? []).some(
       (token) => !parameters.some((actual) => leadingSgrCode(actual) === leadingSgrCode(token)),
     )
-  if (absent && !forbidden && !setupVerified)
+  if (absent && !forbidden && !setupVerified) {
     return notTestedResult(encoding ? `Selected ${encoding}; ${NO_SAME_PATH_CONTROL}` : NO_SAME_PATH_CONTROL, {
       sgr: observed,
     })
+  }
   const ok = required && !forbidden && tokensRequired
   const requiredCodes = [...readback.require.map(String), ...(readback.requireTokens ?? [])]
   // A forbid-only claim (reset.sgr, sgr.reset, sgr.fg.default, sgr.bg.default) requires nothing, so its

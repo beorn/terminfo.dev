@@ -63,7 +63,7 @@ function parserLibrary(spec: { knows58?: boolean; dropsUnknown?: boolean; report
     getCursor: () => ({ x: col, y: row, visible: true, style: null }),
     getCell: (r, c) => {
       const cell = cells.get(`${r},${c}`)
-      return { ...base.getCell(r, c), ...(cell ?? {}), underlineColor: null }
+      return { ...base.getCell(r, c), ...cell, underlineColor: null }
     },
     feed: (text) => {
       const pattern = /\x1b\[([0-9;:]*)([A-Za-z])|([^\x1b])/g

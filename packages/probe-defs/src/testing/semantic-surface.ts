@@ -328,8 +328,9 @@ function applyColonSgr(
   if (code === 38 || code === 48 || code === 58) {
     if (parts[1] === 5 && parts.length === 3) return applyIndexedColor(attributes, code, parts[2]!, mutations, palette)
     const rgb = parts.length === 6 && parts[2] === 0 ? parts.slice(3) : parts.slice(2)
-    if (parts[1] === 2 && rgb.length === 3)
+    if (parts[1] === 2 && rgb.length === 3) {
       return applyRgbColor(attributes, code, { r: rgb[0]!, g: rgb[1]!, b: rgb[2]! }, mutations)
+    }
   }
   return attributes
 }
