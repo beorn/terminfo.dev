@@ -3,221 +3,18 @@
   "generatedBy": "@dev/15 issue 33164 packet: generate-reopened-cells.ts",
   "rows": [
     {
-      "kind": "term",
-      "id": "alacritty",
-      "os": "linux",
-      "featureId": "editing.decrqcra",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
-      },
-      "witnesses": [
-        {
-          "runId": "f504922f67f074794c588cf3a14e2114",
-          "assertionIndex": 136
-        },
-        {
-          "runId": "984b034da17ca52406e50e60a3b88bc4",
-          "assertionIndex": 137
-        },
-        {
-          "runId": "6fa9cc2b3098dd1d90dc89d2c60ad7a4",
-          "assertionIndex": 142
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "alacritty",
-      "os": "linux",
-      "featureId": "extensions.kitty-graphics",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "3463950d05e8cc5338a2d41c3d069874407e3947b9031ccf5530a863401ad15b"
-      },
-      "witnesses": [
-        {
-          "runId": "f504922f67f074794c588cf3a14e2114",
-          "assertionIndex": 7
-        },
-        {
-          "runId": "984b034da17ca52406e50e60a3b88bc4",
-          "assertionIndex": 7
-        },
-        {
-          "runId": "6fa9cc2b3098dd1d90dc89d2c60ad7a4",
-          "assertionIndex": 7
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "alacritty",
-      "os": "linux",
-      "featureId": "extensions.osc702-version",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
-      },
-      "witnesses": [
-        {
-          "runId": "f504922f67f074794c588cf3a14e2114",
-          "assertionIndex": 36
-        },
-        {
-          "runId": "984b034da17ca52406e50e60a3b88bc4",
-          "assertionIndex": 36
-        },
-        {
-          "runId": "6fa9cc2b3098dd1d90dc89d2c60ad7a4",
-          "assertionIndex": 35
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "ghostty",
-      "os": "linux",
-      "featureId": "editing.decrqcra",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
-      },
-      "witnesses": [
-        {
-          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
-          "assertionIndex": 107
-        },
-        {
-          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
-          "assertionIndex": 137
-        },
-        {
-          "runId": "97f0b21b46a75ea76f81c85ff1611483",
-          "assertionIndex": 150
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "ghostty",
-      "os": "linux",
-      "featureId": "extensions.osc702-version",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
-      },
-      "witnesses": [
-        {
-          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
-          "assertionIndex": 34
-        },
-        {
-          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
-          "assertionIndex": 37
-        },
-        {
-          "runId": "97f0b21b46a75ea76f81c85ff1611483",
-          "assertionIndex": 44
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "kitty",
-      "os": "linux",
-      "featureId": "editing.decrqcra",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
-      },
-      "witnesses": [
-        {
-          "runId": "b09e6e5cab7a3a07c0754538b2d949d6",
-          "assertionIndex": 160
-        },
-        {
-          "runId": "8a04af6f8377b1c3ddd66746caa30cbf",
-          "assertionIndex": 140
-        },
-        {
-          "runId": "0f6a17be820e41ecf3404199ff00fbb7",
-          "assertionIndex": 140
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "kitty",
-      "os": "linux",
-      "featureId": "extensions.osc702-version",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
-      },
-      "witnesses": [
-        {
-          "runId": "b09e6e5cab7a3a07c0754538b2d949d6",
-          "assertionIndex": 55
-        },
-        {
-          "runId": "8a04af6f8377b1c3ddd66746caa30cbf",
-          "assertionIndex": 38
-        },
-        {
-          "runId": "0f6a17be820e41ecf3404199ff00fbb7",
-          "assertionIndex": 39
-        }
-      ]
-    },
-    {
       "kind": "mux",
       "id": "screen",
       "os": "linux",
       "featureId": "editing.decrqcra",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
+        "criterionSha256": "710c32a219ae534789db62418220ee62a4c144b49b11cfcc59a239a7ec586419"
       },
       "witnesses": [
         {
@@ -240,13 +37,13 @@
       "os": "linux",
       "featureId": "extensions.kitty-graphics",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "3463950d05e8cc5338a2d41c3d069874407e3947b9031ccf5530a863401ad15b"
+        "criterionSha256": "a7680a23a9d40c9a807c2c62baca847dd807e84423a78f1e45e5d0d72dbf8fb7"
       },
       "witnesses": [
         {
@@ -269,13 +66,13 @@
       "os": "linux",
       "featureId": "extensions.osc702-version",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
+        "criterionSha256": "28f17cfa552f47d2c8abfa1985c422ff2739e8bd63d1d3a51797ddfc83b49c25"
       },
       "witnesses": [
         {
@@ -298,13 +95,13 @@
       "os": "linux",
       "featureId": "editing.decrqcra",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
+        "criterionSha256": "710c32a219ae534789db62418220ee62a4c144b49b11cfcc59a239a7ec586419"
       },
       "witnesses": [
         {
@@ -319,13 +116,13 @@
       "os": "linux",
       "featureId": "extensions.kitty-graphics",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "3463950d05e8cc5338a2d41c3d069874407e3947b9031ccf5530a863401ad15b"
+        "criterionSha256": "a7680a23a9d40c9a807c2c62baca847dd807e84423a78f1e45e5d0d72dbf8fb7"
       },
       "witnesses": [
         {
@@ -340,383 +137,17 @@
       "os": "linux",
       "featureId": "extensions.osc702-version",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
+        "criterionSha256": "28f17cfa552f47d2c8abfa1985c422ff2739e8bd63d1d3a51797ddfc83b49c25"
       },
       "witnesses": [
         {
           "runId": "ea920f3547c0e7f0ced0f80b277f2939",
-          "assertionIndex": 36
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "wezterm",
-      "os": "linux",
-      "featureId": "editing.decrqcra",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
-      },
-      "witnesses": [
-        {
-          "runId": "0a2dda31ce8560ccad58658c4f5eeb82",
-          "assertionIndex": 153
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "wezterm",
-      "os": "linux",
-      "featureId": "extensions.osc702-version",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
-      },
-      "witnesses": [
-        {
-          "runId": "0a2dda31ce8560ccad58658c4f5eeb82",
-          "assertionIndex": 46
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "xterm",
-      "os": "linux",
-      "featureId": "editing.decrqcra",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "cafc9fbec0bdeb66d1afde3dd06180d95b2c1bd4e16503a446ba2d50c54a19f6"
-      },
-      "witnesses": [
-        {
-          "runId": "524cbe6f4f80add55354810f35fd57c7",
-          "assertionIndex": 147
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "xterm",
-      "os": "linux",
-      "featureId": "extensions.kitty-graphics",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "3463950d05e8cc5338a2d41c3d069874407e3947b9031ccf5530a863401ad15b"
-      },
-      "witnesses": [
-        {
-          "runId": "524cbe6f4f80add55354810f35fd57c7",
-          "assertionIndex": 8
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "xterm",
-      "os": "linux",
-      "featureId": "extensions.osc702-version",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-18-silence-rows.json sha256 1b777fc0842154f3b9a07c363aec49cfdec87f5d21f8cd292c34428bb5ce8f9a",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "34c497c087aa2d18dc5e1ed9e636a46c8dd9a7d01b381a6b0282db3c284593a2"
-      },
-      "witnesses": [
-        {
-          "runId": "524cbe6f4f80add55354810f35fd57c7",
-          "assertionIndex": 44
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "alacritty",
-      "os": "linux",
-      "featureId": "extensions.osc701-locale",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
-      },
-      "witnesses": [
-        {
-          "runId": "f504922f67f074794c588cf3a14e2114",
-          "assertionIndex": 35
-        },
-        {
-          "runId": "984b034da17ca52406e50e60a3b88bc4",
-          "assertionIndex": 35
-        },
-        {
-          "runId": "6fa9cc2b3098dd1d90dc89d2c60ad7a4",
-          "assertionIndex": 34
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "alacritty",
-      "os": "linux",
-      "featureId": "extensions.osc776-cell-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
-      },
-      "witnesses": [
-        {
-          "runId": "f504922f67f074794c588cf3a14e2114",
-          "assertionIndex": 37
-        },
-        {
-          "runId": "984b034da17ca52406e50e60a3b88bc4",
-          "assertionIndex": 37
-        },
-        {
-          "runId": "6fa9cc2b3098dd1d90dc89d2c60ad7a4",
-          "assertionIndex": 37
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "alacritty",
-      "os": "linux",
-      "featureId": "extensions.osc7770-font-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
-      },
-      "witnesses": [
-        {
-          "runId": "f504922f67f074794c588cf3a14e2114",
-          "assertionIndex": 33
-        },
-        {
-          "runId": "984b034da17ca52406e50e60a3b88bc4",
-          "assertionIndex": 33
-        },
-        {
-          "runId": "6fa9cc2b3098dd1d90dc89d2c60ad7a4",
-          "assertionIndex": 32
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "ghostty",
-      "os": "linux",
-      "featureId": "extensions.osc701-locale",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
-      },
-      "witnesses": [
-        {
-          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
-          "assertionIndex": 33
-        },
-        {
-          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
-          "assertionIndex": 36
-        },
-        {
-          "runId": "97f0b21b46a75ea76f81c85ff1611483",
-          "assertionIndex": 43
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "ghostty",
-      "os": "linux",
-      "featureId": "extensions.osc776-cell-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
-      },
-      "witnesses": [
-        {
-          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
-          "assertionIndex": 35
-        },
-        {
-          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
-          "assertionIndex": 38
-        },
-        {
-          "runId": "97f0b21b46a75ea76f81c85ff1611483",
-          "assertionIndex": 46
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "ghostty",
-      "os": "linux",
-      "featureId": "extensions.osc7770-font-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
-      },
-      "witnesses": [
-        {
-          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
-          "assertionIndex": 31
-        },
-        {
-          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
-          "assertionIndex": 34
-        },
-        {
-          "runId": "97f0b21b46a75ea76f81c85ff1611483",
-          "assertionIndex": 41
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "kitty",
-      "os": "linux",
-      "featureId": "extensions.osc701-locale",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
-      },
-      "witnesses": [
-        {
-          "runId": "b09e6e5cab7a3a07c0754538b2d949d6",
-          "assertionIndex": 54
-        },
-        {
-          "runId": "8a04af6f8377b1c3ddd66746caa30cbf",
-          "assertionIndex": 37
-        },
-        {
-          "runId": "0f6a17be820e41ecf3404199ff00fbb7",
-          "assertionIndex": 38
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "kitty",
-      "os": "linux",
-      "featureId": "extensions.osc776-cell-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
-      },
-      "witnesses": [
-        {
-          "runId": "b09e6e5cab7a3a07c0754538b2d949d6",
-          "assertionIndex": 58
-        },
-        {
-          "runId": "8a04af6f8377b1c3ddd66746caa30cbf",
-          "assertionIndex": 39
-        },
-        {
-          "runId": "0f6a17be820e41ecf3404199ff00fbb7",
-          "assertionIndex": 40
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "kitty",
-      "os": "linux",
-      "featureId": "extensions.osc7770-font-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
-      },
-      "witnesses": [
-        {
-          "runId": "b09e6e5cab7a3a07c0754538b2d949d6",
-          "assertionIndex": 52
-        },
-        {
-          "runId": "8a04af6f8377b1c3ddd66746caa30cbf",
-          "assertionIndex": 35
-        },
-        {
-          "runId": "0f6a17be820e41ecf3404199ff00fbb7",
           "assertionIndex": 36
         }
       ]
@@ -727,13 +158,13 @@
       "os": "linux",
       "featureId": "extensions.osc701-locale",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
+        "criterionSha256": "702492f750ae14a35efe9fae6bb0afd9425aefd3af5f87592a37fdcc3b239d52"
       },
       "witnesses": [
         {
@@ -756,13 +187,13 @@
       "os": "linux",
       "featureId": "extensions.osc776-cell-size",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
+        "criterionSha256": "b9dc47693facacdeeb7de0349cc96300f85ceef8282ae428b07b80e74688bf4b"
       },
       "witnesses": [
         {
@@ -785,13 +216,13 @@
       "os": "linux",
       "featureId": "extensions.osc7770-font-size",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
+        "criterionSha256": "4fc6e7f284defa02907b1900809685fd277e6d9105548158084e7bc572e6ee0d"
       },
       "witnesses": [
         {
@@ -814,13 +245,13 @@
       "os": "linux",
       "featureId": "extensions.osc701-locale",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
+        "criterionSha256": "702492f750ae14a35efe9fae6bb0afd9425aefd3af5f87592a37fdcc3b239d52"
       },
       "witnesses": [
         {
@@ -835,13 +266,13 @@
       "os": "linux",
       "featureId": "extensions.osc776-cell-size",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
+        "criterionSha256": "b9dc47693facacdeeb7de0349cc96300f85ceef8282ae428b07b80e74688bf4b"
       },
       "witnesses": [
         {
@@ -856,144 +287,18 @@
       "os": "linux",
       "featureId": "extensions.osc7770-font-size",
       "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
+      "reason": "multiplexer: silence may have stopped at the hop",
       "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
+      "ruling": "@cto 2026-11-10 14:56 PST (04bc641a), issue 33165; first reopened by @cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
+      "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
+        "criterionSha256": "4fc6e7f284defa02907b1900809685fd277e6d9105548158084e7bc572e6ee0d"
       },
       "witnesses": [
         {
           "runId": "ea920f3547c0e7f0ced0f80b277f2939",
           "assertionIndex": 33
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "wezterm",
-      "os": "linux",
-      "featureId": "extensions.osc701-locale",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
-      },
-      "witnesses": [
-        {
-          "runId": "0a2dda31ce8560ccad58658c4f5eeb82",
-          "assertionIndex": 45
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "wezterm",
-      "os": "linux",
-      "featureId": "extensions.osc776-cell-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
-      },
-      "witnesses": [
-        {
-          "runId": "0a2dda31ce8560ccad58658c4f5eeb82",
-          "assertionIndex": 49
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "wezterm",
-      "os": "linux",
-      "featureId": "extensions.osc7770-font-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
-      },
-      "witnesses": [
-        {
-          "runId": "0a2dda31ce8560ccad58658c4f5eeb82",
-          "assertionIndex": 43
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "xterm",
-      "os": "linux",
-      "featureId": "extensions.osc701-locale",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "8c7a8b486dc24622011259c0240c0df97688d39f69c6b0af207ebfc24222fd79"
-      },
-      "witnesses": [
-        {
-          "runId": "524cbe6f4f80add55354810f35fd57c7",
-          "assertionIndex": 43
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "xterm",
-      "os": "linux",
-      "featureId": "extensions.osc776-cell-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "19097c38ccd4af0f433a9170859fc2817dab693d820889dc36ccdc28be400930"
-      },
-      "witnesses": [
-        {
-          "runId": "524cbe6f4f80add55354810f35fd57c7",
-          "assertionIndex": 46
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "xterm",
-      "os": "linux",
-      "featureId": "extensions.osc7770-font-size",
-      "graded": "unsupported",
-      "reason": "the criterion text does not say a silent terminal is Unsupported, so this grade is withdrawn until the text is fixed",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:21 PST (0a45cb8b) and 12:32 PST (caba4489), issue 33164",
-      "evidence": "@dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
-      "exit": {
-        "kind": "criterion-text",
-        "criterionSha256": "6bdf18b3ad70de5c04de382d980edb977448b3a4509ae2520ce1a9d9b8d98118"
-      },
-      "witnesses": [
-        {
-          "runId": "524cbe6f4f80add55354810f35fd57c7",
-          "assertionIndex": 41
         }
       ]
     },

@@ -40,6 +40,7 @@ import {
   auditedAdapterSources,
   sameFrame,
   sameRgb as sameRgbCells,
+  fencedSilenceResult,
   sentinelNegativeResult,
   sentinelSilenceResult,
   sgrCaptureTooSmall,
@@ -3344,22 +3345,22 @@ function kittyDetection(raw: string): KittyDetection {
   return { kind: "inconclusive", reason: "no-response" }
 }
 
+/**
+ * A DA1 answer that is the whole capture: the marked fenced silence, graded by the row's rule in recordExecutedProbe
+ * like every other DA1-fenced query (#33165, @cto 767c9bcd). The default rule records Unsupported with this note and
+ * assertion, the same result this function decided itself before.
+ */
 function kittyProtocolAbsent(response: string): ProbeCallbackResult {
   const note =
     "DA1 answered without any Kitty keyboard flags reply; the protocol is not supported (necessary-condition negative; key-event conformance was not tested)"
   return {
-    pass: false,
-    response,
+    ...fencedSilenceResult(
+      response,
+      note,
+      "A complete Kitty keyboard flags reply answers before the DA1 reply",
+      response,
+    ),
     note,
-    observation: { outcome: "unsupported", assertionType: "query_reply", note },
-    assertions: [
-      {
-        assertionType: "query_reply" as const,
-        kind: "negative",
-        expected: "A complete Kitty keyboard flags reply answers before the DA1 reply",
-        observed: response,
-      },
-    ],
   }
 }
 

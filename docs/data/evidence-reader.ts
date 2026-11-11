@@ -111,6 +111,8 @@ export const REASON_EXPLANATIONS: Record<ObservationReason, string> = {
   "collector-error": "The collector failed to complete this probe.",
   "invalid-reply": "The recorded reply did not match this probe’s expected format.",
   "insufficient-evidence": "The recorded observation does not establish support; more evidence is needed.",
+  "fenced-silence":
+    "The device attributes answer came back with no reply before it; the feature row's silence rule decides the result.",
 }
 
 const CONTROL_NAMES: Record<number, string> = {

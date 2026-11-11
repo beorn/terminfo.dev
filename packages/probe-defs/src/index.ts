@@ -35,7 +35,16 @@ export type {
   CaptureLocated,
   CalibrationSentinel,
 } from "./types.ts"
-export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, ASSERTION_TYPES, HOST_INPUT_NAMES, frameDigests } from "./types.ts"
+export {
+  OBSERVATION_OUTCOMES,
+  OBSERVATION_REASONS,
+  ASSERTION_TYPES,
+  HOST_INPUT_NAMES,
+  SILENCE_RULES,
+  frameDigests,
+  type SilenceDeclaration,
+  type SilenceRule,
+} from "./types.ts"
 export type {
   ObservationOutcome,
   ObservationReason,
@@ -81,8 +90,12 @@ export {
   HEADLESS_OBSERVABLE_REVIEW,
   UNTESTABLE_ONLY_REVIEW_BRANCHES,
   DECLARED_UNTESTABLE_TEST,
+  FENCED_SILENCE,
   declaredUntestableResult,
+  fencedSilenceResult,
+  fencedSilenceStatus,
   isDeclaredUntestable,
+  isFencedSilence,
   SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES,
   sgrProbe,
   cursorProbe,

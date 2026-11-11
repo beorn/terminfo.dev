@@ -752,7 +752,7 @@ const EXTENSIONS_CONTRACT: GroupContract = [
   {
     id: "extensions.osc7777-font-window-size",
     expected: "decided",
-    claim: "Font + window size (OSC 7777): ESC ] 7777 ; font ; size BEL",
+    claim: "Font + window size (OSC 7777): ESC ] 7777 ; size BEL",
   },
   { id: "extensions.osc701-locale", expected: "decided", claim: "Locale query/set (OSC 701): ESC ] 701 ; locale BEL" },
   { id: "extensions.osc702-version", expected: "decided", claim: "Version query (OSC 702): ESC ] 702 ; ? BEL" },

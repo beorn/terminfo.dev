@@ -12,6 +12,7 @@ import { editingProbes } from "./editing.ts"
 import {
   contractGaps,
   inertLibProbeSource,
+  gradedOutcome,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -225,7 +226,7 @@ test.each(EDITING_SEMANTIC_SURFACE_CONTROLS)(
 
     const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
     expect(negativeResult.pass).toBe(false)
-    expect(negativeResult.observation?.outcome).toBe("unsupported")
+    expect(gradedOutcome(negativeResult)).toBe("unsupported")
     expect(negativeResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "negative" }))
     const negativeGraded = await regradeRow(probe, row, {
       headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),

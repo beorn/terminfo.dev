@@ -134,8 +134,8 @@
     "slug": "5-blink",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": ["ecma-48", "vt100"],
-    "body": "SGR 5 causes text to blink at a steady rate. The sequence is <code>ESC [ 5 m</code>. Many modern terminals intentionally do not implement blinking, as it is considered distracting and an accessibility concern. Terminals that do support it typically allow the user to disable it in preferences.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's DECRQSS handler implements only <code>SPq</code>, not <code>m</code> (input.c:2460-2526): the exact <code>$m</code> state readback this probe sends draws a local status-0 refusal instead of the terminal's SGR state, and the probe may then fall back to capture. The mux expectation is a local refusal with capture fallback, not an SGR-state reply from the outer terminal. No animation or timing claim follows from a cursor reply.",
-    "probe": "Send <code>\\x1b[5m</code>X, verify <code>blink=true</code> on the cell.",
+    "body": "SGR 5 causes text to blink at a steady rate. The sequence is <code>ESC [ 5 m</code>. Many modern terminals intentionally do not implement blinking, as it is considered distracting and an accessibility concern. Terminals that do support it typically allow the user to disable it in preferences. Where blinking is a documented preference that is off by default, the reason names that preference, and a run with it on decides the row under that named configuration.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's DECRQSS handler implements only <code>SPq</code>, not <code>m</code> (input.c:2460-2526): the exact <code>$m</code> state readback this probe sends draws a local status-0 refusal instead of the terminal's SGR state, and the probe may then fall back to capture. The mux expectation is a local refusal with capture fallback, not an SGR-state reply from the outer terminal. No animation or timing claim follows from a cursor reply.",
+    "probe": "Write ESC [ 5 m X beside an unstyled control line and capture repeatedly with no writes between captures. Supported: the styled text changes and returns to an earlier appearance while the control line holds still. Unsupported: no change across at least 12 frames spanning at least 6,000 ms with no gap above 545 ms; a capture that cannot meet that window reads 'capture too slow to decide blink'. A DECRQSS reply reporting SGR 5 is recorded as supporting detail and never decides the row.",
     "baseline": "modern",
     "sequence": "ESC [ 5 m"
   },
@@ -843,7 +843,7 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECRQCRA (<code>CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y</code>) computes a 16-bit checksum of the cells in a rectangular region and reports it back to the host as a DCS response (<code>DCS Pid ! ~ checksum ST</code>). <code>Pid</code> is a request identifier echoed in the response; <code>Ppid</code> is the page number. The checksum hashes both characters and SGR attributes, which is why it's used by DEC's terminal conformance test suites — a test script can paint a known pattern, ask the terminal for the checksum, and compare against an expected value to confirm the terminal rendered the pattern correctly. xterm still implements this. Almost no application has ever used it outside of test suites.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and this probe's own expectation is measured by cursor-position replies: tmux answers DSR 6 from its local screen position (input.c:1643-1658) and its movement handlers mutate that same local screen, which establishes deciding-response ownership and never conformance of every movement. The probe requests <code>CSI 1;1;1;1;1;5*y</code> and expects a <code>DCS 1!~</code> four-hex-digit reply, but the complete CSI table has no <code>*y</code> handler: no local checksum answer is established, so the blanket reply rationale is unsupported for this exact query rather than an observed runtime probe result.",
-    "probe": "Seed five known cells, request that rectangle twice and change one cell from E to F between the reads. Both arms check the framed DCS reply with request ID 1 and four hexadecimal digits, and require the 16-bit checksum to move by exactly 1 under the terminal convention: +1 with the positive-checksum extension, or 65535 with the DEC-compatible negated default. Any other delta is a negative; a missing reply after the attempted checksum request is PROBE INVALID.",
+    "probe": "Seed five known cells, request that rectangle twice and change one cell from E to F between the reads. Both arms check the framed DCS reply with request ID 1 and four hexadecimal digits, and require the 16-bit checksum to move by exactly 1 under the terminal convention: +1 with the positive-checksum extension, or 65535 with the DEC-compatible negated default. Any other delta is a negative; A device attributes answer with no checksum reply before it is Unsupported. Where a terminal's documentation names a setting or build option that enables DECRQCRA and it is off by default, that terminal's reason names it, and a run with it on decides the row under that named configuration.",
     "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y"
   },
   "input.modify-other-keys": {
@@ -863,7 +863,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "The fixterms/CSI u encoding reports keypresses as CSI codepoint ; modifiers u sequences. This was the precursor to the Kitty keyboard protocol and provides unambiguous key identification for terminal applications.\n\nCSI u came from the 'fixterms' effort to repair ambiguous keyboard input without replacing the whole terminal protocol. It reports Unicode code points plus modifiers, making Ctrl-I distinguishable from Tab and Ctrl-M from Enter. Kitty's keyboard protocol is the richer successor, but CSI u remains an important compatibility step.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
-    "probe": "Query keyboard mode flags. Expected: the acknowledged flags include mask 1."
+    "probe": "Query keyboard mode flags. Expected: the acknowledged flags include mask 1. A primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents."
   },
   "input.pixel-mouse": {
     "name": "Pixel Mouse Reporting (1016)",
@@ -1218,7 +1218,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/",
     "tags": ["kitty-extensions"],
     "body": "The Kitty keyboard protocol solves fundamental ambiguities in traditional terminal input handling. Legacy terminals cannot distinguish between <code>Ctrl+I</code> and <code>Tab</code>, <code>Ctrl+M</code> and <code>Enter</code>, or <code>Escape</code> and the start of an escape sequence — they all produce the same byte sequences. The protocol also enables key-release events and distinguishes between different modifier key presses (left vs. right Shift).\n\nApplications opt in with <code>CSI &gt; flags u</code>, where <code>flags</code> is a bitmask selecting reporting modes: disambiguate keys (1), report event types (2), report alternate keys (4), report all keys as escape sequences (8), and report associated text (16). Keys are reported as <code>CSI unicode-key-code : shifted-key : base-layout-key ; modifiers : event-type u</code>.\n\nAdopted by Ghostty, WezTerm, foot, and rio. The protocol is progressive — applications can request only the features they need, and terminals report which flags they support.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
-    "probe": "Query keyboard mode flags via <code>CSI ? u</code> and check for a <code>CSI ? flags u</code> response indicating Kitty keyboard protocol support. Expected: the acknowledged flags include mask 1.",
+    "probe": "Query keyboard mode flags via <code>CSI ? u</code> and check for a <code>CSI ? flags u</code> response indicating Kitty keyboard protocol support. Expected: the acknowledged flags include mask 1. A primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
     "baseline": "rich",
     "sequence": "ESC [ > flags u"
   },
@@ -1229,7 +1229,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/",
     "tags": ["kitty-extensions"],
     "body": "The Kitty graphics protocol enables inline image display in the terminal using a structured escape sequence format. Unlike Sixel, which encodes pixel data as ASCII characters, Kitty graphics transmits PNG, RGB, or RGBA image data via APC (Application Program Command) sequences.\n\nImages are sent with <code>ESC_G &lt;control data&gt; ; &lt;payload&gt; ESC \\</code>. Large images are split into chunks using the <code>m=1</code> flag for continuation. The protocol supports placement (positioning images relative to cells), virtual image references (transmit once, display many times), animation frames, and z-layering. Each image gets a numeric ID, and Unicode placeholder characters allow images to participate in text layout and scrollback.\n\nThis probe measures acceptance of the canonical direct RGB query: a correlated OK reply accepts it, while a correlated printable error refuses it and separately proves protocol recognition. Visible rendering, transmission and placement require their own measurements. Other terminals may document implementations, but their app behavior requires its own measurement.",
-    "probe": "Send the canonical 1x1 direct raw-RGB Kitty graphics query (<code>a=q,t=d,f=24,i=31</code>). A correlated <code>OK</code> reply establishes acceptance; a correlated printable error establishes refusal of this query while retaining protocol recognition separately. Missing or malformed replies remain inconclusive. This does not measure visible rendering, transmission or placement.",
+    "probe": "Send the canonical 1x1 direct raw-RGB Kitty graphics query (<code>a=q,t=d,f=24,i=31</code>). A correlated <code>OK</code> reply establishes acceptance; a correlated printable error establishes refusal of this query while retaining protocol recognition separately. The query is followed by a primary device attributes request; a device attributes answer with no graphics reply before it is Unsupported, the detection the protocol's own documentation gives. A malformed reply stays inconclusive. This does not measure visible rendering, transmission or placement.",
     "baseline": "rich"
   },
   "extensions.sixel": {
@@ -1291,7 +1291,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 10 queries the terminal's default foreground color. The query is <code>ESC ] 10 ; ? ST</code> and the terminal responds with the color in X11 <code>rgb:RR/GG/BB</code> format. Applications use this to detect light vs. dark themes and adapt their color schemes accordingly.\n\nUnder tmux 3.6 <code>OSC 10;?</code> reaches a local query handler (input.c:2926) that answers from the pane, default or control-client foreground colour only when that colour is known: the expectation is a local answer conditional on a known colour, not a fixed unconditional palette answer.",
-    "probe": "Query foreground color with <code>OSC 10 ; ? BEL</code>, verify response matches <code>OSC 10 ; rgb:...</code> pattern via feedCapture.",
+    "probe": "Query foreground color with <code>OSC 10 ; ? BEL</code>, verify response matches <code>OSC 10 ; rgb:...</code> pattern via feedCapture. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "modern",
     "sequence": "ESC ] 10 ; ? BEL"
   },
@@ -1302,7 +1302,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 11 queries the terminal's default background color. The query is <code>ESC ] 11 ; ? ST</code>. The response format matches OSC 10. This is the most reliable way to detect whether the user has a dark or light terminal theme — compare the background color's luminance to determine the appropriate color palette.\n\nUnder tmux 3.6 <code>OSC 11;?</code> reaches a local pane-background query (input.c:2977) that answers only with a known background colour; the expectation is a local answer under that precondition.",
-    "probe": "Query background color with <code>OSC 11 ; ? BEL</code>, verify response matches <code>OSC 11 ; rgb:...</code> pattern via feedCapture.",
+    "probe": "Query background color with <code>OSC 11 ; ? BEL</code>, verify response matches <code>OSC 11 ; rgb:...</code> pattern via feedCapture. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "modern",
     "sequence": "ESC ] 11 ; ? BEL"
   },
@@ -1805,7 +1805,7 @@
     "url": "https://vt100.net/docs/vt510-rm/DSR.html",
     "tags": ["ecma-48", "vt100"],
     "body": "DSR 5 queries the terminal's operational status. The query is <code>ESC [ 5 n</code>. The terminal responds with <code>ESC [ 0 n</code> to indicate it is functioning normally. This is a basic health check that also serves as a synchronization point — applications can send DSR 5 and wait for the response to ensure all previous output has been processed.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. <code>CSI 5 n</code> is answered locally with <code>0n</code> (input.c:1643-1652): local answer supported, with the ready-versus-malfunction reply shape as the deciding facet.",
-    "probe": "Send <code>\\x1b[5n</code> (DSR 5), verify response contains <code>0n</code> (device OK).",
+    "probe": "Send <code>\\x1b[5n</code> (DSR 5), verify response contains <code>0n</code> (device OK). A device attributes answer with no reply before it is Unsupported.",
     "baseline": "modern",
     "sequence": "ESC [ 5 n"
   },
@@ -1817,7 +1817,7 @@
     "tags": ["vt220"],
     "baseline": "modern",
     "body": "DA2 (CSI > c) returns the terminal's type, firmware version, and ROM cartridge registration number. Modern terminals use DA2 to identify themselves — e.g., xterm returns CSI > 41 ; version ; 0 c. This is commonly used for terminal detection.\n\nDA2 is the practical member of the DEC device-attributes family for identification. xterm and compatible terminals use it to report a terminal type and version-like number. It is still not enough for complete capability detection, but it gives applications a hint before they fall back to targeted probes.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. <code>CSI &gt; c</code> is answered locally with tmux's fixed three-field reply (input.c:1567-1580): local answer supported.",
-    "probe": "Send CSI > c, check for a CSI > Pp ; Pv ; Pc c response via onResponse callback.",
+    "probe": "Send CSI > c, check for a CSI > Pp ; Pv ; Pc c response via onResponse callback. A device attributes answer with no reply before it is Unsupported.",
     "sequence": "ESC [ > c"
   },
   "device.tertiary-da": {
@@ -1828,7 +1828,7 @@
     "tags": ["vt510"],
     "baseline": "rich",
     "body": "DA3 (CSI = c) returns the terminal's unit ID as a DCS response. Less commonly supported than DA1/DA2, primarily by xterm and terminals that aim for high VT compatibility.\n\nDA3 is part of the later DEC device-attribute family rather than the everyday ANSI baseline. It is useful when emulating high-end VT behavior, but it is too sparsely implemented for application feature detection. Most modern applications prefer XTVERSION, DECRPM probes, or environment signals before trying DA3.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. The complete CSI table carries <code>c</code> and <code>&gt;c</code> but no <code>=c</code>, and an unmatched entry returns (input.c:302-344, 1435-1458): the declared answering rationale is contradicted for this exact query, no raw outer relay is demonstrated, and a missing reply is not a capability negative.",
-    "probe": "Send CSI = c, check for a DCS ! | response.",
+    "probe": "Send CSI = c, check for a DCS ! | response. A device attributes answer with no reply before it is Unsupported.",
     "sequence": "ESC [ = c"
   },
   "device.decrqss": {
@@ -1838,7 +1838,7 @@
     "tags": ["vt510"],
     "baseline": "rich",
     "body": "DECRQSS (DCS $ q Pt ST) queries the current value of a terminal setting. For example, querying SGR returns the current rendition parameters. Useful for terminals that want to verify their configuration programmatically.\n\nDECRQSS lets software ask the terminal for the current value of a setting instead of guessing. It is framed as a DCS string rather than a simple CSI reply, which makes parser support more demanding. Applications use it sparingly, but high-fidelity emulators need it for compatibility with tools that verify DEC private state.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. Only <code>SPq</code> has a positive local implementation (input.c:2460-2526), so the three queried selectors receive complete <code>DCS 0$r</code> refusals: local response ownership is supported, but these selectors are refused rather than positively conformed, and the probe stays inconclusive after selector refusals rather than unsupported.",
-    "probe": "Query DECRQSS for SGR with DCS $ q m ST. A complete status-1 SGR reply supports the facility. After an SGR refusal, query DECSTBM with DCS $ q r ST; a complete status-1 Pt;Pb r frame also supports it. If both selectors refuse, query DECSCL with DCS $ q \"p ST: a complete status-1 conformance reply ending \"p supports the facility, retaining both earlier refusals as detail. After three refusals, query DECSCUSR with DCS $ q SP q ST: a complete status-1 reply ending SP q supports the facility. Four refusals are Unsupported, retaining all four as detail. An unanswered later selector after an attempt is PROBE INVALID. A terminal that does not answer SGR at all keeps today's F1 sentinel negative.",
+    "probe": "Query DECRQSS for SGR with DCS $ q m ST. A complete status-1 SGR reply supports the facility. After an SGR refusal, query DECSTBM with DCS $ q r ST; a complete status-1 Pt;Pb r frame also supports it. If both selectors refuse, query DECSCL with DCS $ q \"p ST: a complete status-1 conformance reply ending \"p supports the facility, retaining both earlier refusals as detail. After three refusals, query DECSCUSR with DCS $ q SP q ST: a complete status-1 reply ending SP q supports the facility. Four refusals are Unsupported, retaining all four as detail. An unanswered later selector after an attempt is PROBE INVALID. A terminal that does not answer SGR at all keeps today's F1 sentinel negative. A device attributes answer with no reply before it is Unsupported.",
     "url": "https://vt100.net/docs/vt510-rm/DECRQSS.html",
     "sequence": "ESC P $ q setting ESC \\\\"
   },
@@ -1849,7 +1849,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTGETTCAP (DCS + q Pt ST) queries terminfo capabilities via DCS escape sequences. The terminal responds with the capability value, allowing applications to query terminal features without parsing terminfo databases. Used by notcurses and foot.\n\nXTGETTCAP is xterm's bridge between runtime queries and the termcap/terminfo database. Instead of trusting the inherited TERM entry, an application can ask the terminal itself for selected capabilities. The response is DCS-encoded and hex-encoded, so support requires both protocol and parser care.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. The complete DCS dispatch has Sixel, <code>$q</code> and the explicit tmux wrapper, and <code>allow-passthrough</code> does not wrap these bytes. tmux's dispatch has no <code>+q</code> handler for this query (input.c:2528-2594), consumes it and emits nothing; that silence is tmux's decision and is not a terminal probe result.",
-    "probe": "Query TN with DCS + q 544e ST. A complete status-1 TN value supports this request; status-0 is a documented negative for TN only; it says nothing about other capability values.",
+    "probe": "Query TN with DCS + q 544e ST. A complete status-1 TN value supports this request; status-0 is a documented negative for TN only; it says nothing about other capability values. A device attributes answer with no reply before it is Unsupported.",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands",
     "sequence": "ESC P + q hex-name ESC \\\\"
   },
@@ -1861,7 +1861,7 @@
     "tags": ["vt510"],
     "baseline": "modern",
     "body": "DECRPM (CSI ? Pd $ p) queries whether the terminal recognizes and has enabled a specific DEC private mode. The response CSI ? Pd ; Ps $ y reports the mode state: 1=set, 2=reset, 0=not recognized. Essential for feature detection.\n\nDECRPM is one of the most useful DEC-style query mechanisms for modern feature detection. Applications can ask whether a private mode is recognized and whether it is currently set. For a particular queried mode, the response distinguishes unrecognized, reset, and enabled states; a mode-7 refusal alone does not establish whether the DECRPM facility works for other modes.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. The private-query switch answers only 12, 2004, 1004, 1006 and 2031 (input.c:1608-1641) and no 7: a DECAWM set/reset implementation is not a mode-7 query implementation, so the answering rationale is contradicted for this exact query.",
-    "probe": "Query DECAWM mode 7 with CSI ? 7 $ p. A complete state-1–4 reply supports this query; state 0 is a documented negative for mode 7; it does not establish other modes.",
+    "probe": "Query DECAWM mode 7 with CSI ? 7 $ p. A complete state-1–4 reply supports this query; state 0 is a documented negative for mode 7; it does not establish other modes. A device attributes answer with no reply before it is Unsupported.",
     "sequence": "ESC [ ? mode $ p"
   },
   "device.xtversion": {
@@ -1872,7 +1872,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTVERSION (CSI > 0 q) requests the terminal's name and version string. The response is DCS > | name(version) ST. This allows applications to identify the exact terminal and version at runtime, enabling precise feature detection beyond what TERM or DA responses provide. Originally an xterm extension, now supported by many modern terminals including Ghostty, WezTerm, foot, and kitty.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. <code>CSI &gt; 0 q</code> is answered locally with tmux plus its runtime version (input.c:1805-1812): local answer supported, and it reports tmux's version rather than the outer identity.",
-    "probe": "Send CSI > 0 q, verify the terminal responds with a DCS > | version string."
+    "probe": "Send CSI > 0 q, verify the terminal responds with a DCS > | version string. A device attributes answer with no reply before it is Unsupported."
   },
   "device.term-features": {
     "name": "Feature Reporting (TERM_FEATURES)",
@@ -1890,7 +1890,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTWINOPS subcode 14 queries the text area size in pixels. The query is <code>CSI 14 t</code>; the response is <code>CSI 4 ; height ; width t</code>. The text area excludes window decorations and the scrollbar. The separate <code>CSI 14 ; 2 t</code> query reports the outer window size using the same response shape. Combined with the cell size query (CSI 16 t) or text area size in characters (CSI 18 t), the text-area dimensions describe the space available for terminal content.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. <code>CSI 14 t</code> is answered from the pane window's cell counts times <code>xpixel</code>/<code>ypixel</code> (input.c:2071-2076): conditional on a window with nonzero pixel metrics, since no window means no answer.",
-    "probe": "Send <code>\\x1b[14t</code>, verify a complete <code>CSI 4 ; H ; W t</code> reply with positive text-area height and width in pixels.",
+    "probe": "Send <code>\\x1b[14t</code>, verify a complete <code>CSI 4 ; H ; W t</code> reply with positive text-area height and width in pixels. A device attributes answer with no reply before it is Unsupported.",
     "sequence": "ESC [ 14 t"
   },
   "device.xtwinops-16": {
@@ -1901,7 +1901,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTWINOPS subcode 16 queries the dimensions of a single character cell in pixels. The query is <code>CSI 16 t</code>; the response is <code>CSI 6 ; height ; width t</code>. This is the canonical xterm-style equivalent of OSC 1337 ; ReportCellSize and is essential for any protocol that needs to render images at a precise cell-aligned size.\n\nUnlike OSC 1337 (an iTerm2 extension), CSI 16 t is part of the broader XTWINOPS spec and is supported by xterm, Ghostty, Kitty, WezTerm, foot, Contour, and many others. Applications should prefer this query when targeting modern terminals that follow xterm conventions.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. <code>CSI 16 t</code> is answered from the window's <code>ypixel</code>/<code>xpixel</code> (input.c:2083-2088): conditional, and zero metrics do not meet the positive oracle.",
-    "probe": "Send <code>\\x1b[16t</code>, verify response matches <code>CSI 6 ; H ; W t</code> with positive height and width.",
+    "probe": "Send <code>\\x1b[16t</code>, verify response matches <code>CSI 6 ; H ; W t</code> with positive height and width. A device attributes answer with no reply before it is Unsupported.",
     "sequence": "ESC [ 16 t"
   },
   "device.xtwinops-18": {
@@ -1911,7 +1911,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "XTWINOPS subcode 18 queries the dimensions of the terminal text area in character cells. The query is <code>CSI 18 t</code>; the response is <code>CSI 8 ; rows ; cols t</code>. This is functionally equivalent to TIOCGWINSZ and the COLUMNS/LINES environment variables, but works in-band over the TTY without requiring ioctl access — useful for SSH sessions, multiplexers, and any context where the local environment may not match the visible terminal.\n\nThis is one of the most widely supported XTWINOPS subcodes because it answers a fundamental question (how big is the terminal?) without exposing pixel dimensions or window manipulation. Many shell scripts and TUI frameworks use it as a fallback when ioctl is unavailable.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. <code>CSI 18 t</code> is answered from the local screen size (input.c:2089-2092): local answer supported, and it is the pane grid size, not the physical outer window.",
-    "probe": "Send <code>\\x1b[18t</code>, verify response matches <code>CSI 8 ; rows ; cols t</code>.",
+    "probe": "Send <code>\\x1b[18t</code>, verify response matches <code>CSI 8 ; rows ; cols t</code>. A device attributes answer with no reply before it is Unsupported.",
     "sequence": "ESC [ 18 t"
   },
   "device.xtwinops-20": {
@@ -1922,7 +1922,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTWINOPS subcode 20 queries the current icon label (the short title shown when the window is minimized to the taskbar/dock). The query is <code>CSI 20 t</code>; the response is <code>OSC L label ST</code>. Applications that previously set the icon label via OSC 1 can use this to read it back.\n\nIcon label is conceptually distinct from window title (queried via CSI 21 t / set via OSC 2). Many modern terminals collapse the two into a single string, in which case CSI 20 t and CSI 21 t return the same value. Some terminals refuse to report titles for security reasons (a hostile process running in your terminal could otherwise exfiltrate any title set by another process).",
-    "probe": "Send <code>\\x1b[20t</code>, verify the terminal sends an <code>OSC L</code> response. Headless emulators that don't store icon labels return <code>partial</code>.",
+    "probe": "Send <code>\\x1b[20t</code>, verify the terminal sends an <code>OSC L</code> response. Headless emulators that don't store icon labels return <code>partial</code>. A device attributes answer with no reply before it is Unsupported.",
     "sequence": "ESC [ 20 t"
   },
   "device.xtwinops-21": {
@@ -1933,7 +1933,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTWINOPS subcode 21 queries the current window title. The query is <code>CSI 21 t</code>; the response is <code>OSC l title ST</code>. Applications use this to save the current title before overwriting it (so they can restore it on exit) — historically the only reliable way before XTPUSH/POP TITLE (CSI 22/23 t) was added.\n\nMany modern terminals refuse to report window titles by default for security reasons. A hostile escape sequence injected into the terminal could otherwise read a title set by a different application and exfiltrate it. xterm controls this via the <code>allowWindowOps</code> resource. Applications that need title save/restore should prefer the title stack (CSI 22/23 t) which works without exposing the title to other processes.",
-    "probe": "Send <code>\\x1b[21t</code>, verify the terminal sends an <code>OSC l</code> response. Many real terminals refuse to report titles for security; headless emulators that don't store titles return <code>partial</code>.",
+    "probe": "Send <code>\\x1b[21t</code>, verify the terminal sends an <code>OSC l</code> response. Many real terminals refuse to report titles for security; headless emulators that don't store titles return <code>partial</code>. A device attributes answer with no reply before it is Unsupported.",
     "sequence": "ESC [ 21 t"
   },
   "device.xtwinops-22": {
@@ -1965,7 +1965,7 @@
     "baseline": "rich",
     "sequence": "CSI # R",
     "body": "XTREPORTCOLORS queries the current entry on the palette stack and the number of palettes stored on it. Send <code>CSI # R</code>; the reply uses <code>CSI entry ; count # Q</code>, with nonnegative decimal fields. The existing xterm reply form includes an optional DEC-private <code>?</code> before the fields. This report describes palette-stack state; it does not report color-change permissions, sixel or ReGIS capabilities. The query does not push, pop or restore a palette.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. The complete CSI table has no <code>#R</code> entry (input.c:302-344) and an unmatched entry returns: the answering rationale is contradicted for this exact query.",
-    "probe": "Send <code>CSI # R</code>, verify a complete palette-stack reply with exactly two nonnegative decimal fields: current entry and stored palette count. Accept the existing optional DEC-private <code>?</code> prefix."
+    "probe": "Send <code>CSI # R</code>, verify a complete palette-stack reply with exactly two nonnegative decimal fields: current entry and stored palette count. Accept the existing optional DEC-private <code>?</code> prefix. A device attributes answer with no reply before it is Unsupported."
   },
   "device.xtgetxres": {
     "tier1": "included",
@@ -1976,7 +1976,7 @@
     "baseline": "rich",
     "sequence": "DCS + Q Pt ST",
     "body": "XTGETXRES queries xterm's configuration resources at runtime. The sequence is <code>DCS + Q Pt ST</code> where Pt is a hex-encoded resource name. Common queries include <code>disallowedWindowOps</code>, <code>disallowedColorOps</code>, and <code>disallowedPasteControls</code> — letting applications discover which xterm operations are restricted in the current configuration. Updated in patches 401/402 (2025) to document new resources like disallowedColorOps and sixelScrolling.\n\nSupport: xterm only. Similar in spirit to XTGETTCAP but queries xterm resources rather than terminfo capabilities.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. Only the explicit tmux wrapper reaches a raw string, and the probe's decisive-refusal path is relevant only if a real matching refusal is observed. tmux's dispatch has no <code>+Q</code> handler for this query (input.c:2528-2594), consumes it and emits nothing; that silence is tmux's decision and is not a terminal probe result.",
-    "probe": "Query termName (hex 7465726d4e616d65) with DCS + Q. A complete status-1 value supports this request; status-0 is a documented negative for termName only; it says nothing about other values."
+    "probe": "Query termName (hex 7465726d4e616d65) with DCS + Q. A complete status-1 value supports this request; status-0 is a documented negative for termName only; it says nothing about other values. A device attributes answer with no reply before it is Unsupported."
   },
   "device.env-term": {
     "name": "TERM env variable",
@@ -2085,7 +2085,7 @@
     "tags": ["osc", "iterm2"],
     "baseline": "rich",
     "body": "OSC 1337 ; ReportCellSize queries the terminal for the dimensions of a single character cell in pixels. The response is OSC 1337 ; ReportCellSize=height;width ST. This is essential for pixel-accurate image rendering protocols (sixel, iTerm2 inline images, kitty graphics) where applications need to know the exact pixel dimensions of cells to scale images correctly.",
-    "probe": "Send <code>OSC 1337 ; ReportCellSize BEL</code> and verify the terminal responds with cell dimensions.",
+    "probe": "Send <code>OSC 1337 ; ReportCellSize BEL</code> and verify the terminal responds with cell dimensions. A device attributes answer with no reply before it is Unsupported.",
     "url": "https://iterm2.com/documentation-escape-codes.html"
   },
   "extensions.osc1337-capabilities": {
@@ -2095,7 +2095,7 @@
     "tags": ["osc", "iterm2"],
     "baseline": "rich",
     "body": "OSC 1337 ; Capabilities asks the terminal to report its supported features. The response is OSC 1337 ; Capabilities=... ST with the vendor-defined feature string. This reports the capability-query facility; it does not exercise every advertised feature.",
-    "probe": "Send <code>OSC 1337 ; Capabilities BEL</code> and check for a complete <code>OSC 1337 ; Capabilities=... ST</code> reply.",
+    "probe": "Send <code>OSC 1337 ; Capabilities BEL</code> and check for a complete <code>OSC 1337 ; Capabilities=... ST</code> reply. A device attributes answer with no reply before it is Unsupported.",
     "url": "https://iterm2.com/feature-reporting/#publication"
   },
   "extensions.sixel-da1": {
@@ -2117,7 +2117,7 @@
     "baseline": "rich",
     "sequence": "CSI ? Pi ; Pa ; Pv S",
     "body": "XTSMGRAPHICS can report the current Sixel graphics geometry in pixels. Item 2 selects Sixel geometry and action 1 reads it; a successful reply carries width and height. A reply to item 1 reports color registers instead. This read measures reported geometry; rendering requires separate evidence. See xterm’s control-sequence documentation for the response statuses.",
-    "probe": "Send <code>CSI ? 2 ; 1 ; 0 S</code> (read current Sixel geometry). Only <code>CSI ? 2 ; 0 ; width ; height S</code> with two positive dimensions supports the report. Status 3 (failure) to this query is Unsupported, retaining the reply. Malformed replies and other statuses are PROBE INVALID. Silence is Unsupported only when a DA1 sentinel in the same run proves the target answered within the response window but returned no geometry reply. Silence without that sentinel evidence is PROBE INVALID in an app and PROBE TODO in a headless library."
+    "probe": "Send <code>CSI ? 2 ; 1 ; 0 S</code> (read current Sixel geometry). Only <code>CSI ? 2 ; 0 ; width ; height S</code> with two positive dimensions supports the report. Status 3 (failure) to this query is Unsupported, retaining the reply. Malformed replies and other statuses are PROBE INVALID. Silence is Unsupported only when a DA1 sentinel in the same run proves the target answered within the response window but returned no geometry reply. Silence without that sentinel evidence is PROBE INVALID in an app and PROBE TODO in a headless library. A device attributes answer with no reply before it is Unsupported."
   },
   "extensions.osc9-progress": {
     "name": "OSC 9;4 progress bar",
@@ -2259,7 +2259,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
     "tags": ["kitty-extensions"],
     "body": "Flag 1 of the Kitty keyboard protocol's progressive enhancement. When set, the terminal uses CSI u encoding for keys that would otherwise be ambiguous — e.g., Escape vs Alt, Tab vs Ctrl+I, Enter vs Ctrl+M. This is the minimum flag most applications need. Without it, decades-old terminal ambiguities persist. All terminals claiming kitty keyboard support must implement this flag.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
-    "probe": "Push keyboard mode with flag 1 (<code>CSI > 1 u</code>), query flags (<code>CSI ? u</code>), verify bit 1 is set in response, then pop (<code>CSI < u</code>).",
+    "probe": "Push keyboard mode with flag 1 (<code>CSI > 1 u</code>), query flags (<code>CSI ? u</code>), verify bit 1 is set in response, then pop (<code>CSI < u</code>). After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.report-events": {
@@ -2269,7 +2269,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
     "tags": ["kitty-extensions"],
     "body": "Flag 2 enables key release and repeat event reporting. Without this flag, terminals only report key press events. Release events for Enter, Tab and Backspace also require flag 8 (report all keys as escape codes); text-producing keys require that mode for repeat and release reporting. With it, the terminal sends event-type sub-parameters: 1=press, 2=repeat, 3=release. Essential for games, keyboard-driven UIs that need to track held keys, and applications that distinguish tap from hold.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
-    "probe": "Push keyboard mode with flags 1+2 (<code>CSI > 3 u</code>), query flags, verify bit 2 is set.",
+    "probe": "Push keyboard mode with flags 1+2 (<code>CSI > 3 u</code>), query flags, verify bit 2 is set. After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.report-alternate": {
@@ -2279,7 +2279,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
     "tags": ["kitty-extensions"],
     "body": "Flag 4 reports alternate key representations. When set, the terminal includes a shifted_key sub-parameter showing what key the user intended (e.g., Shift+1 reports both '1' and '!'). Without this flag, applications receive only the base key and must guess the shifted result based on keyboard layout — which varies by locale.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
-    "probe": "Push keyboard mode with flags 1+4 (<code>CSI > 5 u</code>), query flags, verify bit 4 is set.",
+    "probe": "Push keyboard mode with flags 1+4 (<code>CSI > 5 u</code>), query flags, verify bit 4 is set. After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.report-all-keys": {
@@ -2289,7 +2289,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
     "tags": ["kitty-extensions"],
     "body": "Flag 8 makes ALL keypresses generate escape sequences, including unmodified printable characters that would normally be sent as plain text. This gives applications complete, unambiguous key identification but changes fundamental terminal behavior — plain typing no longer produces direct output. Applications must explicitly handle every key. Known gotcha: enabling this flag can break mouse hover/tracking in some implementations if not handled carefully.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
-    "probe": "Push keyboard mode with flags 1+8 (<code>CSI > 9 u</code>), query flags, verify bit 8 is set.",
+    "probe": "Push keyboard mode with flags 1+8 (<code>CSI > 9 u</code>), query flags, verify bit 8 is set. After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.report-text": {
@@ -2299,7 +2299,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
     "tags": ["kitty-extensions"],
     "body": "Flag 16 adds associated text codepoints to key events. When a key press would produce text (after input method processing, dead keys, compose sequences), the terminal includes the resulting text as an additional parameter. This is critical for international input — compose sequences, CJK input methods, and dead key combinations produce text that can't be derived from the key code alone.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
-    "probe": "Push keyboard mode with flags 1+8+16 (<code>CSI > 25 u</code>), query flags, verify bits 8 and 16 are set, then pop the mode. Key-event behavior remains PROBE TODO; this probe checks mode flags only.",
+    "probe": "Push keyboard mode with flags 1+8+16 (<code>CSI > 25 u</code>), query flags, verify bits 8 and 16 are set, then pop the mode. Key-event behavior remains PROBE TODO; this probe checks mode flags only. After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
     "baseline": "rich"
   },
   "extensions.kitty-graphics.transmit": {
@@ -2381,7 +2381,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 4 changes or queries individual entries in the 256-color palette (indices 0-255). To set a color: <code>ESC ] 4 ; c ; spec BEL</code> where c is the palette index and spec is an X11 color specification (e.g. <code>rgb:FF/00/00</code>). To query: <code>ESC ] 4 ; c ; ? BEL</code> — the terminal responds with the current color in <code>rgb:RR/GG/BB</code> format. Applications use this to customize the terminal palette at runtime, e.g. for theme switching or to ensure specific colors match a design system.\n\nUnder tmux 3.6 <code>OSC 4;0;?</code> reads a local palette entry, and when that entry is unknown it queues an outer palette request instead of answering (input.c:2837-2874): the expectation keeps that split between a local answer and a request relayed to the outer client.",
-    "probe": "Query palette color 0 with <code>OSC 4 ; 0 ; ? BEL</code>, verify response matches <code>OSC 4 ; 0 ; rgb:...</code> pattern.",
+    "probe": "Query palette color 0 with <code>OSC 4 ; 0 ; ? BEL</code>, verify response matches <code>OSC 4 ; 0 ; rgb:...</code> pattern. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "modern",
     "sequence": "ESC ] 4 ; c ; spec BEL"
   },
@@ -2392,7 +2392,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 5 sets or queries special color resources used for text attributes. The sequence is <code>ESC ] 5 ; c ; spec BEL</code> where c identifies the special color: 0=bold, 1=underline, 2=blink, 3=reverse, 4=italic. To query: <code>ESC ] 5 ; c ; ? BEL</code>. These special colors override the rendered color of text with specific attributes — for example, making all bold text appear in a specific color regardless of the foreground setting. Support is limited to xterm and a few other terminals.\n\ntmux 3.6's complete OSC dispatcher handles 0, 2, 4, 7, 8, 10, 11, 12, 52, 104, 110, 111, 112 and 133 explicitly and logs anything else as unknown. tmux's dispatch has no <code>OSC 5</code> handler for this query (input.c:2633-2688), consumes it and emits nothing; that silence is tmux's decision and is not a terminal probe result.",
-    "probe": "Query special color 0 (bold) with <code>OSC 5 ; 0 ; ? BEL</code>. Expected: a complete reply <code>OSC 5 ; 0 ; rgb:R/G/B</code>, one to four hex digits per channel, ended by BEL or ST; that reply is the supported result, also when it arrives after the DA1 sentinel. When the only output is the on-time answer to the DA1 sentinel, with nothing after it through the grace window, the result is unsupported. Output that contains <code>OSC 5 ; 0 ;</code> but no complete color is inconclusive (invalid reply), other output is inconclusive (no response), and no output at all is PROBE INVALID.",
+    "probe": "Query special color 0 (bold) with <code>OSC 5 ; 0 ; ? BEL</code>. Expected: a complete reply <code>OSC 5 ; 0 ; rgb:R/G/B</code>, one to four hex digits per channel, ended by BEL or ST; that reply is the supported result, also when it arrives after the DA1 sentinel. When the only output is the on-time answer to the DA1 sentinel, with nothing after it through the grace window, the result is unsupported. Output that contains <code>OSC 5 ; 0 ;</code> but no complete color is inconclusive (invalid reply), other output is inconclusive (no response), and no output at all is PROBE INVALID. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "rich",
     "sequence": "ESC ] 5 ; c ; spec BEL"
   },
@@ -2403,7 +2403,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 12 sets or queries the text cursor color. To set: <code>ESC ] 12 ; color BEL</code> where color is an X11 color specification. To query: <code>ESC ] 12 ; ? BEL</code> — the terminal responds with the current cursor color in <code>rgb:RR/GG/BB</code> format. Applications use this to make the cursor match their color scheme, or to provide visual feedback (e.g. changing cursor color to red in insert mode). Widely supported by xterm-compatible terminals.\n\nUnder tmux 3.6 <code>OSC 12;?</code> is answered from the screen <code>ccolour</code>/<code>default_ccolour</code> (input.c:3020), and only a known cursor colour yields a response.",
-    "probe": "Query cursor color with <code>OSC 12 ; ? BEL</code>, verify response matches <code>OSC 12 ; rgb:...</code> pattern.",
+    "probe": "Query cursor color with <code>OSC 12 ; ? BEL</code>, verify response matches <code>OSC 12 ; rgb:...</code> pattern. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "modern",
     "sequence": "ESC ] 12 ; color BEL"
   },
@@ -2478,7 +2478,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 17 sets or queries the terminal's selection highlight background color. The query is <code>ESC ] 17 ; ? BEL</code> and the terminal responds with the color in X11 <code>rgb:RR/GG/BB</code> format, matching the OSC 10/11 response pattern. Setting uses <code>ESC ] 17 ; spec BEL</code> where spec is an X11 color name or <code>rgb:RR/GG/BB</code>. This allows applications to customize the selection appearance — useful for themes that need the selection highlight to contrast with custom foreground/background colors. Supported by xterm, iTerm2, foot, and other xterm-compatible terminals.\n\nUnder tmux 3.6, tmux's dispatch has no <code>OSC 17</code> handler for this query (input.c:2633-2688), consumes it and emits nothing; that silence is tmux's decision and is not a terminal probe result.",
-    "probe": "Query highlight background color with <code>OSC 17 ; ? BEL</code>, verify response matches <code>OSC 17 ; rgb:...</code> pattern via feedCapture.",
+    "probe": "Query highlight background color with <code>OSC 17 ; ? BEL</code>, verify response matches <code>OSC 17 ; rgb:...</code> pattern via feedCapture. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "rich",
     "sequence": "ESC ] 17 ; spec BEL"
   },
@@ -2489,7 +2489,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 19 sets or queries the terminal's selection highlight foreground color. The query is <code>ESC ] 19 ; ? BEL</code> and the terminal responds with the color in X11 <code>rgb:RR/GG/BB</code> format. Setting uses <code>ESC ] 19 ; spec BEL</code>. This is the complement to OSC 17 (highlight background) — together they give applications full control over selection appearance. Fewer terminals support OSC 19 than OSC 17, as some terminals use a fixed or alpha-blended selection foreground. Supported by xterm and foot.\n\nUnder tmux 3.6, tmux's dispatch has no <code>OSC 19</code> handler for this query (input.c:2633-2688), consumes it and emits nothing; that silence is tmux's decision and is not a terminal probe result.",
-    "probe": "Query highlight foreground color with <code>OSC 19 ; ? BEL</code>, verify response matches <code>OSC 19 ; rgb:...</code> pattern via feedCapture.",
+    "probe": "Query highlight foreground color with <code>OSC 19 ; ? BEL</code>, verify response matches <code>OSC 19 ; rgb:...</code> pattern via feedCapture. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "rich",
     "sequence": "ESC ] 19 ; spec BEL"
   },
@@ -2512,7 +2512,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/desktop-notifications/",
     "tags": ["osc", "kitty-extensions"],
     "body": "OSC 99 is Kitty's rich desktop notification protocol, extending simple notification sequences (OSC 9, OSC 777) with structured metadata. The sequence <code>ESC ] 99 ; params BEL</code> supports key-value parameters including notification identifiers, action buttons, custom icons, urgency levels, and sound control. Identifiers allow updating or closing existing notifications. The protocol defines a capability query so applications can discover which notification features the terminal supports. Currently supported by Kitty, with partial adoption by other terminals.",
-    "probe": "Send a nonce-tagged OSC 99 capability query (<code>i=&lt;id&gt;:p=?</code>) and verify the reply matches the ID and advertises title payloads. Desktop delivery remains PROBE TODO; this probe checks only the capability reply.",
+    "probe": "Send a nonce-tagged OSC 99 capability query (<code>i=&lt;id&gt;:p=?</code>) and verify the reply matches the ID and advertises title payloads. Desktop delivery remains PROBE TODO; this probe checks only the capability reply. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "rich",
     "sequence": "ESC ] 99 ; params BEL"
   },
@@ -2578,7 +2578,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/color-stack/",
     "tags": ["osc", "kitty-extensions"],
     "body": "OSC 21 is Kitty's key-value color protocol, designed as a structured replacement for the scattered OSC 10–19 color sequences. Instead of issuing separate sequences for foreground, background, cursor, selection, and palette colors, applications send a single <code>ESC ] 21 ; key=value;... BEL</code> sequence that updates any combination of named color slots. Both setting and querying are supported: <code>key=?</code> requests the current value, and the terminal responds with the same key-value framing. The protocol is well-defined and avoids the parsing ambiguities of the legacy xterm color sequences. <a href=\"https://sw.kovidgoyal.net/kitty/color-stack/\">Kitty specifies OSC 21</a> and <a href=\"https://ghostty.org/docs/vt/reference\">Ghostty documents its implementation</a>. Other terminals require separate versioned evidence; a query reply establishes color readback, not visual color rendering.\n\nThe probe asks <code>OSC 21;foreground=?ST</code>, and a later cursor-position reply is not this query's foreground answer. Under tmux 3.6, tmux's dispatch has no <code>OSC 21</code> handler for this query (input.c:2633-2688), consumes it and emits nothing; that silence is tmux's decision and is not a terminal probe result.",
-    "probe": "Send <code>OSC 21 ; foreground=? BEL</code> and verify the terminal responds with the foreground color in key-value form.",
+    "probe": "Send <code>OSC 21 ; foreground=? BEL</code> and verify the terminal responds with the foreground color in key-value form. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "rich",
     "sequence": "ESC ] 21 ; key=value BEL"
   },
@@ -2644,7 +2644,7 @@
     "url": "https://mintty.github.io/",
     "tags": ["osc"],
     "body": "OSC 7770 queries or sets the terminal's current font size. To set: <code>ESC ] 7770 ; size BEL</code> where size is a point value. To query: <code>ESC ] 7770 ; ? BEL</code>, and the terminal responds with the current font size. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a> extension, originally added so shell scripts and TUIs running in mintty (Cygwin, MSYS, Git Bash) could programmatically zoom in or out — the same operation users perform with Ctrl+Plus / Ctrl+Minus. No other major terminal implements OSC 7770; font sizing is normally a user-only setting.",
-    "probe": "Send <code>OSC 7770 ; ? BEL</code> and verify the terminal responds with a font size or silently consumes the query.",
+    "probe": "Send <code>OSC 7770 ; ? BEL</code> followed by a primary device attributes request. A font-size reply is Supported; a device attributes answer with no reply before it is Unsupported. Setting the font size is not measured.",
     "baseline": "rich",
     "sequence": "ESC ] 7770 ; size BEL"
   },
@@ -2654,10 +2654,10 @@
     "slug": "osc-7777-font-window-size",
     "url": "https://mintty.github.io/",
     "tags": ["osc"],
-    "body": "OSC 7777 sets both the font size and window size in a single zoom operation. The sequence is <code>ESC ] 7777 ; font ; size BEL</code>, where the font and size parameters control mintty's combined zoom behavior — adjusting the window dimensions to keep the visible character grid stable while the font changes. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a>-specific zoom control that complements OSC 7770 (font size only). Like other mintty font extensions, it has no adoption outside mintty.",
-    "probe": "Send <code>OSC 7777 ; ; BEL</code>, then check that the cursor does not advance and the terminal stays responsive. No reply is defined, and the zoom is outside the cell grid, so an ignored sequence and an applied one leave the same cursor result. The attempted cursor query is PROBE INVALID for zoom; the cell grid provides no evidence of that external effect.",
+    "body": "OSC 7777 changes the font size and the window size together, in one step. To set: <code>ESC ] 7777 ; size BEL</code>; a leading + or - zooms relative to the current size. To query: <code>ESC ] 7777 ; ? BEL</code>, and the terminal answers with the current font size. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a> zoom control that complements OSC 7770, which changes the font size only. No other major terminal implements it.",
+    "probe": "Send <code>OSC 7777 ; ? BEL</code>, then a primary device attributes request. A font-size reply (<code>OSC 7777 ; size</code>) before the device attributes answer is Supported; a device attributes answer with no reply before it is Unsupported. mintty answers the query with its current font size. The window resize that the set form performs is outside the cell grid and is not graded here.",
     "baseline": "rich",
-    "sequence": "ESC ] 7777 ; font ; size BEL"
+    "sequence": "ESC ] 7777 ; size BEL"
   },
   "extensions.osc701-locale": {
     "tier1": "included",
@@ -2665,8 +2665,8 @@
     "slug": "osc-701-locale",
     "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
     "tags": ["osc"],
-    "body": "OSC 701 queries or sets the terminal's current locale, which controls character encoding and text input behavior. To set: <code>ESC ] 701 ; locale BEL</code> where <code>locale</code> is a locale identifier like <code>en_US.UTF-8</code>. To query: <code>ESC ] 701 ; ? BEL</code>, and the terminal responds with its current locale. Originally introduced by <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> so applications running inside the terminal could discover or override the encoding the terminal was decoding text as — important for users who routinely mixed UTF-8 and legacy 8-bit encodings. Also supported by mintty. Modern terminals are universally UTF-8 and silently consume the sequence.",
-    "probe": "Send <code>OSC 701 ; ? BEL</code> and verify the terminal responds with a locale string or silently consumes the query.",
+    "body": "OSC 701 queries or sets the terminal's current locale, which controls character encoding and text input behavior. To set: <code>ESC ] 701 ; locale BEL</code> where <code>locale</code> is a locale identifier like <code>en_US.UTF-8</code>. To query: <code>ESC ] 701 ; ? BEL</code>, and the terminal responds with its current locale. Originally introduced by <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> so applications running inside the terminal could discover or override the encoding the terminal was decoding text as — important for users who routinely mixed UTF-8 and legacy 8-bit encodings. Also supported by mintty. Modern terminals are universally UTF-8; most consume the sequence without answering, so they read Unsupported here.",
+    "probe": "Send <code>OSC 701 ; ? BEL</code> followed by a primary device attributes request. A locale reply is Supported; a device attributes answer with no locale reply before it is Unsupported. Setting the locale is not measured.",
     "baseline": "legacy",
     "sequence": "ESC ] 701 ; locale BEL"
   },
@@ -2677,7 +2677,7 @@
     "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
     "tags": ["osc"],
     "body": "OSC 702 queries rxvt-unicode version information when its parameter is <code>?</code>. Send <code>ESC ] 702 ; ? BEL</code>. The reply is <code>OSC 702 ; rxvt-unicode ; resource-name ; major ; minor ST</code>. The request and reply are separate from XTVERSION and device-attribute queries.",
-    "probe": "Send <code>OSC 702 ; ? BEL</code> and check for a complete version reply. Missing or malformed replies remain inconclusive.",
+    "probe": "Send <code>OSC 702 ; ? BEL</code> and check for a complete version reply. The query is followed by a primary device attributes request; a device attributes answer with no version reply before it is Unsupported. A malformed reply stays inconclusive.",
     "baseline": "legacy",
     "sequence": "ESC ] 702 ; ? BEL"
   },
@@ -2708,7 +2708,7 @@
     "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
     "tags": ["osc"],
     "body": "OSC 776 reports the terminal's cell dimensions and font metrics. The query is <code>ESC ] 776 BEL</code> and the terminal responds with the cell width, cell height, and font ascent/descent values in pixels — enabling applications to align Sixel or pixel-graphics output to the character grid. This was introduced in <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> 9.29 and is essentially a urxvt-specific alternative to xterm's CSI 14 t (window pixel size) and OSC 1337 ReportCellSize (iTerm2). Like the other urxvt OSC extensions, it sees no adoption outside its origin terminal.",
-    "probe": "Send <code>OSC 776 BEL</code> and verify the terminal responds with cell metrics or silently consumes the query.",
+    "probe": "Send <code>OSC 776 BEL</code> followed by a primary device attributes request. A cell-metrics reply is Supported; a device attributes answer with no reply before it is Unsupported.",
     "baseline": "legacy",
     "sequence": "ESC ] 776 BEL"
   },
@@ -2764,7 +2764,7 @@
     "url": "https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/color-palette-update-notifications.md",
     "tags": ["dec-private-modes"],
     "body": "DSR ?996 queries the terminal's current color scheme (dark or light). The query is <code>CSI ? 996 n</code> and the response is <code>CSI ? 997 ; Ps n</code> where Ps is 1 for dark and 2 for light.\n\nThis is Contour's approach to color scheme detection, related to but distinct from Mode 2031 (which uses DECRPM to report and unsolicited DSR to notify of changes). DSR ?996 is a one-shot query that returns the current state, while Mode 2031 enables ongoing notifications when the scheme changes.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. The colour-scheme reply is a local theme answer only when the pane theme is known (input.c:1602-1605, 3358-3370): a conditional local answer, with no unconditional reply asserted.",
-    "probe": "Send CSI ? 996 n and verify response matches CSI ? 997 ; Ps n format.",
+    "probe": "Send CSI ? 996 n and verify response matches CSI ? 997 ; Ps n format. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "rich"
   }
 }
