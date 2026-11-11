@@ -44,6 +44,7 @@ import {
   type TerminalQueryOutcome,
   type TextQualification,
   type OuterColourControl,
+  type InputFixture,
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
 import { detectTerminal } from "./detect.ts"
@@ -55,7 +56,14 @@ import {
   resolveMeasuredAppVersion,
   verifyTerminalIdentity,
 } from "./identity-guard.ts"
-import { withRawMode, withTTYOperation, drainStdin, queryOutcome, queryWithSentinelOutcome } from "./tty.ts"
+import {
+  withRawMode,
+  withTTYOperation,
+  drainStdin,
+  queryOutcome,
+  queryWithSentinelOutcome,
+  readResponse,
+} from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
@@ -64,6 +72,7 @@ import { collectTextQualification, recordTextQualificationTests } from "./text-q
 import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { createLinuxInput } from "./linux-input.ts"
+import { createDarwinInput, DARWIN_INPUT_HELPER_ENV } from "./darwin-input.ts"
 import {
   createOwnedTerminal,
   parseProcessOwnerAssertion,
@@ -698,7 +707,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      */
     let preflightPixelCapture: (() => Promise<void>) | undefined
     let captureCalibration: CaptureCalibrationFact | undefined
-    let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
+    let input: InputFixture | undefined
     const installPixelCapture = (
       adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
       installCensus?: DarwinInstallCensus,
@@ -822,7 +831,34 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         installCapture(report.geometry, queries)
       }
     }
+    /**
+     * Bind OS-level injection to the owned app window (#33574). A missing helper, a missing
+     * Accessibility grant or a key that does not come back through the app's own TTY names the
+     * refusal on this run and installs nothing: no probe may read a row this runner never delivered.
+     */
+    const installDarwinInput = async (terminal: OwnedTerminal) => {
+      const appPid = terminal.appPid
+      if (!appPid) {
+        out.write(`input not installed: the verified ${kind} terminal has no measured app PID\n`)
+        return
+      }
+      try {
+        input = await createDarwinInput({
+          appPid,
+          appName: terminal.hostedAppId ?? kind ?? "macOS app",
+          helperPath: process.env[DARWIN_INPUT_HELPER_ENV],
+          selfTest: async (inject) => {
+            const echoed = await readResponse(/z/, 2500, inject)
+            return echoed === null ? null : echoed.join("")
+          },
+          report: (fact) => out.write(`${fact}\n`),
+        })
+      } catch (error) {
+        out.write(`input not installed: ${error instanceof Error ? error.message : String(error)}\n`)
+      }
+    }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
+      if (kind === "darwinHosted") await installDarwinInput(terminal)
       // Hosted iTerm2 and Terminal.app use pixels; Kitty keeps its qualified text route.
       // Without retention, still name the missing directory through the existing text adapter.
       const textFirst =
