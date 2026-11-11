@@ -754,8 +754,10 @@ export async function sgrMouse1006(ctx: TermProbeSource): Promise<ProbeCallbackR
   const { input, readInput } = ctx
   if (!input || !readInput) return replyFailure("SGR mouse effect needs owned click injection and input readback")
   const untilKey = new RegExp(`^(?:${X10_OR_SGR_MOUSE.source})*a$`)
+  // The 1002/1003 resets go BEFORE 1000 is set, as allMotion1003 does (#33058): Screen keeps one mouse mode,
+  // so resetting 1002 after 1000h switched click reports off and every arm read a bare "a".
+  ctx.write("\x1b[?1002l\x1b[?1003l")
   return withMouseModes(ctx, async () => {
-    ctx.write("\x1b[?1002l\x1b[?1003l")
     const readClick = async (enabled: boolean) => {
       ctx.write(`\x1b[?1006${enabled ? "h" : "l"}`)
       return (

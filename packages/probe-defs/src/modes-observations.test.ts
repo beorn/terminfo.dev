@@ -582,11 +582,23 @@ test.each([null, 0] as const)("App SGR mouse uses controlled effects after DECRP
   if (ps !== null) {
     stored.set("\x1b[?1006$p", { sequence: "\x1b[?1006$p", match: null, reason: "reply", raw: "\x1b[?1006;0$y" })
   }
-  for (const mutation of [undefined, "mouse-1006-noop", "missing-click", "missing-a", "reset-sgr"] as const) {
+  // #33058: "single-mouse-mode" is GNU Screen's shape, one mouse mode, so a 1002 or 1003 reset also ends
+  // 1000 tracking. A 1002/1003 reset written after 1000h then leaves every arm a bare "a".
+  for (const mutation of [
+    undefined,
+    "mouse-1006-noop",
+    "missing-click",
+    "missing-a",
+    "reset-sgr",
+    "single-mouse-mode",
+  ] as const) {
     const surface = createSemanticSurface({ mutations: mutation === "mouse-1006-noop" ? [mutation] : [] })
     let bytes = ""
     const source = replayTermProbeSource(stored, {
-      write: (text) => surface.feed(text),
+      write: (text) =>
+        surface.feed(
+          mutation === "single-mouse-mode" && /\x1b\[\?100[23]l/u.test(text) ? `${text}\x1b[?1000l` : text,
+        ),
       input: {
         injectKey: async (key) => {
           if (key !== "a") throw new Error(`SGR mouse fixture received ${key}`)
@@ -612,10 +624,11 @@ test.each([null, 0] as const)("App SGR mouse uses controlled effects after DECRP
       expect(result.observation?.outcome).not.toBe("unsupported")
       expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
     } else {
-      expect(result.observation?.outcome, mutation ?? "working 1006").toBe(mutation ? "unsupported" : "supported")
+      const negative = mutation === "mouse-1006-noop"
+      expect(result.observation?.outcome, mutation ?? "working 1006").toBe(negative ? "unsupported" : "supported")
       expect(result.assertions).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ assertionType: "input_bytes", kind: mutation ? "negative" : "positive" }),
+          expect.objectContaining({ assertionType: "input_bytes", kind: negative ? "negative" : "positive" }),
         ]),
       )
     }
