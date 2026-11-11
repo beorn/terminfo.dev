@@ -80,8 +80,14 @@ it.each(["code", "run"] as const)(
         join(dist, "dist", "build.json"),
         JSON.stringify({ sourceCommit: "code", workingRun: { id: "old" } }),
       )
-      expect(await rebuildForRun({ outRoot: dist, target: "code", runId: "new" })).toBe(false)
-      expect(readServedStamp(join(dist, "dist")).workingRunId).toBe("old")
+      const report = vi.spyOn(console, "error").mockImplementation(() => {})
+      try {
+        expect(await rebuildForRun({ outRoot: dist, target: "code", runId: "new" })).toBe(false)
+        expect(report).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("site build exit 17"))
+        expect(readServedStamp(join(dist, "dist")).workingRunId).toBe("old")
+      } finally {
+        report.mockRestore()
+      }
     }
     expect(JSON.parse(readFileSync(trace, "utf8"))).toEqual([
       join(landing, "tools", "gate-task-guard.ts"),
