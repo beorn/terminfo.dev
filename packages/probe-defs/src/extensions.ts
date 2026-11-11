@@ -6930,7 +6930,12 @@ const extensionDefinitions: ProbeDefinition[] = [
   {
     ...probe("extensions.reflow", mainScreenReflow, async (ctx): Promise<ProbeCallbackResult> => {
       if (ctx.mux === "tmux" || ctx.mux === "screen") {
-        const note = "tmux and GNU Screen remain PROBE TODO on this arm"
+        // #33363: the mux arm declined with a sentence that restated its status and named no blocker.
+        // The capability is not missing — an owned-outer mux run carries pixel frames, and its
+        // `resizeWindow` moves the pane's columns (run aedd2f5a recorded 61 -> 107). What is missing is
+        // our own step: this arm returns before it attempts the resize-and-read path on a mux subject,
+        // so the pane's own re-wrap is never read. The row names that unbuilt step, not the subject.
+        const note = `Reflow through ${ctx.mux} is not yet measured: this arm returns before it attempts a resize, so the ${ctx.mux} pane's own re-wrap stays unread`
         return {
           pass: false,
           note,
