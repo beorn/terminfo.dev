@@ -708,6 +708,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     let preflightPixelCapture: (() => Promise<void>) | undefined
     let captureCalibration: CaptureCalibrationFact | undefined
     let input: InputFixture | undefined
+    /**
+     * What happened when the Darwin input adapter was installed, so the run record carries it:
+     * a refusal that only reached stdout is lost to the artifact (measured: run 43102072805).
+     */
+    let inputInstallFact: string | undefined
     const installPixelCapture = (
       adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
       installCensus?: DarwinInstallCensus,
@@ -848,13 +853,28 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           appName: terminal.hostedAppId ?? kind ?? "macOS app",
           helperPath: process.env[DARWIN_INPUT_HELPER_ENV],
           selfTest: async (inject) => {
-            const echoed = await readResponse(/z/, 2500, inject)
-            return echoed === null ? null : echoed.join("")
+            // The app echoes a typed key only in cooked mode, so this read stays out of raw mode -
+            // and it must restore the flowing state that withRawMode's lease restores, or the
+            // collector holds the launcher's poll open long after its run.json (run 43102072805).
+            try {
+              const echoed = await readResponse(/z/, 2500, inject)
+              return echoed === null ? null : echoed.join("")
+            } finally {
+              if (process.stdin.isTTY && process.stdin.readableFlowing === true) process.stdin.pause()
+            }
           },
-          report: (fact) => out.write(`${fact}\n`),
+          report: (fact) => {
+            inputInstallFact = `installed: ${fact}`
+            out.write(`${fact}\n`)
+          },
         })
       } catch (error) {
-        out.write(`input not installed: ${error instanceof Error ? error.message : String(error)}\n`)
+        const reason = error instanceof Error ? error.message : String(error)
+        inputInstallFact = `refused: ${reason}`
+        out.write(`input not installed: ${reason}\n`)
+        // The collector's stdout is the measured terminal, so a refusal kept only there never
+        // reaches the artifact. stderr lands in collector.log and rawReplies in run.json.
+        process.stderr.write(`collector.inputInstall refused: ${reason}\n`)
       }
     }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
@@ -1112,6 +1132,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(finishCapture && { finishCapture }),
               })
               if (sessionBus) result.rawReplies["collector.sessionBus"] = JSON.stringify(sessionBus)
+              if (inputInstallFact) result.rawReplies["collector.inputInstall"] = inputInstallFact
               if (identityQuery) {
                 result.rawReplies["collector.xtversion"] = identityQuery.raw
                 result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)
