@@ -501,19 +501,6 @@ function boundAssertion(
   return assertion
 }
 
-/**
- * The frame's ref or one of its cell-aligned crops. A same-shot control crop (`controlRegionDigest`) is cells evidence
- * like `regionDigest`, and on disk it is the ONLY place a derived plain-line digest lives: persistence keeps the frames
- * capture() returned, never a probe's derived entries (33573, hosted Warp run 43089755106).
- */
-function bindsRefOrCells(frame: ObservationFrame, digest: string): boolean {
-  return (
-    frame.ref === digest ||
-    frameDigests(frame).cells === digest ||
-    (frame.kind !== "text-cells" && frame.controlRegionDigest === digest)
-  )
-}
-
 /** Every citation belongs to a retained frame; at least one binds a ref or the compared cells. */
 function requireCitedFrameDigests(observation: ObservationInput, assertion: ReadAssertion, path: string): void {
   const { featureId } = observation
@@ -522,13 +509,24 @@ function requireCitedFrameDigests(observation: ObservationInput, assertion: Read
   if (cited.length === 0) {
     fail(path, `${methodName(observation)} probe result for ${featureId} must cite the frame digest it decided on`)
   }
-  const citesRefOrCells = cited.some((digest) => frames.some((frame) => bindsRefOrCells(frame, digest)))
+  const citesRefOrCells = cited.some((digest) =>
+    frames.some((frame) => frame.ref === digest || frameDigests(frame).cells === digest),
+  )
   for (const digest of cited) {
-    // Whole-frame digests can accompany retained evidence, but cannot decide cells alone.
+    // Whole-frame digests and same-shot control crops can accompany retained evidence, but cannot decide cells alone.
+    // A control crop is a real digest of a retained frame: persistence keeps the frames capture() returned, never a
+    // probe's derived entries, so a derived plain-line digest lives on disk only as `controlRegionDigest` (33573).
     if (
-      !frames.some(
-        (frame) => bindsRefOrCells(frame, digest) || frame.sourceRef === digest || frameDigests(frame).whole === digest,
-      )
+      !frames.some((frame) => {
+        const digests = frameDigests(frame)
+        return (
+          frame.ref === digest ||
+          digests.cells === digest ||
+          frame.sourceRef === digest ||
+          digests.whole === digest ||
+          (frame.kind !== "text-cells" && frame.controlRegionDigest === digest)
+        )
+      })
     ) {
       fail(
         path,

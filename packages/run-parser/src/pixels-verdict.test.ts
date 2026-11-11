@@ -683,6 +683,16 @@ describe("in-run pixel probe results", () => {
     expect(loaded.results![0]?.frames?.some((entry) => entry.label.startsWith("Plain line,"))).toBe(false)
   })
 
+  it("refuses a result whose only citation is a same-shot control crop: that region was not under test (33573)", () => {
+    const run = persistedBlinkRun()
+    const result = (run.results as Array<{ frames: ObservationFrame[] }>)[0]!
+    const control = result.frames.find((entry) => entry.kind !== "text-cells" && entry.controlRegionDigest)
+    expect(control).toBeDefined()
+    const assertions = run.assertions as Array<Record<string, unknown>>
+    assertions[0]!.observed = JSON.stringify({ plain: [control!.controlRegionDigest] })
+    expect(() => parseBlink(run)).toThrow(/cites only source or whole-frame digests/)
+  })
+
   it("still refuses a plain digest that no persisted frame carries as its control crop (33573)", () => {
     const run = persistedBlinkRun()
     const assertions = run.assertions as Array<Record<string, unknown>>
