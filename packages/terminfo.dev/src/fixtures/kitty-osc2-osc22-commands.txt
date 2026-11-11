@@ -1,0 +1,8 @@
+set_title tdv-title-32593
+set_dynamic_color 22 tdv-made-up-shape
+set_dynamic_color 22 pointer
+select_graphic_rendition 1
+draw B
+select_graphic_rendition 0
+screen_carriage_return
+screen_linefeed
