@@ -56,7 +56,7 @@ import {
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
 import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
-import { qualifyNotificationDefaults } from "../notification-defaults.ts"
+import { qualifyNotificationDefaults, qualifyOuterTerminalRecord } from "../notification-defaults.ts"
 import { createCallLog, withCallLog } from "viprobe"
 import {
   ownedTerminalVerifiedFor,
@@ -944,6 +944,12 @@ export async function runProbeBatch(
           ...(clipboard?.config ? { launchLine: clipboard.config } : {}),
           ...(allowPassthrough === undefined ? {} : { passthrough: allowPassthrough }),
         })
+        // A mux may carry a negative only when the terminal that hosted this very run measured the same row as
+        // supported (#33333 condition 3); the record is this run's own outer-terminal record.
+        const outerReading =
+          options.subject?.kind === "mux"
+            ? qualifyOuterTerminalRecord({ record: options.colourControl?.outer, probeId: probe.id })
+            : undefined
         let terminalSideControl: { nonce: string; id: number; latencyMs: number } | undefined
         let terminalSideControlRefusal: string | undefined
         if (measured?.environment !== undefined) {
@@ -967,6 +973,8 @@ export async function runProbeBatch(
           terminalBus,
           ...(terminalSideControl === undefined ? {} : { terminalSideControl }),
           ...(terminalSideControlRefusal === undefined ? {} : { terminalSideControlRefusal }),
+          ...(outerReading?.record === undefined ? {} : { outerTerminalRecord: outerReading.record }),
+          ...(outerReading?.refusal === undefined ? {} : { outerTerminalRecordRefusal: outerReading.refusal }),
           profile: notificationDefaults,
           cursor: () => observer.cursor(),
           readSince: (cursor) => observer.readSince(cursor),

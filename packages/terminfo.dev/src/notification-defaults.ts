@@ -91,3 +91,49 @@ export async function readMuxAllowPassthrough(options: {
   }
   return { reason: failures.join("; ") }
 }
+
+/**
+ * The hosting terminal's own measurement of this row, for a mux negative (#33333 condition 3).
+ *
+ * The file is the run's OWN outer-terminal record, so its id and version are the terminal that actually hosted
+ * this run, not merely the newest record at the pin. Only a row that terminal measured as supported may carry a
+ * negative for the mux; anything else is refused by name, because an absence we cannot attribute stays open.
+ */
+export interface OuterTerminalRecordReading {
+  readonly record?: string
+  readonly refusal?: string
+}
+
+export function qualifyOuterTerminalRecord(input: {
+  readonly record: unknown
+  readonly probeId: string
+}): OuterTerminalRecordReading {
+  const value = input.record
+  if (typeof value !== "object" || value === null) {
+    return { refusal: "This run recorded no outer-terminal record, so a multiplexer negative cannot be attributed" }
+  }
+  const row = value as Record<string, unknown>
+  if (typeof row.missing === "string" && row.missing !== "") {
+    return { refusal: `This run recorded no outer-terminal record: ${row.missing}` }
+  }
+  const id = row.id
+  const version = row.version
+  const recordRunId = row.recordRunId
+  if (typeof id !== "string" || id === "" || typeof version !== "string" || version === "") {
+    return { refusal: "This run's outer-terminal record names no terminal id and version" }
+  }
+  const statuses = row.statuses
+  if (typeof statuses !== "object" || statuses === null) {
+    return { refusal: `The outer-terminal record for ${id} ${version} carries no measured rows` }
+  }
+  const status = (statuses as Record<string, unknown>)[input.probeId]
+  if (status !== "supported") {
+    return {
+      refusal: `The terminal hosting this multiplexer, ${id} ${version}, reads ${String(status ?? "no result")} on ${input.probeId}, so the absence is not attributable to the multiplexer`,
+    }
+  }
+  const run = typeof recordRunId === "string" && recordRunId !== "" ? ` in run ${recordRunId}` : ""
+  return {
+    record: `${id} ${version} measures ${input.probeId} supported${run}, so the absence belongs to the multiplexer's default pass-through`,
+  }
+}

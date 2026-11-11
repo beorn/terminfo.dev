@@ -4572,7 +4572,9 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
       ...(!unfocusedAtWrite
         ? [focusError ?? "Terminal was not proven unfocused immediately before and after the target write"]
         : []),
-      ...(ctx.mux && !fixture.outerTerminalRecord ? ["No matching outer-terminal record for this multiplexer"] : []),
+      ...(ctx.mux && !fixture.outerTerminalRecord
+        ? [fixture.outerTerminalRecordRefusal ?? "No matching outer-terminal record for this multiplexer"]
+        : []),
       ...observed.problems,
     ]
     // A parse loss makes notification rows Open even if another recorded call happens to match.

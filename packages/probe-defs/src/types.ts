@@ -1178,7 +1178,12 @@ export interface NotificationFixture {
   /** Why the terminal-side control is absent, when the run tried and failed: named, never silent. */
   readonly terminalSideControlRefusal?: string
   readonly profile: { readonly state: "default" | "non-default" | "unknown"; readonly reason: string }
+  /**
+   * The hosting terminal's own measurement of this row, named, when it reads supported (#33333 condition 3).
+   * Absent means the mux may not carry a negative; `outerTerminalRecordRefusal` says which fact is missing.
+   */
   readonly outerTerminalRecord?: string
+  readonly outerTerminalRecordRefusal?: string
   cursor(): number
   readSince(cursor: number): {
     readonly entries: readonly {

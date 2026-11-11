@@ -65,3 +65,29 @@ test("the passthrough reader tries the window form then the session form, and re
   })
   expect("reason" in refused && refused.reason).toContain("no server")
 })
+
+test("a mux negative needs the hosting terminal's own supported measurement of that row", async () => {
+  const { qualifyOuterTerminalRecord } = await import("./notification-defaults.ts")
+  const supported = {
+    id: "kitty",
+    version: "0.49.2",
+    recordRunId: "ec3c7f325b2d",
+    statuses: { "extensions.notifications": "supported", "extensions.osc777-notify": "supported" },
+  }
+  const yes = qualifyOuterTerminalRecord({ record: supported, probeId: "extensions.notifications" })
+  expect(yes.record).toContain("kitty 0.49.2 measures extensions.notifications supported")
+  expect(yes.record).toContain("ec3c7f325b2d")
+  expect(yes.refusal).toBeUndefined()
+
+  const stale = { ...supported, statuses: { "extensions.notifications": "untestable" } }
+  const no = qualifyOuterTerminalRecord({ record: stale, probeId: "extensions.notifications" })
+  expect(no.record).toBeUndefined()
+  expect(no.refusal).toContain("reads untestable")
+
+  expect(qualifyOuterTerminalRecord({ record: undefined, probeId: "extensions.notifications" }).refusal).toContain(
+    "no outer-terminal record",
+  )
+  expect(qualifyOuterTerminalRecord({ record: { missing: "no placed record" }, probeId: "x" }).refusal).toContain(
+    "no placed record",
+  )
+})
