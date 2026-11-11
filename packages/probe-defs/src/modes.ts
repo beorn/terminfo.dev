@@ -2390,7 +2390,8 @@ const modeDefinitions: ProbeDefinition[] = [
         ) {
           // This native build's set/reset handlers explicitly leave this to the application mux.
           const note = `${result.note}; standalone WezTerm terminal library does not apply synchronized output; handled by WezTerm's mux`
-          return { ...result, note, observation: { ...result.observation, note } }
+          result.note = note
+          result.observation.note = note
         }
         return result
       },
