@@ -131,8 +131,9 @@ compose_receipt() {
       error("container display receipt does not say which window manager ran (wm must be present, null when none did)")
     elif $c.display.wm != null and (
          ($c.display.wm.name | type) != "string" or ($c.display.wm.version | type) != "string" or
-         ($c.display.wm.argv | type) != "array" or any($c.display.wm.argv[]; type != "string")) then
-      error("container display receipt window manager is not named by name, version and argv")
+         ($c.display.wm.argv | type) != "array" or any($c.display.wm.argv[]; type != "string") or
+         ($c.display.wm.config.path | type) != "string" or ($c.display.wm.config.sha256 | type) != "string") then
+      error("container display receipt window manager is not named by name, version, argv and its config hash")
     elif ($h.xvfbWm // null) != (if $c.display.wm == null then null else $c.display.wm.name end) then
       error("host-declared window manager disagrees with the window manager the container ran")
     elif $c.clipboardFixture.runId != $h.runId or $c.clipboardFixture.profile != $h.clipboardProfile or
@@ -721,6 +722,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   wm_name=
   wm_version=
   wm_argv=
+  wm_config_sha=
   if [[ -n "${TERMINFO_XVFB_WM:-}" ]]; then
     case "$TERMINFO_XVFB_WM" in
       openbox) ;;
@@ -755,6 +757,7 @@ if [[ "${1:-}" == "--inside" ]]; then
 </openbox_config>
 TERMINFO_WM_RC
     chmod 600 "$HOME/wm-rc.xml"
+    wm_config_sha=$(sha256sum "$HOME/wm-rc.xml" | cut -d ' ' -f 1)
     wm_argv=$(jq -cn --args '$ARGS.positional' -- openbox --config-file "$HOME/wm-rc.xml" --sm-disable)
     openbox --config-file "$HOME/wm-rc.xml" --sm-disable > /out/wm.log 2>&1 &
     wm_pid=$!
@@ -1076,7 +1079,8 @@ TERMINFO_WM_RC
     --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg clipboardSha "$clipboard_fixture_sha" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
-    --arg wm "$wm_name" --arg wmVersion "$wm_version" --arg wmArgv "$wm_argv" --arg wmConfig "$HOME/wm-rc.xml" \
+    --arg wm "$wm_name" --arg wmVersion "$wm_version" --arg wmArgv "$wm_argv" \
+    --arg wmConfig "$HOME/wm-rc.xml" --arg wmConfigSha "$wm_config_sha" \
     '{runId:$run,
       executable:{path:$executablePath,version:$executableVersion,sha256:$executableSha},
       invocation:{path:$invocationPath,sha256:$invocationSha},
@@ -1085,7 +1089,8 @@ TERMINFO_WM_RC
       probeRun:{path:"v3-capture.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry,
         wm:(if $wm == "" then null
-            else {name:$wm,version:$wmVersion,argv:($wmArgv|fromjson),config:$wmConfig,log:"wm.log"} end)},
+            else {name:$wm,version:$wmVersion,argv:($wmArgv|fromjson),
+                  config:{path:$wmConfig,sha256:$wmConfigSha},log:"wm.log"} end)},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
       capture:$capture} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
     > /out/container-receipt.json
