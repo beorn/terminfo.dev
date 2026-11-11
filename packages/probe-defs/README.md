@@ -100,7 +100,7 @@ The [writer and finalizer](src/helpers.ts) fold explicit tests and diagnostics i
 a supported observation can still have a failed or pending required test; an inconclusive observation alone
 does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named
 missing-observable coverage defaults to PROBE TODO; rowless inconclusive without that coverage defaults
-to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclaredUntestable` is the only form the finalizer and run reader admit. Its reason names the cause: **passed to the app**, **no way**, or **no setup** (and the more specific **no way to tell** or **app** where applicable). The operator's per-kind declarations remain, including OSC720 on libvterm and WezTerm, whose libraries keep history without their own scrolling window. A step never reached because the step it depends on read Unsupported in the same run is Untestable (**no setup**), and its reason names that entry step and its result (operator, Nov 10 2026); the entry keeps its own result, and another run or source never counts. The run's tail pass `applyUnreachedSteps` writes it from the `UNREACHED_STEPS` pairs, through `declaredUntestableResult`. Any other untestable test folds to PROBE TODO.
+to PROBE INVALID. Untestable goes through `declaredUntestableResult`; `isDeclaredUntestable` is the only form the finalizer and run reader admit. Its reason names the cause: **passed to the app**, **no way**, **no setup**, or **no observer** (and the more specific **no way to tell** or **app** where applicable). **No observer** means the effect shows outside what the run captures, such as App OSC 9;4 progress in a title bar, tab bar or taskbar when the run captures only the window. The operator's per-kind declarations remain, including OSC720 on libvterm and WezTerm, whose libraries keep history without their own scrolling window. A step never reached because the step it depends on read Unsupported in the same run is Untestable (**no setup**), and its reason names that entry step and its result (operator, Nov 10 2026); the entry keeps its own result, and another run or source never counts. The run's tail pass `applyUnreachedSteps` writes it from the `UNREACHED_STEPS` pairs, through `declaredUntestableResult`. Any other untestable test folds to PROBE TODO.
 
 The collector also selects the specifically reviewed OSC133/633, OSC176/440/3008 and OSC666 App/mux declarations from
 `app-semantic-state.ts`, matching kind, id, exact version and OS. The native batch uses that
@@ -141,7 +141,8 @@ made-up OSC control and a distinct independent SGR reference. OSC 112 uses a vis
 CPR, shown/hidden/restored pixels and the made-up control. Only unchanged setup declares Untestable
 (no setup); a changed setter does not itself establish a positive reset or stack result. App OSC 9;4
 uses stable whole-window clear/set-50/clear captures, plain paint/restore and a made-up subcommand;
-qualified no-change declares Untestable (no setup). OSC 555 uses the same whole-window controls and
+qualified no-change declares Untestable (no observer), because the progress shows outside the window
+the run captures. The same no-change on a tmux or Screen arm keeps Untestable (no setup). OSC 555 uses the same whole-window controls and
 nine finite samples; missed flash declares Untestable (no way to tell), never Unsupported. Missing
 or broken controls keep these rows open. Real colour replies and qualified exact-command reports
 retain precedence. For the original ten tmux/Screen positions, finalization names both the actual mux
