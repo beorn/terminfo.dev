@@ -629,7 +629,7 @@ export function sgrTermReadback(
       if (region) {
         const { savedRendition: _savedRendition, ...queryFallback } = region
         const verdict = await captureRegionCallbackResult(ctx, id, referenceFirst ? queryFallback : region, true)
-        if (verdict) return retainReference(verdict)
+        if (verdict) return retainReference(colourCaptureCallbackResult(id, verdict, { mux: ctx.mux }))
       }
       if (colour) {
         const verdict = await captureRegionCallbackResult(ctx, id, colour, true)

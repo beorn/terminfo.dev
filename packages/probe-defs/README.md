@@ -1111,6 +1111,11 @@ Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`.
 - Coverage becomes `probe-todo`. Refusal and consumption without a deciding observation explicitly supply PROBE TODO tests; unanswered queries and errors explicitly supply PROBE INVALID tests. No reply, clipboard value or frame is invented to satisfy a type.
 - A measured inconclusive observation stays typed and defaults to `probe-invalid` unless an existing explicit criterion test selects a different status.
 
+SGR colour captures, including indexed underline and its reset's independent-reference capture,
+share one mux callback owner. An inconclusive capture through a mux reads PROBE TODO and names
+the missing outer-terminal control; the same frames cannot attribute the result to that hop.
+Non-mux decisions, measured positives and broken-measurement errors retain their existing results.
+
 `finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, unsupported, then supported. A test marked untestable folds to PROBE TODO unless the result is the declared form (`isDeclaredUntestable`), which reads Untestable. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as PROBE TODO (see above); content validation uses that same reader.
 
 That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only PROBE TODO can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
