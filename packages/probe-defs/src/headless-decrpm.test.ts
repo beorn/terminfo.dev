@@ -6,9 +6,9 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { decrpmPs, decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
+import { ADAPTER_SOURCE_AUDITS, decrpmPs, decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
-import type { LibProbeSource } from "./types.ts"
+import type { HeadlessRuntimeIdentity, LibProbeSource } from "./types.ts"
 
 // DEC1: silence permits these two public-state criteria only; constant, missing,
 // conflated and unknown-mode-sensitive readers cannot qualify a state observation.
@@ -191,6 +191,59 @@ test.each([0, 2, 4])("strict mode Ps%s after set is an engine negative even with
   >
   expect(result.observation?.outcome).toBe("unsupported")
   expect(result.assertions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "negative" })]))
+})
+
+// @failure A negative report overrides the same-run enabled readback and falsely decides engine absence.
+test.each(readbackModes)("$id leaves a negative report unresolved when the mode was enabled", ({ id, number }) => {
+  for (const setPs of [0, 2, 4]) {
+    const { source } = readbackContext(number, { setPs, setMode: true, resetMode: false })
+    const result = headless(id)(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+    expect(result.observation?.outcome, `set Ps${setPs}`).toBe("inconclusive")
+    expect(result.tests).toMatchObject([
+      { id: "criterion", status: "probe-todo", reason: `DECRPM mode ${number}: set Ps ${setPs}, reset Ps 2` },
+    ])
+    expect(result.assertions ?? []).toEqual([])
+    expect(JSON.parse(result.response!)).toMatchObject({ setMode: true, resetMode: false })
+  }
+})
+
+// @failure The qualified standalone WezTerm negative is mistaken for absence in the full application/mux.
+test("synchronized-output names the qualified standalone WezTerm library boundary", () => {
+  const identity: HeadlessRuntimeIdentity = {
+    kind: "native",
+    adapterVersion: "0.11.0",
+    termlessRevision: "343c2e5df74d918fc625943203ba521c48a3d1d6",
+    engineVersion: "0.1.0-fork.5",
+    loadedBinary: {
+      path: "termless-wezterm.node",
+      sha256: "ff7d2eb1021ac1a5629a151ea4b2b6f510312af36245377dc92ffb56508ca746",
+    },
+    provenance: {
+      sha256: "ff7d2eb1021ac1a5629a151ea4b2b6f510312af36245377dc92ffb56508ca746",
+      sourceCommit: "17d0ee52ebdfdfc4589d453cd6bed8a8af96fa2e",
+      lockSha256: "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886",
+      buildHash: "10d2930241d0f0c080bf3974b280b42454ea66e8b1ff3b9ab4d37bdc8049090f",
+      toolchain: "retained native identity fixture",
+    },
+    adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.weztermPixelMouse).map(([path, blobOid]) => ({ path, blobOid })),
+  }
+  for (const qualified of [true, false]) {
+    const { source } = readbackContext(2026, { setPs: 2, setMode: null, resetMode: null })
+    const result = headless("modes.synchronized-output")({
+      ...source,
+      backendName: "wezterm",
+      runtimeIdentity: qualified ? identity : { ...identity, engineVersion: "unqualified" },
+    }) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(result.assertions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "negative" })]))
+    if (qualified) {
+      expect(result.note).toContain("standalone WezTerm terminal library does not apply synchronized output")
+      expect(result.note).toContain("handled by WezTerm's mux")
+      expect(result.observation?.note).toBe(result.note)
+    } else {
+      expect(result.note).not.toContain("standalone WezTerm")
+    }
+  }
 })
 
 // @failure A reset that never takes effect is called supported from its earlier enabled reply.

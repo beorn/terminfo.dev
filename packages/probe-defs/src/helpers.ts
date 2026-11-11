@@ -1919,7 +1919,9 @@ export function headlessDecrpmArm(
             ],
           }
         }
-        if (setPs === 0 || setPs === 2 || setPs === 4) {
+        // A present negative cannot decide engine absence when the same set was observed enabled.
+        // Let that disagreement reach the strict report/readback criterion below.
+        if ((setPs === 0 || setPs === 2 || setPs === 4) && setMode !== true) {
           const note = `DECRPM mode ${modeNum} after DECSET: ${decrpmReading(setPs)}${presentation}`
           return {
             pass: false,

@@ -2380,7 +2380,20 @@ const modeDefinitions: ProbeDefinition[] = [
     ...decrpmModeProbe(
       "modes.synchronized-output",
       2026,
-      headlessDecrpmArm(2026, "syncOutput", { requireReadback: true, stateReadback: true }),
+      (ctx) => {
+        const result = headlessDecrpmArm(2026, "syncOutput", { requireReadback: true, stateReadback: true })(ctx)
+        if (
+          result.observation?.outcome === "unsupported" &&
+          hasAuditedOscInterfaceAbsence(ctx, "wezterm-d2") &&
+          ctx.runtimeIdentity?.kind === "native" &&
+          ctx.runtimeIdentity.provenance.sourceCommit === "17d0ee52ebdfdfc4589d453cd6bed8a8af96fa2e"
+        ) {
+          // This native build's set/reset handlers explicitly leave this to the application mux.
+          const note = `${result.note}; standalone WezTerm terminal library does not apply synchronized output; handled by WezTerm's mux`
+          return { ...result, note, observation: { ...result.observation, note } }
+        }
+        return result
+      },
       true,
     ),
     libAssertionType: undefined,
