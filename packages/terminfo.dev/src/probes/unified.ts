@@ -56,6 +56,7 @@ import {
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
 import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
+import { qualifyNotificationDefaults } from "../notification-defaults.ts"
 import { createCallLog, withCallLog } from "viprobe"
 import {
   ownedTerminalVerifiedFor,
@@ -933,6 +934,16 @@ export async function runProbeBatch(
             terminalEnvironment?.reason ??
             "The terminal process environment was not independently read: this run has no owned reader for it",
         }
+        // Default configuration, stated only from what this run controls: its own launch line, and tmux's
+        // live allow-passthrough (#33333 condition 4). A user's dotfiles are never read, so never claimed.
+        const allowPassthrough =
+          options.subject?.kind === "mux" && options.subject.id === "tmux" && clipboard?.readAllowPassthrough
+            ? await clipboard.readAllowPassthrough()
+            : undefined
+        const notificationDefaults = qualifyNotificationDefaults({
+          ...(clipboard?.config ? { launchLine: clipboard.config } : {}),
+          ...(allowPassthrough === undefined ? {} : { passthrough: allowPassthrough }),
+        })
         let terminalSideControl: { nonce: string; id: number; latencyMs: number } | undefined
         let terminalSideControlRefusal: string | undefined
         if (measured?.environment !== undefined) {
@@ -956,11 +967,7 @@ export async function runProbeBatch(
           terminalBus,
           ...(terminalSideControl === undefined ? {} : { terminalSideControl }),
           ...(terminalSideControlRefusal === undefined ? {} : { terminalSideControlRefusal }),
-          profile: {
-            state: "unknown",
-            reason:
-              "The launch receipt qualifies clipboard permissions, not the terminal's effective notification defaults",
-          },
+          profile: notificationDefaults,
           cursor: () => observer.cursor(),
           readSince: (cursor) => observer.readSince(cursor),
         })
