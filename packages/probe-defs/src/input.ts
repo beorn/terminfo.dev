@@ -513,7 +513,7 @@ export async function focusTracking1004(ctx: TermProbeSource): Promise<ProbeCall
     focus: { enabled: enabledArm.focus, reset: resetArm.focus },
   }
   if (!enabledArm.focus || !resetArm.focus) {
-    return invalidInteraction("Focus roundtrip did not retain its owned/root/owned X focus witness", observed)
+    return invalidInteraction("Focus roundtrip did not retain its owned/helper/owned X focus witness", observed)
   }
   const expected =
     "at most one separate enable-time report, then CSI O and CSI I before a with 1004 set; only a with 1004 reset"
