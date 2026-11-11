@@ -401,9 +401,14 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
     const baseline = source("docs/baseline/[id].md")
     expect(baseline).toContain("if (isEnvironmentGroup(f.id)) continue")
     expect(baseline).toContain("manual by design (catalogue)")
-    // The bar width and the printed share read the projection's single denominator.
+    // The bar width and the printed share read the projection's single denominator. #33441: the printed share moved
+    // to the one row readout, which also carries the derived count, so the page delegates and the helper owns the words.
     expect(baseline).toContain("s.counts[segment] / s.score.all")
-    expect(baseline).toContain("${s.score.supported}/${s.score.all} supported")
+    expect(baseline).toContain("return baselineShareRow(s)")
+    const readouts = source("docs/data/baseline-readouts.ts")
+    expect(readouts).toContain("${s.score.supported}/${s.score.all} supported")
+    expect(readouts).toContain("notMeasuredReadout(s.counts, s.derived)")
+    expect(readouts).toContain("notMeasuredReadout(stats.counts, stats.derived)")
   })
 
   it("wires the terminal page's coverage sentence to the run's own catalogue", () => {

@@ -86,6 +86,8 @@ export default {
           platforms: b.platforms ?? [],
           score: bs.score,
           counts: bs.counts,
+          // #33441: shareRow needs the derived count, or a derived-only row reads as measured 0%.
+          derived: bs.derived,
           complete: bs.complete,
           pct: bs.pct,
         }
