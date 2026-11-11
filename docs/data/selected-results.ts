@@ -414,7 +414,7 @@ export function projectResults(
     const counts = aggregate.counts
     const states = Object.fromEntries(results.map((result) => [result.featureId, result.status]))
     table[run.runId] = states
-    const suiteRelation: SuiteRelation = run.probeHash === policy.currentProbeHash ? "tree" : "older"
+    const { suiteRelation, suiteFreshness } = suiteRelationOf(run.probeHash, policy.currentProbeHash)
     const version: CurrentSelectedVersion = {
       schemaVersion: run.schemaVersion as 3 | 4,
       ...(run.schemaVersion === 4 ? { source: { ...run.source } } : {}),
@@ -434,7 +434,7 @@ export function projectResults(
       assertions: globalThis.structuredClone(run.assertions),
       origin: globalThis.structuredClone(run.origin),
       ...(run.textQualification && { textQualification: globalThis.structuredClone(run.textQualification) }),
-      suiteFreshness: `${suiteRelation} suite ${run.probeHash}`,
+      suiteFreshness,
       counts,
       // D132 B (#30917): numerator and denominator come from the ONE fold, so both cover the same
       // graded ids (264 for a current 273-row run). Never recompute either from the raw catalogue.
@@ -577,6 +577,18 @@ function compareContextAttempts(
     return left === right ? a.runId.localeCompare(b.runId) : left === undefined ? 1 : -1
   }
   return Date.parse(left) - Date.parse(right) || a.runId.localeCompare(b.runId)
+}
+
+/**
+ * The one suite comparison: a run on the tree's probe hash is "tree", any other is "older". Its label
+ * (`older suite <hash>`) is what the site shows and what the selection file carries (33109).
+ */
+export function suiteRelationOf(
+  probeHash: string,
+  treeSuiteId: string,
+): { suiteRelation: SuiteRelation; suiteFreshness: string } {
+  const suiteRelation: SuiteRelation = probeHash === treeSuiteId ? "tree" : "older"
+  return { suiteRelation, suiteFreshness: `${suiteRelation} suite ${probeHash}` }
 }
 
 /** Resolve one immutable original within its canonical context; working inputs stay private. */

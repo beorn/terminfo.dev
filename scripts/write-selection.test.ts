@@ -16,6 +16,7 @@ const projection = {
             path: "/repo/content/results/term/screen-placed.json",
             measuredAt: "2026-11-10T15:32:47.000Z",
             suiteId: "99ceae876abc",
+            probeHash: "99ceae876abc",
           },
           result: { status: "supported" },
         },
@@ -25,16 +26,20 @@ const projection = {
             subject: { id: "screen", version: "5.0.2", os: "linux" },
             path: "/scratch/working-run.json",
             measuredAt: "2026-11-10T16:00:00.000Z",
-            suiteId: "99ceae876abc",
+            suiteId: "0123456789ab",
+            probeHash: "0123456789ab",
           },
           result: { status: "probe-todo" },
         },
       },
     },
   },
+  treeSuiteId: "99ceae876abc",
 } as unknown as SelectedProjection
 
-test("a cell from a working run is marked working and a placed cell is not", () => {
+// 33109: a working run at an older suite carries the site's own label "older suite <hash>" (suiteRelationOf), so the
+// map can show it as older; the file had no suite relation before, so the earlier rows could not catch its absence.
+test("a cell from a working run is marked working and a placed cell is not; each carries its suite relation", () => {
   expect(selectionFile(projection, new Set(["working-run"]), "/repo/content")).toEqual({
     cells: [
       {
@@ -45,7 +50,9 @@ test("a cell from a working run is marked working and a placed cell is not", () 
         os: "linux",
         context: "term:screen",
         measuredAt: "2026-11-10T16:00:00.000Z",
-        suiteId: "99ceae876abc",
+        suiteId: "0123456789ab",
+        suiteRelation: "older",
+        suiteFreshness: "older suite 0123456789ab",
         runId: "working-run",
         source: "working",
         contentPath: null,
@@ -59,6 +66,8 @@ test("a cell from a working run is marked working and a placed cell is not", () 
         context: "term:screen",
         measuredAt: "2026-11-10T15:32:47.000Z",
         suiteId: "99ceae876abc",
+        suiteRelation: "tree",
+        suiteFreshness: "tree suite 99ceae876abc",
         runId: "placed-run",
         source: "placed",
         contentPath: "content/results/term/screen-placed.json",

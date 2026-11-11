@@ -8,7 +8,12 @@ import { loadFeatures } from "@terminfo/catalog"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { CONTENT_DIR } from "../../packages/admin/corpus-placement.ts"
 import { loadRawCapture } from "../../packages/admin/raw-capture.ts"
-import { loadSelectedResults, type SelectedContextCell, type SelectedProjection } from "./selected-results.ts"
+import {
+  loadSelectedResults,
+  suiteRelationOf,
+  type SelectedContextCell,
+  type SelectedProjection,
+} from "./selected-results.ts"
 
 export interface SelectionFileCell {
   featureId: string
@@ -20,6 +25,9 @@ export interface SelectionFileCell {
   context: string
   measuredAt: string
   suiteId: string
+  /** The site's suite comparison for this cell's run: "tree", or "older" with its label `older suite <hash>` (33109). */
+  suiteRelation: ReturnType<typeof suiteRelationOf>["suiteRelation"]
+  suiteFreshness: string
   runId: string
   source: "placed" | "working"
   /** Repository-relative run file for a placed row (`content/...`); null for a working run, which is not placed. */
@@ -46,6 +54,7 @@ export function selectionFile(
       const version = cell.run.subject.version
       if (!version) throw new Error(`${runId} ${featureId}: selected cell has no subject version`)
       const working = workingRunIds.has(runId)
+      if (!cell.run.probeHash) throw new Error(`${runId} ${featureId}: selected cell's run has no probe hash`)
       if (!working && !isUnder(cell.run.path, contentDir)) {
         throw new Error(`${runId} ${featureId}: placed run file ${cell.run.path} is not under ${contentDir}`)
       }
@@ -58,6 +67,7 @@ export function selectionFile(
         context,
         measuredAt: cell.run.measuredAt,
         suiteId: cell.run.suiteId,
+        ...suiteRelationOf(cell.run.probeHash, projection.treeSuiteId),
         runId,
         source: working ? "working" : "placed",
         contentPath: working ? null : relative(root, resolve(cell.run.path)).split(sep).join("/"),

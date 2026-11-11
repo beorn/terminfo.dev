@@ -40,7 +40,8 @@ export class UntrustedSuiteError extends Error {
   ) {
     super(
       `${path}: suite ${suiteId} has no committed manifest under ${join(root, "content", "suites")} and is not this ` +
-        `tree's suite ${treeSuiteId}; the raw capture cannot be read against a trusted declaration`,
+        `tree's suite ${treeSuiteId}; the raw capture cannot be read against a trusted declaration. Cure: commit ` +
+        `that suite's manifest; placing a run at that suite commits it`,
     )
     this.name = "UntrustedSuiteError"
   }
