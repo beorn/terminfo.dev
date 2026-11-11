@@ -22,7 +22,13 @@ import {
   parseMuxAttachmentProof,
   HOSTED_IDENTITY_SOURCES,
 } from "./disposable-receipt.ts"
-import type { LiveExecutable } from "./linux-capture.ts"
+import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
+import {
+  findAncestorComm,
+  readProcessEnvironment,
+  terminalBusState,
+  type TerminalBusReading,
+} from "./terminal-environment.ts"
 import { createDarwinClipboardAdapter } from "./darwin-clipboard.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
@@ -248,6 +254,15 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
   }
 }
 
+/** One process's own environment and bus state; the environment itself never leaves the collector in a record. */
+export interface NotificationEnvironmentReading {
+  readonly status: "measured" | "refused"
+  readonly reason: string
+  readonly pid?: number
+  readonly environment?: Readonly<Record<string, string>>
+  readonly bus?: TerminalBusReading
+}
+
 export interface OwnedTerminal {
   readonly getScrollback?: TermProbeSource["getScrollback"]
   /** Terminal.app history reader's per-run control, once it has run (31741). */
@@ -256,6 +271,11 @@ export interface OwnedTerminal {
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
   readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
+  /**
+   * The terminal process's own session bus, read from /proc rather than assumed from the collector's
+   * environment (#33333). A mux reads the outer terminal, which is the process that would emit a Notify.
+   */
+  readonly readNotificationEnvironment?: () => NotificationEnvironmentReading
   readonly geometryAtGrant: GeometryMeasurement
   readonly geometrySource: Exclude<GeometrySource, "unavailable: no verified output device">
   readonly summary: string
@@ -1441,6 +1461,26 @@ export async function createOwnedTerminal(options: {
         },
       }),
       ...(linux && {
+        readNotificationEnvironment(): NotificationEnvironmentReading {
+          if (!verifiedTerminalOwners.has(owner)) {
+            return { status: "refused", reason: "Notification environment read has no live owned terminal" }
+          }
+          try {
+            // A mux run's Notify would come from the outer terminal, which the owned Linux mux launch
+            // refuses to be anything but Kitty; a direct app is its own process.
+            const pid = muxAttachmentProof ? findAncestorComm("kitty") : kittyAncestor(linux.executable)
+            const environment = readProcessEnvironment(pid)
+            return {
+              status: "measured",
+              reason: "Terminal process environment read from /proc",
+              pid,
+              environment,
+              bus: terminalBusState(environment, process.env),
+            }
+          } catch (error) {
+            return { status: "refused", reason: `Terminal process environment unreadable: ${(error as Error).message}` }
+          }
+        },
         async readAppSemanticState(featureId: string, write: (text: string) => void) {
           if (!verifiedTerminalOwners.has(owner)) {
             return { status: "invalid" as const, reason: "App semantic read has no live owned terminal" }

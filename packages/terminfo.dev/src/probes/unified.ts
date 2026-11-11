@@ -55,7 +55,7 @@ import {
   type TTYTraceEvent,
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
-import { createNotificationObserver } from "../linux-notification.ts"
+import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
 import { createCallLog, withCallLog } from "viprobe"
 import {
   ownedTerminalVerifiedFor,
@@ -920,15 +920,42 @@ export async function runProbeBatch(
         const address = process.env.DBUS_SESSION_BUS_ADDRESS
         if (!address) throw new Error("Owned notification recorder declared without DBUS_SESSION_BUS_ADDRESS")
         const observer = await createNotificationObserver({ receiptPath: notificationReceiptPath, address })
+        // The terminal's own bus and a control sent from its own environment (#33333): without both, silence
+        // is unreadable, and a row may not claim the terminal does not notify.
+        const terminalEnvironment = options.ownedTerminal?.readNotificationEnvironment?.()
+        const measured =
+          terminalEnvironment?.status === "measured" && terminalEnvironment.bus !== undefined
+            ? terminalEnvironment
+            : undefined
+        const terminalBus = measured?.bus ?? {
+          state: "unknown" as const,
+          reason:
+            terminalEnvironment?.reason ??
+            "The terminal process environment was not independently read: this run has no owned reader for it",
+        }
+        let terminalSideControl: { nonce: string; id: number; latencyMs: number } | undefined
+        let terminalSideControlRefusal: string | undefined
+        if (measured?.environment !== undefined) {
+          try {
+            terminalSideControl = await sendTerminalSideControl({
+              address,
+              recordPath: observer.receipt.recordPath,
+              environment: measured.environment,
+              deadlineMs: 1000,
+            })
+          } catch (controlError) {
+            terminalSideControlRefusal = (controlError as Error).message
+          }
+        } else {
+          terminalSideControlRefusal = terminalBus.reason
+        }
         const result = await work({
           control: observer.control,
           recordPath: observer.receipt.recordPath,
           deadlineMs: 1000,
-          terminalBus: {
-            state: "unknown",
-            reason:
-              "Collector and recorder share the private bus; the terminal process environment was not independently read",
-          },
+          terminalBus,
+          ...(terminalSideControl === undefined ? {} : { terminalSideControl }),
+          ...(terminalSideControlRefusal === undefined ? {} : { terminalSideControlRefusal }),
           profile: {
             state: "unknown",
             reason:

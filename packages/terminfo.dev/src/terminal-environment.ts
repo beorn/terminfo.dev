@@ -35,7 +35,7 @@ export function readProcessEnvironment(pid: number): Readonly<Record<string, str
   return environment
 }
 
-function busDigest(environment: Readonly<Record<string, string>>): string | undefined {
+function busDigest(environment: Readonly<Record<string, string | undefined>>): string | undefined {
   const address = environment.DBUS_SESSION_BUS_ADDRESS
   if (address === undefined || address === "") return undefined
   return createHash("sha256").update(address).digest("hex")
@@ -46,8 +46,8 @@ function busDigest(environment: Readonly<Record<string, string>>): string | unde
  * never "different": the absence of a variable proves nothing about which bus the process would reach.
  */
 export function terminalBusState(
-  terminal: Readonly<Record<string, string>>,
-  recorder: Readonly<Record<string, string>>,
+  terminal: Readonly<Record<string, string | undefined>>,
+  recorder: Readonly<Record<string, string | undefined>>,
 ): TerminalBusReading {
   const terminalDigest = busDigest(terminal)
   const recorderDigest = busDigest(recorder)
@@ -69,4 +69,31 @@ export function terminalBusState(
         state: "different",
         reason: "The terminal process environment read from /proc names a different session bus from the recorder's",
       }
+}
+
+/**
+ * The nearest ancestor of this process whose kernel `comm` is `comm`. Used for the outer terminal of a mux run:
+ * the owned Linux mux launch refuses to have any outer but Kitty, so the process that would emit the Notify is
+ * the Kitty this collector descends from, not the mux server between them.
+ */
+export function findAncestorComm(comm: string, from: number = process.pid): number {
+  if (comm === "") throw new Error("Ancestor lookup needs a non-empty comm")
+  let pid = from
+  for (let depth = 0; depth < 64 && pid > 1; depth++) {
+    let name: string
+    try {
+      name = readFileSync(`/proc/${pid}/comm`, "utf8").trim()
+    } catch (error) {
+      throw new Error(`Cannot read /proc/${pid}/comm while looking for ${comm}: ${(error as Error).message}`)
+    }
+    if (name === comm) return pid
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
+    const parent = Number(fields[1])
+    if (!Number.isSafeInteger(parent) || parent < 1 || parent === pid) {
+      throw new Error(`Ancestor chain from PID ${from} broke at ${pid} before reaching a ${comm} process`)
+    }
+    pid = parent
+  }
+  throw new Error(`No ancestor of PID ${from} runs ${comm}`)
 }
