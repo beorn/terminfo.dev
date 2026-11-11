@@ -867,8 +867,12 @@ function applySupplements(
         run.results?.some((result) => result.featureId === id && result.attempt.scope !== "none"),
     )
     const result = source?.run.results?.find((entry) => entry.featureId === id)
-    if (!source || !result || !decided.has(result.status)) continue
+    if (!source || !result) continue
     const { run, supplement } = source
+    const ignoresInSilence = supplement.silentIgnore.includes(run.subject.id)
+    // A non-mux no-reply publishes probe-invalid (probe-defs extensions.ts, `no-response`). On an app that may ignore
+    // the setting without a word, that is the very case `notInForce` names, so it reaches the branch below (33324).
+    if (!decided.has(result.status) && !(ignoresInSilence && result.status === "probe-invalid")) continue
     const declaredDefault = supplement.declaredDefaults[run.subject.id]
     const marker = {
       name: supplement.name,
@@ -876,7 +880,7 @@ function applySupplements(
       runId: run.runId,
       ...(declaredDefault && { declaredDefault }),
     }
-    if (result.status !== "supported" && supplement.silentIgnore.includes(run.subject.id)) {
+    if (result.status !== "supported" && ignoresInSilence) {
       // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open. A
       // schema-4 default run records every catalog id, so a prior cell is present; were one absent, there is no cell
       // to mark and the id stays absent, which every reader already reads as probe-todo (statesFor).

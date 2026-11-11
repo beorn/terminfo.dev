@@ -30,7 +30,7 @@ const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
 const at = "2026-11-10T05:00:00.000Z"
 const attempt = { scope: "probe" as const, startedAt: at }
 
-type Measured = Record<string, "supported" | "unsupported">
+type Measured = Record<string, "supported" | "unsupported" | "probe-invalid">
 
 /** One schema-4 run of `app` on Linux: every id an untouched TODO except the measured ones. */
 function run(app: string, runId: string, measured: Measured, permissions: string | null, measuredAt = at) {
@@ -168,6 +168,37 @@ describe("read-allowed supplement (33119)", () => {
     })
     expect(context.cells[ROUND_TRIP]?.origin.runId).toBe("xterm-allow")
     expect(context.cells[ROUND_TRIP]?.result.status).toBe("supported")
+  })
+
+  // 33324: a non-mux no-reply publishes probe-invalid, never unsupported, so this is the case notInForce exists for.
+  it("leaves a silently-ignoring terminal's probe-invalid no-reply open with the not-in-force reason", () => {
+    const alacritty = run("alacritty", "alacritty-default", {}, null)
+    const silent = run(
+      "alacritty",
+      "alacritty-allow",
+      { [READ]: "probe-invalid", [ROUND_TRIP]: "probe-invalid" },
+      allowed,
+    )
+    const context = project([alacritty, silent]).contexts["term:alacritty"]!
+    for (const id of [READ, ROUND_TRIP]) {
+      expect(context.cells[id]?.origin.runId).toBe("alacritty-default")
+      expect(context.cells[id]?.result.status).toBe("probe-todo")
+      expect(context.cells[id]?.supplement).toEqual({
+        name: "read-allowed",
+        qualifier: "with clipboard read allowed",
+        runId: "alacritty-allow",
+        declaredDefault: READ_ALLOWED.declaredDefaults.alacritty,
+        filled: false,
+        open: READ_ALLOWED.notInForce,
+      })
+    }
+  })
+
+  it("leaves a probe-invalid result on an app that never ignores the setting unmarked", () => {
+    const silent = run("kitty", "kitty-allow", { [READ]: "probe-invalid" }, allowed)
+    const context = project([base, silent]).contexts["term:kitty"]!
+    expect(context.cells[READ]?.origin.runId).toBe("default-run")
+    expect(context.cells[READ]?.supplement).toBeUndefined()
   })
 
   it("reads only the declared ids, and the newest supplement run wins", () => {
