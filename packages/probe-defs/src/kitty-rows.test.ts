@@ -329,6 +329,13 @@ test("placeholders decide from pixels, with a queried virtual transfer and an or
   // The virtual-placement reply distinguishes a refused command from a broken measurement.
   expect(joined).toContain("a=T,U=1")
   expect(writes.find((bytes) => bytes.startsWith("\x1b_Ga=T,U=1"))).toContain("q=0")
+  // #33033 (@cto fd7747d9): the with-image state writes its placeholder text BEFORE the virtual placement,
+  // because placement-first is a paint race in Kitty 0.49.2; the first capture follows both.
+  const placementWrite = writes.findIndex((bytes) => bytes.startsWith("\x1b_Ga=T,U=1"))
+  expect(placementWrite).toBeGreaterThan(-1)
+  expect(writes.findIndex((bytes) => bytes.includes("\u{10EEEE}"))).toBeLessThan(placementWrite)
+  const withImage = captures.find((capture) => capture.label.startsWith("Placeholder grid with image"))
+  expect(withImage!.writesBefore).toBeGreaterThan(placementWrite)
   // The placeholder characters and the id in the foreground colour, in BOTH states.
   expect(joined.split("\u{10EEEE}").length - 1).toBe(8)
   expect(joined).toContain("[38;5;")
