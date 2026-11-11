@@ -4899,7 +4899,10 @@ beforeEach(() => {
               "--raw",
               `${fileURLToPath(new URL("../../../../", import.meta.url))}#kitty-official.outPath`,
             ],
-            { encoding: "utf8", env: { ...process.env, XDG_CACHE_HOME: cache } },
+            // 33579: the fresh cache makes nix unpack a flake input on every run and print "unpacking ... into the Git
+            // cache" on stderr; inherited, that line failed the first test in this file. Capture it: on failure
+            // execFileSync's error still carries nix's stderr.
+            { encoding: "utf8", env: { ...process.env, XDG_CACHE_HOME: cache }, stdio: ["ignore", "pipe", "pipe"] },
           ).trim(),
           "bin",
           "kitty",
