@@ -516,6 +516,8 @@ test.each([
   ["tree", "receipt source tree differs"],
   ["lock", "receipt lock differs"],
 ] as const)("native artifact receipt %s is checked independently of delivery metadata", (mode, error) => {
+  // 33579: every refusal names the one command that rebuilds this adapter's addon and writes its receipt.
+  const rebuild = "rebuild it from the Termless root: nix shell .#native-tools --command bun run --cwd packages/vt100 build:native"
   const run = spawnSync(
     process.execPath,
     [
@@ -549,8 +551,10 @@ test.each([
   )
   expect(run.status, run.stderr).toBe(0)
   const body = JSON.parse(run.stdout) as { error?: string; identity?: unknown; digest: string }
-  if (error) expect(body.error).toContain(error)
-  else {
+  if (error) {
+    expect(body.error).toContain(error)
+    expect(body.error).toContain(rebuild)
+  } else {
     expect(body.error).toBeUndefined()
     expect(body.identity).toMatchObject({
       kind: "native",
@@ -559,4 +563,13 @@ test.each([
       provenance: { sha256: body.digest },
     })
   }
+})
+
+// 33579: ghostty-native has no build:native script; its build.sh builds the addon and writes the receipt.
+test("the native rebuild command names each adapter's own receipt-writing build", async () => {
+  const { nativeRebuildCommand } = await import("./headless-identity.ts")
+  expect(nativeRebuildCommand("packages/alacritty")).toBe(
+    "nix shell .#native-tools --command bun run --cwd packages/alacritty build:native",
+  )
+  expect(nativeRebuildCommand("packages/ghostty-native")).toBe("bash packages/ghostty-native/build/build.sh")
 })
