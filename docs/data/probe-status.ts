@@ -11,9 +11,10 @@
  *
  * Two exceptions carry a REVIEWED value instead of a derivation, and a reviewed value wins:
  *  - 23 rows were hand-marked partial in the catalog before the derivation existed, and keep it;
- *  - 3 rows (the 27832 section F2 osc52 family) declare concrete assertion types on both arms yet are
- *    fixture-gated: `liveClipboardProbe` policy-refuses before sending unless an owned clipboard
- *    fixture is installed, so the standard run reads back only a round-trip against that fixture. A
+ *  - 4 rows (the 27832 section F2 osc52 family and OSC 777 notify) declare concrete assertion types on
+ *    both arms yet are fixture-gated: `liveClipboardProbe` policy-refuses before sending unless an owned
+ *    clipboard fixture is installed, so the standard run reads back only a round-trip against that
+ *    fixture; OSC 777 delivery is observed only under the owned notification observer (33451). A
  *    definition cannot express that gate until 28450, so it is a reviewed partial that stands OVER a
  *    settled derivation.
  * The build and validate print the undeclared count beside the gated rows, so the gap is visible and
