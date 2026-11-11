@@ -886,7 +886,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             // and it must restore the flowing state that withRawMode's lease restores, or the
             // collector holds the launcher's poll open long after its run.json (run 43102072805).
             try {
-              const echoed = await readResponse(/z/, 2500, inject)
+              // Both self-test probes post a printable key and expect its echo; the pattern covers
+              // exactly those two (z, then x by bare keycode), so unrelated traffic cannot satisfy it.
+              const echoed = await readResponse(/[zx]/, 2500, inject)
               return echoed === null ? null : echoed.join("")
             } finally {
               if (process.stdin.isTTY && process.stdin.readableFlowing === true) process.stdin.pause()

@@ -11,11 +11,19 @@ export const DARWIN_INPUT_HELPER_ENV = "TERMINFO_DARWIN_INPUT_HELPER"
 export const DARWIN_INPUT_SELF_TEST_KEYSYM = "z"
 
 /**
- * The same key posted the other way, for the diagnostic run: virtual keycode 6 (the ANSI z key) with
- * NO unicode payload. The plain keysym sends virtual keycode 0 WITH a unicode payload, so a null
- * first probe and an echoing second one name the defect as the unicode payload rather than delivery.
+ * The second route, for the diagnostic run: a virtual keycode with NO unicode payload. The plain
+ * keysym sends virtual keycode 0 WITH a unicode payload, so a null first probe and an echoing second
+ * one name the defect as the unicode payload rather than delivery.
+ *
+ * It posts a DIFFERENT key on purpose. The reader arms before each injection and a late echo of the
+ * first probe can arrive inside the second probe's window; with the same key that echo would be read
+ * as proof the keycode route delivers. kVK_ANSI_X is code 7, so the second probe waits for "x" and a
+ * "z" arriving late can never be counted as its echo.
  */
-export const DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM = "code:6"
+export const DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM = "code:7"
+
+/** What the second probe's key echoes; distinct from the first probe's, so the routes stay separable. */
+export const DARWIN_INPUT_SELF_TEST_KEYCODE_ECHO = "x"
 
 export interface DarwinWindowFrame extends OwnedFrame {
   readonly id: number
@@ -186,7 +194,8 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
     // the refusal from "the runner delivers nothing" to "this app drops unicode-only postings" - a
     // different defect with a different cure - and it is stated either way, never silently dropped.
     const keycodeEcho = await options.selfTest(() => input.injectKey(DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM))
-    const keycodeRoute = delivered(keycodeEcho)
+    const keycodeDelivered = keycodeEcho !== null && keycodeEcho.includes(DARWIN_INPUT_SELF_TEST_KEYCODE_ECHO)
+    const keycodeRoute = keycodeDelivered
       ? `the virtual-keycode route ("${DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM}", which delivered ${echoOf(keycodeEcho)})`
       : `the virtual-keycode route ("${DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM}", which echoed ${echoOf(keycodeEcho)}) also delivered nothing`
     throw new Error(

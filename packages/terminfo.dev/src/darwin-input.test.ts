@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest"
 import {
   createDarwinInput,
+  DARWIN_INPUT_SELF_TEST_KEYCODE_ECHO,
   DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM,
   DARWIN_INPUT_SELF_TEST_KEYSYM,
   selectDarwinInputWindow,
@@ -50,7 +51,7 @@ describe("macOS input install", () => {
 
   it("refuses the install when the app echoes nothing back, naming both posting routes", async () => {
     await expect(createDarwinInput(options({ selfTest: async () => null }))).rejects.toThrow(
-      /input not delivered to Terminal\.app: the CGEvent helper posted keysym "z" \(virtual keycode 0 with a unicode payload\) to pid 4242 and the app's TTY echoed nothing; the virtual-keycode route \("code:6", which echoed nothing\) also delivered nothing; refusing to measure input rows through it/,
+      /input not delivered to Terminal\.app: the CGEvent helper posted keysym "z" \(virtual keycode 0 with a unicode payload\) to pid 4242 and the app's TTY echoed nothing; the virtual-keycode route \("code:7", which echoed nothing\) also delivered nothing; refusing to measure input rows through it/,
     )
   })
 
@@ -66,12 +67,14 @@ describe("macOS input install", () => {
             await inject()
             const posted = fake.calls.filter((call) => call.op === "key")[before]
             probes.push(String(posted?.args[0]))
-            return posted?.args[0] === DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM ? DARWIN_INPUT_SELF_TEST_KEYSYM : null
+            return posted?.args[0] === DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM
+              ? DARWIN_INPUT_SELF_TEST_KEYCODE_ECHO
+              : null
           },
         }),
       ),
     ).rejects.toThrow(
-      /echoed nothing; the virtual-keycode route \("code:6", which delivered "z"\); refusing to measure input rows through it/,
+      /echoed nothing; the virtual-keycode route \("code:7", which delivered "x"\); refusing to measure input rows through it/,
     )
     expect(probes).toEqual([DARWIN_INPUT_SELF_TEST_KEYSYM, DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM])
   })
