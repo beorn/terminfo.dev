@@ -740,8 +740,9 @@ async function xtColorStackCapture(ctx: TermProbeSource, operation: "push" | "po
       },
     )
     if (!noSetup) return result
+    // 33345: criterion text verbatim from @cto bb54b152; across a hop the run cannot say the app ignored OSC 4.
     const reason =
-      "Untestable: this app does not apply OSC 4, so the palette cannot change and a push or pop has nothing to show; blue and green paint the same in this run."
+      "Untestable (no setup): in this run OSC 4 set, the palette change a push or pop must show, did not take: blue and green painted the same while the paint witness moved, so a push or pop has nothing to show."
     const declared = declaredUntestableResult(reason, { frames })
     return {
       ...result,

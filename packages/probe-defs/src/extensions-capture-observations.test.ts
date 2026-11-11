@@ -9,7 +9,12 @@ import { createHash } from "node:crypto"
 import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
 import { extensionsProbes, OSC9_PROGRESS_APP_NO_OBSERVER } from "./extensions.ts"
 import { ScrollbackReadingUnavailable } from "./scrollback.ts"
-import { DECLARED_UNTESTABLE_TEST, HEADLESS_OBSERVABLE_REVIEW, recordExecutedProbe } from "./helpers.ts"
+import {
+  DECLARED_UNTESTABLE_TEST,
+  declaredUntestableResult,
+  HEADLESS_OBSERVABLE_REVIEW,
+  recordExecutedProbe,
+} from "./helpers.ts"
 import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
 import { assertCalibratedCaptureGeometry } from "./calibrated-capture-geometry.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
@@ -452,7 +457,9 @@ test.each([
   expect(result.tests ?? []).toContainEqual(
     expect.objectContaining({ id: "declared-untestable", status: "untestable" }),
   )
-  expect(result.note).toContain("no setup")
+  // 33345: the criterion text @cto gave verbatim (bb54b152) states what was seen; a reword fails here, not on the page.
+  const sentence = `Untestable (no setup): in this run OSC ${id === "extensions.osc104-reset-palette" ? 4 : 10} set did not change the painted colour, while a made-up OSC control stayed stable and a same-run SGR reference painted distinctly, so the reset or colour stack has nothing to act on.`
+  expect(result.note).toBe(sentence)
   expect(writes.some((bytes) => bytes.includes("\x1b]7110"))).toBe(true)
   const recorded = recordExecutedProbe({
     featureId: id,
@@ -463,11 +470,35 @@ test.each([
     rawReplyRef: id,
     criterionBranch: result.criterionBranch,
   })
-  const subject = { kind: "mux" as const, id: "screen", outerTerminal: "kitty" }
-  const finalized = finalizeVisualResult(recorded, subject, [])
-  expect(finalized.status).toBe("untestable")
-  expect(finalized.reason).toContain("screen")
-  expect(finalized.reason).toContain("kitty")
+  // 33345: the hop suffix is on screen AND tmux; before, tmux kept the bare sentence for these four rows.
+  for (const mux of ["screen", "tmux"]) {
+    const finalized = finalizeVisualResult(recorded, { kind: "mux" as const, id: mux, outerTerminal: "kitty" }, [])
+    expect(finalized.status).toBe("untestable")
+    expect(finalized.reason).toBe(`${sentence}; unchanged effect could have stopped at ${mux} or its outer terminal kitty`)
+  }
+  expect(finalizeVisualResult(recorded, { kind: "term" }, [])).toEqual(recorded)
+})
+
+// 33345: XTPUSHCOLORS/XTPOPCOLORS read their no-setup sentence across a hop too, so they carry the same suffix.
+const XT_COLORS_NO_SETUP =
+  "Untestable (no setup): in this run OSC 4 set, the palette change a push or pop must show, did not take: blue and green painted the same while the paint witness moved, so a push or pop has nothing to show."
+test.each(["modes.xtpushcolors", "modes.xtpopcolors"])("%s gains the hop suffix on screen and tmux", (featureId) => {
+  const declared = declaredUntestableResult(XT_COLORS_NO_SETUP, {})
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: "2026-11-11T00:00:00.000Z" },
+    coverage: declared.notTested && { featureId, ...declared.notTested, rawReplyRef: featureId },
+    assertions: [],
+    tests: declared.tests,
+    rawReplyRef: featureId,
+    criterionBranch: declared.criterionBranch,
+  })
+  expect(recorded.status).toBe("untestable")
+  for (const mux of ["screen", "tmux"]) {
+    expect(finalizeVisualResult(recorded, { kind: "mux" as const, id: mux, outerTerminal: "kitty" }, []).reason).toBe(
+      `${XT_COLORS_NO_SETUP}; unchanged effect could have stopped at ${mux} or its outer terminal kitty`,
+    )
+  }
   expect(finalizeVisualResult(recorded, { kind: "term" }, [])).toEqual(recorded)
 })
 
@@ -508,6 +539,12 @@ test.each([
     expect.objectContaining({ id: "declared-untestable", status: "untestable" }),
   )
   expect(result.note).toContain(cause)
+  // 33345: OSC 112's sentence is @cto's criterion text verbatim (bb54b152).
+  if (id === "extensions.osc112-reset-cursor") {
+    expect(result.note).toBe(
+      "Untestable (no setup): in this run OSC 12 set left the visible steady cursor unchanged, while the shown, hidden, restored and made-up OSC controls passed, so OSC 112 has no changed cursor colour to reset.",
+    )
+  }
 })
 
 // #33171 (@cto e1aa0710): the App arms' observer is missing, so they read "no observer" verbatim; a multiplexer arm
