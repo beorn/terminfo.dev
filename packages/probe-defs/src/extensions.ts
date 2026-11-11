@@ -1541,7 +1541,12 @@ async function cursorColorSetupAppCapture(
     ctx.write("\x1b]112\x07")
     const resetReads: Array<typeof hidden> = []
     const takeReset = (label: string) => async () => {
-      const readback = await capture(label)
+      // The frame after the reset is what this feature decides on, so it is a target frame - and the
+      // run parser enforces that the primary screenshotRef IS one (run-parser observations.ts:358).
+      // Captured as a control it still measured correctly and then cost the whole run: tmux 2026-11-11
+      // 07:51Z recorded every probe and was refused at parse time with
+      // "primary screenshotRef for extensions.osc112-reset-cursor must be a target frame".
+      const readback = await capture(label, "target")
       resetReads.push(readback)
       return readback
     }
