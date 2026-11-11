@@ -274,6 +274,7 @@ export const ASSERTION_TYPES = [
   "input_bytes",
   "clipboard",
   "process_environment",
+  "notification",
 ] as const
 export type AssertionType = (typeof ASSERTION_TYPES)[number]
 /** Source identity is retained by schema 4 without changing historical run formats. */
@@ -1163,14 +1164,35 @@ export interface ClipboardFixture {
   realKeyEvent?(): Promise<void>
 }
 
+/** Independent desktop delivery readback on an owned private notification bus. */
+export interface NotificationFixture {
+  readonly control: { readonly nonce: string; readonly id: number }
+  readonly recordPath: string
+  readonly deadlineMs: number
+  readonly terminalBus: { readonly state: "same" | "different" | "unknown"; readonly reason: string }
+  readonly profile: { readonly state: "default" | "non-default" | "unknown"; readonly reason: string }
+  readonly outerTerminalRecord?: string
+  cursor(): number
+  readSince(cursor: number): {
+    readonly entries: readonly {
+      readonly id: number
+      readonly appName: string
+      readonly summary: string
+      readonly body: string
+    }[]
+    readonly problems: readonly string[]
+  }
+}
+
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
 export interface InputFixture {
   injectKey(keys: string): Promise<void>
   /**
    * Move focus to the owned helper window and back, verifying every X focus read. The middle read
-   * must be the helper: GTK reports no focus change to the display root (#33305).
+   * must be the helper: GTK reports no focus change to the display root (#33305). Await optional
+   * work while the helper has focus, then restore the owned window even if the work fails.
    */
-  focusRoundTrip?(): Promise<{
+  focusRoundTrip?(work?: (readFocus: () => Promise<string>) => Promise<void>): Promise<{
     ownedWindowId: string
     helperWindowId: string
     focusedWindowIds: [string, string, string]
@@ -1293,6 +1315,10 @@ export interface TermProbeSource {
   /** An owned Linux collector installs this only after verifying the launch receipt. */
   withClipboardFixture?: (
     work: (fixture: ClipboardFixture) => Promise<ProbeCallbackResult>,
+  ) => Promise<ProbeCallbackResult>
+  /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
+  withNotificationObserver?: (
+    work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,
   ) => Promise<ProbeCallbackResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: CaptureRequest) => Promise<ObservationFrame>
