@@ -53,6 +53,7 @@ import {
   writeTTY,
   type TTYQueryTrace,
   type TTYTraceEvent,
+  type TTYTraceScope,
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
 import { createNotificationObserver } from "../linux-notification.ts"
@@ -1023,6 +1024,7 @@ export async function runProbeBatch(
         // font-ligatures, reset.sgr and modes.xtrestore at that default.
         const wallMs = probe.wallMs ?? 30_000
         let wall: ReturnType<typeof setTimeout> | undefined
+        let traceScope: TTYTraceScope | undefined
         const operation = withTTYOperation(
           () =>
             withTTYQueryTrace(
@@ -1032,6 +1034,9 @@ export async function runProbeBatch(
                 return callback(sourceSession?.context ?? probeSource)
               },
               {
+                onScope(scope) {
+                  traceScope = scope
+                },
                 onLog(log) {
                   if (!sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
                 },
@@ -1048,13 +1053,26 @@ export async function runProbeBatch(
         ])
         clearTimeout(wall)
         if (raced.timedOut) {
-          // The callback did not return. Drop its call log and release the TTY queue so the
-          // next probe is not left with unfinished calls (#33017).
+          // The callback did not return. Abandon its trace before the queue moves on: the scope
+          // keeps the writes it settled before the wall and refuses every later one, so the
+          // abandoned callback cannot reach the terminal while the next probe runs (#33431).
+          // The wall's own flags and the queue release cannot wait on that projection: an abandon
+          // that failed would otherwise leave 33017's chained queue behind the hung callback.
           operation.catch(() => {})
-          sourceSession?.abandon()
-          releaseTTYQueue()
           probeWallExceeded = true
           wallFired = true
+          try {
+            traceScope?.abandon()
+          } catch (error) {
+            batch.ungradedDiagnostics[probe.id] = {
+              kind: "collector-error",
+              name: "Error",
+              message: `Wall timeout trace snapshot failed for ${probe.id}: ${error instanceof Error ? error.message : String(error)}`,
+            }
+          } finally {
+            sourceSession?.abandon()
+            releaseTTYQueue()
+          }
           result = {
             pass: false,
             tests: [{ id: "criterion", status: "probe-todo", reason: `Probe exceeded ${wallMs}ms` }],
@@ -1087,7 +1105,9 @@ export async function runProbeBatch(
         if (sourceLog && !probeWallExceeded) {
           batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(sourceLog)
         }
-        if (geometryCheck && !probeWallExceeded) geometryCheck.post = await readGeometry()
+        // The wall ends the callback's hold on the terminal, not the measurement: the geometry
+        // after it is what the timed-out row is judged against (#33431).
+        if (geometryCheck) geometryCheck.post = await readGeometry()
       }
       result = withReplyFailureEvidence(probe.id, result, {
         producer: "TTY",
