@@ -243,15 +243,20 @@ gh run view <run_id> --log-failed
 gh run download <run_id> -n macos-<id>-<run_id>-<attempt> -D <dir>
 ```
 
-The artifact holds `measurement-artifacts/`: `collector.log`, `collector-exit`, `run.json`, and
-the capture's receipts and artifacts. `collector.log` carries the collector's stderr and this
+The artifact unpacks the contents of `measurement-artifacts/` at its own root: `collector.log`,
+`collector-exit`, `run.json`, `host-measured.json`, `job-start.json`, `launcher.log`, and
+`artifacts/` with the capture's own files. `collector.log` carries the collector's stderr and this
 command's phase markers — `phase=entry utc=… pid=… tty=…` first, then `phase=receipt-ready`,
 `phase=run-id-parsed` and `phase=collector-invoked`, with `phase=collector-exited status=<n>`
 last; `collector-exit` holds that same status as one line. Probe replies are written to stdout by
 design (the owned-terminal arm binds stdout to the PTY), so they are not in this log. A run that
 refused before its first probe leaves a non-zero `collector-exit`, the refusal text in
 `collector.log`, and no probe replies in `run.json`. Reading the artifact this way shows what the
-run did; it does not establish the engine's captured capability.
+run did; it does not establish the engine's captured capability. Run `42927177306` (the single
+`iterm2` row on branch `task/33013`) is the read of this path: `collector.log` went
+`phase=entry utc=… pid=… tty=/dev/ttys000` → `phase=receipt-ready` → `phase=run-id-parsed` →
+`phase=collector-invoked` → `phase=collector-exited status=0`, `collector-exit` held `0`, and the
+log's last line named the raw run id, its SHA-256 and `identity unverified`.
 
 ## Retained macOS capture observations
 
