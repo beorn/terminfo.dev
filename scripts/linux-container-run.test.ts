@@ -23,7 +23,7 @@ import {
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { initializeRunDraft } from "@terminfo/probe-defs"
@@ -863,12 +863,15 @@ describe("explicit Linux image selection", () => {
     const scripts = join(root, "vendor/terminfo.dev/scripts")
     const dist = join(root, "vendor/terminfo.dev/packages/terminfo.dev/dist")
     const cliBin = join(root, "vendor/terminfo.dev/packages/terminfo.dev/bin")
+    const source = join(root, "vendor/terminfo.dev/packages/terminfo.dev/src")
     const bins = join(dir, "bin")
     const output = join(dir, "runs")
     const calls = join(dir, "calls.log")
-    for (const path of [scripts, dist, cliBin, bins]) mkdirSync(path, { recursive: true })
+    for (const path of [scripts, dist, cliBin, source, bins]) mkdirSync(path, { recursive: true })
     writeFileSync(join(root, "flake.nix"), "{}")
     writeFileSync(join(root, "bun.lock"), "{}")
+    // The image input must carry the Notify recorder the --inside run starts (#33053); the nix double compares it.
+    writeFileSync(join(source, "linux-notify-recorder.ts"), "// notify recorder fixture bytes\n")
     writeFileSync(
       join(root, "flake.lock"),
       JSON.stringify({ nodes: { nixpkgs: { locked: { rev: "fixture-nixpkgs" } } } }),
@@ -939,6 +942,7 @@ fi`,
        "$4" == "$(cat "$FIXTURE_HOME/build-attribute")" &&
        "$4" == '.#kitty-visual-current-image' ]]
     cmp "$TERMINFO_LINUX_RUNNER_DIR/index.js" "$FIXTURE_ROOT/vendor/terminfo.dev/packages/terminfo.dev/dist/terminfo.bundle.mjs"
+    cmp "$TERMINFO_LINUX_RUNNER_DIR/linux-notify-recorder.ts" "$FIXTURE_ROOT/vendor/terminfo.dev/packages/terminfo.dev/src/linux-notify-recorder.ts"
     echo '${freshReference}';;
   build)
     printf '%s' "$TERMINFO_LINUX_RUNNER_DIR" > "$FIXTURE_HOME/build-runner-dir"
@@ -1104,6 +1108,121 @@ describe("private finite launch arguments", () => {
     expect(result.status).toBe(2)
     expect(result.stderr).toContain(message)
     expect(readdirSync(dir)).toEqual([])
+  })
+})
+
+/**
+ * @failure The terminal starts before the private bus and Notify recorder are ready, or without the bus in its
+ *   environment, or the run leaves the bus or recorder running: notification rows then read from a missing or
+ *   foreign observer, or a standing process outlives the run (@cto c6ba9dbb + 7b8360fe).
+ * @level l3 — runs the launcher's own session-bus block and cleanup with a real dbus-daemon and the real recorder.
+ * @consumer scripts/linux-container-run.sh --inside private session bus (#33053 step 2)
+ */
+describe("private session bus is held before the terminal starts (#33053)", () => {
+  const recorderDirectory = fileURLToPath(new URL("../packages/terminfo.dev/src/", import.meta.url))
+  const bun = process.versions.bun !== undefined ? process.execPath : "bun"
+
+  /** The production block from the bus start to the collector exports, with /out and the socket made private. */
+  function sessionBusHarness(out: string, socket: string): string {
+    const source = readFileSync(launcher, "utf8")
+    const cleanupStart = source.indexOf("\n  cleanup() {")
+    const cleanupEnd = source.indexOf("\n  trap cleanup EXIT", cleanupStart)
+    const start = source.indexOf("\n  # One private session bus per run")
+    const end = source.indexOf("\n  export TERMINFO_CAPTURE_DIRECTORY", start)
+    const socketLine = "session_bus_socket=/tmp/terminfo-session-bus\n"
+    if (cleanupStart < 0 || cleanupEnd < 0 || start < 0 || end < 0 || !source.slice(start, end).includes(socketLine)) {
+      throw new Error("session bus block or cleanup not found in scripts/linux-container-run.sh")
+    }
+    const block = source
+      .slice(start, end)
+      .replace(socketLine, `session_bus_socket=${socket}\n`)
+      .replaceAll("/out/", `${out}/`)
+    return `source "$1"
+set -euo pipefail
+runner_dir=$2
+xvfb_pid= helper_pid= session_bus_pid= notify_recorder_pid= daemon_pid= collector_pid=
+${source.slice(cleanupStart, cleanupEnd)}
+trap cleanup EXIT
+${block}
+printf 'PIDS %s %s\\n' "$session_bus_pid" "$notify_recorder_pid"
+# Stands in for the terminal launch: a child of this shell, so it inherits exactly what the terminal would.
+dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \\
+  org.freedesktop.DBus.GetNameOwner string:org.freedesktop.Notifications
+echo TERMINAL_STARTED
+`
+  }
+
+  function run(runnerDirectory: string) {
+    for (const tool of ["dbus-daemon", "dbus-send"]) {
+      const probe = spawnSync(tool, ["--version"], { encoding: "utf8" })
+      if (probe.error) throw new Error(`${tool} is required on PATH (D-Bus package): ${probe.error.message}`)
+    }
+    const out = join(dir, "out")
+    mkdirSync(out)
+    const result = spawnSync("bash", ["-c", sessionBusHarness(out, join(dir, "bus")), "_", launcher, runnerDirectory], {
+      encoding: "utf8",
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: dir,
+        PATH: `${dirname(bun)}:${process.env.PATH ?? ""}`,
+        TERMINFO_RUN_ID: "a".repeat(32),
+        DBUS_SESSION_BUS_ADDRESS: "",
+      },
+    })
+    return { out, result }
+  }
+
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  it("holds org.freedesktop.Notifications, exports the bus to the child, records both PIDs, and stops both", () => {
+    const { out, result } = run(recorderDirectory)
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout).toContain("TERMINAL_STARTED")
+    const [, busPid, recorderPid] = /^PIDS (\d+) (\d+)$/m.exec(result.stdout)!.map(Number)
+    const receiptPath = join(out, "notification-fixture.json")
+    const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as { uniqueName: string; pid: number }
+    // The child found the name owner through the inherited address, and that owner is our recorder.
+    expect(result.stdout).toContain(`string "${receipt.uniqueName}"`)
+    expect(receipt.pid).toBe(recorderPid)
+    const record = JSON.parse(readFileSync(join(out, "session-bus.json"), "utf8")) as { address: string }
+    const sha = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex")
+    expect(record).toMatchObject({
+      runId: "a".repeat(32),
+      daemon: { pid: busPid },
+      recorder: {
+        pid: recorderPid,
+        script: { sha256: sha(join(recorderDirectory, "linux-notify-recorder.ts")) },
+        receipt: { path: receiptPath, sha256: sha(receiptPath) },
+        record: join(out, "notifications.jsonl"),
+      },
+      nameHeldBeforeTerminal: true,
+    })
+    expect(record.address).toMatch(new RegExp(`^unix:path=${join(dir, "bus")},`))
+    expect(alive(busPid!)).toBe(false)
+    expect(alive(recorderPid!)).toBe(false)
+  })
+
+  it("never reaches the terminal launch when the recorder exits before holding the name", () => {
+    const fake = join(dir, "fake-runner")
+    mkdirSync(fake)
+    writeFileSync(
+      join(fake, "linux-notify-recorder.ts"),
+      'console.error("fixture recorder: name already owned"); process.exit(1)\n',
+    )
+    const { out, result } = run(fake)
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Notify recorder exited before holding org.freedesktop.Notifications")
+    expect(result.stderr).toContain("fixture recorder: name already owned")
+    expect(result.stdout).not.toContain("TERMINAL_STARTED")
+    expect(existsSync(join(out, "session-bus.json"))).toBe(false)
   })
 })
 

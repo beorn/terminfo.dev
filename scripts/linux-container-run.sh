@@ -666,12 +666,16 @@ if [[ "${1:-}" == "--inside" ]]; then
 
   xvfb_pid=
   helper_pid=
+  session_bus_pid=
+  notify_recorder_pid=
   daemon_pid=
   collector_pid=
   cleanup() {
     local status=$?
     trap - EXIT
-    stop_owned_processes "$daemon_pid" "$helper_pid" "$xvfb_pid" "$collector_pid"
+    stop_owned_processes "$daemon_pid" "$helper_pid" "$notify_recorder_pid" "$xvfb_pid" "$collector_pid"
+    # The bus stops after its recorder, so a recorder stopped by SIGTERM never reads a closed bus as fatal.
+    stop_owned_processes "$session_bus_pid"
     exit "$status"
   }
   trap cleanup EXIT
@@ -725,6 +729,87 @@ if [[ "${1:-}" == "--inside" ]]; then
     exit 2
   }
   initial_read_sha=$(sha256sum "$HOME/clipboard-initial-read.txt" | cut -d ' ' -f 1)
+
+  # One private session bus per run (#33053, @cto c6ba9dbb + 7b8360fe): this run starts and stops it as a child,
+  # and the Notify recorder holds org.freedesktop.Notifications and writes its receipt BEFORE the terminal starts.
+  # The config is named explicitly from the loaded dbus package: Nixpkgs' `dbus-daemon --session` reads the compiled
+  # path /etc/dbus-1/session.conf, outside the package. The terminal inherits DBUS_SESSION_BUS_ADDRESS, which the collector records as
+  # collector.sessionBus (readSessionBus, app-semantic-state.ts).
+  session_bus_socket=/tmp/terminfo-session-bus
+  session_bus_binary=$(readlink -f "$(command -v dbus-daemon)")
+  session_bus_config="${session_bus_binary%/bin/dbus-daemon}/share/dbus-1/session.conf"
+  [[ -r "$session_bus_config" ]] || {
+    echo "dbus-daemon $session_bus_binary has no session config at $session_bus_config" >&2; exit 2;
+  }
+  [[ ! -e "$session_bus_socket" ]] || {
+    echo "Session bus socket $session_bus_socket already exists; this run did not start it" >&2; exit 2;
+  }
+  "$session_bus_binary" --config-file="$session_bus_config" --nofork --address="unix:path=$session_bus_socket" \
+    --print-address=3 3>"$HOME/session-bus-address" </dev/null >/out/dbus-daemon.log 2>&1 &
+  session_bus_pid=$!
+  for _ in $(seq 1 100); do
+    [[ -s "$HOME/session-bus-address" && -z "$(tail -c 1 "$HOME/session-bus-address")" ]] && break
+    kill -0 "$session_bus_pid" 2>/dev/null || {
+      echo "dbus-daemon exited before printing its address" >&2; cat /out/dbus-daemon.log >&2; exit 2;
+    }
+    sleep 0.1
+  done
+  [[ -s "$HOME/session-bus-address" && -z "$(tail -c 1 "$HOME/session-bus-address")" ]] || {
+    echo "dbus-daemon did not print its address within 10s" >&2; cat /out/dbus-daemon.log >&2; exit 2;
+  }
+  read -r session_bus_address <"$HOME/session-bus-address"
+  [[ "$session_bus_address" == "unix:path=$session_bus_socket,"* ]] || {
+    echo "dbus-daemon printed $session_bus_address, not the requested unix:path=$session_bus_socket" >&2; exit 2;
+  }
+  notify_recorder="$runner_dir/linux-notify-recorder.ts"
+  [[ -r "$notify_recorder" ]] || { echo "Frozen runner lacks the Notify recorder $notify_recorder" >&2; exit 2; }
+  notification_record=/out/notifications.jsonl
+  export TERMINFO_NOTIFICATION_FIXTURE_RECEIPT=/out/notification-fixture.json
+  [[ ! -e "$notification_record" && ! -e "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" ]] || {
+    echo "Notify record or receipt already exists before this run's recorder started" >&2; exit 2;
+  }
+  bun --no-env-file "$notify_recorder" --address "$session_bus_address" --record "$notification_record" \
+    --receipt "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" </dev/null >/out/notify-recorder.log 2>&1 &
+  notify_recorder_pid=$!
+  for _ in $(seq 1 100); do
+    [[ -s "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" ]] && break
+    kill -0 "$notify_recorder_pid" 2>/dev/null || {
+      echo "Notify recorder exited before holding org.freedesktop.Notifications" >&2
+      cat /out/notify-recorder.log >&2
+      exit 2
+    }
+    sleep 0.1
+  done
+  [[ -s "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" ]] || {
+    echo "Notify recorder wrote no receipt within 10s; the terminal is not started" >&2
+    cat /out/notify-recorder.log >&2
+    exit 2
+  }
+  jq -e --arg address "$session_bus_address" --argjson pid "$notify_recorder_pid" --arg record "$notification_record" \
+    '.schema == "terminfo-notify-recorder-receipt/1" and .owned == true and
+     .name == "org.freedesktop.Notifications" and .address == $address and .pid == $pid and .recordPath == $record' \
+    "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" >/dev/null || {
+    echo "Notify recorder receipt does not name this run's bus, recorder PID and record" >&2
+    cat "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" >&2
+    exit 2
+  }
+  export DBUS_SESSION_BUS_ADDRESS="$session_bus_address"
+  # Written here, before the terminal launch below: the name is held and the receipt verified, so the record says so.
+  jq -n --arg run "$TERMINFO_RUN_ID" --arg address "$session_bus_address" --arg verifiedAt "$(date -u +%FT%T.%3NZ)" \
+    --argjson daemonPid "$session_bus_pid" --arg daemonPath "$session_bus_binary" \
+    --arg daemonSha "$(sha256sum "$session_bus_binary" | cut -d ' ' -f 1)" \
+    --arg configPath "$session_bus_config" --arg configSha "$(sha256sum "$session_bus_config" | cut -d ' ' -f 1)" \
+    --argjson recorderPid "$notify_recorder_pid" --arg recorderPath "$notify_recorder" \
+    --arg recorderSha "$(sha256sum "$notify_recorder" | cut -d ' ' -f 1)" \
+    --arg receiptPath "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" \
+    --arg receiptSha "$(sha256sum "$TERMINFO_NOTIFICATION_FIXTURE_RECEIPT" | cut -d ' ' -f 1)" \
+    --arg record "$notification_record" \
+    '{schemaVersion:1,runId:$run,address:$address,
+      daemon:{pid:$daemonPid,executable:{path:$daemonPath,sha256:$daemonSha},config:{path:$configPath,sha256:$configSha}},
+      recorder:{pid:$recorderPid,script:{path:$recorderPath,sha256:$recorderSha},
+        receipt:{path:$receiptPath,sha256:$receiptSha},record:$record},
+      nameHeldBeforeTerminal:true,verifiedAt:$verifiedAt}' > /out/session-bus.json
+  chmod 600 /out/session-bus.json
 
   export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
   export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
@@ -997,6 +1082,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
     --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" --argjson capture "$capture_receipt" \
     --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg clipboardSha "$clipboard_fixture_sha" \
+    --arg sessionBusSha "$(sha256sum /out/session-bus.json | cut -d ' ' -f 1)" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
     '{runId:$run,
@@ -1007,6 +1093,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       probeRun:{path:"v3-capture.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
+      sessionBus:{path:"session-bus.json",sha256:$sessionBusSha},
       capture:$capture} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
     > /out/container-receipt.json
   exit 0
@@ -1133,6 +1220,13 @@ cp "$cli_receipt" "$prep/bundle/terminfo.bundle.receipt.json"
 frozen_runner_sha=$(sha256sum "$prep/bundle/index.js" | cut -d ' ' -f 1)
 build_receipt_sha=$(sha256sum "$prep/bundle/terminfo.bundle.receipt.json" | cut -d ' ' -f 1)
 cp "$script_dir/linux-container-run.sh" "$prep/bundle/linux-container-run.sh"
+# The Notify recorder runs under the image's Bun beside the runner (#33053). It imports only node builtins, so its
+# committed source is the frozen input; the bundle NAR and tar hashes in the host receipt cover its bytes.
+notify_recorder_source="$vendor_root/packages/terminfo.dev/src/linux-notify-recorder.ts"
+[[ -s "$notify_recorder_source" ]] || {
+  echo "Notify recorder source is missing: $notify_recorder_source; preserved at $run_dir" >&2; exit 2;
+}
+cp "$notify_recorder_source" "$prep/bundle/linux-notify-recorder.ts"
 (
   cd "$prep"
   tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf runner-bundle.tar -C bundle .
