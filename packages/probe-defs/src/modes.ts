@@ -235,7 +235,7 @@ async function primaryRestoreCapture(
   let last = retention
   if (mode === 1047 && retention.observation?.outcome === "unsupported") {
     return declaredUntestableResult(
-      "Untestable (no setup): this run does not retain alternate content through DECSET47, so its cleared reading cannot establish whether DECRST1047 cleared the buffer.",
+      "Untestable (no setup): this capture route does not retain alternate content through DECSET47, so DECRST1047 clearing was not measured.",
       {
         primary: result.response,
         retention: retention.response,
