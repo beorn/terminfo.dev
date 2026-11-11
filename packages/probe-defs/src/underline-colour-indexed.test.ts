@@ -178,15 +178,17 @@ describe("indexed underline colour callback result", () => {
   })
 
   test("through a multiplexer an Unsupported stays open: the frames cannot separate the mux from its outer terminal", () => {
-    const recorded = {
+    const attempt = { scope: "probe" as const, startedAt: "2026-11-11T18:30:00.000Z" }
+    const recorded: ProbeResult = {
       featureId: ID,
       status: "unsupported",
+      attempt,
       criterionBranch: UNDERLINE_INDEXED_BRANCH,
       assertionType: "screenshot",
       screenshotRef: "f-target",
       reason: "colour ignored",
-      tests: [{ id: "attribute", status: "unsupported", assertionRefs: [0] }],
-    } as unknown as ProbeResult
+      tests: [{ id: "attribute", status: "unsupported", attempt, assertionRefs: [0] }],
+    }
     const finalized = finalizeVisualResult(recorded, { kind: "mux", outerTerminal: "xterm" }, [frame("f-target")])
     expect(finalized.tests[0]).toMatchObject({ id: "attribute", status: "probe-todo" })
     expect(finalized.reason).toContain("cannot separate the multiplexer from its outer terminal")
