@@ -14,7 +14,9 @@ import {
   REPLY_AFTER_SENTINEL_NOTE,
   NO_SAME_PATH_CONTROL,
   isDeclaredUntestable,
+  isFencedSilence,
 } from "./helpers.ts"
+import { gradedOutcome } from "./testing/group-harness.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
   ["extensions.osc133-a", "\x1b]133;A\x07"],
@@ -2761,7 +2763,8 @@ describe("Kitty protocol detection", () => {
       )
       if (id === "extensions.osc52-read") {
         expect(measuredSilence.observation).toMatchObject({
-          outcome: "unsupported",
+          outcome: "inconclusive",
+          reason: "fenced-silence",
           note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
         })
         expect(measuredSilence.assertions).toMatchObject([{ kind: "negative" }])
@@ -2994,7 +2997,9 @@ describe("Kitty protocol detection", () => {
           },
         })
         const result = await p.term(absentCtx)
-        expect(result.observation?.outcome, `${id}: absent`).toBe("unsupported")
+        // #33165 (@cto 767c9bcd): a DA1-only detection is the marked fenced silence; the default rule grades it Unsupported.
+        expect(isFencedSilence(result.observation), `${id}: absent`).toBe(true)
+        expect(gradedOutcome(result), `${id}: absent`).toBe("unsupported")
         expect(writes, `${id}: absent`).toEqual(["\x1b[?u"])
       }
 
@@ -3145,7 +3150,9 @@ describe("Kitty protocol detection", () => {
           }),
         ])
       } else {
-        expect(result.observation?.outcome, `termless ${JSON.stringify(raw)}`).toBe(outcome)
+        // A DA1-only capture is marked, never decided by the callback; the default rule grades it (#33165).
+        expect(isFencedSilence(result.observation), `termless ${JSON.stringify(raw)}`).toBe(raw === "\x1b[?1;2c")
+        expect(gradedOutcome(result), `termless ${JSON.stringify(raw)}`).toBe(outcome)
       }
       expect(captures[0], `termless ${JSON.stringify(raw)}`).toBe("\x1b[?u\x1b[c")
       if (outcome !== "supported") {
@@ -3189,10 +3196,9 @@ describe("Kitty protocol detection", () => {
           },
         ])
       } else {
-        expect(result.observation, `term ${JSON.stringify(raw)}`).toMatchObject({
-          outcome,
-          assertionType: "query_reply",
-        })
+        expect(result.observation, `term ${JSON.stringify(raw)}`).toMatchObject({ assertionType: "query_reply" })
+        expect(isFencedSilence(result.observation), `term ${JSON.stringify(raw)}`).toBe(raw === "\x1b[?1;2c")
+        expect(gradedOutcome(result), `term ${JSON.stringify(raw)}`).toBe(outcome)
       }
       expect(writes[0], `term ${JSON.stringify(raw)}`).toBe("\x1b[?u")
       if (outcome !== "supported") {
@@ -3377,7 +3383,7 @@ describe("Kitty protocol detection", () => {
       expect(result.assertions).toMatchObject([{ kind: "positive", observed }])
       expect(result.response).toBe(observed)
     } else if (replyKind === "qualified-silence") {
-      expect(result.observation?.outcome).toBe("unsupported")
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "fenced-silence" })
       expect(result.assertions).toMatchObject([{ kind: "negative" }])
     } else if (replyKind === "timeout") {
       expect(result.observation?.outcome).not.toBe("unsupported")

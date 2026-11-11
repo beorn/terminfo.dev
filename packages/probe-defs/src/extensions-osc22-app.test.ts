@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { extensionsProbes } from "./extensions.ts"
+import { extensionsProbes, OSC22_SILENT_TERMINAL, osc22SilentMultiplexer } from "./extensions.ts"
 import type { TerminalQueryOutcome, TermProbeSource } from "./types.ts"
 
 type Fault =
@@ -115,6 +115,29 @@ test.each(["initial-silent", "initial-sentinel"] as const)(
     expect(input.selected()).toBe("0")
   },
 )
+
+/**
+ * @failure Alacritty, Ghostty, Screen and tmux all read open with one generic sentence that reads
+ *   like a probe defect. @cto a7fb82cc (#33100): a terminal's silence on the query form is not
+ *   Unsupported and the reason says so in the criterion's terms; a multiplexer is open by design
+ *   because the pointer is the outer terminal's.
+ * @level l1
+ * @consumer extensions.osc22-pointer App callback on terminal and multiplexer subjects.
+ * @testonly none
+ */
+test("a silent OSC 22 query says why it stays open, per subject kind", async () => {
+  const term = await definition().term!(terminal("0", "initial-silent").source)
+  expect(term.notTested?.noObservable).toBe(OSC22_SILENT_TERMINAL)
+  expect(term.notTested?.noObservable).toContain("silence on the query form is not unsupported")
+  for (const mux of ["screen", "tmux"] as const) {
+    const input = terminal("0", "initial-silent")
+    const result = await definition().term!({ ...input.source, mux })
+    expect(result.notTested?.noObservable, mux).toBe(osc22SilentMultiplexer(mux))
+    expect(result.notTested?.noObservable, mux).toContain(`belongs to the outer terminal, not ${mux}`)
+    expect(result.observation?.outcome, mux).toBeUndefined()
+    expect(input.writes, mux).toEqual([])
+  }
+})
 
 test.each(["control-disabled", "control-silent", "target-malformed", "restore-disabled", "restore-silent"] as const)(
   "an unqualified %s reading stays open",

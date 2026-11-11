@@ -14,6 +14,17 @@ function requireLinuxDisplay(): void {
   }
 }
 
+/**
+ * The window manager that owns the collection display for this whole run (#33305), or null when
+ * the environment has none. A GTK toplevel only reports focus when its window manager activates
+ * it, so the focus arm has to ask the manager whenever one is running. Unset is the WM-free
+ * environment byte for byte; the name is the one the container receipt records.
+ */
+function ownedWindowManager(): string | null {
+  const name = process.env.TERMINFO_XVFB_WM?.trim()
+  return name === undefined || name === "" ? null : name
+}
+
 /** Bind OS-level XTEST key/click/wheel injection to the owned Kitty window. */
 export async function createLinuxInput(
   executable: LiveExecutable,
@@ -48,36 +59,64 @@ export async function createLinuxInput(
     const rootWindowId = String(Number.parseInt(rootHex, 16))
     const readFocus = async (): Promise<string> =>
       (await command("xdotool", ["getwindowfocus", "-f"])).toString().trim()
-    const focus = async (target: string): Promise<string> => {
-      await command("xdotool", ["windowfocus", target])
+    const windowManager = ownedWindowManager()
+    const focus = async (target: string, activation: "manager" | "raw"): Promise<string> => {
+      if (activation === "manager") {
+        try {
+          await command("xdotool", ["windowactivate", "--sync", target])
+        } catch (error) {
+          throw new Error(`Window manager ${windowManager} refused to activate ${target}: ${(error as Error).message}`)
+        }
+      } else {
+        await command("xdotool", ["windowfocus", target])
+      }
       const focused = await readFocus()
       if (focused !== target) {
-        throw new Error(`Owned focus roundtrip expected ${target}; getwindowfocus -f is ${focused}`)
+        throw new Error(
+          `Owned focus roundtrip expected ${target}; getwindowfocus -f is ${focused}` +
+            (windowManager === null ? "" : ` under window manager ${windowManager}`),
+        )
       }
       return focused
     }
-    const initialFocus = await focus(ownedWindowId)
+    // The root step is the witness, not an activation: it must move X input focus away and back.
+    const focusOwned = (): Promise<string> => focus(ownedWindowId, windowManager === null ? "raw" : "manager")
+    const initialFocus = await focusOwned()
     let rootFocus: string
     let restoredFocus: string
     try {
-      rootFocus = await focus(rootWindowId)
+      rootFocus = await focus(rootWindowId, "raw")
       await work?.(readFocus)
     } finally {
-      restoredFocus = await focus(ownedWindowId)
+      restoredFocus = await focusOwned()
     }
     return { ownedWindowId, rootWindowId, focusedWindowIds: [initialFocus, rootFocus, restoredFocus] }
   }
 
   async function focusOwnedWindow(): Promise<void> {
-    // Xvfb has no EWMH WM: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW.
+    // Xvfb has no EWMH WM by default: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW.
     // windowfocus uses XSetInputFocus, which CURRENTWINDOW (--window 0) then follows.
     // xterm on the collection image never completes xdotool --sync (28550/28556).
     // XSetInputFocus then getwindowfocus, without --sync, is the bound: inject cannot wait out a 10s execFile timeout.
-    await command("xdotool", ["windowfocus", ownedWindowId])
+    // Under TERMINFO_XVFB_WM the manager owns activation, and the raw roundtrip above produces no
+    // GTK focus report (#33305), so the owned step asks the manager and still verifies the result.
+    const windowManager = ownedWindowManager()
+    if (windowManager === null) {
+      await command("xdotool", ["windowfocus", ownedWindowId])
+    } else {
+      try {
+        await command("xdotool", ["windowactivate", "--sync", ownedWindowId])
+      } catch (error) {
+        throw new Error(
+          `Window manager ${windowManager} refused to activate the owned window ${ownedWindowId}: ${(error as Error).message}`,
+        )
+      }
+    }
     const focused = (await command("xdotool", ["getwindowfocus"])).toString().trim()
     if (focused !== ownedWindowId) {
       throw new Error(
-        `XTEST inject requires the owned window ${ownedWindowId} to be focused; getwindowfocus is ${focused}`,
+        `XTEST inject requires the owned window ${ownedWindowId} to be focused; getwindowfocus is ${focused}` +
+          (windowManager === null ? "" : ` under window manager ${windowManager}`),
       )
     }
   }

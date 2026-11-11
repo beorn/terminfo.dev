@@ -127,6 +127,15 @@ compose_receipt() {
       error("host/container probe selection mismatch")
     elif ($c.display.glxinfo | type) != "string" or ($c.display.geometry | type) != "string" then
       error("container display receipt is missing")
+    elif ($c.display | has("wm") | not) then
+      error("container display receipt does not say which window manager ran (wm must be present, null when none did)")
+    elif $c.display.wm != null and (
+         ($c.display.wm.name | type) != "string" or ($c.display.wm.version | type) != "string" or
+         ($c.display.wm.argv | type) != "array" or any($c.display.wm.argv[]; type != "string") or
+         ($c.display.wm.config.path | type) != "string" or ($c.display.wm.config.sha256 | type) != "string") then
+      error("container display receipt window manager is not named by name, version, argv and its config hash")
+    elif ($h.xvfbWm // null) != (if $c.display.wm == null then null else $c.display.wm.name end) then
+      error("host-declared window manager disagrees with the window manager the container ran")
     elif $c.clipboardFixture.runId != $h.runId or $c.clipboardFixture.profile != $h.clipboardProfile or
          ($c.clipboardFixture.sha256 | type) != "string" then
       error("container clipboard fixture disagrees with host run or profile")
@@ -166,6 +175,7 @@ write_host_receipt() {
     --arg grace "${TERMINFO_SENTINEL_GRACE_MS:-250}" \
     --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$target_version" \
     --arg target "$target_id" --arg mux "$mux_kind" \
+    --arg wm "${TERMINFO_XVFB_WM:-}" \
     --arg url "$source_url" --arg sri "$source_sri" \
     --arg kind "$proof_kind" --arg narSri "$proof_nar_sri" --arg revision "$proof_revision" \
     '{kind:"app",id:$target,version:$version,os:"linux"} as $app |
@@ -178,6 +188,7 @@ write_host_receipt() {
       runnerArtifact:{sha256:$bundle,narSha256:$bundleNar,
         frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
         build:$build[0],rootBunLockSha256:$lock},
+      xvfbWm:(if $wm == "" then null else $wm end),
       runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,
         sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
       status:"raw-unreviewed-history"} + (if $ids == null then {} else {selectedIDs:$ids} end)' > "$1"
@@ -369,6 +380,39 @@ await_owned_daemon() {
   return 2
 }
 
+# A mux profile is a documented user option of the multiplexer, measured as a context supplement (#33151, @cto
+# 918fccd1 rule 2). Prints the subject.config the run records for MUX and PROFILE: the default is the empty-config
+# path every default mux run records; Screen truecolor names exactly what its config file says. Any other pair is
+# refused by name. docs/data/context-supplements.ts holds the same two values; the launcher test keeps them equal.
+mux_profile_config() {
+  local mux=$1 profile=$2
+  case "$profile" in
+    default) printf '%s\n' /out/mux-empty.conf ;;
+    truecolor)
+      if [[ "$mux" != screen ]]; then
+        echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
+        return 2
+      fi
+      printf '%s\n' 'screen: defscrollback 1000; truecolor on'
+      ;;
+    *) echo "Unknown mux profile $profile on mux ${mux:-(none)}" >&2; return 2 ;;
+  esac
+}
+
+# xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,
+# selectToClipboard or insert-selection resource anywhere on its command line could rebind it, so the
+# launcher refuses one. Prints the first such argument and succeeds; fails when there is none.
+xterm_paste_rebinding_arg() {
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" =~ [Tt]ranslations|selectToClipboard|insert-selection ]]; then
+      printf '%s\n' "$arg"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -414,6 +458,8 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       ;;
     screen)
       printf 'defscrollback 1000\n' > "$mux_config"
+      # The truecolor-on supplement (#33151): the documented option, after the unchanged default line.
+      if [[ "${TERMINFO_MUX_PROFILE:-default}" == truecolor ]]; then printf 'truecolor on\n' >> "$mux_config"; fi
       export SCREENDIR="$HOME/.screen"
       mkdir -m 700 "$SCREENDIR"
       screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner
@@ -666,15 +712,17 @@ if [[ "${1:-}" == "--inside" ]]; then
   esac
 
   xvfb_pid=
+  wm_pid=
   helper_pid=
   session_bus_pid=
   notify_recorder_pid=
+  primary_helper_pid=
   daemon_pid=
   collector_pid=
   cleanup() {
     local status=$?
     trap - EXIT
-    stop_owned_processes "$daemon_pid" "$helper_pid" "$notify_recorder_pid" "$xvfb_pid" "$collector_pid"
+    stop_owned_processes "$daemon_pid" "$wm_pid" "$helper_pid" "$primary_helper_pid" "$notify_recorder_pid" "$xvfb_pid" "$collector_pid"
     # The bus stops after its recorder, so a recorder stopped by SIGTERM never reads a closed bus as fatal.
     stop_owned_processes "$session_bus_pid"
     exit "$status"
@@ -706,6 +754,74 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "GL renderer is not llvmpipe; run invalid" >&2
     exit 2
   }
+
+  # Off by default (#33305): TERMINFO_XVFB_WM names the window manager that owns this display for
+  # the whole run. Unset is the WM-free environment, byte for byte. A GTK toplevel only reports
+  # focus when a manager activates it, so the focus arm needs one; it is started here, before the
+  # app under test maps, so no row is measured across a window-state change, and it dies with the
+  # display. The run record names it, so WM readings and WM-free readings are never confused.
+  wm_name=
+  wm_version=
+  wm_argv=
+  wm_config_sha=
+  if [[ -n "${TERMINFO_XVFB_WM:-}" ]]; then
+    case "$TERMINFO_XVFB_WM" in
+      openbox) ;;
+      *)
+        echo "TERMINFO_XVFB_WM=$TERMINFO_XVFB_WM is not a window manager this image ships; the only one is openbox" >&2
+        exit 2
+        ;;
+    esac
+    wm_version=$(openbox --version | sed -nE 's/^Openbox ([0-9][^[:space:]]*)$/\1/p' | head -n 1)
+    [[ -n "$wm_version" ]] || {
+      echo "Owned openbox did not report its version" >&2
+      exit 2
+    }
+    # Only this owned, explicit config is read, never a home-directory rc.xml, and it turns
+    # decorations off so the client geometry and capture origin stay the WM-free ones.
+    cat > "$HOME/wm-rc.xml" <<'TERMINFO_WM_RC'
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus>
+    <focusNew>yes</focusNew>
+    <followMouse>no</followMouse>
+    <focusLast>yes</focusLast>
+    <underMouse>no</underMouse>
+    <raiseOnFocus>no</raiseOnFocus>
+  </focus>
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+      <focus>yes</focus>
+    </application>
+  </applications>
+</openbox_config>
+TERMINFO_WM_RC
+    chmod 600 "$HOME/wm-rc.xml"
+    wm_config_sha=$(sha256sum "$HOME/wm-rc.xml" | cut -d ' ' -f 1)
+    wm_argv=$(jq -cn --args '$ARGS.positional' -- openbox --config-file "$HOME/wm-rc.xml" --sm-disable)
+    openbox --config-file "$HOME/wm-rc.xml" --sm-disable > /out/wm.log 2>&1 &
+    wm_pid=$!
+    for _ in $(seq 1 100); do
+      kill -0 "$wm_pid" 2>/dev/null || {
+        echo "Owned openbox exited before it owned the display" >&2
+        cat /out/wm.log >&2
+        exit 2
+      }
+      xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id' && break
+      sleep 0.1
+    done
+    xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id' || {
+      echo "Owned openbox never became the display's window manager" >&2
+      cat /out/wm.log >&2
+      exit 2
+    }
+    xprop -root _NET_SUPPORTED 2>/dev/null | grep -qw '_NET_ACTIVE_WINDOW' || {
+      echo "Owned openbox does not advertise _NET_ACTIVE_WINDOW, so xdotool windowactivate cannot activate a window" >&2
+      exit 2
+    }
+    wm_name=$TERMINFO_XVFB_WM
+  fi
 
   baseline_path="$HOME/clipboard-baseline.txt"
   printf 'terminfo-owned-clipboard-%s' "$TERMINFO_RUN_ID" > "$baseline_path"
@@ -811,6 +927,54 @@ if [[ "${1:-}" == "--inside" ]]; then
         receipt:{path:$receiptPath,sha256:$receiptSha},record:$record},
       nameHeldBeforeTerminal:true,verifiedAt:$verifiedAt}' > /out/session-bus.json
   chmod 600 /out/session-bus.json
+
+  # xterm's default paste (Shift+Insert) reads X11 PRIMARY, not CLIPBOARD (#32164, @cto a4ec8fe2), so an
+  # xterm run also owns a PRIMARY baseline; every other target owns CLIPBOARD alone. The route is believed
+  # only while nothing rebinds it: the launch must carry no translation or selectToClipboard resource, and
+  # the display, environment and private HOME no resource database. Refused, never recorded and continued.
+  primary_receipt=null
+  if [[ "$target_id" == xterm ]]; then
+    # Every argument xterm is launched with: its own and the clipboard profile's (33119's read-allowed -xrm).
+    if rebinding=$(xterm_paste_rebinding_arg "${target_launch_args[@]}" "${target_clipboard_args[@]}"); then
+      echo "xterm launch argument rebinds paste: $rebinding" >&2
+      exit 2
+    fi
+    resource_manager=$(xprop -root RESOURCE_MANAGER 2>&1)
+    [[ "$resource_manager" == "RESOURCE_MANAGER:  not found." ]] || {
+      echo "Owned display carries a resource database: $resource_manager" >&2
+      exit 2
+    }
+    for name in XENVIRONMENT XAPPLRESDIR XUSERFILESEARCHPATH XFILESEARCHPATH; do
+      [[ -z "${!name:-}" ]] || { echo "xterm resource search variable is set: $name" >&2; exit 2; }
+    done
+    for file in "$HOME/.Xdefaults" "$HOME/.Xresources" "$HOME/.Xdefaults-$(uname -n)"; do
+      [[ ! -e "$file" ]] || { echo "Private HOME carries an X resource file: $file" >&2; exit 2; }
+    done
+    primary_path="$HOME/primary-baseline.txt"
+    printf 'terminfo-owned-primary-%s' "$TERMINFO_RUN_ID" > "$primary_path"
+    chmod 600 "$primary_path"
+    primary_sha=$(sha256sum "$primary_path" | cut -d ' ' -f 1)
+    xclip -quiet -selection primary -in "$primary_path" </dev/null >/out/xclip-primary-owner.log 2>&1 &
+    primary_helper_pid=$!
+    for _ in $(seq 1 100); do
+      kill -0 "$primary_helper_pid" 2>/dev/null || { cat /out/xclip-primary-owner.log >&2; exit 2; }
+      if timeout 1 xclip -selection primary -out > "$HOME/primary-initial-read.txt" 2>/out/xclip-primary-read.err &&
+         cmp -s "$primary_path" "$HOME/primary-initial-read.txt"; then
+        break
+      fi
+      sleep 0.1
+    done
+    [[ -r "$HOME/primary-initial-read.txt" &&
+       "$(sha256sum "$HOME/primary-initial-read.txt" | cut -d ' ' -f 1)" == "$primary_sha" ]] || {
+      echo "Owned xclip PRIMARY baseline did not survive independent selection read" >&2
+      cat /out/xclip-primary-owner.log /out/xclip-primary-read.err >&2
+      exit 2
+    }
+    primary_receipt=$(jq -n --argjson helperPid "$primary_helper_pid" --arg baselinePath "$primary_path" \
+      --arg baselineSha "$primary_sha" \
+      --arg initialSha "$(sha256sum "$HOME/primary-initial-read.txt" | cut -d ' ' -f 1)" \
+      '{helperPid:$helperPid,baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha}')
+  fi
 
   export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
   export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
@@ -944,12 +1108,14 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg windowId "$window_id" --argjson windowPid "$window_pid" \
     --argjson helperPid "$helper_pid" --arg helperPath "$xclip_binary" --arg helperSha "$xclip_sha" \
     --arg baselinePath "$baseline_path" --arg baselineSha "$baseline_sha" --arg initialSha "$initial_read_sha" \
+    --argjson primary "$primary_receipt" \
     --arg config "$target_config" --arg permissions "$clipboard_permissions" --argjson target "$fixture_target" \
     '{schemaVersion:1,runId:$run,profile:$profile,target:$target,
       display:{name:$display,number:$number,displayFdPath:$displayFdPath,xvfbPid:$xvfbPid},
       terminal:{pid:$terminalPid,collectorPid:$collectorPid,windowId:$windowId,windowPid:$windowPid},
       selection:{helperPid:$helperPid,helperExecutable:{path:$helperPath,sha256:$helperSha},
-        baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha},
+        baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha}
+        + (if $primary == null then {} else {primary:$primary} end),
       config:$config,permissions:$permissions}' > "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
   chmod 600 "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
   clipboard_fixture_sha=$(sha256sum "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT" | cut -d ' ' -f 1)
@@ -978,7 +1144,8 @@ if [[ "${1:-}" == "--inside" ]]; then
     jq -n --slurpfile provenance "$TERMINFO_RUNTIME_PROVENANCE" --slurpfile info /out/info.json \
       --slurpfile da1 /out/da1-observation.json --slurpfile xtversion /out/xtversion-observation.json \
       --slurpfile preflight /out/preflight-identity.json --arg app "$target_id" --arg appVersion "$target_version" \
-      --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" --arg muxConfig /out/mux-empty.conf \
+      --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" \
+      --arg muxConfig "$(mux_profile_config "$TERMINFO_MUX_KIND" "${TERMINFO_MUX_PROFILE:-default}")" \
       --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg permissions "$clipboard_permissions" '
       (if $profile == "default" then null else $permissions end) as $permissions |
       {subject:{kind:"mux",id:$mux,version:$muxVersion,os:$info[0].os,osVersion:$info[0].osVersion,
@@ -1086,13 +1253,18 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg sessionBusSha "$(sha256sum /out/session-bus.json | cut -d ' ' -f 1)" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
+    --arg wm "$wm_name" --arg wmVersion "$wm_version" --arg wmArgv "$wm_argv" \
+    --arg wmConfig "$HOME/wm-rc.xml" --arg wmConfigSha "$wm_config_sha" \
     '{runId:$run,
       executable:{path:$executablePath,version:$executableVersion,sha256:$executableSha},
       invocation:{path:$invocationPath,sha256:$invocationSha},
       sourceArtifact:{path:$sourcePath,sha256:$sourceSha},
       collector:{frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha},
       probeRun:{path:"v3-capture.json",runId:$probeRun,sha256:$probeSha},
-      display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
+      display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry,
+        wm:(if $wm == "" then null
+            else {name:$wm,version:$wmVersion,argv:($wmArgv|fromjson),
+                  config:{path:$wmConfig,sha256:$wmConfigSha},log:"wm.log"} end)},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
       sessionBus:{path:"session-bus.json",sha256:$sessionBusSha},
       capture:$capture} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
@@ -1101,12 +1273,13 @@ if [[ "${1:-}" == "--inside" ]]; then
 fi
 
 usage() {
-  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--mux-profile default|truecolor] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
   echo "That sibling and its completion receipt retain private collection custody." >&2
   echo "This launcher has no capture-only mode; do not use it for a raw-only authorization." >&2
+  echo "Set TERMINFO_XVFB_WM=openbox to give the collection display a window manager (#33305); unset is the WM-free environment." >&2
   exit 2
 }
 target_id=
@@ -1114,6 +1287,7 @@ preset=default
 clipboard_profile=
 probe_ids=null
 mux_kind=
+mux_profile=default
 output_parent=
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -1121,6 +1295,11 @@ while [[ "$#" -gt 0 ]]; do
       [[ "$#" -ge 2 && -z "$mux_kind" ]] || usage
       mux_kind=$2
       case "$mux_kind" in tmux|screen) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
+      shift 2
+      ;;
+    --mux-profile)
+      [[ "$#" -ge 2 && -n "${2:-}" && "${2:-}" != --* ]] || usage
+      mux_profile=$2
       shift 2
       ;;
     --target)
@@ -1157,6 +1336,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 [[ -n "$target_id" && -n "$clipboard_profile" && -n "$output_parent" ]] || usage
 [[ -z "$mux_kind" || "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
+mux_profile_config "$mux_kind" "$mux_profile" >/dev/null || exit 2
 case "$target_id" in
   kitty|xterm|ghostty|wezterm|alacritty) ;;
   *) echo "Unknown target: $target_id" >&2; exit 2 ;;
@@ -1387,6 +1567,10 @@ selection_env=()
 # asked for it, so an ordinary collection keeps the measured floor.
 grace_env=()
 [[ -z "${TERMINFO_SENTINEL_GRACE_MS:-}" ]] || grace_env=(--env "TERMINFO_SENTINEL_GRACE_MS=$TERMINFO_SENTINEL_GRACE_MS")
+# The collection window manager is off unless the caller names one (#33305); forward the switch
+# only when set, so an ordinary run's container environment is unchanged.
+wm_env=()
+[[ -z "${TERMINFO_XVFB_WM:-}" ]] || wm_env=(--env "TERMINFO_XVFB_WM=$TERMINFO_XVFB_WM")
 # The declared locale every collector-owned terminal launch runs under (28752): the container's
 # shell, the terminal and the collector all inherit ONE value, so a run's decode context is pinned
 # rather than whatever the launching shell happened to carry. Recorded in observed.json below.
@@ -1401,7 +1585,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "LC_ALL=C.UTF-8" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_CAPTURE_RUN_ID=${TERMINFO_CAPTURE_RUN_ID:-}" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
-  --env "TERMINFO_MUX_KIND=$mux_kind" \
+  --env "TERMINFO_MUX_KIND=$mux_kind" --env "TERMINFO_MUX_PROFILE=$mux_profile" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
   --env "TERMINFO_TARGET_BINARY=$target_binary" --env "TERMINFO_TARGET_VERSION=$target_version" \
   --env "TERMINFO_TARGET_SOURCE_URL=$source_url" --env "TERMINFO_TARGET_SOURCE_SRI=$source_sri" \
@@ -1409,7 +1593,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "TERMINFO_TARGET_SOURCE_KIND=$proof_kind" \
   --env "TERMINFO_TARGET_SOURCE_NAR_SRI=$proof_nar_sri" \
   --env "TERMINFO_TARGET_SOURCE_REVISION=$proof_revision" \
-  "${grace_env[@]}" \
+  "${grace_env[@]}" "${wm_env[@]}" \
   --env "TERMINFO_DISPOSABLE_RECEIPT=/receipt/host-measured.json" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"

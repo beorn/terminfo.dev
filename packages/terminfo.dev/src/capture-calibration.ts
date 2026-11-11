@@ -1,4 +1,10 @@
-import type { CapturePixelGeometry, CaptureRectangle, TermProbeSource } from "@terminfo/probe-defs"
+import {
+  CALIBRATION_SOLID_PAINT,
+  type CalibrationSentinel,
+  type CapturePixelGeometry,
+  type CaptureRectangle,
+  type TermProbeSource,
+} from "@terminfo/probe-defs"
 import { clearLine, cursorHome, cursorTo } from "@silvery/ansi"
 import type { CapturedFrame, NamedTextOrigin } from "./capture-core.ts"
 
@@ -478,7 +484,7 @@ export async function calibrateCaptureOrigin({
   collectorLaunched?: boolean
   /** The terminal's declared self-repainting chrome strip; absent keeps the whole-window rule. */
   chromeBand?: CaptureChromeBand
-}): Promise<NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }> {
+}): Promise<NamedTextOrigin & { pixelGeometry: CapturePixelGeometry; sentinel: CalibrationSentinel }> {
   if (
     chromeBand &&
     (!Number.isSafeInteger(chromeBand.y) ||
@@ -554,7 +560,7 @@ export async function calibrateCaptureOrigin({
       text += `\x1b[${row + 1};1H`
       for (let col = 0; col < ctx.cols; col++) {
         const on = stage === "solid" || (stage === "columns" ? col : row) % 2 === 0
-        text += `${form === "basic" ? (stage === "solid" ? "\x1b[45m" : on ? "\x1b[41m" : "\x1b[40m") : on ? "\x1b[7m" : "\x1b[27m"} `
+        text += `${stage === "solid" ? CALIBRATION_SOLID_PAINT[form] : form === "basic" ? (on ? "\x1b[41m" : "\x1b[40m") : on ? "\x1b[7m" : "\x1b[27m"} `
       }
     }
     ctx.write(text)
@@ -584,7 +590,7 @@ export async function calibrateCaptureOrigin({
     return { equalOutside: true, changed }
   }
   const excused: Array<{ stage: string; changed: number }> = []
-  let result: (NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }) | undefined
+  let result: (NamedTextOrigin & { pixelGeometry: CapturePixelGeometry; sentinel: CalibrationSentinel }) | undefined
   const eraseVisibleGrid = collectorLaunched
     ? Array.from({ length: ctx.rows }, (_unused, row) => cursorTo(row, 0) + clearLine()).join("") + cursorHome()
     : "\x1b[2J\x1b[H"
@@ -631,6 +637,10 @@ export async function calibrateCaptureOrigin({
     const witnessKey = [...colorsByCount].sort((a, b) => b[1] - a[1])[0]?.[0]
     if (!witnessKey) throw refusal("Capture calibration solid grid: no changed pixels")
     const witness = witnessKey.split(",").map(Number)
+    const [red, green, blue] = witness
+    if (red === undefined || green === undefined || blue === undefined) {
+      throw new Error(`Capture calibration solid grid colour ${witnessKey} is not one RGB colour`)
+    }
     for (let offset = 0; offset < before.rgba.length; offset += 4) {
       if (rgbAt(before, offset, witness)) {
         throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
@@ -792,6 +802,7 @@ export async function calibrateCaptureOrigin({
     result = {
       origin: { x: authored.x, y: authored.y },
       pixelGeometry: measured,
+      sentinel: { form, rgb: [red, green, blue] },
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
       basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")}); current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }

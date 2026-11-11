@@ -552,15 +552,6 @@ const declarations: readonly AppSemanticCapability[] = [
     featureId,
     reason: `Untestable (no way): tmux 3.8 has no OSC ${code} handler and drops it in the unknown-OSC default of its input parser. Read from source, not measured. Read in tmux-3.8.tar.gz (SHA256 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e): input_exit_osc at input.c:2699 dispatches only 0, 2, 4, 7, 8, 9, 10, 11, 12, 52, 104, 110, 111, 112 and 133, and every other option reaches the default at input.c:2775-2777, which only logs at debug level and returns. The file's only pass-through is DCS (input_exit_dcs, the allow-passthrough option), which does not carry OSC. A debug-only drop with no state, reply or readback is not a command-specific refusal, and the run image's tmux 3.8 keeps no verbose log to read it from.`,
   })),
-  {
-    kind: "term",
-    id: "xterm",
-    version: "411",
-    os: "linux",
-    featureId: "extensions.clipboard-paste",
-    reason:
-      "Untestable (unbuilt Shift+Insert/PRIMARY route): default xterm 411 has no Ctrl+Shift+V or CLIPBOARD paste binding, and its own default paste route (Shift+Insert or Button2 from X11 PRIMARY) is not built in this probe. In xterm-411.tgz (SHA256 969be283), VTInitTranslations in charproc.c:15021-15061 and xterm.man:5452,5481 bind Shift<KeyPress>Insert and <Btn2Up> to insert-selection(SELECT, CUT_BUFFER0) under default selectToClipboard=false, while Ctrl+Shift+V falls through ~Meta<KeyPress>:insert-seven-bit() and emits 0x16 instead of pasting.",
-  },
   // #32947 (@cto 8ca3f1d9): remaining 19 Linux App semantic-prompt rows at their exact pinned versions.
   ...[
     "extensions.osc633-a",

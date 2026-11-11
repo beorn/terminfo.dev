@@ -229,15 +229,24 @@ describe("loadReopenedCells", () => {
     )
   })
 
-  it("the committed file holds the generated 42 rows (39 criterion-text, 3 remeasured), all current", async () => {
+  // #33165 fixed the six criterion texts. Each terminal cell's stored result shows the DA1 fence answered, so its row
+  // was deleted and the cell returns to Unsupported (@cto 767c9bcd). A multiplexer cell's silence may have stopped at
+  // the hop and no run holds an outer command record, so its row is re-keyed to the new text (@cto 04bc641a).
+  // Of the three remeasured sgr.blink rows, alacritty and ghostty exited on 2026-11-11: each cell was measured again
+  // under suite 91038808c439 and its row was deleted in the placement commit that carried the deciding run (#33117).
+  // iTerm2's row stays: its same-night run is open/capture-too-slow and decides nothing.
+  it("the committed file holds the 12 re-keyed multiplexer rows and the 1 remeasured row, all current", async () => {
     const content = join(import.meta.dirname, "..", "content")
     const { loadFeatures } = await import("@terminfo/catalog")
     const rows = loadReopenedCells(content, loadFeatures(content))
-    expect(rows).toHaveLength(42)
-    expect(rows.filter((row) => row.exit.kind === "criterion-text")).toHaveLength(39)
+    expect(rows).toHaveLength(13)
+    const criterion = rows.filter((row) => row.exit.kind === "criterion-text")
+    expect(criterion).toHaveLength(12)
+    expect(new Set(criterion.map((row) => row.kind))).toEqual(new Set(["mux"]))
+    expect(new Set(criterion.map((row) => row.reason))).toEqual(
+      new Set(["multiplexer: silence may have stopped at the hop"]),
+    )
     expect(rows.filter((row) => row.exit.kind === "remeasured").map((row) => `${row.id}/${row.featureId}`)).toEqual([
-      "alacritty/sgr.blink",
-      "ghostty/sgr.blink",
       "iterm2/sgr.blink",
     ])
     for (const row of rows) {

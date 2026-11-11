@@ -1201,7 +1201,8 @@ test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grad
 
   const silent = await app(da1, { atMs: 7, graceMs: 250 })
   expect(silent.observation).toMatchObject({
-    outcome: "unsupported",
+    outcome: "inconclusive",
+    reason: "fenced-silence",
     assertionType: "query_reply",
     note: "DA1 answered at +7ms; no reply through the 250 ms window",
   })
@@ -1245,7 +1246,8 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
     sentinel: { atMs: 5, graceMs: 250 },
   })
   expect(silent.observation).toMatchObject({
-    outcome: "unsupported",
+    outcome: "inconclusive",
+    reason: "fenced-silence",
     assertionType: "query_reply",
     note: "DA1 answered at +5ms; no reply through the 250 ms window",
   })
@@ -1472,7 +1474,11 @@ test.each([
           expect(result.tests?.[0]?.reason).toMatch(/^Untestable \(no setup\): .*transmit/u)
           expect(JSON.stringify(result)).not.toMatch(/does not display/u)
         } else {
-          expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+          expect(result.observation).toMatchObject({
+            outcome: "inconclusive",
+            reason: "fenced-silence",
+            assertionType: "query_reply",
+          })
           expect(result.assertions).toMatchObject([{ kind: "negative" }, { kind: "negative" }])
           expect(JSON.parse(result.response!)).toMatchObject({
             transfer: { raw: "\x1b[?62;22c" },

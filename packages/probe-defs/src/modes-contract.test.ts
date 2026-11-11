@@ -203,11 +203,24 @@ const MODES_CONTRACT_SPEC: GroupContractSpec = {
 
 /** Every private DECRQM answers Ps; queryMode keeps the fold for the arms that only ask whether a mode is on. */
 function modeQuerySource(ps: 0 | 1 | 2 | 3 | 4 | null) {
+  const reply = (sequence: string) => {
+    const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
+    return mode === undefined || ps === null ? "" : `\x1b[?${mode};${ps}$y`
+  }
   return replayTermProbeSource(new Map(), {
     queryMode: async () => (ps === null ? null : decrpmStatus(String(ps))),
     queryWithSentinel: async (sequence, pattern) => {
-      const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
-      return mode === undefined || ps === null ? null : pattern.exec(`\x1b[?${mode};${ps}$y`)
+      const raw = reply(sequence)
+      return raw === "" ? null : pattern.exec(raw)
+    },
+    queryWithSentinelOutcome: async (sequence, pattern) => {
+      const raw = reply(sequence)
+      return {
+        match: raw === "" ? null : pattern.exec(raw),
+        reason: raw === "" ? "timeout" : "reply",
+        raw,
+        rawBase64: "",
+      }
     },
   })
 }

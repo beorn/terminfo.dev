@@ -8,6 +8,7 @@
  * shape — never 0% for a missing context, never included without a denominator — be tested without
  * a corpus.
  */
+import { publicDerivedReason } from "./derived-cells.ts"
 import type { ContextCandidate } from "./run-selection.ts"
 import { pickContextRun } from "./run-selection.ts"
 import type { FeatureResultStatus } from "@terminfo/probe-defs"
@@ -78,9 +79,16 @@ export interface FullProjectRows {
   recordedPositions: number
 }
 
-/** The note beside a cell a context supplement read: its qualifier or open reason, then the declared default. */
+/**
+ * The note beside a cell a context supplement read: its qualifier, open reason, or (on a decided default cell) the
+ * supplement's own status, then the declared default.
+ */
 function supplementNote(supplement: NonNullable<SelectedContextCell["supplement"]>): string {
-  const head = supplement.filled ? supplement.qualifier : `${supplement.qualifier}: ${supplement.open}`
+  const head = supplement.filled
+    ? supplement.qualifier
+    : "noted" in supplement
+      ? `${supplement.noted} ${supplement.qualifier}`
+      : `${supplement.qualifier}: ${supplement.open}`
   return supplement.declaredDefault ? `${head}; declared, ${supplement.declaredDefault}` : head
 }
 
@@ -185,6 +193,8 @@ function buildRow(
     }
     const original = picked.run.context?.cells[id]?.run
     const supplement = picked.run.context?.cells[id]?.supplement
+    // #33019: a derived cell names its parent; the child's own stored reading stays as the note.
+    const derived = picked.run.context?.cells[id]?.derived
     const source = original ?? firstOnSuite
     const hold =
       source.suiteId !== args.requiredSuiteId
@@ -195,8 +205,12 @@ function buildRow(
       id,
       state: isEnvironmentGroup(id) ? cell.status : (featureResult?.status ?? cell.status),
       method: cell.assertionType ?? null,
-      note: supplement ? supplementNote(supplement) : null,
-      reason: cell.reason ?? null,
+      note: derived
+        ? "Own reading: " + derived.ownStatus + (derived.ownReason ? " (" + derived.ownReason + ")" : "")
+        : supplement
+          ? supplementNote(supplement)
+          : null,
+      reason: derived ? publicDerivedReason(derived) : (cell.reason ?? null),
       origin: { runId: source.runId, resultId: id },
       suiteId: source.suiteId,
       measuredAt: source.measuredAt,

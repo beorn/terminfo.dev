@@ -11,6 +11,7 @@ import {
   ALL_PROBES,
   type ClipboardFixture,
   type LibProbeSource,
+  type PasteRoute,
   type ProbeCallbackResult,
   type TermProbeSource,
 } from "./index.ts"
@@ -532,7 +533,13 @@ function pasteProbe() {
   return probe
 }
 
+/** The route the collector gives the four Ctrl+Shift+V Apps; xterm's is PRIMARY with Shift+Insert. */
+const CLIPBOARD_PASTE: PasteRoute = { selection: "clipboard", key: "ctrl+shift+v", binding: "fixture binding" }
+const PRIMARY_PASTE: PasteRoute = { selection: "primary", key: "shift+Insert", binding: "fixture binding" }
+
+/** Paste tests run with the collector's default route unless a fixture names its own. */
 function pasteTerm(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
+  const fixture = overrides.withClipboardFixture
   return termSource({
     queryCursorPosition: async () => {
       throw new Error("Unexpected queryCursorPosition in paste observation")
@@ -553,16 +560,27 @@ function pasteTerm(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
       throw new Error("Unexpected queryMode in paste observation")
     },
     ...overrides,
+    ...(fixture && {
+      withClipboardFixture: (work: Parameters<typeof fixture>[0]) =>
+        fixture((owned) => work({ paste: CLIPBOARD_PASTE, ...owned })),
+    }),
   })
 }
 
 function pasteAndRead(
-  script: { control?: string | null; paste?: "controlled" | "bracketed" | "raw" | "silent"; incomingMode?: boolean },
+  script: {
+    control?: string | null
+    paste?: "controlled" | "bracketed" | "raw" | "silent"
+    incomingMode?: boolean
+    route?: PasteRoute
+  },
   writes: string[] = [],
 ): { ctx: TermProbeSource; keys: string[]; clipboardWrites: string[] } {
   const keys: string[] = []
   const clipboardWrites: string[] = []
   let clipboard = ""
+  let primary = "primary-selection-control"
+  const seedsPrimary = script.route?.selection === "primary"
   const pending: string[] = []
   let listening = false
   const surface = createSemanticSurface({ cols: 80, rows: 24 })
@@ -579,9 +597,11 @@ function pasteAndRead(
     },
     withClipboardFixture: async (work) =>
       work({
-        readText: async () => clipboard,
+        ...(script.route && { paste: script.route }),
+        readText: async () => (seedsPrimary ? primary : clipboard),
         writeText: async (text) => {
-          clipboard = text
+          if (seedsPrimary) primary = text
+          else clipboard = text
           clipboardWrites.push(text)
         },
       }),
@@ -594,8 +614,8 @@ function pasteAndRead(
           else if (script.control === undefined) pending.push("a")
           return
         }
-        // X11 PRIMARY and CLIPBOARD are distinct; the fixture seeds only CLIPBOARD.
-        const pasted = key === "ctrl+shift+v" ? clipboard : key === "shift+Insert" ? "primary-selection-control" : null
+        // X11 PRIMARY and CLIPBOARD are distinct: Ctrl+Shift+V pastes CLIPBOARD, Shift+Insert PRIMARY.
+        const pasted = key === "ctrl+shift+v" ? clipboard : key === "shift+Insert" ? primary : null
         if (pasted !== null) {
           if (script.paste === "bracketed" || (script.paste === "controlled" && surface.getMode("bracketedPaste"))) {
             pending.push(`\x1b[200~${pasted}\x1b[201~`)
@@ -835,13 +855,53 @@ test("extensions.clipboard-paste reads the seeded CLIPBOARD rather than the dist
   expect(writes.join("")).toContain("\x1b[?2004l")
   expect(writes.join("")).not.toContain("\x1b]52;")
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "clipboard-paste:ctrl+shift+v" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "clipboard-paste:clipboard:ctrl+shift+v" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({
     mode: "clipboard-paste",
     control: "a",
     report: `\x1b[200~${nonce}\x1b[201~`,
   })
+})
+
+// #32164: xterm's default paste reads PRIMARY with Shift+Insert. The collector's route decides both; the probe
+// seeds the route's selection, presses the route's key, and says so in its evidence.
+test("extensions.clipboard-paste seeds and presses the route the collector chose (xterm: PRIMARY, Shift+Insert)", async () => {
+  const { ctx, keys, clipboardWrites } = pasteAndRead({ paste: "controlled", route: PRIMARY_PASTE })
+  const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
+  expect(keys).toEqual(["a", "shift+Insert", "shift+Insert", "shift+Insert"])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "clipboard-paste:primary:shift+Insert" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({
+    selection: "primary",
+    key: "shift+Insert",
+    report: `\x1b[200~${clipboardWrites[0]}\x1b[201~`,
+  })
+})
+
+test("extensions.clipboard-paste without a reviewed route presses nothing and is not tested", async () => {
+  const keys: string[] = []
+  const ctx = termSource({
+    queryMode: async () => "reset",
+    withClipboardFixture: async (work) =>
+      work({
+        readText: async () => "",
+        writeText: async () => {
+          throw new Error("no route: the selection must stay untouched")
+        },
+      }),
+    input: {
+      injectKey: async (key) => {
+        keys.push(key)
+      },
+      injectClick: async () => {},
+    },
+    readInput: async () => null,
+  })
+  const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
+  expect(keys).toEqual([])
+  expect(JSON.stringify(result)).toContain("a reviewed default paste route for this App")
 })
 
 test("extensions.clipboard-paste records unsupported interaction when paste arrives as the raw nonce", async () => {
@@ -853,7 +913,7 @@ test("extensions.clipboard-paste records unsupported interaction when paste arri
   expect(writes.join("")).toContain("\x1b[?2004h")
   expect(writes.join("")).toContain("\x1b[?2004l")
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "clipboard-paste:ctrl+shift+v" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "clipboard-paste:clipboard:ctrl+shift+v" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "clipboard-paste", control: "a", report: nonce })
 })
@@ -1161,5 +1221,189 @@ describe("native clipboard paste encoding", () => {
         "cleanup paste failure",
       ])
     }
+  })
+})
+
+// #33145 (@cto 70645b74): on an X selection, xterm and Alacritty stamp their OSC 52 claim with their last
+// input-event time, so a terminal that never saw input loses the selection to the harness's own xclip owner.
+// A fixture that offers a real key event gets it before every write and roundtrip, inside a PTY read that
+// refuses the sample if the press reached the application as bytes.
+describe("real key event before the OSC 52 write", () => {
+  const silent = { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+  function keyedSource(options: {
+    readonly events: string[]
+    readonly outcome?: typeof silent | { match: string[]; reason: "reply"; raw: string; rawBase64: string }
+    readonly pressFails?: boolean
+    readonly noReadInjected?: boolean
+  }): TermProbeSource {
+    let clipboard = "baseline"
+    let queued = ""
+    const fixture: ClipboardFixture = {
+      baseline: "baseline",
+      writeDeadlineMs: 20,
+      writePollMs: 5,
+      readText: async () => clipboard,
+      writeText: async (text) => {
+        clipboard = text
+      },
+      realKeyEvent: async () => {
+        options.events.push("key")
+        if (options.pressFails) throw new Error("Real key event before the OSC 52 write failed: getwindowfocus is 1")
+      },
+    }
+    return termSource({
+      write(sequence) {
+        options.events.push("osc-write")
+        queued = writtenNonce(sequence)
+      },
+      queryCursorPosition: async () => {
+        clipboard = queued
+        return { row: 1, col: 1 }
+      },
+      ...(!options.noReadInjected && {
+        readInjected: async (_pattern: RegExp, _timeoutMs: number, inject: () => Promise<void>) => {
+          options.events.push("pty-armed")
+          await inject()
+          return options.outcome ?? silent
+        },
+      }),
+      withClipboardFixture: async (work) => work(fixture),
+    })
+  }
+  const term = (id: string) => ALL_PROBES.find((item) => item.id === id)!.term!
+
+  test.each(["extensions.osc52-write", "extensions.osc52-clipboard"])(
+    "%s presses inside the PTY read before the OSC 52 write",
+    async (id) => {
+      const events: string[] = []
+      await term(id)(keyedSource({ events }))
+      expect(events.slice(0, 3)).toEqual(["pty-armed", "key", "osc-write"])
+    },
+  )
+
+  test("a passing write does not mention the press", async () => {
+    const result = await writeProbe()(keyedSource({ events: [] }))
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "clipboard" })
+    expect(JSON.stringify(result)).not.toMatch(/key event|press/i)
+  })
+
+  test("osc52-read gets no press", async () => {
+    const events: string[] = []
+    await term("extensions.osc52-read")(keyedSource({ events }))
+    expect(events).not.toContain("key")
+  })
+
+  test("bytes on the PTY across the press refuse the sample as probe-invalid and send no OSC 52", async () => {
+    const events: string[] = []
+    const raw = "\x1b[57441;2u"
+    const result = await writeProbe()(
+      keyedSource({
+        events,
+        outcome: { match: [raw], reason: "reply", raw, rawBase64: Buffer.from(raw).toString("base64") },
+      }),
+    )
+    expect(events).not.toContain("osc-write")
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-invalid",
+      reason: expect.stringMatching(/^Real key event before the OSC 52 write put 10 bytes into the application/),
+    })
+  })
+
+  test("a failed focus or XTEST press is a named probe-invalid", async () => {
+    const events: string[] = []
+    const result = await writeProbe()(keyedSource({ events, pressFails: true }))
+    expect(events).not.toContain("osc-write")
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-invalid",
+      reason: "Real key event before the OSC 52 write failed: getwindowfocus is 1",
+    })
+  })
+
+  test("a source that cannot read the PTY across the press refuses instead of pressing blind", async () => {
+    const events: string[] = []
+    const result = await writeProbe()(keyedSource({ events, noReadInjected: true }))
+    expect(events).toEqual([])
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-invalid",
+      reason: expect.stringMatching(/needs the PTY read/),
+    })
+  })
+})
+
+// #33145 read leg (@cto 7fd99ad2): a terminal may answer OSC 52 read from its own earlier write for a moment after
+// another client takes the selection. The roundtrip re-queries only while the reply is the probe's OWN earlier
+// nonce, bounded by the write deadline; the settled reply decides, and the row says how long it took.
+describe("roundtrip read leg settles a stale own-nonce reply", () => {
+  function roundtripSource(replyFor: (asked: number, own: string, written: string) => string): {
+    source: TermProbeSource
+    asked: () => number
+  } {
+    let clipboard = "baseline"
+    let own = ""
+    let written = ""
+    let asked = 0
+    const reply = (value: string) => {
+      const raw = `\x1b]52;c;${btoa(value)}\x1b\\`
+      return { match: [raw, btoa(value)], reason: "reply" as const, raw, rawBase64: "" }
+    }
+    const source = termSource({
+      write(sequence) {
+        own = writtenNonce(sequence)
+      },
+      queryCursorPosition: async () => {
+        clipboard = own
+        return { row: 1, col: 1 }
+      },
+      queryOutcome: async () => {
+        asked += 1
+        return reply(replyFor(asked, own, written))
+      },
+      withClipboardFixture: async (work) =>
+        work({
+          baseline: "baseline",
+          writeDeadlineMs: 60,
+          writePollMs: 5,
+          readText: async () => clipboard,
+          writeText: async (text) => {
+            clipboard = text
+            written = text
+          },
+        }),
+    })
+    return { source, asked: () => asked }
+  }
+  const roundtrip = () => ALL_PROBES.find((item) => item.id === "extensions.osc52-clipboard")!.term!
+
+  test("own earlier nonce twice, then the written nonce: supported, and the row records the re-queries", async () => {
+    const { source, asked } = roundtripSource((n, own, written) => (n <= 2 ? own : written))
+    const result = await roundtrip()(source)
+    expect(asked()).toBe(3)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+    expect(result.observation?.note).toMatch(
+      /^OSC 52 read returned the probe's own earlier write nonce for \d+ ms before the independently written nonce \(2 re-queries; replies at \+\d+ms own, \+\d+ms own, \+\d+ms written\)$/,
+    )
+  })
+
+  test("own earlier nonce through the deadline: named inconclusive with a test row, not unsupported", async () => {
+    const { source, asked } = roundtripSource((_n, own) => own)
+    const result = await roundtrip()(source)
+    expect(asked()).toBeGreaterThan(1)
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringMatching(/^OSC 52 reply carried own earlier nonce for \d+ ms \(\d+ re-queries\)$/),
+    })
+  })
+
+  test("any other wrong value decides at once with its named inconclusive", async () => {
+    const { source, asked } = roundtripSource(() => "someone-else")
+    const result = await roundtrip()(source)
+    expect(asked()).toBe(1)
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringMatching(
+        /^OSC 52 reply carried a value other than the independently written nonce \(length=12, sha256=[0-9a-f]{64}\)$/,
+      ),
+    })
   })
 })

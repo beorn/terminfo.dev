@@ -67,6 +67,8 @@ export function hasCurrentSource(sources: readonly { suiteRelation: SuiteRelatio
 export interface CurrentAggregate {
   denominator: number
   counts: Record<FeatureResultStatus, number>
+  /** Of `counts.unsupported`, the cells derived from a refused parent (#33019); never a measurement. */
+  derived: number
   idsByState: Record<FeatureResultStatus, string[]>
   supported: number
   complete: boolean
@@ -86,7 +88,11 @@ export interface TerminalStatusRollup {
   readonly positions: number
   readonly environmentPositions: number
   readonly counts: Record<FeatureResultStatus, number>
+  /** Of `counts.unsupported`, the cells derived from a refused parent (#33019). */
+  readonly derived: number
+  /** Supported plus directly measured Unsupported: derived cells are not measurements. */
   readonly decisive: number
+  /** No longer open: decisive, derived and Untestable. */
   readonly decided: number
   readonly open: number
   readonly donePct: number
@@ -111,6 +117,8 @@ export interface ProbeOpenRankRow {
 export function rollupTerminalStatuses(
   statuses: Readonly<Record<string, string>>,
   catalogIds: readonly string[] = Object.keys(statuses),
+  /** Cells whose Unsupported is derived from a refused parent (#33019); counted, never measured. */
+  derivedIds: ReadonlySet<string> = new Set(),
 ): TerminalStatusRollup {
   const counts: Record<FeatureResultStatus, number> = {
     supported: 0,
@@ -166,8 +174,9 @@ export function rollupTerminalStatuses(
 
   const positions = gradedIds.length
   const environmentPositions = envIds.length
-  const decisive = decisiveCells(counts)
-  const decided = decisive + counts.untestable
+  const derived = gradedIds.filter((id) => derivedIds.has(id) && statuses[id] === "unsupported").length
+  const decisive = decisiveCells(counts, derived)
+  const decided = decisive + derived + counts.untestable
   const open = counts["probe-todo"] + counts["probe-invalid"] + counts["probe-conflict"]
   const donePct = positions === 0 ? 0 : Math.round((100 * decided) / positions)
   const supportedPct = decisive === 0 || positions === 0 ? null : Math.round((100 * counts.supported) / positions)
@@ -193,6 +202,7 @@ export function rollupTerminalStatuses(
     positions,
     environmentPositions,
     counts,
+    derived,
     decisive,
     decided,
     open,
@@ -248,7 +258,7 @@ export function rankOpenProbes(
 }
 
 export function aggregateCurrentResults(
-  results: readonly Pick<FeatureResult, "featureId" | "status">[],
+  results: readonly (Pick<FeatureResult, "featureId" | "status"> & { readonly derived?: unknown })[],
   catalogIds: readonly string[],
 ): CurrentAggregate {
   if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {
@@ -273,13 +283,15 @@ export function aggregateCurrentResults(
   ) {
     throw new Error("Current results differ from recorded catalogue membership")
   }
-  const rollup = rollupTerminalStatuses(statuses, catalogIds)
+  const derivedIds = new Set(results.filter((result) => result.derived !== undefined).map((result) => result.featureId))
+  const rollup = rollupTerminalStatuses(statuses, catalogIds, derivedIds)
   for (const id of scoredFeatureIds(catalogIds)) {
     idsByState[statuses[id] as FeatureResultStatus].push(id)
   }
   return {
     denominator: rollup.positions,
     counts: rollup.counts,
+    derived: rollup.derived,
     idsByState,
     supported: rollup.counts.supported,
     complete: rollup.open === 0,
@@ -311,12 +323,17 @@ export function completenessTierOf(statuses: Readonly<Record<string, string>>): 
 }
 
 export function currentCoverageSentence(
-  aggregate: { readonly counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>> },
+  aggregate: {
+    readonly counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>>
+    readonly derived?: number
+  },
   catalogIds?: readonly string[],
 ): string {
   const counts = aggregate.counts
   const conflict = counts["probe-conflict"] === undefined ? "" : ` · ${counts["probe-conflict"]} PROBE CONFLICT`
-  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported · ${counts.untestable} Untestable · ${counts["probe-todo"]} PROBE TODO · ${counts["probe-invalid"]} PROBE INVALID${conflict}`
+  // #33019: the derived share sits right beside the Unsupported count it is part of.
+  const derived = aggregate.derived ? ` (of which derived: ${aggregate.derived})` : ""
+  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported${derived} · ${counts.untestable} Untestable · ${counts["probe-todo"]} PROBE TODO · ${counts["probe-invalid"]} PROBE INVALID${conflict}`
   // D132 B (#30917): an exclusion the site cannot explain reads as a terminal verdict, so a caller
   // that knows the run's catalogue names the environment groups it recorded as ungraded.
   const environmentGroups = catalogIds ? environmentGroupIds(catalogIds).length : 0
@@ -328,7 +345,7 @@ export function currentCoverageSentence(
 export function currentSupportedShare(aggregate: CurrentAggregate): string {
   // #30784: the same rule as a baseline row, one level up. A run whose every cell is PROBE TODO or
   // PROBE INVALID decided nothing, so "0/264 supported (0%)" would read as a measured fail.
-  if (runDecidedNothing(aggregate.counts)) return NOT_MEASURED_TEXT
+  if (runDecidedNothing(aggregate.counts, aggregate.derived)) return NOT_MEASURED_TEXT
   return `${aggregate.supported}/${aggregate.denominator} supported (${Math.round((100 * aggregate.supported) / aggregate.denominator)}%)`
 }
 
@@ -337,8 +354,12 @@ export function currentSupportedShare(aggregate: CurrentAggregate): string {
  * Untestable claim says the row cannot be probed, not that the terminal was judged, and PROBE TODO /
  * PROBE INVALID decide nothing. This is the ONE owner of that sum for the baseline row readout.
  */
-export function decisiveCells(counts: { readonly supported: number; readonly unsupported: number }): number {
-  return counts.supported + counts.unsupported
+export function decisiveCells(
+  counts: { readonly supported: number; readonly unsupported: number },
+  derived = 0,
+): number {
+  // #33019: a derived Unsupported reads Unsupported but was decided by no test of its own.
+  return counts.supported + counts.unsupported - derived
 }
 
 /**
@@ -348,8 +369,9 @@ export function decisiveCells(counts: { readonly supported: number; readonly uns
  */
 export function runDecidedNothing(
   counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>>,
+  derived = 0,
 ): boolean {
-  return decisiveCells(counts) === 0
+  return decisiveCells(counts, derived) === 0
 }
 
 /**
@@ -370,9 +392,10 @@ export const NOT_MEASURED_TEXT = "Not measured yet"
  */
 export function notMeasuredReadout(
   counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>>,
+  derived = 0,
 ): { text: string; title: string } | undefined {
-  if (decisiveCells(counts) > 0) return undefined
-  return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts }) }
+  if (decisiveCells(counts, derived) > 0) return undefined
+  return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts, derived }) }
 }
 
 /** Canonical probe methods, ordered from weakest to strongest. */

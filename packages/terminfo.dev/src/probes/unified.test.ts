@@ -11,7 +11,7 @@ import * as nodeFs from "node:fs"
 import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { afterEach, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createCallLog, readCallLog, withCallLog } from "viprobe"
 import {
   ALL_PROBES,
@@ -186,10 +186,10 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc7-cwd" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "modes.decsclm" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc633-e" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc133-a" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-b" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-p" },
@@ -206,19 +206,18 @@ it.each([
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc440-audio" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc3008-context" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc176-app-id" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc440-audio" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc555-flash" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc710-font-normal" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.clipboard-paste" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc555-flash" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc710-font-normal" },
   // #32601: existing subjects cannot catch a missing Alacritty audit or identity leakage from its one-cell declaration.
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc710-font-normal" },
   // #32918: Alacritty implements no OSC 133/633, so its thirteen prompt cells are declarations, not runs.
@@ -236,7 +235,7 @@ it.each([
   { kind: "mux", id: "tmux", version: "3.8", count: 10, feature: "extensions.osc633-e" },
   // #32948: 6 Linux App and mux OSC 8 hyperlink declarations.
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc8" },
-  { kind: "term", id: "xterm", version: "411", count: 24, feature: "extensions.osc8" },
+  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc8" },
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc8" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc8" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc8" },
@@ -1780,6 +1779,8 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   })
 })
 
+type CapturePreparation = NonNullable<NonNullable<Parameters<typeof runProbeBatch>[0]>["prepareCapture"]>
+
 it.each([undefined, "after-probes"] as const)(
   "prepares capture once with the full retained trace (phase: %s)",
   async (phase) => {
@@ -1823,28 +1824,28 @@ it.each([undefined, "after-probes"] as const)(
           }
         }
       }
+      const prepare: CapturePreparation = async ({ source: probeSource, featureId, recordCapture }) => {
+        expect(featureId).toBe("collector.captureCalibration")
+        expect(prepared).toBe(false)
+        order.push("prepare")
+        expect(await probeSource.queryMode(25)).toBe("set")
+        probeSource.write("calibration:paint-witness")
+        prepared = true
+        Object.assign(probeSource, {
+          captureGeometry: {
+            geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+            source: "measured by complete raster calibration",
+          },
+        })
+        recordCapture({
+          frame: { role: "control", ref: captureRef, capturedAt: 1, label: "origin calibration" },
+          trace: { captureCommand: "fixture-capture" },
+        })
+      }
       const batch = await runProbeBatch({
         ids,
-        ...(phase && { prepareCapturePhase: phase }),
         ownedTerminal: geometryOwner(measured(24, 80)),
-        prepareCapture: async ({ source: probeSource, featureId, recordCapture }) => {
-          expect(featureId).toBe("collector.captureCalibration")
-          expect(prepared).toBe(false)
-          order.push("prepare")
-          expect(await probeSource.queryMode(25)).toBe("set")
-          probeSource.write("calibration:paint-witness")
-          prepared = true
-          Object.assign(probeSource, {
-            captureGeometry: {
-              geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
-              source: "measured by complete raster calibration",
-            },
-          })
-          recordCapture({
-            frame: { role: "control", ref: captureRef, capturedAt: 1, label: "origin calibration" },
-            trace: { captureCommand: "fixture-capture" },
-          })
-        },
+        ...(phase === undefined ? { prepareCapture: prepare } : { finishCapture: prepare }),
       })
       expect(order).toEqual(
         phase === undefined
@@ -1874,6 +1875,106 @@ it.each([undefined, "after-probes"] as const)(
     }
   },
 )
+
+describe("an after-probes finish beside a before-probes preparation (32670)", () => {
+  const id = "reset.ris"
+  const probeOrder: string[] = []
+  let callbackSource: TermProbeSource | undefined
+  let restore: () => void = () => {}
+  beforeEach(() => {
+    verifiedBatchFixture()
+    probeOrder.length = 0
+    callbackSource = undefined
+    const definition = ALL_PROBES.find((item) => item.id === id)!
+    const original = {
+      term: definition.term,
+      termNeedsGeometry: definition.termNeedsGeometry,
+      termWrites: definition.termWrites,
+    }
+    restore = () => Object.assign(definition, original)
+    delete definition.termNeedsGeometry
+    definition.termWrites = "query"
+    definition.term = async (probeSource) => {
+      callbackSource = probeSource
+      probeOrder.push("callback")
+      probeSource.write("fixture:reset.ris")
+      return {
+        pass: false,
+        tests: [
+          { id: "criterion", status: "probe-todo", reason: "Lifecycle fixture does not measure terminal support" },
+        ],
+      }
+    }
+    process.stdout.write = (() => true) as typeof process.stdout.write
+  })
+  afterEach(() => restore())
+
+  // CTO26812ffa: phase order alone misses a second preparation rewriting state already handed to rows.
+  it.each(["geometry", "refusal", "late-refusal"] as const)(
+    "preserves handed %s through the finish and retains its separate trace",
+    async (state) => {
+      const geometry = {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration" as const,
+      }
+      const priorRefusal = "calibration refused before probes"
+      const finalRefusal = "qualification refused after probes"
+      const checkpointTraces: string[] = []
+      const batch = await runProbeBatch({
+        ids: [id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        onCheckpoint: (checkpoint) => {
+          const trace = checkpoint.rawReplies["collector.textQualification.trace"]
+          if (trace) checkpointTraces.push(trace)
+        },
+        prepareCapture: async ({ source: probeSource, featureId }) => {
+          expect(featureId).toBe("collector.captureCalibration")
+          probeOrder.push("calibrate")
+          probeSource.write("calibration:paint")
+          if (state === "refusal") throw Object.assign(new Error(priorRefusal), { name: "CaptureCalibrationRefused" })
+          probeSource.captureGeometry = geometry
+        },
+        finishCapture: async ({ source: probeSource, featureId }) => {
+          expect(featureId).toBe("collector.textQualification")
+          probeOrder.push("qualify")
+          probeSource.write("qualification:paint")
+          expect(callbackSource?.captureGeometry).toEqual(state !== "refusal" ? geometry : undefined)
+          expect(callbackSource?.captureGeometryRefusal).toBe(state === "refusal" ? priorRefusal : undefined)
+          if (state !== "geometry") throw Object.assign(new Error(finalRefusal), { name: "CaptureCalibrationRefused" })
+          probeSource.captureGeometry = { ...geometry, geometry: { ...geometry.geometry, cellWidth: 16 } }
+        },
+      })
+      expect(probeOrder).toEqual(["calibrate", "callback", "qualify"])
+      expect(callbackSource?.captureGeometry).toEqual(state !== "refusal" ? geometry : undefined)
+      expect(callbackSource?.captureGeometryRefusal).toBe(state === "refusal" ? priorRefusal : undefined)
+      expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+        writes: ["calibration:paint"],
+        ...(state === "refusal" ? { refusal: priorRefusal } : {}),
+      })
+      expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
+        writes: ["qualification:paint"],
+        ...(state !== "geometry" ? { refusal: finalRefusal } : {}),
+      })
+      expect(checkpointTraces).toContain(batch.rawReplies["collector.textQualification.trace"])
+    },
+  )
+
+  it("fails the whole run, returning no batch, when the after-probes qualification fails", async () => {
+    await expect(
+      runProbeBatch({
+        ids: [id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async () => {
+          probeOrder.push("calibrate")
+        },
+        finishCapture: async () => {
+          throw new Error("qualification fixture failed after probes")
+        },
+      }),
+    ).rejects.toThrow("qualification fixture failed after probes")
+    expect(probeOrder).toEqual(["calibrate", "callback"])
+  })
+})
 
 it("keeps query-only and nongeometry callbacks runnable when owned size is unavailable", async () => {
   verifiedBatchFixture()
@@ -1989,6 +2090,64 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
     )
   } finally {
     definition.termNeedsGeometry = original
+  }
+})
+
+// #33054: a resize re-labels the row resized-capture, so a branch witness on its negative would disagree with the
+// row's branch and the parser would refuse the whole run. The collector keeps the assertion and drops the witness.
+it("drops a branch witness from a negative whose capture resized, so the run still parses", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const original = { needs: definition.termNeedsGeometry, term: definition.term }
+  definition.termNeedsGeometry = true
+  const digest = (text: string) => `sha256:${text.repeat(64).slice(0, 64)}`
+  // The real callback runs its DA query, so the row keeps its retained raw payload; its result is replaced.
+  definition.term = async (...args: Parameters<NonNullable<typeof original.term>>) => {
+    await original.term!(...args)
+    return {
+      pass: false,
+      criterionBranch: "colour-no-attribute-witness",
+      response: "\x1b[?62;4c",
+      tests: [{ id: "criterion", status: "unsupported", assertionRefs: [0] }],
+      observation: { outcome: "unsupported", assertionType: "query_reply", note: "painted nothing" },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: "negative",
+          expected: "paints something other than plain text",
+          observed: digest("b"),
+          witness: {
+            kind: "colour-no-attribute-witness",
+            rowId: definition.id,
+            encoding: "58;2;255;0;128",
+            rectangle: { x: 1, y: 2, width: 3, height: 4 },
+            frames: { seed: digest("a"), expected: digest("b"), noAttribute: digest("b") },
+          },
+        },
+      ],
+    }
+  }
+  let reads = 0
+  process.stdout.write = ((text: string) => {
+    if (text === "\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?62;4c"))
+    return true
+  }) as typeof process.stdout.write
+  try {
+    const batch = await runProbeBatch({
+      ids: [definition.id],
+      ownedTerminal: geometryOwner(measured(24, 61), async () => (++reads === 1 ? measured(24, 61) : measured(31, 73))),
+    })
+    expect(batch.results.find((result) => result.featureId === definition.id)).toMatchObject({
+      criterionBranch: "resized-capture",
+    })
+    expect(batch.assertions).toHaveLength(1)
+    expect(batch.assertions[0]).toMatchObject({ kind: "negative", note: expect.stringContaining("resized") })
+    expect(batch.assertions[0]).not.toHaveProperty("witness")
+    const decoded = decodeCollectorDraft("resized-witness.json", JSON.stringify(asRun(batch)), manifest, sourceRevision)
+    expect(decoded.run.assertions).toEqual(batch.assertions)
+  } finally {
+    definition.termNeedsGeometry = original.needs
+    definition.term = original.term
   }
 })
 
@@ -2915,6 +3074,8 @@ const defaultClipboardCases: Array<{
   refuseWrite?: boolean
   nullMode2004?: boolean
   pasteboard?: "darwin"
+  /** The receipt owns no PRIMARY baseline, so a PRIMARY route must refuse loudly. */
+  noPrimary?: boolean
   eligible: boolean
 }> = [
   { name: "direct Kitty default paste", eligible: true },
@@ -2934,8 +3095,14 @@ const defaultClipboardCases: Array<{
     eligible: true,
   },
   {
-    name: "direct xterm default paste stays gated",
+    name: "direct xterm default paste through owned PRIMARY and Shift+Insert",
     subject: { kind: "term", id: "xterm", os: "linux" },
+    eligible: true,
+  },
+  {
+    name: "direct xterm default paste refuses when the receipt owns no PRIMARY",
+    subject: { kind: "term", id: "xterm", os: "linux" },
+    noPrimary: true,
     eligible: false,
   },
   {
@@ -3141,6 +3308,26 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     },
     { writeDeadlineMs: 25, writePollMs: 5 },
   )
+  const isXtermPaste =
+    (scenario.featureId ?? "extensions.clipboard-paste") === "extensions.clipboard-paste" &&
+    subject.kind === "term" &&
+    subject.id === "xterm" &&
+    subject.os === "linux"
+  const primaryBaseline = "owned primary baseline"
+  let primaryText = primaryBaseline
+  const primaryTransaction = createClipboardTransaction(primaryBaseline, {
+    async readText(trace, kind, verify) {
+      await verify()
+      trace({ kind, at: new Date().toISOString(), length: primaryText.length })
+      return primaryText
+    },
+    async writeText(text, trace, kind, verify) {
+      await verify()
+      primaryText = text
+      trace({ kind, at: new Date().toISOString(), length: text.length })
+    },
+  })
+  const withPrimaryFixture = vi.fn(primaryTransaction)
   const withClipboardFixture = vi.fn(((work, trace, verify) =>
     baseTransaction(
       (fixture) => work(attachedMux === "tmux" ? { ...fixture, tmuxSetClipboard: "external" } : fixture),
@@ -3184,24 +3371,23 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     },
     dispose: async () => {},
     withClipboardFixture,
+    ...(!scenario.noPrimary && { withPrimaryFixture }),
     ...(muxAttachmentProof && { muxAttachmentProof }),
   }
+  // Each key pastes the selection its real binding reads: Shift+Insert PRIMARY, Ctrl+Shift+V CLIPBOARD.
   const injectKey = vi.fn(async (keys: string) => {
-    const text = keys === "a" ? "a" : bracketedPaste ? `\x1b[200~${clipboardText}\x1b[201~` : clipboardText
+    const pasted = keys === "shift+Insert" ? primaryText : clipboardText
+    const text = keys === "a" ? "a" : bracketedPaste ? `\x1b[200~${pasted}\x1b[201~` : pasted
     process.stdin.emit("data", Buffer.from(text))
   })
   const featureId = scenario.featureId ?? "extensions.clipboard-paste"
   const isOsc52 = featureId.startsWith("extensions.osc52-")
   const isOsc52WriteOrRoundtrip = featureId === "extensions.osc52-write" || featureId === "extensions.osc52-clipboard"
   const isOsc52Read = featureId === "extensions.osc52-read"
-  const isXtermPaste =
-    featureId === "extensions.clipboard-paste" &&
-    subject.kind === "term" &&
-    subject.id === "xterm" &&
-    subject.os === "linux"
-  const appDeclarations = isXtermPaste
-    ? appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
-    : undefined
+  const appDeclarations =
+    subject.kind === "term" && subject.id === "xterm"
+      ? appSemanticDeclarations({ kind: "term", id: "xterm", version: "411", os: "linux" })
+      : undefined
   const collected = runProbeBatch({
     ids: [featureId],
     subject,
@@ -3212,6 +3398,11 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
   })
   if (scenario.mismatched) {
     await expect(collected).rejects.toThrow(/disagree/)
+  } else if (scenario.noPrimary) {
+    const batch = await collected
+    expect(JSON.stringify(batch.results.find((result) => result.featureId === featureId))).toContain(
+      "Owned PRIMARY selection is absent from this run's clipboard receipt",
+    )
   } else {
     const batch = await collected
     const expectedOutcome = scenario.refuseWrite ? "unsupported" : "supported"
@@ -3219,9 +3410,7 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
       ? expectedOutcome
       : featureId === "modes.bracketed-paste"
         ? "probe-invalid"
-        : isXtermPaste
-          ? "untestable"
-          : "probe-todo"
+        : "probe-todo"
     expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(expectedStatus)
     if (scenario.eligible) {
       const expectedAssertionType = isOsc52Read ? "query_reply" : isOsc52WriteOrRoundtrip ? "clipboard" : "input_bytes"
@@ -3232,6 +3421,18 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
           assertionType: expectedAssertionType,
         }),
       )
+      if (featureId === "extensions.clipboard-paste") {
+        // The row says how it was measured: selection and key are in its evidence (@cto a4ec8fe2 condition 2).
+        const route = isXtermPaste
+          ? { selection: "primary", key: "shift+Insert" }
+          : { selection: "clipboard", key: "ctrl+shift+v" }
+        expect(batch.assertions.find((assertion) => assertion.featureId === featureId)).toMatchObject({
+          action: `clipboard-paste:${route.selection}:${route.key}`,
+        })
+        expect(batch.assertions.find((assertion) => assertion.featureId === featureId)?.observed).toContain(
+          `"selection":"${route.selection}","key":"${route.key}"`,
+        )
+      }
       if (scenario.nullMode2004 && featureId === "extensions.clipboard-paste") {
         expect(batch.observations.find((obs) => obs.featureId === featureId)?.note).toContain("set blind")
       }
@@ -3286,11 +3487,14 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
       expect(batch.assertions).toEqual([])
     }
   }
-  expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible ? 1 : 0)
+  expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible && !isXtermPaste ? 1 : 0)
+  expect(withPrimaryFixture).toHaveBeenCalledTimes(scenario.eligible && isXtermPaste ? 1 : 0)
+  const pasteKey = isXtermPaste ? "shift+Insert" : "ctrl+shift+v"
   expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(
-    scenario.eligible && !isOsc52 ? ["a", "ctrl+shift+v", "ctrl+shift+v", "ctrl+shift+v"] : [],
+    scenario.eligible && !isOsc52 ? ["a", pasteKey, pasteKey, pasteKey] : [],
   )
   expect(clipboardText).toBe(baseline)
+  expect(primaryText).toBe(primaryBaseline)
   if (scenario.eligible && isOsc52) {
     expect(writes.join("")).toContain("\x1b]52;c;")
   } else {

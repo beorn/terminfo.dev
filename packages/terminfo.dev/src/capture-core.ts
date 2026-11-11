@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { CaptureRectangle } from "@terminfo/probe-defs"
+import type { CaptureLocated, CaptureRectangle } from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
 export function command(
@@ -288,6 +288,37 @@ export async function decodeCapture({
   return { width, height, rgba }
 }
 
+/**
+ * Where one exact RGB colour sits in a decoded frame: the bounding box of every matching pixel and
+ * how many matched, or null when no pixel has that colour. Alpha is not compared, as calibration
+ * compares only RGB when it learns the colour.
+ */
+export function locateColour(frame: CapturedFrame, rgb: readonly [number, number, number]): CaptureLocated | null {
+  if (!rgb.every((channel) => Number.isSafeInteger(channel) && channel >= 0 && channel <= 255)) {
+    throw new Error(`Capture locate needs an integer RGB colour 0..255; got ${JSON.stringify(rgb)}`)
+  }
+  let left = Infinity
+  let top = Infinity
+  let right = -1
+  let bottom = -1
+  let pixels = 0
+  for (let y = 0; y < frame.height; y++) {
+    for (let x = 0; x < frame.width; x++) {
+      const offset = (y * frame.width + x) * 4
+      if (frame.rgba[offset] !== rgb[0] || frame.rgba[offset + 1] !== rgb[1] || frame.rgba[offset + 2] !== rgb[2]) {
+        continue
+      }
+      pixels++
+      if (x < left) left = x
+      if (x > right) right = x
+      if (y < top) top = y
+      if (y > bottom) bottom = y
+    }
+  }
+  if (pixels === 0) return null
+  return { box: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 }, pixels }
+}
+
 /** Finish one acquired frame; currency and capture scheduling belong to the caller. */
 export async function finishCapture(input: {
   directory: string
@@ -303,7 +334,7 @@ export async function finishCapture(input: {
   deadline?: number
 }): Promise<Awaited<ReturnType<ProbeCapture>>> {
   const { directory, onRetained, checkpoint, source, png, origin, trace, decoded: predecoded, deadline } = input
-  const { featureId, role, label, cells, controlCells, pixelGeometry } = checkpoint
+  const { featureId, role, label, cells, controlCells, pixelGeometry, locate } = checkpoint
   const { width, height, format, bytes: original, capturedAt } = source
   if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
     throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
@@ -332,6 +363,7 @@ export async function finishCapture(input: {
   let controlRegionDigest: string | undefined
   let controlRegionRectangle: CaptureRectangle | undefined
   let regionTrace: Record<string, unknown> = {}
+  const located = locate === undefined ? undefined : locateColour(decoded, locate.rgb)
   if (cells !== undefined && pixelGeometry !== undefined) {
     const placement = typeof origin === "function" ? await origin({ frame: decoded, pixelGeometry }) : origin
     if (!placement || typeof placement.basis !== "string" || placement.basis.trim().length === 0 || !placement.origin) {
@@ -414,7 +446,8 @@ export async function finishCapture(input: {
       ...(regionRectangle !== undefined ? { regionRectangle } : {}),
       ...(controlRegionDigest !== undefined ? { controlRegionDigest } : {}),
       ...(controlRegionRectangle !== undefined ? { controlRegionRectangle } : {}),
+      ...(located !== undefined ? { located } : {}),
     },
-    trace: { ...trace, ...regionTrace },
+    trace: { ...trace, ...regionTrace, ...(locate !== undefined ? { locate: { rgb: locate.rgb, located } } : {}) },
   }
 }

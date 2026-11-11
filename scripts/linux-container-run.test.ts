@@ -31,6 +31,7 @@ import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/vers
 import { OWNED_LAYOUT } from "../packages/probes/fixtures/owned-layout.fixture.ts"
 import type { LinuxMuxAttachmentProof, CapturedRunDraft } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
+import { MUX_DEFAULT_CONFIG, SCREEN_TRUECOLOR_CONFIG, TRUECOLOR_ON } from "../docs/data/context-supplements.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
@@ -78,6 +79,7 @@ function compose(
   containerRunnerSha = "runner-hash",
   containerProfile = "default",
   capture: unknown = { xwdSha256: "xwd-hash", pngSha256: "png-hash" },
+  wm: { host?: unknown; container?: unknown; omitContainerDisplay?: boolean } = { host: null, container: null },
 ) {
   const host = join(dir, "host.json")
   const container = join(dir, "container.json")
@@ -89,6 +91,7 @@ function compose(
       clipboardProfile: "default",
       sourceArtifact: { url: "https://example.invalid/kitty.txz" },
       runnerArtifact: { frozenRunnerSha256: "runner-hash", buildReceiptSha256: "receipt-hash" },
+      xvfbWm: wm.host ?? null,
       runtime: { imageId: "sha256:image", imageTarSha256: "tar-hash" },
     }),
   )
@@ -102,7 +105,11 @@ function compose(
         sourceArtifact: { path: "/kitty-source/kitty.txz", sha256: "archive-hash" },
         collector: { frozenRunnerSha256: containerRunnerSha, buildReceiptSha256: "receipt-hash" },
         probeRun: { path: "v3-capture.json", runId: "b".repeat(32), sha256: "probe-hash" },
-        display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
+        display: {
+          glxinfo: "llvmpipe",
+          geometry: "WIDTH=800",
+          ...(wm.omitContainerDisplay === true ? {} : { wm: wm.container ?? null }),
+        },
         clipboardFixture: { runId: containerRunId, profile: containerProfile, sha256: "fixture-hash" },
         sessionBus: { path: "session-bus.json", sha256: "session-bus-hash" },
         capture,
@@ -696,6 +703,74 @@ describe("container run receipt composition", () => {
     expect(result.stderr).toContain("container clipboard fixture disagrees")
     expect(existsSync(output)).toBe(false)
   })
+
+  // #33305: a window-manager run and a WM-free run must never be told apart by guessing, so the
+  // receipt names the manager it ran and the host-declared switch has to agree with it.
+  it("records the window manager the container ran and the switch the host declared", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: "openbox",
+      container: {
+        name: "openbox",
+        version: "3.6.1",
+        argv: ["openbox", "--config-file", "/home/runner/wm-rc.xml"],
+        config: { path: "/home/runner/wm-rc.xml", sha256: "config-hash" },
+      },
+    })
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(output, "utf8")) as { display: { wm: { name: string; version: string } } }
+    expect(receipt.display.wm).toMatchObject({ name: "openbox", version: "3.6.1" })
+  })
+
+  it("refuses a display receipt that never says which window manager ran", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: null,
+      container: null,
+      omitContainerDisplay: true,
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("window manager")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  it("refuses a host-declared window manager that the container did not run", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: "openbox",
+      container: null,
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("host-declared window manager disagrees")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  it("refuses a window manager named without the argv it was launched with", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: "openbox",
+      container: {
+        name: "openbox",
+        version: "3.6.1",
+        config: { path: "/home/runner/wm-rc.xml", sha256: "config-hash" },
+      },
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("config hash")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  // @cto d10e47a6: the config the manager reads must be the run's own bytes, so its hash travels.
+  it("refuses a window manager whose config is named without the hash of its bytes", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: "openbox",
+      container: {
+        name: "openbox",
+        version: "3.6.1",
+        argv: ["openbox", "--config-file", "/home/runner/wm-rc.xml"],
+        config: { path: "/home/runner/wm-rc.xml" },
+      },
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("config hash")
+    expect(existsSync(output)).toBe(false)
+  })
 })
 
 /** The receipt authorizes writing to a terminal, so the container judged by it must not be able
@@ -1084,6 +1159,45 @@ exit 0
   })
 })
 
+/** One target's clipboard-profile arguments, from the launcher's own profile case, parsed by bash. */
+function clipboardProfileArgs(profile: string, app: string): string[] {
+  const source = readFileSync(launcher, "utf8")
+  const arm = new RegExp(`\\n {4}${profile}\\)\\n([\\s\\S]*?)\\n {6};;\\n`).exec(source)?.[1]
+  const words = new RegExp(`^ {8}${app}\\) target_clipboard_args=\\((.*)\\) ;;$`, "m").exec(arm ?? "")?.[1]
+  if (words === undefined) throw new Error(`${profile} ${app} clipboard arguments are missing`)
+  const result = spawnSync("bash", ["-c", `args=(${words}); printf '%s\\0' "\${args[@]}"`], { encoding: "utf8" })
+  expect(result.status, result.stderr).toBe(0)
+  return result.stdout.split("\0").filter(Boolean)
+}
+
+/** Runs the launcher's own xterm paste-rebinding check on these arguments: the argument it refuses, or null. */
+function pasteRebinding(args: readonly string[]): string | null {
+  const result = spawnSync(
+    "bash",
+    ["-c", 'source "$1"; shift; xterm_paste_rebinding_arg "$@"', "_", launcher, ...args],
+    {
+      encoding: "utf8",
+    },
+  )
+  return result.status === 0 ? result.stdout.trim() : null
+}
+
+// #32164 (@cto 8b9eb7c0): an xterm run owns PRIMARY for Shift+Insert, so the launcher refuses any argument that
+// could rebind that paste. The default launch and 33119's read-allowed -xrm must pass the same check they run under.
+describe("xterm paste route launch arguments", () => {
+  it("passes xterm's default launch and its read-allowed profile, and refuses a rebinding resource", () => {
+    const launch = launchArgs("xterm")
+    const allow = clipboardProfileArgs("allow", "xterm")
+    expect(allow).toEqual(["-xrm", "*disallowedWindowOps: GetChecksum,GetIconTitle,GetWinTitle,SetXprop"])
+    expect(pasteRebinding(launch)).toBeNull()
+    expect(pasteRebinding([...launch, ...allow])).toBeNull()
+    expect(
+      pasteRebinding([...launch, ...allow, "-xrm", "*VT100.translations: #override Shift<Key>Insert: string(x)"]),
+    ).toBe("*VT100.translations: #override Shift<Key>Insert: string(x)")
+    expect(pasteRebinding(["-xrm", "*selectToClipboard: true"])).toBe("*selectToClipboard: true")
+  })
+})
+
 describe("private finite launch arguments", () => {
   it("refuses an unknown flag before preparing or building", () => {
     const result = spawnSync(
@@ -1143,7 +1257,8 @@ describe("private session bus is held before the terminal starts (#33053)", () =
     return `source "$1"
 set -euo pipefail
 runner_dir=$2
-xvfb_pid= helper_pid= session_bus_pid= notify_recorder_pid= daemon_pid= collector_pid=
+xvfb_pid= wm_pid= helper_pid= primary_helper_pid= session_bus_pid= notify_recorder_pid= daemon_pid= collector_pid=
+target_id=kitty
 ${source.slice(cleanupStart, cleanupEnd)}
 trap cleanup EXIT
 ${block}
@@ -1511,7 +1626,7 @@ it.each([false, true])("writes a Linux completion receipt for captured bytes, pe
         .update(readFileSync(join(dir, "v3-capture.json")))
         .digest("hex"),
     },
-    display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
+    display: { glxinfo: "llvmpipe", geometry: "WIDTH=800", wm: null },
     clipboardFixture: { runId: capture.runId, profile: "default", sha256: "fixture-hash" },
     capture: null,
   }
@@ -1677,3 +1792,41 @@ ${admission}`,
     }
   },
 )
+
+/** The launcher's own mux-profile function, sourced: the config it records, or its refusal. */
+function muxProfileConfig(mux: string, profile: string): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync("bash", ["-c", 'source "$1"; mux_profile_config "$2" "$3"', "_", launcher, mux, profile], {
+    encoding: "utf8",
+  })
+  return { status: result.status, stdout: result.stdout.trim(), stderr: result.stderr.trim() }
+}
+
+// #33151 (@cto a2cb755c, 4a546051): the supplement keys a placed Screen run on the config the launcher records, so the
+// two values live in the launcher and in context-supplements.ts and must stay equal; truecolor elsewhere is refused.
+describe("mux profile configs", () => {
+  it("records the default config and Screen's truecolor config exactly as the selection keys them", () => {
+    expect(muxProfileConfig("screen", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
+    expect(muxProfileConfig("tmux", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
+    expect(muxProfileConfig("screen", "truecolor")).toMatchObject({ status: 0, stdout: SCREEN_TRUECOLOR_CONFIG })
+    expect(TRUECOLOR_ON.config).toEqual({ screen: SCREEN_TRUECOLOR_CONFIG })
+  })
+
+  it("refuses truecolor on any mux but Screen, naming the mux and the profile", () => {
+    expect(muxProfileConfig("tmux", "truecolor")).toMatchObject({
+      status: 2,
+      stderr: "mux profile truecolor has no declared option on mux tmux",
+    })
+    expect(muxProfileConfig("", "truecolor")).toMatchObject({
+      status: 2,
+      stderr: "mux profile truecolor has no declared option on mux (none)",
+    })
+  })
+
+  it("writes truecolor on after the unchanged default line, only under the truecolor profile", () => {
+    const source = readFileSync(launcher, "utf8")
+    expect(source).toContain("printf 'defscrollback 1000\\n' > \"$mux_config\"")
+    expect(source).toContain(
+      'if [[ "${TERMINFO_MUX_PROFILE:-default}" == truecolor ]]; then printf \'truecolor on\\n\' >> "$mux_config"; fi',
+    )
+  })
+})

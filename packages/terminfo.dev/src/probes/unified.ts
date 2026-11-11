@@ -21,10 +21,12 @@ import {
   type ProbeSubject,
   type RunDraft,
   type CaptureCells,
+  type CaptureRequest,
   type CapturePixelGeometry,
   type ConsoleBufferOwner,
   type InputFixture,
   type NotTestedCoverage,
+  type PasteRoute,
   type Observation,
   type ObservationFrame,
   type ProbeAssertion,
@@ -165,6 +167,8 @@ export type ProbeCapture = (checkpoint: {
   controlCells?: CaptureCells
   /** The terminal's own pixel report, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
+  /** An exact colour to find in the whole decoded frame; the frame answers `located`. */
+  locate?: CaptureRequest["locate"]
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
@@ -285,8 +289,46 @@ export function captureAdapterEligible(
   return captureKind === "text-cells" ? probe.cellReadback === true : !captureGeometryRefusal
 }
 
-/** Direct Linux Apps whose default-profile clipboard-paste route is reviewed (@cto 73d66ae2); any other App stays gated. */
-const LINUX_DEFAULT_PASTE_APPS: ReadonlySet<string> = new Set(["kitty", "ghostty", "alacritty", "wezterm"])
+/** Probes that press the App's paste key: clipboard-paste, and bracketed-paste, whose App effect reuses it. */
+const PASTE_PROBE_IDS: ReadonlySet<string> = new Set(["extensions.clipboard-paste", "modes.bracketed-paste"])
+
+/**
+ * Direct Linux Apps whose default paste action is reviewed (@cto 73d66ae2, a4ec8fe2); any other App stays gated.
+ * Each route is evidence: the App's own source or manual, at the pinned version, binds the key to paste that
+ * selection, and the owned launch passes no config or resource that rebinds it (#32164).
+ */
+const LINUX_PASTE_ROUTES: Readonly<Record<string, PasteRoute>> = {
+  kitty: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "kitty 0.49.2 (tag v0.49.2): kitty/options/definition.py:3811 maps kitty_mod+v to paste_from_clipboard, and kitty_mod defaults to ctrl+shift (definition.py:3648-3651)",
+  },
+  ghostty: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "ghostty 1.4.0 (tag v1.4.0): src/config/Config.zig:6698-6716 binds ctrl+shift+v to paste_from_clipboard on Linux",
+  },
+  alacritty: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "alacritty 0.17.0 (tag v0.17.0): alacritty/src/config/bindings.rs:544-549 binds Ctrl+Shift+V to Paste (CLIPBOARD)",
+  },
+  wezterm: {
+    selection: "clipboard",
+    key: "ctrl+shift+v",
+    binding:
+      "wezterm 0-unstable-2026-10-10 (rev e2a98e1b8af1): wezterm-gui/src/commands.rs:665-670 declares PasteFrom(Clipboard) on SUPER+v and :126-131 derives CTRL+SHIFT+v from it; docs default-keys.md:19",
+  },
+  xterm: {
+    selection: "primary",
+    key: "shift+Insert",
+    binding:
+      "xterm 411 (xterm-411.tgz SHA256 969be283): charproc.c:15024, in VTInitTranslations, binds Shift<KeyPress>Insert to insert-selection(SELECT, CUT_BUFFER0); SELECT is PRIMARY under the default selectToClipboard false (xterm.man:5458)",
+  },
+}
 
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
 export async function runProbeBatch(
@@ -302,8 +344,16 @@ export async function runProbeBatch(
       featureId: string
       recordCapture: (result: CapturedProbeFrame) => void
     }) => Promise<void>
-    /** Default preparation precedes probes; the owned Terminal text arm finishes TTY work last. */
-    prepareCapturePhase?: "before-probes" | "after-probes"
+    /**
+     * The one after-probes call point: runs once after every probe callback and the final ownership
+     * check, through the same query trace and frame recorder. The caller decides what belongs before
+     * probes and what after; an owner that closes and proves its window qualifies text here (32670).
+     */
+    finishCapture?: (input: {
+      source: TermProbeSource
+      featureId: string
+      recordCapture: (result: CapturedProbeFrame) => void
+    }) => Promise<void>
     /**
      * The named cause when this run's owned capture pre-flight refused to map the terminal's own
      * cell-to-pixel geometry (28785): it reaches each row's context so a refused row NAMES the
@@ -464,7 +514,7 @@ export async function runProbeBatch(
     }
     return decodingAttempt
   }
-  // Prepare once in the selected phase; default callers still prepare before their first callback.
+  // Prepare once before the first callback, and finish once after the last when the caller asks.
   // The same measured geometry reaches later contexts; a query callback grants no paint authority.
   let capturePrepared = false
   let captureGeometry: TermProbeSource["captureGeometry"]
@@ -487,11 +537,15 @@ export async function runProbeBatch(
     const refs = result.frame.kind === "text-cells" ? batch.textSnapshotRefs : batch.screenshotRefs
     if (!refs.includes(result.frame.ref)) refs.push(result.frame.ref)
   }
-  const prepareCaptureOnce = async (probe: ProbeDefinition, preGeometry?: GeometryMeasurement): Promise<void> => {
-    const prepareCapture = options.prepareCapture
-    if (prepareCapture && !capturePrepared) {
+  const prepareCaptureWith = async (
+    prepareCapture: typeof options.prepareCapture,
+    probe: ProbeDefinition,
+    preGeometry?: GeometryMeasurement,
+  ): Promise<void> => {
+    if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
-      const calibrationId = "collector.captureCalibration"
+      // A finish after a before-probes preparation keeps its own trace beside the calibration trace.
+      const calibrationId = capturePrepared ? "collector.textQualification" : "collector.captureCalibration"
       const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       const reported = options.geometryCorroboration
       let preparationGrid: { rows: number; cols: number } | undefined
@@ -750,8 +804,7 @@ export async function runProbeBatch(
       disposable.declaredTarget.id === options.subject.id &&
       disposable.declaredTarget.os === "linux" &&
       !clipboard?.muxAttachmentProof
-    const isDirectLinuxPasteApp =
-      isDirectLinuxApp && options.subject !== undefined && LINUX_DEFAULT_PASTE_APPS.has(options.subject.id)
+    const directLinuxPasteRoute = isDirectLinuxApp ? LINUX_PASTE_ROUTES[options.subject?.id ?? ""] : undefined
     const isVerifiedLinuxMux =
       options.subject?.kind === "mux" &&
       (options.subject.id === "tmux" || options.subject.id === "screen") &&
@@ -774,7 +827,7 @@ export async function runProbeBatch(
       verify &&
       (clipboard.profile !== "default" ||
         (isDirectLinuxApp && probe.id === "extensions.osc52-write") ||
-        (isDirectLinuxPasteApp && probe.id === "extensions.clipboard-paste") ||
+        (directLinuxPasteRoute && probe.id === "extensions.clipboard-paste") ||
         (isDirectDarwinApp &&
           (probe.id === "extensions.osc52-write" ||
             probe.id === "extensions.osc52-read" ||
@@ -787,9 +840,28 @@ export async function runProbeBatch(
     ) {
       const allowDisposablePasteSetup =
         probe.id === "extensions.clipboard-paste" && isVerifiedLinuxMux && options.subject?.id === "screen"
+      // A paste route only where it is reviewed: the direct App's own, or Kitty's for a mux, whose outer the
+      // owned launch refuses to be anything but Kitty (linux-container-run.sh "Owned Linux mux outer must be Kitty").
+      const pasteRoute =
+        !PASTE_PROBE_IDS.has(probe.id) || clipboard.pasteboard === "darwin"
+          ? undefined
+          : isVerifiedLinuxMux
+            ? LINUX_PASTE_ROUTES.kitty
+            : LINUX_PASTE_ROUTES[options.subject?.id ?? ""]
+      const missingPrimary = (): Promise<never> =>
+        Promise.reject(new Error("Owned PRIMARY selection is absent from this run's clipboard receipt"))
+      const transaction: typeof clipboard.withClipboardFixture =
+        pasteRoute?.selection === "primary"
+          ? (clipboard.withPrimaryFixture ?? missingPrimary)
+          : clipboard.withClipboardFixture
       probeSource.withClipboardFixture = (work) =>
-        clipboard.withClipboardFixture(
-          (fixture) => work(allowDisposablePasteSetup ? { ...fixture, disposableSession: true } : fixture),
+        transaction(
+          (fixture) =>
+            work({
+              ...fixture,
+              ...(allowDisposablePasteSetup && { disposableSession: true }),
+              ...(pasteRoute && { paste: pasteRoute }),
+            }),
           (event) => clipboardEvents.push(event),
           verify,
         )
@@ -884,8 +956,8 @@ export async function runProbeBatch(
         }
       }
     }
-    if (options.prepareCapturePhase !== "after-probes" && options.prepareCapture && !capturePrepared) {
-      await prepareCaptureOnce(probe, preGeometry)
+    if (options.prepareCapture && !capturePrepared) {
+      await prepareCaptureWith(options.prepareCapture, probe, preGeometry)
       if (captureGeometry) probeSource.captureGeometry = captureGeometry
       if (captureGeometryRefusal) probeSource.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) probeSource.capture = undefined
@@ -1125,11 +1197,16 @@ export async function runProbeBatch(
             : {}),
           ...(rawReplyRef ? { rawReplyRef } : {}),
         })
-        for (const assertion of result.assertions ?? []) {
+        for (const { witness, ...assertion } of result.assertions ?? []) {
           batch.assertions.push({
             featureId: probe.id,
             ...assertion,
-            ...(resized ? { note: `${assertion.note ? `${assertion.note}; ` : ""}Geometry resized during probe` } : {}),
+            // A resized row is re-labelled resized-capture, so a branch's witness no longer stands for it (#33054).
+            ...(resized
+              ? { note: `${assertion.note ? `${assertion.note}; ` : ""}Geometry resized during probe` }
+              : witness === undefined
+                ? {}
+                : { witness }),
             ...(rawReplyRef ? { rawReplyRef } : {}),
           })
         }
@@ -1308,10 +1385,10 @@ export async function runProbeBatch(
       options.onCheckpoint?.(batch)
     }
   }
-  if (options.prepareCapturePhase === "after-probes") {
+  if (options.finishCapture) {
     await verify?.()
     const probe = selected[0]
-    if (probe) await prepareCaptureOnce(probe)
+    if (probe) await prepareCaptureWith(options.finishCapture, probe)
   }
   if (ownsTerminal && options.ownedTerminal) {
     batch.rawReplies["collector.geometry"] = JSON.stringify({
@@ -1327,7 +1404,7 @@ export async function runProbeBatch(
   batch.suiteComplete =
     expected.every((probe) => observed.has(probe.id) || namedNotTested.has(probe.id)) &&
     Object.keys(batch.ungradedDiagnostics).length === 0
-  if (options.prepareCapturePhase !== "after-probes") await verify?.()
+  if (!options.finishCapture) await verify?.()
   const runMux =
     options.ownedTerminal?.muxAttachmentProof?.mux ??
     (options.subject?.kind === "mux" && (options.subject.id === "tmux" || options.subject.id === "screen")

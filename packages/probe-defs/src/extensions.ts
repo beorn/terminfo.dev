@@ -40,6 +40,7 @@ import {
   auditedAdapterSources,
   sameFrame,
   sameRgb as sameRgbCells,
+  fencedSilenceResult,
   sentinelNegativeResult,
   sentinelSilenceResult,
   sgrCaptureTooSmall,
@@ -3344,22 +3345,22 @@ function kittyDetection(raw: string): KittyDetection {
   return { kind: "inconclusive", reason: "no-response" }
 }
 
+/**
+ * A DA1 answer that is the whole capture: the marked fenced silence, graded by the row's rule in recordExecutedProbe
+ * like every other DA1-fenced query (#33165, @cto 767c9bcd). The default rule records Unsupported with this note and
+ * assertion, the same result this function decided itself before.
+ */
 function kittyProtocolAbsent(response: string): ProbeCallbackResult {
   const note =
     "DA1 answered without any Kitty keyboard flags reply; the protocol is not supported (necessary-condition negative; key-event conformance was not tested)"
   return {
-    pass: false,
-    response,
+    ...fencedSilenceResult(
+      response,
+      note,
+      "A complete Kitty keyboard flags reply answers before the DA1 reply",
+      response,
+    ),
     note,
-    observation: { outcome: "unsupported", assertionType: "query_reply", note },
-    assertions: [
-      {
-        assertionType: "query_reply" as const,
-        kind: "negative",
-        expected: "A complete Kitty keyboard flags reply answers before the DA1 reply",
-        observed: response,
-      },
-    ],
   }
 }
 
@@ -4295,7 +4296,67 @@ function liveClipboardNotTested(): ProbeCallbackResult {
 
 const osc52Reply = /\x1b\]52;c;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/
 
-function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult {
+/**
+ * The decoded text of a well-formed canonical OSC 52 c reply; undefined for anything else, which
+ * clipboardQueryResult then grades by name (no reply, invalid reply).
+ */
+function decodedOsc52Reply(outcome: TerminalQueryOutcome): string | undefined {
+  const encoded = outcome.reason === "reply" && outcome.match ? osc52Reply.exec(outcome.raw)?.[1] : undefined
+  // A base64 alphabet and length check first, so atob cannot throw and no catch hides a reply.
+  if (encoded === undefined || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) return undefined
+  const decoded = atob(encoded)
+  return btoa(decoded) === encoded ? decoded : undefined
+}
+
+interface SettledClipboardReply {
+  readonly outcome: TerminalQueryOutcome
+  readonly ownEarlierNonce?: string
+  readonly requeries: number
+  readonly elapsedMs: number
+  /** Each reply in order: ms since the first query and whether it carried the probe's own earlier nonce. */
+  readonly replies: readonly { atMs: number; own: boolean }[]
+}
+
+/**
+ * #33145 (@cto 7fd99ad2): a terminal may answer OSC 52 read from its own earlier write for a moment after another
+ * client takes the selection (Ghostty 1.4.0, under 0.5 s). Re-query only while the reply is well-formed and equals
+ * the probe's OWN earlier nonce, on the write leg's deadline and poll; any other reply decides at once.
+ */
+async function settledClipboardReply(
+  query: () => Promise<TerminalQueryOutcome>,
+  options: { readonly ownEarlierNonce?: string; readonly deadlineMs: number; readonly pollMs: number },
+): Promise<SettledClipboardReply> {
+  const own = options.ownEarlierNonce
+  const startedAt = Date.now()
+  const replies: { atMs: number; own: boolean }[] = []
+  let outcome = await query()
+  let isOwn = own !== undefined && decodedOsc52Reply(outcome) === own
+  replies.push({ atMs: 0, own: isOwn })
+  let requeries = 0
+  while (isOwn && Date.now() - startedAt < options.deadlineMs) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, options.pollMs)
+    })
+    const atMs = Date.now() - startedAt
+    outcome = await query()
+    requeries += 1
+    isOwn = decodedOsc52Reply(outcome) === own
+    replies.push({ atMs, own: isOwn })
+  }
+  return {
+    outcome,
+    ...(own !== undefined && { ownEarlierNonce: own }),
+    requeries,
+    elapsedMs: replies.at(-1)?.atMs ?? 0,
+    replies,
+  }
+}
+
+function clipboardQueryResult(
+  outcome: TerminalQueryOutcome,
+  expected: string,
+  settled?: SettledClipboardReply,
+): ProbeCallbackResult {
   const frame = osc52Reply.exec(outcome.raw)
   if (!frame || outcome.reason !== "reply" || !outcome.match) {
     const reason = outcome.raw ? "invalid-reply" : "no-response"
@@ -4324,24 +4385,42 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
     }
   }
   const pass = decoded === expected
+  if (!pass) {
+    const requeries = settled?.requeries ?? 0
+    const note =
+      settled?.ownEarlierNonce !== undefined && decoded === settled.ownEarlierNonce
+        ? `OSC 52 reply carried own earlier nonce for ${settled.elapsedMs} ms (${requeries} re-queries)`
+        : `OSC 52 reply carried a value other than the independently written nonce (length=${Buffer.byteLength(decoded)}, sha256=${createHash("sha256").update(decoded).digest("hex")})`
+    return {
+      pass: false,
+      response: frame[0],
+      note,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "query_reply", note },
+      // Undecided, not broken: the fixture verified by independent read that the selection held the nonce before
+      // this query, so neither a stale own write nor a foreign value means the test failed (#33145, @cto 0fc1f5db).
+      tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+    }
+  }
+  const settleNote =
+    settled && settled.requeries > 0
+      ? `OSC 52 read returned the probe's own earlier write nonce for ${settled.elapsedMs} ms before the independently written nonce (${settled.requeries} re-queries; replies at ${settled.replies.map((reply) => `+${reply.atMs}ms ${reply.own ? "own" : "written"}`).join(", ")})`
+      : undefined
   return {
-    pass,
+    pass: true,
     response: frame[0],
     observation: {
-      outcome: pass ? "supported" : "inconclusive",
-      ...(!pass && { reason: "insufficient-evidence" as const }),
+      outcome: "supported",
       assertionType: "query_reply",
+      ...(settleNote && { note: settleNote }),
     },
-    ...(pass && {
-      assertions: [
-        {
-          assertionType: "query_reply" as const,
-          kind: "positive" as const,
-          expected: "OSC 52 c returns the independently written nonce",
-          observed: frame[0],
-        },
-      ],
-    }),
+    assertions: [
+      {
+        assertionType: "query_reply" as const,
+        kind: "positive" as const,
+        expected: "OSC 52 c returns the independently written nonce",
+        observed: frame[0],
+      },
+    ],
   }
 }
 
@@ -4476,6 +4555,43 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
   })
 }
 
+/** PTY bytes seen this long after the press refuse the sample; a bare shift sends none in any default key mode. */
+const REAL_KEY_SILENCE_MS = 200
+
+/**
+ * #33145 (@cto 70645b74): the owned X display gives the terminal one real key event before an OSC 52 write, as
+ * on any used terminal, because its selection claim carries its last input-event time. The press must reach the
+ * application as zero bytes (a report-all-keys keyboard mode would send one for shift), so it runs inside a PTY
+ * read and anything that arrives refuses the sample by name.
+ */
+async function realKeyEventBeforeWrite(
+  ctx: TermProbeSource,
+  press: () => Promise<void>,
+): Promise<ProbeCallbackResult | undefined> {
+  const invalid = (note: string): ProbeCallbackResult => ({
+    pass: false,
+    note,
+    tests: [{ id: "criterion", status: "probe-invalid", reason: note }],
+  })
+  if (!ctx.readInjected) {
+    return invalid(
+      "Real key event before the OSC 52 write needs the PTY read that proves it sent the application no bytes; this source has none",
+    )
+  }
+  let outcome: TerminalQueryOutcome
+  try {
+    outcome = await ctx.readInjected(/[\s\S]/, REAL_KEY_SILENCE_MS, press)
+  } catch (error) {
+    return invalid(error instanceof Error ? error.message : String(error))
+  }
+  if (outcome.match || outcome.raw.length > 0) {
+    return invalid(
+      `Real key event before the OSC 52 write put ${Buffer.byteLength(outcome.raw)} bytes into the application (base64 ${outcome.rawBase64}); sample refused`,
+    )
+  }
+  return undefined
+}
+
 async function liveClipboardProbe(
   ctx: TermProbeSource,
   kind: "write" | "read" | "roundtrip",
@@ -4492,8 +4608,16 @@ async function liveClipboardProbe(
     const muxContextNote =
       mux === "tmux" ? `tmux set-clipboard=${fixture.tmuxSetClipboard}` : mux === "screen" ? "mux=screen" : undefined
     const muxDefaultNegativeEligible = mux === "screen" || (mux === "tmux" && fixture.tmuxSetClipboard === "external")
+    const deadlineMs = Math.min(Math.max(fixture.writeDeadlineMs ?? 1000, 0), 2000)
+    const pollMs = Math.max(fixture.writePollMs ?? 25, 1)
+    let ownWriteNonce: string | undefined
     if (kind !== "read") {
+      if (fixture.realKeyEvent) {
+        const refused = await realKeyEventBeforeWrite(ctx, fixture.realKeyEvent)
+        if (refused) return refused
+      }
       const nonce = `terminfo-osc52-${randomUUID()}`
+      ownWriteNonce = nonce
       ctx.write(`\x1b]52;c;${btoa(nonce)}\x07`)
       // A reply on the same TTY confirms the terminal processed the preceding write.
       // The independent clipboard read below is still the evidence of its effect.
@@ -4504,8 +4628,6 @@ async function liveClipboardProbe(
         )
       }
       const baseline = fixture.baseline
-      const deadlineMs = Math.min(Math.max(fixture.writeDeadlineMs ?? 1000, 0), 2000)
-      const pollMs = Math.max(fixture.writePollMs ?? 25, 1)
       const startedAt = Date.now()
       let measured = await fixture.readText()
       let allBaseline = typeof baseline === "string" && baseline.length > 0 && measured === baseline
@@ -4591,10 +4713,15 @@ async function liveClipboardProbe(
     }
     const nonce = `terminfo-osc52-${randomUUID()}`
     await fixture.writeText(nonce)
+    const settleOptions = { ownEarlierNonce: ownWriteNonce, deadlineMs, pollMs }
     if (mux) {
-      const outcome = await ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
+      const settled = await settledClipboardReply(
+        async () => ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply),
+        settleOptions,
+      )
+      const outcome = settled.outcome
       if (outcome.match && outcome.reason === "reply") {
-        const result = clipboardQueryResult(outcome, nonce)
+        const result = clipboardQueryResult(outcome, nonce, settled)
         if (result.observation && muxContextNote) {
           result.observation = {
             ...result.observation,
@@ -4638,10 +4765,11 @@ async function liveClipboardProbe(
           },
         }
       }
-      return clipboardQueryResult(outcome, nonce)
+      return clipboardQueryResult(outcome, nonce, settled)
     }
-    const outcome = await ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply)
-    const result = clipboardQueryResult(outcome, nonce)
+    const settled = await settledClipboardReply(() => ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply), settleOptions)
+    const outcome = settled.outcome
+    const result = clipboardQueryResult(outcome, nonce, settled)
     if (!outcome.raw && ctx.capture) {
       const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
       return {
@@ -4830,7 +4958,11 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   return result
 }
 
-/** OS clipboard → app via ctrl+shift+v. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */
+/**
+ * OS selection → app through the App's default paste action. The collector chooses the route (the selection that
+ * action reads and its key; xterm's Shift+Insert reads PRIMARY), so the probe stays blind to which App it runs in.
+ * Distinct from OSC 52 (app → clipboard) and DECRPM 2004.
+ */
 async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
@@ -4839,6 +4971,9 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
   }
   if (!ctx.withClipboardFixture) return notTestedResult("owned disposable clipboard paste", { clipboard: false })
   return ctx.withClipboardFixture(async (fixture) => {
+    const route = fixture.paste
+    if (!route) return notTestedResult("a reviewed default paste route for this App", { paste: false })
+    const action = `clipboard-paste:${route.selection}:${route.key}`
     const incomingMode = await ctx.queryMode(2004)
     const blindDisposableReset = incomingMode === null && fixture.disposableSession === true
     if (!blindDisposableReset && incomingMode !== "set" && incomingMode !== "reset") {
@@ -4851,16 +4986,17 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
     const readPaste = async (enabled: boolean) => {
       ctx.write(enabled ? "\x1b[?2004h" : "\x1b[?2004l")
       const arrival = new RegExp(`\\x1b\\[200~[\\s\\S]*?\\x1b\\[201~|${escapeRegex(nonce)}`)
-      const report = (await readInput(arrival, 1000, () => input.injectKey("ctrl+shift+v")))?.[0]
+      const report = (await readInput(arrival, 1000, () => input.injectKey(route.key)))?.[0]
       if (!report) {
-        throw new Error("XTEST clipboard paste ctrl+shift+v did not reach the app after a successful delivery control")
+        throw new Error(
+          `XTEST ${route.selection} paste ${route.key} did not reach the app after a successful delivery control`,
+        )
       }
       return report
     }
     let failed = false
     let primary: unknown
     try {
-      // The owned fixture seeds CLIPBOARD; Shift+Insert reads X11 PRIMARY instead.
       const reset = await readPaste(false)
       const report = await readPaste(true)
       const resetAgain = await readPaste(false)
@@ -4872,6 +5008,9 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       }
       const observed = {
         mode: "clipboard-paste",
+        selection: route.selection,
+        key: route.key,
+        binding: route.binding,
         control,
         reset,
         report,
@@ -4881,8 +5020,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       const blindModeNote = blindDisposableReset
         ? "DECRPM 2004 returned null; mode 2004 was set blind on the verified disposable session and restored with CSI ? 2004 l"
         : undefined
-      const expected =
-        "OS XTEST ctrl+shift+v paste of clipboard nonce as CSI 200~nonce201~ after plain-a delivery control"
+      const expected = `OS XTEST ${route.key} paste of ${route.selection} nonce as CSI 200~nonce201~ after plain-a delivery control`
       const encoding = new RegExp(`\\x1b\\[200~${escapeRegex(nonce)}\\x1b\\[201~`)
       if (encoding.test(report)) {
         return {
@@ -4900,7 +5038,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
               kind: "positive" as const,
               expected,
               observed: JSON.stringify(observed),
-              action: "clipboard-paste:ctrl+shift+v",
+              action,
             },
           ],
         }
@@ -4920,7 +5058,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
             kind: "negative" as const,
             expected,
             observed: JSON.stringify(observed),
-            action: "clipboard-paste:ctrl+shift+v",
+            action,
           },
         ],
       }
@@ -5533,6 +5671,13 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
 }
 
 const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
+/** A terminal that does not answer the OSC 22 query form, in the criterion's terms (@cto a7fb82cc). */
+export const OSC22_SILENT_TERMINAL =
+  "Open: the terminal gave no OSC 22 selected-shape reply, and silence on the query form is not unsupported, because a terminal can set pointer shapes without answering the query; with no reply, a cursor query cannot show the shape, and the visible pointer is outside this run's evidence."
+/** A multiplexer stays open by design: the pointer is the outer terminal's (@cto a7fb82cc). */
+export function osc22SilentMultiplexer(mux: "tmux" | "screen"): string {
+  return `Open by design: the mouse pointer belongs to the outer terminal, not ${mux}, so anything seen would grade the outer terminal; ${mux} gave no OSC 22 selected-shape reply.`
+}
 const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
 
 function readOsc22Shape(raw: string) {
@@ -8246,9 +8391,12 @@ const extensionDefinitions: ProbeDefinition[] = [
         }
         const initial = await read()
         if (initial.shape === undefined) {
+          // @cto a7fb82cc (#33100): silence on the query form is never Unsupported, and an answered OSC
+          // colour query is no control for OSC 22. Each subject says why it stays open.
+          const reason = ctx.mux === undefined ? OSC22_SILENT_TERMINAL : osc22SilentMultiplexer(ctx.mux)
           return {
-            ...notTestedResult(NO_SAME_PATH_CONTROL, { query, initial }),
-            note: "No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read",
+            ...notTestedResult(reason, { query, initial }),
+            note: `No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read; ${reason}`,
           }
         }
         const controlShape = initial.shape === "text" ? "wait" : "text"

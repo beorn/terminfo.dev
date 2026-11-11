@@ -11,8 +11,9 @@ import {
 } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
-import { supplementOf, type ContextSupplement } from "./context-supplements.ts"
+import { MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement } from "./context-supplements.ts"
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
+import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -162,18 +163,26 @@ export interface SelectedContextCell {
   /** Environment groups are retained run metadata, outside the feature-result catalogue. */
   featureResult?: FeatureResult
   /**
-   * Set only when a context supplement (context-supplements.ts) read this open cell. `filled`: the cell is the
+   * Set only when a context supplement (context-supplements.ts) read this cell. `filled`: the cell is the
    * supplement's own result and run. `open`: the supplement gave no proof, so the default cell stays, with this reason.
+   * `noted`: a decided default cell keeps its status, reason and tests; the supplement's decided status is only a note
+   * (#33151, a supplement that declares notesDecided).
    */
   supplement?: { name: string; qualifier: string; runId: string; declaredDefault?: string } & (
     | { filled: true }
     | { filled: false; open: string }
+    | { filled: false; noted: ProbeResult["status"] }
   )
   /**
    * Set only when a reopened-cells row (reopened-cells.ts, #33164) withdrew this cell's grade: the feature result reads
    * probe-todo, while `result`, `run` and `origin` stay the witnessed original.
    */
   reopened?: ReopenedMarker
+  /**
+   * Set only when a declared pair (derived-cells.ts, #33019) read this cell from a decided-Unsupported parent in the
+   * same context: the feature result reads unsupported, while `result`, `run` and `origin` stay the child's own.
+   */
+  derived?: DerivedMarker
 }
 
 /** An initialized draft can retain intent even when no measured subject or result exists. */
@@ -203,6 +212,8 @@ export interface SelectedContextSummary {
   contributingRunIds: string[]
   attempts: SelectedContextAttempt[]
   counts: Record<FeatureResultStatus, number>
+  /** Cells counted in `counts.unsupported` only by derivation (#33019); never direct measurements. */
+  derivedIds: string[]
   score: { supported: number; all: number }
   /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
   complete: boolean
@@ -332,10 +343,15 @@ interface SupplementInput {
   contextKey: string
 }
 
-/** A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions. */
+/**
+ * A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions, not a
+ * declared supplement, and for a mux the launcher's one default config (#33151, @cto 4a546051).
+ */
 function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): boolean {
   return (
     candidate.permissions === null &&
+    supplementOf(candidate) === undefined &&
+    (candidate.kind !== "mux" || candidate.config === MUX_DEFAULT_CONFIG) &&
     candidate.kind === supplement.kind &&
     candidate.id === supplement.id &&
     candidate.os === supplement.os &&
@@ -361,6 +377,8 @@ export function projectResults(
     log?: (line: string) => void
     /** Cells whose grade a ruling withdrew (content/reopened-cells.json); loadSelectedResults always passes them. */
     reopened?: readonly ReopenedCell[]
+    /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
+    derived?: readonly DerivedPair[]
   },
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
@@ -371,6 +389,16 @@ export function projectResults(
   // 33119: a context supplement is never a context, so it is set aside before any context is counted or keyed.
   const supplementRuns = runs.filter((run) => supplementOf(run.subject) !== undefined)
   const contextRuns = runs.filter((run) => supplementOf(run.subject) === undefined)
+  // #33151: a Linux mux run is the launcher's default config or a declared supplement; any third config would read as
+  // a default context, so it is refused by name.
+  for (const run of contextRuns) {
+    const { kind, id, os, config } = run.subject
+    if (kind === "mux" && os === "linux" && config !== MUX_DEFAULT_CONFIG) {
+      throw new Error(
+        `${run.runId}: mux ${id} records config ${JSON.stringify(config)}, which is neither the default ${MUX_DEFAULT_CONFIG} nor a declared context supplement`,
+      )
+    }
+  }
   const contexts = countContexts(contextRuns)
   const currentRuns = contextRuns.filter((run) => run.schemaVersion === 3 || run.schemaVersion === 4)
   const ids = new Set<string>()
@@ -494,6 +522,7 @@ export function projectResults(
       policy.log,
       supplements,
       policy.reopened ?? [],
+      policy.derived ?? DERIVED_UNSUPPORTED,
     ),
   }
 }
@@ -583,6 +612,7 @@ function composeContextSummaries(
   log?: (line: string) => void,
   supplements: readonly SupplementInput[] = [],
   reopened: readonly ReopenedCell[] = [],
+  derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
 ): Record<string, SelectedContextSummary> {
   const reopenedApplied = new Set<ReopenedCell>()
   const runsById = new Map<string, LoadedRun>()
@@ -771,6 +801,8 @@ function composeContextSummaries(
       decided,
     )
     applyReopened(contextKey, cells, candidates[0]?.subject, reopened, reopenedApplied)
+    // After reopening, so a reopened parent reads probe-todo and entails nothing (#33019, @cto 6588ac5f).
+    const derivedIds = applyDerived(contextKey, cells, derivedPairs)
     const contributing = new Set(
       [...currentMethods.values()].flatMap(({ probes }) => [...probes.values()].map(({ run }) => run.runId)),
     )
@@ -786,6 +818,7 @@ function composeContextSummaries(
       viewIds.map((featureId) => ({
         featureId,
         status: cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo",
+        ...(cells[featureId]?.derived && { derived: cells[featureId]?.derived }),
       })),
       viewIds,
     )
@@ -809,6 +842,7 @@ function composeContextSummaries(
       contributingRunIds,
       attempts,
       counts: aggregate.counts,
+      derivedIds,
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
     }
@@ -843,7 +877,13 @@ function applySupplements(
   for (const id of ids) {
     const prior = cells[id]
     const priorStatus = prior?.featureResult?.status ?? prior?.result.status
-    if (priorStatus !== undefined && decided.has(priorStatus)) continue
+    const priorDecided = priorStatus !== undefined && decided.has(priorStatus)
+    if (
+      priorDecided &&
+      !newestFirst.some(({ supplement }) => supplement.notesDecided && supplement.featureIds.includes(id))
+    ) {
+      continue
+    }
     const source = newestFirst.find(
       ({ run, supplement }) =>
         supplement.featureIds.includes(id) &&
@@ -851,8 +891,14 @@ function applySupplements(
         run.results?.some((result) => result.featureId === id && result.attempt.scope !== "none"),
     )
     const result = source?.run.results?.find((entry) => entry.featureId === id)
-    if (!source || !result || !decided.has(result.status)) continue
+    if (!source || !result) continue
     const { run, supplement } = source
+    const ignoresInSilence = supplement.silentIgnore.includes(run.subject.id)
+    // A non-mux no-reply publishes probe-invalid (probe-defs extensions.ts, `no-response`). On an app that may ignore
+    // the setting without a word, that is the very case `notInForce` names, so it reaches the branch below (33324).
+    if (!decided.has(result.status) && !(ignoresInSilence && result.status === "probe-invalid" && !priorDecided)) {
+      continue
+    }
     const declaredDefault = supplement.declaredDefaults[run.subject.id]
     const marker = {
       name: supplement.name,
@@ -860,7 +906,14 @@ function applySupplements(
       runId: run.runId,
       ...(declaredDefault && { declaredDefault }),
     }
-    if (result.status !== "supported" && supplement.silentIgnore.includes(run.subject.id)) {
+    if (priorDecided) {
+      // A decided default cell keeps its status, reason and tests: the supplement's decided status is a note only.
+      if (prior && supplement.notesDecided) {
+        cells[id] = { ...prior, supplement: { ...marker, filled: false, noted: result.status } }
+      }
+      continue
+    }
+    if (result.status !== "supported" && ignoresInSilence) {
       // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open. A
       // schema-4 default run records every catalog id, so a prior cell is present; were one absent, there is no cell
       // to mark and the id stays absent, which every reader already reads as probe-todo (statesFor).

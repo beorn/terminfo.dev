@@ -118,7 +118,7 @@ export default {
         kind,
         // #30784: an undecided run keeps an empty score and carries the flag its cell renders.
         score: stats?.pct == null ? "" : String(stats.pct),
-        notMeasured: stats ? runDecidedNothing(stats.counts) : false,
+        notMeasured: stats ? runDecidedNothing(stats.counts, stats.derived) : false,
         scoreTitle:
           stats && source
             ? currentCoverageSentence(stats, data.selectedByBackend[source.name]?.selected.catalogIds)

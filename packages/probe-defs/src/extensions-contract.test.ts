@@ -8,7 +8,7 @@
  */
 import { expect, test } from "vitest"
 import { join } from "node:path"
-import { extensionsProbes } from "./extensions.ts"
+import { extensionsProbes, OSC22_SILENT_TERMINAL } from "./extensions.ts"
 import { NO_SAME_PATH_CONTROL, withReplyFailureEvidence } from "./helpers.ts"
 import {
   contractGaps,
@@ -752,7 +752,7 @@ const EXTENSIONS_CONTRACT: GroupContract = [
   {
     id: "extensions.osc7777-font-window-size",
     expected: "decided",
-    claim: "Font + window size (OSC 7777): ESC ] 7777 ; font ; size BEL",
+    claim: "Font + window size (OSC 7777): ESC ] 7777 ; size BEL",
   },
   { id: "extensions.osc701-locale", expected: "decided", claim: "Locale query/set (OSC 701): ESC ] 701 ; locale BEL" },
   { id: "extensions.osc702-version", expected: "decided", claim: "Version query (OSC 702): ESC ] 702 ; ? BEL" },
@@ -799,6 +799,11 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
     "packages/probe-defs/src/kitty-capture.test.ts",
     "packages/probe-defs/src/kitty-rows.test.ts",
   ],
+}
+
+/** Rows whose missing reading carries its own ruled sentence instead of the generic one (@cto a7fb82cc, #33100). */
+const NAMED_NO_OBSERVABLE: Readonly<Record<string, string>> = {
+  "extensions.osc22-pointer": OSC22_SILENT_TERMINAL,
 }
 
 const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
@@ -1154,6 +1159,7 @@ function decidedSatisfactionSources(id: string) {
           const before = nonce
           try {
             return await work({
+              paste: { selection: "clipboard", key: "ctrl+shift+v", binding: "fixture binding" },
               readText: async () => nonce,
               writeText: async (text) => {
                 nonce = text
@@ -1337,7 +1343,7 @@ test("every inconclusive extension contract row evaluates to inconclusive under 
       expect(callbackResult.assertions, row.id).toBeUndefined()
       expect(callbackResult.notTested, `${row.id} names its missing same-path reading`).toEqual({
         reason: "no-semantic-observable",
-        noObservable: NO_SAME_PATH_CONTROL,
+        noObservable: NAMED_NO_OBSERVABLE[row.id] ?? NO_SAME_PATH_CONTROL,
       })
       continue
     }

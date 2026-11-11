@@ -412,12 +412,13 @@ jobs:
               COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_TERMINAL_LAUNCH'
           const { writeFileSync } = require("node:fs");
           const { join } = require("node:path");
-          const { launchTerminalWindow } = require(process.cwd() + "/packages/admin/src/terminal-app-receipt.ts");
+          const { launchTerminalWindowCensus } = require(process.cwd() + "/packages/admin/src/terminal-app-receipt.ts");
           // The owned-window launch replaces `open -a`: the window id and exact tab TTY are the close handle.
-          const terminalWindow = launchTerminalWindow(process.env.COMMAND_PATH);
+          // #33152 (@cto 5c2b1f65): the launch transaction census goes in the launch record.
+          const { terminalWindow, beforeIds, afterIds, newIds } = launchTerminalWindowCensus(process.env.COMMAND_PATH);
           if (!terminalWindow || !terminalWindow.tty) throw new Error("Hosted Terminal launch resolved no owned window id and TTY");
           const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
-          writeFileSync(join(out, "terminal-launch.json"), JSON.stringify({ appId: process.env.APP_ID, terminalWindow }), { mode: 0o600 });
+          writeFileSync(join(out, "terminal-launch.json"), JSON.stringify({ appId: process.env.APP_ID, terminalWindow, beforeIds, afterIds, newIds }), { mode: 0o600 });
           console.log(JSON.stringify({ terminalWindow }));
           HOSTED_TERMINAL_LAUNCH
           )" > "$OUT/launcher.log" 2>&1
@@ -883,15 +884,41 @@ jobs:
           }
           else {
             const { appId, terminalWindow } = JSON.parse(readFileSync(record, "utf8"));
-            // Recheck the exact window id and tab TTY, then close only that window.
-            closeOwnedTerminalWindow(terminalWindow);
-            const probe = Bun.spawnSync(["osascript", "-e", `tell application "Terminal"\nreturn count of (every window whose id is ${terminalWindow.windowId})\nend tell`]);
-            if (probe.exitCode !== 0) throw new Error("Owned Terminal window close readback failed: " + probe.stderr.toString());
-            const remaining = Number(probe.stdout.toString().trim());
-            writeFileSync(join(out, "terminal-window-disposal.json"), JSON.stringify({ appId, windowId: terminalWindow.windowId, tty: terminalWindow.tty, remaining }, null, 2), { mode: 0o600 });
-            if (remaining !== 0) throw new Error("Owned Terminal window survived its close: remaining " + remaining);
+            const owned = { appId, windowId: terminalWindow.windowId, tty: terminalWindow.tty };
+            try {
+              // Recheck the exact window id and tab TTY, then close only that window. The retained
+              // zero-match proof (its osascript argv, status and output) is kept in the disposal file.
+              const closeProof = JSON.parse(closeOwnedTerminalWindow(terminalWindow));
+              const probe = Bun.spawnSync(["osascript", "-e", `tell application "Terminal"\nreturn count of (every window whose id is ${terminalWindow.windowId})\nend tell`]);
+              if (probe.exitCode !== 0) throw new Error("Owned Terminal window close readback failed: " + probe.stderr.toString());
+              const remaining = Number(probe.stdout.toString().trim());
+              writeFileSync(join(out, "terminal-window-disposal.json"), JSON.stringify({ ...owned, remaining, closeProof }, null, 2), { mode: 0o600 });
+              if (remaining !== 0) throw new Error("Owned Terminal window survived its close: remaining " + remaining);
+            } catch (error) {
+              // A failed close is retained by name, never left as a missing file: finalise then refuses on
+              // the absent disposal file, and this file says why.
+              writeFileSync(join(out, "terminal-window-close-failure.json"), JSON.stringify({ ...owned, name: error.name, message: error.message, captureCommand: error.captureCommand ?? null }, null, 2), { mode: 0o600 });
+              throw error;
+            }
           }
           HOSTED_TERMINAL_CLOSE
+          )"
+
+      # #33152 (@cto 56e401d9 point 3): run.json carries the owned window's launch and disposal, each with
+      # its side file's sha256, or the job fails by name before the upload can look clean.
+      - name: Finalise the run record with the owned Terminal window
+        if: always() && matrix.id == 'terminal-app'
+        run: |
+          bun --eval "$(cat <<'HOSTED_TERMINAL_FINALISE'
+          const { join } = require("node:path");
+          const { finaliseTerminalWindowRecord } = require(process.cwd() + "/packages/admin/src/terminal-window-record.ts");
+          try {
+            finaliseTerminalWindowRecord(join(process.env.RUNNER_TEMP, "measurement-artifacts"));
+          } catch (error) {
+            console.log("::error::" + (error instanceof Error ? error.message : String(error)));
+            process.exit(1);
+          }
+          HOSTED_TERMINAL_FINALISE
           )"
 
       - name: Upload the receipt beside the exact collected run

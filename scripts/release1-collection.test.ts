@@ -46,6 +46,7 @@ import {
   type CapturedRunDraft,
 } from "@terminfo/probe-defs"
 import {
+  assertHostedWindowCustody,
   collectPass,
   ownedAppCommand,
   ownedAppRunsDirectory,
@@ -1022,8 +1023,9 @@ it.each([
         expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
       }
       expect(collector).toHaveBeenCalledTimes(1)
-      // Five Linux App default launches, two mux launches, then one read-allowed supplement per Linux App (33119).
-      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(12)
+      // Five Linux App default launches, two mux launches, one read-allowed supplement per Linux App (33119), and
+      // Screen's truecolor-on supplement (33151).
+      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(13)
       // Both Linux mux rows run inside the Kitty container through the launcher's --mux arm.
       for (const id of ["tmux", "screen"]) {
         const row = pass.contexts.find(
@@ -1049,6 +1051,40 @@ it.each([
         // The fixture suite has no mux probes, so the launcher failure is the row error, not a probe-invalid.
         expect(row?.error).toMatch(new RegExp(`${id}/linux.*exited 17`))
       }
+      // 33151: Screen's truecolor-on supplement is the same Kitty --mux launch with the mux profile added and only its
+      // three ids; tmux declares none.
+      const screenRow = pass.contexts.find(
+        (entry) => entry.context.kind === "mux" && entry.context.id === "screen" && entry.context.os === "linux",
+      )
+      const truecolorOutput = join(pass.directory, "linux", "screen.truecolor-on")
+      expect(launcher).toHaveBeenCalledWith(
+        "bash",
+        [
+          "scripts/linux-container-run.sh",
+          "--target",
+          "kitty",
+          "--preset",
+          "current",
+          "--clipboard-profile",
+          "default",
+          "--mux-profile",
+          "truecolor",
+          "--mux",
+          "screen",
+          "--ids",
+          "sgr.fg.truecolor,sgr.bg.truecolor,extensions.truecolor",
+          truecolorOutput,
+        ],
+        expect.objectContaining({ env: expect.objectContaining({ TERMINFO_PROBE_HASH: pass.probeHash }) }),
+      )
+      expect(screenRow?.supplements).toHaveLength(1)
+      expect(screenRow?.supplements?.[0]).toMatchObject({
+        name: "truecolor-on",
+        featureIds: ["sgr.fg.truecolor", "sgr.bg.truecolor", "extensions.truecolor"],
+        status: "failed",
+        directory: truecolorOutput,
+      })
+      expect(pass.errors).toContain(screenRow?.supplements?.[0]?.error)
       for (const id of LINUX_APP_IDS) {
         const row = pass.contexts.find(
           (entry) => entry.context.kind === "term" && entry.context.id === id && entry.context.os === "linux",
@@ -1112,7 +1148,9 @@ it.each([
         expect(pass.errors).toContain(row?.supplements?.[0]?.error)
       }
       for (const row of pass.contexts.filter(
-        (entry) => entry.context.kind !== "term" || entry.context.os !== "linux",
+        (entry) =>
+          (entry.context.kind !== "term" || entry.context.os !== "linux") &&
+          !(entry.context.kind === "mux" && entry.context.id === "screen" && entry.context.os === "linux"),
       )) {
         expect(row.supplements, `${row.context.id}/${row.context.os}`).toBeUndefined()
       }
@@ -2010,4 +2048,24 @@ it.each([
     launcher.mockRestore()
     rmSync(directory, { recursive: true, force: true })
   }
+})
+
+// #33152: placement is where a hosted Terminal.app record without its owned window's launch and disposal
+// stops; other hosted apps and the local owned-app route keep their own custody and must not be refused here.
+describe("assertHostedWindowCustody", () => {
+  const lacking = { "collector.collectionStatus": "collected" }
+  it("refuses a hosted Terminal.app record lacking the launch and disposal entries", () => {
+    expect(() =>
+      assertHostedWindowCustody({ route: "hosted-workflow", os: "macos", id: "terminal-app" }, lacking, "run.json"),
+    ).toThrow(
+      "run.json: hosted Terminal.app record lacks collector.windowLaunchProof, so it cannot claim an owned window opened and closed by this run",
+    )
+  })
+  it.each([
+    { route: "hosted-workflow", os: "macos", id: "iterm2" },
+    { route: "local-owned-app", os: "macos", id: "terminal-app" },
+    { route: "hosted-workflow", os: "windows", id: "windows-terminal" },
+  ] as const)("leaves $id on $route/$os to its own custody", (context) => {
+    expect(() => assertHostedWindowCustody(context, lacking, "run.json")).not.toThrow()
+  })
 })
