@@ -1154,6 +1154,7 @@ function decidedSatisfactionSources(id: string) {
           const before = nonce
           try {
             return await work({
+              paste: { selection: "clipboard", key: "ctrl+shift+v", binding: "fixture binding" },
               readText: async () => nonce,
               writeText: async (text) => {
                 nonce = text

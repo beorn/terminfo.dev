@@ -1107,6 +1107,14 @@ export interface LibMouseEvent {
   alt?: boolean
 }
 
+/** A terminal's default paste action: the X11 selection it reads, the key that triggers it, and where that is defined. */
+export interface PasteRoute {
+  readonly selection: "clipboard" | "primary"
+  readonly key: string
+  /** The terminal's own source or manual, at the pinned version, that binds `key` to paste `selection`. */
+  readonly binding: string
+}
+
 /** Independently observed text selection in an owned disposable display. */
 export interface ClipboardFixture {
   /** Owned transaction baseline verified before the callback starts. */
@@ -1119,6 +1127,11 @@ export interface ClipboardFixture {
   readonly writeDeadlineMs?: number
   /** Polling interval in ms for post-CPR OSC 52 write selection settlement (default 25). */
   readonly writePollMs?: number
+  /**
+   * The App's default paste action, chosen by the collector (#32164, @cto a4ec8fe2): readText/writeText act on
+   * `selection`, and `key` is the keypress that pastes it. Present only on a clipboard-paste fixture.
+   */
+  readonly paste?: PasteRoute
   readText(): Promise<string>
   writeText(text: string): Promise<void>
   /**

@@ -378,6 +378,20 @@ await_owned_daemon() {
   return 2
 }
 
+# xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,
+# selectToClipboard or insert-selection resource anywhere on its command line could rebind it, so the
+# launcher refuses one. Prints the first such argument and succeeds; fails when there is none.
+xterm_paste_rebinding_arg() {
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" =~ [Tt]ranslations|selectToClipboard|insert-selection ]]; then
+      printf '%s\n' "$arg"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -677,12 +691,13 @@ if [[ "${1:-}" == "--inside" ]]; then
   xvfb_pid=
   wm_pid=
   helper_pid=
+  primary_helper_pid=
   daemon_pid=
   collector_pid=
   cleanup() {
     local status=$?
     trap - EXIT
-    stop_owned_processes "$daemon_pid" "$wm_pid" "$helper_pid" "$xvfb_pid" "$collector_pid"
+    stop_owned_processes "$daemon_pid" "$wm_pid" "$helper_pid" "$primary_helper_pid" "$xvfb_pid" "$collector_pid"
     exit "$status"
   }
   trap cleanup EXIT
@@ -802,6 +817,54 @@ TERMINFO_WM_RC
     exit 2
   }
   initial_read_sha=$(sha256sum "$HOME/clipboard-initial-read.txt" | cut -d ' ' -f 1)
+
+  # xterm's default paste (Shift+Insert) reads X11 PRIMARY, not CLIPBOARD (#32164, @cto a4ec8fe2), so an
+  # xterm run also owns a PRIMARY baseline; every other target owns CLIPBOARD alone. The route is believed
+  # only while nothing rebinds it: the launch must carry no translation or selectToClipboard resource, and
+  # the display, environment and private HOME no resource database. Refused, never recorded and continued.
+  primary_receipt=null
+  if [[ "$target_id" == xterm ]]; then
+    # Every argument xterm is launched with: its own and the clipboard profile's (33119's read-allowed -xrm).
+    if rebinding=$(xterm_paste_rebinding_arg "${target_launch_args[@]}" "${target_clipboard_args[@]}"); then
+      echo "xterm launch argument rebinds paste: $rebinding" >&2
+      exit 2
+    fi
+    resource_manager=$(xprop -root RESOURCE_MANAGER 2>&1)
+    [[ "$resource_manager" == "RESOURCE_MANAGER:  not found." ]] || {
+      echo "Owned display carries a resource database: $resource_manager" >&2
+      exit 2
+    }
+    for name in XENVIRONMENT XAPPLRESDIR XUSERFILESEARCHPATH XFILESEARCHPATH; do
+      [[ -z "${!name:-}" ]] || { echo "xterm resource search variable is set: $name" >&2; exit 2; }
+    done
+    for file in "$HOME/.Xdefaults" "$HOME/.Xresources" "$HOME/.Xdefaults-$(uname -n)"; do
+      [[ ! -e "$file" ]] || { echo "Private HOME carries an X resource file: $file" >&2; exit 2; }
+    done
+    primary_path="$HOME/primary-baseline.txt"
+    printf 'terminfo-owned-primary-%s' "$TERMINFO_RUN_ID" > "$primary_path"
+    chmod 600 "$primary_path"
+    primary_sha=$(sha256sum "$primary_path" | cut -d ' ' -f 1)
+    xclip -quiet -selection primary -in "$primary_path" </dev/null >/out/xclip-primary-owner.log 2>&1 &
+    primary_helper_pid=$!
+    for _ in $(seq 1 100); do
+      kill -0 "$primary_helper_pid" 2>/dev/null || { cat /out/xclip-primary-owner.log >&2; exit 2; }
+      if timeout 1 xclip -selection primary -out > "$HOME/primary-initial-read.txt" 2>/out/xclip-primary-read.err &&
+         cmp -s "$primary_path" "$HOME/primary-initial-read.txt"; then
+        break
+      fi
+      sleep 0.1
+    done
+    [[ -r "$HOME/primary-initial-read.txt" &&
+       "$(sha256sum "$HOME/primary-initial-read.txt" | cut -d ' ' -f 1)" == "$primary_sha" ]] || {
+      echo "Owned xclip PRIMARY baseline did not survive independent selection read" >&2
+      cat /out/xclip-primary-owner.log /out/xclip-primary-read.err >&2
+      exit 2
+    }
+    primary_receipt=$(jq -n --argjson helperPid "$primary_helper_pid" --arg baselinePath "$primary_path" \
+      --arg baselineSha "$primary_sha" \
+      --arg initialSha "$(sha256sum "$HOME/primary-initial-read.txt" | cut -d ' ' -f 1)" \
+      '{helperPid:$helperPid,baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha}')
+  fi
 
   export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
   export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
@@ -935,12 +998,14 @@ TERMINFO_WM_RC
     --arg windowId "$window_id" --argjson windowPid "$window_pid" \
     --argjson helperPid "$helper_pid" --arg helperPath "$xclip_binary" --arg helperSha "$xclip_sha" \
     --arg baselinePath "$baseline_path" --arg baselineSha "$baseline_sha" --arg initialSha "$initial_read_sha" \
+    --argjson primary "$primary_receipt" \
     --arg config "$target_config" --arg permissions "$clipboard_permissions" --argjson target "$fixture_target" \
     '{schemaVersion:1,runId:$run,profile:$profile,target:$target,
       display:{name:$display,number:$number,displayFdPath:$displayFdPath,xvfbPid:$xvfbPid},
       terminal:{pid:$terminalPid,collectorPid:$collectorPid,windowId:$windowId,windowPid:$windowPid},
       selection:{helperPid:$helperPid,helperExecutable:{path:$helperPath,sha256:$helperSha},
-        baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha},
+        baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha}
+        + (if $primary == null then {} else {primary:$primary} end),
       config:$config,permissions:$permissions}' > "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
   chmod 600 "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
   clipboard_fixture_sha=$(sha256sum "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT" | cut -d ' ' -f 1)
