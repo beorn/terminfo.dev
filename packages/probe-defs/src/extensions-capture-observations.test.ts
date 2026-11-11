@@ -550,6 +550,11 @@ test("extensions.osc112-reset-cursor reads the cursor cell after the reset, not 
   expect(reset).toBeGreaterThan(coloured)
   expect(result.observation?.outcome).toBe("supported")
   expect(result.observation?.frames?.some((frame) => /reset after OSC 112/.test(frame.label))).toBe(true)
+  // Run-parser refuses a whole run whose screenshot row cites a control frame as its primary, so the
+  // decided row must name the changed cursor cell — the one target frame — not the reset control.
+  const targets = result.observation?.frames?.filter((frame) => frame.role === "target") ?? []
+  expect(targets).toHaveLength(1)
+  expect(result.observation?.screenshotRef).toBe(targets[0]?.ref)
 })
 
 test("extensions.osc112-reset-cursor names a reset that did not restore the cursor colour", async () => {

@@ -1577,7 +1577,9 @@ async function cursorColorSetupAppCapture(
       observation: {
         outcome: "supported" as const,
         assertionType: "screenshot" as const,
-        screenshotRef: reset.second.frame.ref,
+        // The primary names the frame this row decided on: the changed cursor cell. The reset reads
+        // are the control that proves it returned, and a screenshot row's primary is never a control.
+        screenshotRef: target.frame.ref,
         frames: [...frames, ...resetReads.map((entry) => entry.frame)],
         note,
       },
