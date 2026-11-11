@@ -11,10 +11,12 @@ interface WezTermTextOptions {
   readonly rows: number
   /** Negative start includes retained history; omitted reads only the visible grid. */
   readonly startLine?: number
+  /** Retain attributes such as OSC8 for semantic reads; plain text remains the default. */
+  readonly escapes?: boolean
 }
 
 export function readWindowsWezTermRows(
-  options: WezTermTextOptions,
+  options: Omit<WezTermTextOptions, "cols"> & { readonly cols?: number },
 ):
   | { readonly status: "read"; readonly rows: readonly string[]; readonly receipt: string }
   | { readonly status: "refused"; readonly reason: string } {
@@ -36,6 +38,7 @@ export function readWindowsWezTermRows(
       String(options.startLine ?? 0),
       "--end-line",
       String(options.rows - 1),
+      ...(options.escapes ? ["--escapes"] : []),
     ],
     {
       stdio: ["pipe", "pipe", "pipe"],
@@ -48,6 +51,7 @@ export function readWindowsWezTermRows(
     executable: options.executable,
     pane: options.pane,
     socket: options.socket,
+    ...(options.escapes && { escapes: true }),
     status: result.status,
     signal: result.signal,
     error: result.error?.message,
@@ -78,7 +82,7 @@ export function readWindowsWezTermRows(
   return { status: "read", rows, receipt: retained }
 }
 
-export function readWindowsWezTermText(options: Omit<WezTermTextOptions, "startLine">): TerminalTextRead {
+export function readWindowsWezTermText(options: Omit<WezTermTextOptions, "startLine" | "escapes">): TerminalTextRead {
   const read = readWindowsWezTermRows(options)
   if (read.status === "refused") return read
   const cells = mapSnapshotToCells(read.rows, options.cols, options.rows, 0)
