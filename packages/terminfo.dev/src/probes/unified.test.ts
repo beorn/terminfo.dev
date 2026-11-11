@@ -1780,7 +1780,7 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   })
 })
 
-type CapturePreparation = NonNullable<Parameters<typeof runProbeBatch>[0]["prepareCapture"]>
+type CapturePreparation = NonNullable<NonNullable<Parameters<typeof runProbeBatch>[0]>["prepareCapture"]>
 
 it.each([undefined, "after-probes"] as const)(
   "prepares capture once with the full retained trace (phase: %s)",
@@ -1898,7 +1898,9 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
       probeSource.write("fixture:reset.ris")
       return {
         pass: false,
-        tests: [{ id: "criterion", status: "probe-todo", reason: "Lifecycle fixture does not measure terminal support" }],
+        tests: [
+          { id: "criterion", status: "probe-todo", reason: "Lifecycle fixture does not measure terminal support" },
+        ],
       }
     }
     process.stdout.write = (() => true) as typeof process.stdout.write
