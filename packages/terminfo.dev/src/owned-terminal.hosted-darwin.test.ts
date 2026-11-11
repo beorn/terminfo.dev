@@ -185,7 +185,7 @@ test("retains native iTerm protocol frames with their checkpoint and unchanged r
 // 33512: Terminal.app's refused read is retained the way iTerm's frames are: the osascript reply
 // that carries the returned lines and their lengths, keyed to its checkpoint. Removing retention
 // must fail without changing the refusal.
-test("retains Terminal.app's refused text reply with its checkpoint and unchanged refusal", () => {
+test("retains Terminal.app's refused text and history replies with their checkpoints and unchanged refusals", () => {
   const directory = mkdtempSync(join(tmpdir(), "terminal-app-failed-inputs-"))
   directories.push(directory)
   const script = `
@@ -204,8 +204,9 @@ test("retains Terminal.app's refused text reply with its checkpoint and unchange
       closeSync: (fd) => fd === 900 ? undefined : fs.closeSync(fd) }))
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
     // Terminal.app's contents are logical lines: one wrapped 82-character line plus 23 rows is 24 lines on 25 rows.
-    const contents = "W".repeat(80) + "XY\\n" + "r\\n".repeat(23)
-    const tab = { tty: () => "/dev/ttys004", contents: () => contents, numberOfRows: () => 25, numberOfColumns: () => 80 }
+    let contents = "W".repeat(80) + "XY\\n" + "r\\n".repeat(23)
+    const tab = { tty: () => "/dev/ttys004", contents: () => contents,
+      history: () => "H".repeat(310) + "\\n" + contents, numberOfRows: () => 25, numberOfColumns: () => 80 }
     const application = { running: () => true, frontmost: () => true, windows: [{ tabs: [tab] }] }
     const scriptReplies = []
     mock.module("node:child_process", () => ({ ...cp,
@@ -268,6 +269,26 @@ test("retains Terminal.app's refused text reply with its checkpoint and unchange
         assert.deepEqual(diagnostic.lineLengths, [82, ...Array(23).fill(1)])
         assert.equal((await import("node:crypto")).createHash("sha256").update(bytes).digest("hex"), artifact.sha256)
       }
+      // 31741: the real reader refused a long history line before its marker control, losing that reply.
+      // A valid screen isolates the history refusal; retaining it must not turn it into a line count.
+      contents = "r\\n".repeat(25)
+      const beforeHistory = retained.length
+      await assert.rejects(owner.getScrollback(), /Terminal.app history holds a line of 310 characters on a 80-column grid/)
+      assert.equal(owner.historyControl(), undefined)
+      const historyArtifacts = retained.slice(beforeHistory)
+      const historyEnvelopes = historyArtifacts.filter(artifact => artifact.path.endsWith(".json"))
+      const historyReplies = historyArtifacts.filter(artifact => artifact.path.endsWith(".bin"))
+      assert.equal(historyEnvelopes.length, 1)
+      assert.equal(historyReplies.length, 1)
+      const envelope = JSON.parse(fs.readFileSync(historyEnvelopes[0].path, "utf8"))
+      assert.equal(envelope.checkpoint, "Terminal.app history snapshot")
+      assert.equal(envelope.captureRunId, "a".repeat(32))
+      assert.equal(envelope.tty, "/dev/ttys004")
+      assert.deepEqual(envelope.grid, { rows: 25, cols: 80 })
+      assert.equal(envelope.reply, "sha256:" + historyReplies[0].sha256)
+      const historyReply = fs.readFileSync(historyReplies[0].path, "utf8")
+      assert.equal(historyReply, scriptReplies.at(-1))
+      assert.equal(JSON.parse(historyReply).history, "H".repeat(310) + "\\n" + contents)
     } finally { await owner.dispose() }
   `
   const result = spawnSync(process.execPath, ["-e", script], {

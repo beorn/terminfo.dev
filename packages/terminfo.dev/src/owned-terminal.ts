@@ -319,6 +319,30 @@ export interface OwnedTerminal {
   dispose(): Promise<void>
 }
 
+function retainTextReply(
+  captureRunId: string,
+  tty: string,
+  geometry: Extract<GeometryMeasurement, { status: "measured" }>,
+  checkpoint: NonNullable<Parameters<NonNullable<OwnedTerminal["readCells"]>>[0]>,
+  bytes: Uint8Array,
+): void {
+  const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
+  retain(
+    checkpoint.directory,
+    Buffer.from(
+      JSON.stringify({
+        captureRunId,
+        checkpoint: checkpoint.label,
+        tty,
+        grid: { rows: geometry.rows, cols: geometry.cols },
+        reply,
+      }),
+    ),
+    "json",
+    checkpoint.onRetained,
+  )
+}
+
 type Device = { dev: string; rdev: string; ino: string }
 const device = (stat: BigIntStats): Device => ({
   dev: stat.dev.toString(),
@@ -1295,8 +1319,26 @@ export async function createOwnedTerminal(options: {
                   `Terminal.app history needs a measured grid: ${geometry.diagnostic}`,
                 )
               }
+              const directory = process.env.TERMINFO_CAPTURE_DIRECTORY
+              const onRetained = options.onRetained
               terminalAppHistory = terminalAppHistoryReader({
-                read: () => readTerminalAppHistory({ tty: darwinTextTty, cols: geometry.cols, rows: geometry.rows }),
+                read: () =>
+                  readTerminalAppHistory({
+                    tty: darwinTextTty,
+                    cols: geometry.cols,
+                    rows: geometry.rows,
+                    ...(directory &&
+                      onRetained && {
+                        onReply: (reply: OsascriptReply) =>
+                          retainTextReply(
+                            captureRunId,
+                            darwinTextTty,
+                            geometry,
+                            { label: "Terminal.app history snapshot", directory, onRetained },
+                            Buffer.from(reply.stdout),
+                          ),
+                      }),
+                  }),
                 write: (text) => {
                   out.write(text)
                 },
@@ -1671,23 +1713,7 @@ export async function createOwnedTerminal(options: {
             // Each app's raw reply is kept with its checkpoint, so a refused read keeps what the app returned.
             const retainReply =
               checkpoint &&
-              ((bytes: Uint8Array) => {
-                const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
-                retain(
-                  checkpoint.directory,
-                  Buffer.from(
-                    JSON.stringify({
-                      captureRunId,
-                      checkpoint: checkpoint.label,
-                      tty: darwinTextTty,
-                      grid: { rows: geometry.rows, cols: geometry.cols },
-                      reply,
-                    }),
-                  ),
-                  "json",
-                  checkpoint.onRetained,
-                )
-              })
+              ((bytes: Uint8Array) => retainTextReply(captureRunId, darwinTextTty, geometry, checkpoint, bytes))
             if (darwinTextApp === "iterm2") {
               return readITermCells({
                 tty: darwinTextTty,
