@@ -167,6 +167,7 @@ describe("stored results without membership eligibility", () => {
       const aggregate = scopeAggregate({ scope: contextKey, catalogIds: ids, results })
       contexts[contextKey] = {
         contextKey,
+        derivedIds: [],
         subject: run.subject,
         cells,
         contributingRunIds: [run.runId],

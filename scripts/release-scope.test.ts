@@ -419,6 +419,7 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
       "counts",
       "decided",
       "decisive",
+      "derived",
       "donePct",
       "environmentPositions",
       "families",
@@ -614,10 +615,26 @@ describe("probe method classification", () => {
         const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
           contexts: Record<
             string,
-            { catalogIds: string[]; featureResults: Record<string, { status: string; origin: { runId: string } }> }
+            {
+              catalogIds: string[]
+              featureResults: Record<
+                string,
+                { status: string; origin: { runId: string }; derived?: { ownStatus: string } }
+              >
+            }
           >
         }
         expect(Object.keys(api.contexts)).toHaveLength(13)
+        // #33019: the only verdicts allowed to move are cells derived from a refused parent, named here.
+        const derived = Object.entries(api.contexts)
+          .flatMap(([key, context]) =>
+            Object.entries(context.featureResults)
+              .filter(([, result]) => result.derived !== undefined)
+              .map(([id]) => key + " " + id),
+          )
+          .sort()
+        expect(derived).toHaveLength(30)
+        expect(digest(derived)).toBe("9298b48bcf4ccb9fba557e0a54b7b0c72d968282b89079f1b2b741c1d5bb9c32")
         const pins = Object.entries(api.contexts)
           .sort(([left], [right]) => left.localeCompare(right))
           .map(([key, context]) => [
@@ -627,7 +644,9 @@ describe("probe method classification", () => {
                 .sort((left, right) => left.localeCompare(right))
                 .map((id) => [
                   id,
-                  context.featureResults[id]?.status ?? "probe-todo",
+                  // Each derived cell is read back at its own pre-derivation status, so this pin still proves
+                  // that nothing else moved (#33019).
+                  context.featureResults[id]?.derived?.ownStatus ?? context.featureResults[id]?.status ?? "probe-todo",
                   context.featureResults[id]?.origin.runId ?? null,
                 ]),
             ),
