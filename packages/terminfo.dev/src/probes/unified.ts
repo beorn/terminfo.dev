@@ -301,8 +301,16 @@ export async function runProbeBatch(
       featureId: string
       recordCapture: (result: CapturedProbeFrame) => void
     }) => Promise<void>
-    /** Default preparation precedes probes; the owned Terminal text arm finishes TTY work last. */
-    prepareCapturePhase?: "before-probes" | "after-probes"
+    /**
+     * The one after-probes call point: runs once after every probe callback and the final ownership
+     * check, through the same query trace and frame recorder. The caller decides what belongs before
+     * probes and what after; an owner that closes and proves its window qualifies text here (32670).
+     */
+    finishCapture?: (input: {
+      source: TermProbeSource
+      featureId: string
+      recordCapture: (result: CapturedProbeFrame) => void
+    }) => Promise<void>
     /**
      * The named cause when this run's owned capture pre-flight refused to map the terminal's own
      * cell-to-pixel geometry (28785): it reaches each row's context so a refused row NAMES the
@@ -463,7 +471,7 @@ export async function runProbeBatch(
     }
     return decodingAttempt
   }
-  // Prepare once in the selected phase; default callers still prepare before their first callback.
+  // Prepare once before the first callback, and finish once after the last when the caller asks.
   // The same measured geometry reaches later contexts; a query callback grants no paint authority.
   let capturePrepared = false
   let captureGeometry: TermProbeSource["captureGeometry"]
@@ -486,11 +494,15 @@ export async function runProbeBatch(
     const refs = result.frame.kind === "text-cells" ? batch.textSnapshotRefs : batch.screenshotRefs
     if (!refs.includes(result.frame.ref)) refs.push(result.frame.ref)
   }
-  const prepareCaptureOnce = async (probe: ProbeDefinition, preGeometry?: GeometryMeasurement): Promise<void> => {
-    const prepareCapture = options.prepareCapture
-    if (prepareCapture && !capturePrepared) {
+  const prepareCaptureWith = async (
+    prepareCapture: typeof options.prepareCapture,
+    probe: ProbeDefinition,
+    preGeometry?: GeometryMeasurement,
+  ): Promise<void> => {
+    if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
-      const calibrationId = "collector.captureCalibration"
+      // A finish after a before-probes preparation keeps its own trace beside the calibration trace.
+      const calibrationId = capturePrepared ? "collector.textQualification" : "collector.captureCalibration"
       const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       const reported = options.geometryCorroboration
       let preparationGrid: { rows: number; cols: number } | undefined
@@ -847,8 +859,8 @@ export async function runProbeBatch(
         }
       }
     }
-    if (options.prepareCapturePhase !== "after-probes" && options.prepareCapture && !capturePrepared) {
-      await prepareCaptureOnce(probe, preGeometry)
+    if (options.prepareCapture && !capturePrepared) {
+      await prepareCaptureWith(options.prepareCapture, probe, preGeometry)
       if (captureGeometry) probeSource.captureGeometry = captureGeometry
       if (captureGeometryRefusal) probeSource.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) probeSource.capture = undefined
@@ -1271,10 +1283,10 @@ export async function runProbeBatch(
       options.onCheckpoint?.(batch)
     }
   }
-  if (options.prepareCapturePhase === "after-probes") {
+  if (options.finishCapture) {
     await verify?.()
     const probe = selected[0]
-    if (probe) await prepareCaptureOnce(probe)
+    if (probe) await prepareCaptureWith(options.finishCapture, probe)
   }
   if (ownsTerminal && options.ownedTerminal) {
     batch.rawReplies["collector.geometry"] = JSON.stringify({
@@ -1290,7 +1302,7 @@ export async function runProbeBatch(
   batch.suiteComplete =
     expected.every((probe) => observed.has(probe.id) || namedNotTested.has(probe.id)) &&
     Object.keys(batch.ungradedDiagnostics).length === 0
-  if (options.prepareCapturePhase !== "after-probes") await verify?.()
+  if (!options.finishCapture) await verify?.()
   const runMux =
     options.ownedTerminal?.muxAttachmentProof?.mux ??
     (options.subject?.kind === "mux" && (options.subject.id === "tmux" || options.subject.id === "screen")

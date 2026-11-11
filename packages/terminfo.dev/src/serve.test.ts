@@ -1483,7 +1483,7 @@ describe("private finite daemon startup", () => {
           summary: "owned fixture",
           ...(arm !== "windowsHosted" && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => {
-            if (arm === "terminalApp") assert.equal(drains, 1, "Terminal qualification must drain before its first cell read")
+            if (app === "terminal-app") assert.equal(drains, 1, "Terminal qualification must drain before its first cell read")
             reads += 1
             return { status: "refused", reason: "text read refused by route fixture" }
           },
@@ -1523,17 +1523,25 @@ describe("private finite daemon startup", () => {
             await assert.rejects(options.capture({ role: "witness", label: "route fixture" }), /pixel frame fixture/)
           }
           if (retained) {
-            assert.equal(typeof options.prepareCapture, "function", "macOS text needs once-per-run preparation")
-            assert.equal(options.prepareCapturePhase, arm === "terminalApp" ? "after-probes" : undefined)
-            await options.prepareCapture({
-              source: {
-                rows: 4, cols: 12, queryMode: async () => "unknown",
-                queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-                write: () => { throw new Error("Paint before known mode state") }
-              },
-              featureId: "collector.captureCalibration",
-              recordCapture: () => { throw new Error("Capture before known mode state") }
-            })
+            // Only an owner that closes and proves its window qualifies after probes (32670); hosted
+            // iTerm2 and Kitty still qualify before probes, and the hosted pixel arm still calibrates first.
+            const ownerCloses = app === "terminal-app"
+            assert.equal(typeof options.finishCapture, ownerCloses ? "function" : "undefined")
+            assert.equal(typeof options.prepareCapture, arm === "terminalApp" ? "undefined" : "function")
+            for (const [prepare, featureId] of [
+              [options.prepareCapture, "collector.captureCalibration"],
+              [options.finishCapture, "collector.textQualification"],
+            ]) {
+              await prepare?.({
+                source: {
+                  rows: 4, cols: 12, queryMode: async () => "unknown",
+                  queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+                  write: () => { throw new Error("Paint before known mode state") }
+                },
+                featureId,
+                recordCapture: () => { throw new Error("Capture before known mode state") }
+              })
+            }
           }
           return {
             results: options.draft.results, rawReplies: {},
@@ -1561,13 +1569,13 @@ describe("private finite daemon startup", () => {
         process.exit(0)
       }
       const run = await collect()
-      if (arm === "terminalApp" && retained) {
-        assert.match(run.rawReplies["collector.windowDisposal"], /pending launcher/)
+      if (app === "terminal-app" && retained) {
+        assert.match(run.rawReplies["collector.windowDisposal"], arm === "terminalApp" ? /pending launcher/ : /pending the hosted workflow's/)
         assert.equal(run.rawReplies["collector.collectionStatus"], "Collected selected probe results; draft " + run.runId + " awaits final writer")
       } else assert.equal(run.rawReplies["collector.windowDisposal"], undefined)
       assert.equal(typeof capture, retained ? "function" : "undefined")
       assert.equal(captureKind, route === "text-cells" ? "text-cells" : "absent")
-      assert.equal(reads, arm === "terminalApp" && retained ? 1 : 0)
+      assert.equal(reads, app === "terminal-app" && retained ? 1 : 0)
       assert.equal(drains, 1, "Each completed collection drains once, never after Terminal qualification")
       assert.equal(pixelFrames, route === "pixels" ? 1 : 0)
       assert.equal(calibrations, route === "pixels" ? 1 : 0)
