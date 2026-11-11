@@ -839,17 +839,54 @@ test("a terminal that paints blink for the underline-colour sequence stays incon
  *   arm has no outer control (@cto 4ed6bddf): the row stays inconclusive and its note names the
  *   multiplexer and the missing control, and no cross-run lookup stands in for one.
  * @level l1
- * @consumer The three underline-colour rows on owned multiplexer contexts.
+ *   The indexed/reset pair must reach the same owner, including reset's independent-reference
+ *   capture; an inconclusive observation without explicit pending tests publishes probe-invalid.
+ * @consumer The underline-colour family on owned multiplexer contexts.
  * @testonly none
  */
-test("a multiplexer stays inconclusive on the witness negative and says why", async () => {
-  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
-  const result = await run("sgr.underline.color", { ...ctx, mux: "screen" as const })
-  expect(result.observation?.outcome).toBe("inconclusive")
-  expect(result.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
-  expect(result.pass).toBe(false)
-  expect(result.tests?.some((test) => test.status === "unsupported")).toBe(false)
-  expect(result.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo" })
+test.each([
+  "sgr.underline.color",
+  "sgr.underline-color-rgb",
+  "sgr.underline-color-indexed",
+  "sgr.underline-color-reset",
+])("a multiplexer stays inconclusive on %s and says why", async (id) => {
+  for (const mux of ["screen", "tmux"] as const) {
+    const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+    const result = await run(id, { ...ctx, mux })
+    expect(result.tests?.[0]).toMatchObject({ id: "review", status: "probe-todo" })
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.observation?.note ?? "").toContain("cannot separate it from its outer terminal")
+    expect(result.pass).toBe(false)
+    expect(result.tests?.some((test) => test.status === "unsupported")).toBe(false)
+  }
+})
+
+/**
+ * @failure Routing reset captures through the colour owner must preserve non-mux negatives and
+ *   broken mux captures, rather than converting either to a pending colour comparison.
+ * @level l1
+ * @consumer The reset capture callback's shared colour result boundary.
+ * @testonly none
+ */
+test("the colour owner preserves non-mux reset negatives and broken mux captures", () => {
+  for (const mux of [undefined, "screen"] as const) {
+    const broken = mux !== undefined
+    const result = colourCaptureCallbackResult(
+      "sgr.underline-color-reset",
+      {
+        pass: false,
+        observation: {
+          outcome: broken ? "error" : "unsupported",
+          assertionType: "screenshot",
+          note: broken ? "capture failed" : "reset left the coloured underline unchanged",
+        },
+        tests: [{ id: "criterion", status: broken ? "probe-invalid" : "unsupported" }],
+      },
+      { mux },
+    )
+    expect(result.observation?.outcome).toBe(broken ? "error" : "unsupported")
+    expect(result.tests?.[0]?.status).toBe(broken ? "probe-invalid" : "unsupported")
+  }
 })
 
 for (const id of REVIEW_IDS) {

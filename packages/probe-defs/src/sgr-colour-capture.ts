@@ -182,13 +182,18 @@ export function colourCaptureCallbackResult(
   verdict: ProbeCallbackResult,
   options?: { mux?: "tmux" | "screen" },
 ): ProbeCallbackResult {
-  const note = colourCaptureNote(id)
   const observation = verdict.observation
+  const note =
+    colourCaptureNote(id) ??
+    (options?.mux !== undefined && id === "sgr.underline-color-reset" ? observation?.note : undefined)
   if (note === undefined || observation === undefined) return verdict
-  // The witness negative is this arm's own decision and carries its own reason: the seed frame is a
-  // positive witness that the attributed sample was painting, and the expected frame equals plain
-  // text. It is not one of the oracle's untouched negatives, so the downgrade below does not apply.
-  if (verdict.criterionBranch === "colour-no-attribute-witness") {
+  // A non-mux witness negative is this arm's own decision: the seed showed the attribute painting,
+  // and the expected frame equals plain text. A mux cannot attribute that negative or an
+  // inconclusive capture to its own hop without an outer control. Broken captures stay errors.
+  if (
+    verdict.criterionBranch === "colour-no-attribute-witness" ||
+    (options?.mux !== undefined && observation.outcome === "inconclusive")
+  ) {
     // A multiplexer has no outer control in this arm, so the same frames cannot single out whether
     // the mux or its outer terminal dropped the sequence (@cto 4ed6bddf). Keep it undecided until an
     // outer control exists rather than blaming the mux on evidence that does not name it.
