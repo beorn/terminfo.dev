@@ -646,10 +646,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       // has none, and its text rows stay test-todo.
       const recipe = terminal.textRecipe
       if (recipe !== undefined) {
-        disposeQualifiedWindow = kind === "terminalApp" && process.platform === "darwin"
+        // One fact selects qualification after probes and the destroy ending: an outside owner closes
+        // this window and proves it, the local launcher or the hosted workflow's close step (32670).
+        disposeQualifiedWindow =
+          (kind === "terminalApp" && process.platform === "darwin") ||
+          (kind === "darwinHosted" && terminal.hostedAppId === "terminal-app")
         const textAdapter = capture
         const consoleHostOwnership = terminal.consoleHostOwnership?.bind(terminal)
-        prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
+        const qualify: typeof prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           if (disposeQualifiedWindow) await drainStdin(1000)
           textQualification = await collectTextQualification({
             ctx: probeSource,
@@ -671,6 +675,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             },
           })
         }
+        // One qualification, called from exactly one of the two points.
+        if (disposeQualifiedWindow) finishCapture = qualify
+        else prepareCapture = qualify
       }
       return true
     }
@@ -681,6 +688,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
         }) => Promise<void>)
       | undefined
+    let finishCapture: typeof prepareCapture
     /**
      * Read protocol geometry once before the batch, then witness the complete raster and restoration
      * before its first callback. An intrinsic missing report does not prevent measurement; a transient
@@ -1061,7 +1069,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(ownedTerminal?.observeWrite && { onWrite: ownedTerminal.observeWrite.bind(ownedTerminal) }),
                 ...(geometryCorroboration && { geometryCorroboration }),
                 ...(prepareCapture && { prepareCapture }),
-                ...(disposeQualifiedWindow && { prepareCapturePhase: "after-probes" as const }),
+                ...(finishCapture && { finishCapture }),
               })
               if (sessionBus) result.rawReplies["collector.sessionBus"] = JSON.stringify(sessionBus)
               if (identityQuery) {
@@ -1160,7 +1168,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     }
     if (disposeQualifiedWindow) {
       captured.rawReplies["collector.windowDisposal"] =
-        "owned-window-disposal: measured prior modes not restored; pending launcher daemon stop, exact-window close and absence proof"
+        kind === "darwinHosted"
+          ? "owned-window-disposal: measured prior modes not restored; pending the hosted workflow's exact-window close and absence proof"
+          : "owned-window-disposal: measured prior modes not restored; pending launcher daemon stop, exact-window close and absence proof"
       captured.rawReplies["collector.collectionStatus"] =
         `Collected selected probe results; draft ${captured.runId} awaits final writer`
     }
