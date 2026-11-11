@@ -31,6 +31,7 @@ import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/vers
 import { OWNED_LAYOUT } from "../packages/probes/fixtures/owned-layout.fixture.ts"
 import type { LinuxMuxAttachmentProof, CapturedRunDraft } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
+import { MUX_DEFAULT_CONFIG, SCREEN_TRUECOLOR_CONFIG, TRUECOLOR_ON } from "../docs/data/context-supplements.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
@@ -1629,3 +1630,41 @@ ${admission}`,
     }
   },
 )
+
+/** The launcher's own mux-profile function, sourced: the config it records, or its refusal. */
+function muxProfileConfig(mux: string, profile: string): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync("bash", ["-c", 'source "$1"; mux_profile_config "$2" "$3"', "_", launcher, mux, profile], {
+    encoding: "utf8",
+  })
+  return { status: result.status, stdout: result.stdout.trim(), stderr: result.stderr.trim() }
+}
+
+// #33151 (@cto a2cb755c, 4a546051): the supplement keys a placed Screen run on the config the launcher records, so the
+// two values live in the launcher and in context-supplements.ts and must stay equal; truecolor elsewhere is refused.
+describe("mux profile configs", () => {
+  it("records the default config and Screen's truecolor config exactly as the selection keys them", () => {
+    expect(muxProfileConfig("screen", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
+    expect(muxProfileConfig("tmux", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
+    expect(muxProfileConfig("screen", "truecolor")).toMatchObject({ status: 0, stdout: SCREEN_TRUECOLOR_CONFIG })
+    expect(TRUECOLOR_ON.config).toEqual({ screen: SCREEN_TRUECOLOR_CONFIG })
+  })
+
+  it("refuses truecolor on any mux but Screen, naming the mux and the profile", () => {
+    expect(muxProfileConfig("tmux", "truecolor")).toMatchObject({
+      status: 2,
+      stderr: "mux profile truecolor has no declared option on mux tmux",
+    })
+    expect(muxProfileConfig("", "truecolor")).toMatchObject({
+      status: 2,
+      stderr: "mux profile truecolor has no declared option on mux (none)",
+    })
+  })
+
+  it("writes truecolor on after the unchanged default line, only under the truecolor profile", () => {
+    const source = readFileSync(launcher, "utf8")
+    expect(source).toContain("printf 'defscrollback 1000\\n' > \"$mux_config\"")
+    expect(source).toContain(
+      'if [[ "${TERMINFO_MUX_PROFILE:-default}" == truecolor ]]; then printf \'truecolor on\\n\' >> "$mux_config"; fi',
+    )
+  })
+})
