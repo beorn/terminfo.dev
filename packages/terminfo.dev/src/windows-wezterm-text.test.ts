@@ -46,10 +46,11 @@ test("a missing owned pane cannot select the focused pane or start a server", ()
   expect(run).not.toHaveBeenCalled()
 })
 
-// The existing plain-row controls cannot catch an ignored --escapes request that drops OSC8 metadata.
+// The existing plain-row controls cannot catch an ignored --escapes request that drops OSC8 metadata,
+// or the CLI println following termwiz's final CRLF being mistaken for another physical blank row.
 test("the same owned row reader retains escaped hyperlink bytes when requested", () => {
   const linked = "\x1b(B\x1b[0m\x1b]8;id=owned;https://example.com/x\x1b\\LINK\x1b]8;;\x1b\\ after"
-  answer(`${linked}\r\n\r\n`)
+  answer(`${linked}\r\n\r\n\n`)
   const escaped = { ...options, escapes: true }
   expect(readWindowsWezTermRows(escaped)).toMatchObject({ status: "read", rows: [linked, ""] })
   expect(run.mock.calls[0]?.slice(0, 2)).toEqual([
@@ -59,6 +60,25 @@ test("the same owned row reader retains escaped hyperlink bytes when requested",
   const env = run.mock.calls[0]?.[2]?.env
   expect({ socket: env?.WEZTERM_UNIX_SOCKET, pane: env?.WEZTERM_PANE }).toEqual({ socket: options.socket, pane: "42" })
 })
+
+// #33001 native AFTER: three termwiz CRLF rows plus CLI println LF were refused as four rows.
+// Keep both physical blank rows and the exact retained payload; trimming empty rows would hide them.
+test("native escaped CLI framing preserves the last two physical blank rows", () => {
+  const stdoutBase64 = "bGlua2VkIGFmdGVyIFEtN2RkODQ1ODEtMA0KDQoNCgo="
+  answer(Buffer.from(stdoutBase64, "base64").toString("utf8"))
+  const read = readWindowsWezTermRows({ ...options, rows: 3, escapes: true })
+  expect(read).toMatchObject({ status: "read", rows: ["linked after Q-7dd84581-0", "", ""] })
+  if (read.status !== "read") throw new Error(read.reason)
+  expect(JSON.parse(read.receipt)).toMatchObject({ stdoutBase64 })
+})
+
+test.each(["A\r\n\r\nextra\r\n\n", "A\r\n\r\n\r\n\n", "A\r\n\n\n"])(
+  "escaped framing never discards extra physical rows: %j",
+  (stdout) => {
+    answer(stdout)
+    expect(readWindowsWezTermRows({ ...options, escapes: true }).status).toBe("refused")
+  },
+)
 
 test.each(["A\n", "A\n\n", ""])(
   "a short or unterminated screen is unavailable with actual stdout retained: %j",
