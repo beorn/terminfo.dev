@@ -6,6 +6,7 @@
  * @consumer projectResults and publicResults, the one selection every site page, census and script reads (33019).
  * @testonly none
  */
+import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
@@ -21,6 +22,11 @@ import {
   decisiveCells,
   runDecidedNothing,
 } from "../docs/data/release-scope.ts"
+
+const catalogue = JSON.parse(readFileSync(new URL("../content/features.json", import.meta.url), "utf8")) as Record<
+  string,
+  { probe?: string } | undefined
+>
 
 const TRANSMIT = "extensions.kitty-graphics.transmit"
 const DISPLAY = "extensions.kitty-graphics.display"
@@ -256,6 +262,10 @@ describe("unsupported, derived (33019)", () => {
 
   it("every declared pair names features in the catalogue, and no child is its own parent", () => {
     for (const pair of DERIVED_UNSUPPORTED) {
+      // #33441: a misspelt child silently never fires - applyDerived skips an id it cannot find - so membership is
+      // asserted against the recorded catalogue itself, not against a second hand-kept list.
+      expect(catalogue[pair.child], `${pair.child} must exist in the recorded catalogue`).toBeDefined()
+      expect(catalogue[pair.parent], `${pair.parent} must exist in the recorded catalogue`).toBeDefined()
       expect(pair.child).not.toBe(pair.parent)
       expect(
         publicDerivedReason({

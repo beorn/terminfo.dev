@@ -7,7 +7,8 @@ next: false
 <script setup>
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
-import { currentCoverageSentence, notMeasuredReadout, publicResultFor } from '../data/release-scope'
+import { currentCoverageSentence, publicResultFor } from '../data/release-scope'
+import { baselineShareRow } from '../data/baseline-readouts.ts'
 import { isEnvironmentGroup } from '../../packages/probe-defs/src/environment-groups.ts'
 const { params } = useData()
 const p = params.value
@@ -79,10 +80,8 @@ function coverageLabel(s) {
 // #30763: only a row that decided nothing changes; a decided row keeps this page's own text, which
 // it printed before the fix.
 function shareRow(s) {
-  return notMeasuredReadout(s.counts) ?? {
-    text: `${s.score.supported}/${s.score.all} supported (${s.pct ?? 0}%)`,
-    title: undefined,
-  }
+  // #33441: same derived count as the Home card, so the two pages agree with runDecidedNothing.
+  return baselineShareRow(s)
 }
 
 function platformIcon(os) {
