@@ -624,7 +624,22 @@ export interface ProbeSuiteManifest {
 /** Proof a negative assertion was decided on. A union on `kind`, so the next witness adds a member
  * rather than a field on ProbeAssertion. Added 2026-11-10 (#33041); optional and additive, so
  * schemaVersion stays 4 and runs written before this parse unchanged. */
-export type ProbeWitness = ColourSiblingSeparationWitness
+export type ProbeWitness = ColourSiblingSeparationWitness | ColourNoAttributeWitness
+
+/**
+ * The underline-colour negative witnessed by this row's own frames (#33054, moved from prose): the
+ * seed frame shows the underline, and the expected frame equals the no-attribute (plain text)
+ * frame after the sequence ran. The parser checks the three digests are this row's frames, that
+ * expected equals noAttribute while the seed differs, and the rectangle against those frames.
+ */
+export interface ColourNoAttributeWitness {
+  kind: "colour-no-attribute-witness"
+  rowId: string
+  /** The SGR parameters under test, e.g. `58;2;255;0;128`. */
+  encoding: string
+  rectangle: { x: number; y: number; width: number; height: number }
+  frames: { seed: string; expected: string; noAttribute: string }
+}
 
 /**
  * The same-channel sibling that proves this capture can show a colour in this rectangle.

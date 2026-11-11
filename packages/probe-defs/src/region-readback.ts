@@ -31,6 +31,7 @@ import type {
   AssertionType,
   CapturePixelGeometry,
   CaptureRectangle,
+  ColourNoAttributeWitness,
   ObservationFrame,
   ProbeCallbackResult,
   MeasuredProbeCallbackResult,
@@ -1727,6 +1728,17 @@ export async function captureRegionReadbackDecision(
       // paints nothing. That is a witnessed negative, not an unseparable fixture.
       if (spec.noAttributeNegative !== undefined && seed !== noAttribute) {
         const reason = `${id}: painted nothing for SGR ${spec.noAttributeNegative.sequence}: the frame equals plain text, and the underline was visible in the seed frame of this run`
+        const rectangle = cropRectangles[2]
+        if (rectangle === undefined) {
+          throw new Error(`${id}: the expected frame reached the witness negative with no rectangle`)
+        }
+        const witness: ColourNoAttributeWitness = {
+          kind: "colour-no-attribute-witness",
+          rowId: id,
+          encoding: spec.noAttributeNegative.sequence,
+          rectangle: { x: rectangle.x, y: rectangle.y, width: rectangle.width, height: rectangle.height },
+          frames: { seed, expected, noAttribute },
+        }
         return {
           pass: false,
           criterionBranch: "colour-no-attribute-witness",
@@ -1744,6 +1756,8 @@ export async function captureRegionReadbackDecision(
               kind: "negative",
               expected: `${id}: the terminal paints SGR ${spec.noAttributeNegative.sequence} as something other than plain text`,
               observed: expected,
+              note: reason,
+              witness,
             },
           ],
         }

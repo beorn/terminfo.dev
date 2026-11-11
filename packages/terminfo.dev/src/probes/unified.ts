@@ -1091,11 +1091,16 @@ export async function runProbeBatch(
             : {}),
           ...(rawReplyRef ? { rawReplyRef } : {}),
         })
-        for (const assertion of result.assertions ?? []) {
+        for (const { witness, ...assertion } of result.assertions ?? []) {
           batch.assertions.push({
             featureId: probe.id,
             ...assertion,
-            ...(resized ? { note: `${assertion.note ? `${assertion.note}; ` : ""}Geometry resized during probe` } : {}),
+            // A resized row is re-labelled resized-capture, so a branch's witness no longer stands for it (#33054).
+            ...(resized
+              ? { note: `${assertion.note ? `${assertion.note}; ` : ""}Geometry resized during probe` }
+              : witness === undefined
+                ? {}
+                : { witness }),
             ...(rawReplyRef ? { rawReplyRef } : {}),
           })
         }

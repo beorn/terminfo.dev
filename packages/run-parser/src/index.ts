@@ -176,6 +176,34 @@ function resultFrames(result: { frames?: unknown }): Record<string, unknown>[] {
   return Array.isArray(result.frames) ? result.frames.filter(object) : []
 }
 
+function requireWitnessRectangleShape(witness: Record<string, unknown>, path: string, featureId: string): void {
+  if (!object(witness.rectangle)) fail(path, `${featureId} witness missing rectangle`)
+  for (const key of ["x", "y", "width", "height"]) {
+    if (!Number.isSafeInteger(witness.rectangle[key])) fail(path, `${featureId} witness missing rectangle.${key}`)
+  }
+}
+
+/** Every frame a witness cites by its cells' digest must have been compared in the witness's rectangle. */
+function requireCitedFramesInRectangle(
+  witness: Record<string, unknown>,
+  cited: ReadonlySet<string>,
+  frames: readonly Record<string, unknown>[],
+  path: string,
+  featureId: string,
+): void {
+  const rectangle = witness.rectangle as Record<string, unknown>
+  const citedFrames = frames.filter((frame) =>
+    ["regionDigest", "cellDigest"].some((key) => cited.has(String(frame[key] ?? ""))),
+  )
+  for (const frameRectangle of citedFrames.map((frame) => frame.regionRectangle).filter(object)) {
+    for (const key of ["x", "y", "width", "height"] as const) {
+      if (frameRectangle[key] !== rectangle[key]) {
+        fail(path, `${featureId} witness rectangle does not match the frame rectangle`)
+      }
+    }
+  }
+}
+
 function validateColourSiblingWitness(
   witness: Record<string, unknown>,
   featureId: string,
@@ -205,10 +233,7 @@ function validateColourSiblingWitness(
   for (const key of ["requestedRowId", "requestedEncoding", "siblingRowId", "siblingEncoding", "runId"]) {
     requireWitnessString(witness[key], path, featureId, key)
   }
-  if (!object(witness.rectangle)) fail(path, `${featureId} witness missing rectangle`)
-  for (const key of ["x", "y", "width", "height"]) {
-    if (!Number.isSafeInteger(witness.rectangle[key])) fail(path, `${featureId} witness missing rectangle.${key}`)
-  }
+  requireWitnessRectangleShape(witness, path, featureId)
   if (!object(witness.requested)) fail(path, `${featureId} witness missing requested`)
   for (const key of ["seed", "target", "expected", "ignored"]) {
     requireWitnessDigest(witness.requested[key], path, featureId, `requested.${key}`)
@@ -264,17 +289,50 @@ function validateColourSiblingWitness(
     String(witness.sibling.seed),
     String(witness.sibling.target),
   ])
-  const citedFrames = [...resultFrames(own ?? {}), ...resultFrames(siblingResult ?? {})].filter((frame) =>
-    ["regionDigest", "cellDigest"].some((key) => cited.has(String(frame[key] ?? ""))),
+  requireCitedFramesInRectangle(
+    witness,
+    cited,
+    [...resultFrames(own ?? {}), ...resultFrames(siblingResult ?? {})],
+    path,
+    featureId,
   )
-  const rectangles = citedFrames.map((frame) => frame.regionRectangle).filter(object)
-  for (const rectangle of rectangles) {
-    for (const key of ["x", "y", "width", "height"] as const) {
-      if (rectangle[key] !== witness.rectangle[key]) {
-        fail(path, `${featureId} witness rectangle does not match the frame rectangle`)
-      }
+}
+
+/**
+ * The underline-colour negative witnessed by the row's own frames (#33054): the seed shows the
+ * attribute, and the expected frame equals the no-attribute frame. Re-checks that decision.
+ */
+function validateColourNoAttributeWitness(
+  witness: Record<string, unknown>,
+  featureId: string,
+  path: string,
+  results: readonly { featureId: string; frames?: unknown }[],
+): void {
+  const required = ["kind", "rowId", "encoding", "rectangle", "frames"]
+  for (const key of required) {
+    if (!Object.hasOwn(witness, key)) fail(path, `${featureId} witness missing ${key}`)
+  }
+  rejectUnknownFields(witness, required, path, `${featureId} witness`)
+  requireWitnessString(witness.rowId, path, featureId, "rowId")
+  requireWitnessString(witness.encoding, path, featureId, "encoding")
+  if (witness.rowId !== featureId) fail(path, `${featureId} witness rowId ${String(witness.rowId)} is not this row`)
+  requireWitnessRectangleShape(witness, path, featureId)
+  if (!object(witness.frames)) fail(path, `${featureId} witness missing frames`)
+  const frames = witness.frames
+  rejectUnknownFields(frames, ["seed", "expected", "noAttribute"], path, `${featureId} witness frames`)
+  const own = resultFrames(results.find((row) => row.featureId === featureId) ?? {})
+  const ownDigests = frameDigestSet(own)
+  for (const key of ["seed", "expected", "noAttribute"] as const) {
+    requireWitnessDigest(frames[key], path, featureId, `frames.${key}`)
+    if (!ownDigests.has(String(frames[key]))) {
+      fail(path, `${featureId} witness frames.${key} is not a frame digest of this row`)
     }
   }
+  if (frames.expected !== frames.noAttribute) {
+    fail(path, `${featureId} witness expected frame is not the no-attribute frame`)
+  }
+  if (frames.seed === frames.noAttribute) fail(path, `${featureId} witness seed frame does not show the attribute`)
+  requireCitedFramesInRectangle(witness, new Set([String(frames.seed), String(frames.expected)]), own, path, featureId)
 }
 
 function validateAssertionWitnesses(
@@ -288,14 +346,18 @@ function validateAssertionWitnesses(
     if (assertion.kind !== "negative") fail(path, `${assertion.featureId} witness requires a negative assertion`)
     const witness = assertion.witness
     if (!object(witness) || typeof witness.kind !== "string") fail(path, `${assertion.featureId} witness missing kind`)
-    if (witness.kind !== "colour-sibling-separation") {
+    if (witness.kind !== "colour-sibling-separation" && witness.kind !== "colour-no-attribute-witness") {
       fail(path, `${assertion.featureId} unknown witness kind ${String(witness.kind)}`)
     }
     const result = results.find((row) => row.featureId === assertion.featureId)
     if (result?.criterionBranch !== witness.kind) {
       fail(path, `${assertion.featureId} witness kind ${witness.kind} disagrees with criterionBranch`)
     }
-    validateColourSiblingWitness(witness, assertion.featureId, path, results, runId)
+    if (witness.kind === "colour-sibling-separation") {
+      validateColourSiblingWitness(witness, assertion.featureId, path, results, runId)
+    } else {
+      validateColourNoAttributeWitness(witness, assertion.featureId, path, results)
+    }
   }
 }
 
