@@ -28,7 +28,10 @@ import {
 /** #32246: a former source-review site returns the PROBE TODO coverage record, never a source-decided result. */
 function expectNoSamePathTodo(result: ProbeCallbackResult, noObservable = NO_SAME_PATH_CONTROL) {
   expect(result.pass).toBe(false)
-  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringContaining(noObservable),
+  })
   expect(result.criterionBranch).toBeUndefined()
   expect(result.tests).toBeUndefined()
   expect(result.observation).toBeUndefined()
@@ -637,7 +640,7 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
       expect(result.notTested).toEqual({
         reason: "no-semantic-observable",
         noObservable:
-          "Open: after we set an underline colour (SGR 58), the screen cell showed none, so the setup did not show and the reset cannot be tested.",
+          "SGR 59 after setup SGR 58:2::255:0:128 (colon form): after the setup the screen cell showed no underline colour, so the setup did not show and the reset cannot be tested.",
       })
     } else {
       expect(result.criterionBranch).toBe("headless-observable-review")

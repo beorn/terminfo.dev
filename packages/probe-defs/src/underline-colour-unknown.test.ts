@@ -132,9 +132,11 @@ describe("SGR 59", () => {
     const libvterm = { ...parserLibrary({}), backendName: "libvterm", runtimeIdentity: identity("0.3.3") }
     const declared = sgr("sgr.underline-color-reset").lib!(libvterm)
     expect(isDeclaredUntestable(declared)).toBe(true)
-    expect(declared.tests?.[0]?.reason).toBe(
-      "Untestable (no setup): SGR 58 does not work on this library, so this command has nothing to act on. Library version: 0.3.3.",
-    )
+    const reason = declared.tests?.[0]?.reason
+    expect(reason).toContain("Untestable (no setup): SGR 58 does not work on this library")
+    expect(reason).toContain("Library version: 0.3.3")
+    expect(reason).toContain("58:2::255:0:128 (colon form)")
+    expect(reason).toContain("58:2::1:2:3 versus made-up 77:2::1:2:3 (colon form)")
     for (const source of [
       { ...libvterm, runtimeIdentity: identity("0.3.4") },
       { ...parserLibrary({}), backendName: "vt100", runtimeIdentity: identity("0.3.3") },

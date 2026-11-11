@@ -494,7 +494,11 @@ it.each([
   } as unknown as TermProbeSource)
   expect(cursorReads).toBe(readings.length)
   expect(attempts).toHaveLength(
-    readings.length + (id === "reset.sgr" || id.startsWith("sgr.") || id === "text.wrap" ? 1 : 0),
+    // The indexed underline witness never asks DECRQSS; its fallback retains only the actual CPR.
+    readings.length +
+      (id === "reset.sgr" || (id.startsWith("sgr.") && id !== "sgr.underline-color-indexed") || id === "text.wrap"
+        ? 1
+        : 0),
   )
   if (cleanup) expect(writes.at(-1)).toBe(cleanup)
   if (["unicode.tab-stops", "text.tbc", "text.cht", "text.cbt"].includes(id)) {
@@ -874,7 +878,11 @@ it("preserves producer-specific native geometry refusal reasons without appendin
     ["sgr.underline-color-indexed", "Cursor advance does not verify SGR styling", 2],
     ["sgr.underline-color-reset", "Cursor advance does not verify the reset rendered", 3],
     ["sgr.selective-reset.bold", "Cursor advance does not verify SGR reset", 3],
-    ["extensions.truecolor", "SGR was consumed; RGB cell color was not measured", 2],
+    [
+      "extensions.truecolor",
+      "extensions.truecolor: SGR 38;2;255;128;0 (semicolon form); SGR 38;2;17;97;201 (semicolon form) is the secondary contrasting library sample; SGR was consumed; RGB cell color was not measured",
+      2,
+    ],
     ["extensions.osc720-scroll-up", "Cursor answered; scrollback viewport was not measured", 2],
     ["extensions.osc8", "Cursor movement cannot verify OSC 8 link metadata or click behavior", 2],
     ...["xtpushsgr", "xtpopsgr", "xtsave", "xtrestore", "xtpushcolors", "xtpopcolors"].map(

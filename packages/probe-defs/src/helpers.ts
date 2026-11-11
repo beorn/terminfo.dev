@@ -495,7 +495,9 @@ export function parserStateResult(
     throw new Error("A positive parser state cannot require source review")
   }
   // A former source-negative verdict: source code never grades a probe (@cto 9fad23d7, #32246).
-  if (sourceReviewReason !== undefined) return notTestedResult(NO_SAME_PATH_CONTROL, state)
+  if (sourceReviewReason !== undefined) {
+    return notTestedResult(note === undefined ? NO_SAME_PATH_CONTROL : `${note}; ${NO_SAME_PATH_CONTROL}`, state)
+  }
   const response = JSON.stringify(state)
   const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
     pass === null ? undefined : [{ assertionType, kind: pass ? "positive" : "negative", expected, observed: response }]
@@ -1369,18 +1371,22 @@ export function withUnhandledSgrReport(
     const result = body(ctx)
     if (reportsDecidedOutcome(result)) return result
     const cursor = ctx.getCursor()
-    return (
-      unhandledSequenceVerdict(
-        ctx,
-        { feed: sequence, code: { kind: "csi", code: sequence.slice(2) } },
-        {
-          feed: "\x1b[0m\x1b[1mC",
-          applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
-          cleanup: "\x1b[0m",
-        },
-        { sequence, ...(result.response !== undefined && { body: result.response }) },
-      ) ?? result
+    const reported = unhandledSequenceVerdict(
+      ctx,
+      { feed: sequence, code: { kind: "csi", code: sequence.slice(2) } },
+      {
+        feed: "\x1b[0m\x1b[1mC",
+        applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
+        cleanup: "\x1b[0m",
+      },
+      { sequence, ...(result.response !== undefined && { body: result.response }) },
     )
+    if (!reported) return result
+    // This colour reset also has a multiparameter setup; retain its exact encoding when the
+    // library's own SGR 59 report replaces the undecided body (#33157).
+    if (id !== "sgr.underline-color-reset" || result.note === undefined) return reported
+    const note = `${result.note}; ${reported.note}`
+    return { ...reported, note, ...(reported.observation && { observation: { ...reported.observation, note } }) }
   }
 }
 

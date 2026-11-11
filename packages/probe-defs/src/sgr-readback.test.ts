@@ -85,15 +85,30 @@ function sgrTerm(id: string): (ctx: TermProbeSource) => Promise<ProbeCallbackRes
 // #33157: checking only normalized DECRQSS replies missed that the sent bytes still used semicolons.
 // Every existing underline row must send colon-form colour, including its library and capture setup.
 test.each([
-  ["sgr.underline.color", "58:2::255:0:128"],
-  ["sgr.underline-color-rgb", "58:2::255:0:128"],
-  ["sgr.underline-color-indexed", "58:5:1"],
-  ["sgr.underline-color-reset", "58:2::255:0:128"],
-])("%s sends the selected colon colour in every arm", async (id, parameters) => {
+  ["sgr.underline.color", "58:2::255:0:128", "colon"],
+  ["sgr.underline-color-rgb", "58:2::255:0:128", "colon"],
+  ["sgr.underline-color-indexed", "58:5:1", "colon"],
+  ["sgr.underline-color-reset", "58:2::255:0:128", "colon"],
+  ["sgr.fg.256", "38;5;67", "semicolon"],
+  ["sgr.bg.256", "48;5;67", "semicolon"],
+  ["sgr.fg.truecolor", "38;2;255;128;0", "semicolon"],
+  ["sgr.bg.truecolor", "48;2;0;255;128", "semicolon"],
+])("%s sends and names the selected colour form in every arm", async (id, parameters, form) => {
   const definition = sgrProbes.find((entry) => entry.id === id)
   if (!definition?.lib) throw new Error(`${id}: missing library arm`)
   const fed: string[] = []
-  definition.lib({ ...inertLibProbeSource(), feed: (bytes) => fed.push(bytes) })
+  const result = definition.lib({ ...inertLibProbeSource(), feed: (bytes) => fed.push(bytes) })
+  const notes = [
+    result.note,
+    result.observation?.note,
+    result.notTested?.noObservable,
+    ...(result.tests ?? []).map((test) => test.reason),
+  ].filter((note): note is string => note !== undefined)
+  expect(notes.length, "library must explain its result").toBeGreaterThan(0)
+  for (const note of notes) {
+    expect(note).toContain(parameters)
+    expect(note).toContain(`(${form} form)`)
+  }
   expect(fed.join(""), "library target").toContain(`\x1b[${parameters}m`)
   expect(fed.join(""), "library must not send another colour encoding").not.toContain("\x1b[58;")
   const { ctx, writes } = sgrReadbackSource(id === "sgr.underline-color-reset" ? ["0", "4;58:2::255:0:128", "4"] : null)
