@@ -69,7 +69,7 @@ test("native escaped CLI framing preserves the last two physical blank rows", ()
   const read = readWindowsWezTermRows({ ...options, rows: 3, escapes: true })
   expect(read).toMatchObject({ status: "read", rows: ["linked after Q-7dd84581-0", "", ""] })
   if (read.status !== "read") throw new Error(read.reason)
-  expect(JSON.parse(read.receipt).stdoutBase64).toBe(stdoutBase64)
+  expect(JSON.parse(read.receipt)).toMatchObject({ stdoutBase64 })
 })
 
 test.each(["A\r\n\r\nextra\r\n\n", "A\r\n\r\n\r\n\n", "A\r\n\n\n"])(
