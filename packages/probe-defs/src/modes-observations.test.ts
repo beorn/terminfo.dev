@@ -596,9 +596,7 @@ test.each([null, 0] as const)("App SGR mouse uses controlled effects after DECRP
     let bytes = ""
     const source = replayTermProbeSource(stored, {
       write: (text) =>
-        surface.feed(
-          mutation === "single-mouse-mode" && /\x1b\[\?100[23]l/u.test(text) ? `${text}\x1b[?1000l` : text,
-        ),
+        surface.feed(mutation === "single-mouse-mode" && /\x1b\[\?100[23]l/u.test(text) ? `${text}\x1b[?1000l` : text),
       input: {
         injectKey: async (key) => {
           if (key !== "a") throw new Error(`SGR mouse fixture received ${key}`)
