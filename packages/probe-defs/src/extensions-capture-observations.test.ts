@@ -1480,15 +1480,16 @@ test.each([
 )
 
 test.each(["tmux", "screen"] as const)(
-  "extensions.reflow keeps %s as PROBE TODO on the terminal-app arm",
+  "extensions.reflow names the unbuilt mux step behind its %s row (#33363)",
   async (mux) => {
     const app = captureApp(24, 80)
     app.context.mux = mux
+    const reason = `Reflow through ${mux} is not yet measured: this arm returns before it attempts a resize, so the ${mux} pane's own re-wrap stays unread`
     const result = await find("extensions.reflow").term!(app.context)
     expect(result).toEqual({
       pass: false,
-      note: "tmux and GNU Screen remain PROBE TODO on this arm",
-      tests: [{ id: "criterion", status: "probe-todo", reason: "tmux and GNU Screen remain PROBE TODO on this arm" }],
+      note: reason,
+      tests: [{ id: "criterion", status: "probe-todo", reason }],
     })
     expect(app.writes).toEqual([])
   },
