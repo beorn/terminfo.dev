@@ -351,6 +351,11 @@ Terminal-query timeouts and apparatus errors without a native capture-command ca
 - `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
 
+The SGR colour capture owner supplies an explicit pending review test when its observation is
+inconclusive, including equal references and a witness timeout. It retains the observation's reason,
+frames and response; the result writer publishes PROBE TODO without changing its global status ladder.
+Existing decided witness negatives and broken-measurement errors keep their prior handling.
+
 OSC22's Library query arm and App arm share query text, reply parsing and controlled
 evaluation. The App reads the incoming selected shape before any mutation, checks
 a distinct control and `pointer`, then restores and reads the incoming shape in

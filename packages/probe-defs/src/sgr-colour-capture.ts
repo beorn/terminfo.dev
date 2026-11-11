@@ -240,6 +240,16 @@ export function colourCaptureCallbackResult(
       },
     }
   }
+  if (observation.outcome === "inconclusive") {
+    return {
+      ...verdict,
+      pass: false,
+      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+      tests: [
+        { id: "review", status: "probe-todo", reason: observation.note ?? `${id}: capture did not decide the colour` },
+      ],
+    }
+  }
   if (observation.outcome === "supported") {
     return { ...verdict, observation: { ...observation, note } }
   }
