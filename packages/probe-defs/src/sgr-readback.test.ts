@@ -9,6 +9,7 @@ import { NO_SAME_PATH_CONTROL, recordExecutedProbe, sgrReadbackDecision } from "
 import { COLOUR_CAPTURE } from "./sgr-colour-capture.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { resetProbes } from "./reset.ts"
+import { extensionsProbes } from "./extensions.ts"
 import { finalizeVisualResult, sgrProbes } from "./sgr.ts"
 import { inertLibProbeSource } from "./testing/group-harness.ts"
 import type { ObservationFrame, ProbeCallbackResult, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
@@ -77,7 +78,7 @@ function qualifiedSgrReadbackSource(id: string, reply: string | null) {
 }
 
 function sgrTerm(id: string): (ctx: TermProbeSource) => Promise<ProbeCallbackResult> {
-  const probe = [...sgrProbes, ...resetProbes].find((value) => value.id === id)
+  const probe = [...sgrProbes, ...resetProbes, ...extensionsProbes].find((value) => value.id === id)
   if (!probe?.term) throw new Error(`missing term callback for ${id}`)
   return probe.term
 }
@@ -93,8 +94,9 @@ test.each([
   ["sgr.bg.256", "48;5;67", "semicolon"],
   ["sgr.fg.truecolor", "38;2;255;128;0", "semicolon"],
   ["sgr.bg.truecolor", "48;2;0;255;128", "semicolon"],
+  ["extensions.truecolor", "38;2;255;128;0", "semicolon"],
 ])("%s sends and names the selected colour form in every arm", async (id, parameters, form) => {
-  const definition = sgrProbes.find((entry) => entry.id === id)
+  const definition = [...sgrProbes, ...extensionsProbes].find((entry) => entry.id === id)
   if (!definition?.lib) throw new Error(`${id}: missing library arm`)
   const fed: string[] = []
   const result = definition.lib({ ...inertLibProbeSource(), feed: (bytes) => fed.push(bytes) })
@@ -112,7 +114,7 @@ test.each([
   expect(fed.join(""), "library target").toContain(`\x1b[${parameters}m`)
   expect(fed.join(""), "library must not send another colour encoding").not.toContain("\x1b[58;")
   const { ctx, writes } = sgrReadbackSource(id === "sgr.underline-color-reset" ? ["0", "4;58:2::255:0:128", "4"] : null)
-  await sgrTerm(id)(ctx)
+  const terminal = await sgrTerm(id)(ctx)
   expect(writes.join(""), "terminal target or reset setup").toContain(`\x1b[${parameters}m`)
   expect(writes.join(""), "terminal must not send another colour encoding").not.toContain("\x1b[58;")
   if (id === "sgr.underline-color-reset") {
@@ -120,6 +122,48 @@ test.each([
     expect(RESET_FAMILY_CAPTURE[id]?.edit, "reset stays SGR 59").toContain("\x1b[59m")
   } else if (id !== "sgr.underline-color-indexed") {
     expect(COLOUR_CAPTURE[id]?.edit, "capture target").toContain(`\x1b[${parameters}m`)
+  }
+  const terminalNotes = [
+    terminal.note,
+    terminal.observation?.note,
+    terminal.notTested?.noObservable,
+    ...(terminal.tests ?? []).map((test) => test.reason),
+  ].filter((note): note is string => note !== undefined)
+  expect(terminalNotes.length, "terminal must explain its result").toBeGreaterThan(0)
+  for (const note of terminalNotes) {
+    expect(note).toContain(parameters)
+    expect(note).toContain(`(${form} form)`)
+  }
+  const recorded = recordTerm(id, terminal)
+  expect(recorded.reason, "finalizer must retain the attempted encoding").toContain(parameters)
+  expect(recorded.reason).toContain(`(${form} form)`)
+  for (const [rows, cols, capture] of [
+    [1, 2, true],
+    ...(id === "sgr.underline.color" || id === "sgr.underline-color-rgb" ? [[0, 1, false] as const] : []),
+  ] as const) {
+    const small = sgrReadbackSource(null, capture)
+    small.ctx.rows = rows
+    small.ctx.cols = cols
+    const refused = await sgrTerm(id)(small.ctx)
+    expect(small.writes, "preflight refuses before feature/query bytes").toEqual([])
+    expect(refused.tests?.[0]?.status).toBe("probe-todo")
+    expect(refused.tests?.[0]?.reason).toContain(parameters)
+    expect(refused.tests?.[0]?.reason).toContain(`(${form} form)`)
+    expect(refused.tests?.[0]?.reason).toContain("not sent")
+  }
+  const expectedCol = id === "sgr.underline-color-reset" ? 3 : 2
+  for (const col of [null, expectedCol, expectedCol + 1]) {
+    const fallback = sgrReadbackSource(null)
+    fallback.ctx.queryCursorPosition = async () => (col === null ? null : { row: 1, col })
+    const result = await sgrTerm(id)(fallback.ctx)
+    expect(result.observation).toBeUndefined()
+    for (const text of [result.note, ...(result.tests ?? []).map((test) => test.reason)]) {
+      expect(text).toContain(parameters)
+      expect(text).toContain(`(${form} form)`)
+    }
+    expect(result.tests?.[0]?.status).toBe(
+      id === "extensions.truecolor" || col === expectedCol ? "probe-todo" : "probe-invalid",
+    )
   }
 })
 
@@ -180,8 +224,12 @@ test.each(["0;4;58;5;5", "0;4;58:5:5", "0;4;58;5;6", "0;4"])(
     expect(queries).toHaveLength(0)
     expect(result.observation).toBeUndefined()
     expect(result.pass).toBe(false)
-    expect(result.tests).toEqual([
-      { id: "criterion", status: "probe-todo", reason: "Cursor advance does not verify SGR styling" },
+    expect(result.tests).toMatchObject([
+      {
+        id: "criterion",
+        status: "probe-todo",
+        reason: "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling",
+      },
     ])
   },
 )
@@ -449,6 +497,11 @@ test.each([
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
   expect(result.assertions ?? []).toHaveLength(0)
   expect(result.observation?.note).toContain(`${phase} prerequisite`)
+  if (id === "sgr.underline-color-reset") {
+    expect(result.observation?.note).toContain("58:2::255:0:128 (colon form)")
+    expect(result.observation?.note).toContain("SGR 59 not sent")
+    expect(writes).not.toContain("\x1b[59m")
+  }
   const phaseIndex = phase === "baseline" ? 0 : 1
   expect(JSON.parse(result.response!)).toMatchObject({ phase, [phase]: replies[phaseIndex] })
   expect(queries).toHaveLength(phaseIndex + 1)
@@ -592,7 +645,8 @@ test("a paint row's DECRQSS reply alone records PROBE TODO with the paint-row re
   ctx.capture = undefined
   const negative = recordTerm("sgr.fg.256", await sgrTerm("sgr.fg.256")(ctx))
   expect(negative.status).toBe("probe-todo")
-  expect(negative.reason).toBe(PAINT_ROW_REASON)
+  expect(negative.reason).toContain(PAINT_ROW_REASON)
+  expect(negative.reason).toContain("38;5;67 (semicolon form)")
 })
 
 test("a capture decides a paint row against a contradicting DECRQSS reply, which stays a note", async () => {

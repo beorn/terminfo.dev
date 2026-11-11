@@ -630,7 +630,10 @@ test("extensions.truecolor decides from its DECRQSS state read where the termina
   const unsupported = await definition.term!(answering("\x1bP1$r0;38;2;0;0;255m\x1b\\"))
   expect(unsupported.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   const unqualified = await definition.term!(answering("\x1bP1$r0m\x1b\\"))
-  expect(unqualified.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(unqualified.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: `Selected SGR 38;2;255;128;0 (semicolon form); ${NO_SAME_PATH_CONTROL}`,
+  })
   expect(unqualified.observation).toBeUndefined()
   // The no-readback path must paint the same primary RGB as the readback path; cursor
   // success, failure and silence must all retain which encoding this row attempted.

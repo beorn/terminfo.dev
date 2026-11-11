@@ -22,6 +22,7 @@ import {
   sgrCaptureTooSmall,
   sgrPlainFixtureTooSmall,
   sgrReadbackDecision,
+  sgrColourEncoding,
   type SgrCaptureFixture,
   type SgrReadback,
   probe,
@@ -35,6 +36,7 @@ import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
   COLOUR_CAPTURE,
   UNDERLINE_INDEXED_BRANCH,
+  UNDERLINE_INDEXED_PHASES,
   colourCaptureCallbackResult,
   underlineColourIndexedCaptureResult,
 } from "./sgr-colour-capture.ts"
@@ -581,12 +583,46 @@ export function sgrTermReadback(
   fallback: (ctx: TermProbeSource) => ProbeCallbackResult | Promise<ProbeCallbackResult>,
   setup?: Parameters<typeof sgrReadbackDecision>[4],
 ): (ctx: TermProbeSource) => Promise<ProbeCallbackResult> {
+  const encoding = sgrColourEncoding(setup?.sequence ?? sequence)
+  const selected = setup ? `SGR ${sequence.slice(2, -1)} after setup ${encoding}` : encoding
   return async (ctx) => {
+    const withEncoding = (result: ProbeCallbackResult, unsent = false): ProbeCallbackResult => {
+      if (!encoding) return result
+      const prefix = `Selected ${selected}${unsent ? "; selected feature bytes were not sent" : ""}`
+      const explain = (text?: string) =>
+        !unsent && text?.includes(encoding) ? text : `${prefix}${text ? `; ${text}` : ""}`
+      const note = explain(result.note)
+      if (result.observation) {
+        return {
+          ...result,
+          note,
+          observation: { ...result.observation, note: explain(result.observation.note) },
+          tests: result.tests?.map((test) => (test.reason ? { ...test, reason: explain(test.reason) } : test)),
+        }
+      }
+      if (result.notTested) {
+        return {
+          ...result,
+          note,
+          notTested: { ...result.notTested, noObservable: explain(result.notTested.noObservable) },
+          tests: result.tests?.map((test) => (test.reason ? { ...test, reason: explain(test.reason) } : test)),
+        }
+      }
+      const [first, ...rest] = result.tests
+      return {
+        ...result,
+        note,
+        tests: [
+          { ...first, reason: explain(first.reason) },
+          ...rest.map((test) => (test.reason ? { ...test, reason: explain(test.reason) } : test)),
+        ],
+      }
+    }
     // The capture fixture guard refuses before any bytes on a measured small terminal, so the
     // readback must not emit its own sequences ahead of it.
     if (ctx.capture) {
       const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
-      if (refusal) return refusal
+      if (refusal) return withEncoding(refusal, true)
     }
     const region = RESET_FAMILY_CAPTURE[id]
     const colour = COLOUR_CAPTURE[id]
@@ -648,8 +684,8 @@ export function sgrTermReadback(
         ? captureResult
         : undefined
     const decided = await sgrReadbackDecision(ctx, id, sequence, readback, setup, independentCapture)
-    if (decided) return retainReference(decided)
-    return captureResult()
+    if (decided) return withEncoding(retainReference(decided))
+    return withEncoding(await captureResult())
   }
 }
 
@@ -660,20 +696,32 @@ async function consumedSgr(
   sequence: string,
   controlLabel = `${id} control`,
 ): Promise<ProbeCallbackResult> {
+  const encoding = sgrColourEncoding(sequence)
+  const note = `${encoding ? `${encoding}; ` : ""}Cursor advance does not verify SGR styling`
   if (ctx.capture) {
-    const refusal = sgrCaptureTooSmall(ctx, id)
+    const refusal = sgrCaptureTooSmall(
+      ctx,
+      encoding ? `${id}: selected ${encoding}; selected feature bytes were not sent; fixture` : id,
+    )
     if (refusal) return refusal
     const sample = "AaBb 0123456789 - terminal text"
     try {
-      return await sgrCaptureFrames(
+      const captured = await sgrCaptureFrames(
         ctx,
         "\x1b[0m\x1b[2J\x1b[3;3H" + sample,
         "\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample,
         id,
         { sample, startRow: 3, startCol: 3, sampleCells: sample.length },
-        undefined,
+        encoding
+          ? `${encoding}; Control and target pixels captured; no same-run pixel check decides the visual effect`
+          : undefined,
         controlLabel,
       )
+      if (!encoding) return captured
+      return {
+        ...captured,
+        tests: captured.tests?.map((test) => (test.reason ? { ...test, reason: `${encoding}; ${test.reason}` } : test)),
+      }
     } finally {
       ctx.write("\x1b[0m")
     }
@@ -684,18 +732,18 @@ async function consumedSgr(
     const pos = await ctx.queryCursorPosition()
     if (!pos) {
       return replyFailure(
-        "no parsable cursor position reply; the public projection returned null and retained no bytes",
+        `${encoding ? `${encoding}; ` : ""}no parsable cursor position reply; the public projection returned null and retained no bytes`,
       )
     }
     return {
       pass: false,
-      note: "Cursor advance does not verify SGR styling",
+      note,
       response: `${pos.row};${pos.col}`,
       tests: [
         {
           id: "criterion",
           status: pos.row === 1 && pos.col === 2 ? "probe-todo" : "probe-invalid",
-          reason: `Cursor advance does not verify SGR styling${pos.row === 1 && pos.col === 2 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
+          reason: `${note}${pos.row === 1 && pos.col === 2 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
         },
       ],
     }
@@ -717,8 +765,14 @@ async function consumedSgrReset(
   reset: string,
   controlPrefix = "",
 ): Promise<ProbeCallbackResult> {
+  const encoding = sgrColourEncoding(setup)
+  const prefix = encoding ? `SGR ${reset.slice(2, -1)} after setup ${encoding}; ` : ""
+  const note = `${prefix}Cursor advance does not verify the reset rendered`
   if (ctx.capture) {
-    const refusal = sgrCaptureTooSmall(ctx, id)
+    const refusal = sgrCaptureTooSmall(
+      ctx,
+      encoding ? `${id}: selected ${encoding}; selected setup and reset bytes were not sent; fixture` : id,
+    )
     if (refusal) return refusal
     // A reset-family row never reaches this fallback: the DECRQSS readback path in
     // sgrTermReadback asks the same-run region oracle first and returns its verdict.
@@ -729,7 +783,7 @@ async function consumedSgrReset(
         `\x1b[0m\x1b[2J\x1b[3;3H${setup}XX${reset}YY`,
         id,
         { startRow: 3, startCol: 3, setupCells: 2, resetCells: 2, controlPrefix },
-        "XX carries the setup value and YY carries the reset; compare each against the control run before grading the reset",
+        `${prefix}XX carries the setup value and YY carries the reset; compare each against the control run before grading the reset`,
       )
     } finally {
       ctx.write("\x1b[0m")
@@ -741,18 +795,18 @@ async function consumedSgrReset(
     const pos = await ctx.queryCursorPosition()
     if (!pos) {
       return replyFailure(
-        "no parsable cursor position reply; the public projection returned null and retained no bytes",
+        `${prefix}no parsable cursor position reply; the public projection returned null and retained no bytes`,
       )
     }
     return {
       pass: false,
-      note: "Cursor advance does not verify the reset rendered",
+      note,
       response: `${pos.row};${pos.col}`,
       tests: [
         {
           id: "criterion",
           status: pos.row === 1 && pos.col === 3 ? "probe-todo" : "probe-invalid",
-          reason: `Cursor advance does not verify the reset rendered${pos.row === 1 && pos.col === 3 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
+          reason: `${note}${pos.row === 1 && pos.col === 3 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
         },
       ],
     }
@@ -844,7 +898,18 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         // The readback writes the sequence before it answers, so the fixture's own geometry refusal
         // has to run ahead of it — a 1x2 terminal must refuse with a zero-byte trace.
         const refusal = sgrPlainFixtureTooSmall(ctx)
-        return refusal ?? (await armed(ctx))
+        if (!refusal) return armed(ctx)
+        const [first, ...rest] = refusal.tests
+        return {
+          ...refusal,
+          tests: [
+            { ...first, reason: `Selected ${encoding}; selected feature bytes were not sent; ${first.reason}` },
+            ...rest.map((test) => ({
+              ...test,
+              reason: `Selected ${encoding}; selected feature bytes were not sent; ${test.reason}`,
+            })),
+          ],
+        }
       },
       // #33165 (@cto f2adcbf3): a paint row is decided by its capture; the DECRQSS reply this arm asks
       // first is supporting detail and never decides the cell (finalizeVisualResult).
@@ -1570,7 +1635,10 @@ export const sgrProbes: ProbeDefinition[] = [
       // proves consumption.
       async (ctx) => {
         if (ctx.capture) {
-          const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
+          const refusal = sgrCaptureTooSmall(
+            ctx,
+            "Selected SGR 58:5:1 and SGR 58:5:4 (colon form); selected feature bytes were not sent; SGR fixture",
+          )
           if (refusal) return refusal
           const captured = await underlineColourIndexedCaptureResult(ctx)
           if (captured) return colourCaptureCallbackResult("sgr.underline-color-indexed", captured, { mux: ctx.mux })
@@ -1771,12 +1839,14 @@ export function fontLigatureMuxCoverage(
 function finalizeMuxVisualNegative(
   recorded: ProbeResult,
   target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
+  encoding = "",
 ): ProbeResult {
   const selected = recorded.criterionBranch === undefined ? undefined : muxVisualTests.get(recorded.criterionBranch)
   if (target.kind !== "mux" || recorded.status !== "unsupported" || selected === undefined) return recorded
-  const reason = target.outerTerminal
+  const diagnostic = target.outerTerminal
     ? `${recorded.reason ? `${recorded.reason}; ` : ""}this capture through outer terminal ${target.outerTerminal} cannot separate the multiplexer from its outer terminal`
     : `Missing outer terminal identity: this capture cannot separate the multiplexer from its outer terminal${recorded.reason ? `; ${recorded.reason}` : ""}`
+  const reason = encoding && !diagnostic.includes(encoding) ? `Selected ${encoding}; ${diagnostic}` : diagnostic
   return finalizeProbeResult({
     ...recorded,
     reason,
@@ -1866,11 +1936,24 @@ export function finalizeVisualResult(
     return recorded
   }
   if (target.kind === "lib") return recorded
-  if (hasScreenshot) return finalizeMuxVisualNegative(recorded, target)
+  const encoding = sgrColourEncoding(
+    COLOUR_CAPTURE[recorded.featureId]?.edit ??
+      RESET_FAMILY_CAPTURE[recorded.featureId]?.seed ??
+      (recorded.featureId === "sgr.underline-color-indexed"
+        ? UNDERLINE_INDEXED_PHASES.filter((phase) => phase.sequence.includes("\x1b[58:"))
+            .map((phase) => phase.sequence)
+            .join("")
+        : ""),
+  )
+  if (hasScreenshot) return finalizeMuxVisualNegative(recorded, target, encoding)
   // #33165 (@cto f2adcbf3): a paint row is decided by what is painted. A DECRQSS status reply alone never
   // decides it; the reply stays in the record and the cell is not decided.
-  const reason =
+  const diagnostic =
     recorded.assertionType === "query_reply" ? SGR_STATUS_REPLY_ONLY : "visual effect not observed in this run"
+  const prior = recorded.reason?.includes(encoding)
+    ? recorded.reason
+    : `Selected ${encoding}${recorded.reason ? `; ${recorded.reason}` : ""}`
+  const reason = encoding ? `${prior}; ${diagnostic}` : diagnostic
   return finalizeProbeResult({
     ...recorded,
     reason,

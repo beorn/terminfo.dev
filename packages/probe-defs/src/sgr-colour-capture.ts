@@ -29,7 +29,8 @@
  *   and colour-sibling-separation (colourSiblingSeparation below, run at the batch tail because it
  *   reads a second row).
  */
-import { HEADLESS_OBSERVABLE_REVIEW } from "./helpers.ts"
+import { HEADLESS_OBSERVABLE_REVIEW, sgrColourEncoding } from "./helpers.ts"
+import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
   SENTINEL,
   captureSameRunPhases,
@@ -189,7 +190,7 @@ export function underlineColourIndexedDecision(digest: (name: string) => string)
   )
   const decide = (status: UnderlineIndexedDecision["status"], note: string): UnderlineIndexedDecision => ({
     status,
-    note,
+    note: `${colourEncoding(id)}; ${note}`,
     evidence,
   })
   // The order is the ruling (@cto b3d7680f 1): controls first, so a blind control never becomes a verdict on 58.
@@ -295,7 +296,12 @@ export async function underlineColourIndexedCaptureResult(ctx: TermProbeSource):
     UNDERLINE_INDEXED_ID,
     UNDERLINE_SAMPLE.length,
     UNDERLINE_INDEXED_PHASES,
-    (run, note) => underlineColourIndexedResult(run, { status: "probe-todo", note, evidence: {} }),
+    (run, note) =>
+      underlineColourIndexedResult(run, {
+        status: "probe-todo",
+        note: `${colourEncoding(UNDERLINE_INDEXED_ID)}; ${note}`,
+        evidence: {},
+      }),
     (run, digest) => underlineColourIndexedResult(run, underlineColourIndexedDecision(digest)),
   )
 }
@@ -318,6 +324,18 @@ const NO_ATTRIBUTE_FRAME = frame({ sequence: "", sibling: "", siblingLabel: "" }
 /** The SGR parameters of a row's sequence, as a reason names them: `\x1b[58;2;255;0;128m` -> `58;2;255;0;128`. */
 function sgrParameters(sequence: string): string {
   return sequence.replace(/^\x1b\[/, "").replace(/m$/, "")
+}
+
+/** Display the selected encoding from the existing fixture declarations, never a second row table. */
+function colourEncoding(id: string): string | undefined {
+  if (id === UNDERLINE_INDEXED_ID) {
+    return `SGR ${UNDERLINE_INDICES.map((index) => `58:5:${index}`).join(" and ")} (colon form); two palette indices test whether foreground-route controls ${UNDERLINE_INDICES.map((index) => `38:5:${index}`).join(" and ")} (colon form) distinguish the requested colours`
+  }
+  const reset = id === "sgr.underline-color-reset"
+  const sequence = reset ? RESET_FAMILY_CAPTURE[id]?.seed.match(/\x1b\[58[:;][\d:;]+m/)?.[0] : COLOUR_ROWS[id]?.sequence
+  if (sequence === undefined) return undefined
+  const encoding = sgrColourEncoding(sequence)
+  return encoding ? `${reset ? "SGR 59 after setup " : ""}${encoding}` : undefined
 }
 
 /**
@@ -372,7 +390,8 @@ withUmbrellas(COLOUR_ROWS, "COLOUR_ROWS")
 export function colourCaptureNote(id: string): string | undefined {
   const row = COLOUR_ROWS[id]
   if (!row) return undefined
-  return `${id}: the styled sample differs from the neutral sample and from sibling ${row.siblingLabel}, and two paints of the same sequence agree; the rendered colour value is not interpreted`
+  const encoding = colourEncoding(id)
+  return `${id}:${encoding === undefined ? "" : ` ${encoding};`} the styled sample differs from the neutral sample and from sibling ${row.siblingLabel}, and two paints of the same sequence agree; the rendered colour value is not interpreted`
 }
 
 /**
@@ -386,6 +405,47 @@ export function colourCaptureCallbackResult(
   verdict: ProbeCallbackResult,
   options?: { mux?: "tmux" | "screen" },
 ): ProbeCallbackResult {
+  const encoding = colourEncoding(id)
+  if (encoding !== undefined) {
+    // "Selected" covers refusals before target bytes as well as measured outcomes. The existing
+    // reason still says which phases actually ran; this prefix makes no new measurement claim.
+    const context = `Selected ${encoding}`
+    verdict = { ...verdict, note: `${context}${verdict.note === undefined ? "" : `; ${verdict.note}`}` }
+    if (verdict.observation !== undefined) {
+      verdict = {
+        ...verdict,
+        observation: {
+          ...verdict.observation,
+          note: `${context}${verdict.observation.note === undefined ? "" : `; ${verdict.observation.note}`}`,
+        },
+        ...(verdict.tests && {
+          tests: verdict.tests.map((test) =>
+            test.reason === undefined ? test : { ...test, reason: `${context}; ${test.reason}` },
+          ),
+        }),
+      }
+    } else if (verdict.notTested !== undefined) {
+      verdict = {
+        ...verdict,
+        notTested: { ...verdict.notTested, noObservable: `${context}; ${verdict.notTested.noObservable}` },
+        ...(verdict.tests && {
+          tests: verdict.tests.map((test) =>
+            test.reason === undefined ? test : { ...test, reason: `${context}; ${test.reason}` },
+          ),
+        }),
+      }
+    } else {
+      // Keep the execution-only carrier's nonempty pending/invalid tuple; only its prose changes.
+      const [first, ...rest] = verdict.tests
+      verdict = {
+        ...verdict,
+        tests: [
+          { ...first, reason: `${context}; ${first.reason}` },
+          ...rest.map((test) => ({ ...test, reason: `${context}; ${test.reason}` })),
+        ],
+      }
+    }
+  }
   const observation = verdict.observation
   const note =
     colourCaptureNote(id) ??
@@ -440,14 +500,14 @@ export function colourCaptureCallbackResult(
         {
           id: "review",
           status: "probe-todo",
-          reason: "colour oracle cannot distinguish ignored from identical paint against the current reference",
+          reason: `${encoding === undefined ? "" : `${encoding}; `}colour oracle cannot distinguish ignored from identical paint against the current reference`,
         },
       ],
       observation: {
         ...observation,
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        note: `${id}: the sequence left the sample in the neutral or the sibling frame; these frames alone do not decide unsupported, because they cannot separate a terminal that ignores the colour from one that paints it identically to the reference it was compared against`,
+        note: `${id}:${encoding === undefined ? "" : ` ${encoding};`} the sequence left the sample in the neutral or the sibling frame; these frames alone do not decide unsupported, because they cannot separate a terminal that ignores the colour from one that paints it identically to the reference it was compared against`,
       },
     }
   }
@@ -587,7 +647,7 @@ export function colourSiblingSeparation(input: {
   if (seed.regionDigest !== target.regionDigest || seed.regionDigest !== expected.regionDigest) return undefined
   const open = (reason: string): ColourSiblingDecision => ({
     kind: "open",
-    reason: `${id}: no colour-sibling-separation decision: ${reason}`,
+    reason: `${id}: ${colourEncoding(id)}; no colour-sibling-separation decision: ${reason}`,
   })
   const rectangle = seed.regionRectangle
   if (![target, expected, ignored].every((frame) => sameRectangle(frame.regionRectangle, rectangle))) {
@@ -663,7 +723,7 @@ export function colourSiblingSeparation(input: {
       recordRunId: record.recordRunId,
     },
   }
-  const reason = `${id}: painted SGR ${requestedEncoding} as the default colour: this row's seed, target and expected frames are equal while sibling ${siblingId} separated in the same rectangle of run ${input.runId}, and the outer terminal ${record.id} ${record.version} reads supported in ${record.recordPath}. ${SCREEN_TRUECOLOR_CAUSE}`
+  const reason = `${id}: painted ${colourEncoding(id)} as the default colour: this row's seed, target and expected frames are equal while sibling ${siblingId} separated in the same rectangle of run ${input.runId}, and the outer terminal ${record.id} ${record.version} reads supported in ${record.recordPath}. ${SCREEN_TRUECOLOR_CAUSE}`
   const { reason: _reason, ...settled } = own
   const { featureId: _featureId, ...observation } = settled
   return {

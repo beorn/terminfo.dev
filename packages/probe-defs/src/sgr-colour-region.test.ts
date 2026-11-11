@@ -689,15 +689,25 @@ test.each([
     assertions: [],
     ...(result.tests === undefined ? {} : { tests: result.tests }),
   })
-  expect(published.tests[0]).toMatchObject({ id: "review", status: "probe-todo", reason: note })
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason, note, frames })
+  expect(published.tests[0]).toMatchObject({
+    id: "review",
+    status: "probe-todo",
+    reason: expect.stringContaining(note),
+  })
+  expect(published.tests[0]?.reason).toContain("58:5:1 and 58:5:4 (colon form)")
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason,
+    note: expect.stringContaining(note),
+    frames,
+  })
   expect(result.response).toBe("retained capture")
 })
 
 for (const id of COLOUR_IDS) {
   for (const palette of PALETTES) {
     test(`${id} is decided from pixels on ${palette.name}`, async () => {
-      const { ctx } = colourTerminal("render", palette)
+      const { ctx, writes } = colourTerminal("render", palette)
       const result = await run(id, ctx)
       const note = result.observation?.note ?? ""
       expect(note).not.toContain("no same-run pixel check decides the visual effect")
@@ -709,6 +719,14 @@ for (const id of COLOUR_IDS) {
       expect(note).toContain("sibling")
       expect(note).toContain("not interpreted")
       expect(note.toLowerCase()).not.toContain("reference")
+      if (id.includes("underline") || id.endsWith(".256") || id.endsWith(".truecolor")) {
+        // The wire and the human reason have independent producers; normalized state replies alone
+        // did not catch a reason naming a different encoding (#33157).
+        const parameters = writes.join("").match(/\x1b\[((?:38|48|58)[;:][\d;:]+)m/)?.[1]
+        expect(parameters, "a multiparameter target was actually sent").toBeDefined()
+        expect(note).toContain(parameters)
+        expect(note).toContain(parameters?.includes(":") ? "(colon form)" : "(semicolon form)")
+      }
     })
   }
 }
@@ -740,7 +758,9 @@ for (const id of COLOUR_IDS) {
       expect.objectContaining({
         id: "review",
         status: "probe-todo",
-        reason: "colour oracle cannot distinguish ignored from identical paint against the current reference",
+        reason: expect.stringContaining(
+          "colour oracle cannot distinguish ignored from identical paint against the current reference",
+        ),
       }),
     )
   })
@@ -756,12 +776,17 @@ test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async
     expect(onCapture.observation).toBeUndefined()
     expect(onCapture).toMatchObject({
       tests: [
-        expect.objectContaining({ status: "probe-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" }),
+        expect.objectContaining({
+          status: "probe-todo",
+          reason: expect.stringContaining("SGR fixture needs at least 1x2, measured 1x1"),
+        }),
       ],
     })
     // The generic 1x2 floor is checked first on both arms, exactly as it was before these rows moved
     // onto the capture row; the 3x34 capture guard is the stricter floor behind it.
     expect(onCapture.tests?.[0]?.reason ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
+    expect(onCapture.tests?.[0]?.reason).toContain("selected feature bytes were not sent")
+    expect(onCapture.tests?.[0]?.reason).toContain("58:2::255:0:128 (colon form)")
     expect(captured.writes).toEqual([])
 
     const plain = colourTerminal("render", PALETTES[0] as Palette, { rows: 1, cols: 1 })
@@ -769,7 +794,10 @@ test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async
     expect(onTerm.observation).toBeUndefined()
     expect(onTerm).toMatchObject({
       tests: [
-        expect.objectContaining({ status: "probe-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" }),
+        expect.objectContaining({
+          status: "probe-todo",
+          reason: expect.stringContaining("SGR fixture needs at least 1x2, measured 1x1"),
+        }),
       ],
     })
     expect(onTerm.tests?.[0]?.reason ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
@@ -1059,7 +1087,28 @@ test("the colour owner preserves non-mux reset negatives and broken mux captures
     )
     expect(result.observation?.outcome).toBe(broken ? "error" : "unsupported")
     expect(result.tests?.[0]?.status).toBe(broken ? "probe-invalid" : "unsupported")
+    expect(result.observation?.note).toContain("58:2::255:0:128 (colon form)")
   }
+  // Before an observation exists, execution and coverage reasons still need the selected encoding;
+  // adding that text must preserve the invalid/TODO carrier rather than inventing an observation.
+  const invalid = colourCaptureCallbackResult("sgr.underline-color-reset", {
+    pass: false,
+    tests: [{ id: "criterion", status: "probe-invalid", reason: "capture failed" }],
+  })
+  expect(invalid.tests?.[0]).toMatchObject({
+    status: "probe-invalid",
+    reason: expect.stringContaining("58:2::255:0:128 (colon form)"),
+  })
+  expect(invalid.observation).toBeUndefined()
+  const coverage = colourCaptureCallbackResult("sgr.underline-color-reset", {
+    pass: false,
+    notTested: { reason: "no-semantic-observable", noObservable: "capture unavailable" },
+  })
+  expect(coverage.notTested).toMatchObject({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringContaining("58:2::255:0:128 (colon form)"),
+  })
+  expect(coverage.observation).toBeUndefined()
 })
 
 for (const id of REVIEW_IDS) {

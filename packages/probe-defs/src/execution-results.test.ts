@@ -185,7 +185,14 @@ it("requires app and mux visual evidence while preserving library cell and non-S
         const conclusive = status === "supported" || status === "unsupported"
         if (featureId !== "modes.bracketed-paste" && pending && conclusive) {
           expect(result.status).toBe("probe-todo")
-          expect(result.reason).toBe("visual effect not observed in this run")
+          expect(result.reason).toContain("visual effect not observed in this run")
+          if (featureId.includes("truecolor") || featureId.endsWith(".256") || featureId.includes("color")) {
+            expect(result.reason).toContain("Recorded criterion cause")
+            expect(result.reason).toMatch(/SGR (?:38|48|58)[;:]/)
+            expect(result.reason).toMatch(/\((?:colon|semicolon) form\)/)
+          } else {
+            expect(result.reason).toBe("visual effect not observed in this run")
+          }
           expect(result.rawReplyRef).toBe(recorded.rawReplyRef)
           expect(result.tests[0]).toEqual(recorded.tests[0])
         } else {
@@ -875,8 +882,12 @@ it("preserves producer-specific native geometry refusal reasons without appendin
   ]
   const cases = [
     ["fixture.sgr", "Cursor advance does not verify SGR styling", 2],
-    ["sgr.underline-color-indexed", "Cursor advance does not verify SGR styling", 2],
-    ["sgr.underline-color-reset", "Cursor advance does not verify the reset rendered", 3],
+    ["sgr.underline-color-indexed", "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling", 2],
+    [
+      "sgr.underline-color-reset",
+      "SGR 59 after setup SGR 58:2::255:0:128 (colon form); Cursor advance does not verify the reset rendered",
+      3,
+    ],
     ["sgr.selective-reset.bold", "Cursor advance does not verify SGR reset", 3],
     [
       "extensions.truecolor",
@@ -918,9 +929,16 @@ it("preserves producer-specific native geometry refusal reasons without appendin
     queryCursorPosition: async () => ({ row: 1, col: 9 }),
     queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
   } as unknown as TermProbeSource)
-  expect(record(wrong)).toMatchObject({ status: "probe-invalid", reason: "Cursor advance does not verify SGR styling" })
+  expect(record(wrong)).toMatchObject({
+    status: "probe-invalid",
+    reason: "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling",
+  })
   for (const [id, col, reason] of [
-    ["sgr.underline-color-reset", 9, "Cursor advance does not verify the reset rendered"],
+    [
+      "sgr.underline-color-reset",
+      9,
+      "SGR 59 after setup SGR 58:2::255:0:128 (colon form); Cursor advance does not verify the reset rendered",
+    ],
     ["sgr.selective-reset.bold", 9, "Cursor did not reach the expected position"],
     [
       "fixture.sgr",
@@ -930,12 +948,12 @@ it("preserves producer-specific native geometry refusal reasons without appendin
     [
       "sgr.underline-color-indexed",
       null,
-      "no parsable cursor position reply; the public projection returned null and retained no bytes",
+      "SGR 58:5:1 (colon form); no parsable cursor position reply; the public projection returned null and retained no bytes",
     ],
     [
       "sgr.underline-color-reset",
       null,
-      "no parsable cursor position reply; the public projection returned null and retained no bytes",
+      "SGR 59 after setup SGR 58:2::255:0:128 (colon form); no parsable cursor position reply; the public projection returned null and retained no bytes",
     ],
     [
       "sgr.selective-reset.bold",

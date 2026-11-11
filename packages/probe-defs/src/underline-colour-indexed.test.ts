@@ -109,7 +109,10 @@ describe("indexed underline colour decision: five outcomes in the ruled order", 
     ],
   ] as const)("%s", (_case, overrides, status, note) => {
     const decision = underlineColourIndexedDecision(digests(overrides))
-    expect(decision).toMatchObject({ status, note })
+    expect(decision).toMatchObject({ status })
+    expect(decision.note).toContain(note)
+    expect(decision.note).toContain("58:5:1 and 58:5:4 (colon form)")
+    expect(decision.note).toContain("38:5:1 and 38:5:4 (colon form)")
   })
 
   test("a blind control wins over every later check", () => {

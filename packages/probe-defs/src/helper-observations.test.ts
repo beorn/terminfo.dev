@@ -561,7 +561,13 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
     expect(small.observation, id).toBeUndefined()
     expect(small, id).toMatchObject({
       tests: [
-        expect.objectContaining({ status: "probe-todo", reason: "SGR fixture needs at least 3x34, measured 2x33" }),
+        expect.objectContaining({
+          status: "probe-todo",
+          reason:
+            id === "sgr.underline-color-reset"
+              ? "Selected SGR 59 after setup SGR 58:2::255:0:128 (colon form); selected feature bytes were not sent; SGR fixture needs at least 3x34, measured 2x33"
+              : "SGR fixture needs at least 3x34, measured 2x33",
+        }),
       ],
     })
     expect(smallWrites, id).toEqual([])
@@ -673,7 +679,12 @@ test("underline color needs an observed color, not only an underline or a consum
     const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
     expect(consumed.observation, id).toBeUndefined()
     expect(consumed, id).toMatchObject({
-      tests: [expect.objectContaining({ status: "probe-todo", reason: "Cursor advance does not verify SGR styling" })],
+      tests: [
+        expect.objectContaining({
+          status: "probe-todo",
+          reason: "SGR 58:2::255:0:128 (colon form); Cursor advance does not verify SGR styling",
+        }),
+      ],
     })
     expect(consumed.assertions, id).toBeUndefined()
   }
@@ -729,7 +740,12 @@ test("indexed underline color follows two distinct measured palette controls", a
   const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
   expect(consumed.observation).toBeUndefined()
   expect(consumed).toMatchObject({
-    tests: [expect.objectContaining({ status: "probe-todo", reason: "Cursor advance does not verify SGR styling" })],
+    tests: [
+      expect.objectContaining({
+        status: "probe-todo",
+        reason: "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling",
+      }),
+    ],
   })
 })
 
@@ -1175,6 +1191,12 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
   for (const channel of ["fg", "bg"]) {
     for (const family of ["standard", "bright", "256", "truecolor", "default"]) {
       const id = `sgr.${channel}.${family}`
+      const encoding =
+        family === "256"
+          ? `SGR ${channel === "fg" ? 38 : 48};5;67 (semicolon form); `
+          : family === "truecolor"
+            ? `SGR ${channel === "fg" ? "38;2;255;128;0" : "48;2;0;255;128"} (semicolon form); `
+            : ""
       const probe = sgrProbes.find((item) => item.id === id)
       if (!probe?.term) throw new Error(`missing ${id} TTY callback`)
       const writes: string[] = []
@@ -1189,7 +1211,7 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
           reason:
             family === "default"
               ? "Cursor advance does not verify the reset rendered"
-              : "Cursor advance does not verify SGR styling",
+              : `${encoding}Cursor advance does not verify SGR styling`,
         },
       ])
       expect(answered.assertions, id).toBeUndefined()
@@ -1200,7 +1222,7 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
         {
           id: "criterion",
           status: "probe-invalid",
-          reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          reason: `${encoding}no parsable cursor position reply; the public projection returned null and retained no bytes`,
         },
       ])
     }
