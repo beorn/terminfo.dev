@@ -51,7 +51,7 @@ export interface FeatureRecord {
   /** Why a reviewed probeStatus override is what it is; required beside any override. */
   probeStatusReason?: string
   /**
-   * The row's silence rule for a fenced silence (#33165): `switchable` or `untestable`, each with its reason.
+   * The row's silence rule for a fenced silence (#33165): `switchable`, with its reason.
    * Absent is the default rule, Unsupported. The recorder applies it; the `probe` text states it.
    */
   silence?: SilenceDeclaration

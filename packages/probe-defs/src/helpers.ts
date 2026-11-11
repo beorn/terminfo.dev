@@ -2734,13 +2734,13 @@ export function isFencedSilence(observation: Pick<Observation, "outcome" | "reas
 
 /**
  * The one mapping from a marked fenced silence to a status, by the row's declared rule (#33165, @cto be3fb080):
- * no rule is the default, Unsupported; `switchable` is PROBE INVALID; `untestable` is Untestable.
+ * no rule is the default, Unsupported; `switchable` is PROBE INVALID.
  */
 export function fencedSilenceStatus(): "unsupported"
-export function fencedSilenceStatus(silence?: SilenceDeclaration): "unsupported" | "probe-invalid" | "untestable"
-export function fencedSilenceStatus(silence?: SilenceDeclaration): "unsupported" | "probe-invalid" | "untestable" {
+export function fencedSilenceStatus(silence?: SilenceDeclaration): "unsupported" | "probe-invalid"
+export function fencedSilenceStatus(silence?: SilenceDeclaration): "unsupported" | "probe-invalid" {
   if (silence === undefined) return "unsupported"
-  return silence.rule === "switchable" ? "probe-invalid" : "untestable"
+  return "probe-invalid"
 }
 
 /**
@@ -2931,7 +2931,7 @@ function assertCurrentSource(source: unknown): asserts source is RunDraft["sourc
  * #33165 (@cto be3fb080): a marked fenced silence (`isFencedSilence`) is mapped here and nowhere else, through
  * `silence`, the feature row's declared rule from content/features.json. Absent is the default: Unsupported, with
  * the callback's negative assertion, exactly as the helpers graded it before. `switchable` is PROBE INVALID with
- * the row's reason; `untestable` is the declared Untestable form `isDeclaredUntestable` admits, with the row's reason.
+ * the row's reason.
  */
 export function recordExecutedProbe(input: {
   featureId: string
@@ -2991,11 +2991,7 @@ export function recordExecutedProbe(input: {
     observation?.outcome === "inconclusive" &&
     observation.reason === "insufficient-evidence"
   const silenceReason =
-    fenced && silence !== undefined
-      ? silence.rule === "switchable"
-        ? `${silence.reason}; ${observation?.note ?? "fenced silence"}`
-        : silence.reason
-      : undefined
+    fenced && silence !== undefined ? `${silence.reason}; ${observation?.note ?? "fenced silence"}` : undefined
   const reason =
     diagnosticReason ??
     silenceReason ??
@@ -3046,8 +3042,7 @@ export function recordExecutedProbe(input: {
           })
         : [
             {
-              // The declared Untestable form is the one test id the finalizer admits (isDeclaredUntestable).
-              id: status === "untestable" ? DECLARED_UNTESTABLE_TEST : "criterion",
+              id: "criterion",
               status,
               attempt: status === "probe-todo" ? { scope: "none" } : attempt,
               assertionRefs,
@@ -3055,9 +3050,7 @@ export function recordExecutedProbe(input: {
               ...(reason && { reason }),
             },
           ],
-    ...(status === "untestable" && fenced
-      ? { criterionBranch: HEADLESS_OBSERVABLE_REVIEW }
-      : input.criterionBranch && { criterionBranch: input.criterionBranch }),
+    ...(input.criterionBranch && { criterionBranch: input.criterionBranch }),
     ...(observation?.assertionType && { assertionType: observation.assertionType }),
     ...(rawReplyRef && { rawReplyRef }),
     ...(observation?.frames && { frames: observation.frames }),

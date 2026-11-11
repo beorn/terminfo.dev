@@ -1119,6 +1119,9 @@ independently of the human explanation. Conclusive observations carry no unknown
 
 Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded probe statuses are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`.
 
+A marked fenced silence defaults to Unsupported. The optional `switchable` silence rule maps it to PROBE INVALID;
+the catalog refuses declarations until a collector route carries them. A silence rule cannot declare Untestable.
+
 [recordExecutedProbe](src/helpers.ts) uses explicit callback tests when valid. Diagnostics and errors retain precedence. Otherwise its default criterion preserves supported/unsupported observations and maps the other cases:
 
 - Missing capture reported as `FrameUnavailable` becomes `probe-todo`.

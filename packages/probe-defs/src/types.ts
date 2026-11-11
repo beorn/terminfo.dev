@@ -255,9 +255,8 @@ export type ObservationReason = (typeof OBSERVATION_REASONS)[number]
  * The non-default silence rules a content/features.json row may declare (#33165, @cto be3fb080). A row that
  * declares none takes the default: a fenced silence is Unsupported.
  * - `switchable`: the terminal can answer once something is enabled, so silence is PROBE INVALID; the reason names it.
- * - `untestable`: silence cannot decide the row; it reads Untestable through the declared route, with the reason.
  */
-export const SILENCE_RULES = ["switchable", "untestable"] as const
+export const SILENCE_RULES = ["switchable"] as const
 export type SilenceRule = (typeof SILENCE_RULES)[number]
 
 /** A row's declared silence rule, `"silence": { "rule", "reason" }` on its content/features.json entry. */

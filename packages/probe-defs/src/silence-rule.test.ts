@@ -8,14 +8,7 @@
  * @testonly none
  */
 import { describe, expect, test } from "vitest"
-import {
-  DECLARED_UNTESTABLE_TEST,
-  HEADLESS_OBSERVABLE_REVIEW,
-  isDeclaredUntestable,
-  isFencedSilence,
-  recordExecutedProbe,
-  sentinelNegativeResult,
-} from "./helpers.ts"
+import { isFencedSilence, recordExecutedProbe, sentinelNegativeResult } from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
 import type { Observation, ProbeAssertion, ProbeCallbackResult, SilenceDeclaration, TermProbeSource } from "./types.ts"
 
@@ -84,15 +77,10 @@ describe("a fenced silence is marked by the helper and graded once, by the row's
     expect(recorded.tests).toMatchObject([{ id: "criterion", status: "probe-invalid", reason: `${reason}; ${NOTE}` }])
   })
 
-  test("untestable: the declared Untestable form the finalizer and run reader admit, with the row's reason", () => {
-    const reason =
-      "Untestable (no way to tell): a terminal that ignores the query and one that consumes it look the same"
-    const recorded = record(fenced(), { rule: "untestable", reason })
-    expect(recorded.status).toBe("untestable")
-    expect(recorded.reason).toBe(reason)
-    expect(recorded.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-    expect(recorded.tests).toMatchObject([{ id: DECLARED_UNTESTABLE_TEST, status: "untestable", reason }])
-    expect(isDeclaredUntestable(recorded)).toBe(true)
+  test("the retired untestable silence rule reaches the existing invalid-declaration boundary", () => {
+    // #33389: no catalog row uses this dormant producer; an old declaration must fail, never silently regrade.
+    const retired = { rule: "untestable", reason: "silence cannot decide" } as unknown as SilenceDeclaration
+    expect(() => record(fenced(), retired)).toThrow(/invalid silence rule/)
   })
 
   test("a reply still decides: the rule applies only to a marked fenced silence", () => {
@@ -102,8 +90,8 @@ describe("a fenced silence is marked by the helper and graded once, by the row's
       observation: { outcome: "supported", assertionType: "query_reply" },
       assertions: [{ assertionType: "query_reply", kind: "positive", expected: "reply", observed: "\x1b]702;1.0\x07" }],
     }
-    const untestable = { rule: "untestable", reason: "Untestable (no way to tell): silence cannot decide" } as const
-    expect(record(reply, untestable).status).toBe("supported")
+    const switchable = { rule: "switchable", reason: "silence is open until the resource is enabled" } as const
+    expect(record(reply, switchable).status).toBe("supported")
     const timeout: ProbeCallbackResult = {
       pass: false,
       response: "x",

@@ -126,17 +126,19 @@ test("refuses any declared silence rule while no route carries it to the collect
   const absent = loadFeatures(fixture("silence-absent", { "features.json": { "a.one": row } }))
   expect(required(absent, "a.one").silence).toBeUndefined()
   const notBuilt =
-    /a\.one.*declares silence rule "(switchable|untestable)".*route that carries a row's silence rule to the collectors is not built/
+    /a\.one.*declares silence rule "switchable".*route that carries a row's silence rule to the collectors is not built/
   expect(() => load("switchable", { rule: "switchable", reason: "enabled by the allowWindowOps resource" })).toThrow(
     notBuilt,
   )
-  expect(() => load("untestable", { rule: "untestable", reason: "silence cannot decide" })).toThrow(notBuilt)
+  expect(() => load("untestable", { rule: "untestable", reason: "silence cannot decide" })).toThrow(
+    /a\.one.*unknown silence rule "untestable"/,
+  )
   expect(() => load("unknown", { rule: "consumes", reason: "r" })).toThrow(/a\.one.*unknown silence rule "consumes"/)
   expect(() => load("explicit-default", { rule: "default", reason: "r" })).toThrow(/unknown silence rule "default"/)
   expect(() => load("no-reason", { rule: "switchable" })).toThrow(
     /a\.one.*silence rule "switchable" without a non-empty "reason"/,
   )
-  expect(() => load("blank-reason", { rule: "untestable", reason: "  " })).toThrow(/without a non-empty "reason"/)
+  expect(() => load("blank-reason", { rule: "switchable", reason: "  " })).toThrow(/without a non-empty "reason"/)
   expect(() => load("not-object", "switchable")).toThrow(/"silence" that is not an object/)
   expect(() => load("extra-key", { rule: "switchable", reason: "r", supplement: "x" })).toThrow(
     /unknown silence keys supplement/,
