@@ -1862,6 +1862,30 @@ export function finalizeVisualResult(
   target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
   captures: readonly ObservationFrame[],
 ): ProbeResult {
+  const encoding = sgrColourEncoding(
+    COLOUR_CAPTURE[recorded.featureId]?.edit ??
+      RESET_FAMILY_CAPTURE[recorded.featureId]?.seed ??
+      (recorded.featureId === "sgr.underline-color-indexed"
+        ? UNDERLINE_INDEXED_PHASES.filter((phase) => phase.sequence.includes("\x1b[58:"))
+            .map((phase) => phase.sequence)
+            .join("")
+        : ""),
+  )
+  if (encoding && recorded.attempt.scope === "probe" && recorded.harnessOutcome === undefined) {
+    // A recorder failure after a callback may have lost its wording. Declare the fixture without
+    // claiming its bytes were sent; unstarted and harness diagnostics stay generic (CTO #33157).
+    const withEncoding = (reason?: string): string =>
+      reason?.includes(encoding)
+        ? reason
+        : `Fixture ${encoding} (declared, not confirmed sent)${reason ? `; ${reason}` : ""}`
+    recorded = {
+      ...recorded,
+      reason: withEncoding(recorded.reason),
+      tests: recorded.tests.map((test) =>
+        test.reason === undefined ? test : { ...test, reason: withEncoding(test.reason) },
+      ),
+    }
+  }
   // CTO Ask2b: owning callbacks qualify no-change; this finalizer only adds actual subject identity.
   const mux = "id" in target && typeof target.id === "string" ? target.id : undefined
   const noChangeIds = ["extensions.osc112-reset-cursor", "extensions.osc9-progress", "extensions.osc555-flash"]
@@ -1936,15 +1960,6 @@ export function finalizeVisualResult(
     return recorded
   }
   if (target.kind === "lib") return recorded
-  const encoding = sgrColourEncoding(
-    COLOUR_CAPTURE[recorded.featureId]?.edit ??
-      RESET_FAMILY_CAPTURE[recorded.featureId]?.seed ??
-      (recorded.featureId === "sgr.underline-color-indexed"
-        ? UNDERLINE_INDEXED_PHASES.filter((phase) => phase.sequence.includes("\x1b[58:"))
-            .map((phase) => phase.sequence)
-            .join("")
-        : ""),
-  )
   if (hasScreenshot) return finalizeMuxVisualNegative(recorded, target, encoding)
   // #33165 (@cto f2adcbf3): a paint row is decided by what is painted. A DECRQSS status reply alone never
   // decides it; the reply stays in the record and the cell is not decided.

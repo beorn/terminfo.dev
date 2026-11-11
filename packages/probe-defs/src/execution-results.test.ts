@@ -160,8 +160,8 @@ it("decides tmux reverse video from its own DECRPM 0 beside the no-change pixels
   )
 })
 
-// One shared owner covers the whole registry and status fold. Native tests retain only the
-// distinct capture-transport binding; headless tests retain manifest-to-checkpoint delivery.
+// One shared owner covers the registry and status fold. Recorder failures after a callback need
+// declared, not confirmed-sent wording; an unstarted row remains a generic collection diagnostic.
 it("requires app and mux visual evidence while preserving library cell and non-SGR results", () => {
   const targets = [
     { target: { kind: "term", id: "fixture" }, pending: true },
@@ -170,33 +170,48 @@ it("requires app and mux visual evidence while preserving library cell and non-S
     { target: { kind: "lib", id: "fixture", rendering: "parser-only" }, pending: false },
     { target: { kind: "lib", id: "fixture" }, pending: false },
   ] as const
-  for (const featureId of [...sgrProbes.map(({ id }) => id), "modes.bracketed-paste"]) {
-    for (const status of ["supported", "unsupported", "probe-todo", "probe-invalid"] as const) {
+  for (const featureId of [...sgrProbes.map(({ id }) => id), "extensions.truecolor", "modes.bracketed-paste"]) {
+    const colour = featureId.includes("truecolor") || featureId.endsWith(".256") || featureId.includes("color")
+    for (const status of ["supported", "unsupported", "probe-todo", "probe-invalid", "untestable"] as const) {
+      const rowAttempt = status === "probe-todo" ? { scope: "none" as const } : attempt
       const recorded: ProbeResult = {
         featureId,
         status,
-        attempt,
+        attempt: rowAttempt,
         reason: "Recorded criterion cause",
-        tests: [{ id: "criterion", status, attempt }],
+        tests: [{ id: "criterion", status, attempt: rowAttempt, reason: "Recorded test cause" }],
         rawReplyRef: featureId,
       }
       for (const { target, pending } of targets) {
         const result = finalizeVisualResult(recorded, target, [])
         const conclusive = status === "supported" || status === "unsupported"
-        if (featureId !== "modes.bracketed-paste" && pending && conclusive) {
+        const declaredColour = colour && rowAttempt.scope === "probe"
+        if (declaredColour) {
+          expect(result.reason).toContain("Recorded criterion cause")
+          for (const reason of [result.reason, result.tests[0]!.reason]) {
+            expect(reason).toMatch(/SGR (?:38|48|58)[;:]/)
+            expect(reason).toMatch(/\((?:colon|semicolon) form\)/)
+          }
+          expect(result.tests[0]!.reason).toContain("Recorded test cause")
+          expect(result.tests[0]).toMatchObject({ id: "criterion", status, attempt: rowAttempt })
+          if (status === "probe-invalid") {
+            expect(result.reason).toContain("declared, not confirmed sent")
+            expect(result.tests[0]!.reason).toContain("declared, not confirmed sent")
+          }
+        }
+        if (featureId !== "modes.bracketed-paste" && featureId !== "extensions.truecolor" && pending && conclusive) {
           expect(result.status).toBe("probe-todo")
           expect(result.reason).toContain("visual effect not observed in this run")
-          if (featureId.includes("truecolor") || featureId.endsWith(".256") || featureId.includes("color")) {
-            expect(result.reason).toContain("Recorded criterion cause")
-            expect(result.reason).toMatch(/SGR (?:38|48|58)[;:]/)
-            expect(result.reason).toMatch(/\((?:colon|semicolon) form\)/)
-          } else {
+          if (!colour) {
             expect(result.reason).toBe("visual effect not observed in this run")
           }
           expect(result.rawReplyRef).toBe(recorded.rawReplyRef)
-          expect(result.tests[0]).toEqual(recorded.tests[0])
-        } else {
+          if (!colour) expect(result.tests[0]).toEqual(recorded.tests[0])
+        } else if (!declaredColour) {
           expect(result).toEqual(recorded)
+        } else {
+          expect(result).toMatchObject({ status, attempt: rowAttempt, rawReplyRef: recorded.rawReplyRef })
+          expect(result.tests).toHaveLength(1)
         }
       }
     }
