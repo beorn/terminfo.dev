@@ -9,6 +9,8 @@
  * `truecolor on`). A configuration is never recorded as a permission.
  */
 
+import type { ProbeSubject } from "@terminfo/probe-defs"
+import type { LoadedRun } from "@terminfo/run-parser"
 import { SCREEN_TRUECOLOR_CONFIG } from "../../packages/terminfo.dev/src/disposable-receipt.ts"
 
 /**
@@ -127,5 +129,51 @@ export function supplementOf(subject: {
     subject.kind === "term"
       ? subject.permissions !== null && supplement.permissions?.[subject.id] === subject.permissions
       : subject.config !== null && supplement.config?.[subject.id] === subject.config,
+  )
+}
+
+/**
+ * A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions, not a
+ * declared supplement, and for a mux the launcher's one default config (#33151, @cto 4a546051). The one matcher: the
+ * selection joins a supplement to its default with it, and placement refuses a supplement without one (33550).
+ */
+export function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): boolean {
+  return (
+    candidate.permissions === null &&
+    supplementOf(candidate) === undefined &&
+    (candidate.kind !== "mux" || candidate.config === MUX_DEFAULT_CONFIG) &&
+    candidate.kind === supplement.kind &&
+    candidate.id === supplement.id &&
+    candidate.os === supplement.os &&
+    candidate.osVersion === supplement.osVersion &&
+    candidate.outerTerminal === supplement.outerTerminal &&
+    candidate.mux === supplement.mux
+  )
+}
+
+type PlacedFacts = Pick<LoadedRun, "subject" | "sourceRevision" | "probeHash">
+
+/**
+ * Why a supplement run may not be placed yet (33550, @cto 2c2f2394). The selection joins a supplement only to a default
+ * run already in the corpus, and with none it fills nothing and only logs, so the default is placed first: with or
+ * after it, never before, from the same source revision and suite (the same pass). Undefined when the run is no
+ * supplement or its default is stored.
+ */
+export function supplementPlacementRefusal(
+  run: PlacedFacts & Pick<LoadedRun, "runId">,
+  stored: readonly PlacedFacts[],
+): string | undefined {
+  const supplement = supplementOf(run.subject)
+  if (supplement === undefined) return undefined
+  const defaults = stored.filter((candidate) => isDefaultOf(candidate.subject, run.subject))
+  const same = (candidate: PlacedFacts) =>
+    candidate.sourceRevision === run.sourceRevision && candidate.probeHash === run.probeHash
+  if (defaults.some(same)) return undefined
+  const { kind, id, os, osVersion } = run.subject
+  return (
+    `supplement-default-missing: ${supplement.name} supplement run ${run.runId} needs its default ` +
+    `${kind}:${id} ${os ?? "unknown"} ${osVersion ?? "unknown"} run from source ${run.sourceRevision ?? "none"} and ` +
+    `suite ${run.probeHash ?? "none"} placed first; the corpus holds ${defaults.length} default run(s) of this ` +
+    `terminal, none from that source and suite. Place the default run of the same pass, then this one.`
   )
 }

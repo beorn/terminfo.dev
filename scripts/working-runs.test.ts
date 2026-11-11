@@ -152,7 +152,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // App passes use a different envelope; the library-only fixtures cannot catch dropping them,
   // conflating OS contexts, inventing comparable pairs, or letting app stores alter newest-only output.
-  function appCollection(instrument: string, os: string, name = OLD) {
+  function appCollection(instrument: string, os: string, name = OLD, supplements?: unknown[]) {
     const parent = join(instrument, "apps", "ghostty", os, "runs")
     mkdirSync(parent, { recursive: true })
     const dir = run(parent, name, { complete: true })
@@ -172,7 +172,14 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
         complete: true,
         probeHash: original.probeHash,
         sourceRevision: original.sourceRevision,
-        contexts: [{ context: { id: "ghostty", kind: "term", os }, status: "classified", rawRun: rawPath }],
+        contexts: [
+          {
+            context: { id: "ghostty", kind: "term", os },
+            status: "classified",
+            rawRun: rawPath,
+            ...(supplements !== undefined && { supplements }),
+          },
+        ],
         errors: [],
       }),
     )
@@ -237,6 +244,33 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       expect(JSON.stringify(siteWorkingView(join(root, "content")))).toBe(before)
     },
   )
+
+  // Accepted (33550, @cto 2c2f2394 condition 4): the preview reads only the default row, so it names the pass's
+  // supplements it did not apply. The view tests above carry no supplement and cannot see a silent omission.
+  it("names the pass supplements the preview does not apply", { timeout: 30_000 }, () => {
+    const instrument = runsDir()
+    const libraries = join(instrument, "runs")
+    mkdirSync(libraries)
+    collection(libraries)
+    appCollection(instrument, "linux", OLD, [
+      {
+        name: "read-allowed",
+        featureIds: ["extensions.osc52-read", "extensions.osc52-clipboard"],
+        status: "classified",
+      },
+    ])
+    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
+    const views = siteWorkingHistory(join(root, "content"))!
+    const app = views.find((view) => view.run.id.startsWith("apps/ghostty/linux/"))!
+    expect(app.contexts).toHaveLength(1)
+    expect(app.unapplied).toBe(
+      "Not applied in this preview: the read-allowed (extensions.osc52-read, extensions.osc52-clipboard) supplement " +
+        "run of this pass. Its answers reach a cell only once it is placed beside the default run.",
+    )
+    expect(views.filter((view) => !view.run.id.startsWith("apps/")).every((view) => view.unapplied === undefined)).toBe(
+      true,
+    )
+  })
 
   it.each(["untrusted suite", "multiple passes"])(
     "keeps an app collection with %s visible and uncounted",
