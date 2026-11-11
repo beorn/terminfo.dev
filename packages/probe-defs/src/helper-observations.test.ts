@@ -309,13 +309,12 @@ test("a former source-review request keeps PROBE TODO with its state and leaves 
   )
   const reason = "Cell readback cannot distinguish an absent style from an unreported attribute"
   for (const pass of [null, false]) {
-    for (const note of [undefined, "Sent SGR 38;5;67 and 38;5;173 (semicolon form)"]) {
-      const coverage = note === undefined ? NO_SAME_PATH_CONTROL : `${note}; ${NO_SAME_PATH_CONTROL}`
+    for (const note of [undefined, "Scroll-speed presentation remains unmeasured"]) {
       expect(parserStateResult(pass, expected, state, note, reason)).toEqual({
         pass: false,
         response,
-        note: coverage,
-        notTested: { reason: "no-semantic-observable", noObservable: coverage },
+        note: NO_SAME_PATH_CONTROL,
+        notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
       })
     }
   }

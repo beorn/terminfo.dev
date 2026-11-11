@@ -113,6 +113,22 @@ test.each([
   }
   expect(fed.join(""), "library target").toContain(`\x1b[${parameters}m`)
   expect(fed.join(""), "library must not send another colour encoding").not.toContain("\x1b[58;")
+  const libraryRecorded = finalizeVisualResult(
+    recordExecutedProbe({
+      featureId: id,
+      attempt: paintAttempt,
+      observation: result.observation && { ...result.observation, featureId: id },
+      coverage: result.notTested && { ...result.notTested, featureId: id },
+      assertions: (result.assertions ?? []).map((assertion) => ({ featureId: id, ...assertion })),
+      tests: result.tests,
+      criterionBranch: result.criterionBranch,
+    }),
+    { kind: "lib" },
+    [],
+  )
+  // The callback already names the bytes it fed. A differently joined encoding sentence must
+  // not turn that retained observation into the recorder-failure disclaimer.
+  expect(libraryRecorded.reason).not.toContain("declared, not confirmed sent")
   const { ctx, writes } = sgrReadbackSource(id === "sgr.underline-color-reset" ? ["0", "4;58:2::255:0:128", "4"] : null)
   const terminal = await sgrTerm(id)(ctx)
   expect(writes.join(""), "terminal target or reset setup").toContain(`\x1b[${parameters}m`)

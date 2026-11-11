@@ -16,6 +16,7 @@ import {
   reviewResult,
   HEADLESS_OBSERVABLE_REVIEW,
   notTestedResult,
+  NO_SAME_PATH_CONTROL,
   sameRgb,
   sgrProbe,
   sgrCaptureFrames,
@@ -1167,7 +1168,7 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
 function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
   const sgr = channel === "fg" ? 38 : 48
   // Two contrasting cube entries rule out one coincidental match with the default/theme palette.
-  const encoding = `SGR ${sgr};5;67 and ${sgr};5;173 (semicolon form); two contrasting indices test the canonical RGB cube mapping`
+  const encoding = `${sgrColourEncoding(`\x1b[${sgr};5;67m\x1b[${sgr};5;173m`)}; two contrasting indices test the canonical RGB cube mapping`
   const first: Color = { r: 95, g: 135, b: 175 }
   const second: Color = { r: 215, g: 135, b: 95 }
   return {
@@ -1232,12 +1233,9 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         // {r: index, g: 0, b: 0}; #30703), so it stays inconclusive until an in-probe control shows the
         // adapter resolves indices (@cto cd391424).
         if (!a || !b || !sameRgb(a, first) || !sameRgb(b, second)) {
-          return parserStateResult(
-            null,
-            expected,
+          return notTestedResult(
+            `${encoding}: direct-RGB controls ${sgr};2;95;135;175 and ${sgr};2;215;135;95 (semicolon form) did not calibrate exact RGB readback; ${NO_SAME_PATH_CONTROL}`,
             state,
-            `${encoding}: direct-RGB controls ${sgr};2;95;135;175 and ${sgr};2;215;135;95 (semicolon form) did not calibrate exact RGB readback`,
-            `direct RGB ${channel} readback matching the fed value (SGR ${sgr};2 reference cells A and B)`,
           )
         }
         if (x && y && sameRgb(x, a) && sameRgb(y, b)) {
@@ -1271,7 +1269,7 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
   const first: Color = channel === "fg" ? { r: 255, g: 128, b: 0 } : { r: 0, g: 255, b: 128 }
   const second: Color = { r: 17, g: 97, b: 201 }
   // The second value is a contrasting sample, so a fixed/default colour cannot satisfy both requests.
-  const encoding = `SGR ${sgr};2;${first.r};${first.g};${first.b} and ${sgr};2;17;97;201 (semicolon form); the second RGB sample rules out a coincidental fixed-colour match`
+  const encoding = `${sgrColourEncoding(`\x1b[${sgr};2;${first.r};${first.g};${first.b}m\x1b[${sgr};2;17;97;201m`)}; the second RGB sample rules out a coincidental fixed-colour match`
   return {
     ...probe(
       id,
@@ -1316,12 +1314,9 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
               `${encoding}: target colour was absent while independent named-colour controls calibrated the channel`,
             )
           }
-          return parserStateResult(
-            null,
-            expected,
+          return notTestedResult(
+            `${encoding}: independent named-colour controls did not calibrate the channel; ${NO_SAME_PATH_CONTROL}`,
             state,
-            `${encoding}: independent named-colour controls did not calibrate the channel`,
-            `independent ${channel} color controls (SGR ${ordinary[0]} and ${ordinary[1]}) distinguishable in the headless readback`,
           )
         }
         const preceding = controlSecond[channel]
@@ -1553,8 +1548,7 @@ export const sgrProbes: ProbeDefinition[] = [
     ...probe(
       "sgr.underline-color-indexed",
       (ctx) => {
-        const encoding =
-          "SGR 58:5:1 and 58:5:4 (colon form); two contrasting palette entries rule out a coincidental default-colour match"
+        const encoding = `${sgrColourEncoding("\x1b[58:5:1m\x1b[58:5:4m")}; two contrasting palette entries rule out a coincidental default-colour match`
         ctx.feed("\x1b[4m\x1b[38:5:4m\x1b[59mA\x1b[58:5:1mX\x1b[38:5:1m\x1b[59mB\x1b[58:5:4mY")
         const default4 = ctx.getCell(0, 0)
         const target1 = ctx.getCell(0, 1)

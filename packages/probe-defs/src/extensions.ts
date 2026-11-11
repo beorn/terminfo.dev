@@ -5869,12 +5869,9 @@ const extensionDefinitions: ProbeDefinition[] = [
               `${encoding}; RGB targets exposed no color while the independent controls showed distinct colors`,
             )
           }
-          return parserStateResult(
-            null,
-            expected,
+          return notTestedResult(
+            `${encoding}; independent foreground controls did not establish color readback; ${NO_SAME_PATH_CONTROL}`,
             state,
-            `${encoding}; independent foreground controls did not establish color readback`,
-            "independent foreground color controls (SGR 31 and 34) distinguishable in the headless readback",
           )
         }
         if (

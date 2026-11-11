@@ -497,7 +497,7 @@ export function parserStateResult(
   }
   // A former source-negative verdict: source code never grades a probe (@cto 9fad23d7, #32246).
   if (sourceReviewReason !== undefined) {
-    return notTestedResult(note === undefined ? NO_SAME_PATH_CONTROL : `${note}; ${NO_SAME_PATH_CONTROL}`, state)
+    return notTestedResult(NO_SAME_PATH_CONTROL, state)
   }
   const response = JSON.stringify(state)
   const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
@@ -1416,7 +1416,10 @@ export function withUnhandledSgrReport(
     // library's own SGR 59 report replaces the undecided body (#33157).
     if (id !== "sgr.underline-color-reset" || result.note === undefined) return reported
     const note = `${result.note}; ${reported.note}`
-    return { ...reported, note, ...(reported.observation && { observation: { ...reported.observation, note } }) }
+    if (reported.observation !== undefined) {
+      return { ...reported, note, observation: { ...reported.observation, note } }
+    }
+    return { ...reported, note }
   }
 }
 
