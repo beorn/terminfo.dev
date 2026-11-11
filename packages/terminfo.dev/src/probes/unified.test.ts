@@ -886,13 +886,16 @@ it("projects Terminal.app identity replies without mistaking the DA1 sentinel fo
   expect(batch.observations).toMatchObject([
     { featureId: "device.primary-da", outcome: "supported" },
     { featureId: "device.secondary-da", outcome: "supported" },
+    // #33165: the sentinel helper marks a fenced silence inconclusive and decides nothing; the recorder grades it
+    // once from the row's silence rule, and the default rule is Unsupported (asserted on the result row below).
     {
       featureId: "device.xtversion",
-      outcome: "unsupported",
+      outcome: "inconclusive",
       assertionType: "query_reply",
       note: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the \d+ ms window$/),
     },
   ])
+  expect(batch.results.find((result) => result.featureId === "device.xtversion")?.status).toBe("unsupported")
   expect(batch.assertions).toContainEqual({
     featureId: "device.xtversion",
     kind: "negative",
@@ -1184,7 +1187,14 @@ it.each([
     const row = batch.results.find((result) => result.featureId === id)!
     expect(row.status).toBe(expected)
     if (expected === "probe-todo") {
-      expect(row.reason).toBe("visual effect not observed in this run")
+      // #33165 (@cto f2adcbf3): a status reply alone never decides a paint row and says so; a screenshot
+      // assertion without this feature's own frame keeps the visual-not-observed reason.
+      const statusReplyOnly = evidence === "foreign-captured" || evidence === "none"
+      expect(row.reason).toBe(
+        statusReplyOnly
+          ? "graded from a status reply only; this row is decided by what is painted"
+          : "visual effect not observed in this run",
+      )
       expect(row.tests).toContainEqual(expect.objectContaining({ status: "probe-todo", reason: row.reason }))
       expect(batch.observations.find((observation) => observation.featureId === id)?.outcome).toBe(outcome)
     }
