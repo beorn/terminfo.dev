@@ -613,7 +613,11 @@ test("App history leaves the cell todo with the reason when its reader has no re
   for (const id of ["scrollback.accumulate", "scrollback.total-lines"]) {
     const probe = scrollbackProbes.find((entry) => entry.id === id)!
     const result = await probe.term!(
-      source(new ScrollbackReadingUnavailable("Terminal.app history: the control wrote 17 marker lines and the history grew by 16")),
+      source(
+        new ScrollbackReadingUnavailable(
+          "Terminal.app history: the control wrote 17 marker lines and the history grew by 16",
+        ),
+      ),
     )
     expect(result.pass).toBe(false)
     expect(result.notTested?.noObservable).toBe(

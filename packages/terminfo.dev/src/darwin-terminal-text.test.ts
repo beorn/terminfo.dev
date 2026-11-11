@@ -754,7 +754,10 @@ function terminalModel(rows: number, cols: number, options: { loseEvery?: number
   const padded = () => [...screen, ...Array.from({ length: rows - screen.length }, () => "")]
   const write = (text: string) => {
     if (text.includes("\x1b[2J")) screen = []
-    for (const line of text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").split("\r\n").slice(0, -1)) {
+    for (const line of text
+      .replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")
+      .split("\r\n")
+      .slice(0, -1)) {
       written++
       if (options.loseEvery !== undefined && written % options.loseEvery === 0) continue
       screen.push(line)
@@ -802,7 +805,11 @@ describe("Terminal.app history: one snapshot, one count definition, and a per-ru
 
   it.each([
     ["a wrapped line", { history: () => `${"x".repeat(21)}\n\n\n\n\n` }, /21 characters on a 20-column grid/],
-    ["history not ending with the screen", { history: () => "a\nb\n", contents: () => "c\n\n\n\n" }, /does not end with the screen/],
+    [
+      "history not ending with the screen",
+      { history: () => "a\nb\n", contents: () => "c\n\n\n\n" },
+      /does not end with the screen/,
+    ],
     ["a tab that raises on history()", { history: undefined }, /raised while reading: .*history/],
   ] as const)("refuses %s, so it gives no reading", (_name, overrides, reason) => {
     const model = terminalModel(4, 20)
