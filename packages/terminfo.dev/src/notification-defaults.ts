@@ -62,7 +62,8 @@ export function qualifyNotificationDefaults(input: {
   }
   return {
     state: "default",
-    reason: "The owned launch line names no notification setting, so this run is at the terminal's default configuration",
+    reason:
+      "The owned launch line names no notification setting, so this run is at the terminal's default configuration",
   }
 }
 

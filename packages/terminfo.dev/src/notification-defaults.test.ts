@@ -9,7 +9,7 @@
 import { expect, test } from "vitest"
 import { qualifyNotificationDefaults, readMuxAllowPassthrough } from "./notification-defaults.ts"
 
-const ACRITTY = "nice -n 10 /nix/store/x/bin/alacritty --option font.normal.family=\\\"JetBrains\\ Mono\\\" -e"
+const ACRITTY = 'nice -n 10 /nix/store/x/bin/alacritty --option font.normal.family=\\"JetBrains\\ Mono\\" -e'
 
 test("an owned launch line with no notification setting is the default configuration", () => {
   const reading = qualifyNotificationDefaults({ launchLine: ACRITTY })

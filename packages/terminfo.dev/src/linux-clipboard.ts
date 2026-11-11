@@ -939,9 +939,7 @@ export async function createLinuxClipboardAdapter(
       readAllowPassthrough: () =>
         readMuxAllowPassthrough({
           run: async (args) =>
-            (
-              await command(tmuxTarget.executable.path, ["-S", tmuxTarget.socketPath, ...args], env)
-            ).toString(),
+            (await command(tmuxTarget.executable.path, ["-S", tmuxTarget.socketPath, ...args], env)).toString(),
         }),
     }),
     permissions: receipt.permissions,
