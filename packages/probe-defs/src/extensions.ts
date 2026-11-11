@@ -1729,6 +1729,13 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
   return result
 }
 
+/**
+ * The OSC 9;4 App arms' cause (#33171, @cto e1aa0710): the observer is missing, not the setup. A multiplexer arm keeps
+ * #32604's sentence, and finalizeVisualResult (sgr.ts) appends its hop suffix there.
+ */
+export const OSC9_PROGRESS_APP_NO_OBSERVER =
+  "Untestable (no observer): OSC 9;4 progress is shown outside the text area (title bar, tab bar or taskbar); this run captures only the window and saw no change after clear/set-50/clear, which a made-up subcommand also produced, so it cannot tell ignored from consumed."
+
 /** Original whole-window recipes: qualify capture sensitivity before progress/flash no-change. */
 async function wholeWindowOscAppCapture(
   ctx: TermProbeSource,
@@ -1797,7 +1804,9 @@ async function wholeWindowOscAppCapture(
     }
     return declaredUntestableResult(
       kind === "progress"
-        ? "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
+        ? ctx.mux === undefined
+          ? OSC9_PROGRESS_APP_NO_OBSERVER
+          : "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
         : "Untestable (no way to tell): OSC555 left all nine whole-window samples unchanged after plain paint/restore and made-up OSC controls; finite sampling can miss a flash and cannot prove Unsupported.",
       state(),
     )

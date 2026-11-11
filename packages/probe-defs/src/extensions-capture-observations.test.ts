@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
-import { extensionsProbes } from "./extensions.ts"
+import { extensionsProbes, OSC9_PROGRESS_APP_NO_OBSERVER } from "./extensions.ts"
 import { ScrollbackReadingUnavailable } from "./scrollback.ts"
 import { DECLARED_UNTESTABLE_TEST, HEADLESS_OBSERVABLE_REVIEW, recordExecutedProbe } from "./helpers.ts"
 import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
@@ -487,7 +487,7 @@ test.each([
 // Whole-window effects and a visible cursor need their own sensitivity control, not CPR credit.
 test.each([
   { id: "extensions.osc112-reset-cursor", effect: "cursor" as const, cause: "no setup" },
-  { id: "extensions.osc9-progress", effect: "progress" as const, cause: "no setup" },
+  { id: "extensions.osc9-progress", effect: "progress" as const, cause: "no observer" },
   { id: "extensions.osc555-flash", effect: "flash" as const, cause: "no way" },
 ])("$id qualifies its original no-change ending", async ({ id, effect, cause }) => {
   const { context } = calibratedIterm2Arm({ colour: {}, effect })
@@ -496,6 +496,39 @@ test.each([
     expect.objectContaining({ id: "declared-untestable", status: "untestable" }),
   )
   expect(result.note).toContain(cause)
+})
+
+// #33171 (@cto e1aa0710): the App arms' observer is missing, so they read "no observer" verbatim; a multiplexer arm
+// shares this callback and must keep #32604's sentence plus its hop suffix. A blanket reword would miss that split.
+test("OSC 9;4 says no observer on an App arm and keeps the no-setup sentence with its hop suffix on a mux arm", async () => {
+  const app = calibratedIterm2Arm({ colour: {}, effect: "progress" }).context
+  const appResult = await find("extensions.osc9-progress").term!(app)
+  expect(appResult.note).toBe(OSC9_PROGRESS_APP_NO_OBSERVER)
+  expect(appResult.tests).toContainEqual(
+    expect.objectContaining({ id: "declared-untestable", status: "untestable", reason: OSC9_PROGRESS_APP_NO_OBSERVER }),
+  )
+
+  const mux = { ...calibratedIterm2Arm({ colour: {}, effect: "progress" }).context, mux: "screen" as const }
+  const muxResult = await find("extensions.osc9-progress").term!(mux)
+  const sentence =
+    "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
+  expect(muxResult.note).toBe(sentence)
+  const featureId = "extensions.osc9-progress"
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: "2026-11-10T00:00:00.000Z" },
+    coverage: muxResult.notTested && { featureId, ...muxResult.notTested, rawReplyRef: featureId },
+    assertions: [],
+    tests: muxResult.tests,
+    rawReplyRef: featureId,
+    criterionBranch: muxResult.criterionBranch,
+  })
+  // The same subject shape the mux no-setup test above passes: the finalizer names the mux by its id.
+  const screen = { kind: "mux" as const, id: "screen", outerTerminal: "kitty" }
+  const finalized = finalizeVisualResult(recorded, screen, [])
+  expect(finalized.reason).toBe(
+    `${sentence}; unchanged effect could have stopped at screen or its outer terminal kitty`,
+  )
 })
 
 test.each([
